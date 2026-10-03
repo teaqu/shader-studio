@@ -1,4 +1,5 @@
 import { imageConfigForActiveRenderPass, nativeFragmentEntryPoint } from "./nativeRenderConfig";
+import { resolveRenderOutputState } from "./debugRenderOutputState";
 import type { DebugFunctionContext, ShaderDebugState, NormalizeMode } from "./types/ShaderDebugState";
 import { ShaderDebugger } from "@shader-studio/debug";
 import type { CapturedVariable } from "./VariableCaptureManager";
@@ -56,6 +57,8 @@ export class ShaderDebugManager {
     capturedVariables: [],
     activeBufferName: 'Image',
     nativeFragmentEntryPoint: null,
+    renderOutput: 0,
+    renderOutputs: ['Output 0'],
   };
 
   private stateCallback: ((state: ShaderDebugState) => void) | null = null;
@@ -153,6 +156,7 @@ export class ShaderDebugManager {
       ? imageCode
       : this.bufferCodes[passName] ?? imageCode);
     const passConfig = config?.passes[passName];
+    this.updateRenderOutputs(passConfig);
     const nativeEntryPoint = nativeFragmentEntryPoint(code, passConfig, this.language);
     if (this.state.nativeFragmentEntryPoint !== nativeEntryPoint) {
       this.state.nativeFragmentEntryPoint = nativeEntryPoint ?? null;
@@ -221,6 +225,7 @@ export class ShaderDebugManager {
       functionContext: this.state.functionContext,
       customParameters: this.customParameters,
       loopMaxIterations: this.loopMaxIterations,
+      output: this.state.renderOutput,
     });
     const preview = this.variablePreview;
     const result = preview
@@ -268,6 +273,7 @@ export class ShaderDebugManager {
         functionContext: this.state.functionContext,
         customParameters: this.customParameters,
         loopMaxIterations: this.loopMaxIterations,
+        output: this.state.renderOutput,
       }),
     );
     if (!result.ok) {
@@ -299,6 +305,7 @@ export class ShaderDebugManager {
       bufferCodes: this.bufferCodes,
       slangModules: this.slangModules,
       customUniforms: this.customUniforms,
+      renderOutput: this.state.renderOutput,
       getDebugTarget: (code, targetConfig) => this.getDebugTarget(code, targetConfig),
     };
   }
@@ -622,6 +629,18 @@ export class ShaderDebugManager {
     this.onRecompileNeeded?.();
   }
 
+  public setRenderOutput(output: number): void {
+    const maximum = Math.max(0, (this.state.renderOutputs?.length ?? 1) - 1);
+    const next = Number.isInteger(output) ? Math.max(0, Math.min(maximum, output)) : 0;
+    if (this.state.renderOutput === next) {
+      return;
+    }
+    this.state.renderOutput = next;
+    this.notifyStateChange();
+    this.onCaptureStateChanged?.();
+    this.onRecompileNeeded?.();
+  }
+
   public setDebugError(error: string | null): void {
     const target = this.variablePreview ?? this.state;
     target.debugError = error;
@@ -804,6 +823,16 @@ export class ShaderDebugManager {
     return activeBufferName === 'Image'
       ? imageCode
       : this.bufferCodes[activeBufferName] ?? imageCode;
+  }
+
+  private updateRenderOutputs(pass: ShaderConfig['passes'][string] | undefined): void {
+    const next = resolveRenderOutputState(pass, this.state.renderOutput);
+    if (this.state.renderOutput === next.renderOutput && (this.state.renderOutputs ?? []).join('\u0000') === next.renderOutputs.join('\u0000')) {
+      return;
+    }
+    this.state.renderOutput = next.renderOutput;
+    this.state.renderOutputs = next.renderOutputs;
+    this.notifyStateChange();
   }
 
   private extractFunctionContext(line: number | null, activeBufferName: string): DebugFunctionContext | null {

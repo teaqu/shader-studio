@@ -983,3 +983,40 @@ describe("wrapWgslImageSource golden module", () => {
     `);
   });
 });
+
+describe("native mesh matrix builtins", () => {
+  it("binds public matrix aliases to the existing mesh uniform for selected native stages", () => {
+    const source = `@vertex fn vertex(@location(0) p: vec3f) -> @builtin(position) vec4f { return iViewProjectionMatrix * iModelMatrix * vec4f(p, 1); }
+@fragment fn fragment() -> @location(0) vec4f { return vec4f(iNormalMatrix[0].xyz, 1); }`;
+    const wrapped = wrapWgslImageSource(source, {
+      geometry: "cube",
+      renderEntryPoints: { vertex: "vertex", fragment: "fragment" },
+    }).source;
+    expect(wrapped).toContain("var<private> iModelMatrix: mat4x4<f32>;");
+    expect(wrapped).toContain("iViewProjectionMatrix = _ss_mesh.viewProjection;");
+    expect(wrapped).toContain("iNormalMatrix = _ss_mesh.normalMatrix;");
+    expect(wrapped).toContain("@group(0) @binding(1) var<uniform> _ss_mesh");
+  });
+});
+
+describe("mixed native and hook render stages", () => {
+  it("generates the omitted mesh stage while retaining the explicit native fragment", () => {
+    const source = `struct Input { @location(0) uv: vec2f, @location(1) worldPosition: vec3f, @location(2) normal: vec3f, }
+@fragment fn paint(input: Input) -> @location(0) vec4f { return vec4f(input.uv, 0, 1); }`;
+    const wrapped = wrapWgslImageSource(source, { geometry: "cube", renderEntryPoints: { fragment: "paint" } }).source;
+    expect(wrapped).toContain("@vertex fn vertexMain");
+    expect(wrapped).toContain("@fragment fn paint");
+    expect(wrapped).not.toContain("@fragment fn fragmentMain");
+  });
+  it("generates the omitted hook fragment while retaining the explicit native vertex", () => {
+    const source = `struct Output { @builtin(position) position: vec4f, @location(0) uv: vec2f, @location(1) worldPosition: vec3f, @location(2) normal: vec3f, }
+@vertex fn vertices(@location(0) p: vec3f, @location(1) n: vec3f, @location(2) uv: vec2f) -> Output { return Output(vec4f(p, 1), uv, p, n); }
+fn mainImage(coord: vec2f) -> vec4f { return vec4f(coord, 0, 1); }`;
+    const wrapped = wrapWgslImageSource(source, { geometry: "cube", renderEntryPoints: { vertex: "vertices" } }).source;
+    expect(wrapped).toContain("@vertex fn vertices");
+    expect(wrapped).toContain("@fragment fn fragmentMain");
+    expect(wrapped).not.toContain("@vertex fn vertexMain");
+    expect(wrapped).toContain("@location(1) worldPos: vec3<f32>");
+    expect(wrapped).toContain("@location(2) normal: vec3<f32>");
+  });
+});

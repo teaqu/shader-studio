@@ -113,34 +113,49 @@ describe('ConfigPanel', () => {
   }
 
   describe('rendering', () => {
-    it.each(['wgsl', 'slang'] as const)('persists the WebGPU default authoring choice for newly created %s render passes', async (language) => {
-      const config: ShaderConfig = { version: '1.0', passes: { Image: {} } };
-      const { getByLabelText } = render(ConfigPanel, {
+    it.each(['wgsl', 'slang'] as const)('uses the saved %s render-function preference through one Buffer menu item', async (language) => {
+      const config: ShaderConfig = { version: '1.0', webgpu: { defaultRenderAuthoring: 'native' }, passes: { Image: {} } };
+      const { getByRole, queryByLabelText } = render(ConfigPanel, {
         config, language, transport: mockTransport, shaderPath: `/shader/image.${language}`,
       });
 
-      await fireEvent.change(getByLabelText('New render pass authoring'), { target: { value: 'native' } });
-
-      expect(mockTransport.postMessage).toHaveBeenCalledWith(expect.objectContaining({
-        type: 'updateConfig',
-        payload: expect.objectContaining({
-          config: expect.objectContaining({ webgpu: { defaultRenderAuthoring: 'native' } }),
-        }),
-      }));
+      await fireEvent.click(getByRole('button', { name: '+ New' }));
+      expect(getByRole('menuitem', { name: 'Buffer' })).toBeInTheDocument();
+      expect(queryByLabelText('New render pass authoring')).not.toBeInTheDocument();
     });
 
     it('discovers native Slang stages from the root source for a same-file Buffer', async () => {
       const source = '[shader("vertex")] float4 bufferVertex(uint id : SV_VertexID) : SV_Position { return float4(0, 0, 0, 1); }\n[shader("fragment")] float4 bufferFragment() : SV_Target0 { return float4(1, 0, 0, 1); }';
       const { getByLabelText } = render(ConfigPanel, {
-        config: { version: '1.0', passes: { Image: {}, BufferA: { path: '/shader/image.slang', entryPoints: {} } } },
+        config: { version: '1.0', passes: { Image: {}, BufferA: { path: '/shader/image.slang', entryPoints: { vertex: 'bufferVertex', fragment: 'bufferFragment' } } } },
         language: 'slang', transport: mockTransport, shaderPath: '/shader/image.slang', shaderSource: source,
         bufferPathMap: { BufferA: '/shader/image.slang' }, selectedBuffer: 'BufferA',
       });
 
       await tick();
-      expect(getByLabelText('Render authoring')).toHaveValue('native');
-      expect(getByLabelText('Vertex entrypoint')).toHaveTextContent('bufferVertex');
-      expect(getByLabelText('Fragment entrypoint')).toHaveTextContent('bufferFragment');
+      expect(getByLabelText('Vertex function')).toHaveValue('bufferVertex');
+      expect(getByLabelText('Fragment function')).toHaveValue('bufferFragment');
+    });
+
+    it('uses the current shared source while a stale Buffer snapshot is pending', async () => {
+      const previous = [
+        '@vertex fn rasterVertex(@builtin(vertex_index) index: u32) -> @builtin(position) vec4f { return vec4f(f32(index)); }',
+        '@fragment fn rasterColor() -> @location(0) vec4f { return vec4f(1.0); }',
+      ].join('\n');
+      const current = `${previous}\n@fragment fn rasterColor2() -> @location(0) vec4f { return vec4f(0.0); }`;
+      const { getByLabelText } = render(ConfigPanel, {
+        config: { version: '1.0', passes: {
+          Image: {},
+          BufferA: { path: '/shader/image.wgsl', entryPoints: { vertex: 'rasterVertex', fragment: 'rasterColor2' } },
+        } },
+        language: 'wgsl', transport: mockTransport, shaderPath: '/shader/image.wgsl', shaderSource: current,
+        bufferPathMap: { BufferA: '/shader/image.wgsl' }, bufferSources: { BufferA: previous }, selectedBuffer: 'BufferA',
+      });
+
+      await tick();
+      const fragment = getByLabelText('Fragment function') as HTMLSelectElement;
+      expect(fragment.value).toBe('rasterColor2');
+      expect(Array.from(fragment.options).some((option) => option.text === 'rasterColor2 (missing)')).toBe(false);
     });
 
     it('should render the Image tab by default', async () => {
@@ -883,7 +898,7 @@ describe('ConfigPanel', () => {
       await rerender({ ...props, language });
       await tick();
       expect(getByRole('menuitem', { name: /add compute/i })).toBeInTheDocument();
-      expect(getByRole('menuitem', { name: 'Buffer (ShaderToy hooks)' })).toBeInTheDocument();
+      expect(getByRole('menuitem', { name: 'Buffer' })).toBeInTheDocument();
 
       await rerender(props);
       await tick();
@@ -1140,12 +1155,11 @@ describe('ConfigPanel', () => {
 
       expect(trigger).toHaveAttribute('aria-expanded', 'true');
       expect(getByRole('menu')).toBeInTheDocument();
-      const bufferItem = getByRole('menuitem', { name: 'Buffer (ShaderToy hooks)' });
+      const bufferItem = getByRole('menuitem', { name: 'Buffer' });
       const computeItem = getByRole('menuitem', { name: /add compute/i });
       expect(bufferItem).toHaveFocus();
 
       await fireEvent.keyDown(bufferItem, { key: 'ArrowDown' });
-      await fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
       expect(computeItem).toHaveFocus();
 
       await fireEvent.keyDown(computeItem, { key: 'Escape' });
@@ -1204,7 +1218,7 @@ describe('ConfigPanel', () => {
       const dropdown = trigger.closest('.add-tab-dropdown')!;
 
       await fireEvent.mouseEnter(dropdown);
-      const bufferItem = getByRole('menuitem', { name: 'Buffer (ShaderToy hooks)' });
+      const bufferItem = getByRole('menuitem', { name: 'Buffer' });
       bufferItem.focus();
 
       await fireEvent.mouseLeave(dropdown);
@@ -1245,7 +1259,7 @@ describe('ConfigPanel', () => {
       const trigger = getByRole('button', { name: '+ New' });
 
       await fireEvent.click(trigger);
-      const bufferItem = getByRole('menuitem', { name: 'Buffer (ShaderToy hooks)' });
+      const bufferItem = getByRole('menuitem', { name: 'Buffer' });
       bufferItem.focus();
       expect(bufferItem).toHaveFocus();
 

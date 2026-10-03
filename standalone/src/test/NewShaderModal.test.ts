@@ -30,10 +30,19 @@ describe('NewShaderModal', () => {
 
     await fireEvent.input(screen.getByLabelText('Shader name'), { target: { value: 'aurora' } });
     await fireEvent.change(screen.getByLabelText('Shader language'), { target: { value: 'wgsl' } });
-    await fireEvent.change(screen.getByLabelText('WebGPU authoring'), { target: { value: 'native' } });
+    await fireEvent.change(screen.getByLabelText('Shader functions'), { target: { value: 'native' } });
     await fireEvent.click(screen.getByRole('button', { name: 'Create Shader' }));
 
     expect(onCreate).toHaveBeenCalledWith('aurora', 'wgsl', 'native');
+  });
+
+  it('uses code-shaped function choices instead of authoring terminology', async () => {
+    render(NewShaderModal, { props: { onCreate: vi.fn(), onClose: vi.fn() } });
+
+    await fireEvent.change(screen.getByLabelText('Shader language'), { target: { value: 'wgsl' } });
+    expect(screen.getByRole('option', { name: 'mainImage / mainVertex' })).not.toBeNull();
+    expect(screen.getByRole('option', { name: '@fragment / @vertex' })).not.toBeNull();
+    expect(screen.queryByText(/authoring/i)).toBeNull();
   });
 
   it('offers the same native choice for Slang', async () => {
@@ -42,7 +51,7 @@ describe('NewShaderModal', () => {
 
     await fireEvent.input(screen.getByLabelText('Shader name'), { target: { value: 'aurora' } });
     await fireEvent.change(screen.getByLabelText('Shader language'), { target: { value: 'slang' } });
-    await fireEvent.change(screen.getByLabelText('WebGPU authoring'), { target: { value: 'native' } });
+    await fireEvent.change(screen.getByLabelText('Shader functions'), { target: { value: 'native' } });
     await fireEvent.click(screen.getByRole('button', { name: 'Create Shader' }));
 
     expect(onCreate).toHaveBeenCalledWith('aurora', 'slang', 'native');

@@ -1,0 +1,34 @@
+{
+  "version": "1.0",
+  "passes": {
+    "BufferA": {
+      "path": "./two-outputs.wgsl",
+      "entryPoints": {
+        "vertex": "vertex",
+        "fragment": "fragment"
+      },
+      "outputs": [
+        {
+          "name": "Colour"
+        },
+        {
+          "name": "Normals"
+        }
+      ]
+    },
+    "Image": {
+      "inputs": {
+        "iChannel0": {
+          "type": "buffer",
+          "source": "BufferA",
+          "output": 0
+        },
+        "iChannel1": {
+          "type": "buffer",
+          "source": "BufferA",
+          "output": 1
+        }
+      }
+    }
+  }
+}

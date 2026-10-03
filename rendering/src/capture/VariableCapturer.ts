@@ -57,6 +57,12 @@ export interface CaptureCompileContext {
     key: string;
     kind?: "texture" | "video" | "cubemap" | "audio" | "buffer" | "keyboard";
   }>;
+  /** Frozen channel views for a capture batch; implementations release copies after GPU work completes. */
+  captureChannelSnapshot?: () => {
+    resources: Array<{ slot: number; textureView: GPUTextureView; sampler?: GPUSampler }>;
+    textureCount: number;
+    destroy(): void;
+  } | null;
   /** Slang/WebGPU path: pass whose resources and uniforms capture must use. */
   slangPassName?: string;
   /** Slang modules that must be preloaded before compiling the capture root. */
@@ -65,13 +71,20 @@ export interface CaptureCompileContext {
   slangSourcePath?: string;
   /** Original native render entries and geometry for raster-faithful capture. */
   nativeRender?: {
-    vertexEntryPoint: string;
-    fragmentEntryPoint: string;
+    vertexEntryPoint?: string;
+    vertexCode?: string;
+    fragmentEntryPoint?: string;
     geometry: "fullscreen" | "plane" | "sphere" | "cube" | "model";
     width: number;
     height: number;
+    /** Native render attachment count; capture reads attachment zero for now. */
+    outputCount?: number;
+    /** The selected fragment writes frag depth and therefore needs a depth target. */
+    writesDepth?: boolean;
     /** Encodes the pass's original geometry and mesh vertex bindings. */
     draw?: (pass: GPURenderPassEncoder) => void;
+    /** Returns the installed mesh camera/model uniform data for this capture batch. */
+    meshUniformData?: () => Float32Array;
   };
 }
 

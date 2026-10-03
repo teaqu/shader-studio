@@ -69,6 +69,22 @@ describe('ShaderDebugManager — buffer debugging', () => {
     manager.setImageShaderCode(IMAGE_CODE);
   });
 
+  it('uses labelled active-buffer outputs and clamps a stale selected attachment', () => {
+    const config: ShaderConfig = {
+      version: '1',
+      passes: {
+        Image: {},
+        BufferA: { path: 'bufferA.wgsl', entryPoints: { fragment: 'draw' }, outputs: [{ name: 'colour' }, { name: 'normal' }] },
+      },
+    };
+    manager.setShaderContext(config, '/shaders/image.wgsl', { BufferA: '@fragment fn draw() -> @location(0) vec4f { return vec4f(); }' }, [], { BufferA: '/shaders/bufferA.wgsl' });
+    manager.updateDebugLine(0, 'draw', '/shaders/bufferA.wgsl');
+    manager.getDebugTarget('', config);
+    expect(manager.getState().renderOutputs).toEqual(['Output 0 (colour)', 'Output 1 (normal)']);
+    manager.setRenderOutput(99);
+    expect(manager.getState().renderOutput).toBe(1);
+  });
+
   // -------------------------------------------------------------------------
   describe('setShaderContext', () => {
     it('accepts null config without throwing', () => {

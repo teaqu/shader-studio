@@ -8,12 +8,15 @@ import type { GeometryType, VertexSpace, VertexTopology } from "@shader-studio/t
 import { resolveRenderState, type ResolvedRenderState } from "../types/Geometry";
 import { webgpuBlendState } from "./WebGPURenderState";
 import { createShaderToyUniformLayout, getShaderToyChannelCount, SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX } from "./SlangPrelude";
+import { nativeFragmentWritesDepth, validateMrtPipeline } from "./MrtPipelineValidation";
 
 export interface SlangPassPipelineDescriptor {
   name: string;
   width: number;
   height: number;
   output: "texture" | "canvas";
+  /** Number of colour attachments for a native render buffer; defaults to one. */
+  outputCount?: number;
   channels: SlangBindingChannel[];
   vertexChannels?: boolean;
   storage?: StorageBindingNode[];
@@ -26,7 +29,7 @@ export interface SlangPassPipelineDescriptor {
   renderState?: ResolvedRenderState;
   uniformBufferSize?: number;
   /** Native stages selected by the pass, or generated ShaderToy adapters. */
-  entryPoints?: { vertex: string; fragment: string };
+  entryPoints?: { vertex?: string; fragment?: string };
   /** Generated prelude lines before user line 1; remaps diagnostics onto user lines. */
   sourceLineOffset?: number;
   /** User-source lines after the prelude; clamps generated-code errors. */
@@ -150,6 +153,7 @@ export class SlangPassPipeline {
   private textureIndex = 0;
   private rebuildGeneration = 0;
   private pendingTextureRetirements = new Set<GPUTexture>();
+  private fragmentWritesDepth = false;
 
   constructor(
     private readonly device: GPUDevice,
@@ -161,7 +165,20 @@ export class SlangPassPipeline {
   async rebuild(wgsl: string): Promise<string[]> {
     const generation = ++this.rebuildGeneration;
     this.resetResources();
+    this.fragmentWritesDepth = false;
     const moduleSource = allowNonUniformDerivatives(wgsl);
+    const outputCount = this.outputCount();
+    const mrtError = validateMrtPipeline(
+      this.device,
+      this.targetFormat(),
+      outputCount,
+      moduleSource,
+      this.descriptor.entryPoints?.fragment,
+    );
+    if (mrtError) {
+      return [`${this.descriptor.name}: ${mrtError}`];
+    }
+    this.fragmentWritesDepth = nativeFragmentWritesDepth(moduleSource, this.descriptor.entryPoints?.fragment);
     // The diagnostic filter adds a generated line only when no filter exists.
     const sourceLineOffset = this.descriptor.sourceLineOffset === undefined
       ? undefined
@@ -218,8 +235,9 @@ export class SlangPassPipeline {
     if (this.descriptor.output === "texture") {
       const textures: GPUTexture[] = [];
       try {
-        textures.push(this.createOutputTexture());
-        textures.push(this.createOutputTexture());
+        for (let index = 0; index < this.outputCount() * 2; index++) {
+          textures.push(this.createOutputTexture());
+        }
         this.outputViews = textures.map((texture) => texture.createView());
         this.textures = textures;
       } catch (error) {
@@ -314,8 +332,9 @@ export class SlangPassPipeline {
       const newTextures: GPUTexture[] = [];
       let newViews: GPUTextureView[];
       try {
-        newTextures.push(this.createOutputTexture(width, height));
-        newTextures.push(this.createOutputTexture(width, height));
+        for (let index = 0; index < this.outputCount() * 2; index++) {
+          newTextures.push(this.createOutputTexture(width, height));
+        }
         newViews = newTextures.map((texture) => texture.createView());
       } catch (error) {
         SlangPassPipeline.destroyTextureList(newTextures);
@@ -509,15 +528,31 @@ export class SlangPassPipeline {
     return { width: this.descriptor.width, height: this.descriptor.height };
   }
 
-  getCurrentOutputView(): GPUTextureView | null {
-    return this.outputViews[this.textureIndex] ?? null;
+  getCurrentOutputView(output = 0): GPUTextureView | null {
+    return this.outputViews[this.outputTextureIndex(output, this.textureIndex)] ?? null;
   }
 
-  getPreviousOutputView(): GPUTextureView | null {
+  getCurrentOutputTexture(output = 0): GPUTexture | null {
+    return this.textures[this.outputTextureIndex(output, this.textureIndex)] ?? null;
+  }
+
+  getPreviousOutputView(output = 0): GPUTextureView | null {
     if (this.textures.length === 0) {
       return null;
     }
-    return this.outputViews[1 - this.textureIndex] ?? null;
+    return this.outputViews[this.outputTextureIndex(output, 1 - this.textureIndex)] ?? null;
+  }
+
+  getPreviousOutputTexture(output = 0): GPUTexture | null {
+    if (this.textures.length === 0) {
+      return null;
+    }
+    return this.textures[this.outputTextureIndex(output, 1 - this.textureIndex)] ?? null;
+  }
+
+  getCurrentOutputViews(): GPUTextureView[] {
+    return Array.from({ length: this.outputCount() }, (_, output) => this.getCurrentOutputView(output))
+      .filter((view): view is GPUTextureView => view !== null);
   }
 
   swap(): void {
@@ -532,7 +567,7 @@ export class SlangPassPipeline {
       return;
     }
     this.destroyTextures();
-    this.textures = [this.createOutputTexture(), this.createOutputTexture()];
+    this.textures = Array.from({ length: this.outputCount() * 2 }, () => this.createOutputTexture());
     this.outputViews = this.textures.map((texture) => texture.createView());
     this.textureIndex = 0;
   }
@@ -569,6 +604,18 @@ export class SlangPassPipeline {
   /** Render target format: float for buffer feedback, canvas format otherwise. */
   private targetFormat(): GPUTextureFormat {
     return this.descriptor.output === "texture" ? this.bufferTextureFormat : this.format;
+  }
+
+  private outputCount(): number {
+    return this.descriptor.outputCount ?? 1;
+  }
+
+  private outputTextureIndex(output: number, textureIndex: number): number {
+    return output * 2 + textureIndex;
+  }
+
+  private needsDepth(): boolean {
+    return this.isMesh() || this.fragmentWritesDepth;
   }
 
   private createOutputTexture(

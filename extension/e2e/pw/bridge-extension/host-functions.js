@@ -1151,6 +1151,17 @@ module.exports = Object.freeze({
     });
     await vscode.commands.executeCommand('shader-studio.view');
   },
+  "88e13c59bfbf6032a810e23109be59041e3208562cd48f3a301e2f4fb6d879cc": async (vscode, path) => {
+        const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
+        const config = JSON.parse(document.getText());
+        config.passes.Image.inputs.iChannel0.output = 1;
+        const edit = new vscode.WorkspaceEdit();
+        edit.replace(document.uri, new vscode.Range(document.positionAt(0), document.positionAt(document.getText().length)), JSON.stringify(config, null, 2));
+        if (!(await vscode.workspace.applyEdit(edit))) {
+          throw new Error('MRT config edit failed');
+        }
+        await document.save();
+      },
   "88fefaae244c8ca94f8e4bd363184149e72ad6ed16f7249d46bb280cfbba5cf4": async (vscode, filePath) => {
         const document = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
         await vscode.window.showTextDocument(document, {
@@ -1247,6 +1258,17 @@ module.exports = Object.freeze({
         editor.revealRange(new vscode.Range(position, position));
       },
   "959f194bdf4592db432b427b2473c8c99545f7085f7b6df9a88b6e55996ad0ba": async (vscode) => vscode.commands.executeCommand('shader-studio.view'),
+  "95b3a6ab57bebeb63e2898b5c9a45589775fa4a49a18f8874d4af1eef3b7ad29": async (vscode, path) => {
+        const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
+        const config = JSON.parse(document.getText());
+        config.passes.Image.inputs.iChannel0.output = 1;
+        const edit = new vscode.WorkspaceEdit();
+        edit.replace(document.uri, new vscode.Range(document.positionAt(0), document.positionAt(document.getText().length)), JSON.stringify(config, null, 2));
+        if (!await vscode.workspace.applyEdit(edit)) {
+          throw new Error('MRT config edit failed');
+        }
+        await document.save();
+      },
   "95bb93a53e690039726658039c9a90fd511e5e283b56907e87d14b56e72de399": async (vscode, path, text) => {
       const uri = vscode.Uri.file(path);
       await vscode.workspace.fs.writeFile(uri, Buffer.from(text, 'utf8'));

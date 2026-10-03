@@ -31,7 +31,7 @@ export interface SlangCompileOptions {
   entryPoint?: string;
   /** Native vertex/fragment entry points. When present, no ShaderToy render
    * wrapper is generated and both authored functions are linked directly. */
-  renderEntryPoints?: { vertex: string; fragment: string };
+  renderEntryPoints?: { vertex?: string; fragment?: string };
   customUniforms?: Array<{ name: string; type: string }>;
   modules?: Array<Omit<SlangSourceModule, "ownerPass">>;
   sourcePath?: string;

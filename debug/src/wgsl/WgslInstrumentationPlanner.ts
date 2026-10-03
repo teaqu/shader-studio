@@ -26,6 +26,10 @@ import { emitNativeRasterWrapper } from "../native/NativeRasterWrapper";
  * compiles the result with the capture-mode prelude, which provides
  * `_ss_dbgCapU` (the slot selector) and `_ss_dbgVarIndex`.
  */
+function selectedOutput(options: DebugPreviewOptions, workspaceOutput: number | undefined): number {
+  return options.output ?? workspaceOutput ?? 0;
+}
+
 export function planWgslInstrumentation(
   source: string,
   sourceUri: string,
@@ -46,7 +50,7 @@ export function planWgslInstrumentation(
   const prefix = instrumentationPrefix(contentHash);
   const document = parseWgslDocument(sourceUri, source, "fragment");
   const native = sourceMap?.workspace.render
-    ? buildNativeRasterReplay(source, "wgsl", sourceMap.workspace.render.entryPoint, prefix) : undefined;
+    ? buildNativeRasterReplay(source, "wgsl", sourceMap.workspace.render.entryPoint, prefix, selectedOutput(previewOptions, sourceMap.workspace.render.output)) : undefined;
   if (typeof native === "string") {
     return failure(sourceUri, analysis.selectedRange.start, "wgsl-debug-unsupported-syntax", native);
   }
@@ -156,7 +160,7 @@ export function planWgslInstrumentation(
         ...values.map((value, index) => ({ index: index + 1, valueId: value.id, name: value.name, typeName: value.typeName, hidden: false })),
       ],
       executionMarkerSlot: 0,
-      ...(native ? { nativeRender: { fragmentEntryPoint: native.entryName } } : {}),
+      ...(native ? { nativeRender: { fragmentEntryPoint: native.entryName, ...(previewOptions.output ? { output: previewOptions.output } : {}) } } : {}),
     },
   };
 }

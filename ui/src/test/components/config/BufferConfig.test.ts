@@ -28,6 +28,54 @@ function getMainPathConfig(container: HTMLElement): HTMLElement {
 }
 
 describe('BufferConfig', () => {
+  it('keeps the implicit first output, caps additions by device format capacity, and preserves configured outputs', async () => {
+    const onUpdate = vi.fn();
+    const { getByLabelText, getByText, rerender } = render(BufferConfig, {
+      bufferName: 'BufferA', language: 'wgsl', onUpdate, getWebviewUri: vi.fn(),
+      config: { path: 'a.wgsl', inputs: {}, entryPoints: { fragment: 'shade' } },
+      maxColorAttachments: 8, maxColorAttachmentBytesPerSample: 32,
+    });
+    expect(getByLabelText('Output 0 name')).toBeInTheDocument();
+    await fireEvent.click(getByText('Add output'));
+    expect(onUpdate).toHaveBeenCalledWith('BufferA', expect.objectContaining({ outputs: [{}, {}] }));
+
+    await rerender({
+      bufferName: 'BufferA', language: 'wgsl', onUpdate, getWebviewUri: vi.fn(),
+      config: { path: 'a.wgsl', inputs: {}, entryPoints: { fragment: 'shade' }, outputFormat: 'rgba32float', outputs: [{}, {}, {}, {}, {}] },
+      maxColorAttachments: 8, maxColorAttachmentBytesPerSample: 32,
+    });
+    expect(getByLabelText('Output 4 name')).toBeInTheDocument();
+    expect(getByText('Add output')).toBeDisabled();
+  });
+  it('edits ordered native fragment outputs without exposing them for hook stages', async () => {
+    const onUpdate = vi.fn();
+    const native = render(BufferConfig, {
+      bufferName: 'BufferA', language: 'wgsl',
+      config: { path: 'a.wgsl', inputs: {}, entryPoints: { fragment: 'shade' }, outputs: [{ name: 'albedo' }] },
+      onUpdate, getWebviewUri: () => undefined, maxColorAttachments: 2,
+    });
+    expect(native.getByLabelText('Output 0 name')).toHaveValue('albedo');
+    await fireEvent.click(native.getByRole('button', { name: 'Add output' }));
+    expect(onUpdate).toHaveBeenCalledWith('BufferA', expect.objectContaining({ outputs: [{ name: 'albedo' }, {}] }));
+
+    const hooks = render(BufferConfig, {
+      bufferName: 'BufferA', language: 'wgsl', config: { path: 'a.wgsl', inputs: {}, outputs: [{ name: 'albedo' }] },
+      onUpdate: vi.fn(), getWebviewUri: () => undefined,
+    });
+    expect(hooks.container.querySelector('.output-row')).toBeNull();
+  });
+
+  it('places shader function selection after every other Buffer setting', () => {
+    const { container } = render(BufferConfig, {
+      bufferName: 'BufferA', language: 'wgsl',
+      config: { path: 'a.wgsl', inputs: {}, entryPoints: {} },
+      renderEntryPoints: [{ name: 'nativeVertex', stage: 'vertex' }, { name: 'nativeFragment', stage: 'fragment' }],
+      onUpdate: vi.fn(), getWebviewUri: () => undefined,
+    });
+
+    expect(container.querySelector('.buffer-details > :last-child [aria-label="Vertex function"]')).not.toBeNull();
+  });
+
   it.each(['render', 'compute'] as const)('places output format last in %s pass settings', (passType) => {
     const { container } = render(BufferConfig, {
       bufferName: 'Simulation',
@@ -244,7 +292,7 @@ describe('BufferConfig', () => {
 
   describe('Create File Button', () => {
     it('offers native WGSL pass insertion and sends the current source target', async () => {
-      const config: BufferPass = { path: '', inputs: {}, entryPoints: {} };
+      const config: BufferPass = { path: '', inputs: {}, entryPoints: { fragment: 'BufferAFragment' } };
       const { getByText } = render(BufferConfig, {
         bufferName: 'BufferA', config, onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri,
         language: 'wgsl', shaderPath: '/shaders/image.wgsl', postMessage: mockPostMessage,
@@ -262,7 +310,7 @@ describe('BufferConfig', () => {
     });
 
     it('offers native Slang pass insertion', async () => {
-      const config: BufferPass = { path: '', inputs: {}, entryPoints: {} };
+      const config: BufferPass = { path: '', inputs: {}, entryPoints: { fragment: 'BufferAFragment' } };
       const { getByText } = render(BufferConfig, {
         bufferName: 'BufferA', config, onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri,
         language: 'slang', shaderPath: '/shaders/image.slang', postMessage: mockPostMessage,
@@ -1366,20 +1414,31 @@ describe('BufferConfig', () => {
     });
 
     it('replaces the hook vertex file control with native entry point controls', () => {
+    });
+
+    it('hides the hook vertex file only for a selected native vertex', () => {
       const native = render(BufferConfig, {
         bufferName: 'BufferA', language: 'wgsl',
-        config: { path: 'a.wgsl', inputs: {}, entryPoints: {} },
+        config: { path: 'a.wgsl', inputs: {}, entryPoints: { vertex: 'nativeVertex' } },
         renderEntryPoints: [{ name: 'nativeVertex', stage: 'vertex' }, { name: 'nativeFragment', stage: 'fragment' }],
         onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri,
       });
       expect(native.queryByRole('heading', { name: 'Vertex shader' })).toBeNull();
-      expect(native.getByLabelText('Vertex entrypoint')).toBeInTheDocument();
+      expect(native.getByLabelText('Vertex function')).toBeInTheDocument();
 
       const hooks = render(BufferConfig, {
         bufferName: 'BufferA', language: 'wgsl', config: { path: 'a.wgsl', inputs: {} },
         onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri,
       });
       expect(hooks.getByRole('heading', { name: 'Vertex shader' })).toBeInTheDocument();
+
+      const nativeFragmentOnly = render(BufferConfig, {
+        bufferName: 'BufferA', language: 'wgsl',
+        config: { path: 'a.wgsl', inputs: {}, entryPoints: { fragment: 'nativeFragment' } },
+        renderEntryPoints: [{ name: 'nativeFragment', stage: 'fragment' }],
+        onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri,
+      });
+      expect(nativeFragmentOnly.container.querySelector('.vertex-shader-title')).not.toBeNull();
     });
 
     it('does not show geometry controls for Common', () => {

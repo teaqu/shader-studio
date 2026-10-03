@@ -277,3 +277,30 @@ float4 inputs(float2 uv) { return 1; }`,
     expect(source).toContain('mainVertex(vertexID, position, normal, uv);');
   });
 });
+
+describe("native mesh matrix builtins", () => {
+  it("maps public matrix builtins onto the existing mesh uniform for selected native stages", () => {
+    const source = `[shader("vertex")] float4 vertex([[vk::location(0)]] float3 p : POSITION) : SV_Position { return mul(iViewProjectionMatrix, mul(iModelMatrix, float4(p, 1))); }
+[shader("fragment")] float4 fragment() : SV_Target { return float4(iNormalMatrix[0].xyz, 1); }`;
+    const wrapped = wrapSlangImageSource(source, {
+      geometry: "cube",
+      renderEntryPoints: { vertex: "vertex", fragment: "fragment" },
+    });
+    expect(wrapped).toContain("#define iModelMatrix _mesh.model");
+    expect(wrapped).toContain("#define iViewProjectionMatrix _mesh.viewProjection");
+    expect(wrapped).toContain("#define iNormalMatrix _mesh.normalMatrix");
+    expect(wrapped).toContain("[[vk::binding(1, 0)]]\nConstantBuffer<MeshUniforms> _mesh;");
+  });
+});
+
+describe("mixed native and hook render stages", () => {
+  it("generates the omitted mesh stage while retaining the explicit native fragment", () => {
+    const source = `struct Input { float2 uv : TEXCOORD0; float3 worldPosition : TEXCOORD1; float3 normal : TEXCOORD2; };
+[shader("fragment")] float4 paint(Input input) : SV_Target { return float4(input.uv, 0, 1); }`;
+    const wrapped = wrapSlangImageSource(source, { geometry: "cube", renderEntryPoints: { fragment: "paint" } });
+    expect(wrapped).toContain('[shader("vertex")] MixedMeshVertexOut vertexMain');
+    expect(wrapped).toContain('[shader("fragment")] float4 paint');
+    expect(wrapped).not.toContain('[shader("fragment")] float4 fragmentMain');
+    expect(wrapped).toContain("float3 worldPosition : TEXCOORD1; float3 normal : TEXCOORD2;");
+  });
+});

@@ -1,16 +1,26 @@
 import { expect, test } from '@playwright/test';
 import { workspace } from './language-service-fixtures.mjs';
 
-async function openFixture(page, stem, source) {
+async function openFixture(page, stem, source, config = { version: '1.0', passes: { Image: { inputs: {} } } }) {
   await page.route('**/__native_entrypoint_fixture__', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Fixture</title>' }));
   await page.goto('/__native_entrypoint_fixture__');
   await workspace(page, [
     [`${stem}.wgsl`, source],
-    [`${stem}.sha.json`, JSON.stringify({ version: '1.0', passes: { Image: { inputs: {} } } })],
+    [`${stem}.sha.json`, JSON.stringify(config)],
   ]);
   await page.goto('/');
   await page.getByTestId(`shader-option-${stem}-wgsl`).click();
   await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
+}
+
+async function pasteSource(page, editor, source) {
+  await editor.locator('.view-lines').click();
+  await page.keyboard.press('ControlOrMeta+A');
+  await page.evaluate(text => {
+    const clipboardData = new DataTransfer();
+    clipboardData.setData('text/plain', text);
+    document.activeElement.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
+  }, source);
 }
 
 async function centerPixel(canvas) {
@@ -42,18 +52,20 @@ test('WGSL native Insert appends one buffer and one compute entry point, then pe
     '@fragment fn imageFragment() -> @location(0) vec4f { return vec4f(0.1, 0.2, 0.3, 1.0); }',
     '',
   ].join('\n');
-  await openFixture(page, stem, source);
+  await openFixture(page, stem, source, {
+    version: '1.0', webgpu: { defaultRenderAuthoring: 'native' }, passes: { Image: { inputs: {} } },
+  });
 
-  // The project default governs the first Buffer action. Switching it must
-  // persist before adding the pass, so a reload retains the authoring choice.
-  await page.getByLabel('New render pass authoring').selectOption('native');
+  // The saved project preference governs the single Buffer action.
   await page.getByRole('button', { name: '+ New' }).click();
-  await page.getByRole('menuitem', { name: 'Buffer (native entry points)' }).click();
+  await page.getByRole('menuitem', { name: 'Buffer' }).click();
   const buffer = page.locator('.tab-content').filter({ has: page.getByLabel('Render entry points') });
-  await expect(buffer.getByLabel('Render authoring')).toHaveValue('native');
+  await expect(buffer.getByLabel('Vertex function')).toHaveValue('');
+  await buffer.getByRole('button', { name: 'Add output' }).click();
+  await expect(buffer.getByLabel('Output 1 name')).toBeVisible();
   await buffer.getByRole('button', { name: 'Insert', exact: true }).click();
-  await expect(buffer.getByLabel('Vertex entrypoint')).toHaveValue('BufferAVertex');
-  await expect(buffer.getByLabel('Fragment entrypoint')).toHaveValue('BufferAFragment');
+  await expect(buffer.getByLabel('Vertex function')).toHaveValue('BufferAVertex');
+  await expect(buffer.getByLabel('Fragment function')).toHaveValue('BufferAFragment');
 
   await page.getByRole('button', { name: '+ New' }).click();
   await page.getByRole('menuitem', { name: 'Compute' }).click();
@@ -74,13 +86,14 @@ test('WGSL native Insert appends one buffer and one compute entry point, then pe
     };
   }).toMatchObject({
     config: { webgpu: { defaultRenderAuthoring: 'native' } },
-    bufferPass: { entryPoints: { vertex: 'BufferAVertex', fragment: 'BufferAFragment' } },
+    bufferPass: { entryPoints: { vertex: 'BufferAVertex', fragment: 'BufferAFragment' }, outputs: [{}, {}] },
     computePass: { type: 'compute', entryPoints: { compute: 'ComputeACompute' } },
   });
 
   const saved = await workspace(page);
   expect(saved[`/shaders/${stem}.wgsl`].match(/@vertex\s+fn BufferAVertex/g)).toHaveLength(1);
   expect(saved[`/shaders/${stem}.wgsl`].match(/@compute @workgroup_size/g)).toHaveLength(1);
+  expect(saved[`/shaders/${stem}.wgsl`]).toContain('@location(1)');
 
   await page.reload();
   await expect.poll(async () => JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`]).passes).toMatchObject({
@@ -99,28 +112,127 @@ test('WGSL native render selector saves a deliberate fragment choice and hook cr
   ].join('\n');
   await openFixture(page, stem, source);
 
-  await page.getByLabel('Render authoring').selectOption('native');
-  await expect(page.getByLabel('Vertex entrypoint')).toHaveValue('vertexA');
-  await page.getByLabel('Fragment entrypoint').selectOption('fragmentB');
-  await page.getByLabel('Render authoring').selectOption('hooks');
+  await page.getByLabel('Vertex function').selectOption('vertexA');
+  await expect(page.getByLabel('Vertex function')).toHaveValue('vertexA');
+  await page.getByLabel('Fragment function').selectOption('fragmentB');
+  await page.getByLabel('Vertex function').selectOption('');
   await page.getByRole('button', { name: '+ New' }).click();
-  await page.getByRole('menuitem', { name: 'Buffer (ShaderToy hooks)' }).click();
+  await page.getByRole('menuitem', { name: 'Buffer' }).click();
 
   await expect.poll(async () => JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`])).toMatchObject({
     passes: { Image: { inputs: {} }, BufferA: { inputs: {} } },
   });
   const config = JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`]);
-  expect(config.passes.Image.entryPoints).toBeUndefined();
+  expect(config.passes.Image.entryPoints).toEqual({ fragment: 'fragmentB' });
   expect(config.passes.BufferA.entryPoints).toBeUndefined();
 
-  // Restore native mode and choose a fragment again. This proves the selector,
-  // rather than the single-candidate fallback, is what reached saved JSON.
+  // Restore just the vertex selection. This proves mixed hook/native stages
+  // persist without a single-candidate fallback.
   await page.locator('[data-tab-name="Image"]').click();
-  await page.getByLabel('Render authoring').selectOption('native');
-  await page.getByLabel('Fragment entrypoint').selectOption('fragmentB');
+  await page.getByLabel('Vertex function').selectOption('vertexA');
   await expect.poll(async () => JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`]).passes.Image.entryPoints).toEqual({ vertex: 'vertexA', fragment: 'fragmentB' });
   await page.reload();
   await expect.poll(async () => JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`]).passes.Image.entryPoints).toEqual({ vertex: 'vertexA', fragment: 'fragmentB' });
+});
+
+test('a shared Buffer keeps its selected second fragment after rapid source updates', async ({ page }) => {
+  const stem = 'native-shared-fragment-refresh';
+  const vertex = [
+    '@vertex fn rasterVertex(@builtin(vertex_index) index: u32) -> @builtin(position) vec4f {',
+    '  let points = array<vec2f, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));',
+    '  return vec4f(points[index], 0.0, 1.0);',
+    '}',
+  ].join('\n');
+  const rasterColor = '@fragment fn rasterColor() -> @location(0) vec4f { return vec4f(1.0, 0.0, 0.0, 1.0); }';
+  const rasterColor2 = '@fragment fn rasterColor2() -> @location(0) vec4f { return vec4f(0.0, 1.0, 0.0, 1.0); }';
+  const source = [vertex, rasterColor, rasterColor2].join('\n');
+  await openFixture(page, stem, source, {
+    version: '1.0', passes: {
+      Image: { entryPoints: { vertex: 'rasterVertex', fragment: 'rasterColor2' } },
+      BufferA: { path: `${stem}.wgsl`, entryPoints: { vertex: 'rasterVertex', fragment: 'rasterColor2' } },
+    },
+  });
+
+  const editor = page.getByTestId('web-editor');
+  await expect(editor.locator('.monaco-editor')).toBeVisible();
+  await page.locator('[data-tab-name="BufferA"]').click();
+  const fragment = page.getByLabel('Fragment function');
+  await expect(fragment).toHaveValue('rasterColor2');
+
+  // These are whole-source Monaco pastes. The final source is complete again;
+  // no stale per-pass source snapshot may leave the selected function missing.
+  await pasteSource(page, editor, [vertex, rasterColor].join('\n'));
+  await pasteSource(page, editor, [vertex, rasterColor, '@fragment fn rasterColor3() -> @location(0) vec4f { return vec4f(0.0, 0.0, 1.0, 1.0); }'].join('\n'));
+  await pasteSource(page, editor, source);
+
+  await expect.poll(async () => Array.from(await fragment.locator('option').allTextContents())).toContain('@fragment rasterColor2');
+  await expect.poll(async () => Array.from(await fragment.locator('option').allTextContents())).not.toContain('rasterColor2 (missing)');
+  await expect.poll(async () => JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`]).passes.BufferA.entryPoints).toEqual({ vertex: 'rasterVertex', fragment: 'rasterColor2' });
+  await page.reload();
+  await page.locator('[data-tab-name="BufferA"]').click();
+  await expect(page.getByLabel('Fragment function')).toHaveValue('rasterColor2');
+});
+
+test('a separate native MRT Buffer routes cursor ownership and previews selected outputs', async ({ page }) => {
+  const stem = 'native-mrt-debug';
+  const fields = Array.from({ length: 6 }, (_, i) => `@location(${i}) output${i}: vec4f,`).join('');
+  const values = Array.from({ length: 6 }, (_, i) => `vec4f(value.x,${i}.0/5.0,0,1)`).join(',');
+  const buffer = `@vertex fn bufferVertex(@builtin(vertex_index) i:u32)->@builtin(position) vec4f { let p=array<vec2f,3>(vec2f(-1),vec2f(3,-1),vec2f(-1,3));return vec4f(p[i],0,1); }
+struct Outputs {${fields}}
+@fragment fn bufferFragment(@builtin(position) position:vec4f)->Outputs {
+  let value: vec4f = vec4f(position.x/512.0);
+  return Outputs(${values});
+}`;
+  await page.route('**/__native_mrt_debug_fixture__', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html>' }));
+  await page.goto('/__native_mrt_debug_fixture__');
+  await workspace(page, [
+    [`${stem}.wgsl`, 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(0.5,0,0,1); }'],
+    [`${stem}/buffer.wgsl`, buffer],
+    [`${stem}.sha.json`, JSON.stringify({ version:'1.0', passes:{ Image:{inputs:{}}, BufferA:{path:`${stem}/buffer.wgsl`,entryPoints:{vertex:'bufferVertex',fragment:'bufferFragment'},outputs:[{name:'colour'},{name:'normal'},{},{},{},{name:'depth'}]} } })],
+  ]);
+  await page.goto('/');
+  const preview = page.getByTestId('web-preview');
+  const canvas = preview.locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
+  await expect.poll(async () => isRedOnly(await centerPixel(canvas))).toBe(true);
+  await preview.getByLabel('Toggle config panel').click();
+  await page.locator('[data-tab-name="BufferA"]').dblclick();
+  const editor = page.locator(`[data-testid="file-editor"][data-path="/shaders/${stem}/buffer.wgsl"]`);
+  await expect(editor.locator('.monaco-editor')).toBeVisible();
+  await preview.getByLabel('Toggle debug mode').click();
+  const panel = page.locator('.debug-panel');
+  if (await panel.locator('.variables-section').count() === 0) {
+    await panel.getByLabel('Toggle variable inspector').click();
+  }
+  // The pane opens at line 1. Move through Monaco itself so the host receives
+  // the selected Buffer statement rather than a synthetic cursor message.
+  const editorInput = editor.locator('textarea');
+  await editorInput.press('ArrowDown');
+  await editorInput.press('ArrowDown');
+  await editorInput.press('ArrowDown');
+  const output = panel.getByLabel('Preview output');
+  await expect(output).toHaveValue('0');
+  // Turn off local inline rendering to display the selected native attachment
+  // itself; the selected statement would otherwise replace it with `value`.
+  await panel.getByLabel('Toggle inline rendering').click();
+  await output.selectOption('1');
+  await expect(output).toHaveValue('1');
+  // The raw attachment's linear 0.2 green channel reads back around 51.
+  await expect.poll(async () => (await centerPixel(canvas))[1]).toBeGreaterThan(45);
+  await expect.poll(async () => (await centerPixel(canvas))[1]).toBeLessThan(60);
+  await output.selectOption('5');
+  await expect(output).toHaveValue('5');
+  await expect.poll(async () => (await centerPixel(canvas))[1]).toBeGreaterThan(245);
+  await panel.getByLabel('Toggle inline rendering').click();
+  await panel.getByLabel('Cycle normalize mode').click();
+  await panel.getByLabel('Toggle step threshold').click();
+  await expect(panel.getByLabel('Cycle normalize mode')).toHaveAttribute('data-tooltip', /Normalize: SOFT/);
+  await expect(panel.getByLabel('Toggle step threshold')).toHaveAttribute('data-tooltip', /Step: ON/);
+  const valueRow = panel.locator('.var-row').filter({has: page.locator('.var-name',{hasText:/^value$/})});
+  await expect(valueRow).toBeVisible();
+  await expect(valueRow.locator('.var-value')).toContainText(/[0-9]/);
+  await expect(valueRow.locator('.var-value')).not.toContainText(/NaN|Infinity/);
+  await preview.getByLabel('Toggle debug mode').click();
+  await expect.poll(async () => isRedOnly(await centerPixel(canvas))).toBe(true);
 });
 
 test('new native WGSL Image compiles and makes native Buffer the default', async ({ page }) => {
@@ -130,7 +242,7 @@ test('new native WGSL Image compiles and makes native Buffer the default', async
   const dialog = page.getByRole('dialog', { name: 'New Shader' });
   await dialog.getByLabel('Shader name').fill('native-image-created');
   await dialog.getByLabel('Shader language').selectOption('wgsl');
-  await dialog.getByLabel('WebGPU authoring').selectOption('native');
+  await dialog.getByLabel('Shader functions').selectOption('native');
   await dialog.getByRole('button', { name: 'Create Shader', exact: true }).click();
 
   const shader = page.getByTestId('shader-option-native-image-created-wgsl');
@@ -144,8 +256,8 @@ test('new native WGSL Image compiles and makes native Buffer the default', async
 
   await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
   await page.getByRole('button', { name: '+ New' }).click();
-  await page.getByRole('menuitem', { name: 'Buffer (native entry points)' }).click();
-  await expect(page.getByLabel('Render authoring')).toHaveValue('native');
+  await page.getByRole('menuitem', { name: 'Buffer' }).click();
+  await expect(page.getByLabel('Vertex function')).toHaveValue('');
   await expect.poll(async () => JSON.parse((await workspace(page))['/shaders/native-image-created.sha.json']).passes.BufferA).toMatchObject({ entryPoints: {} });
 });
 
@@ -156,7 +268,7 @@ test('new native Slang Image compiles, then inserts Buffer and Compute into the 
   const dialog = page.getByRole('dialog', { name: 'New Shader' });
   await dialog.getByLabel('Shader name').fill('native-slang-created');
   await dialog.getByLabel('Shader language').selectOption('slang');
-  await dialog.getByLabel('WebGPU authoring').selectOption('native');
+  await dialog.getByLabel('Shader functions').selectOption('native');
   await dialog.getByRole('button', { name: 'Create Shader', exact: true }).click();
 
   const shader = page.getByTestId('shader-option-native-slang-created-slang');
@@ -170,11 +282,11 @@ test('new native Slang Image compiles, then inserts Buffer and Compute into the 
 
   await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
   await page.getByRole('button', { name: '+ New' }).click();
-  await page.getByRole('menuitem', { name: 'Buffer (native entry points)' }).click();
-  await expect(page.getByLabel('Render authoring')).toHaveValue('native');
+  await page.getByRole('menuitem', { name: 'Buffer' }).click();
+  await expect(page.getByLabel('Vertex function')).toHaveValue('');
   await page.getByRole('button', { name: 'Insert', exact: true }).click();
-  await expect(page.getByLabel('Vertex entrypoint')).toHaveValue('BufferAVertex');
-  await expect(page.getByLabel('Fragment entrypoint')).toHaveValue('BufferAFragment');
+  await expect(page.getByLabel('Vertex function')).toHaveValue('BufferAVertex');
+  await expect(page.getByLabel('Fragment function')).toHaveValue('BufferAFragment');
 
   await page.getByRole('button', { name: '+ New' }).click();
   await page.getByRole('menuitem', { name: 'Compute' }).click();

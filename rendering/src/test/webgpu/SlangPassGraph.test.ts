@@ -1780,6 +1780,80 @@ describe("Slang pass references", () => {
     });
   }
 
+  it("routes a selected native render output without conflating it with compute layers", () => {
+    const native = `@vertex fn vertices(@builtin(vertex_index) index: u32) -> @builtin(position) vec4f {
+  let positions = array<vec2f, 3>(vec2f(-1), vec2f(3, -1), vec2f(-1, 3));
+  return vec4f(positions[index], 0, 1);
+}
+struct Outputs { @location(0) colour: vec4f, @location(1) normals: vec4f }
+@fragment fn scene() -> Outputs { return Outputs(vec4f(1), vec4f(0)); }`;
+    const graph = buildSlangPassGraph({
+      imageCode,
+      language: "wgsl",
+      config: {
+        version: "1",
+        passes: {
+          Image: { inputs: { iChannel0: { type: "buffer", source: "Scene", output: 1 } } },
+          Scene: {
+            path: "scene.wgsl",
+            entryPoints: { vertex: "vertices", fragment: "scene" },
+            outputs: [{ name: "Colour" }, { name: "Normals" }],
+          },
+        },
+      },
+      buffers: { Scene: native },
+      canvasWidth: 128,
+      canvasHeight: 64,
+    });
+
+    expect(graph.errors).toEqual([]);
+    expect(graph.passes.find(({ name }) => name === "Scene")).toMatchObject({
+      outputCount: 2,
+      outputs: [{ name: "Colour" }, { name: "Normals" }],
+    });
+    expect(graph.passes.find(({ name }) => name === "Image")?.channels).toContainEqual(expect.objectContaining({
+      source: "Scene",
+      output: 1,
+    }));
+  });
+
+  it.each([
+    ["hooks", { path: "scene.wgsl", outputs: [{}, {}] }, "require native render entryPoints"],
+    ["GLSL", { path: "scene.glsl", entryPoints: {}, outputs: [{}, {}] }, "GLSL MRT is not supported"],
+  ] as const)("rejects %s MRT configuration", (_name, pass, message) => {
+    const graph = buildSlangPassGraph({
+      imageCode,
+      language: _name === "GLSL" ? "glsl" : "wgsl",
+      config: { version: "1", passes: { Image: {}, Scene: pass } } as ShaderConfig,
+      buffers: { Scene: imageCode },
+      canvasWidth: 128,
+      canvasHeight: 64,
+    });
+
+    expect(graph.errors.some((error) => error.includes(message))).toBe(true);
+  });
+
+  it("rejects render-output selection on compute inputs and dangling render outputs", () => {
+    const graph = build({
+      version: "1",
+      passes: {
+        Image: {
+          inputs: {
+            compute: { type: "buffer", source: "Simulation", output: 0 },
+            scene: { type: "buffer", source: "Scene", output: 2 },
+          },
+        },
+        Simulation: { type: "compute", path: "simulation.slang" },
+        Scene: { path: "scene.slang", entryPoints: {}, outputs: [{}, {}] },
+      },
+    }, { Simulation: computeCode, Scene: imageCode });
+
+    expect(graph.errors).toEqual(expect.arrayContaining([
+      expect.stringContaining("output selection is only valid for render buffer"),
+      expect.stringContaining('output 2 is invalid for source "Scene" with 2 output(s)'),
+    ]));
+  });
+
   it.each([-1, 1.5, 3])("rejects invalid compute output layer %s", (layer) => {
     const config: ShaderConfig = {
       version: "1",
@@ -1913,7 +1987,7 @@ describe("WGSL pass graph language", () => {
     });
   }
 
-  it("resolves sole native render stages from a shared source", () => {
+  it("keeps generated stages when native entries are not selected", () => {
     const source = `@vertex fn fullscreen(@builtin(vertex_index) id: u32) -> @builtin(position) vec4f { return vec4f(); }
 @fragment fn present() -> @location(0) vec4f { return vec4f(); }
 @compute @workgroup_size(1) fn update() {}`;
@@ -1927,16 +2001,16 @@ describe("WGSL pass graph language", () => {
     }, { BufferA: source, ComputeA: source });
     expect(graph.errors).toEqual([]);
     expect(graph.passes.find((pass) => pass.name === "BufferA")?.entryPoints)
-      .toEqual({ vertex: "fullscreen", fragment: "present" });
+      .toEqual({});
   });
 
-  it("requires a selection when native render stage discovery is ambiguous", () => {
+  it("ignores unselected native stages even when discovery is ambiguous", () => {
     const source = `@vertex fn one() -> @builtin(position) vec4f { return vec4f(); }
 @vertex fn two() -> @builtin(position) vec4f { return vec4f(); }
 @fragment fn present() -> @location(0) vec4f { return vec4f(); }`;
     const graph = buildWgsl({ version: "1", passes: { Image: { inputs: {} }, BufferA: { path: "shared.wgsl", entryPoints: {} } } }, { BufferA: source });
-    expect(graph.errors).toContain("BufferA: source has multiple @vertex entry points; select one in the config UI");
-    expect(graph.passes.map((pass) => pass.name)).toEqual(["Image"]);
+    expect(graph.errors).toEqual([]);
+    expect(graph.passes.map((pass) => pass.name)).toEqual(["BufferA", "Image"]);
   });
 
   it("rejects malformed render entryPoints instead of silently using hook wrappers", () => {

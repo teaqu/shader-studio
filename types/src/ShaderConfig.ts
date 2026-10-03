@@ -3,6 +3,8 @@ export interface BufferConfigInput {
     source: string;
     /** Layer of a multi-layer compute output to sample (default 0). */
     layer?: number;
+    /** Colour attachment of a render buffer to sample (default 0). */
+    output?: number;
     /** Sampling filter (default linear). */
     filter?: "linear" | "nearest";
     /** Addressing mode (default clamp). */
@@ -212,6 +214,8 @@ export interface BufferPass extends RenderPassSettings {
   vertex?: string;
   entryPoints?: RenderEntryPoints;
   outputFormat?: BufferOutputFormat;
+  /** Native WebGPU render outputs. Omitted keeps one colour output. */
+  outputs?: { name?: string }[];
 }
 
 export interface CommonPass {

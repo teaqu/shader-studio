@@ -8,7 +8,7 @@ export function resolveRenderEntryPoints(
   source: string,
   language: ShaderLanguageId,
   errors: string[],
-): { vertex: string; fragment: string } | undefined | null {
+): { vertex?: string; fragment?: string } | undefined | null {
   if (!pass || !("entryPoints" in pass) || pass.entryPoints === undefined) {
     return undefined;
   }
@@ -19,31 +19,21 @@ export function resolveRenderEntryPoints(
     return null;
   }
   const entries = getShaderEntryPoints(source, language);
-  const renderConfigured = configured as { vertex?: string; fragment?: string };
-  const resolve = (stage: "vertex" | "fragment"): string | undefined => {
-    const requested = renderConfigured[stage];
-    const candidates = entries.filter((entry) => entry.stage === stage);
-    if (requested) {
-      if (candidates.some((entry) => entry.name === requested)) {
-        return requested;
-      }
+  const initialErrorCount = errors.length;
+  const resolved: { vertex?: string; fragment?: string } = {};
+  for (const stage of ["vertex", "fragment"] as const) {
+    const requested = (configured as { vertex?: string; fragment?: string })[stage];
+    if (!requested) {
+      continue;
+    }
+    if (entries.some(entry => entry.stage === stage && entry.name === requested)) {
+      resolved[stage] = requested;
+    } else {
       errors.push(`${passName}: ${stage} entry point "${requested}" was not found in its source`);
-      return undefined;
     }
-    if (candidates.length === 1) {
-      return candidates[0]!.name;
-    }
-    const stageAnnotation = language === "wgsl" ? `@${stage}` : `[shader("${stage}")]`;
-    errors.push(candidates.length === 0
-      ? `${passName}: native render source must declare a ${stageAnnotation} entry point`
-      : `${passName}: source has multiple ${stageAnnotation} entry points; select one in the config UI`);
-    return undefined;
-  };
-  const vertex = resolve("vertex");
-  const fragment = resolve("fragment");
-  return vertex && fragment ? { vertex, fragment } : null;
+  }
+  return errors.length > initialErrorCount ? null : resolved;
 }
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }

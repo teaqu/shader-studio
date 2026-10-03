@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { DebugAnalysisRequest } from "@shader-studio/types";
 import { WgslDebugEngine } from "../wgsl/WgslDebugEngine";
 import { SlangDebugEngine } from "../slang/SlangDebugEngine";
+import { buildNativeRasterReplay } from "./NativeRasterReplay";
 
 function request(source: string, language: "wgsl" | "slang", entryPoint: string, line: number): DebugAnalysisRequest {
   const path = `/work/native.${language}`;
@@ -81,4 +82,35 @@ describe("selected native fragment debugging", () => {
     expect(result.plan.files[0]!.source).toContain("void _ssdbg_abcd1234_userMain(uint3 id)");
     expect(result.plan.files[0]!.source).toContain("void first(");
   });
+});
+
+describe("native MRT output selection", () => {
+  it("replays WGSL attachment one while preserving the structured result", () => {
+    const source = `struct Out { @location(0) first: vec4f, @location(1) second: vec4f, }\n@fragment fn image() -> Out { return Out(vec4f(0), vec4f(1)); }`;
+    const replay = buildNativeRasterReplay(source, "wgsl", "image", "_debug", 1);
+    expect(typeof replay).not.toBe("string");
+    if (typeof replay !== "string") {
+      expect(replay.returnColor("result", "vec4f(0.5)")).toContain("result.second");
+    }
+  });
+  it("reports an invalid Slang MRT attachment", () => {
+    const source = `struct Out { float4 first : SV_Target0; };\n[shader("fragment")] Out image() { Out o; return o; }`;
+    expect(buildNativeRasterReplay(source, "slang", "image", "_debug", 1)).toContain("selected location");
+  });
+});
+
+it("records selected MRT output four in a native WGSL capture plan", () => {
+  const source = `struct Out { @location(0) a: vec4f, @location(1) b: vec4f, @location(2) c: vec4f, @location(3) d: vec4f, @location(4) e: vec4f, }\n@fragment fn image() -> Out { let value = vec4f(1); return Out(value,value,value,value,value); }`;
+  const path = "/work/native-five.wgsl";
+  const workspace: DebugWorkspace = { rootUri: path, rootPath: path, passName: "BufferA", render: { entryPoint: "image", output: 4 }, contentHash: "five", files: [{ uri: path, path, source, version: 1, moduleName: "", ownerPass: "BufferA" }] };
+  const debug = new WgslDebugEngine();
+  const request = { workspace, sourceUri: path, position: { line: 1, character: 65 } };
+  const analysis = debug.analyze(request);
+  expect(analysis.ok).toBe(true);
+  if (!analysis.ok) {
+    return;
+  }
+  const value = analysis.analysis.visibleValues.find(candidate => candidate.name === "value")!;
+  const plan = debug.planCapture(request, [value.id], { normalizeMode: "off", stepEdge: null, output: 4 });
+  expect(plan).toMatchObject({ ok: true, plan: { nativeRender: { fragmentEntryPoint: "image", output: 4 } } });
 });

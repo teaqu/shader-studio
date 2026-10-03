@@ -1,7 +1,7 @@
-import { getShaderEntryPoints, type BufferPass, type DebugInstrumentationPlan, type ShaderConfig, type ShaderLanguageId } from "@shader-studio/types";
+import { type BufferPass, type DebugInstrumentationPlan, type ShaderConfig, type ShaderLanguageId } from "@shader-studio/types";
 
 /** Undefined selects ShaderToy hooks; null means native selection cannot be resolved. */
-export function nativeFragmentEntryPoint(source: string, pass: ShaderConfig["passes"][string], language: ShaderLanguageId): string | null | undefined {
+export function nativeFragmentEntryPoint(_source: string, pass: ShaderConfig["passes"][string], _language: ShaderLanguageId): string | null | undefined {
   if (!pass || !("entryPoints" in pass) || pass.entryPoints === undefined) {
     return undefined;
   }
@@ -12,8 +12,7 @@ export function nativeFragmentEntryPoint(source: string, pass: ShaderConfig["pas
   if (configured) {
     return configured;
   }
-  const fragments = getShaderEntryPoints(source, language).filter(entry => entry.stage === "fragment");
-  return fragments.length === 1 ? fragments[0]!.name : null;
+  return undefined;
 }
 
 /** Instrumented debug plans use hooks for Image while all other passes retain their stages. */
@@ -26,6 +25,11 @@ export function hookConfigForDebugPlan(
   }
   const image = config?.passes.Image;
   if (!config || !image || image.entryPoints === undefined) {
+    return config;
+  }
+  // A selected native vertex may intentionally feed the generated mainImage
+  // hook with mesh interpolation. Keep that geometry contract intact.
+  if (image.entryPoints?.vertex && image.entryPoints.fragment === undefined) {
     return config;
   }
   const { entryPoints: _entryPoints, vertex: _vertex, geometry: _geometry, ...hookImage } = image;
@@ -61,6 +65,7 @@ export function imageConfigForActiveRenderPass(config: ShaderConfig | null, pass
     ...(activePass.entryPoints !== undefined ? { entryPoints: activePass.entryPoints } : {}),
     ...(activePass.vertex ? { vertex: activePass.vertex } : {}),
     ...(activePass.geometry ? { geometry: activePass.geometry } : {}),
+    ...(activePass.outputs ? { outputs: activePass.outputs } : {}),
   };
   return { ...config, passes: { ...config.passes, Image: remappedImage } };
 }

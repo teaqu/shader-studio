@@ -20,7 +20,7 @@ function nameStem(passName: string, fallback: string): string {
   return (passName.replace(/[^A-Za-z0-9_]/g, "") || fallback).replace(/^\d/, "_$&");
 }
 
-export function createNativeRenderSource(language: "wgsl" | "slang", source: string, passName: string): NativeRenderTemplate {
+export function createNativeRenderSource(language: "wgsl" | "slang", source: string, passName: string, outputCount = 1): NativeRenderTemplate {
   const identifiers = sourceIdentifiers(source);
   const stem = nameStem(passName, "Pass");
   let suffix = "";
@@ -29,8 +29,21 @@ export function createNativeRenderSource(language: "wgsl" | "slang", source: str
     suffix = String(index++);
   }
   const entryPoints = { vertex: `${stem}Vertex${suffix}`, fragment: `${stem}Fragment${suffix}` };
+  const attachments = Math.max(1, Math.min(8, Math.floor(outputCount)));
   if (language === "slang") {
+    if (attachments > 1) {
+      const result = `${entryPoints.fragment}Outputs`;
+      const fields = Array.from({ length: attachments }, (_, index) => `    float4 output${index} : SV_Target${index};`).join("\n");
+      const assignments = Array.from({ length: attachments }, (_, index) => `    result.output${index} = float4(frac(fragCoord.xy * 0.01), ${index}.0 / ${attachments - 1}.0, 1.0);`).join("\n");
+      return { entryPoints, text: `\n[shader("vertex")]\nfloat4 ${entryPoints.vertex}(uint vertexId : SV_VertexID) : SV_Position {\n    float2 positions[3] = { float2(-1.0, -1.0), float2(3.0, -1.0), float2(-1.0, 3.0) };\n    return float4(positions[vertexId], 0.0, 1.0);\n}\n\nstruct ${result} {\n${fields}\n};\n\n[shader("fragment")]\n${result} ${entryPoints.fragment}(float4 fragCoord : SV_Position) {\n    ${result} result;\n${assignments}\n    return result;\n}\n` };
+    }
     return { entryPoints, text: `\n[shader("vertex")]\nfloat4 ${entryPoints.vertex}(uint vertexId : SV_VertexID) : SV_Position {\n    float2 positions[3] = { float2(-1.0, -1.0), float2(3.0, -1.0), float2(-1.0, 3.0) };\n    return float4(positions[vertexId], 0.0, 1.0);\n}\n\n[shader("fragment")]\nfloat4 ${entryPoints.fragment}(float4 fragCoord : SV_Position) : SV_Target0 {\n    return float4(frac(fragCoord.xy * 0.01), 0.0, 1.0);\n}\n` };
+  }
+  if (attachments > 1) {
+    const result = `${entryPoints.fragment}Outputs`;
+    const fields = Array.from({ length: attachments }, (_, index) => `    @location(${index}) output${index}: vec4f,`).join("\n");
+    const values = Array.from({ length: attachments }, (_, index) => `vec4f(fract(fragCoord.xy * 0.01), ${index}.0 / ${attachments - 1}.0, 1.0)`).join(", ");
+    return { entryPoints, text: `\n@vertex\nfn ${entryPoints.vertex}(@builtin(vertex_index) vertexIndex: u32) -> @builtin(position) vec4f {\n    var positions = array<vec2f, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));\n    return vec4f(positions[vertexIndex], 0.0, 1.0);\n}\n\nstruct ${result} {\n${fields}\n}\n\n@fragment\nfn ${entryPoints.fragment}(@builtin(position) fragCoord: vec4f) -> ${result} {\n    return ${result}(${values});\n}\n` };
   }
   return { entryPoints, text: `\n@vertex\nfn ${entryPoints.vertex}(@builtin(vertex_index) vertexIndex: u32) -> @builtin(position) vec4f {\n    var positions = array<vec2f, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));\n    return vec4f(positions[vertexIndex], 0.0, 1.0);\n}\n\n@fragment\nfn ${entryPoints.fragment}(@builtin(position) fragCoord: vec4f) -> @location(0) vec4f {\n    return vec4f(fract(fragCoord.xy * 0.01), 0.0, 1.0);\n}\n` };
 }

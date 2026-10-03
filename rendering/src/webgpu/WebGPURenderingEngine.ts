@@ -57,6 +57,12 @@ import { nativeRasterCaptureContext } from "./NativeRasterCaptureContext";
 import { extractStructSizes } from "./wgslStructSize";
 import { OrbitCamera, type CameraMatrices } from "../preview3d/OrbitCamera";
 import { createModelMatrix, createNormalMatrix3 } from "../preview3d/math";
+import { meshUniformData } from "./MeshUniformData";
+import { renderOutputAttachments } from "./RenderOutputAttachments";
+import { debugPlanDisplaySource } from "./DebugPlanDisplaySource";
+import { captureFeedbackChannels } from "./CaptureFeedbackChannels";
+import { RenderedCaptureState } from "./RenderedCaptureState";
+import { renderedBufferInputs } from "./RenderedBufferInputs";
 import {
   gpuBackpressureEnabled,
   MAX_FRAMES_IN_FLIGHT,
@@ -261,6 +267,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   private passGraph: RenderPassNode[] = [];
   private passPipelines = new Map<string, SlangPassPipeline>();
+  private readonly renderedCaptureState = new RenderedCaptureState();
   private passKeys = new Map<string, string>();
   private computePipelines = new Map<string, SlangComputePipeline>();
   private computeKeys = new Map<string, string>();
@@ -465,6 +472,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
       requiredLimits.maxStorageBufferBindingSize = adapterStorageSizeLimit;
     }
     const computeLimits: Array<[keyof GPUSupportedLimits, number]> = [
+      ["maxColorAttachments", 8],
+      ["maxColorAttachmentBytesPerSample", 32],
       ["maxComputeInvocationsPerWorkgroup", DEFAULT_MAX_COMPUTE_INVOCATIONS_PER_WORKGROUP],
       ["maxComputeWorkgroupSizeX", DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_X],
       ["maxComputeWorkgroupSizeY", DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_Y],
@@ -522,6 +531,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
       descriptor.requiredLimits = requiredLimits;
     }
     return descriptor;
+  }
+
+  public getRenderOutputLimits(): { maxColorAttachments: number; maxColorAttachmentBytesPerSample: number } | null {
+    const limits = this.device?.limits;
+    return limits ? { maxColorAttachments: limits.maxColorAttachments, maxColorAttachmentBytesPerSample: limits.maxColorAttachmentBytesPerSample } : null;
   }
 
   private resolveChannelLimit(limits: Pick<GPUSupportedLimits, "maxUniformBufferBindingSize"> | undefined): number {
@@ -1328,6 +1342,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       }
       this.publishPreparedStorage(preparedStorage);
       this.installPipelineCandidates(pipelineCandidates);
+      this.renderedCaptureState.clear();
       this.shaderPath = path;
       this.installedResourceKey = resourceKey;
       this.reloadOnNextApply = false;
@@ -2222,6 +2237,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       pass.dispatchOnce,
       pass.output,
       pass.outputLayers,
+      pass.outputCount ?? 1,
       pass.resolvedOutputFormat,
       // Topology, space, blend, depth and cull are baked into the render
       // pipeline; vertexCount and instanceCount are only draw arguments.
@@ -2359,6 +2375,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         width: pass.width,
         height: pass.height,
         output: pass.output === "canvas" ? "canvas" : "texture",
+        outputCount: pass.outputCount,
         geometry: pass.geometry,
         ...(pass.geometry === "vertices"
           ? { topology: verticesTopology(pass), vertexSpace: verticesSpace(pass) }
@@ -2636,12 +2653,13 @@ export class WebGPURenderingEngine implements RenderingEngine {
         continue;
       }
 
+      const channelUniforms = this.getChannelUniforms(pass);
       const data = packShaderToyUniforms({
         channelCount: getShaderToyChannelCount(pass.channels),
         width: pass.width,
         height: pass.height,
         ...frameInput,
-        ...this.getChannelUniforms(pass),
+        ...channelUniforms,
       }, this.customUniformManager.getUniformInfo(), frameCustomUniformValues);
       this.device.queue.writeBuffer(uniformBuffer, 0, data);
 
@@ -2719,15 +2737,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
       }, this.customUniformManager.getUniformInfo(), frameCustomUniformValues);
       this.device.queue.writeBuffer(pipeline.getUniformBuffer()!, 0, data);
       if (pass.geometry && pass.geometry !== "fullscreen" && pipeline.getMeshUniformBuffer?.()) {
-        const model = createModelMatrix({ position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] });
-        const viewProjection = camera.viewProjection;
-        const normal = createNormalMatrix3(model);
-        const meshData = new Float32Array(64);
-        meshData.set(model, 0);
-        meshData.set(viewProjection, 16);
-        meshData.set([normal[0], normal[1], normal[2], 0, normal[3], normal[4], normal[5], 0, normal[6], normal[7], normal[8], 0, 0, 0, 0, 1], 32);
-        meshData.set([...this.meshCamera.getPosition(), 1], 48);
-        this.device.queue.writeBuffer(pipeline.getMeshUniformBuffer()!, 0, meshData);
+        this.device.queue.writeBuffer(pipeline.getMeshUniformBuffer()!, 0,
+          meshUniformData(this.meshCamera, pass.width, pass.height));
       }
 
       const targetView = pass.output === "canvas"
@@ -2736,6 +2747,16 @@ export class WebGPURenderingEngine implements RenderingEngine {
       if (!targetView) {
         continue;
       }
+      const meshData = pass.geometry && pass.geometry !== "fullscreen"
+        ? meshUniformData(this.meshCamera, pass.width, pass.height)
+        : undefined;
+      const captureUniforms: CaptureUniforms = {
+        time: frameInput.time, timeDelta: frameInput.timeDelta, frameRate: frameInput.frameRate, frame: frameInput.frame,
+        res: [pass.width, pass.height, 1], mouse: Array.from(frameInput.mouse), date: Array.from(frameInput.date),
+        cameraPos: Array.from(frameInput.cameraPos), cameraDir: Array.from(frameInput.cameraDir), ...this.getChannelUniforms(pass),
+      };
+      const bufferInputs = renderedBufferInputs(pass.channels, this.passPipelines, this.computePipelines, encodedComputePasses);
+      this.renderedCaptureState.record(pass.name, captureUniforms, meshData, channelResources, bufferInputs);
 
       const renderState = resolveRenderState(pass);
       const [clearR, clearG, clearB, clearA] = renderState.clear;
@@ -2882,8 +2903,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
             ? computeSource.getPreviousLayerOutputView(layer)
             : computeSource.getLayerOutputView(layer)
           : channel.readFrom === "previous-frame"
-            ? renderSource?.getPreviousOutputView()
-            : renderSource?.getCurrentOutputView();
+            ? renderSource?.getPreviousOutputView(channel.output ?? 0)
+            : renderSource?.getCurrentOutputView(channel.output ?? 0);
         if (!textureView) {
           return null;
         }
@@ -3006,8 +3027,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
       } else if (channel.kind === "buffer") {
         const source = this.passPipelines.get(channel.source);
         const view = channel.readFrom === "previous-frame"
-          ? source?.getPreviousOutputView()
-          : source?.getCurrentOutputView();
+          ? source?.getPreviousOutputView(channel.output ?? 0)
+          : source?.getCurrentOutputView(channel.output ?? 0);
         channelLoaded[channel.slot] = view ? 1 : 0;
         const sourcePass = this.passGraph.find((candidate) => candidate.name === channel.source);
         this.setChannelResolution(channelResolution, channel.slot, sourcePass?.width, sourcePass?.height);
@@ -3090,6 +3111,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const w = this.clampDimensionToTextureLimit(width);
     const h = this.clampDimensionToTextureLimit(height);
     if (this.canvas.width !== w || this.canvas.height !== h) {
+      this.renderedCaptureState.clear();
       this.canvas.width = w;
       this.canvas.height = h;
       this.applyPassResolutions();
@@ -3205,6 +3227,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
       return { success: false, errors: ["Debug plan root is missing"] };
     }
     const previous = this.lastCompile;
+    const display = debugPlanDisplaySource(root, plan, config ?? previous?.config ?? this.currentConfig, this.language);
+    if (typeof display === "string") {
+      return { success: false, errors: [display] };
+    }
     const selectedSource = plan.files.find((file) => file.uri === plan.selectedSourceUri);
     const commonSource = plan.files.find(file => file.uri !== root.uri && (
       previous?.slangSourcePaths?.common === file.path
@@ -3220,8 +3246,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
       ...planModules,
     ];
     const result = await this.compileShaderPipeline(
-      root.source,
-      config ?? previous?.config ?? this.currentConfig,
+      display.source,
+      display.config ?? null,
       previous?.path ?? root.path,
       commonSource
         ? { ...(previous?.buffers ?? {}), common: commonSource.source }
@@ -3333,6 +3359,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   resetTime(): void {
+    this.renderedCaptureState.clear();
     // Allocate the complete storage replacement before invalidating any live
     // compile state. Until a matching compilation publishes, the installed
     // pipeline, feedback, storage, clock, and pause snapshot remain untouched.
@@ -3394,6 +3421,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   dispose(): void {
     this.disposed = true;
+    this.renderedCaptureState.clear();
 
     let firstError: unknown;
     let hasError = false;
@@ -3625,7 +3653,14 @@ export class WebGPURenderingEngine implements RenderingEngine {
       slangStorage: graph.storage,
       slangStorageBuffers: this.storageBuffers,
       slangModules,
-      nativeRender: nativeRasterCaptureContext(targetPass, () => this.meshResources),
+      captureChannelSnapshot: () => this.device && targetPass
+        ? captureFeedbackChannels(this.device, targetPass, this.passPipelines,
+          this.renderedCaptureState.get(targetPass.name)?.channelResources ?? this.getChannelResources(targetPass, true),
+          this.renderedCaptureState.get(targetPass.name)?.bufferInputs) : null,
+      nativeRender: nativeRasterCaptureContext(targetPass, () => this.meshResources, () =>
+        this.renderedCaptureState.get(targetPass?.name ?? "")?.meshData
+          ?? meshUniformData(this.meshCamera, targetPass?.width ?? 1, targetPass?.height ?? 1),
+      Boolean(targetPass && this.passPipelines.get(targetPass.name)?.getDepthView())),
       ...(sourcePath ? { slangSourcePath: sourcePath } : {}),
     };
   }
@@ -3669,6 +3704,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   getCaptureUniforms(): CaptureUniforms {
+    const rendered = this.capturePassName ? this.renderedCaptureState.get(this.capturePassName) : undefined;
+    if (rendered) {
+      return rendered.uniforms;
+    }
     const u = this.getUniforms();
     const pass = this.passGraph.find((candidate) => candidate.name === this.capturePassName)
       ?? this.passGraph.find((candidate) => candidate.name === "Image")
@@ -3697,7 +3736,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   renderForCapture(): void {
-    this.renderFrame(performance.now(), true);
+    this.renderFrame(performance.now(), true, true);
   }
 
   // ---- Audio/video ----

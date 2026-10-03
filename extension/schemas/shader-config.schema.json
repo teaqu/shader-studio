@@ -151,6 +151,9 @@
         "outputFormat": {
           "$ref": "#/definitions/BufferOutputFormat"
         },
+        "outputs": {
+          "$ref": "#/definitions/RenderOutputs"
+        },
         "entryPoints": {
           "$ref": "#/definitions/RenderEntryPoints"
         }
@@ -400,6 +403,22 @@
       "enum": ["auto", "rgba16float", "rgba32float"],
       "description": "Storage precision for this producer pass (default: auto)"
     },
+    "RenderOutputs": {
+      "type": "array",
+      "description": "Ordered native WebGPU render targets. Omitted means one colour output.",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      }
+    },
     "StorageBuffers": {
       "type": "object",
       "description": "Named GPU storage buffer layouts",
@@ -540,6 +559,11 @@
               "type": "integer",
               "minimum": 0,
               "description": "Texture-array layer of a multi-layer compute output"
+            },
+            "output": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Colour attachment of a native render buffer (default: 0)"
             },
             "filter": {
               "type": "string",

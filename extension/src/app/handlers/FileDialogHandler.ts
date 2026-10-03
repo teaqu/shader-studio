@@ -30,6 +30,10 @@ function fileTypeToFilters(fileType: string): { [name: string]: string[] } {
   }
 }
 
+function nativeOutputCount(value: unknown): number {
+  return typeof value === 'number' && Number.isInteger(value) ? Math.max(1, Math.min(8, value)) : 1;
+}
+
 export class FileDialogHandler {
   constructor(
     private context: vscode.ExtensionContext,
@@ -74,7 +78,7 @@ export class FileDialogHandler {
   }
 
   async handleCreateFile(
-    payload: { shaderPath: string; suggestedPath: string; fileType: string; requestId: string; authoringMode?: 'hooks' | 'native'; passName?: string },
+    payload: { shaderPath: string; suggestedPath: string; fileType: string; requestId: string; authoringMode?: 'hooks' | 'native'; passName?: string; outputCount?: number },
     respondFn: (msg: any) => void,
   ): Promise<void> {
     try {
@@ -126,11 +130,11 @@ export class FileDialogHandler {
           template = native.text;
           entryPoints = native.entryPoints;
         } else if (payload.authoringMode === 'native' && payload.fileType === 'slang-buffer') {
-          const native = createNativeRenderSource('slang', '', payload.passName ?? 'Buffer');
+          const native = createNativeRenderSource('slang', '', payload.passName ?? 'Buffer', nativeOutputCount(payload.outputCount));
           template = native.text.trimStart();
           entryPoints = native.entryPoints;
         } else if (payload.authoringMode === 'native' && payload.fileType === 'wgsl-buffer') {
-          const native = createNativeRenderSource('wgsl', '', payload.passName ?? 'Buffer');
+          const native = createNativeRenderSource('wgsl', '', payload.passName ?? 'Buffer', nativeOutputCount(payload.outputCount));
           template = native.text.trimStart();
           entryPoints = native.entryPoints;
         } else if (payload.fileType === 'slang-compute') {
@@ -169,7 +173,7 @@ export class FileDialogHandler {
   }
 
   async handleInsertShaderSource(
-    payload: { shaderPath: string; sourcePath?: string; fileType: string; requestId: string; authoringMode?: 'hooks' | 'native'; passName?: string },
+    payload: { shaderPath: string; sourcePath?: string; fileType: string; requestId: string; authoringMode?: 'hooks' | 'native'; passName?: string; outputCount?: number },
     respondFn: (msg: any) => void,
   ): Promise<void> {
     const fail = (error: string) => respondFn({ type: 'fileSelected', payload: { path: '', requestId: payload.requestId, error } });
@@ -203,7 +207,7 @@ export class FileDialogHandler {
       const isCompute = payload.fileType.endsWith('-compute');
       const generated = isCompute
         ? createNativeComputeSource(language, source, payload.passName ?? 'Compute')
-        : createNativeRenderSource(language, source, payload.passName ?? 'Buffer');
+        : createNativeRenderSource(language, source, payload.passName ?? 'Buffer', nativeOutputCount(payload.outputCount));
       const edit = new vscode.WorkspaceEdit();
       edit.insert(uri, document.positionAt(source.length), generated.text);
       if (!await vscode.workspace.applyEdit(edit)) {

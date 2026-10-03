@@ -6,7 +6,7 @@ import {
   extractSlangFunctionContext,
   extractWgslFunctionContext,
 } from "@shader-studio/debug";
-import { getShaderEntryPoints, resourcesForPass, resolveAuthoringChannelBindings } from "@shader-studio/types";
+import { resourcesForPass, resolveAuthoringChannelBindings } from "@shader-studio/types";
 import type {
   DebugAnalysisRequest,
   DebugDiagnostic,
@@ -50,6 +50,7 @@ export interface DebugRequestInputs {
   bufferCodes: Record<string, string>;
   slangModules: SlangSourceModule[];
   customUniforms?: { name: string; type: string }[];
+  renderOutput?: number;
   getDebugTarget: (imageCode: string, config: ShaderConfig | null) => DebugTarget;
 }
 
@@ -64,6 +65,7 @@ export interface DebugPlanStrategy {
     functionContext: DebugFunctionContext | null;
     customParameters: ReadonlyMap<number, string>;
     loopMaxIterations: ReadonlyMap<number, number>;
+    output?: number;
   }): DebugPreviewOptions;
   staleVariableError(request: DebugAnalysisRequest, selectedRange: DebugSourceRange, varName: string): DebugDiagnostic;
   postProcessFullShader(
@@ -128,12 +130,14 @@ class SlangDebugStrategy implements DebugPlanStrategy {
     functionContext: DebugFunctionContext | null;
     customParameters: ReadonlyMap<number, string>;
     loopMaxIterations: ReadonlyMap<number, number>;
+    output?: number;
   }): DebugPreviewOptions {
     return {
       normalizeMode: inputs.normalizeMode,
       stepEdge: inputs.stepEdge,
       customParameters: effectiveDebugParameters(inputs.functionContext, inputs.customParameters),
       loopMaxIterations: inputs.loopMaxIterations,
+      output: inputs.output ?? 0,
     };
   }
 
@@ -222,12 +226,14 @@ class WgslDebugStrategy implements DebugPlanStrategy {
     functionContext: DebugFunctionContext | null;
     customParameters: ReadonlyMap<number, string>;
     loopMaxIterations: ReadonlyMap<number, number>;
+    output?: number;
   }): DebugPreviewOptions {
     return {
       normalizeMode: inputs.normalizeMode,
       stepEdge: inputs.stepEdge,
       customParameters: effectiveDebugParameters(inputs.functionContext, inputs.customParameters),
       loopMaxIterations: inputs.loopMaxIterations,
+      output: inputs.output ?? 0,
     };
   }
 
@@ -293,9 +299,8 @@ function nativeRenderMetadata(
   if (!pass || !('entryPoints' in pass) || pass.entryPoints === undefined) {
     return undefined;
   }
-  const fragments = getShaderEntryPoints(source, language).filter((entry) => entry.stage === 'fragment');
   const configured = 'fragment' in pass.entryPoints ? pass.entryPoints.fragment : undefined;
-  const entryPoint = configured ?? (fragments.length === 1 ? fragments[0]!.name : undefined);
+  const entryPoint = configured;
   return entryPoint ? { entryPoint } : {};
 }
 

@@ -47,7 +47,7 @@ export function applySlangFullShaderPostProcessing(
 }
 
 function applyNativeSlangFullShaderPostProcessing(source: string, options: DebugPreviewOptions, entryPoint: string): string | null {
-  const replay = buildNativeRasterReplay(source, "slang", entryPoint, "_ssdbg_full");
+  const replay = buildNativeRasterReplay(source, "slang", entryPoint, "_ssdbg_full", options.output ?? 0);
   if (typeof replay === "string") {
     return null;
   }

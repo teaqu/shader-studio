@@ -248,7 +248,7 @@ describe('ShaderDebugManager - WGSL language mode', () => {
     expect(output).toContain('fn mainImage(coord: vec2f)');
   });
 
-  it('infers the sole native fragment for empty Image entry points', () => {
+  it('keeps unselected native fragments unchanged for empty Image entry points', () => {
     const source = 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(0.0); }\n@fragment fn nativeImage() -> @location(0) vec4f { return vec4f(0.25); }';
     manager.toggleEnabled();
     manager.cycleNormalizeMode();
@@ -256,8 +256,9 @@ describe('ShaderDebugManager - WGSL language mode', () => {
       version: '1', passes: { Image: { entryPoints: {} } },
     });
 
-    expect(output).toMatch(/@fragment\s+fn\s+nativeImage[^\n]*->\s*@location\(0\)\s+vec4f/);
-    expect(output).toContain('fn _ssdbg_full_userMain()');
+    expect(output).toContain('fn mainImage(coord: vec2f)');
+    expect(output).toContain('@fragment fn nativeImage()');
+    expect(output).not.toContain('fn _ssdbg_full_userMain()');
   });
 
   it('uses the active native Buffer fragment instead of Image while post-processing', () => {

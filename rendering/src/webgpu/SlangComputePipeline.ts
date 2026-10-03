@@ -306,6 +306,14 @@ export class SlangComputePipeline {
     return this.layerOutputViews[this.textureIndex]?.[layer] ?? null;
   }
 
+  getCurrentOutputTexture(): GPUTexture | null {
+    return this.textures[this.textureIndex] ?? null;
+  }
+
+  getPreviousOutputTexture(): GPUTexture | null {
+    return this.textures[1 - this.textureIndex] ?? null;
+  }
+
   getPreviousLayerOutputView(layer: number): GPUTextureView | null {
     if (this.textures.length === 0) {
       return null;

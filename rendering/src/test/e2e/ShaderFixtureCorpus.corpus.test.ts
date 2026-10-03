@@ -412,7 +412,7 @@ describe("slang-multipass-test shader corpus", () => {
   });
 
   it("discovers every configured root shader", () => {
-    expect(projects).toHaveLength(171);
+    expect(projects).toHaveLength(175);
   });
 
   it("hot-reloads a shared native entry-point selection", { timeout: 30_000 }, async () => {
@@ -447,7 +447,9 @@ describe("slang-multipass-test shader corpus", () => {
         const passes = Object.values(project.config?.passes ?? {});
         return !project.config?.storage && !passes.some((pass) => pass?.type === "compute");
       })
-      .filter((project) => !slangSpecificRenderProjects.has(project.name));
+      .filter((project) => !slangSpecificRenderProjects.has(project.name))
+      // Native MRT has no single-output GLSL counterpart; WGSL parity is still checked below.
+      .filter((project) => !Object.values(project.config?.passes ?? {}).some(pass => "outputs" in pass && (pass.outputs?.length ?? 1) > 1));
     const violations: string[] = [];
 
     for (const slangProject of portableSlangProjects) {

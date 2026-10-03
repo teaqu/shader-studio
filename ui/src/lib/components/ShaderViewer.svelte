@@ -167,6 +167,7 @@
   let pipeline: ShaderPipeline;
   let shaderLocker: ShaderLocker;
   let renderingEngine = $state<IRenderingEngine>(undefined!);
+  let renderOutputLimits = $state<{ maxColorAttachments: number; maxColorAttachmentBytesPerSample: number } | null>(null);
   // Uniform scripts run in the extension host, which has no clock of the
   // shader's own; this keeps it told what the viewer is showing.
   let scriptRuntimeReporter: ScriptRuntimeReporter | null = null;
@@ -244,6 +245,21 @@
   let editorVimMode = $derived(getVimMode());
   let currentShaderCode = $state('');
   let originalShaderCode = $state('');
+
+  // A WebGPU device initializes asynchronously. Source and config updates occur
+  // after compilation, so a short retry sequence keeps the visible limit current.
+  $effect(() => {
+    const engine = renderingEngine;
+    currentConfig;
+    currentShaderCode;
+    const refresh = () => {
+      renderOutputLimits = engine?.getRenderOutputLimits?.() ?? null;
+    };
+    refresh();
+    const retries = [50, 250].map((delay) => setTimeout(refresh, delay));
+    return () => retries.forEach(clearTimeout);
+  });
+
   let editorBufferName = $state('Image');
   let editorFilePath = $state('');
   const editorSourcePassNames = $derived(sharedSourcePassNames(editorFilePath, shaderPath, bufferPathMap));
@@ -1699,6 +1715,7 @@
         {customUniformValues}
         {actualPollFps}
         {uniformActualFps}
+        {renderOutputLimits}
         onConfigChange={handleConfigPanelConfigChange}
       />
     {/if}

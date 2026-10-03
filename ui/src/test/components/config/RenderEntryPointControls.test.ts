@@ -8,59 +8,57 @@ describe('RenderEntryPointControls', () => {
     { name: 'renderImage', stage: 'fragment' as const },
   ];
 
-  it('keeps existing render passes on ShaderToy hooks', () => {
-    const { getByLabelText, queryByLabelText } = render(RenderEntryPointControls, {
-      pass: { inputs: {} }, entryPoints: entries, onCommit: vi.fn(),
+  it('keeps omitted stages on their hooks without choosing a sole native function', () => {
+    const { getByLabelText } = render(RenderEntryPointControls, {
+      pass: { inputs: {}, entryPoints: {} }, entryPoints: entries, onCommit: vi.fn(),
     });
 
-    expect((getByLabelText('Render authoring') as HTMLSelectElement).value).toBe('hooks');
-    expect(queryByLabelText('Vertex entrypoint')).toBeNull();
+    expect((getByLabelText('Vertex function') as HTMLSelectElement).value).toBe('');
+    expect((getByLabelText('Fragment function') as HTMLSelectElement).value).toBe('');
   });
 
-  it('selects sole native entry points when native authoring is enabled', async () => {
+  it('selects only the chosen native vertex stage', async () => {
     const onCommit = vi.fn();
     const { getByLabelText } = render(RenderEntryPointControls, {
       pass: { inputs: {} }, entryPoints: entries, onCommit,
     });
 
-    await fireEvent.change(getByLabelText('Render authoring'), { target: { value: 'native' } });
+    await fireEvent.change(getByLabelText('Vertex function'), { target: { value: 'fullscreenVertex' } });
 
-    expect(onCommit).toHaveBeenCalledWith({
-      inputs: {}, entryPoints: { vertex: 'fullscreenVertex', fragment: 'renderImage' },
-    });
+    expect(onCommit).toHaveBeenCalledWith({ inputs: {}, entryPoints: { vertex: 'fullscreenVertex' } });
   });
 
-  it('removes a legacy vertex file when switching to native entry points', async () => {
+  it('selects a native fragment without deleting the external mainVertex hook', async () => {
     const onCommit = vi.fn();
     const { getByLabelText } = render(RenderEntryPointControls, {
-      pass: { inputs: {}, vertex: './fullscreen.wgsl' }, entryPoints: entries, onCommit,
+      pass: { inputs: {}, vertex: './camera.wgsl' }, entryPoints: entries, onCommit,
     });
 
-    await fireEvent.change(getByLabelText('Render authoring'), { target: { value: 'native' } });
+    await fireEvent.change(getByLabelText('Fragment function'), { target: { value: 'renderImage' } });
 
     expect(onCommit).toHaveBeenCalledWith({
-      inputs: {}, entryPoints: { vertex: 'fullscreenVertex', fragment: 'renderImage' },
+      inputs: {}, vertex: './camera.wgsl', entryPoints: { fragment: 'renderImage' },
     });
   });
 
-  it('shows a configured missing entry point instead of silently replacing it', () => {
+  it('clears only the requested native stage without silently choosing the sole candidate', async () => {
+    const onCommit = vi.fn();
+    const { getByLabelText } = render(RenderEntryPointControls, {
+      pass: { inputs: {}, entryPoints: { vertex: 'fullscreenVertex', fragment: 'renderImage' } }, entryPoints: entries, onCommit,
+    });
+
+    await fireEvent.change(getByLabelText('Vertex function'), { target: { value: '' } });
+
+    expect(onCommit).toHaveBeenCalledWith({ inputs: {}, entryPoints: { fragment: 'renderImage' } });
+  });
+
+  it('shows a configured missing stage instead of replacing it', () => {
     const { getByLabelText } = render(RenderEntryPointControls, {
       pass: { inputs: {}, entryPoints: { fragment: 'gone' } }, entryPoints: entries, onCommit: vi.fn(),
     });
 
-    const fragment = getByLabelText('Fragment entrypoint') as HTMLSelectElement;
+    const fragment = getByLabelText('Fragment function') as HTMLSelectElement;
     expect(fragment.value).toBe('gone');
     expect(Array.from(fragment.options).some((option) => option.text === 'gone (missing)')).toBe(true);
-  });
-
-  it('returns to hooks by removing native selection', async () => {
-    const onCommit = vi.fn();
-    const { getByLabelText } = render(RenderEntryPointControls, {
-      pass: { inputs: {}, entryPoints: { fragment: 'renderImage' } }, entryPoints: entries, onCommit,
-    });
-
-    await fireEvent.change(getByLabelText('Render authoring'), { target: { value: 'hooks' } });
-
-    expect(onCommit).toHaveBeenCalledWith({ inputs: {} });
   });
 });
