@@ -8,6 +8,8 @@
   import ShaderExplorer from '@shader-studio/shader-explorer/lib/components/ShaderExplorer.svelte';
   import StandaloneLayout from './StandaloneLayout.svelte';
   import EditorPane from './EditorPane.svelte';
+  import SettingsPanel from './settings/SettingsPanel.svelte';
+  import { connectSettings } from './settings/settingsState.svelte';
   import NewShaderModal from './NewShaderModal.svelte';
   import type { WebTransport } from './WebTransport';
   import {
@@ -23,6 +25,9 @@
   setContext(PANEL_HOST_CONTEXT, hostedPanels);
   let layout = $state<StandaloneLayout>();
   let workspaceError = $state('');
+  const disconnectSettings = connectSettings(transport.settings);
+  onDestroy(disconnectSettings);
+  let settingsOpen = $state(false);
   let viewMenuOpen = $state(false);
   let workspaceMenuOpen = $state(false);
   let panelVisibility = $state({ explorer: true, editor: true, preview: true });
@@ -145,6 +150,11 @@
         </div>
       {/if}
     </div>
+    <button class="menu-trigger" onclick={() => {
+      settingsOpen = true;
+      viewMenuOpen = false;
+      workspaceMenuOpen = false;
+    }}>Settings</button>
     <a class="toolbar-right" href="https://teaqu.github.io/shader-studio/docs/" target="_blank" rel="noopener noreferrer">Documentation</a>
     <a href="https://github.com/teaqu/shader-studio" target="_blank" rel="noopener noreferrer">GitHub</a>
   </header>
@@ -164,6 +174,11 @@
       <div class="panel-content" data-testid="web-preview"><ShaderStudioApp /></div>
     {/snippet}
   </StandaloneLayout>
+  {#if settingsOpen}
+    <SettingsPanel settings={transport.settings} onClose={() => {
+      settingsOpen = false;
+    }} />
+  {/if}
   {#if getNewShaderVisible()}
     <NewShaderModal onCreate={createShader} onClose={() => setNewShaderVisible(false)} />
   {/if}

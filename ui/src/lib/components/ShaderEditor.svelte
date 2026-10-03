@@ -19,11 +19,12 @@
   import "monaco-editor/editor/standalone/browser/quickAccess/standaloneGotoSymbolQuickAccess";
   import "monaco-editor/editor/contrib/wordHighlighter/browser/wordHighlighter";
   import { initVimMode, VimMode } from "monaco-vim";
-  import { setupMonacoGlsl, setupMonacoJson, setupMonacoSlang, setupMonacoWgsl, setCompilerMarkers } from "@shader-studio/monaco";
+  import { setCompilerMarkers } from "@shader-studio/monaco";
   import type { AuthoringResource, ShaderConfig, ShaderLanguageId, ShaderStage, SlangSourceModule } from "@shader-studio/types";
   import { isAuthoringValueType, isShaderLanguageId, parseVertexPassKey, resourcesForSharedSource, shaderLanguageForPath, SHADER_LANGUAGES, stageForPass } from "@shader-studio/types";
   import { bindRenamePopupKeys } from "../editor/renamePopupKeys";
   import { createLanguageServiceController } from "../editor/createLanguageServiceController";
+  import { createShaderEditor, type HostEditorPreferencesController } from "../editor/createShaderEditor.svelte";
   import type { LanguageServiceController } from "../editor/LanguageServiceController.svelte";
   import { commonAuthoringFile, slangAuthoringVirtualFiles } from "../editor/authoringVirtualFiles";
   import { nativeAuthoringMetadata } from "../editor/nativeAuthoringMetadata";
@@ -120,6 +121,7 @@
   let environmentGeneration = 0;
   let vimModeInstance: any = null;
   let popupContainer: HTMLDivElement | null = null;
+  let hostEditorPreferences: HostEditorPreferencesController | null = null;
   let renamePopupKeyCleanup: (() => void) | null = null;
   let editorReady = $state(false);
   let languageServiceStatus = $state<"pending" | "ready" | "error">("pending");
@@ -543,73 +545,16 @@
       return;
     }
 
-    setupMonacoGlsl(monaco as any);
-    setupMonacoSlang(monaco as any);
-    setupMonacoWgsl(monaco as any);
-    setupMonacoJson(monaco as any);
-
-    if (overflowWidgetsDomNode) {
-      // Monaco scopes widget layout and colour variables to .monaco-editor.
-      // Preserve that scope when the widgets escape a clipped dock pane.
-      popupContainer = document.createElement("div");
-      // Overflowing widgets stay on the workspace palette: they sit on the
-      // theme's own opaque background, not on the shader render.
-      popupContainer.className = "monaco-editor shader-editor-popups";
-      overflowWidgetsDomNode.appendChild(popupContainer);
-    }
-
-    const editorOptions: monaco.editor.IStandaloneEditorConstructionOptions & { editContext?: boolean } = {
-      model: shaderPath
-        ? monaco.editor.getModel(monaco.Uri.file(shaderPath))
-          ?? monaco.editor.createModel(shaderCode, languageForShaderPath(shaderPath), monaco.Uri.file(shaderPath))
-        : monaco.editor.createModel(shaderCode, languageForShaderPath(shaderPath)),
+    const created = createShaderEditor(containerEl, {
+      shaderCode,
+      shaderPath,
+      language: languageForShaderPath(shaderPath),
       theme: monacoThemeFor(editorTheme),
-      minimap: { enabled: false },
-      scrollbar: {
-        vertical: "hidden",
-        horizontal: "hidden",
-        useShadows: false,
-      },
-      overviewRulerLanes: 0,
-      overviewRulerBorder: false,
-      hideCursorInOverviewRuler: true,
-      renderLineHighlight: "line",
-      selectionHighlight: false,
-      // The document-highlight provider is only reachable with this on; "off"
-      // left it registered but unused.
-      occurrencesHighlight: "singleFile",
-      automaticLayout: true,
-      fontSize: 14,
-      lineHeight: 20,
-      padding: { top: 0 },
-      stickyScroll: { enabled: false },
-      folding: false,
-      glyphMargin: false,
-      lineDecorationsWidth: 4,
-      lineNumbers: "on",
-      lineNumbersMinChars: 4,
-      scrollBeyondLastLine: false,
-      contextmenu: false,
-      // Keep completion and diagnostic widgets above Monaco's clipped editor
-      // viewport. Dockview's pane transforms are disabled for web layout below
-      // so fixed widget coordinates remain aligned with the editor.
-      fixedOverflowWidgets: true,
-      ...(popupContainer ? { overflowWidgetsDomNode: popupContainer } : {}),
-      readOnly: false,
-      domReadOnly: false,
-      editContext: false,
-      cursorStyle: "line",
-      cursorWidth: 2,
-      cursorBlinking: "smooth",
-      guides: {
-        indentation: false,
-        bracketPairs: false,
-        highlightActiveIndentation: false,
-        bracketPairsHorizontal: false,
-      },
-    };
-
-    editor = monaco.editor.create(containerEl, editorOptions);
+      overflowWidgetsDomNode,
+    });
+    editor = created.editor;
+    popupContainer = created.popupContainer;
+    hostEditorPreferences = created.preferences;
     editorModelUri = editor.getModel()?.uri.toString() ?? "";
     if (popupContainer) {
       renamePopupKeyCleanup = bindRenamePopupKeys(popupContainer, editor);
@@ -776,6 +721,8 @@
       }
       renamePopupKeyCleanup?.();
       renamePopupKeyCleanup = null;
+      hostEditorPreferences?.dispose();
+      hostEditorPreferences = null;
       editor.dispose();
       editor = null;
       editorModelUri = "";
@@ -1050,6 +997,7 @@
         // identical setValue flushes it and resets every attached cursor.
         const modelWasAttached = model.isAttachedToEditor?.() ?? false;
         editor.setModel(model);
+        hostEditorPreferences?.applyToModel(model);
         editorModelUri = model.uri.toString();
         if (!modelWasAttached) {
           applyHostContent(shaderCode);

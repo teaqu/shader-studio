@@ -4,10 +4,13 @@ Open VS Code settings (`Cmd+,` / `Ctrl+,`) and search for `shader-studio` to fin
 
 You can also open settings directly from the preview toolbar: **Menu → Settings**.
 
+Standalone has a **Settings** button in its top toolbar for the relevant preview, language-service, and editor preferences. They apply immediately and are saved for all shaders in that browser. See [Standalone global settings](../standalone.md#global-settings).
+
 ## All Settings
 
 | Setting | Type | Default | Restart Required | Description |
 |---------|------|---------|-----------------|-------------|
+| `shader-studio.webgpu.useViewerCamera` | boolean | `true` | No | Default viewer camera transform for WebGPU mesh shaders. Shader and pass settings override this preference. |
 | `shader-studio.webServerPort` | number | `3000` | No | HTTP port for the [web server](../features/web-server.md). Range: 1024–65535. |
 | `shader-studio.enableSnippets` | boolean | `true` | Yes | Enable bundled [GLSL, Slang, and WGSL code snippets](../features/code-snippets.md). |
 | `shader-studio.languageServers.glsl.enabled` | boolean | `true` | No | Enable [GLSL completion, hover, navigation, symbols, diagnostics, and colors](../features/language-servers.md). |

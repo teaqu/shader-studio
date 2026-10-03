@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDefaultWorkspaceFiles } from '../defaultWorkspace';
 import { WebExtensionHost } from '../WebExtensionHost';
 import { MemoryWorkspaceStore, VirtualWorkspace } from '../VirtualWorkspace';
+import { StandaloneSettings } from '../settings/StandaloneSettings';
 
 async function createHost(options: ConstructorParameters<typeof WebExtensionHost>[1] = {}) {
   const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), [
@@ -34,6 +35,40 @@ async function createHost(options: ConstructorParameters<typeof WebExtensionHost
 }
 
 describe('WebExtensionHost', () => {
+  it('uses shared settings for language services and broadcasts live preference changes', async () => {
+    const values = new Map<string, string>();
+    const settings = new StandaloneSettings({
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => {
+        values.set(key, value);
+      },
+    });
+    const host = await createHost({ settings });
+    const receive = vi.fn();
+    host.onViewerMessage(receive);
+
+    await host.handleViewerMessage({ type: 'languageServiceReady' });
+    expect(receive).toHaveBeenLastCalledWith({
+      type: 'languageServiceSettings',
+      payload: { glslEnabled: true, slangEnabled: true, wgslEnabled: true, colorDecorators: true, trace: 'off' },
+    });
+
+    expect(settings.update('languageServers.wgsl.enabled', false)).toBe(true);
+    expect(receive).toHaveBeenLastCalledWith({
+      type: 'languageServiceSettings',
+      payload: { glslEnabled: true, slangEnabled: true, wgslEnabled: false, colorDecorators: true, trace: 'off' },
+    });
+    expect(settings.update('webgpu.useViewerCamera', false)).toBe(true);
+    expect(receive).toHaveBeenLastCalledWith({
+      type: 'viewerCameraSettings', payload: { useViewerCamera: false },
+    });
+
+    host.dispose();
+    receive.mockClear();
+    settings.update('languageServers.wgsl.enabled', true);
+    expect(receive).not.toHaveBeenCalled();
+  });
+
   it('broadcasts persisted viewer camera settings to all viewer clients', async () => {
     const host = await createHost();
     const first = vi.fn();

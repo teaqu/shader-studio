@@ -28,7 +28,15 @@ Shader edits and configuration changes are saved in this browser. Reloading the 
 
 If browser storage is unavailable, changes in that session will not survive a reload. Keep a separate copy of important shader source and configuration before clearing site data or changing browsers.
 
-**Workspace → Clear Workspace** asks for confirmation, removes the standalone workspace and its saved settings, then reloads the app with the starter examples. This cannot be undone. Resetting the workspace layout only changes the panel arrangement.
+**Workspace → Clear Workspace** asks for confirmation, removes the standalone workspace and its saved layout, then reloads the app with the starter examples. This cannot be undone. Resetting the workspace layout only changes the panel arrangement.
+
+Global preferences are kept when clearing the workspace. Use **Settings → Reset all settings** to reset them.
+
+## Global Settings
+
+Open **Settings** in the top toolbar to search and change browser-wide preferences. Changes apply immediately, synchronize between open tabs, and survive reloads. The panel includes viewer camera defaults, opening the editor on buffer switches, GLSL/Slang/WGSL language services, color swatches, font size, indentation, word wrap, minimap, and line numbers. Shader and pass camera settings override the global camera preference.
+
+These preferences are stored in this browser, separately from shader files. VS Code user settings and standalone preferences are independent. Settings specific to VS Code, such as its web server port and editor group locking, stay in VS Code.
 
 Screenshots and recordings are saved as browser downloads.
 

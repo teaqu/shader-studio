@@ -2,7 +2,8 @@ import { configPathForShader, createNativeComputeSource, createNativeRenderSourc
 import type { ConfiguredPathHost, ProfileData, ProfileIndex, ShaderConfig, ShaderLanguageId } from '@shader-studio/types';
 import type { VirtualWorkspace } from './VirtualWorkspace';
 import { virtualConfiguredPathHost } from './passSources';
-import { ViewerCameraSettings } from './ViewerCameraSettings';
+import { StandaloneSettings } from './settings/StandaloneSettings';
+import { HostSettingsController } from './settings/HostSettingsController';
 
 type HostMessage = { type: string; [key: string]: unknown };
 type MessageHandler = (message: HostMessage) => void;
@@ -88,6 +89,8 @@ interface WebExtensionHostOptions {
   resolveDefaultAsset?: (path: string) => string | null;
   prompt?: (message: string, initialValue: string) => string | null;
   confirm?: (message: string) => boolean;
+  /** Shared browser preferences owned by the standalone transport. */
+  settings?: StandaloneSettings;
 }
 
 function profilePath(id: string): string {
@@ -122,7 +125,7 @@ export class WebExtensionHost {
   private readonly resolveDefaultAsset: (path: string) => string | null;
   private readonly prompt: (message: string, initialValue: string) => string | null;
   private readonly confirm: (message: string) => boolean;
-  private readonly viewerCameraSettings = new ViewerCameraSettings();
+  private readonly settingsController: HostSettingsController;
 
   constructor(
     private readonly workspace: VirtualWorkspace,
@@ -131,6 +134,10 @@ export class WebExtensionHost {
     this.resolveDefaultAsset = options.resolveDefaultAsset ?? (() => null);
     this.prompt = options.prompt ?? ((message, initialValue) => window.prompt(message, initialValue));
     this.confirm = options.confirm ?? ((message) => window.confirm(message));
+    this.settingsController = new HostSettingsController(
+      options.settings ?? new StandaloneSettings(),
+      (message) => this.emitViewer(message),
+    );
     const restoredPath = this.workspace.exists(ACTIVE_SHADER_PATH)
       ? this.workspace.readText(ACTIVE_SHADER_PATH)
       : null;
@@ -169,6 +176,12 @@ export class WebExtensionHost {
     return () => this.explorerHandlers.delete(handler);
   }
 
+  dispose(): void {
+    this.settingsController.dispose();
+    this.viewerHandlers.clear();
+    this.explorerHandlers.clear();
+  }
+
   async start(): Promise<void> {
     if (this.activeShaderPath) {
       this.emitViewer(this.shaderSourceMessage(this.activeShaderPath));
@@ -180,7 +193,7 @@ export class WebExtensionHost {
       ? message.payload as Record<string, unknown>
       : {};
 
-    if (this.viewerCameraSettings.handleMessage(message.type, payload, reply => this.emitViewer({ ...reply }))) {
+    if (this.settingsController.handleMessage(message.type, payload)) {
       return;
     }
 
@@ -233,10 +246,7 @@ export class WebExtensionHost {
         return;
       }
       case 'languageServiceReady':
-        this.emitViewer({
-          type: 'languageServiceSettings',
-          payload: { glslEnabled: true, slangEnabled: true, wgslEnabled: true, colorDecorators: true, trace: 'off' },
-        });
+        this.settingsController.emitLanguageServiceSettings();
         return;
       case 'extensionCommand':
         if (payload.command === 'newShader') {
