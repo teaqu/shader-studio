@@ -237,6 +237,23 @@ describe('WebExtensionHost', () => {
     } }));
   });
 
+  it('creates a native render source with every requested attachment', async () => {
+    const host = await createHost({ prompt: (_message, initial) => initial });
+    const receive = vi.fn();
+    host.onViewerMessage(receive);
+    await host.handleViewerMessage({ type: 'createFile', payload: {
+      shaderPath: '/shaders/aurora.glsl', suggestedPath: 'mrt.wgsl', fileType: 'wgsl-buffer',
+      requestId: 'mrt', authoringMode: 'native', passName: 'BufferA', outputCount: 3,
+    } });
+    expect(receive).toHaveBeenCalledWith(expect.objectContaining({ type: 'fileSelected' }));
+    await host.handleViewerMessage({ type: 'updateConfig', payload: {
+      shaderPath: '/shaders/aurora.glsl', text: JSON.stringify({ version: '1.0', passes: { Image: {}, BufferA: { path: 'mrt.wgsl' } } }),
+    } });
+    expect(receive).toHaveBeenLastCalledWith(expect.objectContaining({ buffers: {
+      BufferA: expect.stringContaining('@location(2)'),
+    } }));
+  });
+
   it('opens, edits and restores buffer sources without changing the active shader', async () => {
     const store = new MemoryWorkspaceStore();
     const workspace = await VirtualWorkspace.open(store, [

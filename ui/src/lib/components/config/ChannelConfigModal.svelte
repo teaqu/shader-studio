@@ -24,6 +24,8 @@
     shaderPath?: string;
     audioVideoController?: AudioVideoController;
     availableBufferNames?: string[];
+    renderOutputCounts?: Record<string, number>;
+    computeOutputLayerCounts?: Record<string, number>;
   }
 
   let {
@@ -41,6 +43,8 @@
     shaderPath = "",
     audioVideoController = undefined,
     availableBufferNames = [],
+    renderOutputCounts = {},
+    computeOutputLayerCounts = {},
   }: Props = $props();
 
   // Capture onSave in a stable ref so it remains callable during child onDestroy
@@ -395,6 +399,8 @@
             {tempInput}
             {getWebviewUri}
             {availableBufferNames}
+            {renderOutputCounts}
+            {computeOutputLayerCounts}
             onSelect={(input) => {
               tempInput = input; autoSave();
             }}

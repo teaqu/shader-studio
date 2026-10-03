@@ -19,6 +19,8 @@ export type RenderPassChannel =
       source: string;
       readFrom: ChannelReadTiming;
       layer?: number;
+      /** Colour attachment selected from a native render buffer. */
+      output?: number;
       filter?: "linear" | "nearest";
       wrap?: "repeat" | "clamp";
       effectiveFilter?: "linear" | "nearest";
@@ -83,6 +85,10 @@ export interface RenderPassNode {
   kind: "render" | "compute";
   output: "texture" | "canvas" | "none";
   outputLayers: number;
+  /** Number of native render colour attachments; omitted means one. */
+  outputCount?: number;
+  /** Optional display labels, ordered by render attachment index. */
+  outputs?: { name?: string }[];
   outputFormat?: BufferOutputFormat;
   resolvedOutputFormat?: "rgba16float" | "rgba32float";
   dispatch?: DispatchSpec;
@@ -91,7 +97,7 @@ export interface RenderPassNode {
   workgroupSize: [number, number, number];
   entryPoint?: string;
   /** Fully resolved authored render stages; absent keeps ShaderToy hooks. */
-  entryPoints?: { vertex: string; fragment: string };
+  entryPoints?: { vertex?: string; fragment?: string };
   width: number;
   height: number;
   channels: RenderPassChannel[];

@@ -20,6 +20,7 @@
     sourcePath?: string;
     authoringMode?: 'hooks' | 'native';
     passName?: string;
+    outputCount?: number;
     onCreated?: (result: {
       path: string;
       entryPoints?: { vertex?: string; fragment?: string; compute?: string };
@@ -47,6 +48,7 @@
     sourcePath = undefined,
     authoringMode = undefined,
     passName = undefined,
+    outputCount = undefined,
     onCreated = undefined,
     postMessage = undefined,
     onMessage = undefined,
@@ -144,7 +146,7 @@
     pendingRequestId = requestId;
     postMessage?.({
       type: 'createFile',
-      payload: { shaderPath, suggestedPath, fileType, requestId, authoringMode, passName },
+      payload: { shaderPath, suggestedPath, fileType, requestId, authoringMode, passName, outputCount },
     });
   }
 
@@ -154,7 +156,7 @@
     pendingRequestId = requestId;
     postMessage?.({
       type: 'insertShaderSource',
-      payload: { shaderPath, sourcePath, fileType, requestId, authoringMode, passName },
+      payload: { shaderPath, sourcePath, fileType, requestId, authoringMode, passName, outputCount },
     });
   }
 </script>

@@ -93,6 +93,31 @@ describe('ShaderProcessor', () => {
     });
   });
 
+  it('projects the selected native MRT output while inline rendering is off', async () => {
+    const source = [
+      'struct Outputs { @location(0) colour: vec4f, @location(1) normal: vec4f, }',
+      '@fragment fn renderImage() -> Outputs { return Outputs(vec4f(0), vec4f(1)); }',
+    ].join('\n');
+    const config = {
+      version: '1.0',
+      passes: { Image: { entryPoints: { fragment: 'renderImage' }, outputs: [{}, { name: 'normal' }] } },
+    };
+    (mockShaderDebugManager as any).getState.mockReturnValue({
+      isEnabled: true, isActive: false, currentLine: null, renderOutput: 1,
+    });
+    (mockShaderDebugManager as any).getLanguage = vi.fn().mockReturnValue('wgsl');
+    (mockShaderDebugManager as any).getDebugTarget.mockReturnValue({ passName: 'Image', code: source, config });
+    (mockShaderDebugManager as any).getPreviewPlan = vi.fn().mockReturnValue(null);
+
+    await shaderProcessor.processMainShaderCompilation({ type: 'shaderSource', code: source, config, path: '/main.wgsl', buffers: {} });
+
+    expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(
+      expect.stringContaining('return result.normal;'),
+      { version: '1.0', passes: { Image: { entryPoints: { fragment: 'renderImage' } } } },
+      '/main.wgsl', {}, undefined, undefined,
+    );
+  });
+
   it('uses the original Slang source to map an editor cursor after dependency expansion', async () => {
     const processedSource = [
       '// expanded dependency',

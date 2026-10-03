@@ -175,6 +175,27 @@ describe("WgslLanguageService", () => {
     expect(JSON.stringify((await hoverAt(1, 33))?.contents)).toContain("var<private> iFrame: i32");
   });
 
+  it("types and documents native WebGPU mesh matrices", async () => {
+    const instance = new WgslLanguageService();
+    const text = `@vertex fn meshVertex(@location(0) position: vec3f) -> @builtin(position) vec4f {
+  let world = iModelMatrix * vec4f(position, 1.0);
+  let normal = iNormalMatrix * vec4f(0.0, 1.0, 0.0, 0.0);
+  return iViewProjectionMatrix * world + normal * 0.0;
+}`;
+    await instance.syncEnvironment({ ...environment(), stage: "vertex" });
+    await instance.openDocument({ uri, languageId: "wgsl", version: 1, text });
+    const labels = (await instance.completion({ document: revision, position: { line: 1, character: 12 } }))
+      .map(item => item.label);
+    expect(labels).toEqual(expect.arrayContaining(["iModelMatrix", "iViewProjectionMatrix", "iNormalMatrix"]));
+    const model = JSON.stringify((await instance.hover({
+      document: revision,
+      position: { line: 1, character: text.split("\n")[1]!.indexOf("iModelMatrix") + 1 },
+    }))?.contents);
+    expect(model).toContain("var<private> iModelMatrix: mat4x4f");
+    expect(model).toContain("Model-to-world");
+    expect((await instance.diagnostics({ document: revision })).filter(item => item.code === "undefined-identifier")).toEqual([]);
+  });
+
   it("documents builtin uniforms instead of claiming the shader declared them", async () => {
     const instance = new WgslLanguageService();
     const text = `fn mainImage(coord: vec2f) -> vec4f {\n  return vec4f(iResolution.xy, iTime, 1.0);\n}`;

@@ -12,7 +12,7 @@ script uniforms. See
 
 ## Native entry points
 
-Slang supports the same [shared-file workflow and entry-point configuration](wgsl-authoring.md#native-entry-points-and-shared-files) as WGSL. Declare stages with `[shader("vertex")]`, `[shader("fragment")]`, and `[shader("compute")]`, then choose them in the config panel. Native render outputs use `SV_Position` and `SV_Target0`; compute uses `[numthreads(x, y, z)]`. Built-in uniforms, channel helpers, and configured storage remain available. Image and buffer passes can select different fragments from the same source.
+Slang supports the same [shared-file workflow and entry-point configuration](wgsl-authoring.md#native-entry-points-and-shared-files) as WGSL. Declare stages with `[shader("vertex")]`, `[shader("fragment")]`, and `[shader("compute")]`, then choose them in the config panel. Native render outputs use `SV_Position` and `SV_Target0` (or `SV_TargetN` for [multiple render targets](multiple-render-targets.md)); compute uses `[numthreads(x, y, z)]`. Built-in uniforms, channel helpers, and configured storage remain available. Image and buffer passes can select different fragments from the same source. Vertex and fragment selection is independent, so native stages can be paired with `mainVertex` or `mainImage` adapters. Mesh camera matrices are available as `iModelMatrix`, `iViewProjectionMatrix`, and `iNormalMatrix`; multiply with `mul(matrix, vector)` to follow the viewer camera.
 
 New compute configuration uses `entryPoints.compute`; the older `entryPoint` field still loads for compatibility. Choose **Insert** to append native stages to the current source or **Create** for a separate source file.
 

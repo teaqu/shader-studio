@@ -29,6 +29,15 @@ export interface ShaderStudioFragmentContextSymbol extends ShaderStudioBuiltinUn
   readonly stages: readonly ["fragment"];
 }
 
+/** Matrices supplied to native WebGPU mesh stages. GLSL has no matching ABI. */
+export interface ShaderStudioMeshMatrixSymbol extends ShaderStudioBuiltinUniform {
+  readonly name: "iModelMatrix" | "iViewProjectionMatrix" | "iNormalMatrix";
+  readonly slangType: "float4x4";
+  readonly wgslType: "mat4x4f";
+  readonly slangDeclaration: string;
+  readonly languages: readonly ["slang", "wgsl"];
+}
+
 function deepFreezeBuiltin<T extends ShaderStudioBuiltinUniform>(builtin: T): Readonly<T> {
   return Object.freeze({
     ...builtin,
@@ -118,6 +127,34 @@ export const SHADER_STUDIO_FRAGMENT_CONTEXT = Object.freeze({
   cameraPosition: SHADER_STUDIO_FRAGMENT_CONTEXT_SYMBOLS[2]!,
 });
 
+/** Native mesh transforms exposed by the WebGPU WGSL and Slang preludes. */
+export const SHADER_STUDIO_MESH_MATRIX_SYMBOLS: readonly Readonly<ShaderStudioMeshMatrixSymbol>[] = deepFreezeBuiltinCatalog([
+  {
+    name: "iModelMatrix",
+    slangType: "float4x4",
+    wgslType: "mat4x4f",
+    slangDeclaration: "float4x4 iModelMatrix;",
+    languages: ["slang", "wgsl"],
+    description: "Model-to-world transform for a native WebGPU mesh pass.",
+  },
+  {
+    name: "iViewProjectionMatrix",
+    slangType: "float4x4",
+    wgslType: "mat4x4f",
+    slangDeclaration: "float4x4 iViewProjectionMatrix;",
+    languages: ["slang", "wgsl"],
+    description: "World-to-clip transform for a native WebGPU mesh pass.",
+  },
+  {
+    name: "iNormalMatrix",
+    slangType: "float4x4",
+    wgslType: "mat4x4f",
+    slangDeclaration: "float4x4 iNormalMatrix;",
+    languages: ["slang", "wgsl"],
+    description: "Normal transform for a native WebGPU mesh pass.",
+  },
+] as const satisfies readonly ShaderStudioMeshMatrixSymbol[]);
+
 export const SHADER_STUDIO_BUILTIN_UNIFORMS: readonly Readonly<ShaderStudioBuiltinUniform>[] = deepFreezeBuiltinCatalog([
   { name: "iResolution", glslType: "vec3", slangType: "float3", wgslType: "vec3f", slangDeclaration: "float3 iResolution;", languages: ["glsl", "slang", "wgsl"], description: "Canvas dimensions: xy is width and height, z is the aspect ratio." },
   { name: "iTime", glslType: "float", slangType: "float", wgslType: "f32", slangDeclaration: "float iTime;", languages: ["glsl", "slang", "wgsl"], description: "Elapsed time in seconds." },
@@ -142,6 +179,7 @@ export const SHADER_STUDIO_BUILTIN_UNIFORMS: readonly Readonly<ShaderStudioBuilt
   { name: "iCh2", glslType: "ShaderToy channel metadata struct", slangType: "ShaderToyChannel2D | ShaderToyChannelCube", languages: ["glsl"], description: "Third input channel with sampler, size, playback time, and loaded state metadata." },
   { name: "iCh3", glslType: "ShaderToy channel metadata struct", slangType: "ShaderToyChannel2D | ShaderToyChannelCube", languages: ["glsl"], description: "Fourth input channel with sampler, size, playback time, and loaded state metadata." },
   ...SHADER_STUDIO_FRAGMENT_CONTEXT_SYMBOLS,
+  ...SHADER_STUDIO_MESH_MATRIX_SYMBOLS,
 ] as const satisfies readonly ShaderStudioBuiltinUniform[]);
 
 /** Catalog entries that document a family of symbols instead of naming a real one. */

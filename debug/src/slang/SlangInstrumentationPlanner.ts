@@ -21,6 +21,10 @@ import { emitNativeRasterWrapper } from "../native/NativeRasterWrapper";
 
 export type SlangInstrumentationMode = "preview" | "capture";
 
+function selectedOutput(options: DebugPreviewOptions, workspaceOutput: number | undefined): number {
+  return options.output ?? workspaceOutput ?? 0;
+}
+
 export function planSlangInstrumentation(
   workspace: SlangWorkspace,
   selectedFile: SlangWorkspaceFile,
@@ -47,7 +51,7 @@ export function planSlangInstrumentation(
   }
   const prefix = instrumentationPrefix(workspace.contentHash);
   const native = workspace.render
-    ? buildNativeRasterReplay(rootFile!.source.source, "slang", workspace.render.entryPoint, prefix) : undefined;
+    ? buildNativeRasterReplay(rootFile!.source.source, "slang", workspace.render.entryPoint, prefix, selectedOutput(previewOptions, workspace.render.output)) : undefined;
   if (typeof native === "string") {
     return failure(analysis.sourceUri, analysis.selectedRange.start, "slang-debug-unsupported-syntax", native);
   }
@@ -167,7 +171,7 @@ export function planSlangInstrumentation(
     files,
     captureSlots: slots,
     executionMarkerSlot: 0,
-    ...(native ? { nativeRender: { fragmentEntryPoint: native.entryName } } : {}),
+    ...(native ? { nativeRender: { fragmentEntryPoint: native.entryName, ...(previewOptions.output ? { output: previewOptions.output } : {}) } } : {}),
   };
   return { ok: true, plan };
 }

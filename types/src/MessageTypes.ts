@@ -312,6 +312,8 @@ export interface CreateFileMessage extends BaseMessage {
     requestId: string;
     authoringMode?: WebGPUAuthoringMode;
     passName?: string;
+    /** Requested native render colour attachments (one when omitted). */
+    outputCount?: number;
   };
 }
 
@@ -324,6 +326,8 @@ export interface InsertShaderSourceMessage extends BaseMessage {
     requestId: string;
     authoringMode?: WebGPUAuthoringMode;
     passName?: string;
+    /** Requested native render colour attachments (one when omitted). */
+    outputCount?: number;
   };
 }
 

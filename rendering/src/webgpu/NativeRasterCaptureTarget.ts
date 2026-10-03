@@ -1,35 +1,67 @@
 /** Full-resolution raster attachments; readback samples retain authored pixel centers. */
+function validateOutput(outputCount: number, readbackOutput: number): void {
+  if (!Number.isInteger(outputCount) || outputCount < 1) {
+    throw new Error("Native raster capture output count must be a positive integer.");
+  }
+  if (!Number.isInteger(readbackOutput) || readbackOutput < 0 || readbackOutput >= outputCount) {
+    throw new Error("Native raster capture output must select an allocated attachment.");
+  }
+}
+
 export class NativeRasterCaptureTarget {
+  readonly textures: GPUTexture[];
+  readonly views: GPUTextureView[];
+  /** Selected debug output attachment used for capture readback. */
   readonly texture: GPUTexture;
   readonly view: GPUTextureView;
   readonly depth?: GPUTexture;
+  private readonly outputCount: number;
+  private readonly readbackOutput: number;
 
-  constructor(device: GPUDevice, readonly width: number, readonly height: number, mesh: boolean) {
+  constructor(
+    device: GPUDevice, readonly width: number, readonly height: number, mesh: boolean,
+    outputCount = 1, readbackOutput = 0, writesDepth = false,
+  ) {
     if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
       throw new Error("Native raster capture dimensions must be positive integers.");
     }
-    this.texture = device.createTexture({
-      size: { width, height },
-      format: "rgba32float",
-      usage: (globalThis.GPUTextureUsage?.RENDER_ATTACHMENT ?? 0x10) | (globalThis.GPUTextureUsage?.COPY_SRC ?? 1),
-    });
-    this.view = this.texture.createView();
-    if (mesh) {
-      this.depth = device.createTexture({
-        size: { width, height },
-        format: "depth24plus",
-        usage: globalThis.GPUTextureUsage?.RENDER_ATTACHMENT ?? 0x10,
+    validateOutput(outputCount, readbackOutput);
+    this.outputCount = outputCount;
+    this.readbackOutput = readbackOutput;
+    let color: GPUTexture | undefined;
+    let depth: GPUTexture | undefined;
+    try {
+      color = device.createTexture({
+        size: { width, height }, format: "rgba32float",
+        usage: (globalThis.GPUTextureUsage?.RENDER_ATTACHMENT ?? 0x10) | (globalThis.GPUTextureUsage?.COPY_SRC ?? 1),
       });
+      const view = color.createView();
+      if (mesh || writesDepth) {
+        depth = device.createTexture({
+          size: { width, height },
+          format: "depth24plus",
+          usage: globalThis.GPUTextureUsage?.RENDER_ATTACHMENT ?? 0x10,
+        });
+      }
+      this.textures = [color];
+      this.views = [view];
+      this.texture = color;
+      this.view = view;
+      this.depth = depth;
+    } catch (error) {
+      depth?.destroy();
+      color?.destroy();
+      throw error;
     }
   }
 
   attachments(): GPURenderPassDescriptor {
     return {
-      colorAttachments: [{
+      colorAttachments: Array.from({ length: this.outputCount }, (_, output) => output === this.readbackOutput ? {
         view: this.view,
         clearValue: { r: 0, g: 0, b: 0, a: 0 },
         loadOp: "clear", storeOp: "store",
-      }],
+      } : null),
       ...(this.depth ? { depthStencilAttachment: {
         view: this.depth.createView(),
         depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store",
@@ -53,7 +85,9 @@ export class NativeRasterCaptureTarget {
   }
 
   destroy(): void {
-    this.texture.destroy();
+    for (const texture of this.textures) {
+      texture.destroy();
+    }
     this.depth?.destroy();
   }
 }

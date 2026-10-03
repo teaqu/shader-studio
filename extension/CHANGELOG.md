@@ -6,6 +6,10 @@
 
 - Native WGSL and Slang fragment previews and captures now preserve interpolated inputs, mesh geometry, and structured color/depth outputs. Native parameters show their GPU-provided status, and Buffer captures respect the pass resolution.
 
+- Vertex and fragment functions can be mixed independently with ShaderToy hooks. Native mesh stages can use the viewer camera matrices.
+
+- Native WGSL and Slang buffer passes support multiple render targets with named output selectors, Create/Insert templates, and per-output debugging. Capture snapshots feedback, camera and storage state without advancing live simulations. GLSL stays single-output.
+
 ### 1.2.0
 
 - Added WGSL support: write `.wgsl` shaders with completion, hover documentation, snippets, and error checking. Use image, vertex, and compute passes, storage buffers, script uniforms, and visual debugging.

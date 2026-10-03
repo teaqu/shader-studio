@@ -20,6 +20,7 @@ export function buildNativeRasterReplay(
   language: ShaderLanguageId,
   entryName: string | undefined,
   prefix: string,
+  output = 0,
 ): NativeRasterReplay | string {
   const entries = getShaderSourceFunctions(source, language).filter(fn => fn.stage === "fragment");
   const entry = entryName ? entries.find(fn => fn.name === entryName) : entries.length === 1 ? entries[0] : undefined;
@@ -48,9 +49,9 @@ export function buildNativeRasterReplay(
   if (!returnType) {
     return "The native fragment return type could not be analyzed.";
   }
-  const color = resolveColor(source, language, returnType, tokens.slice(close + 1));
+  const color = resolveColor(source, language, returnType, tokens.slice(close + 1), output);
   if (color === undefined) {
-    return "Native fragment debugging requires a location-0 four-component floating-point color output.";
+    return "Native fragment debugging requires the selected location four-component floating-point color output.";
   }
   const stripped = signatureInterfaceEdits(tokens, language);
   const coordinates = nativeRasterCoordinates(source, header, language as "wgsl" | "slang", prefix, entry.name);
@@ -161,12 +162,12 @@ function signatureInterfaceEdits(tokens: ShaderSourceToken[], language: ShaderLa
   return edits;
 }
 
-function resolveColor(source: string, language: ShaderLanguageId, type: string, outputTokens: ShaderSourceToken[]): string | undefined {
+function resolveColor(source: string, language: ShaderLanguageId, type: string, outputTokens: ShaderSourceToken[], output: number): string | undefined {
   const isColorType = language === "wgsl" ? ["vec4f", "vec4<f32>"].includes(type) : type === "float4";
   if (isColorType) {
-    const output = outputTokens.map(token => token.text).join("");
-    return language === "wgsl" ? /@location\(0\)/.test(output) ? "" : undefined
-      : /:SV_Target0?$/.test(output) ? "" : undefined;
+    const signature = outputTokens.map(token => token.text).join("");
+    return language === "wgsl" ? new RegExp(`@location\\(${output}\\)`).test(signature) ? "" : undefined
+      : new RegExp(`:SV_Target${output === 0 ? "0?" : output}$`).test(signature) ? "" : undefined;
   }
   const tokens = tokenizeShaderSource(source);
   const struct = tokens.findIndex((token, index) => token.text === "struct" && tokens[index + 1]?.text === type && tokens[index + 2]?.text === "{");
@@ -178,12 +179,12 @@ function resolveColor(source: string, language: ShaderLanguageId, type: string, 
   for (const field of fields) {
     const text = field.map(token => token.text).join("");
     if (language === "wgsl") {
-      const match = /@location\(0\)(?:@[A-Za-z_]\w*(?:\([^)]*\))?)*([A-Za-z_]\w*):(?:vec4f|vec4<f32>)$/.exec(text);
+      const match = new RegExp(`@location\\(${output}\\)(?:@[A-Za-z_]\\w*(?:\\([^)]*\\))?)*([A-Za-z_]\\w*):(?:vec4f|vec4<f32>)$`).exec(text);
       if (match) {
         return match[1];
       }
     } else {
-      const match = /float4([A-Za-z_]\w*):SV_Target0?$/.exec(text);
+      const match = new RegExp(`float4([A-Za-z_]\\w*):SV_Target${output === 0 ? "0?" : output}$`).exec(text);
       if (match) {
         return match[1];
       }

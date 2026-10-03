@@ -6,7 +6,7 @@ WGSL shaders require WebGPU support in your browser and device.
 
 ## Native entry points and shared files
 
-WGSL and Slang can keep vertex, fragment, and compute entry points in one source file. Choose **Native entry points** in the Image or buffer settings, then select the vertex and fragment functions. Compute settings have their own entry-point selector. Discovery reads the stage annotations in the source; saving a selection writes `entryPoints` in `.sha.json`. A single candidate for a stage can be selected automatically; multiple candidates require a choice. Discovery does not create passes automatically.
+WGSL and Slang can keep vertex, fragment, and compute entry points in one source file. Choose the **Vertex function** and **Fragment function** independently at the bottom of Image or buffer settings. Either stage can use an annotated function while the other keeps its generated adapter. Compute settings have their own entry-point selector. Discovery reads the stage annotations in the source; saving a selection writes `entryPoints` in `.sha.json`. An omitted vertex selection uses the built-in vertex shader (and any configured `mainVertex` hook); an omitted fragment selection uses `mainImage`. Unselected native functions do not replace those adapters. Discovery does not create passes automatically.
 
 ```wgsl
 @vertex fn fullscreen(@builtin(vertex_index) index: u32) -> @builtin(position) vec4f {
@@ -45,13 +45,23 @@ fn advance(@builtin(global_invocation_id) id: vec3u) {
 
 Open `shared.wgsl` as the Image source in this example. Each pass compiles its selected stages and reachable helpers using that pass’s configured channels, uniforms, and storage. Functions belonging to other passes are excluded, so they can use resources configured on their own pass. Common code and global initializer helpers are retained.
 
-When adding a buffer or compute pass, **Create** makes a new source file and **Insert** appends uniquely named entry points to the current source. Insert connects the new pass to that source and saves its stage choices. The VS Code source insertion is undoable. Choose the project’s default render authoring style in the config panel, or choose it when creating a shader. The default affects new shaders and passes; existing ShaderToy hooks remain supported.
+When adding a buffer or compute pass, **Create** makes a new source file and **Insert** appends uniquely named entry points to the current source. Insert connects the new pass to that source and saves its stage choices. The VS Code source insertion is undoable. Choose native functions or ShaderToy hooks when creating a shader. `webgpu.defaultRenderAuthoring` also controls the project’s templates. The default affects new shaders and passes; existing ShaderToy hooks remain supported.
 
 Native fragments receive WebGPU coordinates with a top-left origin. The `mainImage` hook below receives bottom-left coordinates. Native stages still receive Shader Studio’s built-in globals, configured channel helpers, and storage declarations. Group 0 bindings are reserved for these generated resources; do not redeclare their bindings.
 
-For mesh geometry, native vertex inputs must match the supplied mesh layout: location 0 is `vec3f` position, location 1 is `vec3f` normal, and location 2 is `vec2f` UV. Native shaders own their transforms and vertex-to-fragment interface. A render pass chooses either native stage entry points or the separate `vertex` hook file.
+For mesh geometry, native vertex inputs must match the supplied mesh layout: location 0 is `vec3f` position, location 1 is `vec3f` normal, and location 2 is `vec2f` UV. Native shaders own their transforms and vertex-to-fragment interface. The built-in mesh vertex shader outputs UV at location 0, world position at location 1, and normal at location 2. A native fragment paired with that vertex shader must use compatible input locations and types. A native vertex paired with `mainImage` must produce that interface. A separate `vertex` hook file can also be paired with a native fragment.
 
-Native fragment inline previews and captures preserve the selected native fragment entry point and its authored input interface, including vertex-to-fragment varyings and depth-bearing outputs. Debugging still requires a location-0 four-component color result; it does not add multi-render-target output support.
+The built-in mesh vertex shader applies the viewer camera after `mainVertex`, so an empty hook still responds to drag rotation. Native mesh vertices can use `iModelMatrix`, `iViewProjectionMatrix`, and `iNormalMatrix` to follow that same camera:
+
+```wgsl
+let world = iModelMatrix * vec4f(position, 1.0);
+let clip = iViewProjectionMatrix * world;
+let worldNormal = (iNormalMatrix * vec4f(normal, 0.0)).xyz;
+```
+
+A fullscreen vertex uses `@builtin(vertex_index)` instead of the mesh attributes. Changing geometry keeps your explicit stage selections; choose a compatible vertex when switching between mesh and fullscreen geometry.
+
+Native fragment inline previews and captures preserve the selected native fragment entry point and its authored input interface, including vertex-to-fragment varyings and depth-bearing outputs. Color outputs must be four-component floating-point vectors. Native buffer passes can declare [multiple render targets](multiple-render-targets.md), and debugging can select an attachment.
 Native fragment inputs are supplied by rasterization, so the debug panel identifies them as GPU-provided rather than displaying inspector defaults as values. Parameters of helper functions called from that fragment remain editable for inline debugging.
 
 Runnable WGSL and Slang examples live in `tests/fixtures/shader-corpus/*/native-entrypoints/shared.*`; matching `samefile-hooks` examples demonstrate existing `mainVertex` and `mainImage` hooks in one source file. The adjacent `raster-varyings.*` projects exercise native mesh varyings and structured color/depth debugging.

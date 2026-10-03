@@ -45,7 +45,7 @@ export function applyWgslFullShaderPostProcessing(
 }
 
 function applyNativeWgslFullShaderPostProcessing(source: string, options: DebugPreviewOptions, entryPoint: string): string | null {
-  const replay = buildNativeRasterReplay(source, "wgsl", entryPoint, "_ssdbg_full");
+  const replay = buildNativeRasterReplay(source, "wgsl", entryPoint, "_ssdbg_full", options.output ?? 0);
   if (typeof replay === "string") {
     return null;
   }

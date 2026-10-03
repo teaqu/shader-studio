@@ -13,6 +13,11 @@ describe("ShaderSourceTemplates", () => {
     expect(template.entryPoints).toEqual({ vertex: "BufferAVertex", fragment: "BufferAFragment" });
   });
 
+  it.each(["wgsl", "slang"] as const)("creates %s native render targets for a requested attachment count", (language) => {
+    const template = createNativeRenderSource(language, "", "BufferA", 3);
+    expect(template.text).toContain(language === "wgsl" ? "@location(2)" : "SV_Target2");
+  });
+
   it("adds a suffix when a compute entry point already exists", () => {
     const template = createNativeComputeSource("wgsl", "fn SimulationCompute() {}", "Simulation");
     expect(template.entryPoints).toEqual({ compute: "SimulationCompute2" });

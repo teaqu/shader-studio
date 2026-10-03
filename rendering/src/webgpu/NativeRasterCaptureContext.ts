@@ -6,16 +6,22 @@ import type { WebGPUMeshResources } from "./WebGPUMeshResources";
 export function nativeRasterCaptureContext(
   pass: RenderPassNode | undefined,
   resources: () => WebGPUMeshResources | null,
+  meshUniformData?: () => Float32Array,
+  writesDepth = false,
 ): CaptureCompileContext["nativeRender"] {
-  if (!pass?.entryPoints) {
+  if (!pass?.entryPoints || (!pass.entryPoints.vertex && !pass.entryPoints.fragment)) {
     return undefined;
   }
   return {
     vertexEntryPoint: pass.entryPoints.vertex,
-    fragmentEntryPoint: pass.entryPoints.fragment,
+    ...(pass.vertexSrc ? { vertexCode: pass.vertexSrc } : {}),
+    ...(pass.entryPoints.fragment ? { fragmentEntryPoint: pass.entryPoints.fragment } : {}),
     geometry: pass.geometry,
     width: pass.width,
     height: pass.height,
+    ...(pass.outputCount ? { outputCount: pass.outputCount } : {}),
+    ...(writesDepth ? { writesDepth: true } : {}),
+    ...(meshUniformData ? { meshUniformData } : {}),
     draw: encoder => {
       if (pass.geometry === "fullscreen") {
         encoder.draw(3);

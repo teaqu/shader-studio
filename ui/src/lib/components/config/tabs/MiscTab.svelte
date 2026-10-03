@@ -7,6 +7,8 @@
     getWebviewUri: (path: string) => string | undefined;
     onSelect: (input: ConfigInput) => void;
     availableBufferNames?: string[];
+    renderOutputCounts?: Record<string, number>;
+    computeOutputLayerCounts?: Record<string, number>;
   }
 
   const MIN_BUFFERS = ["BufferA", "BufferB", "BufferC", "BufferD"];
@@ -16,6 +18,8 @@
     getWebviewUri,
     onSelect,
     availableBufferNames = [],
+    renderOutputCounts = {},
+    computeOutputLayerCounts = {},
   }: Props = $props();
 
   const bufferList = $derived.by(() => {
@@ -43,6 +47,32 @@
     }
     const wrap = (event.currentTarget as HTMLSelectElement).value as "repeat" | "clamp";
     onSelect({ ...tempInput, wrap });
+  }
+
+  const selectedRenderOutputCount = $derived(
+    tempInput?.type === "buffer" ? (renderOutputCounts[tempInput.source] ?? 1) : 1,
+  );
+  const selectedIsCompute = $derived(
+    tempInput?.type === "buffer" && computeOutputLayerCounts[tempInput.source] !== undefined,
+  );
+  const selectedComputeLayerCount = $derived(
+    tempInput?.type === "buffer" ? (computeOutputLayerCounts[tempInput.source] ?? 1) : 1,
+  );
+
+  function updateBufferOutput(event: Event) {
+    if (tempInput?.type !== "buffer") {
+return;
+}
+    const output = Number((event.currentTarget as HTMLSelectElement).value);
+    onSelect({ ...tempInput, ...(output === 0 ? { output: undefined } : { output }) });
+  }
+
+  function updateBufferLayer(event: Event) {
+    if (tempInput?.type !== "buffer") {
+return;
+}
+    const layer = Number((event.currentTarget as HTMLSelectElement).value);
+    onSelect({ ...tempInput, ...(layer === 0 ? { layer: undefined } : { layer }) });
   }
 </script>
 
@@ -73,6 +103,22 @@
         <option value="clamp">Clamp</option>
         <option value="repeat">Repeat</option>
       </select>
+      {#if !selectedIsCompute && selectedRenderOutputCount > 1}
+        <label for="buffer-output">Output:</label>
+        <select id="buffer-output" aria-label="Buffer output" value={tempInput.output ?? 0} onchange={updateBufferOutput}>
+          {#each Array(selectedRenderOutputCount) as _, output}
+            <option value={output}>Output {output}</option>
+          {/each}
+        </select>
+      {/if}
+      {#if selectedIsCompute && selectedComputeLayerCount > 1}
+        <label for="buffer-layer">Layer:</label>
+        <select id="buffer-layer" aria-label="Compute output layer" value={tempInput.layer ?? 0} onchange={updateBufferLayer}>
+          {#each Array(selectedComputeLayerCount) as _, layer}
+            <option value={layer}>Layer {layer}</option>
+          {/each}
+        </select>
+      {/if}
     </div>
   {/if}
 

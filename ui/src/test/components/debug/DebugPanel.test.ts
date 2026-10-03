@@ -225,6 +225,23 @@ describe('DebugPanel', () => {
     expect(container.querySelector('.param-editor')).toBeNull();
   });
 
+  it('selects a render attachment only when the active pass exposes multiple outputs', async () => {
+    const shaderDebugManager = { setRenderOutput: vi.fn() } as unknown as ShaderDebugManager;
+    render(DebugPanel, {
+      debugState: makeDebugState({ renderOutput: 0, renderOutputs: ['Output 0 (colour)', 'Output 1 (normal)'] }),
+      shaderDebugManager,
+    });
+    const select = screen.getByLabelText('Preview output') as HTMLSelectElement;
+    expect(select).toHaveValue('0');
+    await fireEvent.change(select, { target: { value: '1' } });
+    expect((shaderDebugManager as any).setRenderOutput).toHaveBeenCalledWith(1);
+  });
+
+  it('hides the output selector for the single default attachment', () => {
+    render(DebugPanel, { debugState: makeDebugState({ renderOutput: 0, renderOutputs: ['Output 0'] }) });
+    expect(screen.queryByLabelText('Preview output')).toBeNull();
+  });
+
   it('keeps helper function parameters editable in a native render pass', () => {
     const { container } = render(DebugPanel, {
       debugState: makeDebugState({

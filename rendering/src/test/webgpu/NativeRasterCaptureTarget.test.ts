@@ -38,6 +38,57 @@ describe("NativeRasterCaptureTarget", () => {
     expect(() => new NativeRasterCaptureTarget(device, 50, -1, false)).toThrow(/positive/);
   });
 
+  it("keeps scratch attachments ordered for native MRT and selects the requested readback output", () => {
+    const { device, textures } = targetDevice();
+    const target = new NativeRasterCaptureTarget(device, 100, 50, false, 3, 2);
+    expect(target.textures).toHaveLength(1);
+    expect(target.attachments().colorAttachments).toHaveLength(3);
+    expect(target.texture).toBe(target.textures[0]);
+    expect(target.attachments().colorAttachments).toEqual([null, null, expect.anything()]);
+    target.destroy();
+    expect(textures.every((texture) => texture.destroy.mock.calls.length === 1)).toBe(true);
+  });
+
+  it("rejects a readback output outside the native MRT attachments", () => {
+    const { device } = targetDevice();
+    expect(() => new NativeRasterCaptureTarget(device, 1, 1, false, 2, 2)).toThrow(/attachment/);
+  });
+
+  it("allocates depth for a fullscreen fragment that writes frag depth", () => {
+    const { device, textures } = targetDevice();
+    const target = new NativeRasterCaptureTarget(device, 8, 8, false, 1, 0, true);
+    expect(textures).toHaveLength(2);
+    expect(target.attachments()).toHaveProperty("depthStencilAttachment");
+  });
+
+  it("destroys its color attachment when creating the color view throws", () => {
+    const { device, textures } = targetDevice();
+    textures.push({
+      createView: vi.fn(() => {
+        throw new Error("view failed");
+      }),
+      destroy: vi.fn(),
+    });
+    (device.createTexture as ReturnType<typeof vi.fn>).mockImplementation(() => textures[0]);
+
+    expect(() => new NativeRasterCaptureTarget(device, 8, 8, false)).toThrow("view failed");
+    expect(textures[0]!.destroy).toHaveBeenCalledOnce();
+  });
+
+  it("destroys its color attachment when depth allocation throws", () => {
+    const { device, textures } = targetDevice();
+    const color = { createView: vi.fn(() => ({})), destroy: vi.fn() };
+    textures.push(color);
+    (device.createTexture as ReturnType<typeof vi.fn>)
+      .mockImplementationOnce(() => color)
+      .mockImplementationOnce(() => {
+        throw new Error("depth allocation failed");
+      });
+
+    expect(() => new NativeRasterCaptureTarget(device, 8, 8, true)).toThrow("depth allocation failed");
+    expect(color.destroy).toHaveBeenCalledOnce();
+  });
+
   it("copies a clamped pixel and centered grid samples into packed row offsets", () => {
     const { device } = targetDevice();
     const target = new NativeRasterCaptureTarget(device, 100, 50, false);

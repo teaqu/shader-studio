@@ -11,9 +11,21 @@ describe("native render configuration validation", () => {
     expect(resolveRenderEntryPoints("Image", pass, source, "wgsl", errors)).toBeNull();
     expect(errors[0]).toContain("entryPoints");
   });
-  it("auto-selects omitted names in a valid native object", () => {
+  it("keeps omitted stages on generated adapters in a valid native object", () => {
     const errors: string[] = [];
-    expect(resolveRenderEntryPoints("Image", { entryPoints: {} }, source, "wgsl", errors)).toEqual({ vertex: "vertices", fragment: "image" });
+    expect(resolveRenderEntryPoints("Image", { entryPoints: {} }, source, "wgsl", errors)).toEqual({});
     expect(errors).toEqual([]);
+  });
+  it("selects only explicitly configured native stages", () => {
+    const errors: string[] = [];
+    expect(resolveRenderEntryPoints("Image", { entryPoints: { fragment: "image" } }, source, "wgsl", errors)).toEqual({ fragment: "image" });
+    expect(errors).toEqual([]);
+  });
+
+  it("resolves a valid stage when an earlier pass already reported an error", () => {
+    const errors = ["BufferA: a separate configuration error"];
+    expect(resolveRenderEntryPoints("BufferB", { entryPoints: { fragment: "image" } }, source, "wgsl", errors))
+      .toEqual({ fragment: "image" });
+    expect(errors).toEqual(["BufferA: a separate configuration error"]);
   });
 });

@@ -278,6 +278,26 @@ suite('Shader config JSON schema', () => {
     assertInvalid({ version: '1.0', passes: { Image: {}, BufferA: { path: 'a.wgsl', outputFormat: 'rgba8unorm' } } }, 'should be equal to one of the allowed values');
   });
 
+  test('accepts bounded named render outputs and render-output channel selection', () => {
+    assertValid({
+      version: '1.0',
+      passes: {
+        Image: { inputs: { iChannel0: { type: 'buffer', source: 'Scene', output: 1 } } },
+        Scene: { path: 'scene.wgsl', outputs: [{ name: 'Colour' }, { name: 'Normals + depth' }] },
+      },
+    });
+    assertValid({ version: '1.0', passes: { Image: {}, Scene: { path: 'scene.wgsl', outputs: [{}] } } });
+  });
+
+  test('rejects malformed render outputs and output selection outside buffer inputs', () => {
+    const base = { version: '1.0', passes: { Image: {}, Scene: { path: 'scene.wgsl' } } };
+    assertInvalid({ ...base, passes: { ...base.passes, Scene: { path: 'scene.wgsl', outputs: [] } } }, 'should NOT have fewer than 1 items');
+    assertInvalid({ ...base, passes: { ...base.passes, Scene: { path: 'scene.wgsl', outputs: Array.from({ length: 9 }, () => ({})) } } }, 'should NOT have more than 8 items');
+    assertInvalid({ ...base, passes: { ...base.passes, Scene: { path: 'scene.wgsl', outputs: [{ name: '' }] } } }, 'should NOT be shorter than 1 characters');
+    assertInvalid({ version: '1.0', passes: { Image: { outputs: [{}] } } }, 'should NOT have additional properties');
+    assertInvalid({ version: '1.0', passes: { Image: { inputs: { iChannel0: { type: 'texture', path: 'x.png', output: 1 } } } } }, 'should NOT have additional properties');
+  });
+
   test('accepts storage without stride', () => {
     assertValid({
       version: '1.0',

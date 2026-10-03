@@ -699,7 +699,7 @@
       enableVim();
     }
 
-    cursorChangeDisposable = editor.onDidChangeCursorPosition(() => {
+    const publishCursorPosition = () => {
       const position = editor?.getPosition();
       const model = editor?.getModel();
       if (!position || !model) {
@@ -712,9 +712,16 @@
         clearTimeout(cursorChangeTimer);
       }
       cursorChangeTimer = setTimeout(() => onCursorChange(line, content, buffer), 150);
-    });
+    };
+    cursorChangeDisposable = editor.onDidChangeCursorPosition(publishCursorPosition);
 
     editor.focus();
+    // Monaco keeps a selection for each model. Opening a separate pass can
+    // therefore restore the requested line without firing a cursor-change
+    // event, leaving debug ownership on the previously viewed Image pass.
+    // Publish the initial selection so the viewer has the editor's file
+    // identity before debug mode is enabled.
+    publishCursorPosition();
     requestAnimationFrame(() => focusMonacoTextInput());
     updateBlankLineDecorations();
     updateUniformDecorations(dynamicUniformNames);

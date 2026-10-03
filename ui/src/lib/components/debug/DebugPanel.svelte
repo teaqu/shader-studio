@@ -113,6 +113,11 @@
   const isLineLocked = $derived(debugState?.isLineLocked);
   const lineNum = $derived(debugState?.currentLine !== null && debugState?.currentLine !== undefined ? debugState.currentLine + 1 : null);
   const isInFunction = $derived(ctx !== null && ctx !== undefined && ctx.isFunction);
+  const hasMultipleRenderOutputs = $derived((debugState?.renderOutputs?.length ?? 0) > 1);
+
+  function selectRenderOutput(event: Event) {
+    shaderDebugManager?.setRenderOutput(Number((event.currentTarget as HTMLSelectElement).value));
+  }
   const hasVariable = $derived(debugState?.lineContent !== null && debugState?.lineContent !== undefined && debugState?.isActive);
   const normalizeMode = $derived(debugState?.normalizeMode);
   const isStepEnabled = $derived(debugState?.isStepEnabled);
@@ -607,6 +612,15 @@
     {/if}
     {#if debugState?.isEnabled && debugState?.activeBufferName && debugState.activeBufferName !== 'Image'}
       <span class="buffer-badge">{debugState.activeBufferName}</span>
+    {/if}
+    {#if hasMultipleRenderOutputs}
+      <label class="output-selector">Output
+        <select aria-label="Preview output" value={debugState?.renderOutput ?? 0} onchange={selectRenderOutput}>
+          {#each debugState?.renderOutputs ?? [] as label, index}
+            <option value={index}>{label}</option>
+          {/each}
+        </select>
+      </label>
     {/if}
   </div>
 

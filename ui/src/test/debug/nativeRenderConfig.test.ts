@@ -5,11 +5,11 @@ import { hookConfigForDebugPlan, nativeFragmentEntryPoint } from "../../lib/nati
 
 describe("native debug render configuration", () => {
   const source = "@fragment fn image() -> @location(0) vec4f { return vec4f(1); }";
-  it("distinguishes hooks, sole discovery, explicit selection and ambiguity", () => {
+  it("uses only explicit fragment selection and diagnoses malformed config", () => {
     expect(nativeFragmentEntryPoint(source, {}, "wgsl")).toBeUndefined();
-    expect(nativeFragmentEntryPoint(source, { entryPoints: {} }, "wgsl")).toBe("image");
+    expect(nativeFragmentEntryPoint(source, { entryPoints: {} }, "wgsl")).toBeUndefined();
     expect(nativeFragmentEntryPoint(source, { entryPoints: { fragment: "selected" } }, "wgsl")).toBe("selected");
-    expect(nativeFragmentEntryPoint(source + " @fragment fn other() {}", { entryPoints: {} }, "wgsl")).toBeNull();
+    expect(nativeFragmentEntryPoint(source + " @fragment fn other() {}", { entryPoints: {} }, "wgsl")).toBeUndefined();
     expect(nativeFragmentEntryPoint(source, { entryPoints: null } as unknown as ShaderConfig["passes"][string], "wgsl")).toBeNull();
   });
   it("retains selected native render stages for a native instrumentation plan", () => {
@@ -17,6 +17,11 @@ describe("native debug render configuration", () => {
     const plan = { nativeRender: { fragmentEntryPoint: "image" } };
 
     expect(hookConfigForDebugPlan(config, plan)).toBe(config);
+  });
+
+  it("retains a selected native vertex for a generated hook fragment", () => {
+    const config: ShaderConfig = { version: "1.0", passes: { Image: { entryPoints: { vertex: "vertices" }, geometry: { type: "cube" } } } };
+    expect(hookConfigForDebugPlan(config)).toBe(config);
   });
 
   it("remaps only Image without mutating the saved native project", () => {

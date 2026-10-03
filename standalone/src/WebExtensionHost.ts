@@ -37,6 +37,10 @@ function resolveNewFilePath(shaderPath: string, requested: string): string | nul
   return `/${parts.join('/')}`;
 }
 
+function nativeOutputCount(value: unknown): number {
+  return typeof value === 'number' && Number.isInteger(value) ? Math.max(1, Math.min(8, value)) : 1;
+}
+
 const GLSL_STARTER_SHADER = `void mainImage( out vec4 fragColor, in vec2 fragCoord )
 {
     // Normalized pixel coordinates (from 0 to 1)
@@ -322,11 +326,11 @@ export class WebExtensionHost {
         let created = false;
         if (!this.workspace.exists(path)) {
           if (authoringMode === 'native' && payload.fileType === 'wgsl-buffer') {
-            const native = createNativeRenderSource('wgsl', '', passName);
+            const native = createNativeRenderSource('wgsl', '', passName, nativeOutputCount(payload.outputCount));
             template = native.text.trimStart();
             entryPoints = native.entryPoints;
           } else if (authoringMode === 'native' && payload.fileType === 'slang-buffer') {
-            const native = createNativeRenderSource('slang', '', passName);
+            const native = createNativeRenderSource('slang', '', passName, nativeOutputCount(payload.outputCount));
             template = native.text.trimStart();
             entryPoints = native.entryPoints;
           } else if (authoringMode === 'native' && payload.fileType === 'wgsl-compute') {
@@ -380,7 +384,7 @@ export class WebExtensionHost {
         const passName = typeof payload.passName === 'string' ? payload.passName : fileType.endsWith('-compute') ? 'Compute' : 'Buffer';
         const generated = fileType.endsWith('-compute')
           ? createNativeComputeSource(language, source, passName)
-          : createNativeRenderSource(language, source, passName);
+          : createNativeRenderSource(language, source, passName, nativeOutputCount(payload.outputCount));
         this.workspace.writeText(sourcePath, source + generated.text);
         this.emitViewer({ type: 'fileSelected', payload: {
           path: sourcePath,

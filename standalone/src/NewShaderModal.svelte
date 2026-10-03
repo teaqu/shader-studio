@@ -11,6 +11,9 @@
   let name = $state('untitled');
   let language = $state<ShaderLanguageId>('glsl');
   let webgpuAuthoring = $state<WebGPUAuthoringMode>('hooks');
+  const nativeFunctionLabel = $derived(
+    language === 'slang' ? '[shader("fragment")] / [shader("vertex")]' : '@fragment / @vertex',
+  );
 
   function submit() {
     const trimmedName = name.trim();
@@ -59,10 +62,10 @@
       </label>
       {#if language !== 'glsl'}
         <label>
-          WebGPU authoring
-          <select bind:value={webgpuAuthoring} aria-label="WebGPU authoring">
-            <option value="hooks">ShaderToy hooks</option>
-            <option value="native">Native entry points</option>
+          Shader functions
+          <select bind:value={webgpuAuthoring} aria-label="Shader functions">
+            <option value="hooks">mainImage / mainVertex</option>
+            <option value="native">{nativeFunctionLabel}</option>
           </select>
         </label>
       {/if}
