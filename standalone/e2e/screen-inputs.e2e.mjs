@@ -94,3 +94,70 @@ throw new Error('Screen sharing must start from a click without audio');
     await expect.poll(() => page.evaluate(() => window.__screenStreams.every(s => s.getTracks().every(t => t.readyState === 'ended')))).toBe(true);
   });
 }
+
+for (const language of ['glsl', 'wgsl', 'slang']) {
+  test(`${language} screen sampling controls change rendered pixels`, async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__screenCalls = 0;
+      navigator.mediaDevices.getDisplayMedia = async () => {
+        window.__screenCalls++;
+        const canvas = document.createElement('canvas');
+        canvas.width = 160;
+        canvas.height = 120;
+        const ctx = canvas.getContext('2d');
+        const paint = () => {
+          for (const [color, x, y] of [['#ff0000', 0, 0], ['#00ff00', 80, 0], ['#0000ff', 0, 60], ['#ffffff', 80, 60]]) {
+            ctx.fillStyle = color;
+            ctx.fillRect(x, y, 80, 60);
+          }
+        };
+        paint();
+        const stream = canvas.captureStream(30);
+        const timer = setInterval(paint, 30);
+        stream.getVideoTracks()[0].addEventListener('ended', () => clearInterval(timer));
+        return stream;
+      };
+    });
+    // Three vertical bands probe orientation, out-of-range wrap, and a pixel edge.
+    const code = language === 'glsl'
+      ? 'void mainImage(out vec4 c,in vec2 p){float x=p.x/iResolution.x;vec2 uv=vec2(x<.333?.25:x<.666?1.25:.5,.25);c=vec4(texture(screen.sampler,uv).rgb,1);}'
+      : language === 'slang'
+        ? 'float4 mainImage(float2 p){float x=p.x/iResolution.x;float2 uv=float2(x<.333?.25:x<.666?1.25:.5,.25);return float4(sample2DLevel(screen.texture,screen.sampler,uv,0).rgb,1);}'
+        : 'fn mainImage(p:vec2f)->vec4f{let x=p.x/iResolution.x;let u=select(select(.5,1.25,x<.666),.25,x<.333);return vec4f(sample2DLevel(screenTexture,screenSampler,vec2f(u,.25),0).rgb,1);}';
+    await page.route('**/__screen_sampling__', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html>' }));
+    await page.goto('/__screen_sampling__');
+    await workspace(page, [
+      [`sampling.${language}`, code],
+      ['sampling.sha.json', JSON.stringify({ version: '1', passes: { Image: { inputs: { screen: { type: 'screen' } } } } })],
+    ]);
+    await page.goto('/');
+    await page.getByTestId(`shader-option-sampling-${language}`).click();
+    await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
+    await page.locator('.channel-row').filter({ hasText: 'screen' }).click();
+    await page.getByRole('button', { name: 'Start screen sharing', exact: true }).click();
+    const output = page.getByTestId('web-preview').locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
+    const pixels = async () => {
+      const url = await output.evaluate(e => e.toDataURL());
+      const { data, width, height } = PNG.sync.read(Buffer.from(url.split(',')[1], 'base64'));
+      return [.16, .5, .83].map(x => {
+        const offset = (Math.floor(height / 2) * width + Math.floor(width * x)) * 4;
+        return [...data.subarray(offset, offset + 3)].map(v => Math.round(v / 16) * 16);
+      });
+    };
+    const flip = page.getByLabel('Flip vertically');
+    // Quantization allows video colour conversion rounding but preserves each effect.
+    await expect.poll(pixels).toEqual([[0, 0, 256], [256, 256, 256], [128, 128, 256]]);
+    await flip.uncheck();
+    await expect.poll(pixels).toEqual([[256, 0, 0], [0, 256, 0], [128, 128, 0]]);
+    await page.getByLabel('Wrap:').selectOption('repeat');
+    await expect.poll(pixels).toEqual([[256, 0, 0], [256, 0, 0], [128, 128, 0]]);
+    await page.getByLabel('Filter:').selectOption('nearest');
+    await expect.poll(pixels).toEqual([[256, 0, 0], [256, 0, 0], [0, 256, 0]]);
+    expect(await page.evaluate(() => window.__screenCalls)).toBe(1);
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
+    await page.locator('.channel-row').filter({ hasText: 'screen' }).click();
+    await expect(page.getByLabel('Filter:')).toHaveValue('nearest');
+    await expect(page.getByLabel('Wrap:')).toHaveValue('repeat');
+    await expect(flip).not.toBeChecked();
+  });
+}

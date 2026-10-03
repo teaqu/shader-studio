@@ -151,6 +151,23 @@ describe("LiveInputTextureManager", () => {
     onFrame(0, {} as VideoFrameCallbackMetadata);
     screen.updateTextures();
     expect(textureBackend.updateTextureFromImage).toHaveBeenCalledTimes(2);
+    const original = screen.getTexture("screen");
+    await screen.load("screen", { vflip: false });
+    expect(textureBackend.createTextureFromImage).toHaveBeenCalledTimes(1);
+    await screen.load("screen", { filter: "nearest", wrap: "repeat", vflip: true });
+    expect(textureBackend.createTextureFromImage).toHaveBeenLastCalledWith(video, {
+      type: "2d", format: "rgba8", filter: "nearest", wrap: "repeat", vflip: true,
+    });
+    expect(screen.getTexture("screen")).not.toBe(original);
+    expect(textureBackend.destroyTexture).toHaveBeenCalledWith(original);
+    expect(release).not.toHaveBeenCalled();
+    expect(start).toHaveBeenCalledOnce();
+    const replacement = screen.getTexture("screen");
+    vi.mocked(textureBackend.createTextureFromImage).mockReturnValueOnce(null);
+    expect((await screen.load("screen", { vflip: false })).warning).toContain("sampling");
+    expect(screen.getTexture("screen")).toBe(replacement);
+    await screen.load("screen", { vflip: false });
+    expect(screen.getTexture("screen")).not.toBe(replacement);
     expect(getUserMedia).not.toHaveBeenCalled();
     screen.cleanup();
     expect(release).toHaveBeenCalledOnce();

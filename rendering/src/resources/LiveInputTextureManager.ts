@@ -1,7 +1,7 @@
 import { VideoFrameGate } from "./VideoFrameGate";
 import { ScreenCapture } from "./ScreenCapture";
 import { SystemAudioCapture } from "./SystemAudioCapture";
-import type { TextureBackend, TextureFilter, TextureWrap } from "./TextureBackend";
+import type { ImageTextureOptions, TextureBackend, TextureFilter, TextureWrap } from "./TextureBackend";
 
 export type LiveInputType = "webcam" | "screen" | "microphone" | "system-audio";
 
@@ -31,6 +31,7 @@ interface LiveInput<T> {
   texture: T;
   video?: HTMLVideoElement;
   frameGate?: VideoFrameGate;
+  sampling?: ImageTextureOptions;
   source?: MediaStreamAudioSourceNode;
   analyser?: AnalyserNode;
   gain?: GainNode;
@@ -62,6 +63,19 @@ export class LiveInputTextureManager<T> {
   public async load(type: LiveInputType, options: LiveInputOptions = {}): Promise<LiveInputLoadResult<T>> {
     const cached = this.inputs.get(type);
     if (cached) {
+      if (cached.video) {
+        const sampling = videoSampling(options);
+        if (JSON.stringify(cached.sampling) !== JSON.stringify(sampling)) {
+          const texture = this.backend.createTextureFromImage(cached.video, sampling);
+          if (!texture) {
+            return { texture: cached.texture, warning: "Could not update live video sampling settings." };
+          }
+          const previous = cached.texture;
+          cached.texture = texture;
+          cached.sampling = sampling;
+          this.backend.destroyTexture(previous);
+        }
+      }
       return { texture: cached.texture };
     }
     const existing = this.pending.get(type);
@@ -298,9 +312,8 @@ export class LiveInputTextureManager<T> {
         }
         return { texture: null, warning: `${type === "screen" ? "Screen" : "Webcam"} capture was stopped before it became ready.` };
       }
-      const texture = this.backend.createTextureFromImage(video, {
-        type: "2d", format: "rgba8", filter: options.filter ?? "linear", wrap: options.wrap ?? "clamp", vflip: options.vflip ?? true,
-      });
+      const sampling = videoSampling(options);
+      const texture = this.backend.createTextureFromImage(video, sampling);
       if (!texture) {
         throw new Error("GPU texture allocation failed");
       }
@@ -308,7 +321,7 @@ export class LiveInputTextureManager<T> {
         this.backend.destroyTexture(texture);
         throw new Error("capture was stopped during texture creation");
       }
-      const input: LiveInput<T> = { stream, texture, video, releaseCapture, frameGate: type === "screen" ? new VideoFrameGate(video) : undefined };
+      const input: LiveInput<T> = { stream, texture, video, releaseCapture, sampling, frameGate: type === "screen" ? new VideoFrameGate(video) : undefined };
       input.onEnded = () => this.release(type, input);
       for (const track of stream.getTracks()) {
         track.addEventListener("ended", input.onEnded);
@@ -510,4 +523,8 @@ export class LiveInputTextureManager<T> {
     }
     return `${label} capture could not start. Check that the device is available and not being used by another application.`;
   }
+}
+
+function videoSampling(options: LiveInputOptions): ImageTextureOptions {
+  return { type: "2d", format: "rgba8", filter: options.filter ?? "linear", wrap: options.wrap ?? "clamp", vflip: options.vflip ?? true };
 }
