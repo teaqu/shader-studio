@@ -1,3 +1,4 @@
+import { audioLoadWarning, liveInputPaths, normalizeLiveInputs } from "../util/LiveInputConfig";
 import type { ShaderCompiler, ChannelSamplerType } from "./ShaderCompiler";
 import type { ResourceManager } from "../resources/ResourceManager";
 import { ShaderErrorFormatter } from "../util/ShaderErrorFormatter";
@@ -188,7 +189,7 @@ export class ShaderPipeline {
           name: passName,
           shaderSrc,
           vertexSrc: buffers[`${VERTEX_SOURCE_PREFIX}${passName}`],
-          inputs: pass?.inputs ?? {},
+          inputs: normalizeLiveInputs(pass?.inputs ?? {}),
           geometry: resolvePassGeometry(pass && "geometry" in pass ? pass : undefined),
           ...(pass?.geometry?.type === "model" ? {
             modelPath: pass.geometry.resolved_path ?? pass.geometry.path,
@@ -413,6 +414,7 @@ export class ShaderPipeline {
 
   private async updateResources(): Promise<string[] | null> {
     const warnings: string[] = [];
+    this.resourceManager.retainLiveInputs?.(liveInputPaths(this.passes.map(pass => pass.inputs)));
     for (const pass of this.passes) {
       for (const key of Object.keys(pass.inputs)) {
         const input = pass.inputs[key];
@@ -469,7 +471,7 @@ export class ShaderPipeline {
             if (this.cleanupLateResources()) {
               return null;
             }
-            warnings.push(`Audio loading failed: ${input.path}`);
+            warnings.push(audioLoadWarning(input.path, error));
           }
         }
       }

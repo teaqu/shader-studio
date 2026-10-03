@@ -299,6 +299,11 @@
     <div class="empty-preview">
       <div class="empty-icon">+</div>
     </div>
+  {:else if channelInput.type === "webcam" || channelInput.type === "microphone"}
+    <div class="preview-fallback">
+      <i class="codicon" class:codicon-device-camera={channelInput.type === "webcam"} class:codicon-mic={channelInput.type === "microphone"}></i>
+      <div class="fallback-text">{channelInput.type === "webcam" ? "Webcam" : "Microphone"}</div>
+    </div>
   {:else if channelInput.type === "texture"}
     <!-- Texture preview -->
     <div class="texture-preview">

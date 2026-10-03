@@ -353,6 +353,13 @@
       "oneOf": [
         {
           "type": "object",
+          "required": ["type"],
+          "properties": { "type": { "enum": ["webcam", "microphone"] } },
+          "description": "Live default device input. Requires capture permission in a secure browser context.",
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
           "required": ["type", "source"],
           "properties": {
             "type": {

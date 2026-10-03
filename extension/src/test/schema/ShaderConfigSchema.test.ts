@@ -23,6 +23,13 @@ suite('Shader config JSON schema', () => {
     );
   }
 
+  test('accepts pathless webcam and microphone inputs but rejects file fields', () => {
+    for (const type of ['webcam', 'microphone']) {
+      assertValid({ version: '1.0', passes: { Image: { inputs: { live: { type } } } } });
+      assertInvalid({ version: '1.0', passes: { Image: { inputs: { live: { type, path: 'file' } } } } }, 'additional properties');
+    }
+  });
+
   test('accepts every supported image and buffer geometry type plus omission', () => {
     for (const type of ['fullscreen', 'plane', 'cube', 'sphere']) {
       assertValid({

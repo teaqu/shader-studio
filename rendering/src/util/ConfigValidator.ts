@@ -171,6 +171,9 @@ export class ConfigValidator {
         return this.validateCubemapInput(input);
       case 'video':
         return this.validateVideoInput(input);
+      case 'microphone':
+      case 'webcam':
+        return Object.keys(input).every(key => key === 'type');
       case 'keyboard':
         return this.validateKeyboardInput(input);
       case 'audio':

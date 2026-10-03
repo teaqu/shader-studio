@@ -2,7 +2,7 @@
 
 ![Channels](../assets/images/channels.png)
 
-Channels let a pass read images, video, audio, buffers, cubemaps, or keyboard state.
+Channels let a pass read images, video, audio, buffers, cubemaps, keyboard state, webcam frames, or microphone data.
 Each pass has its own configured names. A channel named `albedo` exposes
 `albedo.size`, `albedo.time`, and `albedo.loaded` in GLSL, Slang, and WGSL.
 
@@ -448,3 +448,30 @@ float pressed = texture(iChannel1, vec2(32.0 / 256.0, 0.50)).r;  // Space just p
 ## Next
 
 [Uniforms](uniforms.md) — built-in and custom uniforms, including channel samplers
+
+## Webcam and Microphone
+
+Choose **Webcam** or **Microphone** in the channel's **Misc** tab. These use the
+browser's default device and ask for capture permission. The config is pathless:
+
+```json
+"inputs": {
+  "camera": { "type": "webcam" },
+  "sound": { "type": "microphone" }
+}
+```
+
+Webcam channels expose a live 2D image and its actual frame dimensions. Microphone
+channels expose a 512 × 2 texture: row 0 contains FFT magnitudes, row 1 contains
+the waveform. Sample at `y = 0.25` for frequency data or `y = 0.75` for waveform
+data; values are normalized to 0–1. The microphone is never played through your
+speakers. Click or press a key in the preview if the browser suspends audio analysis.
+
+Named channel metadata and numbered Shadertoy uniforms work in GLSL, Slang and
+WGSL. Channels of the same device type share one capture stream in a preview.
+Removing the input, switching shaders, or closing the preview releases capture.
+
+Capture requires HTTPS or localhost and permission from the browser and operating
+system. If a VS Code webview blocks capture, use **Open in Browser** on localhost.
+If permission is denied or a device is unavailable, the preview reports a warning;
+allow access and reload the shader to retry.

@@ -32,6 +32,8 @@
       case 'audio': return 'Audio';
       case 'buffer': return 'Buffer';
       case 'cubemap': return 'Cubemap';
+      case 'webcam': return 'Webcam';
+      case 'microphone': return 'Microphone';
       case 'keyboard': return 'Keyboard';
       default: return 'Unknown';
     }

@@ -1,4 +1,5 @@
 /// <reference types="@webgpu/types" />
+import { audioLoadWarning } from "../util/LiveInputConfig";
 import { buildSlangBindingPlan, getSlangChannels, getSlangSamplerSettings, getSlangTextureIdentity, validateSlangBindingBudget } from "./SlangBindingPlan";
 import { getWebGPUSampler } from "./WebGPUSamplerCache";
 import type { DebugInstrumentationPlan, ShaderConfig, ShaderLanguageId, SlangSourceModule, StorageBufferSnapshot } from "@shader-studio/types";
@@ -957,8 +958,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
                   channel.startTime,
                   channel.endTime,
                 );
-              } catch {
-                graph.warnings.push(`Audio loading failed: ${channel.path}`);
+              } catch (error) {
+                graph.warnings.push(audioLoadWarning(channel.path, error));
               }
             }
             if (generation !== this.compileGeneration || this.disposed) {

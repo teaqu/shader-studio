@@ -86,7 +86,22 @@
       <ChannelPreview channelInput={{ type: "keyboard" }} {getWebviewUri} />
       <div class="misc-card-label">Keyboard</div>
     </button>
+    {#each ["webcam", "microphone"] as type}
+      <button
+        class="misc-card"
+        class:selected={tempInput?.type === type}
+        aria-label={type === "webcam" ? "Webcam" : "Microphone"}
+        onclick={() => onSelect({ type: type as "webcam" | "microphone" })}
+      >
+        <ChannelPreview channelInput={{ type: type as "webcam" | "microphone" }} {getWebviewUri} />
+        <div class="misc-card-label">{type === "webcam" ? "Webcam" : "Microphone"}</div>
+      </button>
+    {/each}
   </div>
+  {#if tempInput?.type === "webcam" || tempInput?.type === "microphone"}
+    <p>Uses your default device. Allow access when prompted. If this host blocks capture,
+      open Shader Studio in a browser on localhost or HTTPS. Microphone sound is never played through your speakers.</p>
+  {/if}
 </div>
 
 <style>

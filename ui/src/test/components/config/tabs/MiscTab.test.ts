@@ -10,6 +10,13 @@ describe('MiscTab', () => {
     onSelect: vi.fn(),
   });
 
+  it.each(['webcam', 'microphone'] as const)('selects a pathless %s input', async type => {
+    const props = defaultProps();
+    const { getByRole } = render(MiscTab, props);
+    await fireEvent.click(getByRole('button', { name: type === 'webcam' ? 'Webcam' : 'Microphone' }));
+    expect(props.onSelect).toHaveBeenCalledWith({ type });
+  });
+
   describe('Rendering', () => {
     it('should render buffer cards for BufferA through BufferD', () => {
       const { container } = render(MiscTab, defaultProps());

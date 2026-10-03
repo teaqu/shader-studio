@@ -1,3 +1,5 @@
+import { LiveInputTextureManager } from "./LiveInputTextureManager";
+import { WEBCAM_PATH, MICROPHONE_PATH } from "../util/LiveInputConfig";
 import type { TextureBackend } from "./TextureBackend";
 import { TextureCache } from "./TextureCache";
 import { VideoTextureManager } from "./VideoTextureManager";
@@ -16,6 +18,8 @@ export class ResourceManager<T> {
   private readonly videoTextureManager: VideoTextureManager<T>;
   private readonly cubemapTextureManager: CubemapTextureManager<T>;
   private readonly audioTextureManager: AudioTextureManager<T>;
+  private readonly liveInputPaths = new Set<string>();
+  private liveInputs: LiveInputTextureManager<T>;
   private readonly keyboardInput: ShaderKeyboardInput<T>;
 
   constructor(
@@ -25,6 +29,7 @@ export class ResourceManager<T> {
     this.videoTextureManager = new VideoTextureManager(backend);
     this.cubemapTextureManager = new CubemapTextureManager(backend);
     this.audioTextureManager = new AudioTextureManager(backend);
+    this.liveInputs = new LiveInputTextureManager(backend);
     this.keyboardInput = new ShaderKeyboardInput(backend);
   }
 
@@ -37,6 +42,19 @@ export class ResourceManager<T> {
     return new ResourceManager(this.backend);
   }
 
+  /** Config edits can preserve file media; removed live inputs must still stop capture. */
+  public retainLiveInputs(paths: ReadonlySet<string>): void {
+    if ([...this.liveInputPaths].some(path => !paths.has(path))) {
+      this.resetLiveInputs();
+    }
+  }
+
+  private resetLiveInputs(): void {
+    this.liveInputs.cleanup();
+    this.liveInputs = new LiveInputTextureManager(this.backend);
+    this.liveInputPaths.clear();
+  }
+
   public getImageTextureCache(): Record<string, T> {
     return this.textureCache.getImageTextureCache();
   }
@@ -46,7 +64,8 @@ export class ResourceManager<T> {
   }
 
   public getVideoTexture(path: string): T | null {
-    const texture = this.videoTextureManager.getVideoTexture(path);
+    const texture = path === WEBCAM_PATH
+      ? this.liveInputs.getTexture("webcam") : this.videoTextureManager.getVideoTexture(path);
     return texture ?? null;
   }
 
@@ -56,7 +75,7 @@ export class ResourceManager<T> {
   }
 
   public getVideoElement(path: string): HTMLVideoElement | undefined {
-    return this.videoTextureManager.getVideoElement(path);
+    return path === WEBCAM_PATH ? this.liveInputs.getVideoElement() : this.videoTextureManager.getVideoElement(path);
   }
 
   public getDefaultTexture(): T | null {
@@ -96,6 +115,10 @@ export class ResourceManager<T> {
     opts: Partial<Pick<VideoConfigInput, 'filter' | 'wrap' | 'vflip' | 'muted'>> = {}
   ): Promise<VideoLoadResult<T>> {
     try {
+      if (path === WEBCAM_PATH) {
+        this.liveInputPaths.add(path);
+        return this.liveInputs.load("webcam", opts);
+      }
       const texture = await this.videoTextureManager.loadVideoTexture(path, opts);
       return { texture };
     } catch (error) {
@@ -134,6 +157,14 @@ export class ResourceManager<T> {
 
   // Audio methods
   public async loadAudioSource(path: string, options?: { muted?: boolean; startTime?: number; endTime?: number }): Promise<T> {
+    if (path === MICROPHONE_PATH) {
+      this.liveInputPaths.add(path);
+      const result = await this.liveInputs.load("microphone");
+      if (!result.texture) {
+        throw new Error(result.warning ?? "Microphone is unavailable");
+      }
+      return result.texture;
+    }
     return this.audioTextureManager.loadAudioSource(path, options);
   }
 
@@ -146,7 +177,7 @@ export class ResourceManager<T> {
   }
 
   public getAudioTexture(path: string): T | null {
-    return this.audioTextureManager.getAudioTexture(path);
+    return path === MICROPHONE_PATH ? this.liveInputs.getTexture("microphone") : this.audioTextureManager.getAudioTexture(path);
   }
 
   // FFT data accessors
@@ -161,10 +192,11 @@ export class ResourceManager<T> {
   /** Uploads video frames that have changed; called once per rendered frame. */
   public updateVideoTextures(): void {
     this.videoTextureManager.updateTextures();
+    this.liveInputs.updateTextures();
   }
 
   public getAudioSampleRate(): number {
-    return this.audioTextureManager.getSampleRate();
+    return this.liveInputs.getSampleRate() || this.audioTextureManager.getSampleRate();
   }
 
   // Audio control methods
@@ -183,6 +215,9 @@ export class ResourceManager<T> {
   }
 
   public getAudioState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null {
+    if (path === MICROPHONE_PATH) {
+      return this.liveInputs.getAudioState();
+    }
     const duration = this.audioTextureManager.getAudioDuration(path);
     if (duration === 0 && !this.audioTextureManager.getAudioTexture(path)) {
       return null;
@@ -216,6 +251,7 @@ export class ResourceManager<T> {
     this.videoTextureManager.cleanup();
     this.cubemapTextureManager.cleanup();
     this.audioTextureManager.cleanup();
+    this.resetLiveInputs();
     this.keyboardInput.cleanup();
   }
 
