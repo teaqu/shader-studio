@@ -1,8 +1,8 @@
 /// <reference types="@webgpu/types" />
 import type { WgslTraceLaunch, WgslTraceRecording } from '@shader-studio/types';
 import { validateWgslTraceLaunch } from '@shader-studio/types';
-import { emitWgslTracePrelude, planWgslTrace } from '@shader-studio/debug/dist/esm/trace/WgslTracePlanner';
-import { decodeWgslTrace } from '@shader-studio/debug/dist/esm/trace/WgslTraceDecoder';
+import { emitWgslTracePrelude, planWgslTrace } from '@shader-studio/debug/trace';
+import { decodeWgslTrace } from '@shader-studio/debug/trace';
 import { wrapWgslImageSource, WGSL_ENTRY_FRAGMENT, WGSL_ENTRY_VERTEX } from '../webgpu/WgslPrelude';
 import { packShaderToyUniforms } from '../webgpu/uniforms';
 

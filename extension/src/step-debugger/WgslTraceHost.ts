@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import type { WgslTraceLaunch, WgslTraceRecording, WgslTraceUniform, WgslTraceFrameUniforms } from '@shader-studio/types';
-import { validateWgslTraceLaunch } from '@shader-studio/types';
+import { validateWgslTraceLaunch, validateWgslTraceRecording } from '@shader-studio/types';
 
 /** A dedicated runner panel; intentionally has no Messenger/ShaderStudio dependency. */
 export class WgslTraceHost {
@@ -10,11 +10,13 @@ export class WgslTraceHost {
   private version?: number;
   private source?: string;
   private disposed = false;
+  private sourceDocuments: Array<{ document: vscode.TextDocument; source: string; version: number }> = [];
 
   constructor(private readonly context: vscode.ExtensionContext) {}
 
   sourceIsCurrent(): boolean {
-    return !!this.document && this.document.version === this.version && this.document.getText() === this.source;
+    return !!this.document && this.document.version === this.version && this.document.getText() === this.source
+      && this.sourceDocuments.every(item => item.document.version === item.version && item.document.getText() === item.source);
   }
 
   async capture(configuration: Record<string, unknown>): Promise<WgslTraceRecording> {
@@ -32,6 +34,24 @@ export class WgslTraceHost {
     this.source = this.document.getText();
     if (configuration.source !== undefined && configuration.source !== this.source) {
       throw new Error('The preview shader differs from the current editor. Refresh the preview before tracing.');
+    }
+    if (configuration.recording !== undefined) {
+      validateWgslTraceRecording(configuration.recording);
+      const recording = configuration.recording;
+      if (recording.path !== configuration.program || recording.source !== this.source) {
+        throw new Error('The project recording differs from the current editor. Refresh the preview before tracing.');
+      }
+      for (const source of recording.sources ?? []) {
+        const document = await vscode.workspace.openTextDocument(vscode.Uri.file(source.path));
+        if (document.getText() !== source.source) {
+          throw new Error(`Trace dependency '${source.path}' changed. Refresh the preview before tracing.`);
+        }
+        this.sourceDocuments.push({ document, source: source.source, version: document.version });
+      }
+      if (this.disposed) {
+        throw new Error('Trace session was cancelled.');
+      }
+      return recording;
     }
     const launch: WgslTraceLaunch = { source: this.source, path: this.document.uri.fsPath,
       width: (configuration.width ?? 256) as number, height: (configuration.height ?? 256) as number,
@@ -85,7 +105,7 @@ export class WgslTraceHost {
   }
 
   onClose(callback: () => void): vscode.Disposable {
-    return this.panel!.onDidDispose(callback);
+    return this.panel?.onDidDispose(callback) ?? new vscode.Disposable(() => {});
   }
 
   dispose(): void {

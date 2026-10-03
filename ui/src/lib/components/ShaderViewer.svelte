@@ -1381,14 +1381,20 @@
         getEngine: () => renderingEngine,
         getViewerSession: () => {
           const lastEvent = pipeline.getLastEvent()?.data;
+          const sources = lastEvent?.path && typeof lastEvent.code === 'string'
+            ? [
+              { path: lastEvent.path, source: lastEvent.code },
+              ...Object.entries(lastEvent.bufferPathMap ?? {}).flatMap(([name, path]) => {
+                const source = lastEvent.buffers?.[name];
+                return typeof source === 'string' ? [{ path, source }] : [];
+              }),
+            ] : undefined;
           return {
-            source: currentShaderCode,
-            path: shaderPath,
-            config: currentConfig,
             isCurrentPreviewSource: errors.length === 0
               && !pipeline.isCompiling()
               && lastEvent?.path === shaderPath
               && lastEvent?.code === currentShaderCode,
+            sources,
           };
         },
       });

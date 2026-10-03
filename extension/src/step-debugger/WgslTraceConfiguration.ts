@@ -1,4 +1,4 @@
-import { validateWgslTraceLaunch, type WgslTraceFrameUniforms, type WgslTraceUniform } from '@shader-studio/types';
+import { validateWgslTraceLaunch, validateWgslTraceRecording, type WgslTraceFrameUniforms, type WgslTraceUniform } from '@shader-studio/types';
 
 /** Convert a preview snapshot to a launch without allowing a different adapter. */
 export function createWgslTraceDebugConfiguration(payload: unknown) {
@@ -8,6 +8,14 @@ export function createWgslTraceDebugConfiguration(payload: unknown) {
   const request = payload as Record<string, unknown>;
   if (typeof request.program !== 'string' || typeof request.source !== 'string') {
     throw new Error('The trace needs the current WGSL shader path and source.');
+  }
+  if (request.recording !== undefined) {
+    validateWgslTraceRecording(request.recording);
+    if (request.recording.path !== request.program || request.recording.source !== request.source) {
+      throw new Error('The project recording does not match the selected source.');
+    }
+    return { type: 'shader-studio-wgsl-trace', request: 'launch', name: 'Trace WGSL project invocation',
+      program: request.program, source: request.source, recording: request.recording };
   }
   const launch = { path: request.program, source: request.source,
     width: request.width as number, height: request.height as number, pixel: request.pixel as [number, number],

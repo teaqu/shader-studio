@@ -7,7 +7,8 @@ import type { ShaderLanguageId } from './shader-environment/ShaderLanguages';
 
 export interface StartWgslTraceMessage {
   type: 'startWgslTrace';
-  payload: Omit<import('./WgslTrace').WgslTraceLaunch, 'path'> & { program: string };
+  payload: (Omit<import('./WgslTrace').WgslTraceLaunch, 'path'> & { program: string; recording?: never })
+    | { program: string; source: string; recording: import('./WgslTrace').WgslTraceRecording };
 }
 
 export interface BaseMessage {

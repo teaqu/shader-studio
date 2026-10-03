@@ -118,6 +118,7 @@ const exclusions: Array<{ diagnostic: RegExp; files: string[] }> = [
   ] },
   { diagnostic: /^WGSL trace compilation failed: unresolved value 'uFloat'$/, files: [
     'wgsl/feature-coverage.wgsl',
+    'wgsl/uniforms.wgsl',
   ] },
   { diagnostic: /^WGSL trace compilation failed: unresolved call target 'palette'$/, files: [
     'wgsl/flow.wgsl',
@@ -130,9 +131,6 @@ const exclusions: Array<{ diagnostic: RegExp; files: string[] }> = [
   ] },
   { diagnostic: /^WGSL trace compilation failed: unresolved call target 'albedoSample'$/, files: [
     'wgsl/parity/channels/named.wgsl',
-  ] },
-  { diagnostic: /^The trace PoC supports at most 16 visible locals per statement\.$/, files: [
-    'wgsl/uniforms.wgsl',
   ] },
 ];
 

@@ -3,20 +3,36 @@
 [numthreads(64, 1, 1)]
 void simulateBodies(uint3 id : SV_DispatchThreadID)
 {
-    if (id.x >= 256) { return; }
+    // One invocation serializes this deliberately small corpus fixture. It
+    // snapshots the force inputs so each of the four configured substeps has
+    // deterministic simultaneous-update semantics without a storage race.
+    if (id.x != 0) { return; }
 
-    Body current = bodies[id.x];
-
-    // N-body gravity (simplified — only from the first 32 bodies)
-    float3 force = float3(0, 0, 0);
-    for (uint j = 0; j < 32; j++)
+    Body forceSources[32];
+    for (uint source = 0; source < 32; source++)
     {
-        if (j == id.x) { continue; }
-        force += gravityForce(current, bodies[j]);
+        forceSources[source] = bodies[source];
     }
 
-    current.velocity.xyz += force * 0.0001;
-    current.position.xyz += current.velocity.xyz * 0.0001;
+    for (uint body = 0; body < 256; body++)
+    {
+        Body current = bodies[body];
+        if (body < 32)
+        {
+            current = forceSources[body];
+        }
 
-    bodies[id.x] = current;
+        // N-body gravity (simplified — only from the first 32 bodies)
+        float3 force = float3(0, 0, 0);
+        for (uint j = 0; j < 32; j++)
+        {
+            if (j == body) { continue; }
+            force += gravityForce(current, forceSources[j]);
+        }
+
+        current.velocity.xyz += force * 0.0001;
+        current.position.xyz += current.velocity.xyz * 0.0001;
+
+        bodies[body] = current;
+    }
 }

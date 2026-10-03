@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { WgslTraceLaunch } from '@shader-studio/types';
 import { validateWgslTraceLaunch } from '@shader-studio/types';
 import { emitWgslTracePrelude, planWgslTrace, traceVariable } from '../WgslTracePlanner';
+import { planWgslTraceProgram } from '../WgslTraceProgramPlanner';
 import { decodeWgslTrace } from '../WgslTraceDecoder';
 
 const source = `fn helper(x: f32) -> f32 { return x * 2.0; }
@@ -111,6 +112,13 @@ describe('isolated WGSL trace planner', () => {
     expect(traceVariable('x', type)).toBeDefined();
   });
 
+  it('records more than sixteen visible scalar locals', () => {
+    const declarations = Array.from({ length: 17 }, (_, index) => `let v${index}: f32 = ${index}.0;`).join('\n');
+    const plan = planWgslTrace({ ...launch, source: `fn mainImage(p: vec2f) -> vec4f {\n${declarations}\nreturn vec4f(v16);\n}` });
+    expect(plan.sites.at(-1)!.variables).toHaveLength(18); // p plus v0..v16
+    expect(plan.recordWords).toBe(4 + 18 * 4);
+  });
+
   it.each([
     'fn mainImage(p: vec2f) -> vec4f { let _ss_trace_foo = 1.0; return vec4f(1.0); }',
     '@group(1) @binding(0) var<uniform> x: f32; fn mainImage(p: vec2f) -> vec4f { return vec4f(x); }',
@@ -127,6 +135,54 @@ describe('isolated WGSL trace planner', () => {
     { pixel: [0.5, 0] }, { capacity: 0 }, { capacity: 16385 }, { time: NaN }, { frame: -1 },
   ])('validates launch bounds: %j', patch => {
     expect(() => validateWgslTraceLaunch({ ...launch, ...patch } as WgslTraceLaunch)).toThrow();
+  });
+});
+
+describe('WGSL program trace planner', () => {
+  const program = `
+@group(0) @binding(0) var<uniform> u: vec4f;
+fn helper(x: f32) -> f32 { let twice = x * 2.0; return twice; }
+fn authored(coord: vec2f) -> vec4f { let value = helper(coord.x); return vec4f(value); }
+@fragment fn fragmentMain(@builtin(position) position: vec4f) -> @location(0) vec4f { return authored(position.xy); }
+`;
+
+  it('instruments every authored callable, maps sites, and gates the native fragment entry', () => {
+    const plan = planWgslTraceProgram({ source: program, entryPoint: 'fragmentMain', stage: 'fragment', capacity: 32,
+      sourceRanges: [{ path: '/common.wgsl', startLine: 3, endLine: 3 }, { path: '/image.wgsl', startLine: 4, endLine: 4 }] });
+    expect(plan.bindingGroup).toBe(1);
+    expect(plan.sites.map(site => [site.path, site.functionName, site.line])).toEqual([
+      ['/common.wgsl', 'helper', 1], ['/common.wgsl', 'helper', 1],
+      ['/image.wgsl', 'authored', 1], ['/image.wgsl', 'authored', 1],
+    ]);
+    expect(plan.source).toContain('_ss_trace_enabled = all(floor(position.xy) == _ss_trace_u.pixel)');
+    expect(plan.source).not.toContain('_ss_trace_site0(u)');
+  });
+
+  it('adds missing native builtins for compute and vertex entries', () => {
+    const compute = planWgslTraceProgram({ source: '@compute @workgroup_size(1) fn kernel() { let value = 1u; }', entryPoint: 'kernel',
+      stage: 'compute', capacity: 1, sourceRanges: [{ path: '/compute.wgsl', startLine: 1, endLine: 1 }] });
+    expect(compute.source).toContain('@builtin(global_invocation_id) _ss_trace_gid: vec3u');
+    expect(compute.source).toContain('all(_ss_trace_gid == vec3u(u32(_ss_trace_u.pixel.x), u32(_ss_trace_u.pixel.y), _ss_trace_u._pad.x))');
+    const vertex = planWgslTraceProgram({ source: '@vertex fn vertexMain() -> @builtin(position) vec4f { let value = 1.0; return vec4f(value); }', entryPoint: 'vertexMain',
+      stage: 'vertex', capacity: 1, sourceRanges: [{ path: '/vertex.wgsl', startLine: 1, endLine: 1 }] });
+    expect(vertex.source).toContain('@builtin(vertex_index) _ss_trace_vertex: u32');
+  });
+
+  it('combines a mesh primitive selector with the pixel gate', () => {
+    const source = 'fn image(p: vec2f) -> vec4f { return vec4f(p, 0, 1); }\n@fragment fn fragmentMain(@builtin(position) p: vec4f, @location(3) @interpolate(flat) _ss_trace_primitive: u32) -> @location(0) vec4f { return image(p.xy); }';
+    const plan = planWgslTraceProgram({ source, entryPoint: 'fragmentMain', stage: 'fragment', capacity: 8,
+      sourceRanges: [{ path: '/image.wgsl', startLine: 1, endLine: 1 }],
+      fragmentPredicate: '_ss_trace_primitive == _ss_trace_u._pad.x' });
+    expect(plan.source).toContain('all(floor(p.xy) == _ss_trace_u.pixel) && (_ss_trace_primitive == _ss_trace_u._pad.x)');
+    expect(plan.sites.every(site => site.path === '/image.wgsl' && site.line === 1)).toBe(true);
+  });
+
+  it('only refuses reserved identifiers inside authored ranges', () => {
+    const source = `let _ss_trace_generated = 0u;\nfn image(p: vec2f) -> vec4f { return vec4f(p, 0.0, 1.0); }\n@fragment fn f(@builtin(position) p: vec4f) -> @location(0) vec4f { return image(p.xy); }`;
+    expect(() => planWgslTraceProgram({ source, entryPoint: 'f', stage: 'fragment', capacity: 1,
+      sourceRanges: [{ path: '/image.wgsl', startLine: 2, endLine: 2 }] })).not.toThrow();
+    expect(() => planWgslTraceProgram({ source, entryPoint: 'f', stage: 'fragment', capacity: 1,
+      sourceRanges: [{ path: '/generated.wgsl', startLine: 1, endLine: 1 }, { path: '/image.wgsl', startLine: 2, endLine: 2 }] })).toThrow('conflicts');
   });
 });
 
@@ -170,6 +226,11 @@ describe('WGSL trace decoding', () => {
     expect(result.events[0].values.at(-1)).toEqual({ name: 'weights', type: 'array<f32, 2>',
       value: '<not recorded: unsupported or unresolved type>' });
     expect(result.events[0].values.find(value => value.name === 'large')?.value).toBe(4000000001);
+  });
+
+  it('preserves program source identity on decoded events', () => {
+    const marked = { ...plan, sites: plan.sites.map(site => ({ ...site, path: '/image.wgsl', functionName: 'mainImage' })) };
+    expect(decodeWgslTrace(marked, buffer()).events[0]).toMatchObject({ path: '/image.wgsl', functionName: 'mainImage' });
   });
 
   it('bounds decoding and exposes overflow', () => {

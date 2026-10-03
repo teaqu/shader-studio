@@ -1,5 +1,5 @@
 import { parseWgslDocument, tokenizeWgsl, type WgslAnalysisDocument, type WgslStatement } from '@shader-studio/wgsl-analysis';
-import { applySourceEdits } from '@shader-studio/utils/dist/esm/source-edits';
+import { applySourceEdits } from '@shader-studio/utils/source-edits';
 import type { WgslTraceLaunch, WgslTracePlan, WgslTraceSite, WgslTraceVariable } from '@shader-studio/types';
 import { validateWgslTraceLaunch, WGSL_TRACE_UNIFORM_TYPES } from '@shader-studio/types';
 import { containsPosition, containsRange, offsetAt } from '../wgsl/model';
@@ -127,9 +127,6 @@ export function planWgslTrace(launch: WgslTraceLaunch): WgslTracePlan {
       .filter((value): value is WgslTraceVariable => value !== undefined);
     const unavailableVariables = locals.filter(value => !traceVariable(value.name, value.typeName ?? ''))
       .map(value => ({ name: value.name, type: value.typeName ?? 'unresolved' }));
-    if (variables.length > 16) {
-      throw new Error('The trace PoC supports at most 16 visible locals per statement.');
-    }
     const site: WgslTraceSite = { id: sites.length, line: statement.range.start.line + 1,
       column: statement.range.start.character + 1, variables, ...(unavailableVariables.length ? { unavailableVariables } : {}) };
     sites.push(site);
@@ -163,12 +160,15 @@ function packedVariable(variable: WgslTraceVariable): string {
 /** Dedicated group 1 is safe because this PoC rejects authored bindings. */
 export function emitWgslTracePrelude(plan: WgslTracePlan): string {
   const maxValues = (plan.recordWords - 4) / 4;
+  // Program traces allocate their own group after the production wrapper's
+  // bindings. Keep the single-file PoC on its historical group 1.
+  const bindingGroup = plan.bindingGroup ?? 1;
   return `
 struct ${PREFIX}Uniforms { pixel: vec2f, _pad: vec2u }
 struct ${PREFIX}Record { site: vec4u, values: array<vec4u, ${maxValues}> }
 struct ${PREFIX}Buffer { count: atomic<u32>, overflow: atomic<u32>, _pad: vec2u, records: array<${PREFIX}Record> }
-@group(1) @binding(0) var<uniform> ${PREFIX}u: ${PREFIX}Uniforms;
-@group(1) @binding(1) var<storage, read_write> ${PREFIX}buffer: ${PREFIX}Buffer;
+@group(${bindingGroup}) @binding(0) var<uniform> ${PREFIX}u: ${PREFIX}Uniforms;
+@group(${bindingGroup}) @binding(1) var<storage, read_write> ${PREFIX}buffer: ${PREFIX}Buffer;
 var<private> ${PREFIX}enabled: bool;
 var<private> ${PREFIX}full: bool;
 ${plan.sites.map(site => `

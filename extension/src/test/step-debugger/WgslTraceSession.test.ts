@@ -104,6 +104,39 @@ suite('WGSL trace DAP session', () => {
     assert.strictEqual(test.messages.at(-1)!.event, 'terminated');
   });
 
+  test('uses each recorded helper source and function when navigating a multi-source trace', async () => {
+    const multiSource: WgslTraceRecording = {
+      ...recording,
+      sources: [
+        { path: '/common.wgsl', source: 'fn helper() {}' },
+        { path: '/image.wgsl', source: 'fn mainImage() {}' },
+      ],
+      sites: [
+        { id: 0, path: '/common.wgsl', functionName: 'helper', line: 2, column: 1, variables: [] },
+        { id: 1, path: '/image.wgsl', functionName: 'mainImage', line: 7, column: 3, variables: [] },
+      ],
+      events: [
+        { siteId: 0, path: '/common.wgsl', functionName: 'helper', line: 2, column: 1, values: [] },
+        { siteId: 1, path: '/image.wgsl', functionName: 'mainImage', line: 7, column: 3, values: [] },
+      ],
+    };
+    const test = rig(async () => multiSource);
+    await test.send('launch');
+    await test.send('stackTrace');
+    let stack = test.messages.at(-1)!.body as { stackFrames: { name: string; source: { path: string }; line: number }[] };
+    assert.deepStrictEqual(stack.stackFrames[0], { id: 1, name: 'helper', line: 2, column: 1,
+      source: { name: 'common.wgsl', path: '/common.wgsl', sourceReference: 0 } });
+    await test.send('setBreakpoints', { source: { path: '/image.wgsl' }, breakpoints: [{ line: 7 }] });
+    assert.strictEqual((test.messages.at(-1)!.body as { breakpoints: { verified: boolean }[] }).breakpoints[0].verified, true);
+    await test.send('continue');
+    assert.strictEqual((test.messages.at(-1)!.body as { reason: string }).reason, 'breakpoint');
+    await test.send('stackTrace');
+    stack = test.messages.at(-1)!.body as { stackFrames: { name: string; source: { path: string }; line: number }[] };
+    assert.strictEqual(stack.stackFrames[0].name, 'mainImage');
+    assert.strictEqual(stack.stackFrames[0].source.path, '/image.wgsl');
+    assert.strictEqual(stack.stackFrames[0].line, 7);
+  });
+
   test('verifies initial breakpoints after capture and retains them when another file is configured', async () => {
     const test = rig();
     await test.send('setBreakpoints', { source: { path: '/image.wgsl' }, breakpoints: [{ line: 3 }, { line: 99 }] });

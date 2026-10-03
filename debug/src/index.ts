@@ -30,3 +30,7 @@ export * from './wgsl/WgslWorkspace';
 export * from './wgsl/WgslDebugEngine';
 export * from './wgsl/WgslFunctionContext';
 export * from './wgsl/WgslFullShaderPostProcessing';
+
+export * from './trace/WgslTracePlanner';
+export * from './trace/WgslTraceProgramPlanner';
+export * from './trace/WgslTraceDecoder';

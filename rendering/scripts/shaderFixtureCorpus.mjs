@@ -145,6 +145,7 @@ function buildProject(root, configPath, shaderPath) {
         buffers[`${VERTEX_PASS_PREFIX}${passName}`] = language === "slang"
           ? inlineSlangDependencies(vertexSource, vertexPath)
           : vertexSource;
+        sourcePaths[`${VERTEX_PASS_PREFIX}${passName}`] = vertexPath;
       }
     }
     if (pass?.geometry?.type === "model" && pass.geometry.path) {
@@ -172,8 +173,10 @@ function buildProject(root, configPath, shaderPath) {
     image: language === "slang" ? inlineSlangDependencies(rootSource, shaderPath) : rootSource,
     config,
     buffers,
-    slangSourcePath: language === "slang" ? shaderPath : undefined,
-    slangSourcePaths: language === "slang" ? sourcePaths : undefined,
+    // These source identities are also needed by WGSL's project tracer. The
+    // historical Slang names remain for compatibility with the harness API.
+    slangSourcePath: language === "slang" || language === "wgsl" ? shaderPath : undefined,
+    slangSourcePaths: language === "slang" || language === "wgsl" ? sourcePaths : undefined,
     ...customUniforms(config.script),
   };
 }

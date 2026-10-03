@@ -11,7 +11,7 @@ const samples = [
   { pixel: [15, 15], time: 1.25, frame: 7 },
 ] as const;
 
-describe('WGSL trace: every corpus source', () => {
+describe('WGSL standalone launch: explicit source-only inputs', () => {
   let device: GPUDevice;
   beforeAll(async () => {
     const adapter = await navigator.gpu?.requestAdapter();

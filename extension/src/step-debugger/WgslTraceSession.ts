@@ -123,9 +123,9 @@ export class WgslTraceSession {
     switch (request.command) {
       case 'stackTrace': {
         const current = this.current();
-        this.respond(request, { stackFrames: [{ id: 1, name: 'mainImage', line: current.line,
+        this.respond(request, { stackFrames: [{ id: 1, name: current.functionName ?? 'mainImage', line: current.line,
           column: current.column, source: {
-            name: this.recording!.path.split(/[\\/]/).at(-1), path: this.recording!.path, sourceReference: 0 } }], totalFrames: 1 });
+            name: (current.path ?? this.recording!.path).split(/[\\/]/).at(-1), path: current.path ?? this.recording!.path, sourceReference: 0 } }], totalFrames: 1 });
         break;
       }
       case 'source':
@@ -176,7 +176,7 @@ export class WgslTraceSession {
         this.event('breakpoint', { reason: 'changed', breakpoint: this.breakpointStatus(path, breakpoint) });
       }
     }
-    this.event('output', { category: 'console', output: `Captured ${recording.events.length} WGSL steps. Stops show locals before the highlighted statement. Helpers are stepped over.\n` });
+    this.event('output', { category: 'console', output: `Captured ${recording.events.length} WGSL steps. Stops show locals before the highlighted statement.\n` });
     const unavailable = new Map(recording.sites.flatMap(site => (site.unavailableVariables ?? [])
       .map(variable => [variable.name, variable.type] as const)));
     if (unavailable.size) {
@@ -201,8 +201,7 @@ export class WgslTraceSession {
   }
 
   private breakpointStatus(path: string, breakpoint: TraceBreakpoint) {
-    const available = !!this.recording && path === this.recording.path
-      && this.recording.sites.some(site => site.line === breakpoint.line);
+    const available = !!this.recording && this.recording.sites.some(site => (site.path ?? this.recording!.path) === path && site.line === breakpoint.line);
     const message = !breakpoint.supported ? 'Conditional/hit/log breakpoints are outside the PoC.'
       : !this.recording ? 'Waiting for GPU trace source locations.'
         : !available ? 'No traceable mainImage statement on this line.' : undefined;
@@ -227,7 +226,7 @@ export class WgslTraceSession {
     const recording = this.recording!;
     let destination = this.index + direction;
     while (search && destination >= 0 && destination < recording.events.length) {
-      if (this.breakpoints.get(recording.path)?.some(item => item.supported && item.line === recording.events[destination].line)) {
+      if (this.breakpoints.get(recording.events[destination].path ?? recording.path)?.some(item => item.supported && item.line === recording.events[destination].line)) {
         break;
       }
       destination += direction;

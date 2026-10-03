@@ -12,6 +12,15 @@ suite('WGSL trace from pixel inspector', () => {
       type: 'shader-studio-wgsl-trace', request: 'launch', name: 'Trace inspected WGSL pixel (12, 9)' });
   });
 
+  test('starts a supplied project recording without creating a second GPU runner', () => {
+    const recording = { path: payload.program, source: payload.source, sources: [{ path: payload.program, source: payload.source }],
+      sites: [{ id: 0, line: 1, column: 1, variables: [] }], events: [{ siteId: 0, line: 1, column: 1, values: [] }],
+      overflow: false, color: [1, 1, 1, 1] };
+    const configuration = createWgslTraceDebugConfiguration({ program: payload.program, source: payload.source, recording });
+    assert.deepStrictEqual(configuration.recording, recording);
+    assert.strictEqual(configuration.type, 'shader-studio-wgsl-trace');
+  });
+
   test('refuses missing, malformed and out-of-bounds requests', () => {
     for (const invalid of [null, undefined, [], {}, { ...payload, source: undefined },
       { ...payload, program: '/image.glsl' }, { ...payload, pixel: [64, 0] },

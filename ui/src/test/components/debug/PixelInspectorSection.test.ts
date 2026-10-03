@@ -107,6 +107,21 @@ describe('PixelInspectorSection', () => {
       expect(view.getByText('Trace needs a resource-free Image pass.')).toBeVisible();
     });
 
+    it('offers installed pass targets and compute invocation controls', () => {
+      setWgslTraceState({
+        available: true, reason: null, selectedTarget: 'Update:compute', invocation: [0, 0, 0],
+        targets: [
+          { passName: 'Image', stage: 'fragment', path: '/image.wgsl', source: 'image', width: 64, height: 64 },
+          { passName: 'Update', stage: 'compute', path: '/update.wgsl', source: 'update', width: 32, height: 32 },
+        ],
+      });
+      const view = render(PixelInspectorSection, { canvasWidth: 400, canvasHeight: 300 });
+
+      expect(view.getByRole('option', { name: 'Update · compute' })).toBeVisible();
+      expect(view.getByLabelText('Trace invocation 0')).toHaveValue(0);
+      expect(view.getByLabelText('Trace invocation 2')).toHaveValue(0);
+    });
+
     it('does not rerasterize when movement only changes screen-space mouse coordinates', async () => {
       const visibleDrawImage = vi.fn();
       const scratchPutImageData = vi.fn();

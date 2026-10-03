@@ -1,6 +1,16 @@
+import path from 'node:path';
 import { defineConfig, configDefaults } from 'vitest/config';
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@shader-studio/debug': path.resolve(__dirname, '../debug/src'),
+      '@shader-studio/types': path.resolve(__dirname, '../types/src'),
+      '@shader-studio/wgsl-analysis': path.resolve(__dirname, '../language-servers/wgsl-analysis/src'),
+      '@shader-studio/glsl-analysis': path.resolve(__dirname, '../language-servers/glsl-analysis/src'),
+      '@shader-studio/language-server-core': path.resolve(__dirname, '../language-servers/core/src'),
+    },
+  },
   test: {
     environment: 'jsdom',
     globals: true,
@@ -10,7 +20,7 @@ export default defineConfig({
     pool: 'forks',
     maxWorkers: 1,
     fileParallelism: false,
-    exclude: [...configDefaults.exclude, 'src/test/e2e/**', '**/*.e2e.test.*'],
+    exclude: [...configDefaults.exclude, 'src/test/e2e/**', '**/*.e2e.test.*', 'scripts/**/*.test.mjs'],
     coverage: {
       exclude: [
         'vendor/**',

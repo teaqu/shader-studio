@@ -34,7 +34,9 @@ export function decodeWgslTrace(plan: WgslTracePlan, data: ArrayBuffer): { event
     });
     values.push(...(site.unavailableVariables ?? []).map(variable => ({ name: variable.name, type: variable.type,
       value: '<not recorded: unsupported or unresolved type>' })));
-    events.push({ siteId: site.id, line: site.line, column: site.column, values });
+    events.push({ siteId: site.id, ...(site.path === undefined ? {} : { path: site.path }),
+      ...(site.functionName === undefined ? {} : { functionName: site.functionName }),
+      line: site.line, column: site.column, values });
   }
   return { events, overflow: words[1] !== 0 || words[0] > plan.capacity };
 }

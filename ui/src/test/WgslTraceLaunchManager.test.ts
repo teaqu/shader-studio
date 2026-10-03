@@ -1,138 +1,70 @@
+import type { WgslProjectTraceRequest, WgslTraceRecording } from '@shader-studio/types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WgslTraceLaunchManager } from '../lib/WgslTraceLaunchManager.svelte';
-import { getWgslTraceState, resetWgslTraceState } from '../lib/state/wgslTraceState.svelte';
+import { getWgslTraceState, resetWgslTraceState, selectWgslTraceTarget } from '../lib/state/wgslTraceState.svelte';
 import { setInspectorState } from '../lib/state/pixelInspectorState.svelte';
 
-const selectedPixel = () => setInspectorState({
-  isEnabled: true, isActive: true, isLocked: true, mouseX: 0, mouseY: 0,
-  pixelRGB: { r: 0, g: 0, b: 0 }, fragCoord: { x: 12, y: 24 },
-  canvasPosition: { x: 12, y: 39 }, region: null,
-});
+const fragment = { passName: 'Image', stage: 'fragment' as const, path: '/image.wgsl', source: 'image', width: 64, height: 64 };
+const compute = { passName: 'Update', stage: 'compute' as const, path: '/update.wgsl', source: 'compute', width: 32, height: 16 };
+const selected = () => setInspectorState({ isEnabled: true, isActive: true, isLocked: true, mouseX: 0, mouseY: 0, pixelRGB: { r: 0, g: 0, b: 0 }, fragCoord: { x: 20, y: 20 }, canvasPosition: { x: 20, y: 10 }, region: null });
 
 describe('WgslTraceLaunchManager', () => {
   afterEach(() => {
-    resetWgslTraceState();
-    setInspectorState({ isEnabled: false, isActive: false, isLocked: false, mouseX: 0, mouseY: 0,
-      pixelRGB: null, fragCoord: null, canvasPosition: null, region: null });
+    resetWgslTraceState(); setInspectorState({ isEnabled: false, isActive: false, isLocked: false, mouseX: 0, mouseY: 0, pixelRGB: null, fragCoord: null, canvasPosition: null, region: null });
   });
-
-  function create(overrides: Record<string, unknown> = {}) {
-    const transport = { getType: () => 'vscode' as const, postMessage: vi.fn() };
-    const engine = {
-      getShaderLanguage: () => 'wgsl',
-      getCaptureUniforms: () => ({ time: 1.25, timeDelta: 0.016, frameRate: 60, frame: 75,
-        res: [64, 64, 1], mouse: [1, 2, 3, 4], date: [2026, 10, 3, 12],
-        cameraPos: [0, 0, 0], cameraDir: [0, 0, -1], sampleRate: 48_000 }),
-      getCurrentCustomUniforms: () => [{ name: 'gain', type: 'float', value: 0.5 }],
-    };
-    const session = { source: 'fn mainImage(p: vec2f) -> vec4f { return vec4f(1.0); }', path: '/shader.wgsl', config: null, isCurrentPreviewSource: true };
-    const manager = new WgslTraceLaunchManager({ transport, getEngine: () => engine, getViewerSession: () => session, ...overrides });
-    return { manager, transport, engine, session };
+  function create(capture: (request: WgslProjectTraceRequest, signal?: AbortSignal) => Promise<WgslTraceRecording> = vi.fn(async () => ({ path: '/image.wgsl', source: 'image', sites: [], events: [], overflow: false, color: [0, 0, 0, 0] }))) {
+    const transport = { getType: () => 'vscode' as 'vscode' | 'web', postMessage: vi.fn() };
+    const engine = { getShaderLanguage: () => 'wgsl', getWgslTraceTargets: () => [fragment, compute], captureWgslProjectTrace: capture, getCanvas: () => ({ width: 128, height: 64 }), getCaptureUniforms: () => ({ res: [128, 64, 1] }) };
+    const session = { isCurrentPreviewSource: true, sources: [{ path: '/image.wgsl', source: 'image' }] };
+    const manager = new WgslTraceLaunchManager({ transport, getEngine: () => engine, getViewerSession: () => session });
+    return { manager, transport, capture, engine, session };
   }
 
-  it('sends the selected top-left pixel and an atomic viewer-uniform snapshot', () => {
-    selectedPixel();
-    const { manager, transport } = create();
-
-    manager.start();
-
-    expect(transport.postMessage).toHaveBeenCalledWith({
-      type: 'startWgslTrace',
-      payload: expect.objectContaining({
-        program: '/shader.wgsl', source: 'fn mainImage(p: vec2f) -> vec4f { return vec4f(1.0); }', pixel: [12, 39], width: 64, height: 64,
-        time: 1.25, frame: 75, capacity: 4096,
-        customUniforms: [{ name: 'gain', type: 'float', value: 0.5 }],
-        uniforms: { timeDelta: 0.016, frameRate: 60, mouse: [1, 2, 3, 4], date: [2026, 10, 3, 12],
-          cameraPos: [0, 0, 0], cameraDir: [0, 0, -1], sampleRate: 48_000 },
-      }),
-    });
+  it('captures the installed target before sending its immutable recording to DAP', async () => {
+    selected(); const { manager, capture, transport } = create();
+    await manager.start();
+    expect(capture).toHaveBeenCalledWith(expect.objectContaining({ passName: 'Image', stage: 'fragment', pixel: [10, 10], capacity: 4096 }), expect.any(AbortSignal));
+    expect(transport.postMessage).toHaveBeenCalledWith({ type: 'startWgslTrace', payload: expect.objectContaining({ program: '/image.wgsl', recording: expect.objectContaining({ source: 'image' }) }) });
     manager.dispose();
   });
 
-  it.each([
-    ['a WebGPU WGSL Image preview', { getEngine: () => ({ getShaderLanguage: () => 'glsl' }) }],
-    ['a selected pixel', { getViewerSession: () => ({ source: 'fn mainImage() {}', path: '/shader.wgsl', config: null, isCurrentPreviewSource: true }) }],
-  ])('refuses tracing without %s', (_label, overrides) => {
-    const { manager, transport } = create(overrides);
-    manager.start();
-    expect(transport.postMessage).not.toHaveBeenCalled();
-    expect(getWgslTraceState().reason).not.toBeNull();
+  it('rejects stale previews, unsupported hosts and unavailable targets before GPU capture', async () => {
+    selected(); const { manager, capture, session, transport, engine } = create();
+    session.isCurrentPreviewSource = false;
+    await manager.start();
+    expect(getWgslTraceState().reason).toContain('Refresh');
+    session.isCurrentPreviewSource = true;
+    transport.getType = () => 'web';
+    await manager.start();
+    expect(getWgslTraceState().reason).toContain('VS Code');
+    transport.getType = () => 'vscode';
+    engine.getWgslTraceTargets = () => [];
+    await manager.start();
+    expect(getWgslTraceState().reason).toContain('no traceable passes');
+    expect(capture).not.toHaveBeenCalled();
     manager.dispose();
   });
 
-  it('refuses configured resources instead of tracing a mismatched preview', () => {
-    selectedPixel();
-    const { manager, transport } = create({ getViewerSession: () => ({
-      source: 'fn mainImage() {}', path: '/shader.wgsl', config: { storage: { values: {} }, passes: { Image: {} } }, isCurrentPreviewSource: true,
-    }) });
-
-    manager.start();
-
-    expect(transport.postMessage).not.toHaveBeenCalled();
-    expect(getWgslTraceState().reason).toContain('without resources');
+  it('selects project targets and exposes compute invocation controls', () => {
+    selected(); const { manager } = create();
+    expect(getWgslTraceState().selectedTarget).toBe('Image:fragment');
+    selectWgslTraceTarget('Update:compute');
+    expect(getWgslTraceState().selectedTarget).toBe('Update:compute');
     manager.dispose();
   });
 
-  it('refuses a stale preview source before it can disagree with the editor', () => {
-    selectedPixel();
-    const { manager, transport } = create({ getViewerSession: () => ({
-      source: 'fn mainImage() {}', path: '/shader.wgsl', config: null, isCurrentPreviewSource: false,
-    }) });
-
-    manager.start();
-
-    expect(transport.postMessage).not.toHaveBeenCalled();
-    expect(getWgslTraceState().reason).toContain('Refresh the Image preview');
-    manager.dispose();
-  });
-
-  it('uses the shared launch validation before sending a resolution the trace cannot render', () => {
-    selectedPixel();
-    const { manager, transport } = create({ getEngine: () => ({
-      getShaderLanguage: () => 'wgsl',
-      getCaptureUniforms: () => ({ time: 0, timeDelta: 0, frameRate: 60, frame: 0, res: [2049, 64, 1],
-        mouse: [0, 0, 0, 0], date: [0, 0, 0, 0], cameraPos: [0, 0, 0], cameraDir: [0, 0, 0], sampleRate: 44_100 }),
-      getCurrentCustomUniforms: () => [],
-    }) });
-
-    manager.start();
-
-    expect(transport.postMessage).not.toHaveBeenCalled();
-    expect(getWgslTraceState().reason).toBe('Trace width and height must be integers from 1 to 2048.');
-    manager.dispose();
-  });
-
-  it('copies explicit custom uniform components before posting the trace launch', () => {
-    selectedPixel();
-    const uniform = { name: 'offset', type: 'vec2', value: [0.25, 0.5] };
-    const { manager, transport } = create({ getEngine: () => ({
-      getShaderLanguage: () => 'wgsl',
-      getCaptureUniforms: () => ({ time: 0, timeDelta: 0, frameRate: 60, frame: 0, res: [64, 64, 1],
-        mouse: [0, 0, 0, 0], date: [0, 0, 0, 0], cameraPos: [0, 0, 0], cameraDir: [0, 0, 0], sampleRate: 44_100 }),
-      getCurrentCustomUniforms: () => [uniform],
-    }) });
-
-    manager.start();
-    uniform.value[0] = 99;
-
-    const payload = (transport.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0].payload;
-    expect(payload.customUniforms[0].value).toEqual([0.25, 0.5]);
-    manager.dispose();
-  });
-
-  it('shows the shared validator error for custom uniform types the trace cannot pack', () => {
-    selectedPixel();
-    const { manager, transport } = create({ getEngine: () => ({
-      getShaderLanguage: () => 'wgsl',
-      getCaptureUniforms: () => ({ time: 0, timeDelta: 0, frameRate: 60, frame: 0, res: [64, 64, 1],
-        mouse: [0, 0, 0, 0], date: [0, 0, 0, 0], cameraPos: [0, 0, 0], cameraDir: [0, 0, 0], sampleRate: 44_100 }),
-      getCurrentCustomUniforms: () => [{ name: 'matrix', type: 'mat4', value: [0, 0, 0, 0] }],
-    }) });
-
-    manager.start();
-
-    expect(transport.postMessage).not.toHaveBeenCalled();
-    expect(getWgslTraceState().reason).toBe('Unsupported trace custom uniform type: mat4.');
-    manager.dispose();
+  it('reports capture errors and cancels an in-flight recording on disposal', async () => {
+    selected(); let abort!: () => void;
+    const capture = vi.fn((_request: WgslProjectTraceRequest, signal?: AbortSignal) => new Promise<WgslTraceRecording>((_, reject) => {
+      abort = () => reject(new Error('GPU lost')); signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+    }));
+    const { manager } = create(capture);
+    const pending = manager.start();
+    expect(getWgslTraceState().busy).toBe(true);
+    await manager.start();
+    expect(capture).toHaveBeenCalledTimes(1);
+    abort(); await pending;
+    expect(getWgslTraceState().reason).toBe('GPU lost');
+    const second = manager.start(); manager.dispose(); await second;
   });
 });

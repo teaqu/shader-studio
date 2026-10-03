@@ -175,6 +175,9 @@ vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
     getCurrentCustomUniforms() {
       return [];
     }
+    getShaderLanguage() {
+      return 'glsl';
+    }
     getCustomUniformInfo() {
       return [];
     }
@@ -409,6 +412,10 @@ vi.mock('../../lib/ShaderPipeline', () => {
 
     getLastEvent(): any {
       return this._lastEvent ?? { data: { path: '/mock/path/test.glsl' } };
+    }
+
+    isCompiling(): boolean {
+      return false;
     }
 
     async reset(onReset?: () => void | Promise<void>): Promise<void> {

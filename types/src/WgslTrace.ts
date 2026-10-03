@@ -34,6 +34,8 @@ export interface WgslTraceVariable {
 
 export interface WgslTraceSite {
   id: number;
+  path?: string;
+  functionName?: string;
   /** One-based VS Code source coordinates; stops occur before execution. */
   line: number;
   column: number;
@@ -44,6 +46,7 @@ export interface WgslTraceSite {
 
 export interface WgslTracePlan {
   source: string;
+  bindingGroup?: number;
   sites: WgslTraceSite[];
   recordWords: number;
   capacity: number;
@@ -58,12 +61,16 @@ export interface WgslTraceValue {
 
 export interface WgslTraceEvent {
   siteId: number;
+  path?: string;
+  functionName?: string;
   line: number;
   column: number;
   values: WgslTraceValue[];
 }
 
 export interface WgslTraceRecording {
+  sources?: Array<{ path: string; source: string }>;
+  storage?: Array<{ name: string; bytes: number[] }>;
   path: string;
   source: string;
   sites: WgslTraceSite[];
@@ -116,4 +123,25 @@ function validateWgslTraceFrameUniforms(uniforms: WgslTraceFrameUniforms | undef
       throw new Error(`Trace ${key} must contain ${width} finite floats.`);
     }
   }
+}
+
+/** Capture an installed pass using the preview's actual GPU resources. */
+export interface WgslProjectTraceRequest {
+  sources?: Array<{ path: string; source: string }>;
+  passName: string;
+  stage?: 'fragment' | 'compute' | 'vertex';
+  pixel: [number, number];
+  invocation?: [number, number, number];
+  vertexIndex?: number;
+  capacity: number;
+}
+
+export interface WgslProjectTraceTarget {
+  passName: string;
+  stage: 'fragment' | 'compute' | 'vertex';
+  path: string;
+  source: string;
+  width: number;
+  height: number;
+  entryPoint?: string;
 }

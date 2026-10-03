@@ -2,7 +2,7 @@
 
 <script lang="ts">
   import { getInspectorState, requestLockAt } from '../../state/pixelInspectorState.svelte';
-  import { getWgslTraceState, requestWgslTraceStart } from '../../state/wgslTraceState.svelte';
+  import { getWgslTraceState, requestWgslTraceStart, selectWgslTraceTarget, setWgslTraceInvocation, setWgslTraceVertexIndex } from '../../state/wgslTraceState.svelte';
   import { debugPanelStore } from '../../stores/debugPanelStore';
   import type { PixelInspectorRegion } from '../../types/PixelInspectorState';
 
@@ -319,10 +319,28 @@
       <button
         class="trace-button"
         type="button"
-        disabled={!trace.available}
+        disabled={!trace.available || trace.busy}
         title={trace.reason ?? 'Record this pixel for VS Code step debugging'}
         onclick={requestWgslTraceStart}
-      >Start Trace</button>
+      >{trace.busy ? 'Capturing…' : 'Start Trace'}</button>
+      {#if trace.targets.length > 1}
+        <label class="trace-control">Pass
+          <select value={trace.selectedTarget ?? ''} onchange={event => selectWgslTraceTarget(event.currentTarget.value)}>
+            {#each trace.targets as target}
+              <option value={`${target.passName}:${target.stage}`}>{target.passName} · {target.stage}</option>
+            {/each}
+          </select>
+        </label>
+      {/if}
+      {#if trace.selectedTarget?.endsWith(':compute')}
+        <label class="trace-control">Invocation
+          {#each [0, 1, 2] as axis}
+            <input aria-label={`Trace invocation ${axis}`} type="number" min="0" value={trace.invocation[axis]} onchange={event => setWgslTraceInvocation(axis as 0 | 1 | 2, Number(event.currentTarget.value))} />
+          {/each}
+        </label>
+      {:else if trace.selectedTarget?.endsWith(':vertex')}
+        <label class="trace-control">Vertex <input aria-label="Trace vertex index" type="number" min="0" value={trace.vertexIndex} onchange={event => setWgslTraceVertexIndex(Number(event.currentTarget.value))} /></label>
+      {/if}
       {#if trace.reason}
         <span class="trace-reason">{trace.reason}</span>
       {/if}
@@ -490,6 +508,10 @@
     font-size: 10px;
     line-height: 1.3;
   }
+
+  .trace-control { display: block; margin-top: 5px; font-size: 10px; color: var(--vscode-descriptionForeground); }
+  .trace-control select, .trace-control input { margin-left: 4px; max-width: 110px; font-size: 10px; }
+  .trace-control input { width: 35px; }
 
   .info-grid {
     display: grid;
