@@ -263,7 +263,7 @@ test('Turbo selects the expected suites for representative changes', { timeout: 
   const rendering = ['@shader-studio/rendering#test:e2e', '@shader-studio/rendering#test:e2e:corpus'];
   const uiCorpus = ['shader-studio-ui#test:e2e'];
   const standalone = ['@shader-studio/standalone#test:e2e'];
-  const vscode = ['shader-studio#test:e2e:vscode:corpus', 'shader-studio#test:e2e:vsix'];
+  const vscode = ['shader-studio#test:e2e:vscode:corpus', 'shader-studio#test:e2e:vsix', 'shader-studio#test:e2e:vscode:cleanup:live'];
   const all = [...rendering, ...uiCorpus, ...standalone, ...vscode];
   const cases = [
     // Host-only source.
@@ -283,6 +283,8 @@ test('Turbo selects the expected suites for representative changes', { timeout: 
     ['standalone/e2e/web.e2e.mjs', standalone],
     ['standalone/e2e/ports.test.mjs', []],
     ['extension/src/test/app/ShaderStudio.test.ts', []],
+    ['extension/e2e/pw/electron-cleanup.live.mjs', vscode],
+    ['extension/e2e/pw/process-tree.test.mjs', []],
     ['ui/src/test/components/ShaderViewer.test.ts', []],
     ['types/src/shader-environment/SlangEnvironmentGenerator.compiler.test.ts', []],
     // Global dependencies select everything; documentation nothing.
@@ -293,4 +295,14 @@ test('Turbo selects the expected suites for representative changes', { timeout: 
   for (const [file, expected] of cases) {
     assert.deepEqual(affected(file), [...expected].sort(), file);
   }
+});
+
+test('controlled live cleanup selects both supported host lanes', () => {
+  const decision = decide({ eventName: 'pull_request', labels: [],
+    queryAffected: () => [item('shader-studio#test:e2e:vscode:cleanup:live')],
+  });
+  assert.equal(selectedJobs(decision)['vscode-e2e'], true);
+  assert.equal(selectedJobs(decision)['vscode-e2e-linux'], true);
+  assert.equal(selectedJobs(decision)['rendering-e2e'], false);
+  assert.equal(selectedJobs(decision)['standalone-e2e'], false);
 });

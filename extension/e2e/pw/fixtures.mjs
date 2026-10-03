@@ -1,6 +1,6 @@
 import { test as base, expect } from '@playwright/test';
 import { _electron as electron } from 'playwright';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { createHash, randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -8,8 +8,9 @@ import { fileURLToPath } from 'node:url';
 import { assertProductionVsixLaunchArgs, cloneProductionVsixSeed, installProductionVsix, productionVsixLaunchArgs } from './vsix-launch.mjs';
 import { findShownAppFrame } from './shader-frame.mjs';
 import { evaluateBridgeCall, readBridgePort } from './bridge-client.mjs';
-import { recordE2ePhase, recordE2eSample } from './e2e-timing.mjs';
-import { monitorProcessTree, closeOwnedProcessTree } from './process-tree.mjs';
+import { recordE2ePhase, recordE2eSample, withE2ePhase } from './e2e-timing.mjs';
+import { monitorProcessTree } from './process-tree.mjs';
+import { attachCleanupFailure, cleanupFixture } from './fixture-cleanup.mjs';
 import { openWindowDisplay } from './private-display.mjs';
 
 const extensionPath = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -244,9 +245,9 @@ export const test = base.extend({
         { timeout, message: 'no frame hosting the Shader Studio app appeared' },
       );
 
-      const testStartedAt = performance.now();
-      await use({ app, window, evaluateInHost, shaderFrame, workspacePath, extensionsDir });
-      recordE2ePhase('test-execution', testStartedAt, { vscodeKey });
+      await withE2ePhase('test-execution',
+        () => use({ app, window, evaluateInHost, shaderFrame, workspacePath, extensionsDir }),
+        { vscodeKey });
 
     } catch (error) {
       fixtureError = error;
@@ -254,36 +255,24 @@ export const test = base.extend({
     } finally {
       const teardownStartedAt = performance.now();
       try {
-        if (!processTree) {
-          // No reliable process inventory: attempt graceful close, retain the
-          // profile and report the inspection failure instead of claiming exit.
-          let timeout;
-          try {
-            await Promise.race([
-              app.close(),
-              new Promise(resolve => {
-                timeout = setTimeout(resolve, 15000);
-              }),
-            ]);
-          } finally {
-            clearTimeout(timeout);
-          }
-          throw new Error(`Cannot verify owned Electron process exit (PID ${app.process().pid}); profile retained at ${userDataDir}`);
-        }
-        const result = await closeOwnedProcessTree(() => app.close(), processTree);
+        const result = await withE2ePhase('fixture-teardown', () => cleanupFixture({
+          app,
+          processTree,
+          processPid: app.process().pid,
+          userDataDir,
+          windowDisplay,
+          phase: phase => recordE2eSample({ vscodeKey, ...phase }),
+        }), { vscodeKey });
         recordE2ePhase('process-tree-exit', teardownStartedAt, { vscodeKey, ...result });
-        if (result.forced || result.closeError || result.samplingErrors.length) {
+        if (result.forced || result.closeError || result.samplingErrors.length || result.measurementErrors.length) {
           console.warn(`E2E teardown recovered ${vscodeKey}: ${JSON.stringify(result)}`);
         }
-        await windowDisplay.close();
-        rmSync(userDataDir, { recursive: true, force: true });
-        recordE2ePhase('fixture-teardown', teardownStartedAt, { vscodeKey, ...result });
       } catch (error) {
         // Retain the profile when exit is unverified. Report cleanup separately
         // so a launch/test failure stays the primary failure.
         console.error(`E2E teardown failed for ${vscodeKey}; profile ${userDataDir}: ${error.message}`);
         if (fixtureError) {
-          fixtureError.cause ??= error;
+          attachCleanupFailure(fixtureError, error);
         } else {
           throw error;
         }

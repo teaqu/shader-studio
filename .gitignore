@@ -39,6 +39,9 @@ coverage/
 !.github/scripts/test-publish-open-vsx.sh
 
 # Logs
+/extension/e2e-timings.jsonl
+/extension/e2e-resources.txt
+/extension/cleanup-resources.txt
 logs
 *.log
 npm-debug.log*

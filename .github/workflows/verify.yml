@@ -290,7 +290,14 @@ jobs:
           # preview collapses controls and splits editor groups by the width it
           # gets. Pin a desktop-sized window so layout is the same every run.
           SHADER_STUDIO_E2E_WINDOW: '1600x1000'
-        run: npm run test:e2e:vsix -w extension
+        run: /usr/bin/time -l -o extension/e2e-resources.txt npm run test:e2e:vsix -w extension
+
+      # One deliberately wedged diagnostic workbench per lane; the regular
+      # installed suite keeps its own workers, trace policy and zero retries.
+      - name: Validate controlled live Electron cleanup
+        env:
+          SHADER_STUDIO_E2E_VSIX: ${{ github.workspace }}/${{ needs.package.outputs.vsix_path }}
+        run: /usr/bin/time -l -o extension/cleanup-resources.txt npm run test:e2e:vscode:cleanup:live -w extension
 
       - name: Upload installed-VSIX E2E traces
         if: ${{ failure() && steps.vsix-e2e.outcome == 'failure' }}
@@ -310,6 +317,8 @@ jobs:
           path: |
             extension/e2e-timings.jsonl
             extension/e2e-results.json
+            extension/e2e-resources.txt
+            extension/cleanup-resources.txt
             extension/corpus-e2e-results.json
           if-no-files-found: ignore
           retention-days: 14
@@ -355,7 +364,12 @@ jobs:
           SHADER_STUDIO_E2E_GREP_INVERT: '@gpu'
           SHADER_STUDIO_E2E_WINDOW: '1600x1000'
         # The virtual display has to be larger than the window it hosts.
-        run: xvfb-run -a --server-args="-screen 0 1920x1080x24" npm run test:e2e:vsix -w extension
+        run: /usr/bin/time -v -o extension/e2e-resources.txt xvfb-run -a --server-args="-screen 0 1920x1080x24" npm run test:e2e:vsix -w extension
+
+      - name: Validate controlled live Electron cleanup
+        env:
+          SHADER_STUDIO_E2E_VSIX: ${{ github.workspace }}/${{ needs.package.outputs.vsix_path }}
+        run: /usr/bin/time -v -o extension/cleanup-resources.txt xvfb-run -a --server-args="-screen 0 1920x1080x24" npm run test:e2e:vscode:cleanup:live -w extension
 
       - name: Upload installed-VSIX E2E traces
         if: ${{ failure() && steps.vsix-e2e.outcome == 'failure' }}
@@ -375,6 +389,8 @@ jobs:
           path: |
             extension/e2e-timings.jsonl
             extension/e2e-results.json
+            extension/e2e-resources.txt
+            extension/cleanup-resources.txt
           if-no-files-found: ignore
           retention-days: 14
 

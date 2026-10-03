@@ -14,6 +14,10 @@
     "test:e2e:vsix": {
       "dependsOn": ["^build", "shader-studio-ui#build", "shader-explorer-ui#build"],
       "inputs": ["$TURBO_DEFAULT$", "!src/test/**", "!e2e/**/*.test.mjs"]
+    },
+    "test:e2e:vscode:cleanup:live": {
+      "dependsOn": ["^build", "shader-studio-ui#build", "shader-explorer-ui#build"],
+      "inputs": ["$TURBO_DEFAULT$", "!src/test/**", "!e2e/**/*.test.mjs"]
     }
   }
 }

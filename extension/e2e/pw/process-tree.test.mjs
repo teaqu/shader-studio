@@ -143,3 +143,105 @@ test('real wedged tree exits without terminating an unrelated process', { skip: 
     }
   }
 });
+
+test('slow periodic inventories do not queue stale reads ahead of cleanup', async () => {
+  let reads = 0;
+  let release;
+  let started;
+  const blocked = new Promise(resolve => {
+    started = resolve;
+  });
+  const tree = await monitorProcessTree(1, {
+    intervalMs: 2,
+    read: async () => {
+      reads++;
+      if (reads === 3) {
+        started();
+        await new Promise(resolve => {
+          release = resolve;
+        });
+      }
+      return [row(1, 0)];
+    },
+  });
+  try {
+    await blocked;
+    await new Promise(resolve => setTimeout(resolve, 30));
+    // Cleanup must request a fresh read, but must not inherit queued ticks.
+    const inspection = tree.inspect();
+    release();
+    await inspection;
+    await tree.stop();
+    assert.equal(reads, 4);
+    assert.ok(tree.summary().inventory.skippedPeriodicSamples > 0);
+  } finally {
+    release?.();
+    await tree.stop();
+  }
+});
+
+test('shutdown records graceful close separately from verification and escalation', async () => {
+  const tree = fakeTree();
+  const phases = [];
+  const result = await closeOwnedProcessTree(async () => tree.exit(), tree, {
+    ...limits, phase: details => phases.push(details),
+  });
+  assert.deepEqual(phases.map(details => details.phase), ['pre-close-inventory', 'graceful-close', 'post-close-verification']);
+  assert.equal(phases[1].outcome, 'completed');
+  assert.equal(phases[2].exited, true);
+  assert.ok(phases.every(details => details.durationMs >= 0));
+  assert.equal(result.graceful, true);
+});
+
+test('failed shutdown retains phase evidence and stops the sampler', async () => {
+  const tree = fakeTree({ survives: true });
+  const phases = [];
+  await assert.rejects(closeOwnedProcessTree(() => {
+    throw new Error('close rejected');
+  }, tree, {
+    ...limits, phase: details => phases.push(details),
+  }), /Owned process tree did not exit/);
+  assert.deepEqual(phases.map(details => details.phase), [
+    'pre-close-inventory', 'graceful-close', 'post-close-verification', 'owned-sigterm', 'owned-sigkill',
+  ]);
+  assert.equal(phases[1].outcome, 'rejected');
+  assert.equal(phases[1].closeError, 'close rejected');
+  assert.equal(phases.at(-1).exited, false);
+  assert.equal(tree.stopped, true);
+});
+
+test('timing observer failure cannot prevent verified owned-tree cleanup', async () => {
+  const tree = fakeTree();
+  const result = await closeOwnedProcessTree(async () => tree.exit(), tree, {
+    ...limits, phase: () => {
+      throw new Error('disk full');
+    },
+  });
+  assert.equal(result.forced, false);
+  assert.equal(tree.stopped, true);
+  assert.deepEqual(result.measurementErrors, ['disk full', 'disk full', 'disk full']);
+});
+
+test('process telemetry failure leaves authoritative inventory and shutdown usable', async () => {
+  let live = true;
+  let fail = false;
+  const tree = await monitorProcessTree(1, {
+    read: async () => live ? [row(1, 0)] : [],
+    sample: () => {
+      if (fail) {
+        throw new Error('sample sink unavailable');
+      }
+    },
+  });
+  try {
+    fail = true;
+    assert.equal((await tree.inspect()).length, 1);
+    const result = await closeOwnedProcessTree(async () => {
+      live = false;
+    }, tree, limits);
+    assert.equal(result.forced, false);
+    assert.ok(result.samplingErrors.includes('sample sink unavailable'));
+  } finally {
+    await tree.stop();
+  }
+});
