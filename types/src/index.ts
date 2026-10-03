@@ -16,6 +16,7 @@ export * from './shader-environment/ShaderStudioDocumentation';
 export * from './shader-environment/ShaderLanguageReservedTerms';
 export * from './shader-environment/ShaderLanguages';
 export * from './shaderProject';
+export * from './WgslTrace';
 
 export * from './shader-environment/SlangChannels';
 

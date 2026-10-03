@@ -20,8 +20,30 @@ module.exports = Object.freeze({
       return (completions?.items ?? []).map(item => typeof item.label === 'string' ? item.label : item.label.label);
     },
   "00fc92c56bbd71757664d75edfd294fd10f8a9ad6f9e9e60780262c0e7b8e847": async vscode => vscode.window.activeTextEditor?.document.getText() ?? '',
+  "01a8d679e1352c754b73891b845c49b1f109ca93de0843e5e099d506362ec449": async (vscode, path) => {
+      vscode.debug.addBreakpoints([new vscode.SourceBreakpoint(new vscode.Location(vscode.Uri.file(path), new vscode.Position(5, 0)))]);
+      return vscode.debug.startDebugging(undefined, {
+        type: 'shader-studio-wgsl-trace',
+        request: 'launch',
+        name: 'WGSL trace E2E',
+        program: path,
+        width: 4,
+        height: 4,
+        pixel: [1, 2],
+        capacity: 64
+      });
+    },
   "01e9b025be435bae653d19ee67475828aebcc5483c5aaecf27dd3595ed894e7a": (vscode, path) => vscode.languages.getDiagnostics(vscode.Uri.file(path))
           .filter(d => d.severity === vscode.DiagnosticSeverity.Error).map(d => ({ line: d.range.start.line, column: d.range.start.character })),
+  "02e77b29798c968c723a6254f0bbd9e0a9bdf627964b235282757d5383a3cec1": async vscode => {
+      try {
+        return (await vscode.debug.activeDebugSession.customRequest('stackTrace', {
+          threadId: 1
+        })).stackFrames[0].line;
+      } catch {
+        return null;
+      }
+    },
   "044de176e84deef31b6e19511614868817cb3742dfe9bb666d712a6485c64ea9": async (vscode, targetPath, line) => {
       const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
       const editor = await vscode.window.showTextDocument(document, {
@@ -32,6 +54,15 @@ module.exports = Object.freeze({
       editor.revealRange(new vscode.Range(position, position));
     },
   "04648cab36b0c98e18e49342c295cdddc89dc43088439c2b2d3f78e98d8e07c1": async vscode => vscode.workspace.getConfiguration('files').get('simpleDialog.enable'),
+  "048885b074fe5529c686d8f5402d969bbe3748d614de4553a56f6bcae44644ff": async (vscode, path) => {
+      await vscode.extensions.getExtension('teaqu.shader-studio')?.activate();
+      const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
+      const editor = await vscode.window.showTextDocument(document, {
+        preview: false
+      });
+      editor.selection = new vscode.Selection(1, 4, 1, 4);
+      await vscode.commands.executeCommand('shader-studio.view');
+    },
   "0492061b8b7b7e910546e4cf7f489e2f11a3f5563935c50dfae6db6abb0571f6": (vscode, directory) => vscode.workspace.textDocuments
     .filter(document => document.isDirty && document.uri.fsPath.startsWith(directory + '/'))
     .map(document => document.uri.fsPath),
@@ -98,6 +129,12 @@ module.exports = Object.freeze({
       await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.One, preview: false });
       await vscode.commands.executeCommand('shader-studio.view');
     },
+  "0aa6ba1e5257ab1e1aa67869a7afe7015499d1c7d10c498f392bf8be487351cd": async vscode => {
+      const session = vscode.debug.activeDebugSession;
+      const stack = await session.customRequest('stackTrace', { threadId: 1 });
+      const variables = await session.customRequest('variables', { variablesReference: 1 });
+      return { stack, variables };
+    },
   "0b0c32243daae5c6fc679a36bc5440ff08051cb57d33dc606c4ba9e56e274ffc": async (vscode) => {
       const installed = vscode.extensions.getExtension('teaqu.shader-studio');
       if (!installed) {
@@ -108,6 +145,13 @@ module.exports = Object.freeze({
     },
   "0cf30d8991599bc79d498beebe5f0a68fcaed9edda0162798eb3286761291ab2": async vscode => {
       await vscode.commands.executeCommand('shader-studio.refreshCurrentShader');
+    },
+  "0d86a4fd1759247cc50f560329986a4f3e53277910deb6dd31acbd0408af4fb6": async (vscode, path) => {
+      await vscode.extensions.getExtension('teaqu.shader-studio')?.activate();
+      const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
+      const editor = await vscode.window.showTextDocument(document, { preview: false });
+      editor.selection = new vscode.Selection(1, 4, 1, 4);
+      await vscode.commands.executeCommand('shader-studio.view');
     },
   "0ed153ec2ef8245ed8f5c22c5b4114f1b6c08ea43dc82a54c8682c2127695fc5": async (vscode, targetPath, line) => {
         const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
@@ -383,6 +427,11 @@ module.exports = Object.freeze({
             await vscode.workspace.fs.delete(vscode.Uri.file(path), { useTrash: false }).then(undefined, () => {});
           }
         },
+  "25cfe78f442a305aebcab50e29016831997f1d803bc2b89a69da94c977d6871f": async (vscode, path) => {
+      vscode.debug.addBreakpoints([new vscode.SourceBreakpoint(new vscode.Location(vscode.Uri.file(path), new vscode.Position(5, 0)))]);
+      return vscode.debug.startDebugging(undefined, { type: 'shader-studio-wgsl-trace', request: 'launch',
+        name: 'WGSL trace E2E', program: path, width: 4, height: 4, pixel: [1, 2], capacity: 64 });
+    },
   "26614840d891288489ec234c6d52383b9d095363f8fa025f670db34cf8c94a55": async (vscode) => vscode.commands.executeCommand('workbench.action.closeAllEditors'),
   "26d090af7938d8191fc6998d148773a82d599f0c8146bc666a0e157ed9201845": async (vscode, documentUri, expected) => {
     const found = vscode.languages.getDiagnostics(vscode.Uri.parse(documentUri))
@@ -620,6 +669,11 @@ module.exports = Object.freeze({
     api.languages.getDiagnostics(api.Uri.file(target))
       .filter(item => item.source === 'shader-studio-glsl-ls')
       .map(item => item.message),
+  "403ca14ddec8a174a8249366ddc0476a86b44b0a39476e43e2010ecd9ec8b79b": async vscode => {
+      const session = vscode.debug.activeDebugSession;
+      return { stack: await session.customRequest('stackTrace', { threadId: 1 }),
+        variables: await session.customRequest('variables', { variablesReference: 1 }) };
+    },
   "41ffa7181fe9d69edf748679a421b0e67f54e2735cb8aa6b4cfc08fd7a0288f9": async (vscode, targetPath) => {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
     await vscode.window.showTextDocument(document, {
@@ -627,6 +681,12 @@ module.exports = Object.freeze({
     });
     await vscode.commands.executeCommand('shader-studio.view');
   },
+  "4358c05aab320faf9c246042667d51ab5bf50b1ad31be99b0cec566acc57f2e5": async vscode => {
+      const session = vscode.debug.activeDebugSession;
+      await session.customRequest('continue', {
+        threadId: 1
+      });
+    },
   "439919d0ba7beb37c94eb4991e99ca5534f8750feb44b5b4b9c70354e4a2ff65": vscode => vscode.commands.executeCommand('workbench.action.closeAllEditors'),
   "4449d074d5c8f4c807b654885d61e7c514e6c8c2bb4fefcdf14b26cecbf80663": async (vscode, targetPath, needles) => {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
@@ -763,6 +823,13 @@ module.exports = Object.freeze({
       );
       return document.uri.toString();
     },
+  "51497f3d2ea7a006066b3ebb84081d47e07c791232b25063ba06f3bc0dc2f9a3": async (vscode, path) => {
+      const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
+      const editor = await vscode.window.showTextDocument(document, {
+        preview: false
+      });
+      editor.selection = new vscode.Selection(1, 4, 1, 4);
+    },
   "520fdec2e7bbc3b55517178cc1692ead13b490388b4b26b7a718da9428854bf5": async (vscode, targetPath) => {
       const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
       const editor = await vscode.window.showTextDocument(document, {
@@ -865,6 +932,12 @@ module.exports = Object.freeze({
     editor.selection = new vscode.Selection(position, position);
     editor.revealRange(new vscode.Range(position, position));
   },
+  "5ddcdc433ff2f36daa0d21496236b3d44b1c858ed284a766027250bc0924c7b4": async vscode => {
+      const session = vscode.debug.activeDebugSession;
+      await session.customRequest('stepBack', { threadId: 1 });
+      return { stack: await session.customRequest('stackTrace', { threadId: 1 }),
+        variables: await session.customRequest('variables', { variablesReference: 1 }) };
+    },
   "5ed65250fa3ae491fe73c500f2796e61331685555ab6ac90195ae0868979c177": async (vscode, paths, text) => {
         await vscode.workspace.fs.writeFile(vscode.Uri.file(paths.config), Buffer.from(JSON.stringify({
           version: '1.0',
@@ -913,6 +986,9 @@ module.exports = Object.freeze({
         .filter(d => d.severity === vscode.DiagnosticSeverity.Error).map(d => ({ line: d.range.start.line, column: d.range.start.character })),
   "62148dae8c7fb8353b88c6cb61218aefb69cb3f1ac196636a4d25fee19185d69": (vscode, path) => vscode.languages.getDiagnostics(vscode.Uri.file(path))
     .filter(d => d.severity === vscode.DiagnosticSeverity.Error).map(d => d.message),
+  "62eb3396d66aabb034dc6cf20614ac7abb530e2d30f389f489bc55fa451b1db8": async vscode => {
+      return (await vscode.debug.activeDebugSession.customRequest('stackTrace', { threadId: 1 })).stackFrames[0].line;
+    },
   "633e2f97117891a1d1051870a5f3c809455fa7712403f70f4a10622e57140d61": async (api, target) => {
       await api.window.showTextDocument(await api.workspace.openTextDocument(target));
       await api.commands.executeCommand('workbench.action.files.revert');
@@ -972,6 +1048,13 @@ module.exports = Object.freeze({
         delete globalThis.__releaseStartupRefresh;
         delete globalThis.__deliverInitialShader;
       },
+  "6c80b425a58812f6ba737568e5b0c8b6d3e3f2cd3039a58c2bfdd7a9d0d14d68": async vscode => {
+      try {
+        return (await vscode.debug.activeDebugSession.customRequest('stackTrace', { threadId: 1 })).stackFrames[0].line;
+      } catch {
+        return null;
+      }
+    },
   "6cd21a955141fcad6feced6a1690c2f712cfec3accc23eca538cca077b84275f": async (vscode, path) => {
       const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
       await vscode.window.showTextDocument(document, {
@@ -1123,6 +1206,7 @@ module.exports = Object.freeze({
     await vscode.commands.executeCommand('notifications.clearAll');
   },
   "7e2323f420ac1c09a5a23443906d7ae95ba05b24bf3387d9d0e04086023f04e9": async vscode => vscode.commands.executeCommand('editor.action.showHover'),
+  "80b44ab1b86045d720537a28e0a9f51646248d7dba11f4f80f1d7c3aebb5d29a": vscode => vscode.debug.activeDebugSession?.type ?? null,
   "80c7f492b2a06dbf938e087dc44375bf12a9b090b745be69f4c6b2f8f6c48fa7": async (vscode, targetPath) => {
       const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
       await vscode.window.showTextDocument(document, {
@@ -1380,6 +1464,13 @@ module.exports = Object.freeze({
         });
         await vscode.commands.executeCommand('shader-studio.view');
       },
+  "b168f6ae7c11cd6caf13d16b71d2640dcf9f77ea0cdcb6342b761ace197d42e2": async vscode => {
+      const runner = vscode.window.tabGroups.all.flatMap(group => group.tabs).find(tab => tab.label === 'WGSL Step Trace (PoC)');
+      if (!runner) {
+        throw new Error('The dedicated GPU runner tab is missing.');
+      }
+      await vscode.window.tabGroups.close(runner);
+    },
   "b188fb190fbf48a4024d9bf153634fb105ea216a194b9dd5a3dc2e25528c721a": async (vscode, targetPath) => {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
     await vscode.commands.executeCommand(
@@ -1446,6 +1537,10 @@ module.exports = Object.freeze({
             .sort((a, b) => a.sortText.localeCompare(b.sortText))
             .map((item) => item.label);
         },
+  "b7e275fc15629d99fd6cd36e40f291b04e8941a91d86e8a2db84a9d258bd12c6": async vscode => {
+      const session = vscode.debug.activeDebugSession;
+      await session.customRequest('continue', { threadId: 1 });
+    },
   "b9c7944d6b198f4515950e10d2c0e6c1895f8810aa722d588cfdb3365a1397e7": async (vscode, targetPath, needles) => {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
     const source = document.getText();
@@ -1698,6 +1793,11 @@ module.exports = Object.freeze({
     },
   "d47f833466114e98b0faa53949ea2513fc3616a7eec768482fc32e03741959f5": () => !!globalThis.__startupRefresh,
   "d49c82fd31ccff95fd0a55f151a7318df38b3ce97792c29d5b9ae76d41025d5e": vscode => vscode.window.tabGroups.activeTabGroup.viewColumn,
+  "d4db18bc941a7710a5b9f33c3d2e2d0846c60211af3a6b70e851c98fe26cddf3": async vscode => {
+      if (vscode.debug.activeDebugSession?.type === 'shader-studio-wgsl-trace') {
+        await vscode.debug.stopDebugging(vscode.debug.activeDebugSession);
+      }
+    },
   "d4df6e32e8fcd66b9650cee713b0316f28bc28c1917562fa20c7b2f99e0c7bb2": async (vscode, documentUri, expected) => {
       const found = vscode.languages.getDiagnostics(vscode.Uri.parse(documentUri))
         .find((item) => item.message.toLocaleLowerCase().includes(expected.toLocaleLowerCase()));
@@ -1748,6 +1848,30 @@ module.exports = Object.freeze({
       const position = new vscode.Position(0, 0);
       editor.selection = new vscode.Selection(position, position);
       await vscode.commands.executeCommand('shader-studio.view');
+    },
+  "d902c9cad207897bb4b874a6c927aa28dfbdfa64eef0b3f00bdbeb208acccf6c": async vscode => {
+      const session = vscode.debug.activeDebugSession;
+      return {
+        stack: await session.customRequest('stackTrace', {
+          threadId: 1
+        }),
+        variables: await session.customRequest('variables', {
+          variablesReference: 1
+        })
+      };
+    },
+  "d9b5d4c6ba90d40b04d0b39181e7071ba6895cdf5a53674b3e81e18ee5ccd482": async vscode => {
+      const session = vscode.debug.activeDebugSession;
+      const stack = await session.customRequest('stackTrace', {
+        threadId: 1
+      });
+      const variables = await session.customRequest('variables', {
+        variablesReference: 1
+      });
+      return {
+        stack,
+        variables
+      };
     },
   "d9f7b48ee0dc2d757a67fb78d8a75491b9f925ee1de96758442b40680b09f182": (vscode, directory) => vscode.workspace.textDocuments.filter(document => document.isDirty && document.uri.fsPath.startsWith(directory + '/')).map(document => document.uri.fsPath),
   "da90153aafb51e15b0ca390151bd0670918277ea2f4c53a37f410c9934b36c14": async (vscode, path) => (await vscode.workspace.openTextDocument(vscode.Uri.file(path))).uri.toString(),
@@ -1830,6 +1954,11 @@ module.exports = Object.freeze({
         preview: false
       });
       await vscode.commands.executeCommand('shader-studio.view');
+    },
+  "eaa37e700e9993e5a028bc70ccecea0d8105e6c41f19301b636f6c2952e25a7b": async vscode => {
+      return (await vscode.debug.activeDebugSession.customRequest('stackTrace', {
+        threadId: 1
+      })).stackFrames[0].line;
     },
   "eb0e52607cb6770e373de6e0259cb9104325fc5d92b92c4481f9692e3efae802": async (vscode, target, at) => {
     const document = vscode.workspace.textDocuments.find(candidate => candidate.uri.fsPath === target) ?? (await vscode.workspace.openTextDocument(vscode.Uri.file(target)));
@@ -1937,6 +2066,20 @@ module.exports = Object.freeze({
           editor.selection = new vscode.Selection(position, position);
           editor.revealRange(new vscode.Range(position, position));
         },
+  "f69d2480fa68e389fdd479e5eef3d74d07e47e2974cab7e62e8a0a865753be93": async vscode => {
+      const session = vscode.debug.activeDebugSession;
+      await session.customRequest('stepBack', {
+        threadId: 1
+      });
+      return {
+        stack: await session.customRequest('stackTrace', {
+          threadId: 1
+        }),
+        variables: await session.customRequest('variables', {
+          variablesReference: 1
+        })
+      };
+    },
   "f74848473087f42d74ac02a0cad4e41da47ae85b253e363c1b39f4085ef250bf": async (vscode, path) => {
           const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
           await vscode.window.showTextDocument(document, { preview: false, preserveFocus: false });
@@ -1964,6 +2107,11 @@ module.exports = Object.freeze({
       const position = new vscode.Position(0, 0);
       editor.selection = new vscode.Selection(position, position);
       await vscode.commands.executeCommand('shader-studio.view');
+    },
+  "f9c318af26d9b5aacae1a7f0a4b20c7ade8ae219bb9db15a864d72e3b2215b31": async (vscode, path) => {
+      const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
+      const editor = await vscode.window.showTextDocument(document, { preview: false });
+      editor.selection = new vscode.Selection(1, 4, 1, 4);
     },
   "f9f019819e0a5b21b0497afeb1051728069100d5e983e53c0d8994901eebb14f": async (vscode, paths) => {
       await vscode.extensions.getExtension('teaqu.shader-studio')?.activate();

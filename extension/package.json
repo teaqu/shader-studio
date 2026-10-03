@@ -336,6 +336,104 @@
         "language": "wgsl",
         "path": "./snippets/coordinates.wgsl.code-snippets"
       }
+    ],
+    "debuggers": [
+      {
+        "type": "shader-studio-wgsl-trace",
+        "label": "Shader Studio WGSL Trace (PoC)",
+        "languages": [
+          "wgsl"
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "program"
+            ],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "Self-contained WGSL mainImage source file."
+              },
+              "width": {
+                "type": "integer",
+                "default": 256,
+                "minimum": 1,
+                "maximum": 2048
+              },
+              "height": {
+                "type": "integer",
+                "default": 256,
+                "minimum": 1,
+                "maximum": 2048
+              },
+              "pixel": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 2,
+                "default": [
+                  128,
+                  128
+                ],
+                "description": "Pixel [x,y] with top-left origin."
+              },
+              "time": {
+                "type": "number",
+                "default": 0
+              },
+              "frame": {
+                "type": "integer",
+                "default": 0,
+                "minimum": 0
+              },
+              "capacity": {
+                "type": "integer",
+                "default": 4096,
+                "minimum": 1,
+                "maximum": 16384
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "shader-studio-wgsl-trace",
+            "request": "launch",
+            "name": "Trace WGSL pixel (PoC)",
+            "program": "${file}",
+            "width": 256,
+            "height": 256,
+            "pixel": [
+              128,
+              128
+            ],
+            "time": 0,
+            "frame": 0,
+            "capacity": 4096
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "WGSL GPU trace PoC",
+            "description": "Trace one pixel of a standalone WGSL fragment shader.",
+            "body": {
+              "type": "shader-studio-wgsl-trace",
+              "request": "launch",
+              "name": "Trace WGSL pixel (PoC)",
+              "program": "^\"${file}\"",
+              "width": 256,
+              "height": 256,
+              "pixel": [
+                128,
+                128
+              ],
+              "capacity": 4096
+            }
+          }
+        ]
+      }
     ]
   },
   "scripts": {

@@ -8,6 +8,7 @@ import { GlslToJsTranspiler } from "./app/Transpiler";
 import { VscodeLanguageServiceController } from "./language-services/VscodeLanguageServiceController";
 import { createExtensionLanguageServiceFactories } from "./language-services/createExtensionLanguageServices";
 import { registerCSpellDictionary } from "./language-services/CSpellIntegration";
+import { registerWgslTraceDebugger } from "./step-debugger/registerWgslTraceDebugger";
 
 
 let shaderExtension: ShaderStudio | undefined;
@@ -20,6 +21,7 @@ export async function activate(context: vscode.ExtensionContext) {
   });
   outputChannel.debug("Output channel initialized");
   await registerCSpellDictionary(context);
+  registerWgslTraceDebugger(context);
 
   const diagnosticCollection = vscode.languages.createDiagnosticCollection(
     "shader-studio",
