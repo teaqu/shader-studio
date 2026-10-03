@@ -335,16 +335,6 @@
   });
 </script>
 
-<LiveAudioInputs
-  input={tempInput}
-  {audioVideoController}
-  {getWebviewUri}
-  {postMessage}
-  onSelect={input => {
-    onUpdateTempInput(input);
-    onAutoSave();
-  }}
-/>
 <h3>Audio file</h3>
 {#if postMessage}
   <AssetBrowser
@@ -471,6 +461,17 @@
     </div>
   </div>
 {/if}
+
+<LiveAudioInputs
+  input={tempInput}
+  {audioVideoController}
+  {getWebviewUri}
+  {postMessage}
+  onSelect={input => {
+    onUpdateTempInput(input);
+    onAutoSave();
+  }}
+/>
 
 <style>
   h3 {

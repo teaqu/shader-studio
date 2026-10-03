@@ -61,6 +61,13 @@ describe('AudioTab', () => {
     expect(view.getByText('No files found')).toBeVisible();
   });
 
+  it('places live inputs below the audio-file section', () => {
+    const view = render(AudioTab, defaultProps());
+    const path = view.getByPlaceholderText('Path to audio or video file');
+    const mic = view.getByRole('button', { name: 'Mic' });
+    expect(path.compareDocumentPosition(mic) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   describe('Rendering', () => {
     it('should render path input with audio placeholder', () => {
       render(AudioTab, defaultProps());
