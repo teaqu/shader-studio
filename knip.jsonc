@@ -1,0 +1,197 @@
+// Explicit package roots document the public API even where plugins infer them.
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "include": [
+    "files",
+    "exports",
+    "dependencies",
+    "unlisted",
+    "binaries"
+  ],
+  "ignoreDependencies": [],
+  // vsce is invoked by the legacy packaging alias; release CI uses explicit npx @vscode/vsce.
+  "ignoreBinaries": [
+    "vsce"
+  ],
+  "workspaces": {
+    "debug": {
+      "entry": [
+        "src/index.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,svelte}",
+        "!src/**/generated/**",
+        "!src/**/*.generated.ts"
+      ]
+    },
+    "extension": {
+      "entry": [
+        "src/extension.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,svelte}",
+        "!src/**/generated/**",
+        "!src/**/*.generated.ts"
+      ],
+      // Mocha globals are loaded through tsconfig.types by vscode-test.
+      "ignoreDependencies": [
+        "@types/mocha"
+      ]
+    },
+    "monaco": {
+      "entry": [
+        "src/index.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,svelte}",
+        "!src/**/generated/**",
+        "!src/**/*.generated.ts"
+      ]
+    },
+    "rendering": {
+      "entry": [
+        "src/index.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,svelte}",
+        "!src/**/generated/**",
+        "!src/**/*.generated.ts"
+      ]
+    },
+    "shader-explorer": {
+      "entry": [
+        "src/main.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,svelte}",
+        "!src/**/generated/**",
+        "!src/**/*.generated.ts"
+      ]
+    },
+    "standalone": {
+      "entry": [
+        "src/main.ts",
+        "src/test/vscodeStub.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,svelte}",
+        "!src/**/generated/**",
+        "!src/**/*.generated.ts"
+      ],
+      // These sibling UI sources are consumed through Vite aliases and build scripts.
+      "ignoreDependencies": [
+        "shader-explorer-ui",
+        "shader-studio-ui"
+      ]
+    },
+    "types": {
+      "entry": [
+        "src/index.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,svelte}",
+        "!src/**/generated/**",
+        "!src/**/*.generated.ts"
+      ]
+    },
+    "ui": {
+      "entry": [
+        "src/index.ts",
+        "src/main.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,svelte}",
+        "!src/**/generated/**",
+        "!src/**/*.generated.ts"
+      ],
+      // The encoder worker resolves this WASM asset as a URL copied by the build.
+      "ignoreDependencies": [
+        "gifski-wasm"
+      ]
+    },
+    "utils": {
+      "entry": [
+        "src/index.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,svelte}",
+        "!src/**/generated/**",
+        "!src/**/*.generated.ts"
+      ]
+    },
+    "language-servers/core": {
+      "entry": [
+        "src/index.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,svelte}",
+        "!src/**/generated/**",
+        "!src/**/*.generated.ts"
+      ]
+    },
+    "language-servers/glsl-analysis": {
+      "entry": [
+        "src/index.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,svelte}",
+        "!src/**/generated/**",
+        "!src/**/*.generated.ts"
+      ]
+    },
+    "language-servers/glsl": {
+      "entry": [
+        "src/index.ts",
+        "src/worker.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,svelte}",
+        "!src/**/generated/**",
+        "!src/**/*.generated.ts"
+      ]
+    },
+    "language-servers/slang": {
+      "entry": [
+        "src/index.ts",
+        "src/worker.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,svelte}",
+        "!src/**/generated/**",
+        "!src/**/*.generated.ts"
+      ]
+    },
+    "language-servers/wgsl-analysis": {
+      "entry": [
+        "src/index.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,svelte}",
+        "!src/**/generated/**",
+        "!src/**/*.generated.ts"
+      ]
+    },
+    "language-servers/wgsl": {
+      "entry": [
+        "src/index.ts",
+        "src/worker.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,svelte}",
+        "!src/**/generated/**",
+        "!src/**/*.generated.ts"
+      ]
+    },
+    ".": {
+      "entry": [
+        "vite.aliases.mjs"
+      ],
+      "project": [
+        "vite.aliases.mjs"
+      ]
+    }
+  },
+  "ignore": [
+    "**/*.d.ts"
+  ]
+}
