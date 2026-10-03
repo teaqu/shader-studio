@@ -134,6 +134,29 @@ for (const language of ['glsl', 'wgsl', 'slang']) {
     await page.getByTestId(`shader-option-sampling-${language}`).click();
     await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
     await page.locator('.channel-row').filter({ hasText: 'screen' }).click();
+    // Controls must use the host theme rather than the browser's native colours.
+    for (const theme of [
+      { background: 'rgb(45, 45, 45)', foreground: 'rgb(204, 204, 204)', border: 'rgb(60, 60, 60)' },
+      { background: 'rgb(255, 255, 255)', foreground: 'rgb(32, 32, 32)', border: 'rgb(190, 190, 190)' },
+    ]) {
+      await page.evaluate(theme => {
+        const style = document.querySelector('.misc-grid').style;
+        style.setProperty('--vscode-input-background', theme.background);
+        style.setProperty('--vscode-input-foreground', theme.foreground);
+        style.setProperty('--vscode-input-border', theme.border);
+        style.setProperty('--vscode-focusBorder', 'rgb(0, 122, 204)');
+      }, theme);
+      for (const label of ['Filter:', 'Wrap:']) {
+        const control = page.getByLabel(label);
+        await expect(control).toHaveCSS('background-color', theme.background);
+        await expect(control).toHaveCSS('color', theme.foreground);
+        await control.blur();
+        await expect(control).toHaveCSS('border-top-color', theme.border);
+        await control.focus();
+        await expect(control).toHaveCSS('border-top-color', 'rgb(0, 122, 204)');
+      }
+    }
+    await page.locator('.misc-grid').evaluate(e => e.removeAttribute('style'));
     await page.getByRole('button', { name: 'Start screen sharing', exact: true }).click();
     const output = page.getByTestId('web-preview').locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
     const pixels = async () => {

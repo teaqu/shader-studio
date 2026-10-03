@@ -192,6 +192,22 @@ return;
     margin-bottom: 8px;
   }
 
+  .screen-sampling select,
+  .buffer-sampling select {
+    padding: 8px 12px;
+    border: 1px solid var(--vscode-input-border, #3c3c3c);
+    border-radius: 4px;
+    background: var(--vscode-input-background, #2d2d2d);
+    color: var(--vscode-input-foreground, #cccccc);
+    font-size: 14px;
+  }
+
+  .screen-sampling select:focus,
+  .buffer-sampling select:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder, #007acc);
+  }
+
   .screen-sampling label:last-child { grid-column: 1 / -1; }
 
   .misc-card {
