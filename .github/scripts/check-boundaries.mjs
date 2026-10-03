@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, extname, join, relative, resolve } from "node:path";
 import process from "node:process";
+import { parse as parseSvelte } from "svelte/compiler";
 import ts from "typescript";
 
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".mjs", ".cjs", ".svelte"]);
@@ -113,7 +114,10 @@ function sourceText(path) {
   if (extname(path) !== ".svelte") {
     return text;
   }
-  return [...text.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map((match) => match[1]).join("\n");
+  const component = parseSvelte(text);
+  return [component.module, component.instance]
+    .flatMap((script) => script ? [text.slice(script.content.start, script.content.end)] : [])
+    .join("\n");
 }
 
 function isTypeOnlyImport(node) {
