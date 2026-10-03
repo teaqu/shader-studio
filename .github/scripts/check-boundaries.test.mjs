@@ -102,7 +102,10 @@ test("boundary check treats literal CommonJS requires as runtime workspace impor
   const root = fixture([
     ["types", { name: "@shader-studio/types" }, 'require("@shader-studio/rendering");'],
     ["rendering", { name: "@shader-studio/rendering" }, ""],
-    ["utils", { name: "@shader-studio/utils" }, 'require("@shader-studio/types");'],
+    ["utils", { name: "@shader-studio/utils" }, {
+      "index.ts": 'require("@shader-studio/types");',
+      "view.svelte": '<SCRIPT lang="ts">import "@shader-studio/types";</SCRIPT>',
+    }],
     ["extension", { name: "shader-studio" }, ""],
     ["ui", { name: "shader-studio-ui" }, ""],
     ["standalone", { name: "@shader-studio/standalone" }, ""],
@@ -116,6 +119,7 @@ test("boundary check treats literal CommonJS requires as runtime workspace impor
     assert.match(errors, /types.*imports undeclared workspace dependency @shader-studio\/rendering/);
     assert.match(errors, /types.*may not import @shader-studio\/rendering/);
     assert.match(errors, /utils.*imports undeclared workspace dependency @shader-studio\/types/);
+    assert.match(errors, /utils\/view\.svelte.*imports undeclared workspace dependency @shader-studio\/types/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
