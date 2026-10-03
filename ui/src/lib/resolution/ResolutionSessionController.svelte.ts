@@ -58,8 +58,8 @@ function viewerCameraChanged(previous: ShaderConfig | null, next: ShaderConfig):
   return [...passNames].some((passName) => {
     const before = previous?.passes[passName];
     const after = next.passes[passName];
-    const previousValue = before && 'useViewerCamera' in before ? before.useViewerCamera ?? true : true;
-    const nextValue = after && 'useViewerCamera' in after ? after.useViewerCamera ?? true : true;
+    const previousValue = before && 'useViewerCamera' in before ? before.useViewerCamera ?? previous?.webgpu?.useViewerCamera ?? true : previous?.webgpu?.useViewerCamera ?? true;
+    const nextValue = after && 'useViewerCamera' in after ? after.useViewerCamera ?? next.webgpu?.useViewerCamera ?? true : next.webgpu?.useViewerCamera ?? true;
     return previousValue !== nextValue;
   });
 }

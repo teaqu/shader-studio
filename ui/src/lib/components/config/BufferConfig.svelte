@@ -22,7 +22,7 @@
   import ChannelConfigModal from "./ChannelConfigModal.svelte";
   import ComputePassControls from "./ComputePassControls.svelte";
   import RenderEntryPointControls from "./RenderEntryPointControls.svelte";
-  import GeometrySelector from "./GeometrySelector.svelte";
+  import PassGeometryControls from "./PassGeometryControls.svelte";
   import PathInput from "./PathInput.svelte";
   import { getEditorOverlayVisible, setEditorOverlayVisible, setOverlayActiveFile } from "../../state/editorOverlayState.svelte";
   import { getCurrentEditorSource } from "../../state/currentEditorSourceState.svelte";
@@ -30,7 +30,6 @@
   import { listGlbMeshNames } from "../../../../../rendering/src/preview3d/GltfMeshLoader";
 
   type EditableConfig = BufferPass | ImagePass | ComputePass;
-  type RenderConfig = (BufferPass | ImagePass) & { useViewerCamera?: boolean };
 
   type BufferConfigProps = {
     bufferName: string;
@@ -432,12 +431,6 @@
     updateConfig({ ...renderConfig, geometry: { type: 'model', path: modelGeometry?.path ?? '', ...(mesh ? { mesh } : {}) } });
   }
 
-  function handleUseViewerCameraChange(useViewerCamera: boolean) {
-    if (passType !== 'compute') {
-      updateConfig({ ...(config as RenderConfig), useViewerCamera });
-    }
-  }
-
   function handleVertexPathChange(path: string) {
     if (passType === 'compute') {
       return;
@@ -699,12 +692,12 @@
 
     {#if bufferName !== "common" && passType !== 'compute'}
       <div class="config-item geometry-section">
-        <GeometrySelector
+        <PassGeometryControls
           geometry={geometryType}
           {showViewerCamera}
-          useViewerCamera={(config as RenderConfig).useViewerCamera ?? true}
+          config={config as BufferPass | ImagePass}
           onGeometryChange={handleGeometryChange}
-          onUseViewerCameraChange={handleUseViewerCameraChange}
+          onUpdate={updateConfig}
         />
         {#if modelGeometry}
           <PathInput

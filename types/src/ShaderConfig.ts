@@ -115,7 +115,7 @@ export interface ImagePass {
   inputs?: Record<string, ConfigInput>;
   resolution?: ResolutionSettings;
   geometry?: GeometryConfig;
-  /** WebGPU mesh viewer transforms; omitted means enabled. */
+  /** WebGPU mesh viewer transforms; omitted inherits shader/global defaults. */
   useViewerCamera?: boolean;
   vertex?: string;
   entryPoints?: RenderEntryPoints;
@@ -126,7 +126,7 @@ export interface BufferPass {
   inputs?: Record<string, ConfigInput>;
   resolution?: BufferResolution;
   geometry?: GeometryConfig;
-  /** WebGPU mesh viewer transforms; omitted means enabled. */
+  /** WebGPU mesh viewer transforms; omitted inherits shader/global defaults. */
   useViewerCamera?: boolean;
   vertex?: string;
   entryPoints?: RenderEntryPoints;
@@ -191,7 +191,7 @@ export interface ShaderConfig {
     script?: string;
     scriptMaxPollingFps?: number;
     storage?: Record<string, StorageBufferConfig>;
-    /** Project preference for new render templates; existing pass execution is unchanged. */
-    webgpu?: { defaultRenderAuthoring?: WebGPUAuthoringMode };
+    /** WebGPU project defaults; individual passes can override the viewer camera. */
+    webgpu?: { defaultRenderAuthoring?: WebGPUAuthoringMode; useViewerCamera?: boolean };
     passes: ShaderPasses;
 }

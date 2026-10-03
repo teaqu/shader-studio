@@ -2,6 +2,7 @@ import { configPathForShader, createNativeComputeSource, createNativeRenderSourc
 import type { ConfiguredPathHost, ProfileData, ProfileIndex, ShaderConfig, ShaderLanguageId } from '@shader-studio/types';
 import type { VirtualWorkspace } from './VirtualWorkspace';
 import { virtualConfiguredPathHost } from './passSources';
+import { ViewerCameraSettings } from './ViewerCameraSettings';
 
 type HostMessage = { type: string; [key: string]: unknown };
 type MessageHandler = (message: HostMessage) => void;
@@ -121,6 +122,7 @@ export class WebExtensionHost {
   private readonly resolveDefaultAsset: (path: string) => string | null;
   private readonly prompt: (message: string, initialValue: string) => string | null;
   private readonly confirm: (message: string) => boolean;
+  private readonly viewerCameraSettings = new ViewerCameraSettings();
 
   constructor(
     private readonly workspace: VirtualWorkspace,
@@ -177,6 +179,10 @@ export class WebExtensionHost {
     const payload = message.payload && typeof message.payload === 'object'
       ? message.payload as Record<string, unknown>
       : {};
+
+    if (this.viewerCameraSettings.handleMessage(message.type, payload, reply => this.emitViewer({ ...reply }))) {
+      return;
+    }
 
     switch (message.type) {
       case 'saveFile': {

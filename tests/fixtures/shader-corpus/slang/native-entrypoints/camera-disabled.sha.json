@@ -5,10 +5,12 @@
       "geometry": {
         "type": "cube"
       },
-      "useViewerCamera": false,
       "entryPoints": {
         "fragment": "cameraColor"
       }
     }
+  },
+  "webgpu": {
+    "useViewerCamera": false
   }
 }

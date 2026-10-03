@@ -29,8 +29,12 @@
     },
     "webgpu": {
       "type": "object",
-      "description": "WebGPU authoring preferences for newly created passes; does not change existing shaders.",
+      "description": "WebGPU shader preferences and defaults for render passes.",
       "properties": {
+        "useViewerCamera": {
+          "type": "boolean",
+          "description": "Shader-wide viewer camera default. Omit to inherit the global preference; individual render passes can override it."
+        },
         "defaultRenderAuthoring": {
           "enum": [
             "hooks",
@@ -81,8 +85,7 @@
         },
         "useViewerCamera": {
           "type": "boolean",
-          "default": true,
-          "description": "Apply viewer camera matrices to WebGPU mesh stages; disable for clip-space positions"
+          "description": "Override the shader/global viewer camera default for this WebGPU mesh pass; disable for clip-space positions"
         },
         "vertex": {
           "type": "string",
@@ -124,8 +127,7 @@
         },
         "useViewerCamera": {
           "type": "boolean",
-          "default": true,
-          "description": "Apply viewer camera matrices to WebGPU mesh stages; disable for clip-space positions"
+          "description": "Override the shader/global viewer camera default for this WebGPU mesh pass; disable for clip-space positions"
         },
         "vertex": {
           "type": "string",

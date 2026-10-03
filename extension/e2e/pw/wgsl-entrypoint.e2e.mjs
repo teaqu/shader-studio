@@ -1,5 +1,5 @@
 import { test, expect, workspacePath } from './fixtures.mjs';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expectCanvasPixels, revertFixtureEditors } from './editor-actions.mjs';
 
@@ -34,6 +34,62 @@ test('opens a WGSL entry point with a return type before and after reloading VS 
     }, path);
     await expectCanvasPixels(await vscode.shaderFrame(), [0, 255, 0]);
   } finally {
+    await revertFixtureEditors(vscode, fixtureDir);
+    rmSync(fixtureDir, { recursive: true, force: true });
+  }
+});
+
+
+test('persists global and shader viewer camera defaults through VS Code reload @gpu', async ({ vscode }) => {
+  mkdirSync(fixtureDir, { recursive: true });
+  const path = join(fixtureDir, 'camera.wgsl');
+  const configPath = join(fixtureDir, 'camera.sha.json');
+  writeFileSync(path, 'fn mainVertex(p: ptr<function, vec3f>, n: ptr<function, vec3f>, uv: ptr<function, vec2f>) { *p *= 0.65; }\nfn mainImage(p: vec2f) -> vec4f { return vec4f(0.8, 0.2, 0.1, 1); }\n');
+  writeFileSync(configPath, JSON.stringify({ version: '1.0', passes: { Image: { geometry: { type: 'cube' } } } }));
+  const previous = await vscode.evaluateInHost(vscode => vscode.workspace.getConfiguration('shader-studio').inspect('webgpu.useViewerCamera')?.globalValue);
+  const open = () => vscode.evaluateInHost(async (vscode, path) => {
+    const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
+    await vscode.window.showTextDocument(document, { preview: false });
+    await vscode.commands.executeCommand('shader-studio.view');
+  }, path);
+  try {
+    await vscode.evaluateInHost(async vscode => vscode.workspace.getConfiguration('shader-studio').update('webgpu.useViewerCamera', true, vscode.ConfigurationTarget.Global));
+    await open();
+    let frame = await vscode.shaderFrame();
+    await frame.getByLabel('Toggle config panel', { exact: true }).click();
+    await frame.getByText('Viewer camera defaults', { exact: true }).click();
+    const global = () => frame.getByLabel('Use viewer camera globally', { exact: true });
+    const pass = () => frame.getByLabel('Use viewer camera', { exact: true });
+    await expect(global()).toBeChecked();
+    await global().uncheck();
+    await expect(pass()).not.toBeChecked();
+    await expect.poll(() => vscode.evaluateInHost(vscode => vscode.workspace.getConfiguration('shader-studio').inspect('webgpu.useViewerCamera')?.globalValue)).toBe(false);
+    expect(JSON.parse(readFileSync(configPath, 'utf8')).webgpu).toBeUndefined();
+    await frame.getByLabel('Shader viewer camera').selectOption('on');
+    await expect(pass()).toBeChecked();
+    await expect.poll(() => JSON.parse(readFileSync(configPath, 'utf8')).webgpu?.useViewerCamera).toBe(true);
+    await vscode.evaluateInHost(async vscode => {
+      setTimeout(() => vscode.commands.executeCommand('workbench.action.reloadWindow'), 100);
+    });
+    await expect.poll(() => frame.isDetached()).toBe(true);
+    await open();
+    frame = await vscode.shaderFrame();
+    if (!await frame.getByText('Viewer camera defaults', { exact: true }).isVisible()) {
+      await frame.getByLabel('Toggle config panel', { exact: true }).click();
+    }
+    await expect(pass()).toBeChecked();
+    if (!await global().isVisible()) {
+      await frame.getByText('Viewer camera defaults', { exact: true }).click();
+    }
+    await expect(global()).not.toBeChecked();
+    await expect(frame.getByLabel('Shader viewer camera')).toHaveValue('on');
+    await frame.getByLabel('Shader viewer camera').selectOption('inherit');
+    await expect(pass()).not.toBeChecked();
+    await vscode.evaluateInHost(async vscode => vscode.workspace.getConfiguration('shader-studio').update('webgpu.useViewerCamera', true, vscode.ConfigurationTarget.Global));
+    await expect(global()).toBeChecked();
+    await expect(pass()).toBeChecked();
+  } finally {
+    await vscode.evaluateInHost(async (vscode, previous) => vscode.workspace.getConfiguration('shader-studio').update('webgpu.useViewerCamera', previous ?? undefined, vscode.ConfigurationTarget.Global), previous);
     await revertFixtureEditors(vscode, fixtureDir);
     rmSync(fixtureDir, { recursive: true, force: true });
   }

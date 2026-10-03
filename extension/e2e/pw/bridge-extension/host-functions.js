@@ -327,6 +327,13 @@ module.exports = Object.freeze({
   "1a727b995077ba7138a027eef97a88c5dcaf177c0d4d4e138da08422d2bdf4ce": (vscode, target) => vscode.window.activeTextEditor?.document.uri.fsPath !== target,
   "1b5e875a113099bca026f279f8c6e78a166f7337249611b62664b4cd5c1e8900": async (vscode, path) =>
         (await vscode.workspace.openTextDocument(vscode.Uri.file(path))).uri.toString(),
+  "1d0bcfdb62cc5301fc70fd27499a3f4f011547e93a2c59f375639e912a5fb091": async (vscode, path) => {
+    const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
+    await vscode.window.showTextDocument(document, {
+      preview: false
+    });
+    await vscode.commands.executeCommand('shader-studio.view');
+  },
   "1d23a6f81b12e1b4e2b36d6f7cc27d38740741e04670fac0f7660b33033af42e": async vscode => vscode.commands.executeCommand('workbench.action.closeAllEditors'),
   "1e039bae5b8799440c3f752da1f3f9a434f9fac1595f7df84a4c7e3a16d6ed82": async (vscode, nextEnabled, key) => {
       await vscode.workspace.getConfiguration('shader-studio').update(key, nextEnabled, vscode.ConfigurationTarget.Global);
@@ -369,6 +376,7 @@ module.exports = Object.freeze({
   "22082465fa913471459f28abcde68ee1d1ca1e56c65c7ab013d230f7d37a155f": async api => {
       await api.commands.executeCommand('shader-studio.toggleEditorOverlay');
     },
+  "22e0b93ef3b7e0c4b16fe660fb657961a608aa9693483e779eabfb9d2668e039": vscode => vscode.workspace.getConfiguration('shader-studio').inspect('webgpu.useViewerCamera')?.globalValue,
   "23997a58eead2b1f2350cdbb0da2b962b7e82a7284f3e220bbea707ea8eea64a": async vscode => {
       await vscode.commands.executeCommand('notifications.clearAll');
     },
@@ -384,6 +392,7 @@ module.exports = Object.freeze({
           }
         },
   "26614840d891288489ec234c6d52383b9d095363f8fa025f670db34cf8c94a55": async (vscode) => vscode.commands.executeCommand('workbench.action.closeAllEditors'),
+  "2681cc69ca2ddf49f6272355dc1f69a4d2c2e15259e9aee2ff28d7f0e7b18179": async (vscode, previous) => vscode.workspace.getConfiguration('shader-studio').update('webgpu.useViewerCamera', previous ?? undefined, vscode.ConfigurationTarget.Global),
   "26d090af7938d8191fc6998d148773a82d599f0c8146bc666a0e157ed9201845": async (vscode, documentUri, expected) => {
     const found = vscode.languages.getDiagnostics(vscode.Uri.parse(documentUri))
       .find((item) => item.message.toLocaleLowerCase().includes(expected.toLocaleLowerCase()));
@@ -1248,6 +1257,11 @@ module.exports = Object.freeze({
           shaderVscode.window.createWebviewPanel = create;
         }
       },
+  "9212596a82cc490e63ec17ac09f2a8f04b7e4ac2f7230eb31b578260cd29c5af": async (vscode, path) => {
+    const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
+    await vscode.window.showTextDocument(document, { preview: false });
+    await vscode.commands.executeCommand('shader-studio.view');
+  },
   "9215ef095c8bfdb9adcf28a86f6046752bfc9279f02363c9ead31f93bd05a16d": async (api) => {
       await api.commands.executeCommand('workbench.actions.view.problems');
     },
@@ -1380,6 +1394,7 @@ module.exports = Object.freeze({
         source: found.source
       } : null;
     },
+  "ac4a56c5ef069afd7227e5436c30cabc5c9a6ae872d6946c9fed98eb9904e9cc": async vscode => vscode.workspace.getConfiguration('shader-studio').update('webgpu.useViewerCamera', true, vscode.ConfigurationTarget.Global),
   "ad6f5f201381d482373b73f7a0e024b4ea4551d5eb006b43c9edf91e7d115a9d": async (vscode, files) => {
         const commonDocument = await vscode.workspace.openTextDocument(vscode.Uri.file(files.commonPath));
         const passDocument = await vscode.workspace.openTextDocument(vscode.Uri.file(files.passPath));

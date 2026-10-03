@@ -31,10 +31,12 @@ export function createImagePass(
   };
 }
 
-export function resolveMeshSettings(pass: { useViewerCamera?: boolean; geometry?: { type: string; path?: string; mesh?: string; resolved_path?: string } } | undefined): { modelPath?: string; modelMesh?: string; useViewerCamera?: boolean } {
+export function resolveMeshSettings(pass: { useViewerCamera?: boolean; geometry?: { type: string; path?: string; mesh?: string; resolved_path?: string } } | undefined, shaderDefault?: boolean): { modelPath?: string; modelMesh?: string; useViewerCamera?: boolean } {
+  const useViewerCamera = pass?.useViewerCamera ?? shaderDefault;
+  const camera = useViewerCamera === undefined ? {} : { useViewerCamera };
   if (pass?.geometry?.type !== "model") {
-    return pass?.useViewerCamera === undefined ? {} : { useViewerCamera: pass.useViewerCamera };
+    return camera;
   }
   return { modelPath: pass.geometry.resolved_path ?? pass.geometry.path, modelMesh: pass.geometry.mesh,
-    ...(pass.useViewerCamera === undefined ? {} : { useViewerCamera: pass.useViewerCamera }) };
+    ...camera };
 }
