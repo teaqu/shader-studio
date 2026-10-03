@@ -497,7 +497,7 @@ describe('BufferConfig', () => {
       });
 
       const sectionTitles = Array.from(container.querySelectorAll('.section-title')).map((title) => title.textContent);
-      expect(sectionTitles).toEqual(['Channels', 'Resolution', 'Geometry', 'Rendering', 'Vertex shader']);
+      expect(sectionTitles).toEqual(['Channels', 'Resolution', 'Geometry', 'Rendering', 'Depth testing', 'Vertex shader']);
     });
 
     it('defaults renderable passes to fullscreen and serializes a selected sphere', async () => {
@@ -1041,6 +1041,30 @@ describe('BufferConfig', () => {
         bufferName, config, onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri, isImagePass: bufferName === 'Image',
       });
       const cube = (settings: Record<string, unknown> = {}) => ({ path: 'a.glsl', inputs: {}, geometry: { type: 'cube' as const }, ...settings });
+
+      it.each(['Image', 'BufferA'])('groups depth controls separately for %s geometry', (bufferName) => {
+        const view = renderPass(cube(), bufferName);
+        const section = view.getByRole('heading', { name: 'Depth testing' }).parentElement!;
+        for (const label of ['Depth test', 'Depth write', 'Compare']) {
+          expect(section.contains(view.getByLabelText(label))).toBe(true);
+        }
+        const rendering = view.getByRole('heading', { name: 'Rendering' }).parentElement!;
+        for (const label of ['Blend', 'Clear colour', 'Clear alpha', 'Cull', 'Antialiasing']) {
+          expect(rendering.contains(view.getByLabelText(label))).toBe(true);
+        }
+        expect(rendering.contains(view.getByLabelText('Depth test'))).toBe(false);
+        expect(Array.from(view.container.querySelectorAll('.section-title')).map((title) => title.textContent).filter((title) => title !== 'Channels'))
+          .toEqual(['Resolution', 'Geometry', 'Rendering', 'Depth testing', 'Vertex shader']);
+      });
+
+      it('hides the depth section for fullscreen geometry and restores it for a mesh', async () => {
+        const view = renderPass({ path: 'a.glsl', inputs: {} });
+        expect(view.queryByRole('heading', { name: 'Depth testing' })).toBeNull();
+        await fireEvent.change(view.getByLabelText('Geometry'), { target: { value: 'cube' } });
+        expect(view.getByRole('heading', { name: 'Depth testing' })).toBeTruthy();
+        await fireEvent.change(view.getByLabelText('Geometry'), { target: { value: 'fullscreen' } });
+        expect(view.queryByRole('heading', { name: 'Depth testing' })).toBeNull();
+      });
 
       it('offers Antialiasing off or 4x MSAA for geometry, defaulting to off, but not for fullscreen', () => {
         const view = renderPass(cube());

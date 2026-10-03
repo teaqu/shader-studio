@@ -27,7 +27,6 @@
     BlendMode,
     ClearColor,
     CullMode,
-    DepthCompareFunction,
     DepthSettings,
   } from "@shader-studio/types";
   import {
@@ -50,6 +49,7 @@
   import ChannelConfigModal from "./ChannelConfigModal.svelte";
   import ComputePassControls from "./ComputePassControls.svelte";
   import PathInput from "./PathInput.svelte";
+  import DepthTestingControls from "./DepthTestingControls.svelte";
   import { getEditorOverlayVisible, setEditorOverlayVisible, setOverlayActiveFile } from "../../state/editorOverlayState.svelte";
   import { rememberDrawFields, takeDrawField } from "../../state/verticesDrawMemory.svelte";
   import type { AudioVideoController } from "../../AudioVideoController";
@@ -946,49 +946,13 @@
         </div>
         <div class="resolution-row">
           <label class="resolution-label" for="clear-color-{bufferName}">Clear colour</label>
-          <input id="clear-color-{bufferName}" type="color" value={clearRgbHex} onchange={handleClearColorChange} />
+          <input id="clear-color-{bufferName}" class="clear-color-input" type="color" value={clearRgbHex} onchange={handleClearColorChange} />
         </div>
         <div class="resolution-row">
           <label class="resolution-label" for="clear-alpha-{bufferName}">Clear alpha</label>
-          <input id="clear-alpha-{bufferName}" type="number" min="0" max="1" step="0.05" value={renderState.clear[3]} onchange={handleClearAlphaChange} />
+          <input id="clear-alpha-{bufferName}" class="clear-alpha-input" type="number" min="0" max="1" step="0.05" value={renderState.clear[3]} onchange={handleClearAlphaChange} />
         </div>
         {#if renderState.depth}
-          <div class="resolution-row">
-            <label class="resolution-label" for="depth-test-{bufferName}">Depth test</label>
-            <input
-              id="depth-test-{bufferName}"
-              type="checkbox"
-              checked={renderState.depth.test}
-              onchange={(event) => updateDepth({ test: (event.currentTarget as HTMLInputElement).checked })}
-            />
-          </div>
-          <div class="resolution-row">
-            <label class="resolution-label" for="depth-write-{bufferName}">Depth write</label>
-            <input
-              id="depth-write-{bufferName}"
-              type="checkbox"
-              checked={renderState.depth.write}
-              onchange={(event) => updateDepth({ write: (event.currentTarget as HTMLInputElement).checked })}
-            />
-          </div>
-          <div class="resolution-row">
-            <label class="resolution-label" for="depth-compare-{bufferName}">Compare</label>
-            <select
-              id="depth-compare-{bufferName}"
-              value={renderState.depth.compare}
-              disabled={!renderState.depth.test}
-              onchange={(event) => updateDepth({ compare: (event.currentTarget as HTMLSelectElement).value as DepthCompareFunction })}
-            >
-              <option value="never">Never</option>
-              <option value="less">Less</option>
-              <option value="equal">Equal</option>
-              <option value="less-equal">Less or equal</option>
-              <option value="greater">Greater</option>
-              <option value="not-equal">Not equal</option>
-              <option value="greater-equal">Greater or equal</option>
-              <option value="always">Always</option>
-            </select>
-          </div>
           <div class="resolution-row">
             <label class="resolution-label" for="cull-{bufferName}">Cull</label>
             <select id="cull-{bufferName}" value={renderState.cull} onchange={handleCullChange}>
@@ -1006,6 +970,9 @@
           </div>
         {/if}
       </div>
+      {#if renderState.depth}
+        <DepthTestingControls bufferName={bufferName} depth={renderState.depth} onChange={updateDepth} />
+      {/if}
       <div class="config-item">
         <h3 class="section-title vertex-shader-title" ondblclick={openVertexShaderInOverlay}>Vertex shader</h3>
         <PathInput
@@ -1191,6 +1158,7 @@
   }
 
   .dim-input,
+  .clear-alpha-input,
   .vertex-count-input {
     width: 80px;
     padding: 3px 6px;
@@ -1208,6 +1176,7 @@
   }
 
   .dim-input:focus,
+  .clear-alpha-input:focus,
   .vertex-count-input:focus {
     border-color: var(--vscode-focusBorder, #007acc);
   }

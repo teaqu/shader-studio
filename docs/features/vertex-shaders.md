@@ -191,7 +191,7 @@ Clip-space depth follows the renderer: `z` runs from -1 to 1 in GLSL (WebGL) and
 
 ## Render Settings
 
-Image and buffer passes have render settings next to `geometry`, under **Rendering** in the config panel. Compute and Common passes do not accept them.
+Image and buffer passes have render settings next to `geometry`, under **Rendering** and **Depth testing** in the config panel. Compute and Common passes do not accept them.
 
 ```json
 "Image": {
@@ -222,6 +222,8 @@ Image and buffer passes have render settings next to `geometry`, under **Renderi
 `blend` works with every geometry, fullscreen included. A buffer pass renders into a 32-bit float texture by default; on a GPU that cannot blend 32-bit floats (no WebGPU `float32-blendable`, no WebGL `EXT_float_blend`), a blended buffer pass renders into 16-bit floats instead and the preview shows a warning.
 
 ### Depth
+
+These controls appear in the **Depth testing** section of the pass config panel.
 
 `depth` controls how nearer surfaces hide farther ones. It applies to vertices, plane, cube, sphere and model geometry; fullscreen passes have no depth buffer, so `depth` there is a config error.
 
