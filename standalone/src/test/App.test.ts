@@ -15,6 +15,7 @@ vi.mock('@shader-studio/ui', async () => {
 });
 
 import App from '../App.svelte';
+import { StandaloneSettings } from '../settings/StandaloneSettings';
 import type { WebTransport } from '../WebTransport';
 import {
   selectEditor, getSelectedEditor, requestEditor, getRequestedEditor, getNewShaderVisible,
@@ -33,6 +34,7 @@ type TestTransport = WebTransport & {
 
 function createTransport(): TestTransport {
   return {
+    settings: new StandaloneSettings(),
     postMessage: vi.fn(),
     getShaderExplorerHostApi: vi.fn(() => ({ getShaders: vi.fn() })),
     clearWorkspace: vi.fn().mockResolvedValue(undefined),
