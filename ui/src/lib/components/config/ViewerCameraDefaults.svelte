@@ -2,7 +2,6 @@
   import type { ShaderConfig } from '@shader-studio/types';
   import type { Transport } from '../../transport/MessageTransport';
   import { persistConfig } from '../../config/ConfigPersistence';
-  import { getGlobalViewerCamera } from '../../state/viewerCameraState.svelte';
 
   interface Props {
     config: ShaderConfig | null;
@@ -31,10 +30,6 @@
       <option value="on">On</option>
       <option value="off">Off</option>
     </select>
-  </label>
-  <label>
-    <input type="checkbox" aria-label="Use viewer camera globally" checked={getGlobalViewerCamera()} onchange={(event) => transport.postMessage({ type: 'updateViewerCameraSettings', payload: { useViewerCamera: event.currentTarget.checked } })} />
-    Use viewer camera globally
   </label>
   <p>Pass settings override this shader. This shader overrides the global default.</p>
 </details>

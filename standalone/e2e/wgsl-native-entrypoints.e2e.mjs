@@ -477,17 +477,21 @@ fn mainImage(coord: vec2f) -> vec4f { return vec4f(abs(iWorldPosition) * 0.65 + 
   await openFixture(page, stem, source, config);
   await workspace(page, [['camera-other.wgsl', source], ['camera-other.sha.json', JSON.stringify(config)]]);
   await page.getByText('Viewer camera defaults', { exact: true }).click();
-  const global = page.getByRole('checkbox', { name: 'Use viewer camera globally', exact: true });
+  await expect(page.getByRole('checkbox', { name: 'Use viewer camera globally', exact: true })).toHaveCount(0);
+  const changeGlobal = async (enabled) => {
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    const settings = page.getByRole('dialog', { name: 'Settings', exact: true });
+    await settings.getByRole('checkbox', { name: 'Use viewer camera', exact: true }).setChecked(enabled);
+    await settings.getByRole('button', { name: 'Done', exact: true }).click();
+  };
   const pass = page.getByRole('checkbox', { name: 'Use viewer camera', exact: true });
   const shader = page.getByLabel('Shader viewer camera');
   const canvas = page.getByTestId('web-preview').locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
   const read = () => canvas.evaluate(element => element.toDataURL());
-  await expect(global).toBeChecked();
   await expect(pass).toBeChecked();
   await expect.poll(async () => (await centerPixel(canvas)).slice(0,3).reduce((sum,value) => sum+value,0)).toBeGreaterThan(10);
   const enabled = await read();
-  await global.uncheck();
-  await expect(global).not.toBeChecked();
+  await changeGlobal(false);
   await expect(pass).not.toBeChecked();
   await expect.poll(read).not.toBe(enabled);
   const saved = () => workspace(page).then(files => JSON.parse(files[`/shaders/${stem}.sha.json`]));
@@ -512,11 +516,10 @@ fn mainImage(coord: vec2f) -> vec4f { return vec4f(abs(iWorldPosition) * 0.65 + 
   await page.reload();
   await expect(pass).toBeChecked();
   await page.getByText('Viewer camera defaults', { exact: true }).click();
-  await expect(global).not.toBeChecked();
   await expect(shader).toHaveValue('on');
   await page.getByTestId('shader-option-camera-other-wgsl').click();
   await expect(pass).not.toBeChecked();
   await expect(shader).toHaveValue('inherit');
-  await global.check();
+  await changeGlobal(true);
   await expect(pass).toBeChecked();
 });

@@ -57,8 +57,8 @@ describe('viewer camera defaults', () => {
     await fireEvent.change(select, { target: { value: 'inherit' } });
     expect(onChange).toHaveBeenLastCalledWith({ ...config, webgpu: { defaultRenderAuthoring: 'native' } });
     expect(postMessage).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'updateConfig', payload: expect.objectContaining({ config: onChange.mock.calls.at(-1)![0] }) }));
-    await fireEvent.click(view.getByLabelText('Use viewer camera globally'));
-    expect(postMessage).toHaveBeenLastCalledWith({ type: 'updateViewerCameraSettings', payload: { useViewerCamera: false } });
+    expect(view.queryByLabelText('Use viewer camera globally')).toBeNull();
+    expect(postMessage.mock.calls.every(([message]) => message.type !== 'updateViewerCameraSettings')).toBe(true);
   });
 
   it('updates an inherited pass from the global preference and can clear an explicit override', async () => {

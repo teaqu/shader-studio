@@ -620,6 +620,7 @@ module.exports = Object.freeze({
         }
       }
     },
+  "3d244e4476c806cded1ce2357f09b2fc4107c8a8fa47cb83d8aee833c18e2db0": async vscode => vscode.workspace.getConfiguration('shader-studio').update('webgpu.useViewerCamera', false, vscode.ConfigurationTarget.Global),
   "3fe2e96c378ad8c7a9e4f06f8fe539162508497685c6f4b564a7d32c20e57571": async (vscode, path) => new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.file(path))),
   "3fed03ee91ffc0657db71f4b2b21ec36c282748426f96b5d4c8bca7c34caed5e": (vscode, path) => vscode.languages.getDiagnostics(vscode.Uri.file(path)).filter(d => d.severity === vscode.DiagnosticSeverity.Error).map(d => ({
       line: d.range.start.line,

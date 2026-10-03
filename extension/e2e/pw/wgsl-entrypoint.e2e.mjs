@@ -40,7 +40,7 @@ test('opens a WGSL entry point with a return type before and after reloading VS 
 });
 
 
-test('persists global and shader viewer camera defaults through VS Code reload @gpu', async ({ vscode }) => {
+test('persists shader viewer camera defaults and follows VS Code settings through reload @gpu', async ({ vscode }) => {
   mkdirSync(fixtureDir, { recursive: true });
   const path = join(fixtureDir, 'camera.wgsl');
   const configPath = join(fixtureDir, 'camera.sha.json');
@@ -60,8 +60,9 @@ test('persists global and shader viewer camera defaults through VS Code reload @
     await frame.getByText('Viewer camera defaults', { exact: true }).click();
     const global = () => frame.getByLabel('Use viewer camera globally', { exact: true });
     const pass = () => frame.getByLabel('Use viewer camera', { exact: true });
-    await expect(global()).toBeChecked();
-    await global().uncheck();
+    await expect(global()).toHaveCount(0);
+    await expect(pass()).toBeChecked();
+    await vscode.evaluateInHost(async vscode => vscode.workspace.getConfiguration('shader-studio').update('webgpu.useViewerCamera', false, vscode.ConfigurationTarget.Global));
     await expect(pass()).not.toBeChecked();
     await expect.poll(() => vscode.evaluateInHost(vscode => vscode.workspace.getConfiguration('shader-studio').inspect('webgpu.useViewerCamera')?.globalValue)).toBe(false);
     expect(JSON.parse(readFileSync(configPath, 'utf8')).webgpu).toBeUndefined();
@@ -74,19 +75,20 @@ test('persists global and shader viewer camera defaults through VS Code reload @
     await expect.poll(() => frame.isDetached()).toBe(true);
     await open();
     frame = await vscode.shaderFrame();
-    if (!await frame.getByText('Viewer camera defaults', { exact: true }).isVisible()) {
-      await frame.getByLabel('Toggle config panel', { exact: true }).click();
+    if (!await frame.getByLabel('Shader viewer camera', { exact: true }).isVisible()) {
+      const defaults = frame.getByText('Viewer camera defaults', { exact: true });
+      if (!await defaults.isVisible()) {
+        await frame.getByLabel('Toggle config panel', { exact: true }).click();
+      }
+      await defaults.click();
     }
     await expect(pass()).toBeChecked();
-    if (!await global().isVisible()) {
-      await frame.getByText('Viewer camera defaults', { exact: true }).click();
-    }
-    await expect(global()).not.toBeChecked();
+    await expect(global()).toHaveCount(0);
     await expect(frame.getByLabel('Shader viewer camera')).toHaveValue('on');
     await frame.getByLabel('Shader viewer camera').selectOption('inherit');
     await expect(pass()).not.toBeChecked();
     await vscode.evaluateInHost(async vscode => vscode.workspace.getConfiguration('shader-studio').update('webgpu.useViewerCamera', true, vscode.ConfigurationTarget.Global));
-    await expect(global()).toBeChecked();
+    await expect(global()).toHaveCount(0);
     await expect(pass()).toBeChecked();
   } finally {
     await vscode.evaluateInHost(async (vscode, previous) => vscode.workspace.getConfiguration('shader-studio').update('webgpu.useViewerCamera', previous ?? undefined, vscode.ConfigurationTarget.Global), previous);
