@@ -27,3 +27,17 @@ it("replaces a direct Slang target semantic instead of appending a second one", 
   const projected = projectNativeRasterDisplay(source, "slang", "shade", 1)!;
   expect(projected.match(/SV_Target/g)).toHaveLength(1);
 });
+
+it("rewrites the WGSL return type without treating arrows in comments as syntax", () => {
+  const source = `struct Out { @location(0) color: vec4f, }\n@fragment fn shade() -> Out /* -> junk */ { return Out(vec4f(1)); }`;
+  const projected = projectNativeRasterDisplay(source, "wgsl", "shade")!;
+  expect(projected).toContain(") -> @location(0) vec4f");
+  expect(projected).not.toContain("-> Out /* -> @location");
+});
+
+it("preserves Slang parameter semantics and replaces a widely spaced output semantic", () => {
+  const source = `[shader("fragment")] float4 shade(float2 uv : TEXCOORD0) ${" ".repeat(10000)}: SV_Target1 { return float4(uv,0,1); }`;
+  const projected = projectNativeRasterDisplay(source, "slang", "shade", 1)!;
+  expect(projected).toContain("float4 shade(float2 uv : TEXCOORD0,");
+  expect(projected.match(/SV_Target/g)).toHaveLength(1);
+});
