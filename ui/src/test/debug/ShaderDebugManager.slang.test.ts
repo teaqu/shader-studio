@@ -153,8 +153,8 @@ float4 mainImage(float2 fragCoord)
     });
 
     expect(output).toContain('float4 _ssdbg_full_userMain()');
-    expect(output).toContain('[shader("fragment")]\nfloat4 selected(');
-    expect(output).toContain('_ssdbg_full_legacyMainImage');
+    expect(output).toMatch(/\[shader\("fragment"\)\]\s+float4\s+selected\s*\([^)]*\)\s*:\s*SV_Target0/);
+    expect(output).toContain('float4 mainImage(float2 fragCoord)');
   });
 
   it('builds a native preview plan for the default Slang shader return value', () => {

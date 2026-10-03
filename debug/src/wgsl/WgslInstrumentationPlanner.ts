@@ -14,7 +14,9 @@ import { buildWgslComputeInstrumentation } from "./WgslComputeInstrumentation";
 import { emitWgslFloat4 } from "./WgslEmitter";
 import type { WgslDebugSourceMap } from "./WgslDebugSourceMap";
 import { offsetAt } from "./model";
-import { buildNativeFragmentReplay, preserveLegacyMainImage } from "../native/NativeFragmentReplay";
+import { preserveLegacyMainImage } from "../native/LegacyMainImagePreservation";
+import { buildNativeRasterReplay } from "../native/NativeRasterReplay";
+import { emitNativeRasterWrapper } from "../native/NativeRasterWrapper";
 
 /**
  * Instruments a WGSL render shader or compute invocation for preview and capture. WGSL has
@@ -44,7 +46,7 @@ export function planWgslInstrumentation(
   const prefix = instrumentationPrefix(contentHash);
   const document = parseWgslDocument(sourceUri, source, "fragment");
   const native = sourceMap?.workspace.render
-    ? buildNativeFragmentReplay(source, "wgsl", sourceMap.workspace.render.entryPoint, prefix) : undefined;
+    ? buildNativeRasterReplay(source, "wgsl", sourceMap.workspace.render.entryPoint, prefix) : undefined;
   if (typeof native === "string") {
     return failure(sourceUri, analysis.selectedRange.start, "wgsl-debug-unsupported-syntax", native);
   }
@@ -72,7 +74,8 @@ export function planWgslInstrumentation(
     return failure(sourceUri, analysis.selectedRange.start, "wgsl-debug-instrumentation-conflict", `WGSL debug identifier '${prefix}' already exists.`);
   }
 
-  const behaviorOptions = compute && analysis.containingCallable.name === compute.entryName
+  const behaviorOptions = (compute && analysis.containingCallable.name === compute.entryName)
+    || (native && analysis.containingCallable.name === native.entryName)
     ? { ...previewOptions, customParameters: undefined } : previewOptions;
   const behavior = buildWgslBehaviorInstrumentation(document, analysis, prefix, behaviorOptions);
   if (typeof behavior === "string") {
@@ -103,9 +106,13 @@ export function planWgslInstrumentation(
   const invocation = compute
     ? `${compute.call}\n  let ${prefix}_color = vec4f(0.0);`
     : `let ${prefix}_color = ${native?.call ?? `${prefix}_userMain(coord)`};`;
-  const wrapper = mode === "preview"
-    ? emitPreviewWrapper(prefix, slots, previewOptions, behavior.setup, invocation)
-    : emitCaptureWrapper(prefix, slots, behavior.setup, invocation);
+  const wrapper = native ? emitNativeRasterWrapper(native, "wgsl", prefix, mode,
+    slots.map(slot => ({ typeName: slot.value.typeName, expression: slot.name })),
+    () => applyWgslPreviewPostProcessing(emitWgslFloat4(slots[0]!.value.typeName, slots[0]!.name), previewOptions),
+    emitWgslFloat4, behavior.setup)
+    : mode === "preview"
+      ? emitPreviewWrapper(prefix, slots, previewOptions, behavior.setup, invocation)
+      : emitCaptureWrapper(prefix, slots, behavior.setup, invocation);
   const edits = [
     ...behavior.edits,
     ...(compute?.edits ?? []),
@@ -149,6 +156,7 @@ export function planWgslInstrumentation(
         ...values.map((value, index) => ({ index: index + 1, valueId: value.id, name: value.name, typeName: value.typeName, hidden: false })),
       ],
       executionMarkerSlot: 0,
+      ...(native ? { nativeRender: { fragmentEntryPoint: native.entryName } } : {}),
     },
   };
 }

@@ -160,6 +160,42 @@ describe('DebugPanel', () => {
     expect((shaderDebugManager as any).resetCustomParameters).toHaveBeenCalledOnce();
   });
 
+  it('shows selected native raster inputs without editable parameter controls', () => {
+    const { container } = render(DebugPanel, {
+      debugState: makeDebugState({
+        functionContext: makeFunctionContext({ functionName: 'image' }),
+        nativeFragmentEntryPoint: 'image',
+      }),
+      getUniforms: mockGetUniforms,
+    });
+
+    expect(container.querySelectorAll('[data-testid="native-raster-parameter"]')).toHaveLength(2);
+    expect(screen.getByText('Native raster inputs are provided by the GPU.')).toBeInTheDocument();
+    expect(container.querySelector('[data-testid="native-raster-parameter"]')?.textContent)
+      .toContain('p: vec2');
+    expect(container.querySelector('[data-testid="native-raster-parameter"]')?.textContent)
+      .toContain('GPU-provided');
+    expect(container.querySelector('[data-testid="native-raster-parameter"]')?.textContent)
+      .not.toContain('uv');
+    expect(container.querySelectorAll('[data-testid="native-raster-parameter"]')[1]?.textContent)
+      .not.toContain('0.5');
+    expect(screen.queryByLabelText('Reset parameters')).not.toBeInTheDocument();
+    expect(container.querySelector('.param-editor')).toBeNull();
+  });
+
+  it('keeps helper function parameters editable in a native render pass', () => {
+    const { container } = render(DebugPanel, {
+      debugState: makeDebugState({
+        functionContext: makeFunctionContext({ functionName: 'shade' }),
+        nativeFragmentEntryPoint: 'image',
+      }),
+      getUniforms: mockGetUniforms,
+    });
+
+    expect(container.querySelectorAll('[data-testid="native-raster-parameter"]')).toHaveLength(0);
+    expect(screen.getByLabelText('Reset parameters')).toBeInTheDocument();
+  });
+
   it('shows loop controls with line number prefixes', () => {
     const ctx = makeFunctionContext({
       loops: [

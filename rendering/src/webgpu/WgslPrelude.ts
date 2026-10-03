@@ -928,7 +928,10 @@ function assembleWgslImageSource(userSource: string, options: WgslWrapOptions = 
   );
   const prefix = `${hoisted.header}${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}`;
   if (options.renderEntryPoints) {
-    const body = `${prefix}${commonCode}`;
+    const capturePrelude = options.captureMode
+      ? buildCapturePrelude(plan.nextBinding + (options.storage?.length ?? 0))
+      : "";
+    const body = `${prefix}${commonCode}${storageDeclarations.afterCommon}${capturePrelude}`;
     let nativeSource = isolateWgslEntryPoints(strippedUserSource, [
       options.renderEntryPoints.vertex,
       options.renderEntryPoints.fragment,
@@ -936,7 +939,7 @@ function assembleWgslImageSource(userSource: string, options: WgslWrapOptions = 
     nativeSource = injectComputeInit(nativeSource, options.renderEntryPoints.vertex);
     nativeSource = injectComputeInit(nativeSource, options.renderEntryPoints.fragment);
     return {
-      source: `${body}\n${nativeSource}\n${storageDeclarations.afterCommon}`,
+      source: `${body}\n${nativeSource}`,
       preludeLineCount: countLines(body) + 1,
       userLineCount: nativeSource.split("\n").length,
       ...commonRangeOf(prefix, strippedCommonCode),

@@ -601,7 +601,7 @@ function classifySlangSite(tokens: readonly SlangSweepToken[], index: number, st
   if (insideAttribute(tokens, index)) {
     return "attribute";
   }
-  if (previous?.text === ":" && /^SV_/i.test(token.text)) {
+  if (previous?.text === ":" && /^(?:SV_|TEXCOORD\d*$|POSITION\d*$|NORMAL\d*$|COLOR\d*$)/i.test(token.text)) {
     return "semantic";
   }
   if (SLANG_KEYWORDS.has(token.text)) {

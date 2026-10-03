@@ -327,7 +327,7 @@ export class ShaderProcessor {
     if (debugPlan) {
       return {
         code: imageShaderCode,
-        config: hookConfigForDebugPlan(debugConfig),
+        config: hookConfigForDebugPlan(debugConfig, debugPlan),
         passName: 'Image',
         debugPlan,
       };

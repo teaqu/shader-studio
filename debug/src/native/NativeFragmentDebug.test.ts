@@ -31,18 +31,41 @@ describe("selected native fragment debugging", () => {
         throw new Error(result.diagnostics[0]?.message);
       }
       const rewritten = result.plan.files[0]!.source;
-      expect(rewritten).toContain("mainImage(");
+      expect(result.plan.nativeRender).toEqual({ fragmentEntryPoint: "image" });
       expect(rewritten).toContain("_ssdbg_abcd1234_userMain");
-      expect(rewritten).toContain("iResolution.y -");
+      expect(rewritten).toContain(language === "wgsl" ? "@builtin(position) p" : "p : SV_Position");
       expect(rewritten).toContain("_slot1 = value");
-      expect(rewritten).toContain("_legacyMainImage");
+      expect(rewritten).toContain("mainImage(");
     }
   });
 
-  it("reports varying-dependent fragments as unsupported pixel replay", () => {
+  it("preserves varying-dependent fragments for raster replay", () => {
     const input = request("@fragment fn image(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let value = uv.x;\n  return vec4f(value);\n}", "wgsl", "image", 1);
     const result = new WgslDebugEngine().planPreview(input, { normalizeMode: "off", stepEdge: null });
-    expect(result).toMatchObject({ ok: false, diagnostics: [{ code: "wgsl-debug-unsupported-syntax", message: expect.stringContaining("raster replay") }] });
+    expect(result).toMatchObject({ ok: true, plan: { nativeRender: { fragmentEntryPoint: "image" } } });
+  });
+
+  it.each(["wgsl", "slang"] as const)("keeps GPU-authored %s fragment parameters instead of inspector defaults", language => {
+    const source = language === "wgsl"
+      ? "struct Inputs { @location(0) uv: vec2f, }\n@fragment fn image(input: Inputs) -> @location(0) vec4f {\n  let value = input.uv.x;\n  return vec4f(value);\n}"
+      : 'struct Inputs { float2 uv : TEXCOORD0; };\n[shader("fragment")] float4 image(Inputs input) : SV_Target0 {\n  float value = input.uv.x;\n  return float4(value);\n}';
+    const input = request(source, language, "image", 2);
+    const debug = language === "wgsl" ? new WgslDebugEngine() : new SlangDebugEngine();
+    const result = debug.planPreview(input, { normalizeMode: "off", stepEdge: null, customParameters: new Map([[0, "Inputs(0)"]]) });
+    if (!result.ok) {
+      throw new Error(result.diagnostics[0]?.message);
+    }
+    expect(result.plan.files[0]!.source).not.toContain("Inputs(0)");
+    expect(result.plan.files[0]!.source).toContain("_userMain(input)");
+  });
+
+  it.each(["wgsl", "slang"] as const)("supports execution-marker-only native %s captures", language => {
+    const source = language === "wgsl"
+      ? "@fragment fn image() -> @location(0) vec4f {\n  return vec4f(1);\n}"
+      : '[shader("fragment")] float4 image() : SV_Target0 {\n  return float4(1);\n}';
+    const engine = language === "wgsl" ? new WgslDebugEngine() : new SlangDebugEngine();
+    const result = engine.planCapture(request(source, language, "image", 1), []);
+    expect(result).toMatchObject({ ok: true, plan: { captureSlots: [{ hidden: true }] } });
   });
 
   it("honors the selected Slang compute entry even when another entry and mainImage precede it", () => {

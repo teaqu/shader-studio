@@ -51,9 +51,10 @@ Native fragments receive WebGPU coordinates with a top-left origin. The `mainIma
 
 For mesh geometry, native vertex inputs must match the supplied mesh layout: location 0 is `vec3f` position, location 1 is `vec3f` normal, and location 2 is `vec2f` UV. Native shaders own their transforms and vertex-to-fragment interface. A render pass chooses either native stage entry points or the separate `vertex` hook file.
 
-Native fragment inline previews and captures currently support a location-0 `vec4f` color result with no arguments or one `@builtin(position)` argument. They replay over the pixel grid; arbitrary interpolated inputs, sample builtins, and structured outputs need raster replay. Use ShaderToy hooks when those debug operations are needed.
+Native fragment inline previews and captures preserve the selected native fragment entry point and its authored input interface, including vertex-to-fragment varyings and depth-bearing outputs. Debugging still requires a location-0 four-component color result; it does not add multi-render-target output support.
+Native fragment inputs are supplied by rasterization, so the debug panel identifies them as GPU-provided rather than displaying inspector defaults as values. Parameters of helper functions called from that fragment remain editable for inline debugging.
 
-Runnable WGSL and Slang examples live in `tests/fixtures/shader-corpus/*/native-entrypoints/shared.*`; matching `samefile-hooks` examples demonstrate existing `mainVertex` and `mainImage` hooks in one source file.
+Runnable WGSL and Slang examples live in `tests/fixtures/shader-corpus/*/native-entrypoints/shared.*`; matching `samefile-hooks` examples demonstrate existing `mainVertex` and `mainImage` hooks in one source file. The adjacent `raster-varyings.*` projects exercise native mesh varyings and structured color/depth debugging.
 
 ## The `mainImage` Function
 

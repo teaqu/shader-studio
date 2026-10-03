@@ -18,6 +18,9 @@ import { DBG_CAPTURE_UNIFORM_SIZE, getShaderToyChannelCount } from "./SlangPrelu
 import { createSlangCustomUniformLayout, packShaderToyUniforms } from "./uniforms";
 import { captureCounters, captureDiagTick } from "../capture/captureDiagnostics";
 import { CaptureErrorLog, type CaptureError } from "../capture/CaptureErrorLog";
+import { NativeRasterCaptureTarget } from "./NativeRasterCaptureTarget";
+import { encodeVariableCapture, type CaptureSample } from "./VariableCaptureDraw";
+import { captureCompileOptions, capturePipelineDescriptor } from "./NativeCapturePipeline";
 
 const SHADER_CACHE_MAX = 20;
 const FLOAT_BYTES = 4;
@@ -56,7 +59,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
   private pipelineCache = new Map<string, CachedPipeline>();
   private pipelineCacheOrder: string[] = [];
   private pendingCaptures: PendingCapture[] = [];
-  private pendingCaptureTargets = new Set<GPUTexture>();
+  private pendingCaptureTargets = new Map<GPUTexture, GPUTexture | undefined>();
   private compileContext: CaptureCompileContext = {};
   private compileContextGeneration = 0;
   /** Set when an issue bailed on resources that were still resolving. */
@@ -234,7 +237,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     this.captureUniformBuffer = null;
     this.pipelineCache.clear();
     this.pipelineCacheOrder = [];
-    for (const target of [...this.pendingCaptureTargets]) {
+    for (const target of [...this.pendingCaptureTargets.keys()]) {
       this.destroyCaptureTarget(target);
     }
   }
@@ -254,26 +257,211 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     if (captures.length === 0 || this.disposed) {
       return 0;
     }
+    if (!this.validateCaptureBatch(captures)) {
+      return 0;
+    }
+    const rasterContext = captures[0]?.debugPlan?.nativeRender ? this.compileContext.nativeRender : undefined;
 
     const channels = this.compileContext.slangChannels ?? [];
     const storage = this.compileContext.slangStorage ?? [];
     const commonCode = this.compileContext.commonCode;
     const compileContextGeneration = this.compileContextGeneration;
     const compileContextKey = this.compileContextKey;
+    if (!this.captureResourcesReady(channels, storage)) {
+      return 0;
+    }
+
+    this.writeFrameUniforms(channels, uniforms, rasterContext?.width ?? canvasWidth, rasterContext?.height ?? canvasHeight);
+
+    const bytesPerRow = Math.ceil((gridWidth * RGBA_CHANNELS * FLOAT_BYTES) / ROW_ALIGNMENT) * ROW_ALIGNMENT;
+    const { nativeTarget, target, targetView } = this.createCaptureTarget(rasterContext, gridWidth, gridHeight);
+
+    let issued = 0;
+    try {
+      for (const capture of captures) {
+        if (!shouldContinue() || this.disposed) {
+          break;
+        }
+
+        const cached = await this.resolveCapturePipeline(capture, commonCode, channels, storage,
+          compileContextGeneration, compileContextKey, shouldContinue);
+        if (cached === undefined) {
+          break;
+        }
+        if (cached === null) {
+          continue;
+        }
+
+        const bindGroup = this.resolveCaptureBindGroup(cached.bindGroupLayout, channels, storage, capture.varName);
+        if (!bindGroup) {
+          continue;
+        }
+
+        issued += this.submitCapture(capture, cached.pipeline, bindGroup, target, targetView,
+          { gridWidth, gridHeight, bytesPerRow, captureCoord, isPixelMode, canvasWidth, canvasHeight }, nativeTarget, rasterContext);
+
+      }
+    } finally {
+      this.releaseCaptureTarget(target, nativeTarget, issued > 0);
+    }
+
+    captureCounters.capturesIssued += issued;
+    captureDiagTick("capturer.issue", {
+      pendingCaptures: this.pendingCaptures.length,
+      pipelineCacheSize: this.pipelineCache.size,
+      issuedThisCall: issued,
+      gridW: gridWidth,
+      gridH: gridHeight,
+    });
+
+    return issued;
+  }
+
+  private releaseCaptureTarget(target: GPUTexture, native: NativeRasterCaptureTarget | undefined, submitted: boolean): void {
+    if (submitted) {
+      this.destroyCaptureTargetAfterSubmittedWork(target, native?.depth);
+      return;
+    }
+    if (native) {
+      native.destroy();
+    } else {
+      target.destroy?.();
+    }
+    captureCounters.gpuTexturesDestroyed += native?.depth ? 2 : 1;
+  }
+
+  private async resolveCapturePipeline(
+    capture: CaptureRequest, commonCode: string | undefined, channels: SlangChannelBinding[], storage: StorageBindingNode[],
+    generation: number, key: string, shouldContinue: () => boolean,
+  ): Promise<CachedPipeline | null | undefined> {
+    const cached = await this.getOrCompilePipeline(capture.captureShader, commonCode, channels, storage,
+      generation, key, capture.debugPlan);
+    if (!shouldContinue() || !this.isCompileContextCurrent(generation, key)) {
+      // A newer batch needs capture too, so reissue rather than report a rejection.
+      this.deferred = true;
+      return undefined;
+    }
+    if (!cached) {
+      this.recordPendingError(capture.varName);
+    }
+    return cached;
+  }
+
+  private createCaptureTarget(rasterContext: CaptureCompileContext["nativeRender"], gridWidth: number, gridHeight: number) {
+    const nativeTarget = rasterContext
+      ? new NativeRasterCaptureTarget(this.device, rasterContext.width, rasterContext.height, rasterContext.geometry !== "fullscreen")
+      : undefined;
+    const target = nativeTarget?.texture ?? this.device.createTexture({
+      label: "variable-capture target",
+      size: { width: gridWidth, height: gridHeight },
+      format: "rgba32float",
+      usage: (globalThis.GPUTextureUsage?.RENDER_ATTACHMENT ?? 0x10) | (globalThis.GPUTextureUsage?.COPY_SRC ?? 0x01),
+    });
+    captureCounters.gpuTexturesCreated += nativeTarget?.depth ? 2 : 1;
+    const targetView = nativeTarget?.view ?? target.createView();
+
+    return { nativeTarget, target, targetView };
+  }
+
+  private submitCapture(
+    capture: CaptureRequest, pipeline: GPURenderPipeline, bindGroup: GPUBindGroup,
+    target: GPUTexture, targetView: GPUTextureView, sample: CaptureSample,
+    nativeTarget: NativeRasterCaptureTarget | undefined, rasterContext: CaptureCompileContext["nativeRender"],
+  ): number {
+    const { gridWidth, gridHeight, bytesPerRow, captureCoord, isPixelMode, canvasWidth, canvasHeight } = sample;
+    this.writeCaptureUniforms(captureCoord, gridWidth, gridHeight, capture.selectorIndex ?? 0, isPixelMode);
+
+    const readbackBuffer = this.device.createBuffer({
+      size: bytesPerRow * gridHeight,
+      usage: (globalThis.GPUBufferUsage?.MAP_READ ?? 0x0001) | (globalThis.GPUBufferUsage?.COPY_DST ?? 0x0008),
+    });
+    captureCounters.gpuBuffersCreated++;
+
+    try {
+      const command = encodeVariableCapture(this.device, pipeline, bindGroup, target, targetView,
+        readbackBuffer, { gridWidth, gridHeight, bytesPerRow, captureCoord, isPixelMode, canvasWidth, canvasHeight },
+        nativeTarget, rasterContext);
+      this.device.queue.submit([command]);
+    } catch (error) {
+      this.errors.record(error instanceof Error ? error.message : String(error), capture.varName);
+      readbackBuffer.destroy();
+      captureCounters.gpuBuffersDestroyed++;
+      return 0;
+    }
+
+    const pending: PendingCapture = {
+      varName: capture.varName,
+      varType: capture.varType,
+      buffer: readbackBuffer,
+      gridWidth,
+      gridHeight,
+      bytesPerRow,
+      resolved: false,
+      discarded: false,
+      destroyed: false,
+      rgba: null,
+      hidden: capture.hidden,
+    };
+    this.pendingCaptures.push(pending);
+    this.beginReadback(pending);
+    return 1;
+  }
+
+  private validateCaptureBatch(captures: CaptureRequest[]): boolean {
+    const nativeCount = captures.filter(capture => capture.debugPlan?.nativeRender).length;
+    if (nativeCount > 0 && !this.compileContext.nativeRender) {
+      this.errors.record("A native raster context is required for this fragment capture.");
+      return false;
+    }
+    if (nativeCount > 0 && nativeCount !== captures.length) {
+      this.errors.record("Native raster and hook captures must be issued in separate batches.");
+      return false;
+    }
+    return true;
+  }
+
+  private captureResourcesReady(channels: SlangChannelBinding[], storage: StorageBindingNode[]): boolean {
     const channelResources = channels.length > 0
       ? this.getChannelResources?.(this.compileContext) ?? null
       : [];
     if (channels.length > 0 && channelResources === null) {
       this.errors.record("Capture channels are not resolvable yet");
       this.deferred = true;
-      return 0;
+      return false;
     }
     if (!this.resolveStorageBuffers(storage)) {
       this.recordPendingError();
       this.deferred = true;
-      return 0;
+      return false;
     }
 
+    return true;
+  }
+
+  private resolveCaptureBindGroup(
+    layout: GPUBindGroupLayout, channels: SlangChannelBinding[], storage: StorageBindingNode[], varName: string,
+  ): GPUBindGroup | null {
+    const buffers = this.resolveStorageBuffers(storage);
+    if (!buffers) {
+      this.recordPendingError(varName);
+      this.deferred = true;
+      return null;
+    }
+    // Re-resolve after compilation: a pass rebuild can retire the original views.
+    const resources = channels.length > 0 ? this.getChannelResources?.(this.compileContext) ?? null : [];
+    if (resources === null) {
+      this.errors.record("Capture channels are not resolvable yet", varName);
+      this.deferred = true;
+      return null;
+    }
+    const group = this.buildBindGroup(layout, channels, resources, storage, buffers);
+    if (!group) {
+      this.recordPendingError(varName);
+    }
+    return group;
+  }
+
+  private writeFrameUniforms(channels: SlangChannelBinding[], uniforms: CaptureUniforms, width: number, height: number): void {
     const channelCount = getShaderToyChannelCount(channels);
     this.ensureUniformBuffers(channelCount);
     this.device.queue.writeBuffer(
@@ -281,8 +469,8 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       0,
       packShaderToyUniforms({
         channelCount,
-        width: canvasWidth,
-        height: canvasHeight,
+        width: width,
+        height: height,
         time: uniforms.time,
         timeDelta: uniforms.timeDelta,
         frameRate: uniforms.frameRate,
@@ -303,140 +491,6 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       }, this.customUniforms, this.customUniforms),
     );
 
-    const bytesPerRow = Math.ceil((gridWidth * RGBA_CHANNELS * FLOAT_BYTES) / ROW_ALIGNMENT) * ROW_ALIGNMENT;
-    const target = this.device.createTexture({
-      label: "variable-capture target",
-      size: { width: gridWidth, height: gridHeight },
-      format: "rgba32float",
-      usage: (globalThis.GPUTextureUsage?.RENDER_ATTACHMENT ?? 0x10) | (globalThis.GPUTextureUsage?.COPY_SRC ?? 0x01),
-    });
-    captureCounters.gpuTexturesCreated++;
-    const targetView = target.createView();
-
-    let issued = 0;
-    try {
-      for (const capture of captures) {
-        if (!shouldContinue() || this.disposed) {
-          break;
-        }
-
-        const cached = await this.getOrCompilePipeline(
-          capture.captureShader,
-          commonCode,
-          channels,
-          storage,
-          compileContextGeneration,
-          compileContextKey,
-          capture.debugPlan,
-        );
-        if (
-          !shouldContinue() ||
-          this.disposed ||
-          !this.isCompileContextCurrent(compileContextGeneration, compileContextKey)
-        ) {
-          // The batch was overtaken rather than rejected: whatever replaced it
-          // has to be captured, so the caller must reissue instead of failing.
-          this.deferred = true;
-          break;
-        }
-        if (!cached) {
-          this.recordPendingError(capture.varName);
-          continue;
-        }
-
-        const storageBuffers = this.resolveStorageBuffers(storage);
-        if (!storageBuffers) {
-          this.recordPendingError(capture.varName);
-          this.deferred = true;
-          continue;
-        }
-        // Re-resolve after the compile await: a pass rebuild or feedback reset
-        // during it retires the textures behind the views captured above, and
-        // submitting those views is a destroyed-texture validation error.
-        const currentChannelResources = channels.length > 0
-          ? this.getChannelResources?.(this.compileContext) ?? null
-          : [];
-        if (currentChannelResources === null) {
-          this.errors.record("Capture channels are not resolvable yet", capture.varName);
-          this.deferred = true;
-          continue;
-        }
-        const bindGroup = this.buildBindGroup(
-          cached.bindGroupLayout,
-          channels,
-          currentChannelResources,
-          storage,
-          storageBuffers,
-        );
-        if (!bindGroup) {
-          this.recordPendingError(capture.varName);
-          continue;
-        }
-
-        this.writeCaptureUniforms(captureCoord, gridWidth, gridHeight, capture.selectorIndex ?? 0, isPixelMode);
-
-        const readbackBuffer = this.device.createBuffer({
-          size: bytesPerRow * gridHeight,
-          usage: (globalThis.GPUBufferUsage?.MAP_READ ?? 0x0001) | (globalThis.GPUBufferUsage?.COPY_DST ?? 0x0008),
-        });
-        captureCounters.gpuBuffersCreated++;
-
-        const encoder = this.device.createCommandEncoder();
-        const renderPass = encoder.beginRenderPass({
-          colorAttachments: [{
-            view: targetView,
-            clearValue: { r: 0, g: 0, b: 0, a: 0 },
-            loadOp: "clear",
-            storeOp: "store",
-          }],
-        });
-        renderPass.setPipeline(cached.pipeline);
-        renderPass.setBindGroup(0, bindGroup);
-        renderPass.draw(3);
-        renderPass.end();
-        encoder.copyTextureToBuffer(
-          { texture: target },
-          { buffer: readbackBuffer, bytesPerRow },
-          { width: gridWidth, height: gridHeight },
-        );
-        this.device.queue.submit([encoder.finish()]);
-
-        const pending: PendingCapture = {
-          varName: capture.varName,
-          varType: capture.varType,
-          buffer: readbackBuffer,
-          gridWidth,
-          gridHeight,
-          bytesPerRow,
-          resolved: false,
-          discarded: false,
-          destroyed: false,
-          rgba: null,
-          hidden: capture.hidden,
-        };
-        this.pendingCaptures.push(pending);
-        this.beginReadback(pending);
-        issued++;
-      }
-    } finally {
-      if (issued > 0) {
-        this.destroyCaptureTargetAfterSubmittedWork(target);
-      } else {
-        target.destroy?.();
-        captureCounters.gpuTexturesDestroyed++;
-      }
-    }
-
-    captureCounters.capturesIssued += issued;
-    captureDiagTick("capturer.issue", {
-      pendingCaptures: this.pendingCaptures.length,
-      pipelineCacheSize: this.pipelineCache.size,
-      issuedThisCall: issued,
-      gridW: gridWidth,
-      gridH: gridHeight,
-    });
-
-    return issued;
   }
 
   private beginReadback(pending: PendingCapture): void {
@@ -478,8 +532,8 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     captureCounters.gpuBuffersDestroyed++;
   }
 
-  private destroyCaptureTargetAfterSubmittedWork(target: GPUTexture): void {
-    this.pendingCaptureTargets.add(target);
+  private destroyCaptureTargetAfterSubmittedWork(target: GPUTexture, depth?: GPUTexture): void {
+    this.pendingCaptureTargets.set(target, depth);
     try {
       const submittedWork = this.device.queue.onSubmittedWorkDone?.();
       if (!submittedWork) {
@@ -496,11 +550,14 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
   }
 
   private destroyCaptureTarget(target: GPUTexture): void {
-    if (!this.pendingCaptureTargets.delete(target)) {
+    if (!this.pendingCaptureTargets.has(target)) {
       return;
     }
+    const depth = this.pendingCaptureTargets.get(target);
+    this.pendingCaptureTargets.delete(target);
     target.destroy?.();
-    captureCounters.gpuTexturesDestroyed++;
+    depth?.destroy();
+    captureCounters.gpuTexturesDestroyed += depth ? 2 : 1;
   }
 
   private async getOrCompilePipeline(
@@ -527,41 +584,15 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     }
 
     captureCounters.pipelineCompiles++;
-    const commonPlanSource = debugPlan?.files.find(file => file.uri !== debugPlan.rootUri
-      && file.moduleName === ""
-      && (file.path === this.compileContext.slangSourcePath || file.path.toLowerCase().endsWith(".wgsl")));
-    const compileResult = await this.compiler.compile(captureShader, {
-      passName: "capture",
-      commonCode: commonPlanSource?.source ?? commonCode,
-      channels,
-      storage,
-      passKind: "render",
-      captureMode: true,
-      customUniforms: this.customUniforms.map(({ name, type }) => ({ name, type })),
-      ...(debugPlan
-        ? { modules: debugPlan.files
-          .filter((file) => file.uri !== debugPlan.rootUri && file.uri !== commonPlanSource?.uri)
-          .map((file) => ({ moduleName: file.moduleName, path: file.path, source: file.source })) }
-        : this.compileContext.slangModules?.length
-          ? { modules: this.compileContext.slangModules }
-          : {}),
-      ...(debugPlan
-        ? { sourcePath: debugPlan.files.find((file) => file.uri === debugPlan.rootUri)?.path }
-        : this.compileContext.slangSourcePath
-          ? { sourcePath: this.compileContext.slangSourcePath }
-          : {}),
-    });
+    const nativeRaster = debugPlan?.nativeRender && this.compileContext.nativeRender;
+    const compileResult = await this.compiler.compile(captureShader,
+      captureCompileOptions(this.compileContext, debugPlan, commonCode, channels, storage, this.customUniforms));
+
     if (!this.isCompileContextCurrent(compileContextGeneration, compileContextKey)) {
       return null;
     }
     if (!compileResult.success) {
-      const selectedSource = debugPlan?.files.find((file) => file.uri === debugPlan.selectedSourceUri);
-      const selectedLabel = selectedSource?.path ?? debugPlan?.selectedSourceUri;
-      this.pendingError = compileResult.errors
-        .map((error) => selectedLabel && !error.includes(selectedLabel) && !error.includes(debugPlan!.selectedSourceUri)
-          ? `${selectedLabel}: ${error}`
-          : error)
-        .join("\n");
+      this.pendingError = this.captureCompileError(compileResult.errors, debugPlan);
       return null;
     }
 
@@ -572,18 +603,12 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
         code: allowNonUniformDerivatives(compileResult.wgsl),
       });
       bindGroupLayout = this.device.createBindGroupLayout({
-        entries: this.buildBindGroupLayoutEntries(channels, storage),
+        entries: this.buildBindGroupLayoutEntries(channels, storage, Boolean(nativeRaster)),
       });
-      const descriptor: GPURenderPipelineDescriptor = {
-        layout: this.device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
-        vertex: { module: shaderModule, entryPoint: "vertexMain" },
-        fragment: {
-          module: shaderModule,
-          entryPoint: "fragmentMain",
-          targets: [{ format: "rgba32float" }],
-        },
-        primitive: { topology: "triangle-list" },
-      };
+      const descriptor = capturePipelineDescriptor(
+        this.device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }), shaderModule,
+        nativeRaster || undefined, debugPlan?.nativeRender?.fragmentEntryPoint);
+
       pipeline = this.device.createRenderPipelineAsync
         ? await this.device.createRenderPipelineAsync(descriptor)
         : this.device.createRenderPipeline(descriptor);
@@ -612,6 +637,16 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     return cached;
   }
 
+  private captureCompileError(errors: string[], debugPlan?: DebugInstrumentationPlan): string {
+    const selectedSource = debugPlan?.files.find((file) => file.uri === debugPlan.selectedSourceUri);
+    const selectedLabel = selectedSource?.path ?? debugPlan?.selectedSourceUri;
+    return errors
+      .map((error) => selectedLabel && !error.includes(selectedLabel) && !error.includes(debugPlan!.selectedSourceUri)
+        ? `${selectedLabel}: ${error}`
+        : error)
+      .join("\n");
+  }
+
   private getDeclarationContextKey(context: CaptureCompileContext): string {
     return JSON.stringify([
       context.commonCode ?? "",
@@ -620,6 +655,11 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       context.slangPassName ?? "",
       context.slangModules ?? [],
       context.slangSourcePath ?? "",
+      context.nativeRender ? {
+        vertexEntryPoint: context.nativeRender.vertexEntryPoint,
+        fragmentEntryPoint: context.nativeRender.fragmentEntryPoint,
+        geometry: context.nativeRender.geometry,
+      } : null,
     ]);
   }
 
@@ -633,27 +673,29 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
   private buildBindGroupLayoutEntries(
     channels: SlangChannelBinding[],
     storage: StorageBindingNode[],
+    nativeRaster = false,
   ): GPUBindGroupLayoutEntry[] {
     const FRAGMENT = globalThis.GPUShaderStage?.FRAGMENT ?? 0x2;
     const VERTEX = globalThis.GPUShaderStage?.VERTEX ?? 0x1;
+    const stageVisibility = nativeRaster ? VERTEX | FRAGMENT : FRAGMENT;
     const entries: GPUBindGroupLayoutEntry[] = [{
       binding: 0,
       visibility: VERTEX | FRAGMENT,
       buffer: { type: "uniform" },
     }];
     const plan = buildSlangBindingPlan(channels);
-    entries.push(...slangChannelLayoutEntries(plan, FRAGMENT));
+    entries.push(...slangChannelLayoutEntries(plan, stageVisibility));
     const storageBaseBinding = plan.nextBinding;
     for (const node of storage) {
       entries.push({
         binding: storageBaseBinding + node.binding,
-        visibility: FRAGMENT,
+        visibility: stageVisibility,
         buffer: { type: node.containsAtomic ? "storage" : "read-only-storage" },
       });
     }
     entries.push({
       binding: storageBaseBinding + storage.length,
-      visibility: FRAGMENT,
+      visibility: stageVisibility,
       buffer: { type: "uniform" },
     });
     return entries;

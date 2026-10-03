@@ -15,7 +15,9 @@ import { slangComputeReplayLimitation } from "./SlangComputeReplay";
 import { emitSlangFloat4, emitSlangStatic } from "./SlangEmitter";
 import type { SlangCallableNode } from "./model";
 import type { SlangWorkspace, SlangWorkspaceFile } from "./SlangWorkspace";
-import { buildNativeFragmentReplay, preserveLegacyMainImage } from "../native/NativeFragmentReplay";
+import { preserveLegacyMainImage } from "../native/LegacyMainImagePreservation";
+import { buildNativeRasterReplay } from "../native/NativeRasterReplay";
+import { emitNativeRasterWrapper } from "../native/NativeRasterWrapper";
 
 export type SlangInstrumentationMode = "preview" | "capture";
 
@@ -45,7 +47,7 @@ export function planSlangInstrumentation(
   }
   const prefix = instrumentationPrefix(workspace.contentHash);
   const native = workspace.render
-    ? buildNativeFragmentReplay(rootFile!.source.source, "slang", workspace.render.entryPoint, prefix) : undefined;
+    ? buildNativeRasterReplay(rootFile!.source.source, "slang", workspace.render.entryPoint, prefix) : undefined;
   if (typeof native === "string") {
     return failure(analysis.sourceUri, analysis.selectedRange.start, "slang-debug-unsupported-syntax", native);
   }
@@ -64,7 +66,7 @@ export function planSlangInstrumentation(
   }));
   const imported = selectedFile.source.uri !== workspace.rootUri;
   const callable = selectedFile.structure.callables.get(analysis.containingCallable.id);
-  const behaviorOptions = rootEntry.kind === "compute" && callable?.id === rootEntry.callable.id
+  const behaviorOptions = (rootEntry.kind === "compute" || rootEntry.kind === "native") && callable?.id === rootEntry.callable.id
     ? { ...previewOptions, customParameters: undefined }
     : previewOptions;
   const behavior = callable
@@ -107,18 +109,25 @@ export function planSlangInstrumentation(
   const computeCall = rootEntry.kind === "compute"
     ? `${prefix}_userMain(${computeEntryArguments(rootFile!, rootEntry.callable).join(", ")})`
     : native?.call ?? `${prefix}_userMain(fragCoord)`;
-  const wrapper = emitRootWrapper(
-    prefix,
-    wrapperSlots,
-    mode,
-    imported ? `${prefix}_wasExecuted()` : `${prefix}_executed`,
-    computeCall,
-    rootEntry.kind !== "compute",
-    previewOptions,
-    imported && behavior.setupStatements.length > 0
-      ? [`${prefix}_prepare(fragCoord);`]
-      : behavior.setupStatements,
-  );
+  const nativeSetup = imported && behavior.setupStatements.length > 0
+    ? [`${prefix}_prepare(fragCoord);`] : behavior.setupStatements;
+  const executed = imported ? `${prefix}_wasExecuted()` : `${prefix}_executed`;
+  const wrapper = native ? emitNativeRasterWrapper(native, "slang", prefix, mode,
+    wrapperSlots.map(slot => ({ typeName: slot.value.typeName, expression: slot.expression })),
+    () => applySlangPreviewPostProcessing(emitSlangFloat4(wrapperSlots[0]!.value.typeName, wrapperSlots[0]!.expression), previewOptions),
+    emitSlangFloat4, nativeSetup, executed, !imported)
+    : emitRootWrapper(
+      prefix,
+      wrapperSlots,
+      mode,
+      imported ? `${prefix}_wasExecuted()` : `${prefix}_executed`,
+      computeCall,
+      rootEntry.kind !== "compute",
+      previewOptions,
+      imported && behavior.setupStatements.length > 0
+        ? [`${prefix}_prepare(fragCoord);`]
+        : behavior.setupStatements,
+    );
   const statementStart = offsetAt(selectedFile.source.source, analysis.statementRange.start);
   const statementEnd = offsetAt(selectedFile.source.source, analysis.statementRange.end);
   const trimmedStatement = selectedFile.source.source.slice(statementStart, statementEnd).trimStart();
@@ -158,6 +167,7 @@ export function planSlangInstrumentation(
     files,
     captureSlots: slots,
     executionMarkerSlot: 0,
+    ...(native ? { nativeRender: { fragmentEntryPoint: native.entryName } } : {}),
   };
   return { ok: true, plan };
 }

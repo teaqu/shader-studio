@@ -53,6 +53,7 @@ import { WebGPUPixelRegionCapturer, type PixelRegionRequestStage } from "./WebGP
 import { WebGPUMeshResources, type WebGPUMeshResource } from "./WebGPUMeshResources";
 import { depthClearValue, geometryInstanceCount, meshTopology, renderPipelineStateKey, resolveRenderState, verticesSpace, verticesTopology, verticesVertexCount } from "../types/Geometry";
 import { FULLSCREEN_VERTEX_COUNT } from "@shader-studio/types";
+import { nativeRasterCaptureContext } from "./NativeRasterCaptureContext";
 import { extractStructSizes } from "./wgslStructSize";
 import { OrbitCamera, type CameraMatrices } from "../preview3d/OrbitCamera";
 import { createModelMatrix, createNormalMatrix3 } from "../preview3d/math";
@@ -3624,6 +3625,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       slangStorage: graph.storage,
       slangStorageBuffers: this.storageBuffers,
       slangModules,
+      nativeRender: nativeRasterCaptureContext(targetPass, () => this.meshResources),
       ...(sourcePath ? { slangSourcePath: sourcePath } : {}),
     };
   }

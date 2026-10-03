@@ -1293,6 +1293,21 @@ void computeMain(uint3 tid : SV_DispatchThreadID)
       expect(completions.find((item) => item.label === "tid")).toEqual(expect.objectContaining({ detail: "uint3" }));
     });
 
+    it("hovers and completes a Vulkan-location attributed semantic parameter and its swizzles", async () => {
+      const text = `[shader("fragment")]
+float4 shade([[vk::location(0)]] float3 position : POSITION) : SV_Target
+{
+    return float4(position.xyz, 1.0);
+}`;
+      const { service, at, hover } = await open(text);
+
+      expect(await hover(at("position", 1))).toContain("float3 position");
+      const locals = await service.completion({ document: revision, position: at("position", 1, 3) });
+      expect(locals.find((item) => item.label === "position")).toEqual(expect.objectContaining({ detail: "float3" }));
+      const swizzles = await service.completion({ document: revision, position: at("position.xyz", 0, "position.".length) });
+      expect(swizzles.map((item) => item.label)).toContain("xyz");
+    });
+
     it("hovers locals at their declarations and references", async () => {
       const text = `float4 mainImage(float2 fragCoord)
 {

@@ -14,7 +14,7 @@ export interface DebugWorkspace {
   rootUri: string;
   rootPath: string;
   passName: string;
-  /** Selected native fragment replay. Varying inputs need a raster replay and are diagnosed explicitly. */
+  /** Selected native fragment, replayed with its authored raster interface. */
   render?: { entryPoint?: string };
   /** Compute replay metadata, present when the debug root is a compute pass. */
   compute?: {
@@ -100,6 +100,8 @@ export interface DebugCaptureSlot {
   hidden: boolean;
 }
 export interface DebugInstrumentationPlan {
+  /** Preserve the original vertex stage, geometry and rasterized fragment inputs. */
+  nativeRender?: { fragmentEntryPoint: string };
   workspaceHash: string;
   rootUri: string;
   selectedSourceUri: string;

@@ -394,7 +394,10 @@ export function wrapSlangImageSource(userSource: string, options: SlangWrapOptio
   // Native stages retain the shared Shader Studio declarations but own their
   // stage interfaces. Do not append the mainImage/mainVertex adapters.
   if (options.renderEntryPoints) {
-    return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}#line 1\n${userSource}`;
+    const capturePrelude = options.captureMode
+      ? buildCapturePrelude(buildSlangBindingPlan(options.channels ?? []).nextBinding + (options.storage?.length ?? 0))
+      : "";
+    return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${capturePrelude}#line 1\n${userSource}`;
   }
   if (options.captureMode) {
     // Capture uniforms bind after the channel texture/sampler pairs and storage buffers.

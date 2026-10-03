@@ -13,6 +13,25 @@ async function openFixture(page, stem, source) {
   await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
 }
 
+async function centerPixel(canvas) {
+  return canvas.evaluate(async element => {
+    const blob = await (await fetch(element.toDataURL())).blob();
+    const bitmap = await createImageBitmap(blob);
+    const sample = new OffscreenCanvas(1, 1);
+    const context = sample.getContext('2d', { willReadFrequently: true });
+    context.drawImage(bitmap, Math.floor(bitmap.width / 2), Math.floor(bitmap.height / 2), 1, 1, 0, 0, 1, 1);
+    return [...context.getImageData(0, 0, 1, 1).data];
+  });
+}
+
+function isRedOnly([red, green, blue, alpha]) {
+  return red > 100 && red < 155 && green < 5 && blue < 5 && alpha === 255;
+}
+
+function isGray([red, green, blue, alpha]) {
+  return red > 100 && red < 155 && Math.abs(red - green) < 3 && Math.abs(green - blue) < 3 && alpha === 255;
+}
+
 test('WGSL native Insert appends one buffer and one compute entry point, then persists their config', async ({ page }) => {
   const stem = 'native-insert';
   const source = [
@@ -234,3 +253,65 @@ test('native Compute Insert follows the active separate Buffer editor source and
     path: `/shaders/${stem}/buffer.wgsl`, entryPoints: { compute: 'ComputeACompute' },
   });
 });
+
+for (const language of ['wgsl', 'slang']) {
+  test(`native ${language} varying capture preserves the selected raster interface and restores output`, async ({ page }) => {
+    const stem = `native-varying-debug-${language}`;
+    const source = language === 'wgsl'
+      ? `struct Varyings { @builtin(position) position: vec4f, @location(0) uv: vec2f }
+@vertex fn vertices(@builtin(vertex_index) i: u32) -> Varyings {
+  let p = array(vec2f(-1.0,-1.0), vec2f(3.0,-1.0), vec2f(-1.0,3.0));
+  return Varyings(vec4f(p[i],0.0,1.0), p[i] * 0.5 + 0.5);
+}
+@fragment fn image(input: Varyings) -> @location(0) vec4f {
+  let value = input.uv.x;
+  return vec4f(value, 0.0, 0.0, 1.0);
+}`
+      : `struct Varyings { float4 position : SV_Position; float2 uv : TEXCOORD0; };
+[shader("vertex")] Varyings vertices(uint i : SV_VertexID) {
+  float2 p[3] = {float2(-1,-1),float2(3,-1),float2(-1,3)};
+  Varyings output; output.position = float4(p[i],0,1); output.uv = p[i] * 0.5 + 0.5; return output;
+}
+[shader("fragment")] float4 image(Varyings input) : SV_Target0 {
+  float value = input.uv.x;
+  return float4(value, 0, 0, 1);
+}`;
+    await page.route('**/__native_varying_debug_fixture__', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Fixture</title>' }));
+    await page.goto('/__native_varying_debug_fixture__');
+    await workspace(page, [
+      [`${stem}.${language}`, source],
+      [`${stem}.sha.json`, JSON.stringify({ version: '1.0', passes: { Image: { entryPoints: { vertex: 'vertices', fragment: 'image' } } } })],
+    ]);
+    await page.goto('/');
+    await page.getByTestId(`shader-option-${stem}-${language}`).click();
+    const preview = page.getByTestId('web-preview');
+    const canvas = preview.locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
+    await expect(canvas).toBeVisible();
+    await expect.poll(async () => isRedOnly(await centerPixel(canvas))).toBe(true);
+    const editor = page.getByTestId('web-editor');
+
+    await preview.getByLabel('Toggle debug mode').click();
+    const panel = page.locator('.debug-panel');
+    if (await panel.locator('.variables-section').count() === 0) {
+      await panel.getByLabel('Toggle variable inspector').click();
+    }
+    if (language === 'wgsl') {
+      await editor.locator('.view-line').filter({ hasText: 'let value =' }).click();
+    } else {
+      const valueLine = editor.locator('.view-line').filter({ hasText: 'float value =' });
+      await valueLine.scrollIntoViewIfNeeded();
+      await valueLine.click({ position: { x: 120, y: 10 } });
+    }
+    // The authored shader is red-only; an inline scalar preview is grayscale.
+    // This proves the selected native fragment was instrumented before capture.
+    await expect.poll(async () => isGray(await centerPixel(canvas))).toBe(true);
+    const value = panel.locator('.var-row').filter({ has: page.locator('.var-name', { hasText: /^value$/ }) });
+    await expect(value).toBeVisible();
+    await expect(value).toContainText('min');
+    await expect(value).toContainText('max');
+    await expect(panel.locator('.issue-button')).toHaveCount(0);
+
+    await preview.getByLabel('Toggle debug mode').click();
+    await expect.poll(async () => isRedOnly(await centerPixel(canvas))).toBe(true);
+  });
+}

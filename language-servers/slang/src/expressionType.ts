@@ -572,21 +572,31 @@ interface SlangFunctionDeclaration {
 
 /** One parameter: qualifiers, type, name, optional array brackets, then an optional semantic and default value. */
 const PARAMETER_DECLARATION = new RegExp(
-  `^\\s*((?:(?:in|out|inout|const)\\s+)*)(${TYPE_TOKEN.source})\\s+([A-Za-z_]\\w*)\\s*(\\[\\s*\\d*\\s*\\])?(\\s*(?::\\s*[A-Za-z_]\\w*)?\\s*(?:=[\\s\\S]*)?)$`,
+  `^\\s*(?:\\[\\[[^\\]]+\\]\\]\\s*)*((?:(?:in|out|inout|const)\\s+)*)(${TYPE_TOKEN.source})\\s+([A-Za-z_]\\w*)\\s*(\\[\\s*\\d*\\s*\\])?(\\s*(?::\\s*[A-Za-z_]\\w*)?\\s*(?:=[\\s\\S]*)?)$`,
 );
 
-const FUNCTION_HEADER = new RegExp(`\\b(${TYPE_TOKEN.source})\\s+([A-Za-z_]\\w*)\\s*\\(([^)]*)\\)\\s*(?::\\s*[A-Za-z_]\\w*)?\\s*\\{`, "g");
+const FUNCTION_START = new RegExp(`\\b(${TYPE_TOKEN.source})\\s+([A-Za-z_]\\w*)\\s*\\(`, "g");
 
 function findSlangFunctions(source: string): SlangFunctionDeclaration[] {
   const functions: SlangFunctionDeclaration[] = [];
-  for (const match of source.matchAll(FUNCTION_HEADER)) {
-    const [whole, rawReturnType, name, parameterList] = match;
+  for (const match of source.matchAll(FUNCTION_START)) {
+    const [, rawReturnType, name] = match;
     if (!name || rawReturnType === undefined || match.index === undefined || CONTROL_KEYWORDS.has(name)) {
       continue;
     }
+    const parameterStart = match.index + match[0].length;
+    const parameterEnd = findBalancedClosingParen(source, parameterStart);
+    if (parameterEnd === undefined) {
+      continue;
+    }
+    const bodyOpen = source.indexOf("{", parameterEnd);
+    if (bodyOpen === -1 || /;/.test(source.slice(parameterEnd, bodyOpen))) {
+      continue;
+    }
+    const parameterList = source.slice(parameterStart, parameterEnd);
     const parameters: { name: string; typeName: string; nameOffset: number; semantic: boolean }[] = [];
-    let entryOffset = match.index + whole.indexOf("(") + 1;
-    for (const entry of (parameterList ?? "").split(",")) {
+    let entryOffset = parameterStart;
+    for (const entry of splitTopLevelParameters(parameterList)) {
       const parameter = PARAMETER_DECLARATION.exec(entry);
       if (parameter?.[2] && parameter[3]) {
         const brackets = parameter[4] ? "[]" : "";
@@ -603,8 +613,43 @@ function findSlangFunctions(source: string): SlangFunctionDeclaration[] {
       name,
       returnType: canonicalizeSlangType(rawReturnType),
       parameters,
-      parameterListEnd: match.index + whole.length - 1,
+      parameterListEnd: bodyOpen,
     });
   }
   return functions;
+}
+
+function findBalancedClosingParen(source: string, start: number): number | undefined {
+  let depth = 1;
+  for (let index = start; index < source.length; index++) {
+    if (source[index] === "(") {
+      depth++;
+    } else if (source[index] === ")" && --depth === 0) {
+      return index;
+    }
+  }
+  return undefined;
+}
+
+function splitTopLevelParameters(parameters: string): string[] {
+  const entries: string[] = [];
+  let start = 0;
+  let parens = 0;
+  let brackets = 0;
+  for (let index = 0; index < parameters.length; index++) {
+    switch (parameters[index]) {
+      case "(": parens++; break;
+      case ")": parens--; break;
+      case "[": brackets++; break;
+      case "]": brackets--; break;
+      case ",":
+        if (parens === 0 && brackets === 0) {
+          entries.push(parameters.slice(start, index));
+          start = index + 1;
+        }
+        break;
+    }
+  }
+  entries.push(parameters.slice(start));
+  return entries;
 }

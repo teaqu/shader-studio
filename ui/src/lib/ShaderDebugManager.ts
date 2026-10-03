@@ -55,6 +55,7 @@ export class ShaderDebugManager {
     isErrorsEnabled: false,
     capturedVariables: [],
     activeBufferName: 'Image',
+    nativeFragmentEntryPoint: null,
   };
 
   private stateCallback: ((state: ShaderDebugState) => void) | null = null;
@@ -152,6 +153,11 @@ export class ShaderDebugManager {
       ? imageCode
       : this.bufferCodes[passName] ?? imageCode);
     const passConfig = config?.passes[passName];
+    const nativeEntryPoint = nativeFragmentEntryPoint(code, passConfig, this.language);
+    if (this.state.nativeFragmentEntryPoint !== nativeEntryPoint) {
+      this.state.nativeFragmentEntryPoint = nativeEntryPoint ?? null;
+      this.notifyStateChange();
+    }
     const inputConfig = passConfig && 'inputs' in passConfig ? passConfig.inputs : undefined;
     const debugDependencyOwner = passName === 'common' ? 'Image' : passName;
     const ownerModules = this.slangModules.filter(

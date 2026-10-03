@@ -244,8 +244,8 @@ describe('ShaderDebugManager - WGSL language mode', () => {
     });
 
     expect(output).toContain('fn _ssdbg_full_userMain()');
-    expect(output).toContain('@fragment\nfn selected(');
-    expect(output).toContain('_ssdbg_full_legacyMainImage');
+    expect(output).toMatch(/@fragment\s+fn\s+selected[^\n]*->\s*@location\(0\)\s+vec4f/);
+    expect(output).toContain('fn mainImage(coord: vec2f)');
   });
 
   it('infers the sole native fragment for empty Image entry points', () => {
@@ -256,7 +256,7 @@ describe('ShaderDebugManager - WGSL language mode', () => {
       version: '1', passes: { Image: { entryPoints: {} } },
     });
 
-    expect(output).toContain('@fragment\nfn nativeImage(');
+    expect(output).toMatch(/@fragment\s+fn\s+nativeImage[^\n]*->\s*@location\(0\)\s+vec4f/);
     expect(output).toContain('fn _ssdbg_full_userMain()');
   });
 
@@ -272,7 +272,7 @@ describe('ShaderDebugManager - WGSL language mode', () => {
     manager.updateDebugLine(0, source, '/buffer.wgsl');
     const output = manager.applyFullShaderPostProcessing(source, config);
 
-    expect(output).toContain('@fragment\nfn bufferImage(');
+    expect(output).toMatch(/@fragment\s+fn\s+bufferImage[^\n]*->\s*@location\(0\)\s+vec4f/);
     expect(output).toContain('fn _ssdbg_full_userMain()');
   });
 

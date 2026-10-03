@@ -6,6 +6,7 @@ import type { CaptureUniforms } from "../../capture/VariableCapturer";
 import type { StorageBindingNode } from "../../types/PassGraph";
 import { createShaderToyUniformLayout, SHADERTOY_UNIFORM_SIZE, UNIFORM_OFFSETS } from "../../webgpu/SlangPrelude";
 import { allowNonUniformDerivatives } from "../../webgpu/wgslDiagnostics";
+import { captureCounters, resetCaptureCounters } from "../../capture/captureDiagnostics";
 
 const uniforms: CaptureUniforms = {
   time: 1,
@@ -652,6 +653,150 @@ describe("WebGPUVariableCapturer", () => {
 
     expect(issued).toBe(0);
     expect(capturer.getLastError()).toBe("/shaders/helper.slang: unexpected token");
+  });
+
+  it("forwards native stages and uses the original mesh raster pipeline for capture", async () => {
+    const gpu = mockGpu();
+    const draw = vi.fn();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {
+      nativeRender: {
+        vertexEntryPoint: "sceneVertex", fragmentEntryPoint: "sceneFragment", geometry: "model",
+        width: 640, height: 360, draw,
+      },
+    });
+    const plan: DebugInstrumentationPlan = {
+      workspaceHash: "native-raster", rootUri: "/shaders/image.wgsl", selectedSourceUri: "/shaders/image.wgsl",
+      executionMarkerSlot: 0, captureSlots: [], nativeRender: { fragmentEntryPoint: "debugFragment" },
+      files: [{ uri: "/shaders/image.wgsl", path: "/shaders/image.wgsl", source: "instrumented native root", version: 1, moduleName: "", ownerPass: "Image" }],
+    };
+
+    await capturer.issueCaptureGrid([{ ...captures[0], captureShader: "instrumented native root", debugPlan: plan }], uniforms, 3, 2);
+
+    expect(gpu.compiler.compile).toHaveBeenCalledWith("instrumented native root", expect.objectContaining({
+      captureMode: true, renderEntryPoints: { vertex: "sceneVertex", fragment: "debugFragment" },
+    }));
+    const pipeline = (gpu.device.createRenderPipeline as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+    expect(pipeline.vertex).toMatchObject({ entryPoint: "sceneVertex", buffers: [{ arrayStride: 32 }] });
+    expect(pipeline.fragment).toMatchObject({ entryPoint: "debugFragment" });
+    expect(pipeline.depthStencil).toMatchObject({ format: "depth24plus", depthWriteEnabled: true, depthCompare: "less" });
+    expect(draw).toHaveBeenCalledOnce();
+    const pass = gpu.beginRenderPass.mock.results[0]!.value;
+    expect(pass.draw).not.toHaveBeenCalled();
+    expect(pass.setBindGroup).toHaveBeenCalledOnce();
+    expect(gpu.copyTextureToBuffer).toHaveBeenCalledTimes(6);
+  });
+
+  it("copies native pixel captures at the original top-left integer canvas coordinate", async () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {
+      nativeRender: { vertexEntryPoint: "sceneVertex", fragmentEntryPoint: "sceneFragment", geometry: "fullscreen", width: 320, height: 180, draw: vi.fn() },
+    });
+    const plan: DebugInstrumentationPlan = {
+      workspaceHash: "native-pixel", rootUri: "/shaders/image.wgsl", selectedSourceUri: "/shaders/image.wgsl",
+      executionMarkerSlot: 0, captureSlots: [], nativeRender: { fragmentEntryPoint: "debugFragment" },
+      files: [{ uri: "/shaders/image.wgsl", path: "/shaders/image.wgsl", source: "instrumented", version: 1, moduleName: "", ownerPass: "Image" }],
+    };
+    await capturer.issueCaptureAtPixel([{ ...captures[0], debugPlan: plan }], 10, 20, 320, 180, uniforms);
+    expect(gpu.copyTextureToBuffer.mock.calls[0]![0]).toMatchObject({ origin: { x: 10, y: 20 } });
+  });
+
+  it("diagnoses a native debug plan when no matching native raster context is installed", async () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler);
+    const plan: DebugInstrumentationPlan = {
+      workspaceHash: "orphan-native", rootUri: "/shaders/image.wgsl", selectedSourceUri: "/shaders/image.wgsl",
+      executionMarkerSlot: 0, captureSlots: [], nativeRender: { fragmentEntryPoint: "debugFragment" },
+      files: [{ uri: "/shaders/image.wgsl", path: "/shaders/image.wgsl", source: "instrumented", version: 1, moduleName: "", ownerPass: "Image" }],
+    };
+    expect(await capturer.issueCaptureGrid([{ ...captures[0], debugPlan: plan }], uniforms, 1, 1)).toBe(0);
+    expect(capturer.getLastError()).toContain("native raster context");
+    expect(gpu.compiler.compile).not.toHaveBeenCalled();
+  });
+
+  it("rejects mixed native and hook capture requests before allocating a shared target", async () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {
+      nativeRender: { vertexEntryPoint: "sceneVertex", fragmentEntryPoint: "sceneFragment", geometry: "fullscreen", width: 100, height: 50, draw: vi.fn() },
+    });
+    const plan: DebugInstrumentationPlan = { workspaceHash: "mixed", rootUri: "/image.wgsl", selectedSourceUri: "/image.wgsl", executionMarkerSlot: 0, captureSlots: [], nativeRender: { fragmentEntryPoint: "debugFragment" }, files: [] };
+    expect(await capturer.issueCaptureGrid([{ ...captures[0], debugPlan: plan }, captures[1]!], uniforms, 1, 1)).toBe(0);
+    expect(capturer.getLastError()).toContain("separate batches");
+    expect(gpu.compiler.compile).not.toHaveBeenCalled();
+  });
+
+  it("invalidates the native pipeline cache when vertex stage or geometry changes", async () => {
+    const gpu = mockGpu();
+    const plan: DebugInstrumentationPlan = { workspaceHash: "native-cache", rootUri: "/image.wgsl", selectedSourceUri: "/image.wgsl", executionMarkerSlot: 0, captureSlots: [], nativeRender: { fragmentEntryPoint: "debugFragment" }, files: [] };
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {
+      nativeRender: { vertexEntryPoint: "firstVertex", fragmentEntryPoint: "fragment", geometry: "fullscreen", width: 100, height: 50, draw: vi.fn() },
+    });
+    await capturer.issueCaptureGrid([{ ...captures[0], debugPlan: plan }], uniforms, 1, 1);
+    capturer.setCompileContext({ nativeRender: { vertexEntryPoint: "secondVertex", fragmentEntryPoint: "fragment", geometry: "plane", width: 100, height: 50, draw: vi.fn() } });
+    await capturer.issueCaptureGrid([{ ...captures[0], debugPlan: plan }], uniforms, 1, 1);
+    expect(gpu.compiler.compile).toHaveBeenCalledTimes(2);
+    expect((gpu.device.createRenderPipeline as ReturnType<typeof vi.fn>).mock.calls[1]![0].vertex).toMatchObject({ entryPoint: "secondVertex", buffers: [{ arrayStride: 32 }] });
+  });
+
+  it("destroys deferred native color and depth targets exactly once on dispose", async () => {
+    resetCaptureCounters();
+    const gpu = mockGpu();
+    let complete!: () => void;
+    (gpu.device.queue as any).onSubmittedWorkDone = vi.fn(() => new Promise<void>((resolve) => {
+      complete = resolve;
+    }));
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {
+      nativeRender: { vertexEntryPoint: "sceneVertex", fragmentEntryPoint: "sceneFragment", geometry: "model", width: 100, height: 50, draw: vi.fn() },
+    });
+    const plan: DebugInstrumentationPlan = { workspaceHash: "native-dispose", rootUri: "/image.wgsl", selectedSourceUri: "/image.wgsl", executionMarkerSlot: 0, captureSlots: [], nativeRender: { fragmentEntryPoint: "debugFragment" }, files: [] };
+    await capturer.issueCaptureGrid([{ ...captures[0], debugPlan: plan }], uniforms, 1, 1);
+    const textures = (gpu.device.createTexture as ReturnType<typeof vi.fn>).mock.results.map(result => result.value);
+    capturer.dispose();
+    capturer.dispose();
+    expect(textures[0].destroy).toHaveBeenCalledOnce();
+    expect(textures[1].destroy).toHaveBeenCalledOnce();
+    expect(captureCounters.gpuTexturesCreated).toBe(2);
+    expect(captureCounters.gpuTexturesDestroyed).toBe(2);
+    complete();
+    await Promise.resolve();
+    expect(textures[0].destroy).toHaveBeenCalledOnce();
+    expect(textures[1].destroy).toHaveBeenCalledOnce();
+  });
+
+  it("scales native pixel captures to pass resolution and packs that resolution into uniforms", async () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {
+      nativeRender: { vertexEntryPoint: "sceneVertex", fragmentEntryPoint: "sceneFragment", geometry: "fullscreen", width: 100, height: 50, draw: vi.fn() },
+    });
+    const plan: DebugInstrumentationPlan = { workspaceHash: "native-resolution", rootUri: "/image.wgsl", selectedSourceUri: "/image.wgsl", executionMarkerSlot: 0, captureSlots: [], nativeRender: { fragmentEntryPoint: "debugFragment" }, files: [] };
+    await capturer.issueCaptureAtPixel([{ ...captures[0], debugPlan: plan }], 100, 50, 200, 100, uniforms);
+    expect(gpu.copyTextureToBuffer.mock.calls[0]![0]).toMatchObject({ origin: { x: 50, y: 25 } });
+    const shaderToyWrite = gpu.writeBuffer.mock.calls.find(call => (call[2] as ArrayBuffer).byteLength > 32)!;
+    const values = new Float32Array(shaderToyWrite[2] as ArrayBuffer);
+    expect(values[0]).toBe(100);
+    expect(values[1]).toBe(50);
+  });
+
+  it("reports a native draw failure and releases transient readback, color, and depth resources", async () => {
+    const gpu = mockGpu();
+    const draw = vi.fn(() => {
+      throw new Error("Native raster geometry for 'BufferA' is unavailable.");
+    });
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {
+      nativeRender: { vertexEntryPoint: "sceneVertex", fragmentEntryPoint: "sceneFragment", geometry: "model", width: 100, height: 50, draw },
+    });
+    const plan: DebugInstrumentationPlan = { workspaceHash: "native-draw-failure", rootUri: "/image.wgsl", selectedSourceUri: "/image.wgsl", executionMarkerSlot: 0, captureSlots: [], nativeRender: { fragmentEntryPoint: "debugFragment" }, files: [] };
+
+    await expect(capturer.issueCaptureGrid([{ ...captures[0], debugPlan: plan }], uniforms, 1, 1)).resolves.toBe(0);
+
+    expect(capturer.getLastError()).toContain("Native raster geometry for 'BufferA' is unavailable.");
+    expect(capturer.getCaptureErrors()).toEqual([expect.objectContaining({ varName: "uv", message: expect.stringContaining("Native raster geometry") })]);
+    expect(gpu.submit).not.toHaveBeenCalled();
+    const textures = (gpu.device.createTexture as ReturnType<typeof vi.fn>).mock.results.map(result => result.value);
+    expect(textures[0].destroy).toHaveBeenCalledOnce();
+    expect(textures[1].destroy).toHaveBeenCalledOnce();
+    const readback = gpu.createdBuffers[gpu.createdBuffers.length - 1]!;
+    expect(readback.mapAsync).not.toHaveBeenCalled();
+    expect(readback.destroy).toHaveBeenCalledOnce();
   });
 
   it("compiles a single-file WGSL debug plan through the plan source in captureMode", async () => {
