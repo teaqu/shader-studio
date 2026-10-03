@@ -44,3 +44,11 @@ This PoC supports only a single source file with `fn mainImage(coord: vec2f) -> 
 Tracing creates a separate GPU device and offscreen target for each launch. It never installs an instrumented shader into the preview or calls the existing inspector managers. Active capture still consumes GPU time. This is a PoC for deterministic fragment execution, not a guarantee of reproducing races or previously rendered resource state.
 
 Tracked in private [debugger issue #32](https://github.com/teaqu/shader-studio-dev/issues/32).
+
+## Corpus validation
+
+Run `npm run test:e2e:corpus -w @shader-studio/rendering` after building the workspace dependencies. This runs the existing rendering/inspector corpus and the WGSL trace corpus on Chromium WebGPU, plus source-inventory unit tests.
+
+The bundled corpus contains 123 configured projects across GLSL, Slang and WGSL, including 45 WGSL roots. The trace sweep inventories all 93 WGSL source files, including auxiliary passes. Eleven sources capture successfully as isolated fullscreen fragments; their output is compared with an uninstrumented `rgba32float` render at three pixels/times/frames and again with a one-event capacity. Recorded coordinates and UV values are checked independently. This tests source execution under explicit launch inputs; configured geometry, resources and earlier pass state are outside this capture.
+
+The remaining 82 sources have per-file expected refusals: 23 authored GPU entry/binding files, 12 auxiliary files without `mainImage`, 13 unresolved channel helpers, one unresolved storage resource, one `else if`, and 32 unsupported or unresolved local types (often dependent on channel/Common/custom-uniform declarations). These are asserted refusals, not successful captures or skipped tests. An unclassified fixture or changed refusal fails the sweep so compatibility changes require review. The current cross-language renderer and inspector suite remains a separate regression check.

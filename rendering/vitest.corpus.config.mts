@@ -2,13 +2,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vitest/config";
-import { loadShaderFixtureCorpus } from "./scripts/shaderFixtureCorpus.mjs";
+import { loadShaderFixtureCorpus, loadShaderFixtureSources } from "./scripts/shaderFixtureCorpus.mjs";
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const fixtureRoot =
   process.env.SHADER_STUDIO_SHADER_FIXTURES ??
   path.resolve(directory, "../tests/fixtures/shader-corpus");
 const projects = loadShaderFixtureCorpus(fixtureRoot);
+const wgslSources = loadShaderFixtureSources(fixtureRoot, ".wgsl");
 export default defineConfig({
   resolve: {
     // Browser tests must compile the workspace source, like the UI build does.
@@ -22,12 +23,13 @@ export default defineConfig({
     {
       name: "shader-fixture-corpus",
       resolveId(id) {
-        return id === "virtual:shader-fixture-corpus" ? `\0${id}` : undefined;
+        return ["virtual:shader-fixture-corpus", "virtual:wgsl-source-corpus"].includes(id) ? `\0${id}` : undefined;
       },
       load(id) {
-        return id === "\0virtual:shader-fixture-corpus"
-          ? `export default ${JSON.stringify(projects)};`
-          : undefined;
+        if (id === "\0virtual:shader-fixture-corpus") {
+          return `export default ${JSON.stringify(projects)};`;
+        }
+        return id === "\0virtual:wgsl-source-corpus" ? `export default ${JSON.stringify(wgslSources)};` : undefined;
       },
     },
   ],
@@ -37,7 +39,7 @@ export default defineConfig({
       provider: playwright({ launchOptions: { args: ["--enable-unsafe-webgpu"] } }),
       instances: [{ browser: "chromium" }],
     },
-    include: ["src/test/e2e/ShaderFixtureCorpus.corpus.test.ts"],
+    include: ["src/test/e2e/*.corpus.test.ts"],
     globals: true,
   },
 });

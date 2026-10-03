@@ -11,3 +11,8 @@ declare module "virtual:shader-fixture-corpus" {
   const projects: ShaderFixtureProject[];
   export default projects;
 }
+
+declare module "virtual:wgsl-source-corpus" {
+  const sources: Array<{ name: string; source: string }>;
+  export default sources;
+}

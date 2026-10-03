@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "vitest run --config vitest.browser.config.mts",
-    "test:e2e:corpus": "vitest run --config vitest.corpus.config.mts"
+    "test:e2e:corpus": "node --test scripts/shaderFixtureCorpus.test.mjs && vitest run --config vitest.corpus.config.mts"
   },
   "files": [
     "dist"

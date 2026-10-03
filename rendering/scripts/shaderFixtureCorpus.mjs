@@ -194,3 +194,14 @@ export function loadShaderFixtureCorpus(root) {
     })
     .sort((left, right) => left.name.localeCompare(right.name));
 }
+
+/** Raw sources, including auxiliary passes without their own project config. */
+export function loadShaderFixtureSources(root, extension) {
+  if (!fs.existsSync(root)) {
+    throw new Error(`Shader fixture corpus not found at ${root}`);
+  }
+  return walk(root)
+    .filter((filePath) => path.extname(filePath) === extension)
+    .map((filePath) => ({ name: path.relative(root, filePath), source: fs.readFileSync(filePath, "utf8") }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
