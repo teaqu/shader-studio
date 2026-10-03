@@ -69,14 +69,14 @@ test("type-only imports do not make runtime cycles", () => {
   }
 });
 
-test("boundary check resolves local modules, relative package bypasses, and worker URL imports", () => {
+test("boundary check resolves local modules, relative package bypasses, query imports, and worker URL imports", () => {
   const root = fixture([
     ["types", { name: "@shader-studio/types" }, {
       "index.ts": 'import "./first";',
       "first.ts": 'import "./second";',
       "second.ts": 'import "./first";',
     }],
-    ["utils", { name: "@shader-studio/utils" }, 'import "../types/index";'],
+    ["utils", { name: "@shader-studio/utils" }, 'import "../types/index"; import "../types/index?worker&url";'],
     ["ui", { name: "shader-studio-ui" }, 'new Worker(new URL("@shader-studio/glsl-language-server/private", import.meta.url));'],
     ["rendering", { name: "@shader-studio/rendering" }, ""],
     ["extension", { name: "shader-studio" }, ""],
@@ -90,8 +90,54 @@ test("boundary check resolves local modules, relative package bypasses, and work
   try {
     const errors = checkBoundaries(root).join("\n");
     assert.match(errors, /relative import \.\.\/types\/index crosses into @shader-studio\/types/);
+    assert.match(errors, /relative import \.\.\/types\/index\?worker&url crosses into @shader-studio\/types/);
     assert.match(errors, /runtime module cycle: types\/first\.ts -> types\/second\.ts -> types\/first\.ts/);
     assert.match(errors, /@shader-studio\/glsl-language-server\/private; use/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("boundary check treats literal CommonJS requires as runtime workspace imports", () => {
+  const root = fixture([
+    ["types", { name: "@shader-studio/types" }, 'require("@shader-studio/rendering");'],
+    ["rendering", { name: "@shader-studio/rendering" }, ""],
+    ["utils", { name: "@shader-studio/utils" }, 'require("@shader-studio/types");'],
+    ["extension", { name: "shader-studio" }, ""],
+    ["ui", { name: "shader-studio-ui" }, ""],
+    ["standalone", { name: "@shader-studio/standalone" }, ""],
+    ["debug", { name: "@shader-studio/debug" }, ""],
+    ["shader-explorer", { name: "shader-explorer-ui" }, ""],
+    ["monaco", { name: "@shader-studio/monaco" }, ""],
+    ["language-servers/core", { name: "@shader-studio/language-server-core" }, ""],
+  ]);
+  try {
+    const errors = checkBoundaries(root).join("\n");
+    assert.match(errors, /types.*imports undeclared workspace dependency @shader-studio\/rendering/);
+    assert.match(errors, /types.*may not import @shader-studio\/rendering/);
+    assert.match(errors, /utils.*imports undeclared workspace dependency @shader-studio\/types/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("foundation manifests cannot declare higher-layer workspace dependencies", () => {
+  const root = fixture([
+    ["types", { name: "@shader-studio/types", dependencies: { "@shader-studio/rendering": "*" } }, ""],
+    ["utils", { name: "@shader-studio/utils", dependencies: { "@shader-studio/types": "*" } }, ""],
+    ["rendering", { name: "@shader-studio/rendering" }, ""],
+    ["extension", { name: "shader-studio" }, ""],
+    ["ui", { name: "shader-studio-ui" }, ""],
+    ["standalone", { name: "@shader-studio/standalone" }, ""],
+    ["debug", { name: "@shader-studio/debug" }, ""],
+    ["shader-explorer", { name: "shader-explorer-ui" }, ""],
+    ["monaco", { name: "@shader-studio/monaco" }, ""],
+    ["language-servers/core", { name: "@shader-studio/language-server-core" }, ""],
+  ]);
+  try {
+    const errors = checkBoundaries(root).join("\n");
+    assert.match(errors, /@shader-studio\/types may not declare workspace dependency @shader-studio\/rendering/);
+    assert.doesNotMatch(errors, /@shader-studio\/utils may not declare/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
