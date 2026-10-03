@@ -41,8 +41,8 @@
   }
 
   onMount(() => {
- void refreshDevices(); 
-});
+    void refreshDevices();
+  });
   $effect(() => {
     const controller = audioVideoController;
     const update = () => {
