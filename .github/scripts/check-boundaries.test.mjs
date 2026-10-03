@@ -104,7 +104,14 @@ test("boundary check treats literal CommonJS requires as runtime workspace impor
     ["rendering", { name: "@shader-studio/rendering" }, ""],
     ["utils", { name: "@shader-studio/utils" }, {
       "index.ts": 'require("@shader-studio/types");',
-      "view.svelte": '<SCRIPT lang="ts">import "@shader-studio/types";</SCRIPT>',
+      "view.svelte": [
+        '<script module lang="ts">import "@shader-studio/types";</script>',
+        '<script lang="ts">',
+        '  const misleadingMarkup = \'<script>import "@shader-studio/debug";<\\/script>\';',
+        '  import "@shader-studio/rendering";',
+        '</script>',
+        '<!-- <script>import "@shader-studio/debug";</script> -->',
+      ].join("\n"),
     }],
     ["extension", { name: "shader-studio" }, ""],
     ["ui", { name: "shader-studio-ui" }, ""],
@@ -120,6 +127,9 @@ test("boundary check treats literal CommonJS requires as runtime workspace impor
     assert.match(errors, /types.*may not import @shader-studio\/rendering/);
     assert.match(errors, /utils.*imports undeclared workspace dependency @shader-studio\/types/);
     assert.match(errors, /utils\/view\.svelte.*imports undeclared workspace dependency @shader-studio\/types/);
+    assert.match(errors, /utils\/view\.svelte.*imports undeclared workspace dependency @shader-studio\/rendering/);
+    assert.match(errors, /utils\/view\.svelte.*may not import @shader-studio\/rendering/);
+    assert.doesNotMatch(errors, /utils\/view\.svelte.*@shader-studio\/debug/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
