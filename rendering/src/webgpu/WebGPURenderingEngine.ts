@@ -1,5 +1,5 @@
 /// <reference types="@webgpu/types" />
-import { audioPreviewData, livePreviewData, controlSystemAudio } from "../resources/MediaPreview";
+import { audioPreviewData, livePreviewData, controlSystemAudio, controlAudioInput } from "../resources/MediaPreview";
 import type { LiveInputType, LiveInputPreview } from "../resources/LiveInputTextureManager";
 import { audioLoadWarning } from "../util/LiveInputConfig";
 import { buildSlangBindingPlan, getSlangChannels, getSlangSamplerSettings, getSlangTextureIdentity, validateSlangBindingBudget } from "./SlangBindingPlan";
@@ -3680,6 +3680,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
   getAudioFFTData(type: string, path?: string): Uint8Array | null {
     return audioPreviewData(this.resourceManager, type, path);
+  }
+
+  controlAudioInput(action: "start" | "stop", deviceId?: string): Promise<string | undefined> {
+    return controlAudioInput(this.resourceManager, action, deviceId);
   }
 
   controlSystemAudio(action: "start" | "stop", deviceId?: string): Promise<string | undefined> {

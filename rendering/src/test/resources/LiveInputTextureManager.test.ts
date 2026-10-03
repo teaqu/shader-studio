@@ -44,6 +44,34 @@ describe("LiveInputTextureManager", () => {
   let mockStream: ReturnType<typeof stream>;
   let mockContext: ReturnType<typeof audioContext>;
 
+  it("switches Audio to a chosen device and releases the old stream", async () => {
+    await manager.load("microphone");
+    const loopback = stream();
+    getUserMedia.mockResolvedValue(loopback);
+    await expect(manager.startAudioInput("loopback")).resolves.toBeUndefined();
+    expect(getUserMedia).toHaveBeenLastCalledWith({ video: false, audio: { deviceId: { exact: "loopback" } } });
+    expect(mockStream.track.stop).toHaveBeenCalledOnce();
+    expect(manager.getPreview("microphone")?.frequency).toBeDefined();
+    manager.stopAudioInput();
+    expect(loopback.track.stop).toHaveBeenCalledOnce();
+    expect(manager.getPreview("microphone")).toBeNull();
+  });
+
+  it("stops an obsolete device permission response after changing source", async () => {
+    let resolveOld!: (value: MediaStream) => void;
+    getUserMedia.mockReturnValueOnce(new Promise<MediaStream>(resolve => {
+      resolveOld = resolve;
+    }));
+    const first = manager.load("microphone");
+    const replacement = stream();
+    getUserMedia.mockResolvedValue(replacement);
+    await manager.startAudioInput("loopback");
+    resolveOld(mockStream as unknown as MediaStream);
+    await expect(first).resolves.toMatchObject({ texture: null });
+    expect(mockStream.track.stop).toHaveBeenCalledOnce();
+    expect(replacement.track.stop).not.toHaveBeenCalled();
+  });
+
   beforeEach(() => {
     textureBackend = backend();
     manager = new LiveInputTextureManager(textureBackend);

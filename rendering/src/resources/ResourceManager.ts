@@ -27,6 +27,7 @@ export class ResourceManager<T> {
   constructor(
     private readonly backend: TextureBackend<T>,
     private readonly systemAudio = new SystemAudioCapture(),
+    private readonly audioDeviceSelection = { deviceId: "default" },
   ) {
     this.textureCache = new TextureCache(backend);
     this.videoTextureManager = new VideoTextureManager(backend);
@@ -42,7 +43,7 @@ export class ResourceManager<T> {
    * manager's caches or media elements are touched until the attempt wins.
    */
   public createIsolated(): ResourceManager<T> {
-    return new ResourceManager(this.backend, this.systemAudio);
+    return new ResourceManager(this.backend, this.systemAudio, this.audioDeviceSelection);
   }
 
   /** Config edits can preserve file media; removed live inputs must still stop capture. */
@@ -91,6 +92,18 @@ export class ResourceManager<T> {
     return texture ?? null;
   }
 
+  public async controlAudioInput(action: "start" | "stop", deviceId = "default"): Promise<string | undefined> {
+    if (action === "stop") {
+      this.liveInputs.stopAudioInput();
+      return;
+    }
+    if (!this.liveInputPaths.has(MICROPHONE_PATH)) {
+      return "Audio is still loading. Try again when the shader is ready.";
+    }
+    this.audioDeviceSelection.deviceId = deviceId;
+    return this.liveInputs.startAudioInput(deviceId);
+  }
+
   public async controlSystemAudio(action: "start" | "stop", deviceId?: string): Promise<string | undefined> {
     if (action === "stop") {
       this.liveInputs.stopSystemAudio();
@@ -104,7 +117,10 @@ export class ResourceManager<T> {
 
   public getLiveInputPreview(type: import("./LiveInputTextureManager").LiveInputType): import("./LiveInputTextureManager").LiveInputPreview | null {
     const preview = this.liveInputs.getPreview(type);
-    return type === "system-audio" && this.liveInputPaths.has(SYSTEM_AUDIO_PATH) ? { ...preview, ready: true } : preview;
+    if (type === "microphone" && this.liveInputPaths.has(MICROPHONE_PATH)) {
+      return { ...preview, ready: true, deviceId: this.audioDeviceSelection.deviceId };
+    }
+    return (type === "system-audio" && this.liveInputPaths.has(SYSTEM_AUDIO_PATH)) ? { ...preview, ready: true } : preview;
   }
 
   public getVideoElement(path: string): HTMLVideoElement | undefined {
@@ -121,13 +137,13 @@ export class ResourceManager<T> {
     cacheKey = path,
   ): Promise<T | null> {
     const cachedTexture = this.textureCache.removeCachedTexture(cacheKey);
-    
+
     if (cachedTexture) {
       // Reuse existing texture and re-cache it
       this.textureCache.cacheTexture(cacheKey, cachedTexture);
       return cachedTexture;
     }
-    
+
     try {
       const texture = await this.textureCache.loadTextureFromUrl(path, opts);
       this.textureCache.cacheTexture(cacheKey, texture);
@@ -157,7 +173,7 @@ export class ResourceManager<T> {
     } catch (error) {
       const warningMessage = `Video is not loading: ${path}. If using in a VS Code panel, try opening Shader Studio in its own window or browser. You could also try converting the video to another format`;
       console.error(warningMessage);
-      
+
       // Return default texture as fallback instead of throwing
       const defaultTexture = this.textureCache.getDefaultTexture();
       if (defaultTexture) {
@@ -192,7 +208,9 @@ export class ResourceManager<T> {
   public async loadAudioSource(path: string, options?: { muted?: boolean; startTime?: number; endTime?: number }): Promise<T | null> {
     if (path === MICROPHONE_PATH || path === SYSTEM_AUDIO_PATH) {
       this.liveInputPaths.add(path);
-      const result = await this.liveInputs.load(path === SYSTEM_AUDIO_PATH ? "system-audio" : "microphone");
+      const result = path === SYSTEM_AUDIO_PATH
+        ? await this.liveInputs.load("system-audio")
+        : await this.liveInputs.load("microphone", { deviceId: this.audioDeviceSelection.deviceId });
       if (path === SYSTEM_AUDIO_PATH) {
         this.releaseHeldSystemCapture();
       }

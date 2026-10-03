@@ -93,18 +93,31 @@
       <ChannelPreview channelInput={{ type: "keyboard" }} {getWebviewUri} />
       <div class="misc-card-label">Keyboard</div>
     </button>
-    {#each ["webcam", "microphone", "system-audio"] as type}
-      <button
-        class="misc-card"
-        class:selected={tempInput?.type === type}
-        aria-label={type === "webcam" ? "Webcam" : type === "system-audio" ? "System Audio" : "Microphone"}
-        onclick={() => onSelect({ type: type as "webcam" | "microphone" | "system-audio" })}
-      >
-        <ChannelPreview channelInput={{ type: type as "webcam" | "microphone" | "system-audio" }} {getWebviewUri} {audioVideoController} />
-        <div class="misc-card-label">{type === "webcam" ? "Webcam" : type === "system-audio" ? "System Audio" : "Microphone"}</div>
-      </button>
-    {/each}
+    <button class="misc-card" class:selected={tempInput?.type === "webcam"} aria-label="Webcam" onclick={() => onSelect({ type: "webcam" })}>
+      <ChannelPreview channelInput={{ type: "webcam" }} {getWebviewUri} {audioVideoController} />
+      <div class="misc-card-label">Webcam</div>
+    </button>
   </div>
+  <div class="misc-section-label">Audio</div>
+  <div class="misc-options">
+    <button class="misc-card" class:selected={tempInput?.type === "microphone"} aria-label="Audio" onclick={() => onSelect({ type: "microphone" })}>
+      <ChannelPreview channelInput={{ type: "microphone" }} {getWebviewUri} {audioVideoController} />
+      <div class="misc-card-label">Audio</div>
+    </button>
+  </div>
+  {#if tempInput?.type === "microphone"}
+    <SystemAudioControls type="microphone" {audioVideoController} />
+  {/if}
+  <div class="misc-section-label">Browser Audio</div>
+  <div class="misc-options">
+    <button class="misc-card" class:selected={tempInput?.type === "system-audio"} aria-label="Browser Audio" onclick={() => onSelect({ type: "system-audio" })}>
+      <ChannelPreview channelInput={{ type: "system-audio" }} {getWebviewUri} {audioVideoController} />
+      <div class="misc-card-label">Browser Audio</div>
+    </button>
+  </div>
+  {#if tempInput?.type === "system-audio"}
+    <SystemAudioControls {audioVideoController} />
+  {/if}
   {#if isVSCodeEnvironment() && (tempInput?.type === "webcam" || tempInput?.type === "microphone" || tempInput?.type === "system-audio")}
     <p>VS Code panels block device capture. Apply your channel, then open the synced preview
       in VS Code’s Integrated Browser. Older VS Code versions open your external browser.</p>
@@ -112,12 +125,9 @@
       Open Capture Preview
     </button>
   {/if}
-  {#if tempInput?.type === "system-audio"}
-    <SystemAudioControls {audioVideoController} />
-  {/if}
-  {#if tempInput?.type === "webcam" || tempInput?.type === "microphone"}
+  {#if tempInput?.type === "webcam"}
     <p>Uses your default device. Allow access when prompted. If this host blocks capture,
-      open Shader Studio in a browser on localhost or HTTPS. Microphone sound is never played through your speakers.</p>
+      open Shader Studio in a browser on localhost or HTTPS. </p>
   {/if}
 </div>
 

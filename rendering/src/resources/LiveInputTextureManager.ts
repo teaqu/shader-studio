@@ -4,6 +4,7 @@ import type { TextureBackend, TextureFilter, TextureWrap } from "./TextureBacken
 export type LiveInputType = "webcam" | "microphone" | "system-audio";
 
 export interface LiveInputPreview {
+  deviceId?: string;
   ready?: boolean;
   video?: HTMLVideoElement;
   frequency?: Uint8Array;
@@ -11,6 +12,7 @@ export interface LiveInputPreview {
 }
 
 export interface LiveInputOptions {
+  deviceId?: string;
   filter?: TextureFilter;
   wrap?: TextureWrap;
   vflip?: boolean;
@@ -48,6 +50,7 @@ export class LiveInputTextureManager<T> {
   private readonly provisionalCaptures = new Map<MediaStream, HTMLVideoElement | undefined>();
   private readonly stoppedStreams = new WeakSet<MediaStream>();
   private disposed = false;
+  private microphoneGeneration = 0;
 
   constructor(private readonly backend: TextureBackend<T>, private readonly systemAudio = new SystemAudioCapture()) {}
 
@@ -69,6 +72,21 @@ export class LiveInputTextureManager<T> {
       if (this.pending.get(type) === request) {
         this.pending.delete(type);
       }
+    }
+  }
+
+  public async startAudioInput(deviceId = "default"): Promise<string | undefined> {
+    this.stopAudioInput();
+    const result = await this.load("microphone", { deviceId });
+    return result.warning;
+  }
+
+  public stopAudioInput(): void {
+    ++this.microphoneGeneration;
+    this.pending.delete("microphone");
+    const input = this.inputs.get("microphone");
+    if (input) {
+      this.release("microphone", input);
     }
   }
 
@@ -183,13 +201,14 @@ export class LiveInputTextureManager<T> {
       return { texture: null, warning: "Live capture needs a secure localhost or HTTPS page. Open Shader Studio in a browser if VS Code does not expose microphone or webcam access." };
     }
 
+    const microphoneGeneration = this.microphoneGeneration;
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia(type === "webcam" ? { video: true, audio: false } : { audio: true, video: false });
+      stream = await navigator.mediaDevices.getUserMedia(type === "webcam" ? { video: true, audio: false } : { audio: options.deviceId && options.deviceId !== "default" ? { deviceId: { exact: options.deviceId } } : true, video: false });
     } catch (error) {
       return { texture: null, warning: this.captureWarning(type, error) };
     }
-    if (this.disposed) {
+    if (this.disposed || type === "microphone" && microphoneGeneration !== this.microphoneGeneration) {
       this.stopStream(stream);
       return { texture: null, warning: "Live input was stopped before permission completed." };
     }

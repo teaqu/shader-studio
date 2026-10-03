@@ -449,10 +449,10 @@ float pressed = texture(iChannel1, vec2(32.0 / 256.0, 0.50)).r;  // Space just p
 
 [Uniforms](uniforms.md) — built-in and custom uniforms, including channel samplers
 
-## Webcam and Microphone
+## Webcam and Audio
 
-Choose **Webcam** or **Microphone** in the channel's **Misc** tab. These use the
-browser's default device and ask for capture permission. Once enabled, the channel
+Choose **Webcam** or **Audio** in the channel's **Misc** tab. These use the
+browser's default device and ask for capture permission. Audio has a device selector for microphones and loopback inputs; choose a device and click **Change device** to switch. Once enabled, the channel
 row and selection cards show the live camera image or microphone spectrum and
 waveform. These previews share the shader's capture stream. The config is pathless:
 
@@ -478,23 +478,23 @@ system. If a VS Code webview blocks capture, use **Open in Browser** on localhos
 If permission is denied or a device is unavailable, the preview reports a warning;
 allow access and reload the shader to retry.
 
-### System Audio
+### Browser Audio
 
-Choose **System Audio** in **Misc**, then click **Start sharing**. For a song
+Choose **Browser Audio** in **Misc**, then click **Start sharing**. For a song
 playing in a browser, choose that tab in the sharing picker and enable audio
 sharing. Where offered, the browser can also share system or app audio. These
 options depend on your browser and operating system; selecting a source without
 an audio track shows an actionable warning.
 
 For desktop apps such as Spotify or Apple Music, you can route playback through
-a virtual audio input device and select it under **Audio source**. **Refresh
+a virtual audio input device and select it under **Audio → Audio device**. **Refresh
 devices** updates the list; microphone permission may be needed for device names.
 Shader Studio does not configure audio routing or install virtual audio drivers.
 
-System Audio uses the same 512 × 2 FFT/waveform texture and live tile preview as
+Browser Audio uses the same 512 × 2 FFT/waveform texture and live tile preview as
 the microphone. The saved config is `{ "type": "system-audio" }`; capture permission
 and source choices are session-only. Reloading requires an explicit reconnect.
-**Stop sharing**, removing the channel, or switching to a shader without System
+**Stop sharing**, removing the channel, or switching to a shader without Browser
 Audio releases capture. Display video is discarded and audio is never monitored
 through your speakers.
 
@@ -502,4 +502,4 @@ through your speakers.
 
 The normal extension panel cannot grant camera or microphone access. Run **Shader Studio: Open Capture Preview** from the command palette or Shader Studio status menu. You can also select a live channel in Misc, apply it, and click **Open Capture Preview**. This starts the local web server and opens the synced viewer in VS Code’s Integrated Browser when available; older versions open an external browser. Shader edits continue to update the viewer through the extension’s existing connection.
 
-Allow camera and microphone access for the localhost page and for VS Code in your operating system when prompted. System Audio still requires **Start sharing** in the preview. Sharing options depend on the host; choose a routed audio input device or use an external browser if tab/system sharing is unavailable. Source permissions and sharing sessions are not saved in shader configs.
+Allow camera and microphone access for the localhost page and for VS Code in your operating system when prompted. Browser Audio requires **Start sharing** in the preview. Sharing options depend on the host; choose a routed audio input device or use an external browser if tab/system sharing is unavailable. Device choices, source permissions and sharing sessions are not saved in shader configs.

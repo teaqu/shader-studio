@@ -15,7 +15,7 @@ const spies = vi.hoisted(() => ({
 vi.mock("../../resources/LiveInputTextureManager", () => ({
   LiveInputTextureManager: vi.fn().mockImplementation(function() {
     const instance = {
-      startSystemAudio: vi.fn(), stopSystemAudio: vi.fn(), getPreview: vi.fn(), load: vi.fn(), getTexture: vi.fn(), getVideoElement: vi.fn(), getAudioState: vi.fn(),
+      startAudioInput: vi.fn(), stopAudioInput: vi.fn(), startSystemAudio: vi.fn(), stopSystemAudio: vi.fn(), getPreview: vi.fn(), load: vi.fn(), getTexture: vi.fn(), getVideoElement: vi.fn(), getAudioState: vi.fn(),
       getSampleRate: vi.fn(() => 0), updateTextures: vi.fn(), cleanup: vi.fn(),
     };
     spies.live.push(instance);
@@ -88,6 +88,20 @@ describe("ResourceManager live input routing", () => {
     acquire.mockRestore();
   });
 
+  it("selects Audio devices only for configured channels and retains choice across rebuilds", async () => {
+    await expect(resources.controlAudioInput("start", "loopback")).resolves.toContain("loading");
+    spies.live[0].load.mockResolvedValue({ texture: { id: "audio" } });
+    await resources.loadAudioSource(MICROPHONE_PATH);
+    await resources.controlAudioInput("start", "loopback");
+    expect(spies.live[0].startAudioInput).toHaveBeenCalledWith("loopback");
+    const next = resources.createIsolated();
+    spies.live.at(-1)!.load.mockResolvedValue({ texture: { id: "next" } });
+    await next.loadAudioSource(MICROPHONE_PATH);
+    expect(spies.live.at(-1)!.load).toHaveBeenCalledWith("microphone", { deviceId: "loopback" });
+    await resources.controlAudioInput("stop");
+    expect(spies.live[0].stopAudioInput).toHaveBeenCalledOnce();
+  });
+
   it("only starts system audio for configured channels and routes their runtime state", async () => {
     await expect(resources.controlSystemAudio("start")).resolves.toContain("loading");
     spies.live[0].load.mockResolvedValue({ texture: null });
@@ -145,7 +159,7 @@ describe("ResourceManager live input routing", () => {
 
     await expect(resources.loadAudioSource(MICROPHONE_PATH)).rejects.toThrow("Microphone permission was denied.");
 
-    expect(spies.live[0].load).toHaveBeenCalledWith("microphone");
+    expect(spies.live[0].load).toHaveBeenCalledWith("microphone", { deviceId: "default" });
     expect(spies.audio[0].loadAudioSource).not.toHaveBeenCalled();
   });
 

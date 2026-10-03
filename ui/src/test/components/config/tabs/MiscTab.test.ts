@@ -35,7 +35,7 @@ describe('MiscTab', () => {
   it.each(['webcam', 'microphone'] as const)('selects a pathless %s input', async type => {
     const props = defaultProps();
     const { getByRole } = render(MiscTab, props);
-    await fireEvent.click(getByRole('button', { name: type === 'webcam' ? 'Webcam' : 'Microphone' }));
+    await fireEvent.click(getByRole('button', { name: type === 'webcam' ? 'Webcam' : 'Audio' }));
     expect(props.onSelect).toHaveBeenCalledWith({ type });
   });
 
@@ -75,9 +75,11 @@ describe('MiscTab', () => {
       const { container } = render(MiscTab, defaultProps());
 
       const sectionLabels = container.querySelectorAll('.misc-section-label');
-      expect(sectionLabels.length).toBe(2);
+      expect(sectionLabels.length).toBe(4);
       expect(sectionLabels[0].textContent).toBe('Buffer');
       expect(sectionLabels[1].textContent).toBe('Other');
+      expect(sectionLabels[2].textContent).toBe('Audio');
+      expect(sectionLabels[3].textContent).toBe('Browser Audio');
     });
   });
 

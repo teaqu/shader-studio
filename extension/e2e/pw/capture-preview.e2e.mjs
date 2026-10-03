@@ -21,7 +21,7 @@ test('opens a synced capture preview inside VS Code @gpu', async ({ vscode }) =>
   mkdirSync(fixtureDir, { recursive: true });
   const shaderPath = join(fixtureDir, 'capture.glsl');
   writeFileSync(shaderPath, 'void mainImage(out vec4 c, in vec2 p) { float wave = texture(sound.sampler, vec2(.5,.75)).r; vec3 frame = texture(camera.sampler, vec2(.5)).rgb; bool ok = sound.loaded == 1 && sound.size.x == 512. && sound.size.y == 2. && camera.loaded == 1 && camera.size.x > 0. && wave > .1 && dot(frame,frame) > 0.; c = ok ? vec4(0,1,0,1) : vec4(1,0,0,1); }');
-  writeFileSync(join(fixtureDir, 'capture.sha.json'), JSON.stringify({ version: '1', passes: { Image: { inputs: { camera: { type: 'webcam' }, sound: { type: 'microphone' }, music: { type: 'system-audio' } } } } }));
+  writeFileSync(join(fixtureDir, 'capture.sha.json'), JSON.stringify({ version: '1', passes: { Image: { inputs: { camera: { type: 'webcam' }, sound: { type: 'microphone' }, music: { type: 'microphone' } } } } }));
   const port = await freePort();
   try {
     await vscode.evaluateInHost(async (vscode, shaderPath, port) => {
@@ -39,18 +39,18 @@ test('opens a synced capture preview inside VS Code @gpu', async ({ vscode }) =>
       capture: typeof navigator.mediaDevices?.getUserMedia,
     }))).toEqual({ camera: true, microphone: true, capture: 'function' });
     await page.getByLabel('Toggle config panel').click();
-    for (const type of ['webcam', 'microphone']) {
+    for (const type of ['webcam', 'audio']) {
       const preview = page.getByLabel(`Live ${type} preview`).first();
       await expect(preview).toBeVisible();
       await expect.poll(() => preview.evaluate(canvas => canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data.some((value, index) => index % 4 !== 3 && value > 0))).toBe(true);
     }
     await page.locator('.channel-row').filter({ hasText: 'music' }).click();
-    await page.getByLabel('Audio source').selectOption('default');
-    await page.getByRole('button', { name: 'Start sharing', exact: true }).click();
-    const musicPreview = page.getByLabel('Live system audio preview').first();
+    await page.getByLabel('Audio device').selectOption('default');
+    await page.getByRole('button', { name: 'Change device', exact: true }).click();
+    const musicPreview = page.getByLabel('Live audio preview').first();
     await expect(musicPreview).toBeVisible();
     await expect.poll(() => musicPreview.evaluate(canvas => canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data.some((value, index) => index % 4 !== 3 && value > 0))).toBe(true);
-    await page.getByRole('button', { name: 'Stop sharing', exact: true }).click();
+    await page.getByRole('button', { name: 'Stop audio', exact: true }).click();
     await page.getByRole('button', { name: 'Close', exact: true }).click();
     await vscode.evaluateInHost(async (vscode, shaderPath) => {
       const document = await vscode.workspace.openTextDocument(vscode.Uri.file(shaderPath));

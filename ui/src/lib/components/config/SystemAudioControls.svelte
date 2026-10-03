@@ -2,9 +2,9 @@
   import { onMount } from 'svelte';
   import type { AudioVideoController } from '../../AudioVideoController';
 
-  interface Props { audioVideoController?: AudioVideoController }
-  let { audioVideoController }: Props = $props();
-  let source = $state('browser');
+  interface Props { audioVideoController?: AudioVideoController; type?: 'microphone' | 'system-audio' }
+  let { audioVideoController, type = 'system-audio' }: Props = $props();
+  let source = $state('default');
   let devices: MediaDeviceInfo[] = $state([]);
   let busy = $state(false);
   let active = $state(false);
@@ -27,8 +27,12 @@
     message = '';
     try {
       // Invoke capture directly in the click handler, before awaiting anything.
-      message = await audioVideoController.controlSystemAudio('start', source === 'browser' ? undefined : source) ?? '';
-      await refreshDevices();
+      message = await (type === 'microphone'
+        ? audioVideoController.controlAudioInput('start', source)
+        : audioVideoController.controlSystemAudio('start')) ?? '';
+      if (type === 'microphone') {
+        await refreshDevices();
+      }
     } catch {
       message = 'Audio capture could not start. Check browser and system permissions.';
     } finally {
@@ -37,16 +41,27 @@
   }
 
   async function stop() {
-    await audioVideoController?.controlSystemAudio('stop');
+    if (type === 'microphone') {
+      await audioVideoController?.controlAudioInput('stop');
+    } else {
+      await audioVideoController?.controlSystemAudio('stop');
+    }
   }
 
   onMount(() => {
-    void refreshDevices();
+    if (type === 'microphone') {
+      void refreshDevices();
+    }
   });
   $effect(() => {
     const controller = audioVideoController;
+    let lastDeviceId: string | undefined;
     const update = () => {
-      const preview = controller?.getLiveInputPreview('system-audio');
+      const preview = controller?.getLiveInputPreview(type);
+      if (type === 'microphone' && preview?.deviceId && preview.deviceId !== lastDeviceId) {
+        source = preview.deviceId;
+        lastDeviceId = preview.deviceId;
+      }
       active = !!preview?.frequency;
       ready = !!preview?.ready;
     };
@@ -57,21 +72,26 @@
 </script>
 
 <div class="system-audio-controls">
-  <label for="system-audio-source">Audio source</label>
+  {#if type === "microphone"}
+  <label for="system-audio-source">Audio device</label>
   <select id="system-audio-source" bind:value={source} disabled={busy}>
-    <option value="browser">Browser tab / system sharing</option>
     <option value="default">Default audio input device</option>
     {#each devices as device, index (device.deviceId)}
       <option value={device.deviceId}>{device.label || `Audio input ${index + 1}`}</option>
     {/each}
   </select>
+  {/if}
   <div class="actions">
-    <button onclick={start} disabled={busy || !audioVideoController || !ready}>{busy ? 'Connecting…' : active ? 'Change sharing' : 'Start sharing'}</button>
-    {#if active}<button onclick={stop}>Stop sharing</button>{/if}
-    <button onclick={refreshDevices} disabled={busy}>Refresh devices</button>
+    <button onclick={start} disabled={busy || !audioVideoController || !ready}>{busy ? 'Connecting…' : type === 'microphone' ? (active ? 'Change device' : 'Start audio') : (active ? 'Change sharing' : 'Start sharing')}</button>
+    {#if active}<button onclick={stop}>{type === 'microphone' ? 'Stop audio' : 'Stop sharing'}</button>{/if}
+    {#if type === "microphone"}<button onclick={refreshDevices} disabled={busy}>Refresh devices</button>{/if}
   </div>
-  <p>For music in a browser, choose its tab and enable sharing audio. System or app audio options depend on your browser and OS. For Spotify or Apple Music, you can also route audio into a virtual input device, then select that device here.</p>
-  <p>Only audio is used by the shader. Sound is never replayed through your speakers. Reconnect after reloading or switching shaders.</p>
+  {#if type === "microphone"}
+    <p>Choose a microphone or loopback input. To capture music from Spotify or Apple Music, route playback into a loopback input and select it here.</p>
+  {:else}
+    <p>Choose a browser tab and enable sharing audio. The browser may require a screen or tab selection; video is discarded. If no audio is offered, use a loopback device in Audio instead.</p>
+  {/if}
+  <p>Only audio is used by the shader. Sound is never replayed through your speakers. Device choices are session-only. Browser sharing needs reconnecting after reload.</p>
   {#if message}<p role="status">{message}</p>{/if}
 </div>
 
