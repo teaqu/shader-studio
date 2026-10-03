@@ -17,6 +17,8 @@ export interface SlangPassPipelineDescriptor {
   storage?: StorageBindingNode[];
   geometry: GeometryType;
   uniformBufferSize?: number;
+  /** Native stages selected by the pass, or generated ShaderToy adapters. */
+  entryPoints?: { vertex: string; fragment: string };
   /** Generated prelude lines before user line 1; remaps diagnostics onto user lines. */
   sourceLineOffset?: number;
   /** User-source lines after the prelude; clamps generated-code errors. */
@@ -172,7 +174,7 @@ export class SlangPassPipeline {
       layout: this.device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
       vertex: {
         module: shaderModule,
-        entryPoint: SLANG_ENTRY_VERTEX,
+        entryPoint: this.descriptor.entryPoints?.vertex ?? SLANG_ENTRY_VERTEX,
         ...(this.isMesh() ? { buffers: [{ arrayStride: 32, attributes: [
           { shaderLocation: 0, offset: 0, format: "float32x3" },
           { shaderLocation: 1, offset: 12, format: "float32x3" },
@@ -181,7 +183,7 @@ export class SlangPassPipeline {
       },
       fragment: {
         module: shaderModule,
-        entryPoint: SLANG_ENTRY_FRAGMENT,
+        entryPoint: this.descriptor.entryPoints?.fragment ?? SLANG_ENTRY_FRAGMENT,
         targets: [{ format: this.targetFormat() }],
       },
       primitive: { topology: "triangle-list" },

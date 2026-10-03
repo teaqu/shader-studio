@@ -1479,4 +1479,34 @@ suite('ShaderProvider Test Suite', () => {
       sinon.assert.notCalled(sendSpy);
     });
   });
+
+
+  suite("native configured roots", () => {
+    test("keeps the sibling Image config when editing a native WGSL root shared by a Buffer", async () => {
+      const shaderPath = "/tmp/shader-studio-native-root.wgsl";
+      const configPath = "/tmp/shader-studio-native-root.sha.json";
+      const source = "@vertex fn imageVertex() -> @builtin(position) vec4f { return vec4f(0.0); }\n@fragment fn imageFragment() -> @location(0) vec4f { return vec4f(1.0); }";
+      const config = { version: "1.0", passes: {
+        Image: { inputs: {}, entryPoints: { vertex: "imageVertex", fragment: "imageFragment" } },
+        BufferA: { path: "image.wgsl", inputs: {}, entryPoints: { vertex: "imageVertex", fragment: "imageFragment" } },
+      } };
+      loadAndProcessConfigStub.callsFake((_path: string, buffers: Record<string, string>) => {
+        buffers.BufferA = source;
+        return config as any;
+      });
+      fs.writeFileSync(configPath, JSON.stringify(config));
+      try {
+        await provider.sendShaderFromDocument({ getText: () => source, uri: { fsPath: shaderPath }, fileName: shaderPath,
+          languageId: "wgsl", lineCount: 2, lineAt: () => ({ text: source }) } as any);
+      } finally {
+        fs.unlinkSync(configPath);
+      }
+      sinon.assert.calledOnce(sendSpy);
+      const message = sendSpy.firstCall.args[0];
+      assert.strictEqual(message.path, shaderPath);
+      assert.strictEqual(message.config, config, "native root edits must retain project pass configuration");
+      assert.strictEqual(message.buffers.BufferA, source, "shared buffer should be rebuilt from the edited root source");
+    });
+  });
+
 });

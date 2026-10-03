@@ -15,13 +15,16 @@
     ComputePass,
     ShaderLanguageId,
     BufferOutputFormat,
+    ShaderEntryPoint,
   } from "@shader-studio/types";
-  import { SHADER_LANGUAGES, vertexPassKey } from "@shader-studio/types";
+  import { SHADER_LANGUAGES, shaderLanguageForPath, vertexPassKey } from "@shader-studio/types";
   import ChannelListItem from "./ChannelListItem.svelte";
   import ChannelConfigModal from "./ChannelConfigModal.svelte";
   import ComputePassControls from "./ComputePassControls.svelte";
+  import RenderEntryPointControls from "./RenderEntryPointControls.svelte";
   import PathInput from "./PathInput.svelte";
   import { getEditorOverlayVisible, setEditorOverlayVisible, setOverlayActiveFile } from "../../state/editorOverlayState.svelte";
+  import { getCurrentEditorSource } from "../../state/currentEditorSourceState.svelte";
   import type { AudioVideoController } from "../../AudioVideoController";
   import { listGlbMeshNames } from "../../../../../rendering/src/preview3d/GltfMeshLoader";
 
@@ -44,6 +47,7 @@
     passType?: 'render' | 'compute';
     storageNames?: string[];
     entryPointNames?: string[];
+    renderEntryPoints?: ShaderEntryPoint[];
     onComputeCommit?: (nextConfig: ComputePass) => Record<string, string>;
     onOpenInNewTab?: (name: string, mode: "active" | "beside") => void;
   };
@@ -65,6 +69,7 @@
     passType = 'render',
     storageNames = [],
     entryPointNames = [],
+    renderEntryPoints = [],
     onComputeCommit = undefined,
     onOpenInNewTab = () => {},
   }: BufferConfigProps = $props();
@@ -106,6 +111,15 @@
   const vertexExtension = $derived(SHADER_LANGUAGES[language].extensions[0]);
   const vertexSuggestedPath = $derived(`${shaderPath.replace(/\.[^.]+$/, '')}.${bufferName.toLowerCase()}.vert.${vertexExtension}`);
   const vertexFileType = $derived(`${language}-vertex` as const);
+  const renderAuthoringMode = $derived(config.entryPoints === undefined ? 'hooks' as const : 'native' as const);
+  const isWebGpuLanguage = $derived(SHADER_LANGUAGES[language].engine === 'webgpu');
+  const canInsert = $derived(isWebGpuLanguage && renderAuthoringMode === 'native');
+  const currentEditorSourcePath = $derived(getCurrentEditorSource(shaderPath));
+  const insertionSourcePath = $derived(
+    currentEditorSourcePath && shaderLanguageForPath(currentEditorSourcePath) === language
+      ? currentEditorSourcePath
+      : ('path' in config && config.path ? config.path : shaderPath),
+  );
   let modelSelectionPending = $state(false);
   const modelGeometry = $derived(config.geometry?.type === 'model'
     ? config.geometry
@@ -347,10 +361,14 @@
   }
 
   function handleGeometryChange(type: GeometryType) {
+    if (passType === 'compute') {
+      return;
+    }
+    const renderConfig = config as BufferPass | ImagePass;
     if (type === 'fullscreen') {
       modelSelectionPending = false;
-      const { geometry: _geometry, ...next } = config;
-      updateConfig(next as EditableConfig);
+      const { geometry: _geometry, ...next } = renderConfig;
+      updateConfig(next);
       return;
     }
     if (type === 'model') {
@@ -358,32 +376,44 @@
       return;
     }
     modelSelectionPending = false;
-    updateConfig({ ...config, geometry: { type } });
+    updateConfig({ ...renderConfig, geometry: { type } });
   }
 
   function handleModelPathChange(path: string) {
+    if (passType === 'compute') {
+      return;
+    }
+    const renderConfig = config as BufferPass | ImagePass;
     if (!path) {
       modelSelectionPending = true;
-      const { geometry: _geometry, ...next } = config;
-      updateConfig(next as EditableConfig);
+      const { geometry: _geometry, ...next } = renderConfig;
+      updateConfig(next);
       return;
     }
     modelSelectionPending = false;
-    updateConfig({ ...config, geometry: { type: 'model', path, ...(modelGeometry?.mesh ? { mesh: modelGeometry.mesh } : {}) } });
+    updateConfig({ ...renderConfig, geometry: { type: 'model', path, ...(modelGeometry?.mesh ? { mesh: modelGeometry.mesh } : {}) } });
   }
 
   function handleModelMeshChange(event: Event) {
+    if (passType === 'compute') {
+      return;
+    }
+    const renderConfig = config as BufferPass | ImagePass;
     const mesh = (event.currentTarget as HTMLInputElement).value.trim();
-    updateConfig({ ...config, geometry: { type: 'model', path: modelGeometry?.path ?? '', ...(mesh ? { mesh } : {}) } });
+    updateConfig({ ...renderConfig, geometry: { type: 'model', path: modelGeometry?.path ?? '', ...(mesh ? { mesh } : {}) } });
   }
 
   function handleVertexPathChange(path: string) {
-    if (path.trim() === '') {
-      const { vertex: _vertex, ...next } = config;
-      updateConfig(next as EditableConfig);
+    if (passType === 'compute') {
       return;
     }
-    updateConfig({ ...config, vertex: path });
+    const renderConfig = config as BufferPass | ImagePass;
+    if (path.trim() === '') {
+      const { vertex: _vertex, ...next } = renderConfig;
+      updateConfig(next);
+      return;
+    }
+    updateConfig({ ...renderConfig, vertex: path });
   }
 
   function handleOutputFormat(event: Event) {
@@ -400,6 +430,30 @@
     } else {
       onOpenInNewTab(config.vertex, "active");
     }
+  }
+
+  function applyCreatedSource(result: {
+    path: string;
+    entryPoints?: { vertex?: string; fragment?: string; compute?: string };
+    entryPoint?: string;
+    authoringMode?: 'hooks' | 'native';
+  }) {
+    if (passType === 'compute') {
+      const { entryPoint: _legacyEntryPoint, ...canonicalPass } = config as ComputePass;
+      updateConfig({
+        ...canonicalPass,
+        path: result.path,
+        ...(result.entryPoints?.compute || result.entryPoint
+          ? { entryPoints: { compute: result.entryPoints?.compute ?? result.entryPoint } }
+          : {}),
+      });
+      return;
+    }
+    updateConfig({
+      ...config,
+      ...(result.path ? { path: result.path } : {}),
+      ...(result.authoringMode === 'native' || result.entryPoints ? { entryPoints: result.entryPoints ?? {} } : {}),
+    } as EditableConfig);
   }
 </script>
 
@@ -420,6 +474,11 @@
           {suggestedPath}
           {postMessage}
           {onMessage}
+          sourcePath={insertionSourcePath}
+          authoringMode={passType === 'compute' ? 'native' : renderAuthoringMode}
+          passName={bufferName}
+          allowInsert={canInsert || (passType === 'compute' && isWebGpuLanguage)}
+          onCreated={applyCreatedSource}
         />
 
         {#if passType === 'compute' && onComputeCommit}
@@ -439,6 +498,16 @@
             {/each}
           </div>
         {/if}
+      </div>
+    {/if}
+
+    {#if passType === 'render' && isWebGpuLanguage}
+      <div class="config-item">
+        <RenderEntryPointControls
+          pass={config as BufferPass | ImagePass}
+          entryPoints={renderEntryPoints}
+          onCommit={(nextPass) => updateConfig(nextPass)}
+        />
       </div>
     {/if}
 
@@ -623,18 +692,20 @@
           {#if modelMeshError}<span class="input-note">{modelMeshError}</span>{/if}
         {/if}
       </div>
-      <div class="config-item">
-        <h3 class="section-title vertex-shader-title" ondblclick={openVertexShaderInOverlay}>Vertex shader</h3>
-        <PathInput
-          value={config.vertex ?? ""}
-          onPathChange={handleVertexPathChange}
-          fileType={vertexFileType}
-          suggestedPath={vertexSuggestedPath}
-          {shaderPath}
-          {postMessage}
-          {onMessage}
-        />
-      </div>
+      {#if !(isWebGpuLanguage && renderAuthoringMode === 'native')}
+        <div class="config-item">
+          <h3 class="section-title vertex-shader-title" ondblclick={openVertexShaderInOverlay}>Vertex shader</h3>
+          <PathInput
+            value={config.vertex ?? ""}
+            onPathChange={handleVertexPathChange}
+            fileType={vertexFileType}
+            suggestedPath={vertexSuggestedPath}
+            {shaderPath}
+            {postMessage}
+            {onMessage}
+          />
+        </div>
+      {/if}
     {/if}
     {#if !isImagePass && bufferName !== "common"}
       <div class="config-item">

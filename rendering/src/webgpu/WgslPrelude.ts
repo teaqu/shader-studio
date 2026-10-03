@@ -1,4 +1,5 @@
-import { wgslStorageElementType } from "@shader-studio/types";
+import { isolateShaderEntryPoints } from "@shader-studio/types";
+import { getShaderSourceFunctions, wgslStorageElementType } from "@shader-studio/types";
 import { buildSlangBindingPlan } from "./SlangBindingPlan";
 import type { StorageBindingNode } from "../types/PassGraph";
 import { buildChannelSamplingFunctions, describeSlangChannel, type GeometryType } from "@shader-studio/types";
@@ -46,6 +47,8 @@ export interface WgslWrapOptions {
    * fragment entry for one that remaps fragCoord before calling mainImage.
    */
   captureMode?: boolean;
+  /** Authored native render stages selected by the pass configuration. */
+  renderEntryPoints?: { vertex: string; fragment: string };
 }
 
 export interface WgslComputeWrapOptions {
@@ -404,9 +407,9 @@ export interface WgslEntryPoints {
   vertexLineCount: number;
 }
 
-function buildMeshEntryPoints(vertexCode: string): WgslEntryPoints {
+function buildMeshEntryPoints(vertexCode: string, hasAuthoredHook = false): WgslEntryPoints {
   const hook = vertexCode.trim() ? vertexCode : "";
-  const hookSource = hook === "" ? `${WGSL_VERTEX_HOOK} {}` : hook;
+  const hookSource = hook === "" && !hasAuthoredHook ? `${WGSL_VERTEX_HOOK} {}` : hook;
   return {
     source: `${hookSource}
 struct _ss_MeshVertexOut {
@@ -444,9 +447,9 @@ struct _ss_MeshVertexOut {
   };
 }
 
-function buildFullscreenEntryPoints(vertexCode: string): WgslEntryPoints {
+function buildFullscreenEntryPoints(vertexCode: string, hasAuthoredHook = false): WgslEntryPoints {
   const hook = vertexCode.trim() ? vertexCode : "";
-  if (hook !== "") {
+  if (hook !== "" || hasAuthoredHook) {
     return {
       source: `${hook}
 @vertex fn ${WGSL_ENTRY_VERTEX}(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4<f32> {
@@ -465,7 +468,7 @@ function buildFullscreenEntryPoints(vertexCode: string): WgslEntryPoints {
 }
 `,
       vertexStartLine: 1,
-      vertexLineCount: hook.split("\n").length,
+      vertexLineCount: hook === "" ? 0 : hook.split("\n").length,
     };
   }
   return {
@@ -642,6 +645,16 @@ export function injectComputeInit(source: string, entryName: string): string {
   return `${source.slice(0, index + 1)} _ss_initGlobals();${source.slice(index + 1)}`;
 }
 
+/**
+ * Blanks unselected entry-point declarations while retaining every source line.
+ * A WGSL module is parsed as a whole, so a same-file compute entry that calls
+ * `writeOutput` would otherwise make a render compilation fail even though the
+ * render pipeline never selects it (and vice versa for fragment-only helpers).
+ */
+export function isolateWgslEntryPoints(source: string, selected: readonly string[], commonCode = ""): string {
+  return isolateShaderEntryPoints(source, "wgsl", selected, [commonCode]);
+}
+
 function countLines(text: string): number {
   return text.split("\n").length - 1;
 }
@@ -782,6 +795,23 @@ function assembleWgslImageSource(userSource: string, options: WgslWrapOptions = 
     plan.nextBinding,
   );
   const prefix = `${hoisted.header}${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}`;
+  if (options.renderEntryPoints) {
+    const body = `${prefix}${commonCode}`;
+    let nativeSource = isolateWgslEntryPoints(strippedUserSource, [
+      options.renderEntryPoints.vertex,
+      options.renderEntryPoints.fragment,
+    ], strippedCommonCode);
+    nativeSource = injectComputeInit(nativeSource, options.renderEntryPoints.vertex);
+    nativeSource = injectComputeInit(nativeSource, options.renderEntryPoints.fragment);
+    return {
+      source: `${body}\n${nativeSource}\n${storageDeclarations.afterCommon}`,
+      preludeLineCount: countLines(body) + 1,
+      userLineCount: nativeSource.split("\n").length,
+      ...commonRangeOf(prefix, strippedCommonCode),
+      requiredFeatures: hoisted.enableNames,
+      directiveRanges: hoisted.directiveRanges,
+    };
+  }
   if (options.captureMode) {
     // Capture uniforms bind after the channel texture/sampler pairs and storage buffers.
     const captureBinding = plan.nextBinding + (options.storage?.length ?? 0);
@@ -797,11 +827,13 @@ function assembleWgslImageSource(userSource: string, options: WgslWrapOptions = 
     };
   }
   const vertexCode = hoisted.vertexSource;
+  const hasAuthoredHook = getShaderSourceFunctions(`${strippedCommonCode}\n${strippedUserSource}`, "wgsl")
+    .some((fn) => fn.name === "mainVertex");
   if (isMeshGeometry(options.geometry)) {
     const meshBinding = plan.nextBinding + (options.storage?.length ?? 0);
     const body = `${prefix}${buildMeshPrelude(meshBinding)}${commonCode}`;
     const head = `${body}\n${strippedUserSource}\n${storageDeclarations.afterCommon}`;
-    const entries = buildMeshEntryPoints(vertexCode);
+    const entries = buildMeshEntryPoints(vertexCode, hasAuthoredHook);
     return {
       source: `${head}${entries.source}`,
       preludeLineCount: countLines(body) + 1,
@@ -814,7 +846,7 @@ function assembleWgslImageSource(userSource: string, options: WgslWrapOptions = 
   }
   const body = `${prefix}${commonCode}`;
   const head = `${body}\n${strippedUserSource}\n${storageDeclarations.afterCommon}`;
-  const entries = buildFullscreenEntryPoints(vertexCode);
+  const entries = buildFullscreenEntryPoints(vertexCode, hasAuthoredHook);
   return {
     source: `${head}${entries.source}`,
     preludeLineCount: countLines(body) + 1,
@@ -876,7 +908,7 @@ function assembleWgslComputeSource(userSource: string, options: WgslComputeWrapO
   const dispatchBinding = outputBinding + (options.hasOutput ? 1 : 0);
   const dispatchPrelude = buildDispatchPrelude(dispatchBinding);
   const entries = options.entryPoint ? [options.entryPoint] : getWgslComputeEntryPoints(strippedUserSource).map((entry) => entry.name);
-  let injectedUserSource = strippedUserSource;
+  let injectedUserSource = isolateWgslEntryPoints(strippedUserSource, entries, strippedCommonCode);
   for (const entry of entries) {
     injectedUserSource = injectComputeInit(injectedUserSource, entry);
   }

@@ -1,5 +1,9 @@
 # Change Log
 
+### Unreleased
+
+- WGSL and Slang can share native vertex, fragment, and compute entry points in one source file. Select stages per pass in the config panel, insert new stages into the current file, and choose native or ShaderToy templates for new render passes. Selections are saved under `entryPoints`; existing ShaderToy hooks and legacy compute settings still load.
+
 ### 1.2.0
 
 - Added WGSL support: write `.wgsl` shaders with completion, hover documentation, snippets, and error checking. Use image, vertex, and compute passes, storage buffers, script uniforms, and visual debugging.

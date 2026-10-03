@@ -443,9 +443,41 @@ describe('ShaderProcessor — buffer debugging', () => {
 
       await processor.processMainShaderCompilation(makeMessage());
 
-      expect(mockDebugManager.applyFullShaderPostProcessing).toHaveBeenCalledWith(BUFFER_A_CODE);
+      expect(mockDebugManager.applyFullShaderPostProcessing).toHaveBeenCalledWith(
+        BUFFER_A_CODE,
+        expect.objectContaining({
+          passes: expect.objectContaining({ Image: { inputs: BUFFER_A_INPUTS } }),
+        }),
+      );
       const [codeArg] = lastCompileArgs();
       expect(codeArg).toBe(POST_PROCESSED_CODE);
+    });
+
+    it('compiles native Buffer post-processing with the Buffer selected as temporary Image', async () => {
+      const remappedConfig: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: { entryPoints: { vertex: 'bufferVertex', fragment: 'bufferFragment' }, vertex: 'buffer-hook.wgsl', geometry: { type: 'plane' } },
+          BufferA: { path: 'bufferA.wgsl', entryPoints: { vertex: 'bufferVertex', fragment: 'bufferFragment' }, vertex: 'buffer-hook.wgsl', geometry: { type: 'plane' } },
+        },
+      };
+      (mockDebugManager.getState as any).mockReturnValue(makeDebugState({
+        isEnabled: true, isActive: false, currentLine: null, lineContent: null, activeBufferName: 'BufferA',
+      }));
+      (mockDebugManager.getDebugTarget as any).mockReturnValue(makeDebugTarget({
+        passName: 'BufferA', code: BUFFER_A_CODE, config: remappedConfig,
+      }));
+      (mockDebugManager.applyFullShaderPostProcessing as any).mockReturnValue(POST_PROCESSED_CODE);
+
+      await processor.processMainShaderCompilation(makeMessage());
+
+      const [codeArg, configArg] = lastCompileArgs();
+      expect(codeArg).toBe(POST_PROCESSED_CODE);
+      expect(configArg.passes.Image).toEqual({
+        entryPoints: { vertex: 'bufferVertex', fragment: 'bufferFragment' },
+        vertex: 'buffer-hook.wgsl',
+        geometry: { type: 'plane' },
+      });
     });
 
     it('uses buffer input config when post-processing a buffer', async () => {
@@ -488,7 +520,10 @@ describe('ShaderProcessor — buffer debugging', () => {
 
       await processor.processMainShaderCompilation(makeMessage());
 
-      expect(mockDebugManager.applyFullShaderPostProcessing).toHaveBeenCalledWith(IMAGE_CODE);
+      expect(mockDebugManager.applyFullShaderPostProcessing).toHaveBeenCalledWith(
+        IMAGE_CODE,
+        expect.objectContaining({ passes: expect.objectContaining({ Image: { inputs: IMAGE_INPUTS } }) }),
+      );
     });
   });
 

@@ -26,6 +26,20 @@
     },
     "passes": {
       "$ref": "#/definitions/ShaderPasses"
+    },
+    "webgpu": {
+      "type": "object",
+      "description": "WebGPU authoring preferences for newly created passes; does not change existing shaders.",
+      "properties": {
+        "defaultRenderAuthoring": {
+          "enum": [
+            "hooks",
+            "native"
+          ],
+          "default": "hooks"
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false,
@@ -68,9 +82,22 @@
         "vertex": {
           "type": "string",
           "description": "Path to the optional per-pass vertex shader hook source"
+        },
+        "entryPoints": {
+          "$ref": "#/definitions/RenderEntryPoints"
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "not": {
+            "required": [
+              "vertex",
+              "entryPoints"
+            ]
+          }
+        }
+      ]
     },
     "BufferPass": {
       "type": "object",
@@ -96,9 +123,22 @@
         },
         "outputFormat": {
           "$ref": "#/definitions/BufferOutputFormat"
+        },
+        "entryPoints": {
+          "$ref": "#/definitions/RenderEntryPoints"
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "not": {
+            "required": [
+              "vertex",
+              "entryPoints"
+            ]
+          }
+        }
+      ]
     },
     "CommonPass": {
       "type": "object",
@@ -117,7 +157,9 @@
         {
           "type": "object",
           "required": ["type"],
-          "properties": { "type": { "enum": ["fullscreen", "plane", "cube", "sphere"] } },
+          "properties": {
+            "type": { "enum": ["fullscreen", "plane", "cube", "sphere"] }
+          },
           "additionalProperties": false
         },
         {
@@ -134,7 +176,7 @@
     },
     "ComputePass": {
       "type": "object",
-      "description": "Slang compute pass configuration",
+      "description": "WebGPU compute pass configuration",
       "required": ["type", "path"],
       "properties": {
         "type": {
@@ -177,7 +219,18 @@
         "entryPoint": {
           "type": "string",
           "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
-          "description": "Named [shader(\"compute\")] entry point in the compute source"
+          "description": "Legacy compute selection; prefer entryPoints.compute for new configurations"
+        },
+        "entryPoints": {
+          "type": "object",
+          "description": "Native WebGPU compute stage selected from this source.",
+          "properties": {
+            "compute": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
@@ -512,6 +565,21 @@
           "additionalProperties": false
         }
       ]
+    },
+    "RenderEntryPoints": {
+      "type": "object",
+      "description": "Native WebGPU render stages in the same source file. Omitted names resolve only when exactly one candidate exists.",
+      "properties": {
+        "vertex": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "fragment": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

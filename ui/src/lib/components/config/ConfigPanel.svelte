@@ -3,8 +3,8 @@
   import { ConfigManager, type BufferRenameError } from "../../ConfigManager";
   import { getEditorOverlayVisible, setOverlayActiveFile } from "../../state/editorOverlayState.svelte";
   import { portal } from "../../actions/portal";
-  import type { ShaderConfig, BufferPass, ComputePass, ImagePass, StorageBufferConfig, StorageBufferSnapshot } from "@shader-studio/types";
-  import { SHADER_LANGUAGES } from "@shader-studio/types";
+  import type { ShaderConfig, BufferPass, ComputePass, ImagePass, StorageBufferConfig, StorageBufferSnapshot, ShaderEntryPoint } from "@shader-studio/types";
+  import { getShaderEntryPoints, SHADER_LANGUAGES } from "@shader-studio/types";
   import type { Transport } from "../../transport/MessageTransport";
   import BufferConfig from "./BufferConfig.svelte";
   import ScriptInfo from "./ScriptInfo.svelte";
@@ -22,6 +22,7 @@
     pathMap?: Record<string, string>;
     bufferPathMap?: Record<string, string>;
     bufferSources?: Record<string, string>;
+    shaderSource?: string;
     onReadStorage?: (name: string, start: number, count: number) => Promise<StorageBufferSnapshot>;
     onWriteStorage?: (name: string, start: number, data: ArrayBuffer) => Promise<void>;
     transport: Transport;
@@ -46,6 +47,7 @@
     pathMap = {},
     bufferPathMap = {},
     bufferSources = {},
+    shaderSource = '',
     onReadStorage,
     onWriteStorage,
     transport,
@@ -149,12 +151,25 @@
     }
   }
 
-  function addBuffer() {
+  const defaultRenderAuthoring = $derived(config?.webgpu?.defaultRenderAuthoring ?? 'hooks');
+  const alternateRenderAuthoring = $derived(defaultRenderAuthoring === 'hooks' ? 'native' : 'hooks');
+
+  function authoringLabel(authoring: 'hooks' | 'native'): string {
+    return authoring === 'hooks' ? 'ShaderToy hooks' : 'native entry points';
+  }
+
+  function addBuffer(authoringMode: 'hooks' | 'native' = defaultRenderAuthoring) {
     if (!configManager) {
       return;
     }
     const bufferName = configManager.addBuffer();
     if (bufferName) {
+      if (authoringMode === 'native') {
+        const addedPass = configManager.getConfig()?.passes[bufferName] as BufferPass | undefined;
+        if (addedPass) {
+          configManager.updateBuffer(bufferName, { ...addedPass, entryPoints: {} });
+        }
+      }
       config = configManager.getConfig();
       if (config) {
         onConfigChange(config);
@@ -172,6 +187,19 @@
       config = configManager.getConfig();
       switchTab(computePassName);
     }
+  }
+
+  function setDefaultRenderAuthoring(authoring: 'hooks' | 'native') {
+    if (!config || !shaderPath) {
+      return;
+    }
+    const updatedConfig: ShaderConfig = {
+      ...config,
+      webgpu: { ...config.webgpu, defaultRenderAuthoring: authoring },
+    };
+    config = updatedConfig;
+    onConfigChange(updatedConfig);
+    persistConfig(transport, { config: updatedConfig, shaderPath, skipRefresh: true });
   }
 
   function addStorageBuffer(): string | null {
@@ -356,9 +384,30 @@
     return !!pass && 'type' in pass && pass.type === "compute";
   }
 
+  function sourceForPass(passName: string): string {
+    if (passName === 'Image') {
+      return shaderSource;
+    }
+    const source = bufferSources[passName];
+    if (source !== undefined) {
+      return source;
+    }
+    const pass = config?.passes[passName];
+    const configuredPath = pass && 'path' in pass ? pass.path : undefined;
+    if (bufferPathMap[passName] === shaderPath || configuredPath === shaderPath) {
+      return shaderSource;
+    }
+    return '';
+  }
+
+  function shaderEntryPoints(passName: string): ShaderEntryPoint[] {
+    return getShaderEntryPoints(sourceForPass(passName), language);
+  }
+
   function computeEntryPoints(passName: string): string[] {
-    const source = bufferSources[passName] ?? '';
-    return Array.from(source.matchAll(/\[\s*shader\s*\(\s*["']compute["']\s*\)\s*\]\s*\[\s*numthreads\s*\([^)]*\)\s*\]\s*void\s+([A-Za-z_]\w*)\s*\(/gi), (match) => match[1]!);
+    return shaderEntryPoints(passName)
+      .filter((entry) => entry.stage === 'compute')
+      .map((entry) => entry.name);
   }
 
   function getWebviewUri(path: string): string | undefined {
@@ -744,7 +793,12 @@
             role="menu"
             bind:this={addMenu}
           >
-            <button class="dropdown-item" role="menuitem" onclick={() => runAddMenuAction(addBuffer)}>Buffer</button>
+            {#if SHADER_LANGUAGES[language].engine === "webgpu"}
+              <button class="dropdown-item" role="menuitem" onclick={() => runAddMenuAction(addBuffer)}>Buffer ({authoringLabel(defaultRenderAuthoring)})</button>
+              <button class="dropdown-item" role="menuitem" onclick={() => runAddMenuAction(() => addBuffer(alternateRenderAuthoring))}>Buffer ({authoringLabel(alternateRenderAuthoring)})</button>
+            {:else}
+              <button class="dropdown-item" role="menuitem" onclick={() => runAddMenuAction(addBuffer)}>Buffer</button>
+            {/if}
             {#if SHADER_LANGUAGES[language].engine === "webgpu"}
               <button
                 class="dropdown-item"
@@ -763,6 +817,15 @@
         {/if}
       </div>
     </div>
+
+    {#if SHADER_LANGUAGES[language].engine === "webgpu"}
+      <label class="webgpu-authoring-default">New render passes
+        <select aria-label="New render pass authoring" value={defaultRenderAuthoring} onchange={(event) => setDefaultRenderAuthoring(event.currentTarget.value as 'hooks' | 'native')}>
+          <option value="hooks">ShaderToy hooks</option>
+          <option value="native">Native entry points</option>
+        </select>
+      </label>
+    {/if}
 
     <!-- Tab Content -->
     <div class="tab-content">
@@ -808,6 +871,7 @@
           {audioVideoController}
           {globalMuted}
           {availableBufferNames}
+          renderEntryPoints={shaderEntryPoints('Image')}
           {onOpenInNewTab}
         />
       {:else}
@@ -836,6 +900,7 @@
           {availableBufferNames}
           storageNames={Object.keys(config?.storage ?? {})}
           entryPointNames={computeEntryPoints(getActualBufferName(activeTab))}
+          renderEntryPoints={shaderEntryPoints(getActualBufferName(activeTab))}
           onComputeCommit={(nextConfig) => {
             const result = configManager?.updateComputePass(getActualBufferName(activeTab), nextConfig);
             return result && !result.ok ? result.errors : {};
@@ -903,6 +968,22 @@
     min-height: 0;
     overflow-y: auto;
     padding: 12px;
+  }
+
+  .webgpu-authoring-default {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    color: var(--vscode-descriptionForeground, #888);
+    font-size: 12px;
+    border-bottom: 1px solid var(--vscode-panel-border, #3c3c3c);
+  }
+
+  .webgpu-authoring-default select {
+    color: var(--vscode-input-foreground);
+    background: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
   }
 
   .buffer-rename-menu {

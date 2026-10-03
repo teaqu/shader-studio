@@ -575,7 +575,7 @@ const PARAMETER_DECLARATION = new RegExp(
   `^\\s*((?:(?:in|out|inout|const)\\s+)*)(${TYPE_TOKEN.source})\\s+([A-Za-z_]\\w*)\\s*(\\[\\s*\\d*\\s*\\])?(\\s*(?::\\s*[A-Za-z_]\\w*)?\\s*(?:=[\\s\\S]*)?)$`,
 );
 
-const FUNCTION_HEADER = new RegExp(`\\b(${TYPE_TOKEN.source})\\s+([A-Za-z_]\\w*)\\s*\\(([^)]*)\\)\\s*\\{`, "g");
+const FUNCTION_HEADER = new RegExp(`\\b(${TYPE_TOKEN.source})\\s+([A-Za-z_]\\w*)\\s*\\(([^)]*)\\)\\s*(?::\\s*[A-Za-z_]\\w*)?\\s*\\{`, "g");
 
 function findSlangFunctions(source: string): SlangFunctionDeclaration[] {
   const functions: SlangFunctionDeclaration[] = [];

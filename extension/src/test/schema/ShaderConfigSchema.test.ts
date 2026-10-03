@@ -23,6 +23,32 @@ suite('Shader config JSON schema', () => {
     );
   }
 
+  test('accepts native stages and a creation preference without changing compute selections', () => {
+    for (const entryPoints of [{}, { vertex: 'vertices', fragment: 'image' }, { fragment: 'image' }]) {
+      assertValid({ version: '1.0', webgpu: { defaultRenderAuthoring: 'native' }, passes: {
+        Image: { entryPoints }, BufferA: { path: 'scene.wgsl', entryPoints },
+        Simulation: { type: 'compute', path: 'scene.wgsl', entryPoints: { compute: 'simulate' } }
+      } });
+    }
+    assertValid({ version: '1.0', webgpu: { defaultRenderAuthoring: 'hooks' }, passes: { Image: {} } });
+  });
+
+  test('rejects malformed stage selections, conflicting vertex files and unknown authoring settings', () => {
+    const cases: Array<[unknown, string]> = [
+      [{ Image: { entryPoints: null } }, 'should be object'],
+      [{ Image: { entryPoints: { fragment: 'bad name' } } }, 'should match pattern'],
+      [{ Image: { entryPoints: { compute: 'simulate' } } }, 'should NOT have additional properties'],
+      [{ Image: { entryPoints: {}, vertex: 'other.wgsl' } }, 'should NOT be valid'],
+      [{ Image: {}, common: { path: 'common.wgsl', entryPoints: {} } }, 'should NOT have additional properties'],
+      [{ Image: {}, Simulation: { type: 'compute', path: 'scene.wgsl', entryPoints: { fragment: 'image' } } }, 'should NOT have additional properties']
+    ];
+    for (const [passes, message] of cases) {
+      assertInvalid({ version: '1.0', passes }, message);
+    }
+    assertInvalid({ version: '1.0', webgpu: { defaultRenderAuthoring: 'invalid' }, passes: { Image: {} } }, 'should be equal to one of the allowed values');
+    assertInvalid({ version: '1.0', webgpu: { unknown: true }, passes: { Image: {} } }, 'should NOT have additional properties');
+  });
+
   test('accepts every supported image and buffer geometry type plus omission', () => {
     for (const type of ['fullscreen', 'plane', 'cube', 'sphere']) {
       assertValid({

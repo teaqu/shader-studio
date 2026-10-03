@@ -72,6 +72,7 @@ suite('ShaderCreator Test Suite', () => {
     const fileUri = vscode.Uri.file(filePath);
 
     sandbox.stub(vscode.window, 'showSaveDialog').resolves(fileUri);
+    sandbox.stub(vscode.window, 'showQuickPick').resolves({ label: 'ShaderToy hooks', value: 'hooks' } as any);
     sandbox.stub(vscode.workspace, 'openTextDocument').resolves({} as any);
     sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
     const infoStub = sandbox.stub(vscode.window, 'showInformationMessage');
@@ -86,6 +87,23 @@ suite('ShaderCreator Test Suite', () => {
     try {
       fs.unlinkSync(filePath); 
     } catch { }
+  });
+
+  test('creates a native WGSL shader and its matching project config', async () => {
+    const filePath = path.join(testDir, 'native.wgsl');
+    const fileUri = vscode.Uri.file(filePath);
+    sandbox.stub(vscode.window, 'showSaveDialog').resolves(fileUri);
+    sandbox.stub(vscode.window, 'showQuickPick').resolves({ label: 'Native entry points', value: 'native' } as any);
+    sandbox.stub(vscode.workspace, 'openTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showInformationMessage');
+
+    await shaderCreator.create();
+
+    assert.match(fs.readFileSync(filePath, 'utf8'), /@fragment\s+fn ImageFragment/);
+    const config = JSON.parse(fs.readFileSync(path.join(testDir, 'native.sha.json'), 'utf8'));
+    assert.deepStrictEqual(config.webgpu.defaultRenderAuthoring, 'native');
+    assert.deepStrictEqual(config.passes.Image.entryPoints, { vertex: 'ImageVertex', fragment: 'ImageFragment' });
   });
 
   test('should do nothing when user cancels the save dialog', async () => {
@@ -195,6 +213,7 @@ suite('ShaderCreator Test Suite', () => {
     const fileUri = vscode.Uri.file(filePath);
 
     sandbox.stub(vscode.window, 'showSaveDialog').resolves(fileUri);
+    sandbox.stub(vscode.window, 'showQuickPick').resolves({ label: 'ShaderToy hooks', value: 'hooks' } as any);
     sandbox.stub(vscode.workspace, 'openTextDocument').resolves({} as any);
     sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
     sandbox.stub(vscode.window, 'showInformationMessage');
@@ -232,6 +251,7 @@ suite('ShaderCreator Test Suite', () => {
     const fileUri = vscode.Uri.file(filePath);
 
     sandbox.stub(vscode.window, 'showSaveDialog').resolves(fileUri);
+    sandbox.stub(vscode.window, 'showQuickPick').resolves({ label: 'ShaderToy hooks', value: 'hooks' } as any);
     sandbox.stub(vscode.workspace, 'openTextDocument').resolves({} as any);
     sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
     sandbox.stub(vscode.window, 'showInformationMessage');
@@ -253,6 +273,7 @@ suite('ShaderCreator Test Suite', () => {
     const fileUri = vscode.Uri.file(filePath);
 
     sandbox.stub(vscode.window, 'showSaveDialog').resolves(fileUri);
+    sandbox.stub(vscode.window, 'showQuickPick').resolves({ label: 'ShaderToy hooks', value: 'hooks' } as any);
     sandbox.stub(vscode.workspace, 'openTextDocument').resolves({} as any);
     sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
     sandbox.stub(vscode.window, 'showInformationMessage');

@@ -242,10 +242,10 @@ describe("SlangCompiler", () => {
         { geometry: "sphere" },
       );
 
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.wgsl.trim().length).toBeGreaterThan(0);
+      if (!result.success) {
+        throw new Error(result.errors.join("\n"));
       }
+      expect(result.wgsl.trim().length).toBeGreaterThan(0);
     },
   );
 

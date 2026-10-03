@@ -55,8 +55,9 @@ export function buildSlangAuthoringModule(
     .flatMap((resource) => {
       if (resource.kind === "storage") {
         const elementType = resource.elementType ?? "float4";
-        const bufferType = environment.stage === "compute" ? "RWStructuredBuffer" : "StructuredBuffer";
-        const renderElementType = environment.stage === "compute"
+        const writableStorage = environment.stage === "compute" || environment.storageWritable;
+        const bufferType = writableStorage ? "RWStructuredBuffer" : "StructuredBuffer";
+        const renderElementType = writableStorage
           ? elementType
           : elementType === "Atomic<uint>" ? "uint" : elementType === "Atomic<int>" ? "int" : elementType;
         return [`${bufferType}<${renderElementType}> ${resource.name};`];

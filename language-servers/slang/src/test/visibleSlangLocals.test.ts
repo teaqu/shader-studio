@@ -112,6 +112,18 @@ describe("visibleSlangLocals", () => {
       { name: "gain", typeName: "float", kind: "parameter" },
     ]));
   });
+
+  it("keeps parameters visible in a native stage with a return semantic", () => {
+    const visible = visibleSlangLocals(`float4 render(uint index : SV_VertexID, float2 coord) : SV_Target0
+{
+    return float4(coord.xy, float(index), 1.0);
+}`, { line: 2, character: 18 });
+
+    expect(visible).toEqual(expect.arrayContaining([
+      { name: "index", typeName: "uint", kind: "parameter" },
+      { name: "coord", typeName: "float2", kind: "parameter" },
+    ]));
+  });
 });
 
 describe("findSlangLocalAt", () => {

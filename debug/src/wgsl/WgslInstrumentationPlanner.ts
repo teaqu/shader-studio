@@ -14,6 +14,7 @@ import { buildWgslComputeInstrumentation } from "./WgslComputeInstrumentation";
 import { emitWgslFloat4 } from "./WgslEmitter";
 import type { WgslDebugSourceMap } from "./WgslDebugSourceMap";
 import { offsetAt } from "./model";
+import { buildNativeFragmentReplay, preserveLegacyMainImage } from "../native/NativeFragmentReplay";
 
 /**
  * Instruments a WGSL render shader or compute invocation for preview and capture. WGSL has
@@ -42,11 +43,16 @@ export function planWgslInstrumentation(
   }
   const prefix = instrumentationPrefix(contentHash);
   const document = parseWgslDocument(sourceUri, source, "fragment");
-  const compute = buildWgslComputeInstrumentation(source, document, prefix, sourceMap?.workspace.compute);
+  const native = sourceMap?.workspace.render
+    ? buildNativeFragmentReplay(source, "wgsl", sourceMap.workspace.render.entryPoint, prefix) : undefined;
+  if (typeof native === "string") {
+    return failure(sourceUri, analysis.selectedRange.start, "wgsl-debug-unsupported-syntax", native);
+  }
+  const compute = native ? undefined : buildWgslComputeInstrumentation(source, document, prefix, sourceMap?.workspace.compute);
   if (typeof compute === "string") {
     return failure(sourceUri, analysis.selectedRange.start, "wgsl-debug-unsupported-syntax", compute);
   }
-  const entryName = compute?.entryName ?? "mainImage";
+  const entryName = native?.entryName ?? compute?.entryName ?? "mainImage";
   const functionScope = document.scopes.find((scope) => scope.kind === "function" && scope.name === entryName);
   const entry = functionScope
     ? document.symbols.find((symbol) => symbol.kind === "function" && symbol.name === entryName)
@@ -59,7 +65,7 @@ export function planWgslInstrumentation(
     && parameters.length === 1
     && (coordinate?.typeName === "vec2f" || coordinate?.typeName === "vec2<f32>")
     && (entry.typeName === "vec4f" || entry.typeName === "vec4<f32>");
-  if (!isRenderEntry && !compute) {
+  if (!isRenderEntry && !compute && !native) {
     return failure(sourceUri, analysis.selectedRange.start, "wgsl-debug-unsupported-syntax", "WGSL debugging supports render shaders with a 'fn mainImage(coord: vec2f) -> vec4f' entry.");
   }
   if (source.includes(prefix)) {
@@ -96,15 +102,17 @@ export function planWgslInstrumentation(
   const nameEnd = offsetAt(source, nameToken.end);
   const invocation = compute
     ? `${compute.call}\n  let ${prefix}_color = vec4f(0.0);`
-    : `let ${prefix}_color = ${prefix}_userMain(coord);`;
+    : `let ${prefix}_color = ${native?.call ?? `${prefix}_userMain(coord)`};`;
   const wrapper = mode === "preview"
     ? emitPreviewWrapper(prefix, slots, previewOptions, behavior.setup, invocation)
     : emitCaptureWrapper(prefix, slots, behavior.setup, invocation);
   const edits = [
     ...behavior.edits,
     ...(compute?.edits ?? []),
+    ...(compute ? preserveLegacyMainImage(source, "wgsl", prefix) : []),
+    ...(native?.edits ?? []),
     { start: captureOffset, end: captureOffset, text: captureText },
-    ...(!compute ? [{ start: nameStart, end: nameEnd, text: `${prefix}_userMain` }] : []),
+    ...(!compute && !native ? [{ start: nameStart, end: nameEnd, text: `${prefix}_userMain` }] : []),
     { start: source.length, end: source.length, text: `\n${declarations}\n\n${wrapper}\n` },
   ];
   const applied = applySourceEdits(source, edits);

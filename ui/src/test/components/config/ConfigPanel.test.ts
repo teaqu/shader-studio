@@ -113,6 +113,36 @@ describe('ConfigPanel', () => {
   }
 
   describe('rendering', () => {
+    it.each(['wgsl', 'slang'] as const)('persists the WebGPU default authoring choice for newly created %s render passes', async (language) => {
+      const config: ShaderConfig = { version: '1.0', passes: { Image: {} } };
+      const { getByLabelText } = render(ConfigPanel, {
+        config, language, transport: mockTransport, shaderPath: `/shader/image.${language}`,
+      });
+
+      await fireEvent.change(getByLabelText('New render pass authoring'), { target: { value: 'native' } });
+
+      expect(mockTransport.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+        type: 'updateConfig',
+        payload: expect.objectContaining({
+          config: expect.objectContaining({ webgpu: { defaultRenderAuthoring: 'native' } }),
+        }),
+      }));
+    });
+
+    it('discovers native Slang stages from the root source for a same-file Buffer', async () => {
+      const source = '[shader("vertex")] float4 bufferVertex(uint id : SV_VertexID) : SV_Position { return float4(0, 0, 0, 1); }\n[shader("fragment")] float4 bufferFragment() : SV_Target0 { return float4(1, 0, 0, 1); }';
+      const { getByLabelText } = render(ConfigPanel, {
+        config: { version: '1.0', passes: { Image: {}, BufferA: { path: '/shader/image.slang', entryPoints: {} } } },
+        language: 'slang', transport: mockTransport, shaderPath: '/shader/image.slang', shaderSource: source,
+        bufferPathMap: { BufferA: '/shader/image.slang' }, selectedBuffer: 'BufferA',
+      });
+
+      await tick();
+      expect(getByLabelText('Render authoring')).toHaveValue('native');
+      expect(getByLabelText('Vertex entrypoint')).toHaveTextContent('bufferVertex');
+      expect(getByLabelText('Fragment entrypoint')).toHaveTextContent('bufferFragment');
+    });
+
     it('should render the Image tab by default', async () => {
       const { getByText } = render(ConfigPanel, {
         config: null,
@@ -853,7 +883,7 @@ describe('ConfigPanel', () => {
       await rerender({ ...props, language });
       await tick();
       expect(getByRole('menuitem', { name: /add compute/i })).toBeInTheDocument();
-      expect(getByRole('menuitem', { name: 'Buffer' })).toBeInTheDocument();
+      expect(getByRole('menuitem', { name: 'Buffer (ShaderToy hooks)' })).toBeInTheDocument();
 
       await rerender(props);
       await tick();
@@ -941,6 +971,8 @@ describe('ConfigPanel', () => {
           suggestedPath: 'image.computea.slang',
           fileType: 'slang-compute',
           requestId: expect.any(String),
+          authoringMode: 'native',
+          passName: 'ComputeA',
         },
       });
     });
@@ -983,6 +1015,8 @@ describe('ConfigPanel', () => {
           suggestedPath: 'image.buffera.slang',
           fileType: 'slang-buffer',
           requestId: expect.any(String),
+          authoringMode: 'hooks',
+          passName: 'BufferA',
         },
       });
     });
@@ -1106,11 +1140,12 @@ describe('ConfigPanel', () => {
 
       expect(trigger).toHaveAttribute('aria-expanded', 'true');
       expect(getByRole('menu')).toBeInTheDocument();
-      const bufferItem = getByRole('menuitem', { name: 'Buffer' });
+      const bufferItem = getByRole('menuitem', { name: 'Buffer (ShaderToy hooks)' });
       const computeItem = getByRole('menuitem', { name: /add compute/i });
       expect(bufferItem).toHaveFocus();
 
       await fireEvent.keyDown(bufferItem, { key: 'ArrowDown' });
+      await fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
       expect(computeItem).toHaveFocus();
 
       await fireEvent.keyDown(computeItem, { key: 'Escape' });
@@ -1169,7 +1204,7 @@ describe('ConfigPanel', () => {
       const dropdown = trigger.closest('.add-tab-dropdown')!;
 
       await fireEvent.mouseEnter(dropdown);
-      const bufferItem = getByRole('menuitem', { name: 'Buffer' });
+      const bufferItem = getByRole('menuitem', { name: 'Buffer (ShaderToy hooks)' });
       bufferItem.focus();
 
       await fireEvent.mouseLeave(dropdown);
@@ -1210,7 +1245,7 @@ describe('ConfigPanel', () => {
       const trigger = getByRole('button', { name: '+ New' });
 
       await fireEvent.click(trigger);
-      const bufferItem = getByRole('menuitem', { name: 'Buffer' });
+      const bufferItem = getByRole('menuitem', { name: 'Buffer (ShaderToy hooks)' });
       bufferItem.focus();
       expect(bufferItem).toHaveFocus();
 

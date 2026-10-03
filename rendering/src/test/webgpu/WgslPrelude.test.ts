@@ -13,6 +13,7 @@ import {
   buildWgslStorageDeclarations,
   getWgslComputeEntryPoints,
   injectComputeInit,
+  isolateWgslEntryPoints,
   wrapWgslComputeSource,
   wrapWgslImageSource,
 } from "../../webgpu/WgslPrelude";
@@ -90,6 +91,51 @@ function storageNode(name: string, binding: number, elementType: string, builtin
 }
 
 describe("wrapWgslImageSource uniform block", () => {
+  it("keeps selected native stages, removes unrelated entries, and initializes both", () => {
+    const source = `@vertex fn full() -> @builtin(position) vec4f { return vec4f(); }
+@fragment fn paint() -> @location(0) vec4f { return vec4f(iTime); }
+@compute @workgroup_size(1) fn update() { writeOutput(vec2u(), vec4f()); }`;
+    const wrapped = wrapWgslImageSource(source, {
+      renderEntryPoints: { vertex: "full", fragment: "paint" },
+    }).source;
+
+    expect(wrapped).toContain("@vertex fn full() -> @builtin(position) vec4f { _ss_initGlobals();");
+    expect(wrapped).toContain("@fragment fn paint() -> @location(0) vec4f { _ss_initGlobals();");
+    expect(wrapped).not.toContain("fn update()");
+  });
+
+  it("blanks an inactive entry but retains its source line count", () => {
+    const source = "@compute @workgroup_size(1) fn compute() {\n  writeOutput(vec2u(), vec4f());\n}\n@fragment fn paint() -> @location(0) vec4f { return vec4f(); }";
+    const isolated = isolateWgslEntryPoints(source, ["paint"]);
+
+    expect(isolated.split("\n")).toHaveLength(source.split("\n").length);
+    expect(isolated).not.toContain("writeOutput");
+    expect(isolated).toContain("fn paint");
+  });
+
+  it("keeps helpers reachable from selected stages and removes inactive-stage helpers", () => {
+    const source = `fn renderHelper() -> vec4f { return vec4f(); }
+fn computeHelper() { writeOutput(vec2u(), vec4f()); }
+@fragment fn paint() -> @location(0) vec4f { return renderHelper(); }
+@compute @workgroup_size(1) fn update() { computeHelper(); }`;
+    const isolated = isolateWgslEntryPoints(source, ["paint"]);
+    expect(isolated).toContain("fn renderHelper");
+    expect(isolated).not.toContain("fn computeHelper");
+    expect(isolated).not.toContain("fn update");
+  });
+
+  it("uses an authored same-file mainVertex hook without adding a duplicate stub", () => {
+    const source = `fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {}
+fn mainImage(coord: vec2f) -> vec4f { return vec4f(); }`;
+    const wrapped = wrapWgslImageSource(source).source;
+    expect(wrapped.match(/fn mainVertex\(/g)).toHaveLength(1);
+  });
+
+  it("uses a Common-defined mainVertex hook without adding a duplicate stub", () => {
+    const common = `fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {}`;
+    const wrapped = wrapWgslImageSource("fn mainImage(coord: vec2f) -> vec4f { return vec4f(); }", { commonCode: common }).source;
+    expect(wrapped.match(/fn mainVertex\(/g)).toHaveLength(1);
+  });
   it("provides the editor-advertised channel Load helper with ShaderToy coordinates", () => {
     const { source } = wrapWgslImageSource("fn mainImage(coord: vec2f) -> vec4f { return stateLoad(vec2i(0)); }", {
       channels: [channel("state", 0)],

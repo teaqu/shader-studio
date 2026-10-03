@@ -67,6 +67,9 @@ export class ClientMessageHandler {
       case 'createFile':
         await this.files.handleCreateFile(message.payload, respondFn);
         break;
+      case 'insertShaderSource':
+        await this.files.handleInsertShaderSource(message.payload, respondFn);
+        break;
       case 'updateShaderSource':
         await this.overlay.handleUpdateShaderSource(message.payload);
         break;

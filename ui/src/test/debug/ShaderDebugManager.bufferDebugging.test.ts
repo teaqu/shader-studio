@@ -203,6 +203,39 @@ describe('ShaderDebugManager — buffer debugging', () => {
       expect(target.config?.passes.Image.inputs).toEqual(makeConfig().passes.BufferA?.inputs);
     });
 
+    it('remaps a native Buffer render contract into Image for full-shader debugging', () => {
+      const nativeConfig: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: { entryPoints: { vertex: 'imageVertex', fragment: 'imageFragment' }, vertex: 'image-hook.wgsl', geometry: { type: 'sphere' } },
+          BufferA: { path: '/shaders/bufferA.wgsl', entryPoints: { vertex: 'bufferVertex', fragment: 'bufferFragment' }, vertex: 'buffer-hook.wgsl', geometry: { type: 'plane' } },
+        },
+      };
+      manager.setLanguage('wgsl');
+      manager.setShaderContext(nativeConfig, '/shaders/image.wgsl', { BufferA: BUFFER_A_CODE });
+      manager.updateDebugLine(1, 'line', '/shaders/bufferA.wgsl');
+
+      const target = manager.getDebugTarget(IMAGE_CODE, nativeConfig);
+
+      expect(target.config?.passes.Image).toEqual({
+        entryPoints: { vertex: 'bufferVertex', fragment: 'bufferFragment' },
+        vertex: 'buffer-hook.wgsl',
+        geometry: { type: 'plane' },
+      });
+    });
+
+    it('clears native Image stages when a hook Buffer is the debug target', () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: { Image: { entryPoints: { fragment: 'imageFragment' } }, BufferA: { path: '/shaders/bufferA.wgsl' } },
+      };
+      manager.setLanguage('wgsl');
+      manager.setShaderContext(config, '/shaders/image.wgsl', { BufferA: BUFFER_A_CODE });
+      manager.updateDebugLine(1, 'line', '/shaders/bufferA.wgsl');
+
+      expect(manager.getDebugTarget(IMAGE_CODE, config).config?.passes.Image).toEqual({});
+    });
+
     it('returns BufferB code when activeBufferName is BufferB', () => {
       manager.updateDebugLine(1, 'vec4 prev = texture(iChannel0, fragCoord / iResolution.xy);', '/shaders/bufferB.glsl');
       const target = manager.getDebugTarget(IMAGE_CODE, makeConfig());

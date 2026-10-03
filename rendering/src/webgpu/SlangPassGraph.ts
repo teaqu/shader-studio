@@ -14,6 +14,7 @@ import { getWgslComputeEntryPoints, maskWgslNonCode } from "./WgslPrelude";
 import { resolvePassGeometry } from "../types/Geometry";
 import { parseSlangStructs } from "./slangStructSize";
 import { parseWgslStructs } from "./wgslStructSize";
+import { resolveRenderEntryPoints } from "./RenderEntryPointResolution";
 
 export type {
   ChannelReadTiming,
@@ -193,7 +194,16 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       const dispatch = resolveDispatch(name, computeConfig.dispatch, storageNames, channels, errors);
       const defaultWorkgroupSize = dispatch.mode === "count" ? COUNT_WORKGROUP_SIZE : TEXEL_WORKGROUP_SIZE;
       const nativeEntries = language === "wgsl" ? getWgslComputeEntryPoints(source) : getNativeComputeEntryPoints(source);
-      const requestedEntryPoint = computeConfig.entryPoint;
+      // `entryPoints.compute` is the canonical stage-selection field. Retain
+      // `entryPoint` only as a compatibility read for existing projects.
+      const configuredCompute = (computeConfig as ComputePass & {
+        entryPoints?: { compute?: string };
+      }).entryPoints?.compute;
+      if (configuredCompute && computeConfig.entryPoint && configuredCompute !== computeConfig.entryPoint) {
+        errors.push(`${name}: entryPoints.compute conflicts with legacy entryPoint`);
+        continue;
+      }
+      const requestedEntryPoint = configuredCompute ?? computeConfig.entryPoint;
       const nativeEntryPoint = requestedEntryPoint
         ? nativeEntries.find(({ name }) => name === requestedEntryPoint)
         : nativeEntries.length === 1 ? nativeEntries[0] : undefined;
@@ -243,6 +253,11 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       continue;
     }
 
+    const entryPoints = resolveRenderEntryPoints(name, passConfig, source, language, errors);
+    if (entryPoints === null) {
+      continue;
+    }
+
     renderPasses.push({
       name,
       source,
@@ -250,6 +265,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       geometry: resolvePassGeometry(passConfig),
       ...resolveModelGeometry(passConfig),
       vertexSrc: options.buffers[vertexPassKey(name)],
+      ...(entryPoints ? { entryPoints } : {}),
       path,
       kind: "render",
       output: "texture",
@@ -274,6 +290,13 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
     errors,
   });
   const imagePass = createImagePass(options.imageCode, canvasWidth, canvasHeight, imageChannels, resolvePassGeometry(imageConfig), options.buffers[vertexPassKey("Image")], resolveModelGeometry(imageConfig), language);
+  const imageEntryPoints = resolveRenderEntryPoints("Image", imageConfig, options.imageCode, language, errors);
+  if (imageEntryPoints === null) {
+    return { passes: [...computePasses, ...renderPasses], storage, commonCode, warnings, errors };
+  }
+  if (imageEntryPoints) {
+    imagePass.entryPoints = imageEntryPoints;
+  }
   const passes = [...computePasses, ...renderPasses, imagePass];
   const sampledBufferSources = new Set(passes.flatMap((pass) => pass.channels
     .filter((channel) => channel.kind === "buffer")

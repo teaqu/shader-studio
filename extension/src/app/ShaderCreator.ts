@@ -3,6 +3,8 @@ import * as path from "path";
 import * as fs from "fs";
 import { Logger } from "./services/Logger";
 import { GlslFileTracker } from "./GlslFileTracker";
+import { getConfigPathForShaderPath } from "./ShaderConfigPaths";
+import { createNativeRenderSource } from "@shader-studio/types";
 
 export class ShaderCreator {
   private logger: Logger;
@@ -86,10 +88,30 @@ export class ShaderCreator {
       }
 
       const filePath = uri.fsPath;
+      const lowerPath = filePath.toLowerCase();
+      const isWebGpuLanguage = lowerPath.endsWith(".wgsl") || lowerPath.endsWith(".slang");
+      const authoringMode = isWebGpuLanguage
+        ? await vscode.window.showQuickPick([
+          { label: 'ShaderToy hooks', value: 'hooks' as const, description: 'Generate the familiar mainImage wrapper' },
+          { label: 'Native entry points', value: 'native' as const, description: 'Start with @vertex and @fragment stages' },
+        ], { title: 'WebGPU authoring style' })
+        : { value: 'hooks' as const };
+      if (!authoringMode) {
+        return;
+      }
+      const configPath = getConfigPathForShaderPath(filePath);
+      if (authoringMode.value === 'native' && fs.existsSync(configPath)) {
+        vscode.window.showErrorMessage(`Cannot create native shader because its config already exists: ${path.basename(configPath)}`);
+        return;
+      }
 
       // Create a basic shader template
-      const lowerPath = filePath.toLowerCase();
-      const shaderTemplate = lowerPath.endsWith(".slang")
+      const nativeTemplate = authoringMode.value === 'native'
+        ? createNativeRenderSource(lowerPath.endsWith(".slang") ? 'slang' : 'wgsl', '', 'Image')
+        : undefined;
+      const shaderTemplate = nativeTemplate
+        ? nativeTemplate.text.trimStart()
+        : lowerPath.endsWith(".slang")
         ? this.getSlangShaderTemplate()
         : lowerPath.endsWith(".wgsl")
           ? this.getWgslShaderTemplate()
@@ -97,6 +119,13 @@ export class ShaderCreator {
 
       // Write the shader file
       fs.writeFileSync(filePath, shaderTemplate);
+      if (authoringMode.value === 'native') {
+        fs.writeFileSync(configPath, JSON.stringify({
+          version: '1.0',
+          webgpu: { defaultRenderAuthoring: 'native' },
+          passes: { Image: { inputs: {}, entryPoints: nativeTemplate!.entryPoints } },
+        }, null, 2));
+      }
 
       // Open the newly created file
       const document = await vscode.workspace.openTextDocument(uri);

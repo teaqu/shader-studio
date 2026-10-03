@@ -1,10 +1,42 @@
 import { describe, expect, it } from 'vitest';
 import { SHADER_STUDIO_BUILTIN_UNIFORMS } from '@shader-studio/types';
-import { findSlangChannelDeclarationCollisions, SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX, wrapSlangImageSource } from '../../webgpu/SlangPrelude';
+import { findSlangChannelDeclarationCollisions, isolateSlangEntryPoints, SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX, wrapSlangImageSource } from '../../webgpu/SlangPrelude';
 
 const image = 'float4 mainImage(float2 fragCoord) { return float4(1); }';
 
 describe('wrapSlangImageSource', () => {
+  it('uses selected native render stages without generated ShaderToy adapters', () => {
+    const source = '[shader("vertex")] float4 full(uint id : SV_VertexID) : SV_Position { return 0; }\n[shader("fragment")] float4 paint() : SV_Target { return 1; }';
+    const wrapped = wrapSlangImageSource(source, { renderEntryPoints: { vertex: 'full', fragment: 'paint' } });
+    expect(wrapped).toContain(source);
+    expect(wrapped).not.toContain(`float4 ${SLANG_ENTRY_VERTEX}`);
+  });
+
+  it('blanks inactive stage functions without shifting lines', () => {
+    const source = '[shader("compute")] [numthreads(1, 1, 1)] void update(uint3 id : SV_DispatchThreadID) { writeOutput(0, 0); }\n[shader("fragment")] float4 paint() : SV_Target { return 1; }';
+    const isolated = isolateSlangEntryPoints(source, ['paint']);
+    expect(isolated.split('\n')).toHaveLength(source.split('\n').length);
+    expect(isolated).not.toContain('writeOutput');
+    expect(isolated).toContain('paint');
+  });
+
+  it('supplies the default vertex hook for mesh geometry without an authored hook', () => {
+    const wrapped = wrapSlangImageSource('float4 mainImage(float2 coord) { return 1; }', { geometry: 'sphere' });
+    expect(wrapped.match(/void mainVertex\s*\(/g)).toHaveLength(1);
+    expect(wrapped).toContain('mainVertex(position, normal, uv);');
+  });
+
+  it('uses an authored same-file mainVertex hook without adding a duplicate stub', () => {
+    const source = 'void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {}\nfloat4 mainImage(float2 coord) { return 1; }';
+    const wrapped = wrapSlangImageSource(source);
+    expect(wrapped.match(/void mainVertex\s*\(/g)).toHaveLength(1);
+  });
+
+  it('uses a Common-defined mainVertex hook without adding a duplicate stub', () => {
+    const common = 'void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {}';
+    const wrapped = wrapSlangImageSource('float4 mainImage(float2 coord) { return 1; }', { commonCode: common });
+    expect(wrapped.match(/void mainVertex\s*\(/g)).toHaveLength(1);
+  });
   it('reports direct channel collisions in complete top-level declarations', () => {
     const collisions = findSlangChannelDeclarationCollisions([{ slot: 0, key: 'albedo' }], [
       { label: 'Image', source: 'float x; float albedo;\nfloat4\nalbedo(float2 uv) { return 0; }\n#define albedo 1' },

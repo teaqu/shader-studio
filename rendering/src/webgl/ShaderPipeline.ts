@@ -90,6 +90,12 @@ export class ShaderPipeline {
     if (this.disposed) {
       return { success: false, errors: ["Shader pipeline disposed"], superseded: true };
     }
+    const nativePass = Object.entries(config?.passes ?? {}).find(([, pass]) =>
+      pass && typeof pass === "object" && "entryPoints" in pass && pass.entryPoints !== undefined,
+    );
+    if (nativePass) {
+      return { success: false, errors: [`${nativePass[0]}: native entryPoints are only supported by WebGPU`] };
+    }
     const generation = ++this.compileGeneration;
     const resetGeneration = this.pendingResetGeneration;
     const pathChanged = this.shaderPath !== "" && this.shaderPath !== path;
@@ -173,6 +179,10 @@ export class ShaderPipeline {
     return passNames
       .map(passName => {
         const pass = config?.passes?.[passName];
+        if (pass && typeof pass === "object" && "type" in pass && pass.type === "compute") {
+          return null;
+        }
+        const renderPass = pass as BufferPass | ImagePass | undefined;
         const shaderSrc = buffers[passName] || (passName === "Image" ? code : "");
 
         // Skip common buffer if there's no meaningful content
@@ -189,14 +199,14 @@ export class ShaderPipeline {
           shaderSrc,
           vertexSrc: buffers[`${VERTEX_SOURCE_PREFIX}${passName}`],
           inputs: pass?.inputs ?? {},
-          geometry: resolvePassGeometry(pass && "geometry" in pass ? pass : undefined),
-          ...(pass?.geometry?.type === "model" ? {
-            modelPath: pass.geometry.resolved_path ?? pass.geometry.path,
-            modelMesh: pass.geometry.mesh,
+          geometry: resolvePassGeometry(renderPass),
+          ...(renderPass?.geometry?.type === "model" ? {
+            modelPath: renderPass.geometry.resolved_path ?? renderPass.geometry.path,
+            modelMesh: renderPass.geometry.mesh,
           } : {}),
-          path: this.isBufferPass(pass) ? (pass as BufferPass).path : undefined,
-          resolution: this.isBufferPass(pass) ? (pass as BufferPass).resolution : undefined,
-          outputFormat: this.isBufferPass(pass) ? (pass as BufferPass).outputFormat : undefined,
+          path: this.isBufferPass(renderPass) ? renderPass.path : undefined,
+          resolution: this.isBufferPass(renderPass) ? renderPass.resolution : undefined,
+          outputFormat: this.isBufferPass(renderPass) ? renderPass.outputFormat : undefined,
         };
       })
       .filter((pass): pass is NonNullable<typeof pass> => pass !== null);
