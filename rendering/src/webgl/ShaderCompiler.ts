@@ -551,7 +551,7 @@ uniform vec3 iCameraDir;
 ${this.buildChannelMetadataDeclarations(types, channelCount)}${options.customUniformDeclarations ? `${options.customUniformDeclarations}\n` : ""}`;
   }
 
-  private buildVertexChannelHelpers(slotAssignments?: SlotAssignment[], channelTypes?: ChannelSamplerType[], fragmentStage = true): string {
+  private buildVertexChannelHelpers(slotAssignments?: SlotAssignment[], channelTypes?: ChannelSamplerType[]): string {
     const types = channelTypes || ['2D', '2D', '2D', '2D'];
     const channelCount = !slotAssignments || slotAssignments.length === 0
       ? 4

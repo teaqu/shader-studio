@@ -247,6 +247,9 @@ const collectDocs = (): MirrorDoc[] => {
       }
       const text = readFileSync(join(CORPUS, fileRel), "utf8");
       const stage = stageForPass(cfg as never, passName, fileRel);
+      if (stage !== "fragment" && stage !== "vertex" && stage !== "compute") {
+        continue;
+      }
       const entry = pass.entryPoint ?? firstFn(text) ?? "mainImage";
       docs.push({
         configRel, pass: passName, fileRel, text, stage, entry,
@@ -303,7 +306,8 @@ describe("GLSL corpus mirrors in the language service", () => {
       const expected = EXPECTED_PROBLEMS.get(doc.fileRel) ?? [];
       expect(problems.map((d) => d.message), `${label}: unexpected diagnostics`).toHaveLength(expected.length);
       for (const problem of problems) {
-        expect(expected.some((pattern) => pattern.test(problem.message)), `${label}: unexpected diagnostic: ${problem.message}`).toBe(true);
+        const message = typeof problem.message === "string" ? problem.message : problem.message.value;
+        expect(expected.some((pattern) => pattern.test(message)), `${label}: unexpected diagnostic: ${message}`).toBe(true);
       }
       const hover = await hoverText(doc.entry);
       expect(hover, `${label}: no hover for ${doc.entry}`).not.toBeNull();

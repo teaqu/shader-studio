@@ -10,10 +10,19 @@ import { ClientMessageHandler } from "../ClientMessageHandler";
 import { ConfigChangeClassifier } from "../services/ConfigChangeClassifier";
 import { Logger } from "../services/Logger";
 
+type ConfigPathMessage = {
+  type: string;
+  config: ShaderConfig;
+  path?: string;
+  pathMap?: Record<string, string>;
+} & Record<string, unknown>;
+
 export class WebSocketTransport implements MessageTransport {
   private wsServer: WebSocketServer;
   private wsClients: Set<WebSocket> = new Set();
   private allowedBrowserOrigins = new Set<string>();
+  // Browser clients may be older than the extension, so commands stay opaque
+  // until ClientMessageHandler selects and validates their payload.
   private messageHandler?: (message: any) => void;
 
   constructor(
@@ -97,6 +106,7 @@ export class WebSocketTransport implements MessageTransport {
       // Send current shader instead of welcome message
       this.sendCurrentShaderToNewClient(ws);
 
+      // ws exposes several wire representations before JSON decoding.
       ws.on("message", async (msg: any) => {
         try {
           const messageStr = msg instanceof Buffer ? msg.toString() : msg;
@@ -165,6 +175,7 @@ export class WebSocketTransport implements MessageTransport {
     }
   }
 
+  // Preserve the full, versioned transport envelope for browser clients.
   public send(message: any): void {
     const totalClients = this.wsClients.size;
     if (totalClients === 0) {
@@ -175,6 +186,7 @@ export class WebSocketTransport implements MessageTransport {
     this.sendMessageToAllClients(message);
   }
 
+  // See send(): this serializes opaque protocol envelopes.
   private sendMessageToAllClients(message: any): void {
     for (const client of this.wsClients) {
       if (client.readyState === WebSocket.OPEN) {
@@ -192,9 +204,9 @@ export class WebSocketTransport implements MessageTransport {
     }
   }
 
-  private processConfigPaths(message: { type: string; config: ShaderConfig;[key: string]: any }): typeof message {
+  private processConfigPaths(message: ConfigPathMessage): ConfigPathMessage {
     // Clone to avoid mutating the original message
-    const processedMessage = JSON.parse(JSON.stringify(message));
+    const processedMessage = JSON.parse(JSON.stringify(message)) as ConfigPathMessage;
     const config = processedMessage.config;
 
     if (!config?.passes) {
@@ -212,10 +224,10 @@ export class WebSocketTransport implements MessageTransport {
 
       for (const key of Object.keys(pass.inputs)) {
         const input = pass.inputs[key];
-        if (!input?.path) {
+        if (input.type !== 'texture' && input.type !== 'video' && input.type !== 'audio' && input.type !== 'cubemap') {
           continue;
         }
-        if (input.type !== 'texture' && input.type !== 'video' && input.type !== 'audio' && input.type !== 'cubemap') {
+        if (!input.path) {
           continue;
         }
 
@@ -310,6 +322,7 @@ export class WebSocketTransport implements MessageTransport {
     this.wsServer.close();
   }
 
+  // Command-specific validation happens after routing.
   public onMessage(handler: (message: any) => void): void {
     this.messageHandler = handler;
   }

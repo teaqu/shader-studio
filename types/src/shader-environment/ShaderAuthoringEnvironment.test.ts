@@ -260,7 +260,7 @@ describe("ShaderAuthoringEnvironment", () => {
     const environment = {
       ...baseEnvironment("slang"),
       resources: [{ name: "particles", kind: "storage", elementType: "Particle" }],
-    };
+    } satisfies ShaderAuthoringEnvironment;
 
     expect(buildSlangAuthoringModule(environment).text).toContain("StructuredBuffer<Particle> particles;");
   });
@@ -269,7 +269,7 @@ describe("ShaderAuthoringEnvironment", () => {
     const environment = {
       ...baseEnvironment("slang"),
       resources: [{ name: "values", kind: "storage" as const, elementType }],
-    };
+    } satisfies ShaderAuthoringEnvironment;
 
     expect(validateShaderAuthoringEnvironment(environment)).toEqual([]);
   });
@@ -510,7 +510,7 @@ describe("ShaderAuthoringEnvironment", () => {
         { name: "repeat", kind: "texture-2d" },
         { name: "3d", kind: "texture-3d" },
       ],
-    };
+    } satisfies ShaderAuthoringEnvironment;
 
     expect(() => validateShaderAuthoringEnvironment(environment)).not.toThrow();
     expect(validateShaderAuthoringEnvironment(environment)).toEqual([

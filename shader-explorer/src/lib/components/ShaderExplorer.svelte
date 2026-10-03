@@ -9,11 +9,7 @@
     isCurrentShaderSearchResult,
     type ShaderSearchResultsMessage,
   } from '../shaderSearch';
-
-  interface ShaderExplorerHostApi {
-    postMessage(message: { type: string; [key: string]: unknown }): void;
-    onMessage?(handler: (event: MessageEvent) => void): () => void;
-  }
+  import type { ShaderExplorerHostApi } from '../shaderCodeRequest';
 
   interface Props {
     hostApi?: ShaderExplorerHostApi;
@@ -27,7 +23,7 @@
     selectedShaderPath = '',
   }: Props = $props();
 
-  let vscode: any = $state(null);
+  let vscode = $state<ShaderExplorerHostApi | null>(null);
   let shaders = $state<ShaderFile[]>([]);
   let search = $state('');
   let searchResultPaths = $state<string[] | null>(null);
@@ -140,7 +136,7 @@
   onMount(() => {
     if (hostApi || typeof acquireVsCodeApi !== 'undefined') {
       vscode = hostApi ?? acquireVsCodeApi();
-      searchScheduler = createShaderSearchScheduler(message => vscode?.postMessage(message));
+      searchScheduler = createShaderSearchScheduler(message => vscode?.postMessage({ ...message }));
 
       const unsubscribe = hostApi?.onMessage
         ? hostApi.onMessage(handleMessage)

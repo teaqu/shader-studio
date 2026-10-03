@@ -4,7 +4,7 @@ import type { ShaderAuthoringEnvironment } from "@shader-studio/types";
 import { isShaderEntryPointName } from "@shader-studio/types";
 import { SlangLanguageService } from "../SlangLanguageService";
 import { SLANG_INTRINSICS } from "../intrinsics";
-import type { SlangLanguageServerModule, SlangList } from "../slangLanguageServerTypes";
+import type { SlangLanguageServer, SlangLanguageServerModule, SlangList } from "../slangLanguageServerTypes";
 
 function list<T>(items: T[]): SlangList<T> {
   return { size: () => items.length, get: (index) => items[index], delete: vi.fn() };
@@ -12,21 +12,21 @@ function list<T>(items: T[]): SlangList<T> {
 
 function fixture() {
   const server = {
-    didOpenTextDocument: vi.fn(),
-    didCloseTextDocument: vi.fn(),
-    didChangeTextDocument: vi.fn(),
-    completion: vi.fn(() => list([{
+    didOpenTextDocument: vi.fn<SlangLanguageServer["didOpenTextDocument"]>(),
+    didCloseTextDocument: vi.fn<SlangLanguageServer["didCloseTextDocument"]>(),
+    didChangeTextDocument: vi.fn<SlangLanguageServer["didChangeTextDocument"]>(),
+    completion: vi.fn<SlangLanguageServer["completion"]>(() => list([{
       label: "normalize",
       kind: 3,
       detail: "float3 normalize(float3)",
       data: "",
       textEdit: { range: { start: { line: 3, character: 0 }, end: { line: 3, character: 9 } }, text: "normalize" },
     }])),
-    hover: vi.fn(() => ({ contents: { kind: "markdown", value: "normalizes a vector" }, range: { start: { line: 3, character: 0 }, end: { line: 3, character: 9 } } })),
-    gotoDefinition: vi.fn(() => list([{ uri: "file:///image.slang", range: { start: { line: 3, character: 0 }, end: { line: 3, character: 4 } } }])),
-    signatureHelp: vi.fn(() => undefined),
-    documentSymbol: vi.fn(() => list([{ name: "mainImage", detail: "", kind: 12, range: { start: { line: 100, character: 0 }, end: { line: 100, character: 10 } }, selectionRange: { start: { line: 100, character: 0 }, end: { line: 100, character: 9 } }, children: list([]) }])),
-    getDiagnostics: vi.fn(() => list([])),
+    hover: vi.fn<SlangLanguageServer["hover"]>(() => ({ contents: { kind: "markdown", value: "normalizes a vector" }, range: { start: { line: 3, character: 0 }, end: { line: 3, character: 9 } } })),
+    gotoDefinition: vi.fn<SlangLanguageServer["gotoDefinition"]>(() => list([{ uri: "file:///image.slang", range: { start: { line: 3, character: 0 }, end: { line: 3, character: 4 } } }])),
+    signatureHelp: vi.fn<SlangLanguageServer["signatureHelp"]>(() => undefined),
+    documentSymbol: vi.fn<SlangLanguageServer["documentSymbol"]>(() => list([{ name: "mainImage", detail: "", kind: 12, range: { start: { line: 100, character: 0 }, end: { line: 100, character: 10 } }, selectionRange: { start: { line: 100, character: 0 }, end: { line: 100, character: 9 } }, children: list([]) }])),
+    getDiagnostics: vi.fn<SlangLanguageServer["getDiagnostics"]>(() => list([])),
     delete: vi.fn(),
   };
   const module = { createLanguageServer: vi.fn(() => server) } as unknown as SlangLanguageServerModule;
@@ -802,8 +802,10 @@ float4 mainImage(float2 p)
     expect(result.filter((item) => item.label === "normalize")).toHaveLength(1);
     expect(result.map((item) => item.label)).not.toContain("mainVertex");
     expect(JSON.stringify(result.find((item) => item.label === "normalize")?.documentation)).toContain("unit length");
-    expect(server.completion.mock.calls[0]?.[1].line).toBeGreaterThan(0);
-    expect(server.completion.mock.results[0]?.value.delete).toHaveBeenCalledOnce();
+    const completionCall = server.completion.mock.calls[0];
+    const completionResult = server.completion.mock.results[0]?.value;
+    expect(completionCall?.[1].line).toBeGreaterThan(0);
+    expect(completionResult?.delete).toHaveBeenCalledOnce();
     expect(await service.documentSymbols({ document: revision })).toEqual([]);
   });
 

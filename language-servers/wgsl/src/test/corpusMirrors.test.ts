@@ -216,6 +216,9 @@ const collectDocs = (): MirrorDoc[] => {
       }
       const text = readFileSync(join(CORPUS, fileRel), "utf8");
       const stage = stageForPass(cfg as never, passName, fileRel);
+      if (stage !== "fragment" && stage !== "vertex" && stage !== "compute") {
+        continue;
+      }
       const entry = stage === "compute"
         ? pass.entryPoint ?? firstComputeEntry(text) ?? firstFn(text) ?? "main"
         : firstFn(text) ?? "mainImage";

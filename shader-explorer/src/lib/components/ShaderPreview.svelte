@@ -39,9 +39,9 @@
   import { onMount, onDestroy } from 'svelte';
   import type { ShaderFile } from '../types/ShaderFile';
   import type { RenderingEngine } from '../../../../rendering/src/types/RenderingEngine';
-  import type { SlangSourceModule } from '@shader-studio/types';
+  import type { ShaderConfig, SlangSourceModule } from '@shader-studio/types';
   import { hoverRenderQueue, thumbnailRenderQueue } from '../stores/shaderStore';
-  import { requestShaderCode, type ShaderLanguage } from '../shaderCodeRequest';
+  import { requestShaderCode, type ShaderCodeRequestApi, type ShaderLanguage } from '../shaderCodeRequest';
   import { observeNearViewport } from '../shaderPreviewVisibility';
   import { createEngineForLanguage } from '../engineFactory';
 
@@ -56,7 +56,7 @@
     shader: ShaderFile;
     width?: number;
     height?: number;
-    vscodeApi: any;
+    vscodeApi: ShaderCodeRequestApi | null;
     refreshAll?: boolean;
     forceFresh?: boolean;
     compact?: boolean;
@@ -76,7 +76,7 @@
     : Math.round(width * 0.13));
   let shaderCode: string = '';
   let previewPath: string = shader.path;
-  let shaderConfig: any = null;
+  let shaderConfig: ShaderConfig | null = null;
   let shaderBuffers: Record<string, string> = {};
   let shaderLanguage: ShaderLanguage = 'glsl';
   let customUniformDeclarations: string | undefined;
@@ -239,7 +239,9 @@
 
       shaderCode = response.code;
       previewPath = response.previewPath ?? shader.path;
-      shaderConfig = response.config || null;
+      // Config is author-controlled. RenderingEngine validates it and reports
+      // diagnostics, so retain malformed input at this UI boundary.
+      shaderConfig = response.config === null ? null : response.config as ShaderConfig;
       shaderBuffers = response.buffers;
       shaderLanguage = response.language;
       customUniformDeclarations = response.customUniformDeclarations;

@@ -15,10 +15,12 @@ export interface ShaderCodeResponse {
   slangModules?: SlangSourceModule[];
 }
 
-export interface ShaderCodeRequestApi {
-  postMessage(message: { type: 'requestShaderCode'; path: string; requestId: number }): void;
+export interface ShaderExplorerHostApi {
+  postMessage(message: { type: string; [key: string]: unknown }): void;
   onMessage?(handler: (event: MessageEvent) => void): () => void;
 }
+
+export type ShaderCodeRequestApi = ShaderExplorerHostApi;
 
 interface RequestShaderCodeOptions {
   vscodeApi: ShaderCodeRequestApi;

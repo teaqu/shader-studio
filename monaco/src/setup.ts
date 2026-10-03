@@ -8,11 +8,15 @@ import {
 import { slangLanguageDefinition } from './slang-language';
 import { wgslLanguageDefinition } from './wgsl-language';
 import { jsonLanguageConfiguration, jsonLanguageDefinition } from './json-language';
+import type * as Monaco from 'monaco-editor/editor/editor.api.js';
 
 let registered = false;
 const slangRegistrations = new WeakSet<object>();
 const wgslRegistrations = new WeakSet<object>();
 const jsonRegistrations = new WeakSet<object>();
+type MonacoEnvironmentHost = typeof globalThis & {
+  MonacoEnvironment?: { getWorker(): Worker };
+};
 
 /**
  * Register the GLSL language, themes, and worker stub for Monaco.
@@ -20,36 +24,41 @@ const jsonRegistrations = new WeakSet<object>();
  *
  * @param monaco - The monaco-editor module instance
  */
-export function setupMonacoGlsl(monaco: typeof import('monaco-editor')) {
+export function setupMonacoGlsl(monaco: typeof import('monaco-editor/editor/editor.api.js')) {
   if (registered) {
     return;
   }
 
   // Worker stub — CSP blocks blob workers in VS Code webviews.
   // Monaco requires getWorker to return a Worker-like object.
-  if (typeof self !== 'undefined' && !(self as any).MonacoEnvironment) {
-    (self as any).MonacoEnvironment = {
-      getWorker() {
-        return {
-          postMessage() {},
-          onmessage: null,
-          terminate() {},
-          addEventListener() {},
-          removeEventListener() {},
-          dispatchEvent() {
-            return false;
-          },
-          onerror: null,
-          onmessageerror: null,
-        } as any;
-      },
-    };
+  if (typeof self !== 'undefined') {
+    const globalScope = self as MonacoEnvironmentHost;
+    if (!globalScope.MonacoEnvironment) {
+      globalScope.MonacoEnvironment = {
+        getWorker() {
+          // Monaco only observes this worker through its lifecycle methods; CSP
+          // prevents the real worker implementation in extension webviews.
+          return {
+            postMessage() {},
+            onmessage: null,
+            terminate() {},
+            addEventListener() {},
+            removeEventListener() {},
+            dispatchEvent() {
+              return false;
+            },
+            onerror: null,
+            onmessageerror: null,
+          } as unknown as Worker;
+        },
+      };
+    }
   }
 
   // Register GLSL language if not already present
   if (!monaco.languages.getLanguages().some((lang) => lang.id === 'glsl')) {
     monaco.languages.register({ id: 'glsl' });
-    monaco.languages.setMonarchTokensProvider('glsl', glslLanguageDefinition as any);
+    monaco.languages.setMonarchTokensProvider('glsl', glslLanguageDefinition as Monaco.languages.IMonarchLanguage);
   }
 
   // Brackets and indentation rules — without these Enter after `{` does not indent.
@@ -64,7 +73,7 @@ export function setupMonacoGlsl(monaco: typeof import('monaco-editor')) {
 }
 
 /** Register the Slang Monarch tokenizer independently from GLSL. */
-export function setupMonacoSlang(monaco: typeof import('monaco-editor')) {
+export function setupMonacoSlang(monaco: typeof import('monaco-editor/editor/editor.api.js')) {
   if (slangRegistrations.has(monaco)) {
     return;
   }
@@ -79,7 +88,7 @@ export function setupMonacoSlang(monaco: typeof import('monaco-editor')) {
 }
 
 /** Register the WGSL Monarch tokenizer independently from GLSL and Slang. */
-export function setupMonacoWgsl(monaco: typeof import('monaco-editor')) {
+export function setupMonacoWgsl(monaco: typeof import('monaco-editor/editor/editor.api.js')) {
   if (wgslRegistrations.has(monaco)) {
     return;
   }
@@ -94,7 +103,7 @@ export function setupMonacoWgsl(monaco: typeof import('monaco-editor')) {
 }
 
 /** Register the worker-free JSON tokenizer used for shader config files. */
-export function setupMonacoJson(monaco: typeof import('monaco-editor')) {
+export function setupMonacoJson(monaco: typeof import('monaco-editor/editor/editor.api.js')) {
   if (jsonRegistrations.has(monaco)) {
     return;
   }

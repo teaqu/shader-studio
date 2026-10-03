@@ -857,7 +857,7 @@ describe("ShaderCompiler", () => {
         info: "Failed to create shader program",
         mErrorType: 2,
         setup: (gl: ReturnType<typeof createMockGl>) => {
-          vi.mocked(gl.createProgram).mockReturnValue(null);
+          vi.mocked(gl.createProgram).mockReturnValue(null as unknown as WebGLProgram);
         },
         createShaderCount: 2,
         createProgramCount: 1,
@@ -1188,7 +1188,7 @@ describe("ShaderCompiler", () => {
 
     it("returns an error instead of throwing when async program allocation fails", async () => {
       const gl = createMockGl();
-      vi.mocked(gl.createProgram).mockReturnValue(null);
+      vi.mocked(gl.createProgram).mockReturnValue(null as unknown as WebGLProgram);
       const compiler = new ShaderCompiler(mockRenderer, gl);
 
       const result = await compiler.compileShaderAsync("void mainImage(out vec4 fragColor, in vec2 fragCoord) {}");

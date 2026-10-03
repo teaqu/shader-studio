@@ -211,6 +211,9 @@ const collectDocs = (): MirrorDoc[] => {
       }
       const text = readFileSync(join(CORPUS, fileRel), "utf8");
       const stage = stageForPass(cfg as never, passName, fileRel);
+      if (stage !== "fragment" && stage !== "vertex" && stage !== "compute") {
+        continue;
+      }
       const entry = pass.entryPoint ?? firstSlangFn(text) ?? "mainImage";
       docs.push({
         configRel, pass: passName, fileRel, text, stage, entry,
@@ -313,7 +316,7 @@ describe("Slang corpus mirrors in the language service", () => {
   beforeAll(async () => {
     const wasmBinary = readFileSync(new URL("../../../../ui/src/slang/slang-wasm.wasm", import.meta.url));
     const module = await createSlangModule({ wasmBinary });
-    service = new SlangLanguageService(module);
+    service = new SlangLanguageService(module as unknown as import("../slangLanguageServerTypes").SlangLanguageServerModule);
   }, 120_000);
 
   afterAll(async () => {
@@ -339,7 +342,7 @@ describe("Slang corpus mirrors in the language service", () => {
         // expects /unknown language version '2024'/ from the compiler, and
         // the language server must flag it too.
         expect(problems.length).toBeGreaterThan(0);
-        expect(problems.some((d) => /2024/.test(d.message))).toBe(true);
+        expect(problems.some((d) => /2024/.test(typeof d.message === "string" ? d.message : d.message.value))).toBe(true);
       } else {
         expect(problems, `${label}: unexpected diagnostics ${JSON.stringify(problems.map((d) => d.message))}`).toEqual([]);
       }
