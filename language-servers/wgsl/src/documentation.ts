@@ -8,7 +8,7 @@ export function declarationDocumentation(analysis: WgslAnalysisDocument, symbol:
 
 /** Contiguous `//` lines directly above a declaration, skipping its attribute lines. */
 function leadingComment(source: string, declarationLine: number): string | undefined {
-  const lines = source.split("\n");
+  const lines = source.split(/\r?\n/);
   let line = declarationLine - 1;
   while (line >= 0 && /^\s*@/.test(lines[line] ?? "")) {
     line -= 1;
@@ -23,4 +23,3 @@ function leadingComment(source: string, declarationLine: number): string | undef
   }
   return comments.length > 0 ? comments.join("\n") : undefined;
 }
-
