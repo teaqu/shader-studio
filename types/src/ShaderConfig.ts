@@ -103,7 +103,7 @@ export interface ShaderEntryPoints {
   compute?: string;
 }
 
-/** Presence opts a render pass into native stages; omitted names resolve only when unambiguous. */
+/** Explicit names select native stages; omitted names keep the generated vertex or mainImage stage. */
 export interface RenderEntryPoints {
   vertex?: string;
   fragment?: string;
@@ -115,6 +115,8 @@ export interface ImagePass {
   inputs?: Record<string, ConfigInput>;
   resolution?: ResolutionSettings;
   geometry?: GeometryConfig;
+  /** WebGPU mesh viewer transforms; omitted means enabled. */
+  useViewerCamera?: boolean;
   vertex?: string;
   entryPoints?: RenderEntryPoints;
 }
@@ -124,6 +126,8 @@ export interface BufferPass {
   inputs?: Record<string, ConfigInput>;
   resolution?: BufferResolution;
   geometry?: GeometryConfig;
+  /** WebGPU mesh viewer transforms; omitted means enabled. */
+  useViewerCamera?: boolean;
   vertex?: string;
   entryPoints?: RenderEntryPoints;
   outputFormat?: BufferOutputFormat;

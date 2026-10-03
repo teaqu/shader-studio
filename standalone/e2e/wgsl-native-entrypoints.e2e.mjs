@@ -427,3 +427,43 @@ for (const language of ['wgsl', 'slang']) {
     await expect.poll(async () => isRedOnly(await centerPixel(canvas))).toBe(true);
   });
 }
+
+
+test('the viewer camera checkbox disables orbit and survives reload', async ({ page }) => {
+  const stem = 'viewer-camera-choice';
+  await openFixture(page, stem, `fn mainVertex(p: ptr<function, vec3f>, n: ptr<function, vec3f>, uv: ptr<function, vec2f>) { *p *= 0.65; }
+fn mainImage(coord: vec2f) -> vec4f { return vec4f(abs(iWorldPosition) * 0.65 + vec3f(0.08,0.03,0.12),1); }`,
+    { version: '1.0', passes: { Image: { geometry: { type: 'cube' } } } });
+  const preview = page.getByTestId('web-preview');
+  const checkbox = page.getByRole('checkbox', { name: 'Use viewer camera' });
+  const canvas = preview.locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
+  await expect(checkbox).toBeChecked();
+  await expect.poll(async () => (await centerPixel(canvas)).slice(0,3).reduce((sum,value) => sum+value,0)).toBeGreaterThan(10);
+  const read = () => canvas.evaluate(element => element.toDataURL());
+  const initial = await read();
+  await checkbox.uncheck();
+  await expect.poll(async () => JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`]).passes.Image.useViewerCamera).toBe(false);
+  await expect.poll(read).not.toBe(initial);
+  const orbit = async () => {
+    const box = await canvas.boundingBox();
+    await page.mouse.move(box.x + box.width * 0.45, box.y + box.height * 0.45);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.65, box.y + box.height * 0.55, { steps: 8 });
+    await page.mouse.up();
+  };
+  const disabled = await read();
+  await orbit();
+  await expect.poll(read).toBe(disabled);
+  await page.reload();
+  await expect(checkbox).not.toBeChecked();
+  await expect.poll(async () => (await centerPixel(canvas)).slice(0,3).reduce((sum,value) => sum+value,0)).toBeGreaterThan(10);
+  const reloaded = await read();
+  await orbit();
+  await expect.poll(read).toBe(reloaded);
+  await checkbox.check();
+  await expect.poll(async () => JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`]).passes.Image.useViewerCamera).toBe(true);
+  await expect.poll(read).not.toBe(reloaded);
+  const enabled = await read();
+  await orbit();
+  await expect.poll(read).not.toBe(enabled);
+});

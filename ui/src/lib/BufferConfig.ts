@@ -155,6 +155,9 @@ export class BufferConfig {
         errors.push('common pass cannot define outputFormat');
       }
     } else {
+      if ('useViewerCamera' in this.config && this.config.useViewerCamera !== undefined && typeof this.config.useViewerCamera !== 'boolean') {
+        errors.push(`${this.bufferName} pass useViewerCamera must be a boolean`);
+      }
       if ('outputFormat' in this.config && this.config.outputFormat !== undefined &&
           !['auto', 'rgba16float', 'rgba32float'].includes(this.config.outputFormat)) {
         errors.push(`${this.bufferName} pass outputFormat must be auto, rgba16float, or rgba32float`);

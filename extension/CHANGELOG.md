@@ -2,6 +2,8 @@
 
 ### Unreleased
 
+- Add a per-pass Use viewer camera checkbox for WebGPU mesh stages, including built-in and mainVertex hooks.
+
 - WGSL and Slang can share native vertex, fragment, and compute entry points in one source file. Select stages per pass in the config panel, insert new stages into the current file, and choose native or ShaderToy templates for new render passes. Selections are saved under `entryPoints`; existing ShaderToy hooks and legacy compute settings still load.
 
 - Native WGSL and Slang fragment previews and captures now preserve interpolated inputs, mesh geometry, and structured color/depth outputs. Native parameters show their GPU-provided status, and Buffer captures respect the pass resolution.

@@ -79,6 +79,11 @@
         "geometry": {
           "$ref": "#/definitions/GeometryConfig"
         },
+        "useViewerCamera": {
+          "type": "boolean",
+          "default": true,
+          "description": "Apply viewer camera matrices to WebGPU mesh stages; disable for clip-space positions"
+        },
         "vertex": {
           "type": "string",
           "description": "Path to the optional per-pass vertex shader hook source"
@@ -116,6 +121,11 @@
         },
         "geometry": {
           "$ref": "#/definitions/GeometryConfig"
+        },
+        "useViewerCamera": {
+          "type": "boolean",
+          "default": true,
+          "description": "Apply viewer camera matrices to WebGPU mesh stages; disable for clip-space positions"
         },
         "vertex": {
           "type": "string",

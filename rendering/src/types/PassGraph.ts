@@ -78,6 +78,7 @@ export interface RenderPassNode {
   /** Shader language of the pass source; selected by the graph-level option. */
   language: ShaderLanguageId;
   geometry: GeometryType;
+  useViewerCamera?: boolean;
   /** Webview-accessible GLB URL when geometry is `model`. */
   modelPath?: string;
   modelMesh?: string;

@@ -1,0 +1,14 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "geometry": {
+        "type": "cube"
+      },
+      "useViewerCamera": false,
+      "entryPoints": {
+        "fragment": "cameraColor"
+      }
+    }
+  }
+}

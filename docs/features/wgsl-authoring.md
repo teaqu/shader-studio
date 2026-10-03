@@ -170,3 +170,5 @@ annotations, matrix ordering, and [compute replay limits](wgsl.md#compute-debugg
 - [Channels](channels.md) — sampling inputs from WGSL
 - [Vertex Shaders](vertex-shaders.md) — the `mainVertex` hook
 - [Compute Passes](compute.md) — WGSL compute entry points
+
+For WebGPU mesh geometry, **Use viewer camera** defaults on. Turn it off to use mesh or `mainVertex` positions directly in clip space, without the viewer rotation, view, or perspective transform. Native vertex stages that read `iModelMatrix`, `iViewProjectionMatrix`, and `iNormalMatrix` receive identity matrices when it is off; stages with their own projection continue to control their output. The per-pass setting saves as `useViewerCamera: false` on Image or Buffer. Fullscreen vertex stages already use clip space. GLSL behavior is unchanged.

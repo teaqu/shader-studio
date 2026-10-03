@@ -85,3 +85,55 @@ it.each(["wgsl", "slang"] as const)("captures frozen frame-two feedback in %s", 
     harness.dispose();
   }
 });
+
+it.each(["wgsl", "slang"] as const)("captures a sampled compute output snapshot in %s", { timeout: 30000 }, async language => {
+  const image = language === "wgsl"
+    ? `fn mainImage(coord: vec2f) -> vec4f {
+  let value = iChannel0Sample(coord / iResolution.xy);
+  return value;
+}`
+    : `float4 mainImage(float2 coord) {
+  float4 value = iChannel0.Sample(coord / iResolution.xy);
+  return value;
+}`;
+  const compute = language === "wgsl"
+    ? "@compute @workgroup_size(1) fn fill(@builtin(global_invocation_id) id: vec3u) { writeOutput(id.xy, vec4f(0.25, 1, 0.5, 1)); }"
+    : '[shader("compute")] [numthreads(1,1,1)] void fill(uint3 id : SV_DispatchThreadID) { writeOutput(id.xy, float4(0.25, 1, 0.5, 1)); }';
+  const path = `/compute-capture/image.${language}`;
+  const config: ShaderConfig = { version: "1.0", passes: {
+    Image: { inputs: { iChannel0: { type: "buffer", source: "Compute" } } },
+    Compute: { type: "compute", path: `/compute-capture/compute.${language}`, entryPoint: "fill" },
+  } };
+  const harness = createShaderCanvasHarness(language);
+  try {
+    await harness.compile({ path, image, buffers: { Compute: compute }, config });
+    const preview = await harness.renderAndReadPixels();
+    expect(preview[0]![1]).toBe(255);
+    const workspace: DebugWorkspace = { rootUri: path, rootPath: path, passName: "Image", contentHash: `compute-capture-${language}`, channels: [{ name: "iChannel0", slot: 0, kind: "texture-2d" }], files: [{ uri: path, path, source: image, version: 1, moduleName: "", ownerPass: "Image" }] };
+    const request = { workspace, sourceUri: path, position: { line: 2, character: 4 } };
+    const debug = language === "wgsl" ? new WgslDebugEngine() : new SlangDebugEngine();
+    const analysis = debug.analyze(request);
+    if (!analysis.ok) {
+      throw new Error(analysis.diagnostics[0]?.message);
+    }
+    const value = analysis.analysis.visibleValues.find(item => item.name === "value")!;
+    const plan = debug.planCapture(request, [value.id]);
+    if (!plan.ok) {
+      throw new Error(plan.diagnostics[0]?.message);
+    }
+    const capturer = harness.engine.createVariableCapturer();
+    try {
+      capturer.setCompileContext(harness.engine.getVariableCaptureCompileContext(image, "Image", path));
+      const root = plan.plan.files.find(file => file.uri === plan.plan.rootUri)!;
+      const captures = plan.plan.captureSlots.map(slot => ({ varName: slot.name, varType: slot.typeName, captureShader: root.source, selectorIndex: slot.index, hidden: slot.hidden, debugPlan: plan.plan }));
+      expect(await capturer.issueCaptureAtPixel(captures, 0, 0, 2, 2, harness.engine.getCaptureUniforms())).toBe(captures.length);
+      const captured = (await collect(capturer, captures.length)).find(result => result.varName === "value")!;
+      expect([...captured.rgba]).toEqual([0.25, 1, 0.5, 1]);
+    } finally {
+      capturer.dispose();
+    }
+    expect(await harness.renderAndReadPixels()).toEqual(preview);
+  } finally {
+    harness.dispose();
+  }
+});

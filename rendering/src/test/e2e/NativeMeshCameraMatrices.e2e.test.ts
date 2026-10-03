@@ -47,4 +47,19 @@ describe("native mesh matrix builtins", () => {
       harness.dispose();
     }
   });
+  it.each([["wgsl", wgslSource], ["slang", slangSource]] as const)("provides identity matrices when the %s viewer camera is disabled", { timeout: 30_000 }, async (language, source) => {
+    const harness = createShaderCanvasHarness(language);
+    try {
+      harness.resize(96, 96);
+      await harness.compile({ path: `/native-camera-off.${language}`, image: source,
+        config: { ...config, passes: { Image: { ...config.passes.Image, geometry: { type: "sphere" }, useViewerCamera: false } } } });
+      const before = await harness.renderAndReadRegion();
+      expect(before.some((value, index) => index % 4 !== 3 && value > 0)).toBe(true);
+      orbit(harness.canvas);
+      expect(await harness.renderAndReadRegion()).toEqual(before);
+    } finally {
+      harness.dispose();
+    }
+  });
+
 });
