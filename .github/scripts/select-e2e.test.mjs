@@ -208,6 +208,8 @@ test('the verdict job waits for every job, even after failures', () => {
 const notInputs = new Set([
   '.githooks', '.gitignore', '.vscode', 'AGENTS.md', 'CLAUDE.md', 'LICENSE', 'README.md',
   'THIRD-PARTY-NOTICES.md', 'assets', 'docs', 'mkdocs.yml',
+  // Static dead-code policy is always checked in CI; it does not change an E2E runtime.
+  'knip.jsonc',
 ]);
 
 test('every top-level path is a workspace, a Turbo input or explicitly not one', () => {
