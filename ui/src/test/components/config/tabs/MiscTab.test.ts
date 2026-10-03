@@ -6,6 +6,26 @@ import { tick } from 'svelte';
 import type { ConfigInput } from '@shader-studio/types';
 
 describe('MiscTab', () => {
+  it.each(['webcam', 'microphone', 'system-audio'] as const)('opens the capture preview from a VS Code %s selection', async type => {
+    vi.stubGlobal('acquireVsCodeApi', vi.fn());
+    const postMessage = vi.fn();
+    const view = render(MiscTab, { ...defaultProps(), tempInput: { type }, postMessage });
+    try {
+      await fireEvent.click(view.getByRole('button', { name: 'Open Capture Preview' }));
+      expect(postMessage).toHaveBeenCalledWith({ type: 'extensionCommand', payload: { command: 'openCapturePreview' } });
+    } finally {
+      view.unmount();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('does not show the VS Code command in browser hosts', () => {
+    vi.stubGlobal('acquireVsCodeApi', undefined);
+    const view = render(MiscTab, { ...defaultProps(), tempInput: { type: 'webcam' } });
+    expect(view.queryByRole('button', { name: 'Open Capture Preview' })).toBeNull();
+    view.unmount();
+    vi.unstubAllGlobals();
+  });
   const defaultProps = () => ({
     tempInput: undefined as ConfigInput | undefined,
     getWebviewUri: vi.fn((path: string) => `webview://path/${path}`),

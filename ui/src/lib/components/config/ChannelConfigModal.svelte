@@ -395,6 +395,7 @@
           <div class="tab-prompt">Select a category above to configure this channel.</div>
         {:else if activeTab === "Misc"}
           <MiscTab
+            {postMessage}
             {audioVideoController}
             {tempInput}
             {getWebviewUri}

@@ -497,3 +497,9 @@ and source choices are session-only. Reloading requires an explicit reconnect.
 **Stop sharing**, removing the channel, or switching to a shader without System
 Audio releases capture. Display video is discarded and audio is never monitored
 through your speakers.
+
+### Live inputs in VS Code
+
+The normal extension panel cannot grant camera or microphone access. Run **Shader Studio: Open Capture Preview** from the command palette or Shader Studio status menu. You can also select a live channel in Misc, apply it, and click **Open Capture Preview**. This starts the local web server and opens the synced viewer in VS Code’s Integrated Browser when available; older versions open an external browser. Shader edits continue to update the viewer through the extension’s existing connection.
+
+Allow camera and microphone access for the localhost page and for VS Code in your operating system when prompted. System Audio still requires **Start sharing** in the preview. Sharing options depend on the host; choose a routed audio input device or use an external browser if tab/system sharing is unavailable. Source permissions and sharing sessions are not saved in shader configs.

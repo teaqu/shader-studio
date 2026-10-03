@@ -1,10 +1,12 @@
 <script lang="ts">
   import type { ConfigInput } from "@shader-studio/types";
   import type { AudioVideoController } from "../../../AudioVideoController";
+  import { isVSCodeEnvironment } from "../../../transport/TransportFactory";
   import SystemAudioControls from "../SystemAudioControls.svelte";
   import ChannelPreview from "../ChannelPreview.svelte";
 
   interface Props {
+    postMessage?: (message: { type: string; payload: { command: string } }) => void;
     tempInput?: ConfigInput;
     audioVideoController?: AudioVideoController;
     getWebviewUri: (path: string) => string | undefined;
@@ -18,6 +20,7 @@
     tempInput = undefined as ConfigInput | undefined,
     getWebviewUri,
     audioVideoController,
+    postMessage,
     onSelect,
     availableBufferNames = [],
   }: Props = $props();
@@ -102,6 +105,13 @@
       </button>
     {/each}
   </div>
+  {#if isVSCodeEnvironment() && (tempInput?.type === "webcam" || tempInput?.type === "microphone" || tempInput?.type === "system-audio")}
+    <p>VS Code panels block device capture. Apply your channel, then open the synced preview
+      in VS Code’s Integrated Browser. Older VS Code versions open your external browser.</p>
+    <button disabled={!postMessage} onclick={() => postMessage?.({ type: "extensionCommand", payload: { command: "openCapturePreview" } })}>
+      Open Capture Preview
+    </button>
+  {/if}
   {#if tempInput?.type === "system-audio"}
     <SystemAudioControls {audioVideoController} />
   {/if}
