@@ -62,7 +62,7 @@ describe("ScreenCapture", () => {
   it("discards a late picker result after stop and cannot restart after disposal", async () => {
     let finish!: (value: ReturnType<typeof stream>) => void;
     host(vi.fn().mockImplementation(() => new Promise(resolve => {
-      finish = resolve; 
+      finish = resolve;
     })));
     const capture = new ScreenCapture();
     const request = capture.start();
