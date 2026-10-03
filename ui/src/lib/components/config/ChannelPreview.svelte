@@ -300,7 +300,7 @@
     <div class="empty-preview">
       <div class="empty-icon">+</div>
     </div>
-  {:else if channelInput.type === "webcam" || channelInput.type === "microphone"}
+  {:else if channelInput.type === "webcam" || channelInput.type === "microphone" || channelInput.type === "system-audio"}
     <LiveInputPreview type={channelInput.type} {audioVideoController} />
   {:else if channelInput.type === "texture"}
     <!-- Texture preview -->

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { BufferConfig } from "../lib/BufferConfig";
 
 describe("live device config", () => {
-  it.each(["webcam", "microphone"] as const)("validates and persists %s without a file path", type => {
+  it.each(["webcam", "microphone", "system-audio"] as const)("validates and persists %s without a file path", type => {
     const config = new BufferConfig("Image", {});
     config.updateInputChannel("live", { type });
     expect(config.validate()).toEqual({ isValid: true, errors: [] });

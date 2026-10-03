@@ -23,8 +23,8 @@ suite('Shader config JSON schema', () => {
     );
   }
 
-  test('accepts pathless webcam and microphone inputs but rejects file fields', () => {
-    for (const type of ['webcam', 'microphone']) {
+  test('accepts pathless live capture inputs but rejects file fields', () => {
+    for (const type of ['webcam', 'microphone', 'system-audio']) {
       assertValid({ version: '1.0', passes: { Image: { inputs: { live: { type } } } } });
       assertInvalid({ version: '1.0', passes: { Image: { inputs: { live: { type, path: 'file' } } } } }, 'additional properties');
     }

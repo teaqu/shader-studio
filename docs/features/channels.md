@@ -477,3 +477,23 @@ Capture requires HTTPS or localhost and permission from the browser and operatin
 system. If a VS Code webview blocks capture, use **Open in Browser** on localhost.
 If permission is denied or a device is unavailable, the preview reports a warning;
 allow access and reload the shader to retry.
+
+### System Audio
+
+Choose **System Audio** in **Misc**, then click **Start sharing**. For a song
+playing in a browser, choose that tab in the sharing picker and enable audio
+sharing. Where offered, the browser can also share system or app audio. These
+options depend on your browser and operating system; selecting a source without
+an audio track shows an actionable warning.
+
+For desktop apps such as Spotify or Apple Music, you can route playback through
+a virtual audio input device and select it under **Audio source**. **Refresh
+devices** updates the list; microphone permission may be needed for device names.
+Shader Studio does not configure audio routing or install virtual audio drivers.
+
+System Audio uses the same 512 × 2 FFT/waveform texture and live tile preview as
+the microphone. The saved config is `{ "type": "system-audio" }`; capture permission
+and source choices are session-only. Reloading requires an explicit reconnect.
+**Stop sharing**, removing the channel, or switching to a shader without System
+Audio releases capture. Display video is discarded and audio is never monitored
+through your speakers.

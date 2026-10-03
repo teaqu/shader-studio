@@ -196,6 +196,7 @@ export class BufferConfig {
         return this.validateTextureInput(input);
       case 'video':
         return this.validateVideoInput(input);
+      case 'system-audio':
       case 'microphone':
       case 'webcam':
         return Object.keys(input).every(key => key === 'type');

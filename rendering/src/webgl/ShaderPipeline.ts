@@ -1,4 +1,4 @@
-import { audioLoadWarning, liveInputPaths, normalizeLiveInputs } from "../util/LiveInputConfig";
+import { audioLoadWarning, liveInputPaths, normalizeLiveInputs, SYSTEM_AUDIO_PATH } from "../util/LiveInputConfig";
 import type { ShaderCompiler, ChannelSamplerType } from "./ShaderCompiler";
 import type { ResourceManager } from "../resources/ResourceManager";
 import { ShaderErrorFormatter } from "../util/ShaderErrorFormatter";
@@ -381,7 +381,7 @@ export class ShaderPipeline {
     } else if (appliesReset) {
       this.resourceManager.cleanupAllExceptMedia();
     } else if (reloadsStructure) {
-      this.resourceManager.cleanup();
+      this.resourceManager.cleanup(liveInputPaths(nextPasses.map(pass => pass.inputs)).has(SYSTEM_AUDIO_PATH));
     }
     this.cleanupShaders(this.passShaders);
 

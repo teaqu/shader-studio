@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ConfigInput } from "@shader-studio/types";
   import type { AudioVideoController } from "../../../AudioVideoController";
+  import SystemAudioControls from "../SystemAudioControls.svelte";
   import ChannelPreview from "../ChannelPreview.svelte";
 
   interface Props {
@@ -89,18 +90,21 @@
       <ChannelPreview channelInput={{ type: "keyboard" }} {getWebviewUri} />
       <div class="misc-card-label">Keyboard</div>
     </button>
-    {#each ["webcam", "microphone"] as type}
+    {#each ["webcam", "microphone", "system-audio"] as type}
       <button
         class="misc-card"
         class:selected={tempInput?.type === type}
-        aria-label={type === "webcam" ? "Webcam" : "Microphone"}
-        onclick={() => onSelect({ type: type as "webcam" | "microphone" })}
+        aria-label={type === "webcam" ? "Webcam" : type === "system-audio" ? "System Audio" : "Microphone"}
+        onclick={() => onSelect({ type: type as "webcam" | "microphone" | "system-audio" })}
       >
-        <ChannelPreview channelInput={{ type: type as "webcam" | "microphone" }} {getWebviewUri} {audioVideoController} />
-        <div class="misc-card-label">{type === "webcam" ? "Webcam" : "Microphone"}</div>
+        <ChannelPreview channelInput={{ type: type as "webcam" | "microphone" | "system-audio" }} {getWebviewUri} {audioVideoController} />
+        <div class="misc-card-label">{type === "webcam" ? "Webcam" : type === "system-audio" ? "System Audio" : "Microphone"}</div>
       </button>
     {/each}
   </div>
+  {#if tempInput?.type === "system-audio"}
+    <SystemAudioControls {audioVideoController} />
+  {/if}
   {#if tempInput?.type === "webcam" || tempInput?.type === "microphone"}
     <p>Uses your default device. Allow access when prompted. If this host blocks capture,
       open Shader Studio in a browser on localhost or HTTPS. Microphone sound is never played through your speakers.</p>

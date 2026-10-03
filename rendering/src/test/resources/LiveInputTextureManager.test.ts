@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LiveInputTextureManager } from "../../resources/LiveInputTextureManager";
+import { SystemAudioCapture } from "../../resources/SystemAudioCapture";
 import type { TextureBackend } from "../../resources/TextureBackend";
 
 interface Texture { id: number }
@@ -24,7 +25,7 @@ function stream() {
     removeEventListener: vi.fn((type: string) => listeners.delete(type)),
     end: () => listeners.get("ended")?.(),
   };
-  return { getTracks: vi.fn(() => [track]), track };
+  return { getTracks: vi.fn(() => [track]), getAudioTracks: vi.fn(() => [track]), getVideoTracks: vi.fn(() => []), removeTrack: vi.fn(), track };
 }
 
 function audioContext() {
@@ -61,6 +62,40 @@ describe("LiveInputTextureManager", () => {
     manager.cleanup();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  it("waits for explicit system sharing and updates a silent analyser texture", async () => {
+    const pending = await manager.load("system-audio");
+    expect(pending.texture).toBeNull();
+    expect(getUserMedia).not.toHaveBeenCalled();
+    await expect(manager.startSystemAudio("default")).resolves.toBeUndefined();
+    manager.updateTextures();
+    expect(manager.getTexture("system-audio")).not.toBeNull();
+    expect(manager.getAudioState("system-audio")).toMatchObject({ muted: true });
+    expect(manager.getPreview("system-audio")?.waveform).toHaveLength(512);
+    manager.stopSystemAudio();
+    expect(manager.getPreview("system-audio")).toBeNull();
+    expect(mockStream.track.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("shares system capture across isolated GPU resources and closes it after final cleanup", async () => {
+    const capture = new SystemAudioCapture();
+    const first = new LiveInputTextureManager(textureBackend, capture);
+    const second = new LiveInputTextureManager(backend(), capture);
+    await first.startSystemAudio("default");
+    await second.load("system-audio");
+    first.cleanup();
+    expect(mockStream.track.stop).not.toHaveBeenCalled();
+    expect(second.getTexture("system-audio")).not.toBeNull();
+    second.cleanup();
+    expect(mockStream.track.stop).toHaveBeenCalledTimes(1);
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports system capture denial without leaving an active texture", async () => {
+    getUserMedia.mockRejectedValue(new DOMException("denied", "NotAllowedError"));
+    await expect(manager.startSystemAudio("default")).resolves.toContain("permission was denied");
+    expect(manager.getPreview("system-audio")).toBeNull();
   });
 
   it("loads one muted, inline webcam stream and updates its texture", async () => {

@@ -354,8 +354,8 @@
         {
           "type": "object",
           "required": ["type"],
-          "properties": { "type": { "enum": ["webcam", "microphone"] } },
-          "description": "Live default device input. Requires capture permission in a secure browser context.",
+          "properties": { "type": { "enum": ["webcam", "microphone", "system-audio"] } },
+          "description": "Live capture input. System audio requires explicit sharing or an audio input device.",
           "additionalProperties": false
         },
         {

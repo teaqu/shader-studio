@@ -1,8 +1,10 @@
+import { SystemAudioCapture } from "./SystemAudioCapture";
 import type { TextureBackend, TextureFilter, TextureWrap } from "./TextureBackend";
 
-export type LiveInputType = "webcam" | "microphone";
+export type LiveInputType = "webcam" | "microphone" | "system-audio";
 
 export interface LiveInputPreview {
+  ready?: boolean;
   video?: HTMLVideoElement;
   frequency?: Uint8Array;
   waveform?: Uint8Array;
@@ -29,6 +31,7 @@ interface LiveInput<T> {
   frequency?: Uint8Array;
   waveform?: Uint8Array;
   onEnded?: () => void;
+  releaseCapture?: () => void;
 }
 
 /**
@@ -46,7 +49,7 @@ export class LiveInputTextureManager<T> {
   private readonly stoppedStreams = new WeakSet<MediaStream>();
   private disposed = false;
 
-  constructor(private readonly backend: TextureBackend<T>) {}
+  constructor(private readonly backend: TextureBackend<T>, private readonly systemAudio = new SystemAudioCapture()) {}
 
   public async load(type: LiveInputType, options: LiveInputOptions = {}): Promise<LiveInputLoadResult<T>> {
     const cached = this.inputs.get(type);
@@ -69,6 +72,26 @@ export class LiveInputTextureManager<T> {
     }
   }
 
+  public async startSystemAudio(deviceId?: string): Promise<string | undefined> {
+    if (this.disposed) {
+      return "Shader is no longer active. Reopen its System Audio channel.";
+    }
+    const warning = await this.systemAudio.start(deviceId);
+    if (warning) {
+      return warning;
+    }
+    if (this.disposed) {
+      this.systemAudio.stop();
+      return "Sharing was stopped because the shader changed.";
+    }
+    const result = await this.load("system-audio");
+    return result.warning;
+  }
+
+  public stopSystemAudio(): void {
+    this.systemAudio.stop();
+  }
+
   public getTexture(type: LiveInputType): T | null {
     return this.inputs.get(type)?.texture ?? null;
   }
@@ -77,8 +100,8 @@ export class LiveInputTextureManager<T> {
     return this.inputs.get("webcam")?.video;
   }
 
-  public getAudioState(): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null {
-    if (!this.inputs.has("microphone")) {
+  public getAudioState(type: LiveInputType = "microphone"): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null {
+    if (!this.inputs.has(type)) {
       return null;
     }
     // A capture stream has no finite media duration and is intentionally never
@@ -91,15 +114,16 @@ export class LiveInputTextureManager<T> {
     if (webcam?.video && webcam.video.videoWidth > 0 && webcam.video.videoHeight > 0) {
       this.backend.updateTextureFromImage(webcam.texture, webcam.video);
     }
-    const microphone = this.inputs.get("microphone");
-    if (microphone?.analyser && microphone.frequency && microphone.waveform) {
-      try {
-        microphone.analyser.getByteFrequencyData(microphone.frequency);
-        microphone.analyser.getByteTimeDomainData(microphone.waveform);
-        this.backend.updateTexture(microphone.texture, 0, 0, 512, 1, microphone.frequency);
-        this.backend.updateTexture(microphone.texture, 0, 1, 512, 1, microphone.waveform);
-      } catch (error) {
-        console.warn("Microphone texture update failed:", error);
+    for (const microphone of this.inputs.values()) {
+      if (microphone?.analyser && microphone.frequency && microphone.waveform) {
+        try {
+          microphone.analyser.getByteFrequencyData(microphone.frequency);
+          microphone.analyser.getByteTimeDomainData(microphone.waveform);
+          this.backend.updateTexture(microphone.texture, 0, 0, 512, 1, microphone.frequency);
+          this.backend.updateTexture(microphone.texture, 0, 1, 512, 1, microphone.waveform);
+        } catch (error) {
+          console.warn("Live audio texture update failed:", error);
+        }
       }
     }
   }
@@ -142,6 +166,18 @@ export class LiveInputTextureManager<T> {
   private async loadFresh(type: LiveInputType, options: LiveInputOptions): Promise<LiveInputLoadResult<T>> {
     if (this.disposed) {
       return { texture: null, warning: "Live input is no longer available." };
+    }
+    if (type === "system-audio") {
+      const lease = this.systemAudio.acquire(() => {
+        const input = this.inputs.get("system-audio");
+        if (input) {
+          this.release("system-audio", input);
+        }
+      });
+      if (!lease) {
+        return { texture: null, warning: "Open the System Audio channel and click Start sharing to choose tab/system audio or a routed audio device." };
+      }
+      return this.installMicrophone(lease.stream, {}, "system-audio", lease.release);
     }
     if (!navigator.mediaDevices?.getUserMedia) {
       return { texture: null, warning: "Live capture needs a secure localhost or HTTPS page. Open Shader Studio in a browser if VS Code does not expose microphone or webcam access." };
@@ -213,7 +249,7 @@ export class LiveInputTextureManager<T> {
     }
   }
 
-  private installMicrophone(stream: MediaStream, options: LiveInputOptions): LiveInputLoadResult<T> {
+  private installMicrophone(stream: MediaStream, options: LiveInputOptions, type: LiveInputType = "microphone", releaseCapture?: () => void): LiveInputLoadResult<T> {
     let source: MediaStreamAudioSourceNode | undefined;
     let analyser: AnalyserNode | undefined;
     let gain: GainNode | undefined;
@@ -239,19 +275,23 @@ export class LiveInputTextureManager<T> {
         gain.disconnect();
         analyser.disconnect();
         source.disconnect();
-        this.stopStream(stream);
+        if (releaseCapture) {
+          releaseCapture();
+        } else {
+          this.stopStream(stream);
+        }
         this.closeUnusedAudioContext();
         return { texture: null, warning: "Microphone capture was stopped before it became ready." };
       }
       const input: LiveInput<T> = {
-        stream, texture, source, analyser, gain,
+        stream, texture, source, analyser, gain, releaseCapture,
         frequency: new Uint8Array(512), waveform: new Uint8Array(512),
       };
-      input.onEnded = () => this.release("microphone", input);
+      input.onEnded = () => this.release(type, input);
       for (const track of stream.getTracks()) {
         track.addEventListener("ended", input.onEnded);
       }
-      this.inputs.set("microphone", input);
+      this.inputs.set(type, input);
       return { texture };
     } catch (error) {
       if (texture) {
@@ -260,9 +300,13 @@ export class LiveInputTextureManager<T> {
       gain?.disconnect();
       analyser?.disconnect();
       source?.disconnect();
-      this.stopStream(stream);
+      if (releaseCapture) {
+        releaseCapture();
+      } else {
+        this.stopStream(stream);
+      }
       this.closeUnusedAudioContext();
-      return { texture: null, warning: `Microphone is unavailable: ${error instanceof Error ? error.message : String(error)}` };
+      return { texture: null, warning: `${type === "system-audio" ? "System audio" : "Microphone"} is unavailable: ${error instanceof Error ? error.message : String(error)}` };
     }
   }
 
@@ -306,7 +350,7 @@ export class LiveInputTextureManager<T> {
   }
 
   private closeUnusedAudioContext(): void {
-    if (this.audioContext && !this.inputs.has("microphone")) {
+    if (this.audioContext && !this.inputs.has("microphone") && !this.inputs.has("system-audio")) {
       const context = this.audioContext;
       this.audioContext = null;
       this.removeResumeListener();
@@ -315,6 +359,9 @@ export class LiveInputTextureManager<T> {
   }
 
   private release(type: LiveInputType, input: LiveInput<T>): void {
+    if (this.inputs.get(type) !== input) {
+      return;
+    }
     if (this.inputs.get(type) === input) {
       this.inputs.delete(type);
     }
@@ -323,7 +370,11 @@ export class LiveInputTextureManager<T> {
         track.removeEventListener("ended", input.onEnded);
       }
     }
-    this.stopStream(input.stream);
+    if (input.releaseCapture) {
+      input.releaseCapture();
+    } else {
+      this.stopStream(input.stream);
+    }
     input.video?.pause();
     if (input.video) {
       input.video.srcObject = null;

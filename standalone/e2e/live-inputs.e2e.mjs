@@ -83,3 +83,82 @@ for (const language of ['glsl', 'wgsl', 'slang']) {
     await expectGreen(page);
   });
 }
+
+for (const language of ['glsl', 'wgsl', 'slang']) {
+  for (const source of ['browser', 'device']) {
+    test(`${language} system audio ${source} connects explicitly, previews and releases capture`, async ({ page }) => {
+      await page.addInitScript(() => {
+        window.__liveCaptureStreams = [];
+        window.__displayCaptureCalls = 0;
+        window.__displayVideoTracks = [];
+        const capture = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+        navigator.mediaDevices.getUserMedia = async constraints => {
+          const stream = await capture(constraints);
+          window.__liveCaptureStreams.push(stream);
+          return stream;
+        };
+        // Substitute only the OS sharing picker boundary; the returned audio
+        // stream, analyser, GPU textures, rendering and controls remain real.
+        navigator.mediaDevices.getDisplayMedia = constraints => {
+          if (!navigator.userActivation.isActive || !constraints.audio || !constraints.video || constraints.systemAudio !== 'include') {
+            throw new Error('Sharing must start directly from the user click');
+          }
+          window.__displayCaptureCalls++;
+          return navigator.mediaDevices.getUserMedia({ audio: true, video: true }).then(stream => {
+            window.__displayVideoTracks.push(...stream.getVideoTracks());
+            return stream;
+          });
+        };
+      });
+      const code = language === 'glsl'
+        ? 'void mainImage(out vec4 c, in vec2 p) { bool ok = sound.loaded == 1 && sound.size.x == 512. && texture(sound.sampler,vec2(.5,.75)).r > .1; c = ok ? vec4(0,1,0,1) : vec4(1,0,0,1); }'
+        : language === 'slang'
+          ? 'float4 mainImage(float2 p) { bool ok = sound.loaded && sound.size.x == 512 && sample2DLevel(sound.texture,sound.sampler,float2(.5,.75),0).r > .1; return ok ? float4(0,1,0,1) : float4(1,0,0,1); }'
+          : 'fn mainImage(p: vec2f) -> vec4f { if (sound.loaded && sound.size.x == 512 && sample2DLevel(soundTexture,soundSampler,vec2f(.5,.75),0).r > .1) { return vec4f(0,1,0,1); } return vec4f(1,0,0,1); }';
+      await page.route('**/__live_fixture__', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html></html>' }));
+      await page.goto('/__live_fixture__');
+      await workspace(page, [
+        [`system.${language}`, code],
+        ['plain.glsl', 'void mainImage(out vec4 c, in vec2 p) { c = vec4(0,1,0,1); }'],
+        ['system.sha.json', JSON.stringify({ version: '1', passes: { Image: { inputs: { sound: { type: 'system-audio' } } } } })],
+      ]);
+      await page.goto('/');
+      await page.getByTestId(`shader-option-system-${language}`).click();
+      await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
+      await page.locator('.channel-row').filter({ hasText: 'sound' }).click();
+      const start = page.getByRole('button', { name: 'Start sharing', exact: true });
+      await expect(start).toBeEnabled();
+      expect(await page.evaluate(() => window.__liveCaptureStreams.length)).toBe(0);
+      if (source === 'device') {
+        await page.getByLabel('Audio source').selectOption('default');
+      }
+      await start.click();
+      await expectGreen(page);
+      await expectLivePreview(page.getByRole('button', { name: 'System Audio', exact: true }), 'System audio');
+      expect(await page.evaluate(() => window.__displayCaptureCalls)).toBe(source === 'browser' ? 1 : 0);
+      expect(await page.evaluate(() => window.__displayVideoTracks.every(track => track.readyState === 'ended'))).toBe(true);
+      await page.getByRole('button', { name: 'Close', exact: true }).click();
+      await page.getByRole('button', { name: '+ Add Channel', exact: true }).click();
+      await page.getByRole('button', { name: /Keyboard$/ }).click();
+      await page.getByRole('button', { name: 'Close', exact: true }).click();
+      await expectGreen(page);
+      expect(await page.evaluate(() => window.__liveCaptureStreams.length)).toBe(1);
+      await page.locator('.channel-row').filter({ hasText: 'sound' }).click();
+      await page.getByRole('button', { name: 'Stop sharing', exact: true }).click();
+      await expect.poll(() => page.evaluate(() => window.__liveCaptureStreams.every(stream => stream.getTracks().every(track => track.readyState === 'ended')))).toBe(true);
+      await expect(start).toBeEnabled();
+      await start.click();
+      await expectGreen(page);
+      await page.reload();
+      expect(await page.evaluate(() => window.__liveCaptureStreams.length)).toBe(0);
+      await page.locator('.channel-row').filter({ hasText: 'sound' }).click();
+      await expect(start).toBeEnabled();
+      await start.click();
+      await expectGreen(page);
+      await page.getByRole('button', { name: 'Close', exact: true }).click();
+      // Switching to a shader without this input releases capture.
+      await page.getByTestId('shader-option-plain-glsl').click();
+      await expect.poll(() => page.evaluate(() => window.__liveCaptureStreams.every(stream => stream.getTracks().every(track => track.readyState === 'ended')))).toBe(true);
+    });
+  }
+}

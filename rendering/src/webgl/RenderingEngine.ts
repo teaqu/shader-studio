@@ -1,4 +1,4 @@
-import { audioPreviewData, livePreviewData } from "../resources/MediaPreview";
+import { audioPreviewData, livePreviewData, controlSystemAudio } from "../resources/MediaPreview";
 import type { LiveInputType, LiveInputPreview } from "../resources/LiveInputTextureManager";
 import { piRenderer } from "../../../vendor/pilibs/src/piRenderer";
 import {
@@ -647,6 +647,10 @@ export class RenderingEngine implements RenderingEngineInterface {
 
   public getAudioFFTData(type: string, path?: string): Uint8Array | null {
     return audioPreviewData(this.resourceManager, type, path);
+  }
+
+  controlSystemAudio(action: "start" | "stop", deviceId?: string): Promise<string | undefined> {
+    return controlSystemAudio(this.resourceManager, action, deviceId);
   }
 
   public getLiveInputPreview(type: LiveInputType): LiveInputPreview | null {

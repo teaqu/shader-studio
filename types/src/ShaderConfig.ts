@@ -59,7 +59,11 @@ export interface MicrophoneConfigInput {
     type: 'microphone';
 }
 
-export type ConfigInput = WebcamConfigInput | MicrophoneConfigInput | BufferConfigInput | TextureConfigInput | VideoConfigInput | CubemapConfigInput | KeyboardConfigInput | AudioConfigInput;
+export interface SystemAudioConfigInput {
+    type: 'system-audio';
+}
+
+export type ConfigInput = SystemAudioConfigInput | WebcamConfigInput | MicrophoneConfigInput | BufferConfigInput | TextureConfigInput | VideoConfigInput | CubemapConfigInput | KeyboardConfigInput | AudioConfigInput;
 
 export type AspectRatioMode = '16:9' | '4:3' | '1:1' | 'fill' | 'auto';
 export type BufferOutputFormat = 'auto' | 'rgba16float' | 'rgba32float';

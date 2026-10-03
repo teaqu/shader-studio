@@ -78,6 +78,10 @@ export class AudioVideoController {
     return engine ? engine.getAudioFFTData(type, path) : null;
   }
 
+  controlSystemAudio(action: 'start' | 'stop', deviceId?: string): Promise<string | undefined> {
+    return this.getEngine()?.controlSystemAudio?.(action, deviceId) ?? Promise.resolve('Shader is not ready. Try again after it loads.');
+  }
+
   getLiveInputPreview(type: import('../../../rendering/src/resources/LiveInputTextureManager').LiveInputType) {
     return this.getEngine()?.getLiveInputPreview?.(type) ?? null;
   }

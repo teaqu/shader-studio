@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { SystemAudioCapture } from "../../resources/SystemAudioCapture";
 import type { TextureBackend } from "../../resources/TextureBackend";
 import { ResourceManager } from "../../resources/ResourceManager";
-import { MICROPHONE_PATH, WEBCAM_PATH } from "../../util/LiveInputConfig";
+import { MICROPHONE_PATH, WEBCAM_PATH, SYSTEM_AUDIO_PATH } from "../../util/LiveInputConfig";
 
 interface Texture { id: string }
 
@@ -14,7 +15,7 @@ const spies = vi.hoisted(() => ({
 vi.mock("../../resources/LiveInputTextureManager", () => ({
   LiveInputTextureManager: vi.fn().mockImplementation(function() {
     const instance = {
-      getPreview: vi.fn(), load: vi.fn(), getTexture: vi.fn(), getVideoElement: vi.fn(), getAudioState: vi.fn(),
+      startSystemAudio: vi.fn(), stopSystemAudio: vi.fn(), getPreview: vi.fn(), load: vi.fn(), getTexture: vi.fn(), getVideoElement: vi.fn(), getAudioState: vi.fn(),
       getSampleRate: vi.fn(() => 0), updateTextures: vi.fn(), cleanup: vi.fn(),
     };
     spies.live.push(instance);
@@ -70,6 +71,37 @@ describe("ResourceManager live input routing", () => {
     spies.audio.length = 0;
     vi.clearAllMocks();
     resources = new ResourceManager(backend);
+  });
+
+  it("holds shared audio across structural rebuilds until the new analyser acquires it", async () => {
+    const capture = new SystemAudioCapture();
+    const release = vi.fn();
+    const acquire = vi.spyOn(capture, "acquire").mockReturnValue({ stream: {} as MediaStream, release });
+    const manager = new ResourceManager(backend, capture);
+    manager.cleanup(true);
+    expect(acquire).toHaveBeenCalledOnce();
+    expect(release).not.toHaveBeenCalled();
+    spies.live.at(-1)!.load.mockResolvedValue({ texture: { id: "shared" } });
+    await manager.loadAudioSource(SYSTEM_AUDIO_PATH);
+    expect(release).toHaveBeenCalledOnce();
+    manager.cleanup();
+    acquire.mockRestore();
+  });
+
+  it("only starts system audio for configured channels and routes their runtime state", async () => {
+    await expect(resources.controlSystemAudio("start")).resolves.toContain("loading");
+    spies.live[0].load.mockResolvedValue({ texture: null });
+    await expect(resources.loadAudioSource(SYSTEM_AUDIO_PATH)).resolves.toBeNull();
+    expect(spies.live[0].load).toHaveBeenCalledWith("system-audio");
+    spies.live[0].startSystemAudio.mockResolvedValue(undefined);
+    await expect(resources.controlSystemAudio("start", "loopback")).resolves.toBeUndefined();
+    expect(spies.live[0].startSystemAudio).toHaveBeenCalledWith("loopback");
+    spies.live[0].getTexture.mockReturnValue({ id: "system" });
+    expect(resources.getAudioTexture(SYSTEM_AUDIO_PATH)).toEqual({ id: "system" });
+    resources.getAudioState(SYSTEM_AUDIO_PATH);
+    expect(spies.live[0].getAudioState).toHaveBeenCalledWith("system-audio");
+    await resources.controlSystemAudio("stop");
+    expect(spies.live[0].stopSystemAudio).toHaveBeenCalledOnce();
   });
 
   it("exposes existing capture previews without loading resources", () => {

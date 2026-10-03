@@ -1,5 +1,6 @@
+import { SystemAudioCapture, type SystemAudioLease } from "./SystemAudioCapture";
 import { LiveInputTextureManager } from "./LiveInputTextureManager";
-import { WEBCAM_PATH, MICROPHONE_PATH } from "../util/LiveInputConfig";
+import { WEBCAM_PATH, MICROPHONE_PATH, SYSTEM_AUDIO_PATH } from "../util/LiveInputConfig";
 import type { TextureBackend } from "./TextureBackend";
 import { TextureCache } from "./TextureCache";
 import { VideoTextureManager } from "./VideoTextureManager";
@@ -19,17 +20,19 @@ export class ResourceManager<T> {
   private readonly cubemapTextureManager: CubemapTextureManager<T>;
   private readonly audioTextureManager: AudioTextureManager<T>;
   private readonly liveInputPaths = new Set<string>();
+  private heldSystemCapture: SystemAudioLease | null = null;
   private liveInputs: LiveInputTextureManager<T>;
   private readonly keyboardInput: ShaderKeyboardInput<T>;
 
   constructor(
     private readonly backend: TextureBackend<T>,
+    private readonly systemAudio = new SystemAudioCapture(),
   ) {
     this.textureCache = new TextureCache(backend);
     this.videoTextureManager = new VideoTextureManager(backend);
     this.cubemapTextureManager = new CubemapTextureManager(backend);
     this.audioTextureManager = new AudioTextureManager(backend);
-    this.liveInputs = new LiveInputTextureManager(backend);
+    this.liveInputs = new LiveInputTextureManager(backend, this.systemAudio);
     this.keyboardInput = new ShaderKeyboardInput(backend);
   }
 
@@ -39,19 +42,33 @@ export class ResourceManager<T> {
    * manager's caches or media elements are touched until the attempt wins.
    */
   public createIsolated(): ResourceManager<T> {
-    return new ResourceManager(this.backend);
+    return new ResourceManager(this.backend, this.systemAudio);
   }
 
   /** Config edits can preserve file media; removed live inputs must still stop capture. */
   public retainLiveInputs(paths: ReadonlySet<string>): void {
     if ([...this.liveInputPaths].some(path => !paths.has(path))) {
-      this.resetLiveInputs();
+      this.resetLiveInputs(paths.has(SYSTEM_AUDIO_PATH));
+    }
+    if (!paths.has(SYSTEM_AUDIO_PATH)) {
+      this.releaseHeldSystemCapture();
     }
   }
 
-  private resetLiveInputs(): void {
+  private releaseHeldSystemCapture(): void {
+    this.heldSystemCapture?.release();
+    this.heldSystemCapture = null;
+  }
+
+  private resetLiveInputs(preserveSystemAudio = false): void {
+    if (preserveSystemAudio && !this.heldSystemCapture) {
+      this.heldSystemCapture = this.systemAudio.acquire();
+    }
+    if (!preserveSystemAudio) {
+      this.releaseHeldSystemCapture();
+    }
     this.liveInputs.cleanup();
-    this.liveInputs = new LiveInputTextureManager(this.backend);
+    this.liveInputs = new LiveInputTextureManager(this.backend, this.systemAudio);
     this.liveInputPaths.clear();
   }
 
@@ -74,8 +91,20 @@ export class ResourceManager<T> {
     return texture ?? null;
   }
 
+  public async controlSystemAudio(action: "start" | "stop", deviceId?: string): Promise<string | undefined> {
+    if (action === "stop") {
+      this.liveInputs.stopSystemAudio();
+      return;
+    }
+    if (!this.liveInputPaths.has(SYSTEM_AUDIO_PATH)) {
+      return "System Audio is still loading. Try Start sharing again when the shader is ready.";
+    }
+    return this.liveInputs.startSystemAudio(deviceId);
+  }
+
   public getLiveInputPreview(type: import("./LiveInputTextureManager").LiveInputType): import("./LiveInputTextureManager").LiveInputPreview | null {
-    return this.liveInputs.getPreview(type);
+    const preview = this.liveInputs.getPreview(type);
+    return type === "system-audio" && this.liveInputPaths.has(SYSTEM_AUDIO_PATH) ? { ...preview, ready: true } : preview;
   }
 
   public getVideoElement(path: string): HTMLVideoElement | undefined {
@@ -160,10 +189,16 @@ export class ResourceManager<T> {
   }
 
   // Audio methods
-  public async loadAudioSource(path: string, options?: { muted?: boolean; startTime?: number; endTime?: number }): Promise<T> {
-    if (path === MICROPHONE_PATH) {
+  public async loadAudioSource(path: string, options?: { muted?: boolean; startTime?: number; endTime?: number }): Promise<T | null> {
+    if (path === MICROPHONE_PATH || path === SYSTEM_AUDIO_PATH) {
       this.liveInputPaths.add(path);
-      const result = await this.liveInputs.load("microphone");
+      const result = await this.liveInputs.load(path === SYSTEM_AUDIO_PATH ? "system-audio" : "microphone");
+      if (path === SYSTEM_AUDIO_PATH) {
+        this.releaseHeldSystemCapture();
+      }
+      if (!result.texture && path === SYSTEM_AUDIO_PATH) {
+        return null;
+      }
       if (!result.texture) {
         throw new Error(result.warning ?? "Microphone is unavailable");
       }
@@ -181,7 +216,8 @@ export class ResourceManager<T> {
   }
 
   public getAudioTexture(path: string): T | null {
-    return path === MICROPHONE_PATH ? this.liveInputs.getTexture("microphone") : this.audioTextureManager.getAudioTexture(path);
+    return path === SYSTEM_AUDIO_PATH ? this.liveInputs.getTexture("system-audio")
+      : path === MICROPHONE_PATH ? this.liveInputs.getTexture("microphone") : this.audioTextureManager.getAudioTexture(path);
   }
 
   // FFT data accessors
@@ -219,8 +255,8 @@ export class ResourceManager<T> {
   }
 
   public getAudioState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null {
-    if (path === MICROPHONE_PATH) {
-      return this.liveInputs.getAudioState();
+    if (path === MICROPHONE_PATH || path === SYSTEM_AUDIO_PATH) {
+      return this.liveInputs.getAudioState(path === SYSTEM_AUDIO_PATH ? "system-audio" : "microphone");
     }
     const duration = this.audioTextureManager.getAudioDuration(path);
     if (duration === 0 && !this.audioTextureManager.getAudioTexture(path)) {
@@ -246,7 +282,7 @@ export class ResourceManager<T> {
     this.audioTextureManager.syncAllToTime(shaderTime);
   }
 
-  public cleanup(): void {
+  public cleanup(preserveSystemAudio = false): void {
     if (!this.backend) {
       return;
     }
@@ -255,7 +291,7 @@ export class ResourceManager<T> {
     this.videoTextureManager.cleanup();
     this.cubemapTextureManager.cleanup();
     this.audioTextureManager.cleanup();
-    this.resetLiveInputs();
+    this.resetLiveInputs(preserveSystemAudio);
     this.keyboardInput.cleanup();
   }
 

@@ -3,7 +3,7 @@
   import { drawLiveInputPreview } from './LiveInputPreview';
 
   interface Props {
-    type: 'webcam' | 'microphone';
+    type: 'webcam' | 'microphone' | 'system-audio';
     audioVideoController?: AudioVideoController;
   }
   let { type, audioVideoController }: Props = $props();
@@ -29,11 +29,11 @@
 </script>
 
 <div class="live-preview">
-  <canvas bind:this={canvas} width="160" height="120" aria-label={type === 'webcam' ? 'Live webcam preview' : 'Live microphone preview'} class:active></canvas>
+  <canvas bind:this={canvas} width="160" height="120" aria-label={type === 'webcam' ? 'Live webcam preview' : type === 'system-audio' ? 'Live system audio preview' : 'Live microphone preview'} class:active></canvas>
   {#if !active}
     <div class="fallback">
       <i class="codicon" class:codicon-device-camera={type === 'webcam'} class:codicon-mic={type === 'microphone'}></i>
-      <span>{type === 'webcam' ? 'Webcam' : 'Microphone'}</span>
+      <span>{type === 'webcam' ? 'Webcam' : type === 'system-audio' ? 'System Audio' : 'Microphone'}</span>
     </div>
   {/if}
 </div>

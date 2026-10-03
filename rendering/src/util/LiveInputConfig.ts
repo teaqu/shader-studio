@@ -2,12 +2,16 @@ import type { ConfigInput } from "@shader-studio/types";
 
 // Runtime identities only: the persisted config retains the pathless device type.
 export const WEBCAM_PATH = "shader-studio-live://webcam";
+export const SYSTEM_AUDIO_PATH = "shader-studio-live://system-audio";
 export const MICROPHONE_PATH = "shader-studio-live://microphone";
 
 /** Reuse media binding, channel metadata and sampler handling in both engines. */
 export function normalizeLiveInput(input: ConfigInput): ConfigInput {
   if (input.type === "webcam") {
     return { ...input, type: "video", path: WEBCAM_PATH, muted: true };
+  }
+  if (input.type === "system-audio") {
+    return { type: "audio", path: SYSTEM_AUDIO_PATH, muted: true };
   }
   if (input.type === "microphone") {
     return { type: "audio", path: MICROPHONE_PATH, muted: true };
@@ -21,7 +25,7 @@ export function normalizeLiveInputs(inputs: Record<string, ConfigInput>): Record
 
 /** Keep file-media warnings stable while preserving device permission guidance. */
 export function audioLoadWarning(path: string, error: unknown): string {
-  return path === MICROPHONE_PATH && error instanceof Error ? error.message : `Audio loading failed: ${path}`;
+  return (path === MICROPHONE_PATH || path === SYSTEM_AUDIO_PATH) && error instanceof Error ? error.message : `Audio loading failed: ${path}`;
 }
 
 export function liveInputPaths(passInputs: Record<string, ConfigInput>[]): Set<string> {
@@ -29,7 +33,7 @@ export function liveInputPaths(passInputs: Record<string, ConfigInput>[]): Set<s
   for (const inputs of passInputs) {
     for (const input of Object.values(inputs)) {
       if (input.type === "video" && input.path === WEBCAM_PATH ||
-          input.type === "audio" && input.path === MICROPHONE_PATH) {
+          input.type === "audio" && (input.path === MICROPHONE_PATH || input.path === SYSTEM_AUDIO_PATH)) {
         paths.add(input.path);
       }
     }

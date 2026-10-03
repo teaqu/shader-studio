@@ -3,6 +3,17 @@ import { AudioVideoController } from '../lib/AudioVideoController';
 import { audioStore } from '../lib/stores/audioStore';
 
 describe('AudioVideoController', () => {
+  it('delegates system sharing and returns actionable missing-engine guidance', async () => {
+    const engine = { setGlobalVolume: vi.fn(), controlSystemAudio: vi.fn().mockResolvedValue(undefined) };
+    const controller = new AudioVideoController(() => engine as unknown as import('../../../rendering/src/types').RenderingEngine);
+    await expect(controller.controlSystemAudio('start', 'loopback')).resolves.toBeUndefined();
+    expect(engine.controlSystemAudio).toHaveBeenCalledWith('start', 'loopback');
+    controller.dispose();
+    const empty = new AudioVideoController(() => undefined);
+    await expect(empty.controlSystemAudio('start')).resolves.toContain('not ready');
+    empty.dispose();
+  });
+
   it('reads live previews from the active engine and tolerates missing engines', () => {
     const preview = { frequency: new Uint8Array(512) };
     const engine = { setGlobalVolume: vi.fn(), getLiveInputPreview: vi.fn(() => preview) };
