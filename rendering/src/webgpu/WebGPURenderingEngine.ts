@@ -53,7 +53,7 @@ import { WebGPUPixelRegionCapturer, type PixelRegionRequestStage } from "./WebGP
 import { WebGPUMeshResources } from "./WebGPUMeshResources";
 import { extractStructSizes } from "./wgslStructSize";
 import { OrbitCamera } from "../preview3d/OrbitCamera";
-import { createModelMatrix, createNormalMatrix3, multiplyMatrices } from "../preview3d/math";
+import { packDefaultMeshUniforms } from "./meshUniforms";
 import {
   gpuBackpressureEnabled,
   MAX_FRAMES_IN_FLIGHT,
@@ -2669,18 +2669,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
       }, this.customUniformManager.getUniformInfo(), frameCustomUniformValues);
       this.device.queue.writeBuffer(pipeline.getUniformBuffer()!, 0, data);
       if (pass.geometry && pass.geometry !== "fullscreen" && pipeline.getMeshUniformBuffer?.()) {
-        const model = createModelMatrix({ position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] });
-        const viewProjection = multiplyMatrices(
-          this.meshCamera.getProjectionMatrix(pass.width / Math.max(pass.height, 1), "webgpu"),
-          this.meshCamera.getViewMatrix(),
-        );
-        const normal = createNormalMatrix3(model);
-        const meshData = new Float32Array(64);
-        meshData.set(model, 0);
-        meshData.set(viewProjection, 16);
-        meshData.set([normal[0], normal[1], normal[2], 0, normal[3], normal[4], normal[5], 0, normal[6], normal[7], normal[8], 0, 0, 0, 0, 1], 32);
-        meshData.set([...this.meshCamera.getPosition(), 1], 48);
-        this.device.queue.writeBuffer(pipeline.getMeshUniformBuffer()!, 0, meshData);
+        this.device.queue.writeBuffer(pipeline.getMeshUniformBuffer()!, 0,
+          packDefaultMeshUniforms(this.meshCamera, pass.width, pass.height));
       }
 
       const targetView = pass.output === "canvas"
