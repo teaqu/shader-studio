@@ -2,7 +2,7 @@ import type { DebugPreviewOptions } from "@shader-studio/types";
 import { applySourceEdits } from "@shader-studio/utils";
 import { applySlangPreviewPostProcessing } from "./SlangInstrumentationPlanner";
 import { createSlangWorkspace } from "./SlangWorkspace";
-import { buildNativeFragmentReplay } from "../native/NativeFragmentReplay";
+import { buildNativeRasterReplay } from "../native/NativeRasterReplay";
 
 export function applySlangFullShaderPostProcessing(
   source: string,
@@ -47,15 +47,12 @@ export function applySlangFullShaderPostProcessing(
 }
 
 function applyNativeSlangFullShaderPostProcessing(source: string, options: DebugPreviewOptions, entryPoint: string): string | null {
-  const replay = buildNativeFragmentReplay(source, "slang", entryPoint, "_ssdbg_full");
+  const replay = buildNativeRasterReplay(source, "slang", entryPoint, "_ssdbg_full");
   if (typeof replay === "string") {
     return null;
   }
-  // Native fragment wrappers receive SV_Position directly. Keep its original
-  // orientation and depth instead of the ShaderToy-coordinate replay adapter.
-  const call = replay.call.endsWith("()") ? replay.call : "_ssdbg_full_userMain(fragCoord)";
-  const color = applySlangPreviewPostProcessing(call, options);
-  const wrapper = `\n[shader("fragment")]\nfloat4 ${replay.entryName}(float4 fragCoord : SV_Position) : SV_Target0\n{\n  return ${color};\n}\n`;
+  const color = applySlangPreviewPostProcessing(replay.colorExpression("result"), options);
+  const wrapper = `\n${replay.wrapperHeader}{\n  ${replay.returnType} result = ${replay.call};\n  ${replay.returnColor("result", color)}\n}\n`;
   const applied = applySourceEdits(source, [
     ...replay.edits,
     { start: source.length, end: source.length, text: wrapper },

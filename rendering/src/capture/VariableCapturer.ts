@@ -54,6 +54,16 @@ export interface CaptureCompileContext {
   slangModules?: Array<Omit<SlangSourceModule, 'ownerPass'>>;
   /** Original selected file path used for capture diagnostics. */
   slangSourcePath?: string;
+  /** Original native render entries and geometry for raster-faithful capture. */
+  nativeRender?: {
+    vertexEntryPoint: string;
+    fragmentEntryPoint: string;
+    geometry: "fullscreen" | "plane" | "sphere" | "cube" | "model";
+    width: number;
+    height: number;
+    /** Encodes the pass's original geometry and mesh vertex bindings. */
+    draw?: (pass: GPURenderPassEncoder) => void;
+  };
 }
 
 interface PendingCapture {

@@ -124,6 +124,15 @@ describe("visibleSlangLocals", () => {
       { name: "coord", typeName: "float2", kind: "parameter" },
     ]));
   });
+
+  it("keeps Vulkan-location attributed semantic parameters visible for swizzles", () => {
+    const visible = visibleSlangLocals(`
+[shader("fragment")] float4 shade([[vk::location(0)]] float3 position : POSITION) : SV_Target
+{
+  return float4(position.xyz, 1.0);
+}`, { line: 3, character: 20 });
+    expect(visible).toContainEqual({ name: "position", typeName: "float3", kind: "parameter" });
+  });
 });
 
 describe("findSlangLocalAt", () => {

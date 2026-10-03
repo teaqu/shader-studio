@@ -1,0 +1,9 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "entryPoints": { "vertex": "rasterVertex", "fragment": "rasterColor" },
+      "geometry": { "type": "cube" }
+    }
+  }
+}

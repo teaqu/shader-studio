@@ -5,6 +5,7 @@
   import type { ShaderDebugState, DebugLoopInfo } from "../../types/ShaderDebugState";
   import type { PassUniforms } from "../../../../../rendering/src/models/PassUniforms";
   import ParameterEditor from "./ParameterEditor.svelte";
+  import NativeRasterParameters from "./NativeRasterParameters.svelte";
 
   import type { ShaderDebugManager } from "../../ShaderDebugManager";
   import type { CaptureIssue, VariableCaptureManager, RefreshMode } from "../../VariableCaptureManager";
@@ -104,6 +105,10 @@
   let internalVariableCaptureIssues = $state<CaptureIssue[]>([]);
 
   const ctx = $derived(debugState?.functionContext);
+  const hasNativeRasterParameters = $derived(
+    ctx?.functionName !== undefined
+    && debugState?.nativeFragmentEntryPoint === ctx.functionName
+  );
   const isInlineOn = $derived(debugState?.isInlineRenderingEnabled);
   const isLineLocked = $derived(debugState?.isLineLocked);
   const lineNum = $derived(debugState?.currentLine !== null && debugState?.currentLine !== undefined ? debugState.currentLine + 1 : null);
@@ -629,21 +634,27 @@
         <div class="section">
           <div class="section-heading">
             <div class="section-label">Parameters</div>
-            <button
-              class="section-reset"
-              type="button"
-              onclick={() => shaderDebugManager?.resetCustomParameters()}
-              aria-label="Reset parameters"
-            >
-              Reset
-            </button>
+            {#if !hasNativeRasterParameters}
+              <button
+                class="section-reset"
+                type="button"
+                onclick={() => shaderDebugManager?.resetCustomParameters()}
+                aria-label="Reset parameters"
+              >
+                Reset
+              </button>
+            {/if}
           </div>
-          {#each ctx.parameters as param, index}
-            <ParameterEditor
-              {param}
-              onChange={(value) => shaderDebugManager?.setCustomParameter(index, value)}
-            />
-          {/each}
+          {#if hasNativeRasterParameters}
+            <NativeRasterParameters parameters={ctx.parameters} />
+          {:else}
+            {#each ctx.parameters as param, index}
+              <ParameterEditor
+                {param}
+                onChange={(value) => shaderDebugManager?.setCustomParameter(index, value)}
+              />
+            {/each}
+          {/if}
         </div>
       {/if}
 

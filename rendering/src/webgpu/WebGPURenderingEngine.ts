@@ -51,6 +51,7 @@ import { ResourceManager } from "../resources/ResourceManager";
 import type { PixelRegionResult } from "../types/PixelRegion";
 import { WebGPUPixelRegionCapturer, type PixelRegionRequestStage } from "./WebGPUPixelRegionCapturer";
 import { WebGPUMeshResources } from "./WebGPUMeshResources";
+import { nativeRasterCaptureContext } from "./NativeRasterCaptureContext";
 import { extractStructSizes } from "./wgslStructSize";
 import { OrbitCamera } from "../preview3d/OrbitCamera";
 import { createModelMatrix, createNormalMatrix3, multiplyMatrices } from "../preview3d/math";
@@ -3570,6 +3571,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       slangStorage: graph.storage,
       slangStorageBuffers: this.storageBuffers,
       slangModules,
+      nativeRender: nativeRasterCaptureContext(targetPass, () => this.meshResources),
       ...(sourcePath ? { slangSourcePath: sourcePath } : {}),
     };
   }

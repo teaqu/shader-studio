@@ -37,15 +37,27 @@ describe("applyWgslFullShaderPostProcessing", () => {
     ].join("\n");
     const output = applyWgslFullShaderPostProcessing(native, { normalizeMode: "abs", stepEdge: null }, "image");
 
-    expect(output).toMatch(/fn _ssdbg_full_userMain\(\s*p: vec4f\)/);
-    expect(output).toContain("@fragment\nfn image(@builtin(position) coord: vec4f)");
-    expect(output).toContain("_ssdbg_full_userMain(coord)");
-    expect(output).toContain("fn _ssdbg_full_legacyMainImage");
+    expect(output).toMatch(/fn _ssdbg_full_userMain\(\s*p: vec4f\s*\)/);
+    expect(output).toContain("@fragment fn image(@builtin(position) p: vec4f) -> @location(0) vec4f");
+    expect(output).toContain("_ssdbg_full_userMain(p)");
+    expect(output).toContain("fn mainImage(coord: vec2f) -> vec4f");
     expect(output).toContain("@fragment fn unused()");
   });
 
-  it("does not rewrite a varying-dependent native fragment", () => {
-    const native = "@fragment fn image(@location(0) uv: vec2f) -> @location(0) vec4f { return vec4f(uv, 0.0, 1.0); }";
-    expect(applyWgslFullShaderPostProcessing(native, { normalizeMode: "abs", stepEdge: null }, "image")).toBeNull();
+  it("preserves the generic native color return type", () => {
+    const native = "@fragment fn image() -> @location(0) vec4<f32> { return vec4<f32>(1); }";
+    const output = applyWgslFullShaderPostProcessing(native, { normalizeMode: "abs", stepEdge: null }, "image");
+    expect(output).toContain("var result: vec4<f32> = _ssdbg_full_userMain();");
+  });
+
+  it("post-processes a native varying and structured color/depth output", () => {
+    const native = `struct Inputs { @builtin(position) pos: vec4f, @location(0) uv: vec2f, }
+struct Outputs { @location(0) color: vec4f, @builtin(frag_depth) depth: f32, }
+@fragment fn image(input: Inputs) -> Outputs { return Outputs(vec4f(input.uv, 0.0, 1.0), 0.5); }`;
+    const output = applyWgslFullShaderPostProcessing(native, { normalizeMode: "abs", stepEdge: null }, "image");
+    expect(output).toContain("@fragment fn image(input: Inputs) -> Outputs");
+    expect(output).toContain("var result: Outputs = _ssdbg_full_userMain(input);");
+    expect(output).toContain("result.color = vec4f(abs((result.color).rgb)");
+    expect(output).toContain("return result;");
   });
 });

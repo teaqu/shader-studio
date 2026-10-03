@@ -23,8 +23,8 @@ describe("native entry-point debug and capture", () => {
   let p = array(vec2f(-1,-1), vec2f(3,-1), vec2f(-1,3));
   return vec4f(p[i],0,1);
 }
-@fragment fn alternate() -> @location(0) vec4f { return vec4f(0,1,0,1); }
-@fragment fn image(@builtin(position) p: vec4f) -> @location(0) vec4f {
+@fragment fn alternate() -> @location(0) vec4<f32> { return vec4f(0,1,0,1); }
+@fragment fn image(@builtin(position) p: vec4f) -> @location(0) vec4<f32> {
   let value = 0.25 + iTime;
   return vec4f(value,0,0,1);
 }
@@ -56,7 +56,7 @@ float4 mainImage(float2 coord) { return float4(0,0,1,1); }`;
       if (!preview.ok) {
         throw new Error(preview.diagnostics[0]?.message);
       }
-      expect(await harness.engine.compileDebugPlan?.(preview.plan, { version: "1.0", passes: { Image: {} } })).toMatchObject({ success: true });
+      expect(await harness.engine.compileDebugPlan?.(preview.plan, config)).toMatchObject({ success: true });
       for (const pixel of await harness.renderAndReadPixels()) {
         expect(pixel.slice(0,3)).toEqual([64,64,64]);
       }
@@ -69,7 +69,8 @@ float4 mainImage(float2 coord) { return float4(0,0,1,1); }`;
         capturer.setCompileContext(harness.engine.getVariableCaptureCompileContext(source, "Image", path));
         const root = plan.plan.files.find(file => file.uri === plan.plan.rootUri)!;
         const captures = plan.plan.captureSlots.map(slot => ({ varName: slot.name, varType: slot.typeName, captureShader: root.source, selectorIndex: slot.index, hidden: slot.hidden, debugPlan: plan.plan }));
-        expect(await capturer.issueCaptureGrid(captures, harness.engine.getCaptureUniforms(), 1, 1)).toBe(captures.length);
+        const issued = await capturer.issueCaptureGrid(captures, harness.engine.getCaptureUniforms(), 1, 1);
+        expect({ issued, error: capturer.getLastError() }).toEqual({ issued: captures.length, error: null });
         const results = await collect(capturer, captures.length);
         expect([...results.find(result => result.varName === "value")!.rgba]).toEqual([0.25,0.25,0.25,1]);
         expect(capturer.getLastError()).toBeNull();
@@ -90,8 +91,8 @@ float4 mainImage(float2 coord) { return float4(0,0,1,1); }`;
   let p = array(vec2f(-1,-1), vec2f(3,-1), vec2f(-1,3));
   return vec4f(p[i],0,1);
 }
-@fragment fn alternate() -> @location(0) vec4f { return vec4f(0,1,0,1); }
-@fragment fn image(@builtin(position) p: vec4f) -> @location(0) vec4f {
+@fragment fn alternate() -> @location(0) vec4<f32> { return vec4f(0,1,0,1); }
+@fragment fn image(@builtin(position) p: vec4f) -> @location(0) vec4<f32> {
   return vec4f(p.y / iResolution.y, 0, 0, 1);
 }
 fn mainImage(coord: vec2f) -> vec4f { return vec4f(0,0,1,1); }` : `[shader("vertex")] float4 vertices(uint i : SV_VertexID) : SV_Position {

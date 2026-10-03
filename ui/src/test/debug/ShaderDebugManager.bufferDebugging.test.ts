@@ -217,6 +217,8 @@ describe('ShaderDebugManager — buffer debugging', () => {
 
       const target = manager.getDebugTarget(IMAGE_CODE, nativeConfig);
 
+      expect(manager.getState().nativeFragmentEntryPoint).toBe('bufferFragment');
+
       expect(target.config?.passes.Image).toEqual({
         entryPoints: { vertex: 'bufferVertex', fragment: 'bufferFragment' },
         vertex: 'buffer-hook.wgsl',

@@ -25,6 +25,7 @@ const slangSpecificRenderProjects = new Set([
   "slang/foundation/versions/version-mismatch/preview.slang",
   "slang/foundation/workspace/foundation.slang",
   "slang/native-entrypoints/shared.slang",
+  "slang/native-entrypoints/raster-varyings.slang",
   "slang/samefile-hooks/shared.slang",
 ]);
 
@@ -408,7 +409,7 @@ describe("slang-multipass-test shader corpus", () => {
   });
 
   it("discovers every configured root shader", () => {
-    expect(projects).toHaveLength(127);
+    expect(projects).toHaveLength(129);
   });
 
   it("hot-reloads a shared native entry-point selection", { timeout: 30_000 }, async () => {

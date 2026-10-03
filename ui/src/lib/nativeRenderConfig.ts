@@ -1,4 +1,4 @@
-import { getShaderEntryPoints, type BufferPass, type ShaderConfig, type ShaderLanguageId } from "@shader-studio/types";
+import { getShaderEntryPoints, type BufferPass, type DebugInstrumentationPlan, type ShaderConfig, type ShaderLanguageId } from "@shader-studio/types";
 
 /** Undefined selects ShaderToy hooks; null means native selection cannot be resolved. */
 export function nativeFragmentEntryPoint(source: string, pass: ShaderConfig["passes"][string], language: ShaderLanguageId): string | null | undefined {
@@ -17,7 +17,13 @@ export function nativeFragmentEntryPoint(source: string, pass: ShaderConfig["pas
 }
 
 /** Instrumented debug plans use hooks for Image while all other passes retain their stages. */
-export function hookConfigForDebugPlan(config: ShaderConfig | null): ShaderConfig | null {
+export function hookConfigForDebugPlan(
+  config: ShaderConfig | null,
+  plan?: Pick<DebugInstrumentationPlan, "nativeRender">,
+): ShaderConfig | null {
+  if (plan?.nativeRender) {
+    return config;
+  }
   const image = config?.passes.Image;
   if (!config || !image || image.entryPoints === undefined) {
     return config;

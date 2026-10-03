@@ -12,6 +12,13 @@ describe("native debug render configuration", () => {
     expect(nativeFragmentEntryPoint(source + " @fragment fn other() {}", { entryPoints: {} }, "wgsl")).toBeNull();
     expect(nativeFragmentEntryPoint(source, { entryPoints: null } as unknown as ShaderConfig["passes"][string], "wgsl")).toBeNull();
   });
+  it("retains selected native render stages for a native instrumentation plan", () => {
+    const config: ShaderConfig = { version: "1.0", passes: { Image: { entryPoints: { vertex: "vertices", fragment: "image" }, geometry: { type: "cube" } } } };
+    const plan = { nativeRender: { fragmentEntryPoint: "image" } };
+
+    expect(hookConfigForDebugPlan(config, plan)).toBe(config);
+  });
+
   it("remaps only Image without mutating the saved native project", () => {
     const config: ShaderConfig = { version: "1.0", passes: { Image: { entryPoints: { fragment: "image" } }, BufferA: { path: "shared.wgsl", entryPoints: { fragment: "buffer" } } } };
     const result = hookConfigForDebugPlan(config)!;
