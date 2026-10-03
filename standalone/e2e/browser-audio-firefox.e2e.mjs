@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { workspace } from './language-service-fixtures.mjs';
 
-test('Firefox explains unsupported Browser Audio without opening screen sharing', async ({ page }) => {
+test('Firefox loads Audio assets and explains unsupported Browser Audio', async ({ page }) => {
   await page.addInitScript(() => {
     window.__screenSharingRequests = 0;
     navigator.mediaDevices.getDisplayMedia = async () => {
@@ -21,6 +21,8 @@ test('Firefox explains unsupported Browser Audio without opening screen sharing'
   await page.locator('.channel-row').filter({ hasText: 'sound' }).click();
   await expect(page.getByRole('tab', { name: 'Audio', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('button', { name: 'Start sharing', exact: true })).toBeDisabled({ timeout: 3000 });
+  await expect(page.getByText('Loading files...', { exact: true })).toHaveCount(0, { timeout: 1000 });
+  await expect(page.getByText('No files found', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Audio file', exact: true })).toBeVisible();
   await expect(page.getByPlaceholder('Path to audio or video file')).toBeVisible();
   await expect(page.getByRole('status').filter({ hasText: 'Firefox does not support' })).toBeVisible();
@@ -28,5 +30,6 @@ test('Firefox explains unsupported Browser Audio without opening screen sharing'
   await page.reload();
   await page.locator('.channel-row').filter({ hasText: 'sound' }).click();
   await expect(page.getByRole('button', { name: 'Start sharing', exact: true })).toBeDisabled();
+  await expect(page.getByText('No files found', { exact: true })).toBeVisible({ timeout: 1000 });
   expect(await page.evaluate(() => window.__screenSharingRequests)).toBe(0);
 });

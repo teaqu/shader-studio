@@ -43,6 +43,24 @@ describe('AudioTab', () => {
     expect(api.onUpdateTempInput.mock.invocationCallOrder[0]).toBeLessThan(api.onUpdatePath.mock.invocationCallOrder[0]);
   });
 
+  it('receives audio asset responses through the host message subscription', async () => {
+    const api = defaultProps();
+    const handlers: ((event: MessageEvent) => void)[] = [];
+    api.postMessage.mockImplementation(message => {
+      if (message.type === 'requestWorkspaceFiles') {
+        for (const handler of handlers) {
+          handler(new MessageEvent('message', { data: { type: 'workspaceFiles', payload: { files: [] } } }));
+        }
+      }
+    });
+    const view = render(AudioTab, { ...api, onMessage: handler => {
+      handlers.push(handler);
+    } });
+    await Promise.resolve();
+    expect(view.queryByText('Loading files...')).toBeNull();
+    expect(view.getByText('No files found')).toBeVisible();
+  });
+
   describe('Rendering', () => {
     it('should render path input with audio placeholder', () => {
       render(AudioTab, defaultProps());

@@ -351,6 +351,7 @@
     extensions={AUDIO_EXTENSIONS}
     {shaderPath}
     {postMessage}
+    {onMessage}
     onSelect={(path, resolvedUri) => {
       if (tempInput?.type !== 'audio') {
         onUpdateTempInput({ type: 'audio', path: '' });
