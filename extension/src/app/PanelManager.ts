@@ -37,6 +37,12 @@ export class PanelManager {
       ) {
         this.webviewTransport.send(this.languageServiceSettingsMessage());
       }
+      if (event.affectsConfiguration("shader-studio.webgpu.useViewerCamera")) {
+        const configuration = vscode.workspace.getConfiguration("shader-studio");
+        this.messenger.send({ type: "viewerCameraSettings", payload: {
+          useViewerCamera: configuration.get("webgpu.useViewerCamera", true),
+        } });
+      }
     }));
 
     this.clientHandler = new ClientMessageHandler(

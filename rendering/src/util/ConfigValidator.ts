@@ -210,6 +210,10 @@ export class ConfigValidator {
 
     const errors: string[] = [];
 
+    if (config.webgpu?.useViewerCamera !== undefined && typeof config.webgpu.useViewerCamera !== "boolean") {
+      errors.push("webgpu.useViewerCamera must be a boolean");
+    }
+
     // Validate version
     if (!config.version || typeof config.version !== 'string') {
       errors.push('Config must have a valid version string');

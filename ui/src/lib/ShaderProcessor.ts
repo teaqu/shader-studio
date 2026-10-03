@@ -1,3 +1,4 @@
+import { viewerCameraRuntimeConfig } from "./state/viewerCameraState.svelte";
 import { hookConfigForDebugPlan, nativeFragmentEntryPoint } from "./nativeRenderConfig";
 import { projectNativeRasterDisplay } from "@shader-studio/debug";
 import type { RenderingEngine } from "../../../rendering/src/types/RenderingEngine";
@@ -124,7 +125,7 @@ export class ShaderProcessor {
       }
 
       const result = debugPlan && this.renderEngine.compileDebugPlan
-        ? await this.renderEngine.compileDebugPlan(debugPlan, configToCompile)
+        ? await this.renderEngine.compileDebugPlan(debugPlan, viewerCameraRuntimeConfig(configToCompile))
         : await this.compileWithSlangContext(
           codeToCompile,
           configToCompile,
@@ -498,7 +499,7 @@ export class ShaderProcessor {
   ): ReturnType<RenderingEngine['compileShaderPipeline']> {
     const args: Parameters<RenderingEngine['compileShaderPipeline']> = [
       code,
-      config,
+      viewerCameraRuntimeConfig(config),
       path,
       buffers,
       customUniformDeclarations,
@@ -608,7 +609,7 @@ export class ShaderProcessor {
     // Cursor movement uses this path, so native Slang preview plans must be
     // routed here as well as through the initial shader-source compilation.
     const structuredResult = debugPlan && this.renderEngine.compileDebugPlan
-      ? await this.renderEngine.compileDebugPlan(debugPlan, configToCompile)
+      ? await this.renderEngine.compileDebugPlan(debugPlan, viewerCameraRuntimeConfig(configToCompile))
       : undefined;
     let result: CompilationResult = structuredResult ?? (debugPlan
       ? { success: false, errors: ["Native Slang debug compilation is unavailable"] }

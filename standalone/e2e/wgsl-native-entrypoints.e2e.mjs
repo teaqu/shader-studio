@@ -467,3 +467,56 @@ fn mainImage(coord: vec2f) -> vec4f { return vec4f(abs(iWorldPosition) * 0.65 + 
   await orbit();
   await expect.poll(read).not.toBe(enabled);
 });
+
+
+test('viewer camera defaults inherit globally, override per shader and pass, and survive reload', async ({ page }) => {
+  const stem = 'camera-defaults';
+  const source = `fn mainVertex(p: ptr<function, vec3f>, n: ptr<function, vec3f>, uv: ptr<function, vec2f>) { *p *= 0.65; }
+fn mainImage(coord: vec2f) -> vec4f { return vec4f(abs(iWorldPosition) * 0.65 + vec3f(0.08,0.03,0.12),1); }`;
+  const config = { version: '1.0', passes: { Image: { geometry: { type: 'cube' } } } };
+  await openFixture(page, stem, source, config);
+  await workspace(page, [['camera-other.wgsl', source], ['camera-other.sha.json', JSON.stringify(config)]]);
+  await page.getByText('Viewer camera defaults', { exact: true }).click();
+  const global = page.getByRole('checkbox', { name: 'Use viewer camera globally', exact: true });
+  const pass = page.getByRole('checkbox', { name: 'Use viewer camera', exact: true });
+  const shader = page.getByLabel('Shader viewer camera');
+  const canvas = page.getByTestId('web-preview').locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
+  const read = () => canvas.evaluate(element => element.toDataURL());
+  await expect(global).toBeChecked();
+  await expect(pass).toBeChecked();
+  await expect.poll(async () => (await centerPixel(canvas)).slice(0,3).reduce((sum,value) => sum+value,0)).toBeGreaterThan(10);
+  const enabled = await read();
+  await global.uncheck();
+  await expect(global).not.toBeChecked();
+  await expect(pass).not.toBeChecked();
+  await expect.poll(read).not.toBe(enabled);
+  const saved = () => workspace(page).then(files => JSON.parse(files[`/shaders/${stem}.sha.json`]));
+  expect((await saved()).webgpu).toBeUndefined();
+  expect((await saved()).passes.Image.useViewerCamera).toBeUndefined();
+  const fixed = await read();
+  const box = await canvas.boundingBox();
+  await page.mouse.move(box.x + box.width * 0.45, box.y + box.height * 0.45);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.65, box.y + box.height * 0.55, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(read).toBe(fixed);
+  await shader.selectOption('on');
+  await expect.poll(async () => (await saved()).webgpu?.useViewerCamera).toBe(true);
+  await expect(pass).toBeChecked();
+  await expect.poll(read).not.toBe(fixed);
+  await pass.uncheck();
+  await expect.poll(async () => (await saved()).passes.Image.useViewerCamera).toBe(false);
+  await page.getByRole('button', { name: 'Use shader default', exact: true }).click();
+  await expect.poll(async () => (await saved()).passes.Image.useViewerCamera).toBeUndefined();
+  await expect(pass).toBeChecked();
+  await page.reload();
+  await expect(pass).toBeChecked();
+  await page.getByText('Viewer camera defaults', { exact: true }).click();
+  await expect(global).not.toBeChecked();
+  await expect(shader).toHaveValue('on');
+  await page.getByTestId('shader-option-camera-other-wgsl').click();
+  await expect(pass).not.toBeChecked();
+  await expect(shader).toHaveValue('inherit');
+  await global.check();
+  await expect(pass).toBeChecked();
+});

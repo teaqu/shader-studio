@@ -56,6 +56,15 @@ suite('Shader config JSON schema', () => {
     assertInvalid({ version: '1.0', passes: { ComputeA: { type: 'compute', path: 'a.wgsl', useViewerCamera: false } } }, 'additional properties');
   });
 
+  test('accepts shader-wide viewer camera defaults and rejects malformed values', () => {
+    for (const useViewerCamera of [undefined, true, false]) {
+      assertValid({ version: '1.0', webgpu: { useViewerCamera }, passes: { Image: {} } });
+    }
+    for (const useViewerCamera of [null, 0, 'false', {}, []]) {
+      assertInvalid({ version: '1.0', webgpu: { useViewerCamera }, passes: { Image: {} } }, 'boolean');
+    }
+  });
+
   test('accepts native stages and a creation preference without changing compute selections', () => {
     for (const entryPoints of [{}, { vertex: 'vertices', fragment: 'image' }, { fragment: 'image' }]) {
       assertValid({ version: '1.0', webgpu: { defaultRenderAuthoring: 'native' }, passes: {

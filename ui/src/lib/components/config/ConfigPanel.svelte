@@ -10,6 +10,9 @@
   import BufferConfig from "./BufferConfig.svelte";
   import ScriptInfo from "./ScriptInfo.svelte";
   import StoragePanel from "./StoragePanel.svelte";
+  import ViewerCameraDefaults from "./ViewerCameraDefaults.svelte";
+  import { provideViewerCameraDefault } from "../../config/ViewerCameraContext";
+  import { addRenderPass } from "../../config/RenderPassCreation";
   import { persistConfig } from "../../config/ConfigPersistence";
   import type { ConfigFieldErrors } from "../../config/ComputeConfigMutations";
   import type { AudioVideoController } from "../../AudioVideoController";
@@ -68,6 +71,8 @@
     onConfigChange = () => {},
     onOpenInNewTab = () => {},
   }: Props = $props();
+
+  provideViewerCameraDefault(() => config);
 
   let configManager = $state<ConfigManager | undefined>(undefined);
   let activeTab: string = $state("Image");
@@ -156,18 +161,9 @@
 
   const defaultRenderAuthoring = $derived(config?.webgpu?.defaultRenderAuthoring ?? 'hooks');
   function addBuffer(authoringMode: 'hooks' | 'native' = defaultRenderAuthoring) {
-    if (!configManager) {
-      return;
-    }
-    const bufferName = configManager.addBuffer();
+    const bufferName = addRenderPass(configManager, authoringMode);
     if (bufferName) {
-      if (authoringMode === 'native') {
-        const addedPass = configManager.getConfig()?.passes[bufferName] as BufferPass | undefined;
-        if (addedPass) {
-          configManager.updateBuffer(bufferName, { ...addedPass, entryPoints: {} });
-        }
-      }
-      config = configManager.getConfig();
+      config = configManager?.getConfig() ?? null;
       if (config) {
         onConfigChange(config);
       }
@@ -812,6 +808,13 @@ continue;
         {/if}
       </div>
     </div>
+
+    {#if SHADER_LANGUAGES[language].engine === 'webgpu'}
+      <ViewerCameraDefaults {config} {transport} {shaderPath} onChange={(updated) => {
+        config = updated;
+        onConfigChange(updated);
+      }} />
+    {/if}
 
     <!-- Tab Content -->
     <div class="tab-content">

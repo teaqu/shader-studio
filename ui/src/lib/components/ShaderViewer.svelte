@@ -61,7 +61,7 @@
   import { SHADER_LANGUAGES, isShaderLanguageId } from "@shader-studio/types";
   import { resolutionStore } from "../stores/resolutionStore";
   import { aspectRatioStore } from "../stores/aspectRatioStore";
-  import { ResolutionSessionController } from "../resolution/ResolutionSessionController.svelte";
+  import { createResolutionSessionController } from "../resolution/createResolutionSessionController";
   import { FileProfileAdapter } from "../profiles/FileProfileAdapter";
   import { init as initProfiles } from "../state/profileStore.svelte";
   import { setLanguageServiceSettings } from "../state/languageServiceState.svelte";
@@ -268,7 +268,7 @@
   let configSelectedBuffer = $state('Image');
 
   // Resolution controller — created at component level so setContext works synchronously
-  const resolutionController = new ResolutionSessionController({
+  const resolutionController = createResolutionSessionController({
     get currentConfig() {
       return currentConfig;
     },

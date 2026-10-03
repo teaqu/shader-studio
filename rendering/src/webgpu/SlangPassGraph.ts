@@ -277,7 +277,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       ...resolveInstanceDraw(passConfig),
       ...resolveMeshTopology(passConfig),
       ...resolvePassRenderSettings(passConfig),
-      ...resolveMeshSettings(passConfig),
+      ...resolveMeshSettings(passConfig, config.webgpu?.useViewerCamera),
       vertexSrc: options.buffers[vertexPassKey(name)],
       ...(entryPoints ? { entryPoints } : {}),
       path,
@@ -306,7 +306,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
     warnings,
     errors,
   });
-  const imagePass = createImagePass(options.imageCode, canvasWidth, canvasHeight, imageChannels, resolvePassGeometry(imageConfig), options.buffers[vertexPassKey("Image")], resolveMeshSettings(imageConfig), language, { ...resolveVerticesDraw(imageConfig), ...resolveInstanceDraw(imageConfig), ...resolveMeshTopology(imageConfig), ...resolvePassRenderSettings(imageConfig) });
+  const imagePass = createImagePass(options.imageCode, canvasWidth, canvasHeight, imageChannels, resolvePassGeometry(imageConfig), options.buffers[vertexPassKey("Image")], resolveMeshSettings(imageConfig, config.webgpu?.useViewerCamera), language, { ...resolveVerticesDraw(imageConfig), ...resolveInstanceDraw(imageConfig), ...resolveMeshTopology(imageConfig), ...resolvePassRenderSettings(imageConfig) });
   const imageEntryPoints = resolveRenderEntryPoints("Image", imageConfig, options.imageCode, language, errors);
   if (imageEntryPoints === null) {
     return { passes: [...computePasses, ...renderPasses], storage, commonCode, warnings, errors };

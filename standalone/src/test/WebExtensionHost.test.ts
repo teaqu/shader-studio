@@ -34,6 +34,24 @@ async function createHost(options: ConstructorParameters<typeof WebExtensionHost
 }
 
 describe('WebExtensionHost', () => {
+  it('broadcasts persisted viewer camera settings to all viewer clients', async () => {
+    const host = await createHost();
+    const first = vi.fn();
+    const second = vi.fn();
+    host.onViewerMessage(first);
+    host.onViewerMessage(second);
+
+    await host.handleViewerMessage({ type: 'updateViewerCameraSettings', payload: { useViewerCamera: false } });
+    expect(first).toHaveBeenCalledWith({ type: 'viewerCameraSettings', payload: { useViewerCamera: false } });
+    expect(second).toHaveBeenCalledWith({ type: 'viewerCameraSettings', payload: { useViewerCamera: false } });
+
+    first.mockClear();
+    await host.handleViewerMessage({ type: 'requestViewerCameraSettings' });
+    expect(first).toHaveBeenCalledWith({ type: 'viewerCameraSettings', payload: { useViewerCamera: false } });
+
+    await host.handleViewerMessage({ type: 'updateViewerCameraSettings', payload: { useViewerCamera: true } });
+  });
+
   it.each(['openShader', 'activateShader'])('persists selection before broadcasting %s', async type => {
     const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), [{
       path: '/shaders/selected.glsl', contents: 'void mainImage() {}', createdAt: 1, modifiedAt: 1,
