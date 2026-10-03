@@ -13,10 +13,16 @@
   "ignoreBinaries": [
     "vsce"
   ],
+  // Vitest configs are executable and resolve built workspace outputs. Each
+  // workspace instead declares its static test roots alongside its application roots.
+  "vitest": false,
   "workspaces": {
     "debug": {
       "entry": [
-        "src/index.ts"
+        "src/index.ts",
+        "src/**/*.{bench,test,test-d,spec,spec-d}.?(c|m)[jt]s?(x)",
+        "src/**/test/**/*.{ts,svelte}",
+        "vitest*.config.{ts,mts,js,mjs}"
       ],
       "project": [
         "src/**/*.{ts,svelte}",
@@ -26,7 +32,10 @@
     },
     "extension": {
       "entry": [
-        "src/extension.ts"
+        "src/extension.ts",
+        "src/**/*.{bench,test,test-d,spec,spec-d}.?(c|m)[jt]s?(x)",
+        "src/**/test/**/*.{ts,svelte}",
+        "vitest*.config.{ts,mts,js,mjs}"
       ],
       "project": [
         "src/**/*.{ts,svelte}",
@@ -40,7 +49,10 @@
     },
     "monaco": {
       "entry": [
-        "src/index.ts"
+        "src/index.ts",
+        "src/**/*.{bench,test,test-d,spec,spec-d}.?(c|m)[jt]s?(x)",
+        "src/**/test/**/*.{ts,svelte}",
+        "vitest*.config.{ts,mts,js,mjs}"
       ],
       "project": [
         "src/**/*.{ts,svelte}",
@@ -50,7 +62,10 @@
     },
     "rendering": {
       "entry": [
-        "src/index.ts"
+        "src/index.ts",
+        "src/**/*.{bench,test,test-d,spec,spec-d}.?(c|m)[jt]s?(x)",
+        "src/**/test/**/*.{ts,svelte}",
+        "vitest*.config.{ts,mts,js,mjs}"
       ],
       "project": [
         "src/**/*.{ts,svelte}",
@@ -60,18 +75,29 @@
     },
     "shader-explorer": {
       "entry": [
-        "src/main.ts"
+        "src/main.ts",
+        "src/**/*.{bench,test,test-d,spec,spec-d}.?(c|m)[jt]s?(x)",
+        "src/**/test/**/*.{ts,svelte}",
+        "vitest*.config.{ts,mts,js,mjs}"
       ],
       "project": [
         "src/**/*.{ts,svelte}",
         "!src/**/generated/**",
         "!src/**/*.generated.ts"
+      ],
+      // The browser test environment is declared in Vitest config, which this
+      // static check intentionally does not execute.
+      "ignoreDependencies": [
+        "jsdom"
       ]
     },
     "standalone": {
       "entry": [
         "src/main.ts",
-        "src/test/vscodeStub.ts"
+        "src/test/vscodeStub.ts",
+        "src/**/*.{bench,test,test-d,spec,spec-d}.?(c|m)[jt]s?(x)",
+        "src/**/test/**/*.{ts,svelte}",
+        "vitest*.config.{ts,mts,js,mjs}"
       ],
       "project": [
         "src/**/*.{ts,svelte}",
@@ -86,7 +112,10 @@
     },
     "types": {
       "entry": [
-        "src/index.ts"
+        "src/index.ts",
+        "src/**/*.{bench,test,test-d,spec,spec-d}.?(c|m)[jt]s?(x)",
+        "src/**/test/**/*.{ts,svelte}",
+        "vitest*.config.{ts,mts,js,mjs}"
       ],
       "project": [
         "src/**/*.{ts,svelte}",
@@ -97,7 +126,10 @@
     "ui": {
       "entry": [
         "src/index.ts",
-        "src/main.ts"
+        "src/main.ts",
+        "src/**/*.{bench,test,test-d,spec,spec-d}.?(c|m)[jt]s?(x)",
+        "src/**/test/**/*.{ts,svelte}",
+        "vitest*.config.{ts,mts,js,mjs}"
       ],
       "project": [
         "src/**/*.{ts,svelte}",
@@ -111,7 +143,10 @@
     },
     "utils": {
       "entry": [
-        "src/index.ts"
+        "src/index.ts",
+        "src/**/*.{bench,test,test-d,spec,spec-d}.?(c|m)[jt]s?(x)",
+        "src/**/test/**/*.{ts,svelte}",
+        "vitest*.config.{ts,mts,js,mjs}"
       ],
       "project": [
         "src/**/*.{ts,svelte}",
@@ -121,7 +156,10 @@
     },
     "language-servers/core": {
       "entry": [
-        "src/index.ts"
+        "src/index.ts",
+        "src/**/*.{bench,test,test-d,spec,spec-d}.?(c|m)[jt]s?(x)",
+        "src/**/test/**/*.{ts,svelte}",
+        "vitest*.config.{ts,mts,js,mjs}"
       ],
       "project": [
         "src/**/*.{ts,svelte}",
@@ -131,7 +169,10 @@
     },
     "language-servers/glsl-analysis": {
       "entry": [
-        "src/index.ts"
+        "src/index.ts",
+        "src/**/*.{bench,test,test-d,spec,spec-d}.?(c|m)[jt]s?(x)",
+        "src/**/test/**/*.{ts,svelte}",
+        "vitest*.config.{ts,mts,js,mjs}"
       ],
       "project": [
         "src/**/*.{ts,svelte}",
@@ -142,7 +183,10 @@
     "language-servers/glsl": {
       "entry": [
         "src/index.ts",
-        "src/worker.ts"
+        "src/worker.ts",
+        "src/**/*.{bench,test,test-d,spec,spec-d}.?(c|m)[jt]s?(x)",
+        "src/**/test/**/*.{ts,svelte}",
+        "vitest*.config.{ts,mts,js,mjs}"
       ],
       "project": [
         "src/**/*.{ts,svelte}",
@@ -153,7 +197,10 @@
     "language-servers/slang": {
       "entry": [
         "src/index.ts",
-        "src/worker.ts"
+        "src/worker.ts",
+        "src/**/*.{bench,test,test-d,spec,spec-d}.?(c|m)[jt]s?(x)",
+        "src/**/test/**/*.{ts,svelte}",
+        "vitest*.config.{ts,mts,js,mjs}"
       ],
       "project": [
         "src/**/*.{ts,svelte}",
@@ -163,7 +210,10 @@
     },
     "language-servers/wgsl-analysis": {
       "entry": [
-        "src/index.ts"
+        "src/index.ts",
+        "src/**/*.{bench,test,test-d,spec,spec-d}.?(c|m)[jt]s?(x)",
+        "src/**/test/**/*.{ts,svelte}",
+        "vitest*.config.{ts,mts,js,mjs}"
       ],
       "project": [
         "src/**/*.{ts,svelte}",
@@ -174,7 +224,10 @@
     "language-servers/wgsl": {
       "entry": [
         "src/index.ts",
-        "src/worker.ts"
+        "src/worker.ts",
+        "src/**/*.{bench,test,test-d,spec,spec-d}.?(c|m)[jt]s?(x)",
+        "src/**/test/**/*.{ts,svelte}",
+        "vitest*.config.{ts,mts,js,mjs}"
       ],
       "project": [
         "src/**/*.{ts,svelte}",
