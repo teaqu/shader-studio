@@ -25,7 +25,7 @@ export function splitTopLevelSegments(tokens: SlangToken[], startIndex: number, 
     } else if ([")", "]", "}", ">"].includes(tokens[index].text)) {
       depth -= 1;
     } else if (tokens[index].text === separator && depth === 0) {
-      segments.push([start, index]); start = index + 1; 
+      segments.push([start, index]); start = index + 1;
     }
   }
   segments.push([start, endIndex]);
@@ -137,13 +137,13 @@ export function findTopLevelToken(tokens: SlangToken[], startIndex: number, endI
 }
 
 export function moduleScopeId(document: SlangTokenDocument): string {
-  return `scope:${document.sourceUri}:0:0`; 
+  return `scope:${document.sourceUri}:0:0`;
 }
 export function rangeStartOffset(document: SlangTokenDocument, range: DebugSourceRange): number {
-  return offsetAt(document.source, range.start); 
+  return offsetAt(document.source, range.start);
 }
 export function rangeEndOffset(document: SlangTokenDocument, range: DebugSourceRange): number {
-  return offsetAt(document.source, range.end); 
+  return offsetAt(document.source, range.end);
 }
 function offsetAt(source: string, target: { line: number; character: number }): number {
   let line = 0; let character = 0;
@@ -152,9 +152,9 @@ function offsetAt(source: string, target: { line: number; character: number }): 
       return offset;
     }
     if (source[offset] === "\r" && source[offset + 1] === "\n") {
-      offset += 1; line += 1; character = 0; 
+      offset += 1; line += 1; character = 0;
     } else if (source[offset] === "\r" || source[offset] === "\n") {
-      line += 1; character = 0; 
+      line += 1; character = 0;
     } else {
       character += 1;
     }
@@ -162,8 +162,8 @@ function offsetAt(source: string, target: { line: number; character: number }): 
   return source.length;
 }
 export function offsetForPosition(document: SlangTokenDocument, position: { line: number; character: number }, _tokens: SlangToken[]): number {
-  return offsetAt(document.source, position); 
+  return offsetAt(document.source, position);
 }
 export function stableId(prefix: string, token: SlangToken): string {
-  return `${prefix}:${token.sourceUri}:${token.range.start.line}:${token.range.start.character}`; 
+  return `${prefix}:${token.sourceUri}:${token.range.start.line}:${token.range.start.character}`;
 }

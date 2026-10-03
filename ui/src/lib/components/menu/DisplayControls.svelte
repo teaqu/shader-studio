@@ -52,19 +52,19 @@ resCtrl.setImageCustomResolution(String(widthInput), String(heightInput));
     widthInput = null; heightInput = null; resCtrl.resetCurrentTarget();
   }
   function syncWithConfig(event: Event) {
- resCtrl.setSyncWithConfig((event.target as HTMLInputElement).checked); 
+ resCtrl.setSyncWithConfig((event.target as HTMLInputElement).checked);
 }
   function setBufferWidth(event: Event) {
- resCtrl.setBufferFixedResolution((event.target as HTMLInputElement).value, resCtrl.menuVM.bufferResolutionState.height); 
+ resCtrl.setBufferFixedResolution((event.target as HTMLInputElement).value, resCtrl.menuVM.bufferResolutionState.height);
 }
   function setBufferHeight(event: Event) {
- resCtrl.setBufferFixedResolution(resCtrl.menuVM.bufferResolutionState.width, (event.target as HTMLInputElement).value); 
+ resCtrl.setBufferFixedResolution(resCtrl.menuVM.bufferResolutionState.width, (event.target as HTMLInputElement).value);
 }
   function changeZoom(event: Event) {
- zoomLevel = parseFloat((event.target as HTMLInputElement).value); onZoomChange(zoomLevel); 
+ zoomLevel = parseFloat((event.target as HTMLInputElement).value); onZoomChange(zoomLevel);
 }
   function setBlackBackground(event: Event) {
- resolutionStore.setForceBlackBackground((event.target as HTMLInputElement).checked); 
+ resolutionStore.setForceBlackBackground((event.target as HTMLInputElement).checked);
 }
 </script>
 

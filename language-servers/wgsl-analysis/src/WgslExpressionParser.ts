@@ -64,34 +64,34 @@ export class WgslExpressionParser {
   }
 
   private parseLogicalOr(): WgslExpression | undefined {
-    return this.parseBinaryLevel(() => this.parseLogicalAnd(), new Set(["||"])); 
+    return this.parseBinaryLevel(() => this.parseLogicalAnd(), new Set(["||"]));
   }
   private parseLogicalAnd(): WgslExpression | undefined {
-    return this.parseBinaryLevel(() => this.parseBitwiseOr(), new Set(["&&"])); 
+    return this.parseBinaryLevel(() => this.parseBitwiseOr(), new Set(["&&"]));
   }
   private parseBitwiseOr(): WgslExpression | undefined {
-    return this.parseBinaryLevel(() => this.parseBitwiseXor(), new Set(["|"])); 
+    return this.parseBinaryLevel(() => this.parseBitwiseXor(), new Set(["|"]));
   }
   private parseBitwiseXor(): WgslExpression | undefined {
-    return this.parseBinaryLevel(() => this.parseBitwiseAnd(), new Set(["^"])); 
+    return this.parseBinaryLevel(() => this.parseBitwiseAnd(), new Set(["^"]));
   }
   private parseBitwiseAnd(): WgslExpression | undefined {
-    return this.parseBinaryLevel(() => this.parseEquality(), new Set(["&"])); 
+    return this.parseBinaryLevel(() => this.parseEquality(), new Set(["&"]));
   }
   private parseEquality(): WgslExpression | undefined {
-    return this.parseBinaryLevel(() => this.parseRelational(), new Set(["==", "!="])); 
+    return this.parseBinaryLevel(() => this.parseRelational(), new Set(["==", "!="]));
   }
   private parseRelational(): WgslExpression | undefined {
-    return this.parseBinaryLevel(() => this.parseShift(), new Set(["<", ">", "<=", ">="])); 
+    return this.parseBinaryLevel(() => this.parseShift(), new Set(["<", ">", "<=", ">="]));
   }
   private parseShift(): WgslExpression | undefined {
-    return this.parseBinaryLevel(() => this.parseAdditive(), new Set(["<<", ">>"])); 
+    return this.parseBinaryLevel(() => this.parseAdditive(), new Set(["<<", ">>"]));
   }
   private parseAdditive(): WgslExpression | undefined {
-    return this.parseBinaryLevel(() => this.parseMultiplicative(), new Set(["+", "-"])); 
+    return this.parseBinaryLevel(() => this.parseMultiplicative(), new Set(["+", "-"]));
   }
   private parseMultiplicative(): WgslExpression | undefined {
-    return this.parseBinaryLevel(() => this.parseUnary(), new Set(["*", "/", "%"])); 
+    return this.parseBinaryLevel(() => this.parseUnary(), new Set(["*", "/", "%"]));
   }
 
   private parseUnary(): WgslExpression | undefined {
