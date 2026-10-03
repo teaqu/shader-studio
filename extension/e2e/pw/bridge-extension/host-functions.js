@@ -1351,10 +1351,6 @@ module.exports = Object.freeze({
   "a8d5a6d8735adc2faf4c24694c0d87e821927683d2a88dc13f09fd447d01b0f5": async (vscode, path) => {
       await vscode.workspace.fs.delete(vscode.Uri.file(path)).then(undefined, () => {});
     },
-  "aafd8728f79f622eef9993cbb6a3a8a0f066b17e66c7e1791102708909149de7": vscode => vscode.extensions.all
-      .filter(extension => !extension.packageJSON.isBuiltin)
-      .map(extension => extension.id)
-      .sort(),
   "ac1126e19d37b0bc4bb092e5234d613a32702f977ab2cbbeea708d5dc2de2ea7": async (vscode, documentUri, expected) => {
       const found = vscode.languages.getDiagnostics(vscode.Uri.parse(documentUri)).find(item => item.message.toLocaleLowerCase().includes(expected.toLocaleLowerCase()));
       return found ? {
@@ -2104,6 +2100,10 @@ module.exports = Object.freeze({
       colorPresentations: (colorPresentations ?? []).map(item => item.label)
     };
   },
+  "fe97d766ec7508a9e931fdd19830020981c6c6fb4533fdfd326b2a698c9142f5": vscode => vscode.extensions.all
+        .filter(extension => !extension.packageJSON.isBuiltin)
+        .map(extension => extension.id)
+        .sort(),
   "fecdff6d5ff607f03b1a50c0d6898143c00008eec397665cecd58203388148a6": async (vscode, path, text) => {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
     const editor = await vscode.window.showTextDocument(document, {
