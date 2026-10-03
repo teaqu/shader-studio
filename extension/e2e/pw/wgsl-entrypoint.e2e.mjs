@@ -40,7 +40,7 @@ test('opens a WGSL entry point with a return type before and after reloading VS 
 });
 
 
-test('persists shader viewer camera defaults and follows VS Code settings through reload @gpu', async ({ vscode }) => {
+test('persists per-pass viewer camera overrides and follows VS Code settings through reload @gpu', async ({ vscode }) => {
   mkdirSync(fixtureDir, { recursive: true });
   const path = join(fixtureDir, 'camera.wgsl');
   const configPath = join(fixtureDir, 'camera.sha.json');
@@ -57,38 +57,36 @@ test('persists shader viewer camera defaults and follows VS Code settings throug
     await open();
     let frame = await vscode.shaderFrame();
     await frame.getByLabel('Toggle config panel', { exact: true }).click();
-    await frame.getByText('Viewer camera defaults', { exact: true }).click();
-    const global = () => frame.getByLabel('Use viewer camera globally', { exact: true });
     const pass = () => frame.getByLabel('Use viewer camera', { exact: true });
-    await expect(global()).toHaveCount(0);
+    const shaderDefaults = () => frame.getByText('Viewer camera defaults', { exact: true });
+    const shaderCamera = () => frame.getByLabel('Shader viewer camera', { exact: true });
+    await expect(shaderDefaults()).toHaveCount(0);
+    await expect(shaderCamera()).toHaveCount(0);
     await expect(pass()).toBeChecked();
     await vscode.evaluateInHost(async vscode => vscode.workspace.getConfiguration('shader-studio').update('webgpu.useViewerCamera', false, vscode.ConfigurationTarget.Global));
     await expect(pass()).not.toBeChecked();
     await expect.poll(() => vscode.evaluateInHost(vscode => vscode.workspace.getConfiguration('shader-studio').inspect('webgpu.useViewerCamera')?.globalValue)).toBe(false);
     expect(JSON.parse(readFileSync(configPath, 'utf8')).webgpu).toBeUndefined();
-    await frame.getByLabel('Shader viewer camera').selectOption('on');
+    expect(JSON.parse(readFileSync(configPath, 'utf8')).passes.Image.useViewerCamera).toBeUndefined();
+    await pass().check();
     await expect(pass()).toBeChecked();
-    await expect.poll(() => JSON.parse(readFileSync(configPath, 'utf8')).webgpu?.useViewerCamera).toBe(true);
+    await expect.poll(() => JSON.parse(readFileSync(configPath, 'utf8')).passes.Image.useViewerCamera).toBe(true);
     await vscode.evaluateInHost(async vscode => {
       setTimeout(() => vscode.commands.executeCommand('workbench.action.reloadWindow'), 100);
     });
     await expect.poll(() => frame.isDetached()).toBe(true);
     await open();
     frame = await vscode.shaderFrame();
-    if (!await frame.getByLabel('Shader viewer camera', { exact: true }).isVisible()) {
-      const defaults = frame.getByText('Viewer camera defaults', { exact: true });
-      if (!await defaults.isVisible()) {
-        await frame.getByLabel('Toggle config panel', { exact: true }).click();
-      }
-      await defaults.click();
+    if (!await pass().isVisible()) {
+      await frame.getByLabel('Toggle config panel', { exact: true }).click();
     }
     await expect(pass()).toBeChecked();
-    await expect(global()).toHaveCount(0);
-    await expect(frame.getByLabel('Shader viewer camera')).toHaveValue('on');
-    await frame.getByLabel('Shader viewer camera').selectOption('inherit');
+    await expect(shaderDefaults()).toHaveCount(0);
+    await expect(shaderCamera()).toHaveCount(0);
+    await frame.getByRole('button', { name: 'Use default', exact: true }).click();
     await expect(pass()).not.toBeChecked();
+    await expect.poll(() => JSON.parse(readFileSync(configPath, 'utf8')).passes.Image.useViewerCamera).toBeUndefined();
     await vscode.evaluateInHost(async vscode => vscode.workspace.getConfiguration('shader-studio').update('webgpu.useViewerCamera', true, vscode.ConfigurationTarget.Global));
-    await expect(global()).toHaveCount(0);
     await expect(pass()).toBeChecked();
   } finally {
     await vscode.evaluateInHost(async (vscode, previous) => vscode.workspace.getConfiguration('shader-studio').update('webgpu.useViewerCamera', previous ?? undefined, vscode.ConfigurationTarget.Global), previous);

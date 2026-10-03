@@ -10,7 +10,6 @@
   import BufferConfig from "./BufferConfig.svelte";
   import ScriptInfo from "./ScriptInfo.svelte";
   import StoragePanel from "./StoragePanel.svelte";
-  import ViewerCameraDefaults from "./ViewerCameraDefaults.svelte";
   import { provideViewerCameraDefault } from "../../config/ViewerCameraContext";
   import { addRenderPass } from "../../config/RenderPassCreation";
   import { persistConfig } from "../../config/ConfigPersistence";
@@ -808,13 +807,6 @@ continue;
         {/if}
       </div>
     </div>
-
-    {#if SHADER_LANGUAGES[language].engine === 'webgpu'}
-      <ViewerCameraDefaults {config} {transport} {shaderPath} onChange={(updated) => {
-        config = updated;
-        onConfigChange(updated);
-      }} />
-    {/if}
 
     <!-- Tab Content -->
     <div class="tab-content">

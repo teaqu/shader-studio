@@ -29,7 +29,7 @@
     {#if config.useViewerCamera === undefined}
       <span>Using {shaderDefault() === undefined ? 'global' : 'shader'} default</span>
     {:else}
-      <button onclick={reset}>Use shader default</button>
+      <button onclick={reset}>Use default</button>
     {/if}
   </div>
 {/if}
