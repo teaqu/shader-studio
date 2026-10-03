@@ -20,7 +20,7 @@ describe("ScreenCapture", () => {
     expect(capture.acquire()).toBeNull();
     expect(request).not.toHaveBeenCalled();
     await expect(capture.start()).resolves.toBeUndefined();
-    expect(request).toHaveBeenCalledWith({ video: true, audio: false });
+    expect(request).toHaveBeenCalledWith({ video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }, audio: false });
     const first = capture.acquire();
     const second = capture.acquire();
     expect(first?.stream).toBe(source);

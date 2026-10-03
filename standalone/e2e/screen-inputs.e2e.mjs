@@ -7,6 +7,7 @@ for (const language of ['glsl', 'wgsl', 'slang']) {
     await page.addInitScript(() => {
       window.__screenStreams = [];
       window.__screenCalls = 0;
+      window.__screenColor = '#00ffff';
       navigator.mediaDevices.getDisplayMedia = async constraints => {
         if (!navigator.userActivation.isActive || !constraints.video || constraints.audio !== false) {
 throw new Error('Screen sharing must start from a click without audio');
@@ -20,7 +21,10 @@ throw new Error('Screen sharing must start from a click without audio');
         ctx.fillRect(0, 0, 160, 120);
         const stream = canvas.captureStream(30);
         window.__screenStreams.push(stream);
-        const timer = setInterval(() => ctx.fillRect(0, 0, 160, 120), 30);
+        const timer = setInterval(() => {
+          ctx.fillStyle = window.__screenColor;
+          ctx.fillRect(0, 0, 160, 120);
+        }, 30);
         stream.getVideoTracks()[0].addEventListener('ended', () => clearInterval(timer));
         return stream;
       };
@@ -49,22 +53,31 @@ throw new Error('Screen sharing must start from a click without audio');
     await start.click();
     await expect(page.getByRole('button', { name: 'Stop screen sharing', exact: true })).toBeVisible();
     const output = page.getByTestId('web-preview').locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
-    const green = async () => {
+    const expectColor = async (color = [0, 255, 0]) => {
       await expect.poll(async () => {
         const url = await output.evaluate(e => e.toDataURL());
         const { data, width, height } = PNG.sync.read(Buffer.from(url.split(',')[1], 'base64'));
         const offset = (Math.floor(height / 2) * width + Math.floor(width / 2)) * 4;
         return [...data.subarray(offset, offset + 3)];
-      }).toEqual([0, 255, 0]);
+      }).toEqual(color);
     };
-    await green();
+    await expectColor();
+    await expect(page.getByText(/Open the Screen channel and click Start sharing/)).toHaveCount(0);
     const preview = page.getByRole('button', { name: 'Screen', exact: true }).getByLabel('Live screen preview');
     await expect.poll(() => preview.evaluate(e => [...e.getContext('2d').getImageData(80, 60, 1, 1).data])).toEqual([0, 255, 255, 255]);
+    await page.evaluate(() => {
+ window.__screenColor = '#ffff00';
+});
+    await expectColor([255, 0, 0]);
+    await page.evaluate(() => {
+ window.__screenColor = '#00ffff';
+});
+    await expectColor();
     await page.getByRole('button', { name: 'Close', exact: true }).click();
     await page.getByRole('button', { name: '+ Add Channel', exact: true }).click();
     await page.getByRole('button', { name: /Keyboard$/ }).click();
     await page.getByRole('button', { name: 'Close', exact: true }).click();
-    await green();
+    await expectColor();
     expect(await page.evaluate(() => window.__screenCalls)).toBe(1);
     await page.locator('.channel-row').filter({ hasText: 'screen' }).click();
     await page.getByRole('button', { name: 'Stop screen sharing', exact: true }).click();
@@ -75,7 +88,7 @@ throw new Error('Screen sharing must start from a click without audio');
     await expect(start).toBeEnabled();
     expect(await page.evaluate(() => window.__screenCalls)).toBe(0);
     await start.click();
-    await green();
+    await expectColor();
     await page.getByRole('button', { name: 'Close', exact: true }).click();
     await page.getByTestId('shader-option-plain-glsl').click();
     await expect.poll(() => page.evaluate(() => window.__screenStreams.every(s => s.getTracks().every(t => t.readyState === 'ended')))).toBe(true);

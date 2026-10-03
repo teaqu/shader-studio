@@ -492,6 +492,8 @@ using Screen to release capture. A page reload also needs a new selection from t
 browser picker. Screen capture needs HTTPS or localhost, and browser/operating
 system permission just like Webcam.
 
+Screen requests 1920 × 1080 video at 30 fps when the browser supports these capture preferences and uploads only newly presented frames. Sources that do not support these preferences keep their available resolution. The channel dimensions report the captured video size.
+
 ### Browser Audio
 
 Choose **Browser Audio** in **Audio**, then click **Start sharing**. For a song

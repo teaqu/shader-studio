@@ -1,3 +1,4 @@
+import { VideoFrameGate } from "./VideoFrameGate";
 import { ScreenCapture } from "./ScreenCapture";
 import { SystemAudioCapture } from "./SystemAudioCapture";
 import type { TextureBackend, TextureFilter, TextureWrap } from "./TextureBackend";
@@ -29,6 +30,7 @@ interface LiveInput<T> {
   stream: MediaStream;
   texture: T;
   video?: HTMLVideoElement;
+  frameGate?: VideoFrameGate;
   source?: MediaStreamAudioSourceNode;
   analyser?: AnalyserNode;
   gain?: GainNode;
@@ -152,8 +154,9 @@ export class LiveInputTextureManager<T> {
   public updateTextures(): void {
     for (const type of ["webcam", "screen"] as const) {
       const video = this.inputs.get(type);
-      if (video?.video && video.video.videoWidth > 0 && video.video.videoHeight > 0) {
+      if (video?.video && video.video.videoWidth > 0 && video.video.videoHeight > 0 && (!video.frameGate || video.frameGate.needsUpload())) {
         this.backend.updateTextureFromImage(video.texture, video.video);
+        video.frameGate?.uploaded();
       }
     }
     for (const microphone of this.inputs.values()) {
@@ -223,7 +226,7 @@ export class LiveInputTextureManager<T> {
         }
       });
       if (!lease) {
-        return { texture: null, warning: "Open the Screen channel and click Start sharing to choose a screen, window or tab." };
+        return { texture: null };
       }
       this.provisionalCaptures.set(lease.stream, undefined);
       this.provisionalReleases.set(lease.stream, lease.release);
@@ -305,7 +308,7 @@ export class LiveInputTextureManager<T> {
         this.backend.destroyTexture(texture);
         throw new Error("capture was stopped during texture creation");
       }
-      const input: LiveInput<T> = { stream, texture, video, releaseCapture };
+      const input: LiveInput<T> = { stream, texture, video, releaseCapture, frameGate: type === "screen" ? new VideoFrameGate(video) : undefined };
       input.onEnded = () => this.release(type, input);
       for (const track of stream.getTracks()) {
         track.addEventListener("ended", input.onEnded);
@@ -451,6 +454,7 @@ export class LiveInputTextureManager<T> {
     } else {
       this.stopStream(input.stream);
     }
+    input.frameGate?.dispose();
     input.video?.pause();
     if (input.video) {
       input.video.srcObject = null;

@@ -10,7 +10,12 @@ export class ScreenCapture extends SharedMediaCapture {
     if (!navigator.mediaDevices?.getDisplayMedia) {
       return "Screen sharing needs a supported browser on localhost or HTTPS.";
     }
-    return navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+    // Display capture rejects initial max/exact constraints. Ideals let the
+    // browser scale its selected source without blocking capture readiness.
+    return navigator.mediaDevices.getDisplayMedia({
+      video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
+      audio: false,
+    });
   }
 
   protected prepareStream(stream: MediaStream): string | undefined {

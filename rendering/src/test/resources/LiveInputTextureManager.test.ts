@@ -128,7 +128,11 @@ describe("LiveInputTextureManager", () => {
   });
 
   it("starts screen capture explicitly and binds shared video without requesting a camera", async () => {
-    const video = { muted: false, playsInline: false, autoplay: false, srcObject: null, videoWidth: 640, videoHeight: 480, style: {}, play: vi.fn().mockResolvedValue(undefined), pause: vi.fn(), remove: vi.fn() };
+    let onFrame!: VideoFrameRequestCallback;
+    const video = { requestVideoFrameCallback: vi.fn((callback: VideoFrameRequestCallback) => {
+      onFrame = callback;
+      return 1;
+    }), cancelVideoFrameCallback: vi.fn(), muted: false, playsInline: false, autoplay: false, srcObject: null, videoWidth: 640, videoHeight: 480, style: {}, play: vi.fn().mockResolvedValue(undefined), pause: vi.fn(), remove: vi.fn() };
     vi.spyOn(document, "createElement").mockReturnValue(video as unknown as HTMLVideoElement);
     vi.spyOn(document.body, "appendChild").mockImplementation(node => node);
     const capture = new ScreenCapture();
@@ -136,16 +140,22 @@ describe("LiveInputTextureManager", () => {
     const release = vi.fn();
     const acquire = vi.spyOn(capture, "acquire").mockReturnValueOnce(null).mockReturnValue({ stream: mockStream as unknown as MediaStream, release });
     const screen = new LiveInputTextureManager(textureBackend, new SystemAudioCapture(), capture);
-    expect((await screen.load("screen")).warning).toContain("Start sharing");
+    expect((await screen.load("screen")).warning).toBeUndefined();
     expect(start).not.toHaveBeenCalled();
     await expect(screen.startScreen({ vflip: false })).resolves.toBeUndefined();
     expect(screen.getVideoElement("screen")).toBe(video);
     screen.updateTextures();
     expect(textureBackend.updateTextureFromImage).toHaveBeenCalledWith(screen.getTexture("screen"), video);
+    screen.updateTextures();
+    expect(textureBackend.updateTextureFromImage).toHaveBeenCalledTimes(1);
+    onFrame(0, {} as VideoFrameCallbackMetadata);
+    screen.updateTextures();
+    expect(textureBackend.updateTextureFromImage).toHaveBeenCalledTimes(2);
     expect(getUserMedia).not.toHaveBeenCalled();
     screen.cleanup();
     expect(release).toHaveBeenCalledOnce();
     expect(video.remove).toHaveBeenCalled();
+    expect(video.cancelVideoFrameCallback).toHaveBeenCalledWith(1);
     acquire.mockRestore();
   });
 
