@@ -93,7 +93,16 @@ export function ensureSlangWasm(
   }
 }
 
-if (process.argv[1] === new URL(import.meta.url).pathname) {
+/**
+ * Compare native filenames, decoding file-URL escapes and Windows drive letters.
+ * @param {string | undefined} entrypoint
+ * @param {string} moduleUrl
+ */
+export function isMainScript(entrypoint, moduleUrl) {
+  return entrypoint !== undefined && resolve(entrypoint) === fileURLToPath(moduleUrl);
+}
+
+if (isMainScript(process.argv[1], import.meta.url)) {
   const result = ensureSlangWasm();
   if (result.downloaded) {
     console.log(`Downloaded Slang WASM to ${result.wasmPath}`);

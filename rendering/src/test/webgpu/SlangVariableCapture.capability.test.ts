@@ -1,3 +1,4 @@
+import { slangWasmPath } from './slangWasmPath';
 import { beforeAll, describe, expect, it } from "vitest";
 import SlangModuleFactory from "../../../../ui/src/slang/slang-wasm.js";
 import { SlangDebugEngine } from "../../../../debug/src";
@@ -213,8 +214,7 @@ describe("Slang variable capture advanced-syntax capability", () => {
 
   beforeAll(async () => {
     const slang = await SlangModuleFactory({
-      locateFile: () => new URL("../../../../ui/src/slang/slang-wasm.wasm", import.meta.url).pathname
-        .replace(/^\/@fs/, ""),
+      locateFile: () => slangWasmPath(),
     });
     compiler = new SlangCompiler(slang as unknown as SlangModuleApi);
   });

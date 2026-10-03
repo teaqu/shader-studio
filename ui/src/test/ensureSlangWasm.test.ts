@@ -2,11 +2,13 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import type { ExecFileSyncOptions } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   getSlangWasmPath,
   ensureSlangWasm,
+  isMainScript,
   SLANG_ARCHIVE_SHA256,
   SLANG_ARCHIVE_URL,
   SLANG_VERSION,
@@ -14,6 +16,18 @@ import {
 } from '../../scripts/ensure-slang-wasm.mjs';
 
 const digestOf = (content: string) => createHash('sha256').update(content).digest('hex');
+
+describe('Slang installer script entrypoint', () => {
+  it('recognizes a native path even when its file URL contains escaped spaces', () => {
+    const script = resolve('directory with spaces', 'ensure-slang-wasm.mjs');
+    expect(isMainScript(script, pathToFileURL(script).href)).toBe(true);
+  });
+  it('does not execute when imported or when another script is the entrypoint', () => {
+    const script = resolve('ensure-slang-wasm.mjs');
+    expect(isMainScript(undefined, pathToFileURL(script).href)).toBe(false);
+    expect(isMainScript(resolve('other.mjs'), pathToFileURL(script).href)).toBe(false);
+  });
+});
 
 /** Stand in for the release archive: curl writes it, unzip unpacks the binary. */
 function fakeRelease(archive: string, wasm: string) {

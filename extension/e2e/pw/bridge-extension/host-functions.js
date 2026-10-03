@@ -45,20 +45,6 @@ module.exports = Object.freeze({
           line: d.range.start.line,
           column: d.range.start.character
         })),
-  "074eb074a8085b46311cf0e343f86492e0dbd13a71f27b45ea47fbc81bcfb80c": async (vscode, directory) => {
-    // The webview may own focus. Revert each dirty fixture's text editor
-    // explicitly before deleting it, so the next test cannot open a save prompt.
-    for (const document of vscode.workspace.textDocuments) {
-      if (!document.isDirty || !document.uri.fsPath.startsWith(directory + '/')) {
-        continue;
-      }
-      await vscode.window.showTextDocument(document, {
-        preserveFocus: false,
-        preview: false
-      });
-      await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
-    }
-  },
   "0769af1832b50a2de20af4745d3bb380fdc0357c8810a30142c05299b31a4348": async (vscode, targetPath) => {
       await vscode.workspace.getConfiguration('shader-studio').update('languageServers.glsl.enabled', true, vscode.ConfigurationTarget.Global);
       const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
@@ -131,6 +117,8 @@ module.exports = Object.freeze({
     await vscode.commands.executeCommand('shader-studio.view');
     return true;
   },
+  "101e8caa750435779f6315851d23cb7b4727f4f2b40872c97e77d180cdfc1e82": (vscode, target) =>
+    vscode.window.activeTextEditor?.document.uri.fsPath !== vscode.Uri.file(target).fsPath,
   "10933001bf8c381cc2dc791a142cd7f392a15a7d2b6fa276e850d932f47ea40c": async (vscode, p) => {
     const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(p));
     return folder ? folder.uri.fsPath : null;
@@ -276,6 +264,7 @@ module.exports = Object.freeze({
     editor.selection = new vscode.Selection(position, position);
     editor.revealRange(new vscode.Range(position, position));
   },
+  "14acd47e513607dc0fc430e8c00da3c36843383fd8af499dfa45dd926da207e3": (vscode, path) => vscode.Uri.file(path).toString(),
   "14e53720136a03853e8834ce5c7b9b6b1d4fd7715a7e76a30e3cdb4877bf1b70": async (vscode, path, text) => {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
     const editor = await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.One, preview: false });
@@ -324,10 +313,13 @@ module.exports = Object.freeze({
       });
       return true;
     },
-  "1a727b995077ba7138a027eef97a88c5dcaf177c0d4d4e138da08422d2bdf4ce": (vscode, target) => vscode.window.activeTextEditor?.document.uri.fsPath !== target,
   "1b5e875a113099bca026f279f8c6e78a166f7337249611b62664b4cd5c1e8900": async (vscode, path) =>
         (await vscode.workspace.openTextDocument(vscode.Uri.file(path))).uri.toString(),
   "1d23a6f81b12e1b4e2b36d6f7cc27d38740741e04670fac0f7660b33033af42e": async vscode => vscode.commands.executeCommand('workbench.action.closeAllEditors'),
+  "1d88c3d193e52a222ec233332ebbfb1971f1b37a1f88e95a73729bd409bc7c6b": vscode => ({
+      active: vscode.window.activeTextEditor?.document.uri.toString(),
+      previews: vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab => tab.label === 'Shader Studio').length
+    }),
   "1e039bae5b8799440c3f752da1f3f9a434f9fac1595f7df84a4c7e3a16d6ed82": async (vscode, nextEnabled, key) => {
       await vscode.workspace.getConfiguration('shader-studio').update(key, nextEnabled, vscode.ConfigurationTarget.Global);
     },
@@ -336,6 +328,7 @@ module.exports = Object.freeze({
         key, nextEnabled, vscode.ConfigurationTarget.Global,
       );
     },
+  "1eb659ee3dc4b14fc0b50d9374faeb233d0f7f8d4a084df10b55993b89146766": (vscode, path) => vscode.workspace.textDocuments.find(document => document.uri.fsPath === vscode.Uri.file(path).fsPath)?.getText() ?? '',
   "1f345413b38f4866ffd2e85b93fb5a722c1279339c0a3eff77a522e9e7fe3e72": async vscode => {
         const editor = vscode.window.activeTextEditor;
         const text = editor.document.getText();
@@ -369,9 +362,22 @@ module.exports = Object.freeze({
   "22082465fa913471459f28abcde68ee1d1ca1e56c65c7ab013d230f7d37a155f": async api => {
       await api.commands.executeCommand('shader-studio.toggleEditorOverlay');
     },
+  "22c40b78a7c0c090b4b7d97719b0f0e1a630e19a8ea8c8c47ed1a9ba08694e0a": async (vscode, directory) => {
+    // The webview may own focus. Revert each dirty fixture's text editor
+    // explicitly before deleting it, so the next test cannot open a save prompt.
+    for (const document of vscode.workspace.textDocuments) {
+      const prefix = vscode.Uri.file(directory).fsPath + (process.platform === 'win32' ? '\\' : '/');
+      if (!document.isDirty || !document.uri.fsPath.startsWith(prefix)) {
+        continue;
+      }
+      await vscode.window.showTextDocument(document, { preserveFocus: false, preview: false });
+      await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
+    }
+  },
   "23997a58eead2b1f2350cdbb0da2b962b7e82a7284f3e220bbea707ea8eea64a": async vscode => {
       await vscode.commands.executeCommand('notifications.clearAll');
     },
+  "2452e7465c7f5cc5516195b66cd0383e54046fc8f672d3dfbfd0ebbad74113a2": vscode => vscode.window.activeTextEditor?.document.eol,
   "247ab002b3611504e1a4c684730bc6d7a55c109b61de2cc756c52db55021f741": async (vscode, paths) => {
           const shaderUri = vscode.Uri.file(paths[0]);
           const shader = vscode.workspace.textDocuments.find((document) => document.uri.toString() === shaderUri.toString());
@@ -392,8 +398,8 @@ module.exports = Object.freeze({
   "27bb6dc4f23184944f68c7f27c63c296bcb93975d289e0ab557b50f7dfc36d94": async vscode => {
         await vscode.commands.executeCommand('workbench.action.closeAllEditors');
       },
-  "27cc7075022044b2d1f284ba541baa6fbebf735fd35e7541c15d7bbf55af0cba": async (vscode, targetPath) => vscode.workspace.textDocuments.find(document => document.uri.fsPath === targetPath)?.getText() ?? '',
   "280857eff92a514a59936463d599e668892caadac8d308839c4023d6c2a2200e": async vscode => vscode.commands.executeCommand('shader-studio.view'),
+  "28085a036749eafcb081a02b7780e043ef85c75a5bb71d76ba0736cde3e358a2": async (vscode, targetPath) => vscode.workspace.textDocuments.find(document => document.uri.fsPath === vscode.Uri.file(targetPath).fsPath)?.getText() ?? '',
   "2830fea743680d0bf4553e814db9bc015031d176e0fec16d711309dfd7c2545c": async (api, path) => {
     const document = await api.workspace.openTextDocument(api.Uri.file(path));
     const editor = await api.window.showTextDocument(document, {
@@ -692,10 +698,6 @@ module.exports = Object.freeze({
   "4712844515b91874a9b2323322aa32f4a5cf705b97b938c28a5ddfbb6c48ed63": async (api) => {
         await api.commands.executeCommand('shader-studio.view');
       },
-  "476bff9743d1f8bdf3ca886e47b0f0799f5474539ba6c324cfc03450dcff85d1": vscode => ({
-      active: vscode.window.activeTextEditor?.document.uri.fsPath,
-      previews: vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab => tab.label === 'Shader Studio').length
-    }),
   "482197e1f8cbe2638a77658506b4e236ee046d636db8f707dbaa0b226bc5c466": async (vscode, path, target, targetOffset) => {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
     const editor = await vscode.window.showTextDocument(document, {
@@ -1029,17 +1031,6 @@ module.exports = Object.freeze({
       const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
       await vscode.window.showTextDocument(document, { preview: true });
     },
-  "738d6a9921ab3233f956c644f655e8d9ca52fd62b178af3c520221c8321905e7": async (vscode, directory) => {
-    // The webview may own focus. Revert each dirty fixture's text editor
-    // explicitly before deleting it, so the next test cannot open a save prompt.
-    for (const document of vscode.workspace.textDocuments) {
-      if (!document.isDirty || !document.uri.fsPath.startsWith(directory + '/')) {
-        continue;
-      }
-      await vscode.window.showTextDocument(document, { preserveFocus: false, preview: false });
-      await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
-    }
-  },
   "73bea50305c39633f08d0a3f3e6601f69441b56aba03390e6237ccb90e4f4987": async (vscode, targetPath, vector) => {
         const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
         await vscode.window.showTextDocument(document, {
@@ -1065,6 +1056,21 @@ module.exports = Object.freeze({
           activeParameter: signature?.activeParameter
         };
       },
+  "741ecf9b2c4ed038349ce877b0a67e8d384651ca5f758b4e3461dab02594b96f": async (vscode, directory) => {
+    // The webview may own focus. Revert each dirty fixture's text editor
+    // explicitly before deleting it, so the next test cannot open a save prompt.
+    for (const document of vscode.workspace.textDocuments) {
+      const prefix = vscode.Uri.file(directory).fsPath + (process.platform === 'win32' ? '\\' : '/');
+      if (!document.isDirty || !document.uri.fsPath.startsWith(prefix)) {
+        continue;
+      }
+      await vscode.window.showTextDocument(document, {
+        preserveFocus: false,
+        preview: false
+      });
+      await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
+    }
+  },
   "7551c50dc6a7db2df9b414a9c5ccabedc64f40bf14ff49bf0dc484d1d75d4da3": async (vscode, paths, text) => {
         await vscode.workspace.fs.writeFile(vscode.Uri.file(paths.config), Buffer.from(JSON.stringify({
           version: '1.0', passes: { Image: { path: `./${paths.name}` } },
@@ -1077,7 +1083,6 @@ module.exports = Object.freeze({
         editor.selection = new vscode.Selection(position, position);
         editor.revealRange(new vscode.Range(position, position));
       },
-  "770e27c6e7e9f6c0e71b3807a19ba4093e04ce820be68f1cd6b08e73d269f01e": (vscode, path) => vscode.workspace.textDocuments.find(document => document.uri.fsPath === path)?.getText() ?? '',
   "78300a2f337e9ac4b8093dd296309a56605ec0fa0f66a0b4c3b380cf41e5168a": vscode => vscode.window.activeTextEditor.document.save(),
   "787e58b9f85a327afdbeb8c5c2cadd44c9a37b3fee70510104940e4e318fbf0d": async (api, image, common) => {
     await api.extensions.getExtension('teaqu.shader-studio')?.activate();
@@ -1289,8 +1294,6 @@ module.exports = Object.freeze({
   "9e1c330e5f9dd044267a4d74dd8e07998b000487f96c6598348a94215bc4cd68": async (vscode) => {
       await vscode.extensions.getExtension('teaqu.shader-studio')?.activate();
     },
-  "a3115e615fed4a31c03fadbeb67bea894673fc68ca34236ef9d44a75b189dbc9": (vscode, target) =>
-    vscode.window.activeTextEditor?.document.uri.fsPath !== target,
   "a341dbe31bccb877c558b70a6e7eaf5e1eabb00fd12e8dbaa04c451dba4cea21": async (vscode, config, shader) => {
       await vscode.extensions.getExtension('teaqu.shader-studio')?.activate();
       await vscode.workspace.getConfiguration('shader-studio').update(
@@ -1311,9 +1314,6 @@ module.exports = Object.freeze({
         typeof item.label === 'string' ? item.label : item.label.label
       ));
     },
-  "a3af6b26d3f0d8861831507b5208c2eab04eb2e95ca5dec9c31ecb12f078bb6d": (vscode, path) => (
-      vscode.workspace.textDocuments.find((document) => document.uri.fsPath === path)?.getText() ?? ''
-    ),
   "a57f950efbe795ae0d5b9fdf12e563fd2470d35b8aeb96779bbe16bf40b00fef": async (vscode, targetPath) => {
         const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
         await vscode.window.showTextDocument(document, {
@@ -1670,8 +1670,8 @@ module.exports = Object.freeze({
   "ce5e295b30297d2eee67199d6203d23e1a0ad653e0ba66b41f8f375ac375985a": async vscode => {
       await vscode.extensions.getExtension('teaqu.shader-studio')?.activate();
     },
-  "cf0eaa5ada950df8ac376af4c6cd4275c8dabc8e8963ae58cb0bd7e60276aff0": vscode => ({
-      active: vscode.window.activeTextEditor?.document.uri.fsPath,
+  "cf7f0f7bb4d5d187e6cba312596917f3fda506d013a51f40391063679222ef4f": vscode => ({
+      active: vscode.window.activeTextEditor?.document.uri.toString(),
       previews: vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab => tab.label === 'Shader Studio').length,
     }),
   "d107beb305acc6f648e7bd10d1f44787492ca92f287a946354758f6020895d77": async (api) => {
@@ -1751,12 +1751,10 @@ module.exports = Object.freeze({
     },
   "d9f7b48ee0dc2d757a67fb78d8a75491b9f925ee1de96758442b40680b09f182": (vscode, directory) => vscode.workspace.textDocuments.filter(document => document.isDirty && document.uri.fsPath.startsWith(directory + '/')).map(document => document.uri.fsPath),
   "da90153aafb51e15b0ca390151bd0670918277ea2f4c53a37f410c9934b36c14": async (vscode, path) => (await vscode.workspace.openTextDocument(vscode.Uri.file(path))).uri.toString(),
+  "dd90230101dd770003a644ccb60bd28fa76dc80dc00c1c6b00f767c2d6fda390": (vscode, target) => vscode.window.activeTextEditor?.document.uri.fsPath !== vscode.Uri.file(target).fsPath,
   "ddaef6aa5627eb34d7dae85e083edabeba170f19037784828a3ceb0d2ffddce3": async (vscode) => {
     await vscode.commands.executeCommand('workbench.action.closeAllEditors');
   },
-  "df55410b495af0934f07ba6cd3c60964b6565fe89093b6d20c9be027ad14a58b": async (vscode, targetPath) => (
-    vscode.workspace.textDocuments.find((document) => document.uri.fsPath === targetPath)?.getText() ?? ''
-  ),
   "dfd7dddb4bdfd41c537c1af0b244e1067e9f11d53103c8ddbe95e51939844869": async (vscode, targetPath) => {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
     await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.One, preview: false, preserveFocus: false });
@@ -1911,6 +1909,9 @@ module.exports = Object.freeze({
           editor.selection = new vscode.Selection(position, position);
           editor.revealRange(new vscode.Range(position, position));
         },
+  "f0a1de2219b92cde25574d47615425ed7bde85243e10ee7c5cfc800fbb6bbe21": (vscode, path) => (
+      vscode.workspace.textDocuments.find((document) => document.uri.fsPath === vscode.Uri.file(path).fsPath)?.getText() ?? ''
+    ),
   "f2c9c99a19ebd72c516169e345d52980664c0e13a258c71e7408c5eb03eb03b6": async vscode => {
       await vscode.commands.executeCommand('shader-studio.stopWebServer');
       await vscode.workspace.getConfiguration('shader-studio').update(
@@ -2001,6 +2002,9 @@ module.exports = Object.freeze({
         }
       }
     },
+  "fad5a366caf99ae8d0bcb976e7b72ffaa363aaf070cb81b20473ff033169b43a": async (vscode, targetPath) => (
+    vscode.workspace.textDocuments.find((document) => document.uri.fsPath === vscode.Uri.file(targetPath).fsPath)?.getText() ?? ''
+  ),
   "fc6b478a3eb6b14b4a84ad0cadbb7e744863d05e6ad28afdfd113e02308fa574": async (api, image, common) => {
     await api.extensions.getExtension('teaqu.shader-studio')?.activate();
     await api.window.showTextDocument(await api.workspace.openTextDocument(image));
