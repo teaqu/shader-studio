@@ -15,11 +15,11 @@
     const ctx = canvas?.getContext('2d');
     const inputType = type;
     active = false;
-    if (!controller || !ctx) {
+    if (!controller?.getLiveInputPreview || !ctx) {
       return;
     }
     const draw = () => {
-      active = drawLiveInputPreview(ctx, inputType, controller.getLiveInputPreview(inputType));
+      active = drawLiveInputPreview(ctx, inputType, controller.getLiveInputPreview?.(inputType) ?? null);
     };
     draw();
     // Small tiles do not need the shader's full frame rate.
@@ -29,11 +29,11 @@
 </script>
 
 <div class="live-preview">
-  <canvas bind:this={canvas} width="160" height="120" aria-label={type === 'webcam' ? 'Live webcam preview' : type === 'system-audio' ? 'Live browser audio preview' : 'Live audio preview'} class:active></canvas>
+  <canvas bind:this={canvas} width="160" height="120" aria-label={type === 'webcam' ? 'Live webcam preview' : type === 'system-audio' ? 'Live browser audio preview' : 'Live mic preview'} class:active></canvas>
   {#if !active}
     <div class="fallback">
       <i class="codicon" class:codicon-device-camera={type === 'webcam'} class:codicon-mic={type === 'microphone'}></i>
-      <span>{type === 'webcam' ? 'Webcam' : type === 'system-audio' ? 'Browser Audio' : 'Audio'}</span>
+      <span>{type === 'webcam' ? 'Webcam' : type === 'system-audio' ? 'Browser Audio' : 'Mic'}</span>
     </div>
   {/if}
 </div>

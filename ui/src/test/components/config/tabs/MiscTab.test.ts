@@ -6,7 +6,7 @@ import { tick } from 'svelte';
 import type { ConfigInput } from '@shader-studio/types';
 
 describe('MiscTab', () => {
-  it.each(['webcam', 'microphone', 'system-audio'] as const)('opens the capture preview from a VS Code %s selection', async type => {
+  it.each(['webcam'] as const)('opens the capture preview from a VS Code %s selection', async type => {
     vi.stubGlobal('acquireVsCodeApi', vi.fn());
     const postMessage = vi.fn();
     const view = render(MiscTab, { ...defaultProps(), tempInput: { type }, postMessage });
@@ -32,7 +32,7 @@ describe('MiscTab', () => {
     onSelect: vi.fn(),
   });
 
-  it.each(['webcam', 'microphone'] as const)('selects a pathless %s input', async type => {
+  it.each(['webcam'] as const)('selects a pathless %s input', async type => {
     const props = defaultProps();
     const { getByRole } = render(MiscTab, props);
     await fireEvent.click(getByRole('button', { name: type === 'webcam' ? 'Webcam' : 'Audio' }));
@@ -46,7 +46,7 @@ describe('MiscTab', () => {
     const { unmount } = render(MiscTab, { ...defaultProps(), audioVideoController: controller });
     await tick();
     expect(getLiveInputPreview).toHaveBeenCalledWith('webcam');
-    expect(getLiveInputPreview).toHaveBeenCalledWith('microphone');
+    expect(getLiveInputPreview).not.toHaveBeenCalledWith('microphone');
     unmount();
     canvasContext.mockRestore();
   });
@@ -75,11 +75,9 @@ describe('MiscTab', () => {
       const { container } = render(MiscTab, defaultProps());
 
       const sectionLabels = container.querySelectorAll('.misc-section-label');
-      expect(sectionLabels.length).toBe(4);
+      expect(sectionLabels.length).toBe(2);
       expect(sectionLabels[0].textContent).toBe('Buffer');
       expect(sectionLabels[1].textContent).toBe('Other');
-      expect(sectionLabels[2].textContent).toBe('Audio');
-      expect(sectionLabels[3].textContent).toBe('Browser Audio');
     });
   });
 

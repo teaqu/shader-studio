@@ -102,6 +102,14 @@ describe("ResourceManager live input routing", () => {
     expect(spies.live[0].stopAudioInput).toHaveBeenCalledOnce();
   });
 
+  it("exposes the Firefox limitation to Browser Audio controls", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Mozilla/5.0 Firefox/159.0");
+    spies.live[0].load.mockResolvedValue({ texture: null });
+    await resources.loadAudioSource(SYSTEM_AUDIO_PATH);
+    expect(resources.getLiveInputPreview("system-audio")?.unsupportedReason).toContain("Firefox does not support");
+    vi.restoreAllMocks();
+  });
+
   it("only starts system audio for configured channels and routes their runtime state", async () => {
     await expect(resources.controlSystemAudio("start")).resolves.toContain("loading");
     spies.live[0].load.mockResolvedValue({ texture: null });

@@ -23,6 +23,26 @@ describe('AudioTab', () => {
     audioVideoController: undefined as any,
   });
 
+  it.each(['microphone', 'system-audio'] as const)('keeps audio-file fields alongside live inputs for %s', async type => {
+    const api = defaultProps();
+    const view = render(AudioTab, { ...api, tempInput: { type } });
+    expect(view.getByRole('button', { name: 'Mic' })).toBeVisible();
+    expect(view.getByRole('button', { name: 'Browser Audio' })).toBeVisible();
+    expect(view.getByPlaceholderText('Path to audio or video file')).toBeVisible();
+    await fireEvent.click(view.getByRole('button', { name: 'Mic' }));
+    expect(api.onUpdateTempInput).toHaveBeenCalledWith({ type: 'microphone' });
+    expect(api.onAutoSave).toHaveBeenCalledOnce();
+  });
+
+  it.each(['microphone', 'system-audio'] as const)('switches %s to audio file when entering a path', async type => {
+    const api = defaultProps();
+    const view = render(AudioTab, { ...api, tempInput: { type } });
+    await fireEvent.input(view.getByPlaceholderText('Path to audio or video file'), { target: { value: './song.mp3' } });
+    expect(api.onUpdateTempInput).toHaveBeenCalledWith({ type: 'audio', path: '' });
+    expect(api.onUpdatePath).toHaveBeenCalledWith('./song.mp3');
+    expect(api.onUpdateTempInput.mock.invocationCallOrder[0]).toBeLessThan(api.onUpdatePath.mock.invocationCallOrder[0]);
+  });
+
   describe('Rendering', () => {
     it('should render path input with audio placeholder', () => {
       render(AudioTab, defaultProps());

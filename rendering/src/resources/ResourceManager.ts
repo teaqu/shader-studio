@@ -1,4 +1,4 @@
-import { SystemAudioCapture, type SystemAudioLease } from "./SystemAudioCapture";
+import { browserAudioSupportWarning, SystemAudioCapture, type SystemAudioLease } from "./SystemAudioCapture";
 import { LiveInputTextureManager } from "./LiveInputTextureManager";
 import { WEBCAM_PATH, MICROPHONE_PATH, SYSTEM_AUDIO_PATH } from "../util/LiveInputConfig";
 import type { TextureBackend } from "./TextureBackend";
@@ -120,7 +120,8 @@ export class ResourceManager<T> {
     if (type === "microphone" && this.liveInputPaths.has(MICROPHONE_PATH)) {
       return { ...preview, ready: true, deviceId: this.audioDeviceSelection.deviceId };
     }
-    return (type === "system-audio" && this.liveInputPaths.has(SYSTEM_AUDIO_PATH)) ? { ...preview, ready: true } : preview;
+    return (type === "system-audio" && this.liveInputPaths.has(SYSTEM_AUDIO_PATH))
+      ? { ...preview, ready: true, unsupportedReason: browserAudioSupportWarning(navigator.userAgent) } : preview;
   }
 
   public getVideoElement(path: string): HTMLVideoElement | undefined {

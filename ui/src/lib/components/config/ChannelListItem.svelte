@@ -34,7 +34,7 @@
       case 'cubemap': return 'Cubemap';
       case 'system-audio': return 'Browser Audio';
       case 'webcam': return 'Webcam';
-      case 'microphone': return 'Audio';
+      case 'microphone': return 'Mic';
       case 'keyboard': return 'Keyboard';
       default: return 'Unknown';
     }

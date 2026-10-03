@@ -4,6 +4,7 @@ import type { TextureBackend, TextureFilter, TextureWrap } from "./TextureBacken
 export type LiveInputType = "webcam" | "microphone" | "system-audio";
 
 export interface LiveInputPreview {
+  unsupportedReason?: string;
   deviceId?: string;
   ready?: boolean;
   video?: HTMLVideoElement;

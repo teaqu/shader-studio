@@ -10,6 +10,7 @@
   let active = $state(false);
   let ready = $state(false);
   let message = $state('');
+  let unavailable = $state('');
 
   async function refreshDevices() {
     try {
@@ -57,11 +58,12 @@
     const controller = audioVideoController;
     let lastDeviceId: string | undefined;
     const update = () => {
-      const preview = controller?.getLiveInputPreview(type);
+      const preview = controller?.getLiveInputPreview?.(type);
       if (type === 'microphone' && preview?.deviceId && preview.deviceId !== lastDeviceId) {
         source = preview.deviceId;
         lastDeviceId = preview.deviceId;
       }
+      unavailable = type === 'system-audio' ? preview?.unsupportedReason ?? '' : '';
       active = !!preview?.frequency;
       ready = !!preview?.ready;
     };
@@ -75,24 +77,24 @@
   {#if type === "microphone"}
   <label for="system-audio-source">Audio device</label>
   <select id="system-audio-source" bind:value={source} disabled={busy}>
-    <option value="default">Default audio input device</option>
+    <option value="default">Browser-selected microphone</option>
     {#each devices as device, index (device.deviceId)}
       <option value={device.deviceId}>{device.label || `Audio input ${index + 1}`}</option>
     {/each}
   </select>
   {/if}
   <div class="actions">
-    <button onclick={start} disabled={busy || !audioVideoController || !ready}>{busy ? 'Connecting…' : type === 'microphone' ? (active ? 'Change device' : 'Start audio') : (active ? 'Change sharing' : 'Start sharing')}</button>
-    {#if active}<button onclick={stop}>{type === 'microphone' ? 'Stop audio' : 'Stop sharing'}</button>{/if}
+    <button onclick={start} disabled={busy || !!unavailable || !audioVideoController || !ready}>{busy ? 'Connecting…' : type === 'microphone' ? (active ? 'Change device' : 'Start mic') : (active ? 'Change sharing' : 'Start sharing')}</button>
+    {#if active}<button onclick={stop}>{type === 'microphone' ? 'Stop mic' : 'Stop sharing'}</button>{/if}
     {#if type === "microphone"}<button onclick={refreshDevices} disabled={busy}>Refresh devices</button>{/if}
   </div>
   {#if type === "microphone"}
-    <p>Choose a microphone or loopback input. To capture music from Spotify or Apple Music, route playback into a loopback input and select it here.</p>
+    <p>Choose your microphone here or in your browser’s permission controls. To capture music from Spotify or Apple Music, route playback into a loopback input and select it here.</p>
   {:else}
     <p>Choose a browser tab and enable sharing audio. The browser may require a screen or tab selection; video is discarded. If no audio is offered, use a loopback device in Audio instead.</p>
   {/if}
   <p>Only audio is used by the shader. Sound is never replayed through your speakers. Device choices are session-only. Browser sharing needs reconnecting after reload.</p>
-  {#if message}<p role="status">{message}</p>{/if}
+  {#if unavailable || message}<p role="status">{unavailable || message}</p>{/if}
 </div>
 
 <style>

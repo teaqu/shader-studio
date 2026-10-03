@@ -11,7 +11,7 @@ afterEach(() => {
 });
 
 function controller() {
-  return { controlAudioInput: vi.fn().mockResolvedValue(undefined), controlSystemAudio: vi.fn().mockResolvedValue(undefined), getLiveInputPreview: vi.fn().mockReturnValue({ ready: true } as { ready: boolean; deviceId?: string; frequency?: Uint8Array }) };
+  return { controlAudioInput: vi.fn().mockResolvedValue(undefined), controlSystemAudio: vi.fn().mockResolvedValue(undefined), getLiveInputPreview: vi.fn().mockReturnValue({ ready: true } as { ready: boolean; unsupportedReason?: string; deviceId?: string; frequency?: Uint8Array }) };
 }
 
 function devices() {
@@ -37,7 +37,7 @@ describe('system audio controls', () => {
     await findByRole('option', { name: 'Loopback Audio' });
     expect(queryByRole('option', { name: /Browser/ })).toBeNull();
     await fireEvent.change(getByLabelText('Audio device'), { target: { value: 'loopback' } });
-    await fireEvent.click(getByRole('button', { name: 'Start audio' }));
+    await fireEvent.click(getByRole('button', { name: 'Start mic' }));
     expect(api.controlAudioInput).toHaveBeenCalledWith('start', 'loopback');
     expect(api.controlSystemAudio).not.toHaveBeenCalled();
   });
@@ -50,6 +50,16 @@ describe('system audio controls', () => {
     await findByRole('option', { name: 'Loopback Audio' });
     expect((getByLabelText('Audio device') as HTMLSelectElement).value).toBe('loopback');
     expect(api.controlAudioInput).not.toHaveBeenCalled();
+  });
+
+  it('explains unsupported Firefox audio sharing and disables screen-only capture', async () => {
+    const api = controller();
+    api.getLiveInputPreview.mockReturnValue({ ready: true, unsupportedReason: 'Firefox does not support browser audio sharing.' });
+    const { getByRole } = render(SystemAudioControls, { audioVideoController: api as unknown as AudioVideoController });
+    await tick();
+    expect(getByRole('button', { name: 'Start sharing' })).toBeDisabled();
+    expect(getByRole('status').textContent).toContain('Firefox does not support');
+    expect(api.controlSystemAudio).not.toHaveBeenCalled();
   });
 
   it('shows actionable capture warnings', async () => {

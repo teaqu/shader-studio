@@ -66,9 +66,7 @@
   function typeToTab(type: string | undefined): TabName | null {
     switch (type) {
       case "buffer":
-      case "system-audio":
       case "webcam":
-      case "microphone":
       case "keyboard":
         return "Misc";
       case "texture":
@@ -77,6 +75,8 @@
         return "Cubemaps";
       case "video":
         return "Videos";
+      case "microphone":
+      case "system-audio":
       case "audio":
         return "Audio";
       default:

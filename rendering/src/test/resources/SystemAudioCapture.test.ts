@@ -51,6 +51,14 @@ describe("SystemAudioCapture", () => {
     vi.restoreAllMocks();
   });
 
+  it("explains Firefox audio sharing support without opening a screen-only picker", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Mozilla/5.0 Firefox/159.0");
+    getDisplayMedia.mockResolvedValue(makeStream({ audio: 0 }));
+    await expect(capture.start()).resolves.toContain("Firefox does not support");
+    expect(getDisplayMedia).not.toHaveBeenCalled();
+    expect(capture.acquire()).toBeNull();
+  });
+
   it("shares one audio source between leases and stops it after the final release", async () => {
     const stream = makeStream();
     getDisplayMedia.mockResolvedValue(stream);

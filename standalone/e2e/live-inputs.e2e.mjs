@@ -49,9 +49,9 @@ for (const language of ['glsl', 'wgsl', 'slang']) {
     await page.goto('/');
     await page.getByTestId(`shader-option-live-${language}`).click();
     await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
-    for (const [name, label] of [['camera', 'Webcam'], ['sound', 'Audio']]) {
+    for (const [name, label] of [['camera', 'Webcam'], ['sound', 'Mic']]) {
       await page.locator('.channel-row').filter({ hasText: name }).click();
-      await page.getByRole('tab', { name: 'Misc', exact: true }).click();
+      await page.getByRole('tab', { name: label === 'Webcam' ? 'Misc' : 'Audio', exact: true }).click();
       await page.getByRole('button', { name: new RegExp(`^${label}`) }).click();
       await expectLivePreview(page.getByRole('button', { name: label, exact: true }), label);
       await page.getByRole('button', { name: 'Close', exact: true }).click();
@@ -61,7 +61,7 @@ for (const language of ['glsl', 'wgsl', 'slang']) {
     await expect.poll(async () => JSON.parse((await workspace(page))['/shaders/live.sha.json']).passes.Image.inputs).toEqual({ camera: { type: 'webcam' }, sound: { type: 'microphone' } });
     await page.reload();
     await expectGreen(page);
-    for (const [name, label] of [['camera', 'Webcam'], ['sound', 'Audio']]) {
+    for (const [name, label] of [['camera', 'Webcam'], ['sound', 'Mic']]) {
       await expectLivePreview(page.locator('.channel-row').filter({ hasText: name }), label);
     }
 
@@ -130,7 +130,7 @@ for (const language of ['glsl', 'wgsl', 'slang']) {
       await page.getByTestId(`shader-option-system-${language}`).click();
       await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
       await page.locator('.channel-row').filter({ hasText: 'sound' }).click();
-      const start = page.getByRole('button', { name: source === 'device' ? /^(Start audio|Change device)$/ : 'Start sharing', exact: true });
+      const start = page.getByRole('button', { name: source === 'device' ? /^(Start mic|Change device)$/ : 'Start sharing', exact: true });
       await expect(start).toBeEnabled();
       let selectedDevice;
       if (source === 'device') {
@@ -144,7 +144,7 @@ for (const language of ['glsl', 'wgsl', 'slang']) {
       }
       await start.click();
       await expectGreen(page);
-      await expectLivePreview(page.getByRole('button', { name: source === 'device' ? 'Audio' : 'Browser Audio', exact: true }), source === 'device' ? 'Audio' : 'Browser audio');
+      await expectLivePreview(page.getByRole('button', { name: source === 'device' ? 'Mic' : 'Browser Audio', exact: true }), source === 'device' ? 'Mic' : 'Browser audio');
       expect(await page.evaluate(() => window.__displayCaptureCalls)).toBe(source === 'browser' ? 1 : 0);
       expect(await page.evaluate(() => window.__displayVideoTracks.every(track => track.readyState === 'ended'))).toBe(true);
       await page.getByRole('button', { name: 'Close', exact: true }).click();
@@ -158,7 +158,7 @@ for (const language of ['glsl', 'wgsl', 'slang']) {
         expect(await page.evaluate(() => window.__requestedDeviceIds.at(-1))).toBe(selectedDevice);
       }
       await page.locator('.channel-row').filter({ hasText: 'sound' }).click();
-      await page.getByRole('button', { name: source === 'device' ? 'Stop audio' : 'Stop sharing', exact: true }).click();
+      await page.getByRole('button', { name: source === 'device' ? 'Stop mic' : 'Stop sharing', exact: true }).click();
       await expect.poll(() => page.evaluate(() => window.__liveCaptureStreams.every(stream => stream.getTracks().every(track => track.readyState === 'ended')))).toBe(true);
       await expect(start).toBeEnabled();
       await start.click();

@@ -39,7 +39,7 @@ test('opens a synced capture preview inside VS Code @gpu', async ({ vscode }) =>
       capture: typeof navigator.mediaDevices?.getUserMedia,
     }))).toEqual({ camera: true, microphone: true, capture: 'function' });
     await page.getByLabel('Toggle config panel').click();
-    for (const type of ['webcam', 'audio']) {
+    for (const type of ['webcam', 'mic']) {
       const preview = page.getByLabel(`Live ${type} preview`).first();
       await expect(preview).toBeVisible();
       await expect.poll(() => preview.evaluate(canvas => canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data.some((value, index) => index % 4 !== 3 && value > 0))).toBe(true);
@@ -47,10 +47,10 @@ test('opens a synced capture preview inside VS Code @gpu', async ({ vscode }) =>
     await page.locator('.channel-row').filter({ hasText: 'music' }).click();
     await page.getByLabel('Audio device').selectOption('default');
     await page.getByRole('button', { name: 'Change device', exact: true }).click();
-    const musicPreview = page.getByLabel('Live audio preview').first();
+    const musicPreview = page.getByLabel('Live mic preview').first();
     await expect(musicPreview).toBeVisible();
     await expect.poll(() => musicPreview.evaluate(canvas => canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data.some((value, index) => index % 4 !== 3 && value > 0))).toBe(true);
-    await page.getByRole('button', { name: 'Stop audio', exact: true }).click();
+    await page.getByRole('button', { name: 'Stop mic', exact: true }).click();
     await page.getByRole('button', { name: 'Close', exact: true }).click();
     await vscode.evaluateInHost(async (vscode, shaderPath) => {
       const document = await vscode.workspace.openTextDocument(vscode.Uri.file(shaderPath));

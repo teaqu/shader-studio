@@ -44,13 +44,13 @@ describe('live channel previews', () => {
     const controller = { getLiveInputPreview } as unknown as AudioVideoController;
     const { getByLabelText, unmount } = render(LiveInputPreview, { type: 'microphone', audioVideoController: controller });
     await tick();
-    expect(getByLabelText('Live audio preview').classList.contains('active')).toBe(false);
+    expect(getByLabelText('Live mic preview').classList.contains('active')).toBe(false);
     getLiveInputPreview.mockReturnValue({ frequency: new Uint8Array(512), waveform: new Uint8Array(512).fill(128) });
     await vi.advanceTimersByTimeAsync(100);
-    expect(getByLabelText('Live audio preview').classList.contains('active')).toBe(true);
+    expect(getByLabelText('Live mic preview').classList.contains('active')).toBe(true);
     getLiveInputPreview.mockReturnValue(null);
     await vi.advanceTimersByTimeAsync(100);
-    expect(getByLabelText('Live audio preview').classList.contains('active')).toBe(false);
+    expect(getByLabelText('Live mic preview').classList.contains('active')).toBe(false);
     unmount();
     const calls = getLiveInputPreview.mock.calls.length;
     await vi.advanceTimersByTimeAsync(500);

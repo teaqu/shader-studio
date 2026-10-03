@@ -2,7 +2,6 @@
   import type { ConfigInput } from "@shader-studio/types";
   import type { AudioVideoController } from "../../../AudioVideoController";
   import { isVSCodeEnvironment } from "../../../transport/TransportFactory";
-  import SystemAudioControls from "../SystemAudioControls.svelte";
   import ChannelPreview from "../ChannelPreview.svelte";
 
   interface Props {
@@ -98,27 +97,7 @@
       <div class="misc-card-label">Webcam</div>
     </button>
   </div>
-  <div class="misc-section-label">Audio</div>
-  <div class="misc-options">
-    <button class="misc-card" class:selected={tempInput?.type === "microphone"} aria-label="Audio" onclick={() => onSelect({ type: "microphone" })}>
-      <ChannelPreview channelInput={{ type: "microphone" }} {getWebviewUri} {audioVideoController} />
-      <div class="misc-card-label">Audio</div>
-    </button>
-  </div>
-  {#if tempInput?.type === "microphone"}
-    <SystemAudioControls type="microphone" {audioVideoController} />
-  {/if}
-  <div class="misc-section-label">Browser Audio</div>
-  <div class="misc-options">
-    <button class="misc-card" class:selected={tempInput?.type === "system-audio"} aria-label="Browser Audio" onclick={() => onSelect({ type: "system-audio" })}>
-      <ChannelPreview channelInput={{ type: "system-audio" }} {getWebviewUri} {audioVideoController} />
-      <div class="misc-card-label">Browser Audio</div>
-    </button>
-  </div>
-  {#if tempInput?.type === "system-audio"}
-    <SystemAudioControls {audioVideoController} />
-  {/if}
-  {#if isVSCodeEnvironment() && (tempInput?.type === "webcam" || tempInput?.type === "microphone" || tempInput?.type === "system-audio")}
+  {#if isVSCodeEnvironment() && tempInput?.type === "webcam"}
     <p>VS Code panels block device capture. Apply your channel, then open the synced preview
       in VS Code’s Integrated Browser. Older VS Code versions open your external browser.</p>
     <button disabled={!postMessage} onclick={() => postMessage?.({ type: "extensionCommand", payload: { command: "openCapturePreview" } })}>

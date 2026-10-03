@@ -1,3 +1,10 @@
+/** Firefox currently returns screen video without tab/system audio (Mozilla bug 1541425). */
+export function browserAudioSupportWarning(userAgent: string): string | undefined {
+  return /Firefox\//i.test(userAgent)
+    ? "Firefox does not support browser audio sharing. Use Chrome or Edge to share a tab’s audio, or choose Mic for an audio input."
+    : undefined;
+}
+
 /**
  * Owns the user-selected audio stream used for system/tab capture. It is kept
  * separate from GPU resource managers so an engine rebuild can create a fresh
@@ -47,6 +54,10 @@ export class SystemAudioCapture {
         return "System audio capture needs a secure localhost or HTTPS page.";
       }
       if (deviceId === undefined) {
+        const unsupported = browserAudioSupportWarning(navigator.userAgent);
+        if (unsupported) {
+          return unsupported;
+        }
         if (!navigator.mediaDevices.getDisplayMedia) {
           return "This browser cannot share tab or system audio. Try a current Chromium-based browser.";
         }
