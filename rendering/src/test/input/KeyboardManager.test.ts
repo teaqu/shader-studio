@@ -38,7 +38,7 @@ describe("KeyboardManager", () => {
 
   describe("setupEventListeners", () => {
     it("should register keydown and keyup event listeners on window", () => {
-      const addSpy = vi.spyOn(window, "addEventListener");
+      const addSpy = vi.spyOn(window as Window, "addEventListener");
       keyboardManager.setupEventListeners();
 
       expect(addSpy).toHaveBeenCalledWith("keydown", expect.any(Function));
@@ -46,8 +46,8 @@ describe("KeyboardManager", () => {
     });
 
     it("removes the exact callbacks before installing them again", () => {
-      const addSpy = vi.spyOn(window, "addEventListener");
-      const removeSpy = vi.spyOn(window, "removeEventListener");
+      const addSpy = vi.spyOn(window as Window, "addEventListener");
+      const removeSpy = vi.spyOn(window as Window, "removeEventListener");
 
       keyboardManager.setupEventListeners();
       const firstCallbacks = new Map(addSpy.mock.calls.map(([type, callback]) => [type, callback]));
@@ -61,7 +61,7 @@ describe("KeyboardManager", () => {
 
   describe("dispose", () => {
     it("removes its listeners once and ignores later keyboard events", () => {
-      const removeSpy = vi.spyOn(window, "removeEventListener");
+      const removeSpy = vi.spyOn(window as Window, "removeEventListener");
       keyboardManager.setupEventListeners();
       keyboardManager.dispose();
       keyboardManager.dispose();

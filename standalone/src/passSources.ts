@@ -60,8 +60,3 @@ export function passNameForFile(
   }
   return undefined;
 }
-
-/** True when `bufferName` names a vertex source rather than a pass body. */
-export function isVertexPassKey(bufferName: string): boolean {
-  return parseVertexPassKey(bufferName) !== undefined;
-}

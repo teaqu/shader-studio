@@ -39,12 +39,6 @@ export const captureCounters = {
   decodeCalls: 0,
 };
 
-export function resetCaptureCounters(): void {
-  for (const key of Object.keys(captureCounters) as Array<keyof typeof captureCounters>) {
-    captureCounters[key] = 0;
-  }
-}
-
 // Independent throttle per source so manager.loop and capturer.issue don't
 // starve each other (they'd otherwise share one gate and drop each other).
 const lastLogAt = new Map<string, number>();

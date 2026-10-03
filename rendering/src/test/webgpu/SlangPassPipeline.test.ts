@@ -3,6 +3,29 @@ import type { StorageBindingNode } from "../../types/PassGraph";
 import { SlangPassPipeline } from "../../webgpu/SlangPassPipeline";
 import { createShaderToyUniformLayout } from "../../webgpu/SlangPrelude";
 import { SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX } from "../../webgpu/SlangPrelude";
+import type { GeometryType } from "@shader-studio/types";
+import type { SlangPassPipelineDescriptor } from "../../webgpu/SlangPassPipeline";
+
+type PipelineFixtureDescriptor = Omit<SlangPassPipelineDescriptor, "geometry"> & {
+  /** Runtime defaults omitted geometry to the fullscreen quad. */
+  geometry?: GeometryType;
+};
+
+function pipelineDescriptor(descriptor: PipelineFixtureDescriptor): SlangPassPipelineDescriptor {
+  return {
+    ...descriptor,
+    geometry: descriptor.geometry ?? "fullscreen",
+  };
+}
+
+function createPass(
+  device: GPUDevice,
+  descriptor: PipelineFixtureDescriptor,
+  format: GPUTextureFormat = "bgra8unorm",
+  bufferTextureFormat?: GPUTextureFormat,
+): SlangPassPipeline {
+  return new SlangPassPipeline(device, format, pipelineDescriptor(descriptor), bufferTextureFormat);
+}
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -75,7 +98,7 @@ const storageB: StorageBindingNode = {
 describe("SlangPassPipeline", () => {
   it("allocates a 17-entry uniform ABI for a sparse slot-16 pass", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 800,
       height: 600,
@@ -94,7 +117,7 @@ describe("SlangPassPipeline", () => {
 
   it("creates a canvas pipeline without ping-pong textures", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 800,
       height: 600,
@@ -113,7 +136,7 @@ describe("SlangPassPipeline", () => {
 
   it("creates ping-pong output textures for a buffer pass and swaps them", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "BufferA",
       width: 320,
       height: 180,
@@ -133,7 +156,7 @@ describe("SlangPassPipeline", () => {
 
   it("precreates stable current and previous buffer views across reads and swaps", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "BufferA",
       width: 320,
       height: 180,
@@ -160,7 +183,7 @@ describe("SlangPassPipeline", () => {
 
   it("replaces cached buffer views only after a successful resize", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "BufferA",
       width: 320,
       height: 180,
@@ -181,13 +204,13 @@ describe("SlangPassPipeline", () => {
 
   it("uses a negotiated rgba32float format for buffer targets", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "BufferA",
       width: 320,
       height: 180,
       output: "texture",
       channels: [],
-    }, "rgba32float");
+    }, "bgra8unorm", "rgba32float");
 
     await pass.rebuild("// wgsl");
 
@@ -201,7 +224,7 @@ describe("SlangPassPipeline", () => {
 
   it("returns null getters before rebuild has ever run", () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 800,
       height: 600,
@@ -219,7 +242,7 @@ describe("SlangPassPipeline", () => {
 
   it("exposes the created pipeline, bind group and uniform buffer after rebuild", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 800,
       height: 600,
@@ -237,7 +260,7 @@ describe("SlangPassPipeline", () => {
 
   it("allocates the descriptor's dynamically extended custom-uniform size", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 800,
       height: 600,
@@ -253,7 +276,7 @@ describe("SlangPassPipeline", () => {
 
   it("wires the bind group to binding 0 with the uniform buffer via the explicit layout", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 800,
       height: 600,
@@ -273,7 +296,7 @@ describe("SlangPassPipeline", () => {
 
   it("creates an explicit bind group layout covering the uniform and every declared channel", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 320,
       height: 180,
@@ -308,7 +331,7 @@ describe("SlangPassPipeline", () => {
 
   it("makes channel bindings visible to custom vertex hooks", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 320,
       height: 180,
@@ -329,7 +352,7 @@ describe("SlangPassPipeline", () => {
 
   it("places read-only render storage at its exact binding after slot-sorted channel pairs", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 320,
       height: 180,
@@ -358,7 +381,7 @@ describe("SlangPassPipeline", () => {
 
   it("keeps direct atomic storage bindings read-only in render pipelines", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 320,
       height: 180,
@@ -383,7 +406,7 @@ describe("SlangPassPipeline", () => {
 
   it("uses a writable fragment binding for storage structs containing atomics", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 320,
       height: 180,
@@ -403,7 +426,7 @@ describe("SlangPassPipeline", () => {
 
   it("uses each storage node binding instead of its descriptor-array index", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 320,
       height: 180,
@@ -428,7 +451,7 @@ describe("SlangPassPipeline", () => {
 
   it("defers a storage-only bind group until storage buffers are provided", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 320,
       height: 180,
@@ -448,7 +471,7 @@ describe("SlangPassPipeline", () => {
 
   it("binds slot-sorted channels before storage buffers resolved by node name", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 320,
       height: 180,
@@ -490,7 +513,7 @@ describe("SlangPassPipeline", () => {
 
   it("clears a prior bind group when storage is absent and recovers without partial creation", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 320,
       height: 180,
@@ -524,7 +547,7 @@ describe("SlangPassPipeline", () => {
 
   it("reuses an unchanged bind group and rebuilds when a storage buffer identity changes", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 320,
       height: 180,
@@ -556,7 +579,7 @@ describe("SlangPassPipeline", () => {
 
   it("uses cube texture layout entries for cubemap channels", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 320,
       height: 180,
@@ -587,7 +610,7 @@ describe("SlangPassPipeline", () => {
 
   it("creates the render pipeline with the explicit pipeline layout, not \"auto\"", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 320,
       height: 180,
@@ -608,7 +631,7 @@ describe("SlangPassPipeline", () => {
 
   it("does not create a bind group at rebuild time for a pass with channels", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 320,
       height: 180,
@@ -628,7 +651,7 @@ describe("SlangPassPipeline", () => {
 
   it("rebuildBindGroup builds the bind group against the explicit layout", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 320,
       height: 180,
@@ -648,7 +671,7 @@ describe("SlangPassPipeline", () => {
 
   it("creates buffer pass ping-pong textures and render targets in rgba16float", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "BufferA",
       width: 320,
       height: 180,
@@ -669,7 +692,7 @@ describe("SlangPassPipeline", () => {
 
   it("keeps the canvas format for canvas-output passes", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 320,
       height: 180,
@@ -686,7 +709,7 @@ describe("SlangPassPipeline", () => {
 
   it("creates a linear-filtering sampler on rebuild", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 800,
       height: 600,
@@ -702,7 +725,7 @@ describe("SlangPassPipeline", () => {
 
   it("swap() is a safe no-op for a canvas pass with no ping-pong textures", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 800,
       height: 600,
@@ -720,7 +743,7 @@ describe("SlangPassPipeline", () => {
 
   it("getPreviousOutputView returns the other ping-pong texture and tracks swaps", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "BufferA",
       width: 320,
       height: 180,
@@ -746,7 +769,7 @@ describe("SlangPassPipeline", () => {
 
   it("destroys the previous ping-pong textures when rebuild runs again", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "BufferA",
       width: 320,
       height: 180,
@@ -777,7 +800,7 @@ describe("SlangPassPipeline", () => {
       .mockImplementationOnce(() => {
         throw new Error("second render rebuild allocation failed");
       });
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "BufferA",
       width: 320,
       height: 180,
@@ -795,7 +818,7 @@ describe("SlangPassPipeline", () => {
 
   it("dispose() destroys ping-pong textures and clears the output view", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "BufferA",
       width: 320,
       height: 180,
@@ -818,7 +841,7 @@ describe("SlangPassPipeline", () => {
 
   it("resetOutputTextures clears feedback without rebuilding the shader pipeline", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "BufferA",
       width: 320,
       height: 180,
@@ -840,7 +863,7 @@ describe("SlangPassPipeline", () => {
 
   it("dispose() is a safe no-op for a canvas pass with no textures", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 800,
       height: 600,
@@ -856,7 +879,7 @@ describe("SlangPassPipeline", () => {
 
   it("updateDescriptor changes the size used for textures created by the next rebuild", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "BufferA",
       width: 320,
       height: 180,
@@ -866,14 +889,14 @@ describe("SlangPassPipeline", () => {
     });
 
     await pass.rebuild("// wgsl");
-    pass.updateDescriptor({
+    pass.updateDescriptor(pipelineDescriptor({
       name: "BufferA",
       width: 640,
       height: 360,
       output: "texture",
       storage: [],
       channels: [],
-    });
+    }));
     await pass.rebuild("// wgsl v2");
 
     const lastCall = device.createTexture.mock.calls[device.createTexture.mock.calls.length - 1][0];
@@ -882,7 +905,7 @@ describe("SlangPassPipeline", () => {
 
   it("resize() recreates ping-pong textures at the new size without recompiling", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "BufferA",
       width: 320,
       height: 180,
@@ -927,7 +950,7 @@ describe("SlangPassPipeline", () => {
 
   it("resize() keeps the bottom-left region when shrinking feedback textures", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "BufferA",
       width: 640,
       height: 360,
@@ -960,7 +983,7 @@ describe("SlangPassPipeline", () => {
     Object.assign(device.queue, {
       onSubmittedWorkDone: vi.fn(() => submittedWork.promise),
     });
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "BufferA",
       width: 320,
       height: 180,
@@ -999,7 +1022,7 @@ describe("SlangPassPipeline", () => {
     Object.assign(device.queue, {
       onSubmittedWorkDone: vi.fn(() => submittedWork.promise),
     });
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "BufferA",
       width: 320,
       height: 180,
@@ -1029,7 +1052,7 @@ describe("SlangPassPipeline", () => {
     Object.assign(device.queue, {
       onSubmittedWorkDone: vi.fn(() => submittedWork.promise),
     });
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "BufferA",
       width: 320,
       height: 180,
@@ -1059,7 +1082,7 @@ describe("SlangPassPipeline", () => {
     Object.assign(device.queue, {
       onSubmittedWorkDone: vi.fn(() => submittedWork.promise),
     });
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "BufferA",
       width: 320,
       height: 180,
@@ -1094,7 +1117,7 @@ describe("SlangPassPipeline", () => {
       onSubmittedWorkDone: vi.fn(() => rejectable),
     });
     void submittedWork;
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "BufferA",
       width: 320,
       height: 180,
@@ -1124,7 +1147,7 @@ describe("SlangPassPipeline", () => {
         throw new Error("device lost");
       }),
     });
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "BufferA",
       width: 320,
       height: 180,
@@ -1146,7 +1169,7 @@ describe("SlangPassPipeline", () => {
     const submittedWork = deferred<void>();
     const onSubmittedWorkDone = vi.fn(() => submittedWork.promise);
     Object.assign(device.queue, { onSubmittedWorkDone });
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "BufferA",
       width: 320,
       height: 180,
@@ -1174,7 +1197,7 @@ describe("SlangPassPipeline", () => {
 
   it("destroys output textures immediately when the queue cannot report submitted work", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "BufferA",
       width: 320,
       height: 180,
@@ -1193,7 +1216,7 @@ describe("SlangPassPipeline", () => {
 
   it("resize() with an unchanged size does not recreate textures", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "BufferA",
       width: 320,
       height: 180,
@@ -1214,7 +1237,7 @@ describe("SlangPassPipeline", () => {
 
   it("resize() on a canvas pass updates the descriptor without creating textures", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 320,
       height: 180,
@@ -1231,7 +1254,7 @@ describe("SlangPassPipeline", () => {
 
   it("resize() before rebuild is safe and the next rebuild uses the new size", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "BufferA",
       width: 320,
       height: 180,
@@ -1251,7 +1274,7 @@ describe("SlangPassPipeline", () => {
 
   it("preserves the old descriptor, views, and textures when the first resize allocation throws", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "BufferA",
       width: 320,
       height: 180,
@@ -1279,7 +1302,7 @@ describe("SlangPassPipeline", () => {
 
   it("destroys a partial resize allocation while preserving old resources when the second allocation throws", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "BufferA",
       width: 320,
       height: 180,
@@ -1314,7 +1337,7 @@ describe("SlangPassPipeline", () => {
 
   it("preserves cached render views when resized output view creation throws", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "BufferA",
       width: 320,
       height: 180,
@@ -1349,7 +1372,7 @@ describe("SlangPassPipeline", () => {
 
   it("destroys the uniform buffer on dispose()", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 800,
       height: 600,
@@ -1371,7 +1394,7 @@ describe("SlangPassPipeline", () => {
 
   it("destroys the old uniform buffer when rebuild replaces it", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 800,
       height: 600,
@@ -1393,7 +1416,7 @@ describe("SlangPassPipeline", () => {
 
   it("dispose() before any rebuild is a safe no-op", () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 800,
       height: 600,
@@ -1407,7 +1430,7 @@ describe("SlangPassPipeline", () => {
 
   it("passes the WGSL source to createShaderModule under a derivative-uniformity filter", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 800,
       height: 600,
@@ -1428,14 +1451,14 @@ describe("SlangPassPipeline", () => {
 
   it("configures the render pipeline with the Slang entry points and constructor format", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "rgba16float", {
+    const pass = createPass(device, {
       name: "Image",
       width: 800,
       height: 600,
       output: "canvas",
       storage: [],
       channels: [],
-    });
+    }, "rgba16float");
 
     await pass.rebuild("// wgsl");
 
@@ -1573,7 +1596,7 @@ describe("SlangPassPipeline", () => {
       { type: "warning", lineNum: 3, linePos: 2, message: "unused variable" },
       { type: "error", lineNum: 10, linePos: 5, message: "undeclared identifier 'foo'" },
     ]);
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 800,
       height: 600,
@@ -1594,7 +1617,7 @@ describe("SlangPassPipeline", () => {
     device.createRenderPipelineAsync = vi.fn(async () => {
       throw new Error("[Invalid ShaderModule (unlabeled)] is invalid.");
     });
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 800,
       height: 600,
@@ -1610,7 +1633,7 @@ describe("SlangPassPipeline", () => {
 
   it("returns an empty error list when compilation has no messages", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 800,
       height: 600,
@@ -1626,7 +1649,7 @@ describe("SlangPassPipeline", () => {
 
   it("adds channel texture and sampler entries after the uniform binding", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 320,
       height: 180,
@@ -1644,7 +1667,7 @@ describe("SlangPassPipeline", () => {
 
   it("binds a lone slot-2 channel densely at bindings 1/2, not at its slot number", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 320,
       height: 180,
@@ -1667,7 +1690,7 @@ describe("SlangPassPipeline", () => {
 
   it("rebuildBindGroup is a safe no-op before rebuild has ever run", () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 320,
       height: 180,
@@ -1682,7 +1705,7 @@ describe("SlangPassPipeline", () => {
 
   it("rebuilds the bind group with the sampler shared across multiple channel slots", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 320,
       height: 180,
@@ -1721,7 +1744,7 @@ describe("SlangPassPipeline", () => {
 
   it("binds a channel's own sampler when provided, shared sampler otherwise", async () => {
     const device = fakeDevice();
-    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+    const pass = createPass(device, {
       name: "Image",
       width: 8,
       height: 8,
@@ -1757,7 +1780,7 @@ describe("SlangPassPipeline", () => {
       const asyncPipeline = { label: "async-pipeline" };
       (device as any).createRenderPipelineAsync = vi.fn(async () => asyncPipeline);
 
-      const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      const pass = createPass(device, {
         name: "Image",
         width: 800,
         height: 600,
@@ -1779,7 +1802,7 @@ describe("SlangPassPipeline", () => {
         throw new Error("pipeline validation failed");
       });
 
-      const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      const pass = createPass(device, {
         name: "BufferA",
         width: 320,
         height: 180,
@@ -1796,7 +1819,7 @@ describe("SlangPassPipeline", () => {
 
     it("falls back to synchronous createRenderPipeline when async is unavailable", async () => {
       const device = fakeDevice(); // no createRenderPipelineAsync
-      const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      const pass = createPass(device, {
         name: "Image",
         width: 800,
         height: 600,
@@ -1819,7 +1842,7 @@ describe("SlangPassPipeline", () => {
       sourceLineCount?: number,
       vertex?: { range: { startLine: number; lineCount: number }; label?: string },
     ): SlangPassPipeline {
-      return new SlangPassPipeline(device, "bgra8unorm", {
+      return createPass(device, {
         name: "Image",
         width: 800,
         height: 600,

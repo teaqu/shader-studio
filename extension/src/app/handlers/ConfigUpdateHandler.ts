@@ -64,10 +64,6 @@ export class ConfigUpdateHandler {
       }
 
       setTimeout(() => {
-        if (typeof (this.shaderProvider as any).sendShaderFromPath !== "function") {
-          this.logger.warn("ShaderProvider missing sendShaderFromPath during config refresh");
-          return;
-        }
         let verdict: ConfigChangeVerdict = "reload";
         try {
           verdict = this.classifier.classifyChange(configPath, payload.text);

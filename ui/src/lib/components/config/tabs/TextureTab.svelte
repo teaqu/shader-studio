@@ -7,7 +7,7 @@
   export let tempInput: ConfigInput | undefined;
   export let channelName: string;
   export let shaderPath: string;
-  export let postMessage: ((msg: any) => void) | undefined = undefined;
+  export let postMessage: ((msg: { type: string; [key: string]: unknown }) => void) | undefined = undefined;
   export let onMessage: ((handler: (event: MessageEvent) => void) => void) | undefined = undefined;
   export let onAssetSelect: (path: string, resolvedUri?: string) => void;
   export let onUpdatePath: (path: string) => void;

@@ -11,7 +11,7 @@
   interface Props {
     extensions: string[];
     shaderPath: string;
-    postMessage?: (msg: any) => void;
+    postMessage?: (msg: { type: string; [key: string]: unknown }) => void;
     onMessage?: (handler: (event: MessageEvent) => void) => void;
     onSelect: (path: string, resolvedUri?: string) => void;
     selectedPath?: string;
