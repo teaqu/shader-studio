@@ -2,6 +2,12 @@ import type { TextureBackend, TextureFilter, TextureWrap } from "./TextureBacken
 
 export type LiveInputType = "webcam" | "microphone";
 
+export interface LiveInputPreview {
+  video?: HTMLVideoElement;
+  frequency?: Uint8Array;
+  waveform?: Uint8Array;
+}
+
 export interface LiveInputOptions {
   filter?: TextureFilter;
   wrap?: TextureWrap;
@@ -96,6 +102,12 @@ export class LiveInputTextureManager<T> {
         console.warn("Microphone texture update failed:", error);
       }
     }
+  }
+
+  /** Read-only view of existing capture; never acquires a device. */
+  public getPreview(type: LiveInputType): LiveInputPreview | null {
+    const input = this.inputs.get(type);
+    return input ? { video: input.video, frequency: input.frequency, waveform: input.waveform } : null;
   }
 
   public getSampleRate(): number {

@@ -1,3 +1,5 @@
+import { audioPreviewData, livePreviewData } from "../resources/MediaPreview";
+import type { LiveInputType, LiveInputPreview } from "../resources/LiveInputTextureManager";
 import { piRenderer } from "../../../vendor/pilibs/src/piRenderer";
 import {
   gpuBackpressureEnabled,
@@ -644,10 +646,11 @@ export class RenderingEngine implements RenderingEngineInterface {
   }
 
   public getAudioFFTData(type: string, path?: string): Uint8Array | null {
-    if (type === 'audio' && path) {
-      return this.resourceManager.getAudioFFTData(path);
-    }
-    return null;
+    return audioPreviewData(this.resourceManager, type, path);
+  }
+
+  public getLiveInputPreview(type: LiveInputType): LiveInputPreview | null {
+    return livePreviewData(this.resourceManager, type);
   }
 
   public getTimeManager(): TimeManager {

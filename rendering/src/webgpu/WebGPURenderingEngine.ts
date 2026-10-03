@@ -1,4 +1,6 @@
 /// <reference types="@webgpu/types" />
+import { audioPreviewData, livePreviewData } from "../resources/MediaPreview";
+import type { LiveInputType, LiveInputPreview } from "../resources/LiveInputTextureManager";
 import { audioLoadWarning } from "../util/LiveInputConfig";
 import { buildSlangBindingPlan, getSlangChannels, getSlangSamplerSettings, getSlangTextureIdentity, validateSlangBindingBudget } from "./SlangBindingPlan";
 import { getWebGPUSampler } from "./WebGPUSamplerCache";
@@ -3677,9 +3679,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.resourceManager?.seekAudio(path, time);
   }
   getAudioFFTData(type: string, path?: string): Uint8Array | null {
-    return type === "audio" && path
-      ? this.resourceManager?.getAudioFFTData(path) ?? null
-      : null;
+    return audioPreviewData(this.resourceManager, type, path);
+  }
+
+  getLiveInputPreview(type: LiveInputType): LiveInputPreview | null {
+    return livePreviewData(this.resourceManager, type);
   }
 
   // ---- Custom uniforms ----

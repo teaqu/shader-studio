@@ -74,8 +74,19 @@ describe("LiveInputTextureManager", () => {
     expect(first.texture).toBe(second.texture);
     expect(getUserMedia).toHaveBeenCalledTimes(1);
     expect(getUserMedia).toHaveBeenCalledWith({ video: true, audio: false });
+    expect(manager.getPreview("webcam")?.video).toBe(video);
     expect(video).toMatchObject({ muted: true, playsInline: true, autoplay: true, srcObject: mockStream });
     expect(textureBackend.updateTextureFromImage).toHaveBeenCalledWith(first.texture, video);
+  });
+
+  it("does not acquire devices for previews and clears them on cleanup", async () => {
+    expect(manager.getPreview("webcam")).toBeNull();
+    expect(manager.getPreview("microphone")).toBeNull();
+    expect(getUserMedia).not.toHaveBeenCalled();
+    await manager.load("microphone");
+    expect(manager.getPreview("microphone")).not.toBeNull();
+    manager.cleanup();
+    expect(manager.getPreview("microphone")).toBeNull();
   });
 
   it("returns an actionable warning for denied capture permission", async () => {
@@ -111,6 +122,9 @@ describe("LiveInputTextureManager", () => {
     expect(mockContext.createMediaStreamSource).toHaveBeenCalledWith(mockStream);
     expect(textureBackend.createTexture).toHaveBeenCalledWith(expect.objectContaining({ width: 512, height: 2, format: "r8", filter: "nearest", wrap: "repeat" }));
     expect(textureBackend.updateTexture).toHaveBeenCalledTimes(2);
+    const preview = manager.getPreview("microphone");
+    expect(preview?.frequency).toBe(vi.mocked(textureBackend.updateTexture).mock.calls[0][5]);
+    expect(preview?.waveform).toBe(vi.mocked(textureBackend.updateTexture).mock.calls[1][5]);
     expect(manager.getSampleRate()).toBe(48000);
     expect(manager.getAudioState()).toMatchObject({ paused: false, muted: true, duration: 0 });
   });

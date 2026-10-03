@@ -1,6 +1,8 @@
 import { render, fireEvent } from '@testing-library/svelte';
 import { describe, it, expect, vi } from 'vitest';
 import MiscTab from '../../../../lib/components/config/tabs/MiscTab.svelte';
+import type { AudioVideoController } from '../../../../lib/AudioVideoController';
+import { tick } from 'svelte';
 import type { ConfigInput } from '@shader-studio/types';
 
 describe('MiscTab', () => {
@@ -15,6 +17,18 @@ describe('MiscTab', () => {
     const { getByRole } = render(MiscTab, props);
     await fireEvent.click(getByRole('button', { name: type === 'webcam' ? 'Webcam' : 'Microphone' }));
     expect(props.onSelect).toHaveBeenCalledWith({ type });
+  });
+
+  it('supplies the active capture controller to webcam and mic picker previews', async () => {
+    const canvasContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation((() => ({ canvas: { width: 160, height: 120 }, clearRect: vi.fn() })) as unknown as typeof HTMLCanvasElement.prototype.getContext);
+    const getLiveInputPreview = vi.fn(() => null);
+    const controller = { getLiveInputPreview } as unknown as AudioVideoController;
+    const { unmount } = render(MiscTab, { ...defaultProps(), audioVideoController: controller });
+    await tick();
+    expect(getLiveInputPreview).toHaveBeenCalledWith('webcam');
+    expect(getLiveInputPreview).toHaveBeenCalledWith('microphone');
+    unmount();
+    canvasContext.mockRestore();
   });
 
   describe('Rendering', () => {

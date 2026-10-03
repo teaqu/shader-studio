@@ -74,6 +74,10 @@ export class ResourceManager<T> {
     return texture ?? null;
   }
 
+  public getLiveInputPreview(type: import("./LiveInputTextureManager").LiveInputType): import("./LiveInputTextureManager").LiveInputPreview | null {
+    return this.liveInputs.getPreview(type);
+  }
+
   public getVideoElement(path: string): HTMLVideoElement | undefined {
     return path === WEBCAM_PATH ? this.liveInputs.getVideoElement() : this.videoTextureManager.getVideoElement(path);
   }

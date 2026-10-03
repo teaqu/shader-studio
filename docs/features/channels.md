@@ -452,7 +452,9 @@ float pressed = texture(iChannel1, vec2(32.0 / 256.0, 0.50)).r;  // Space just p
 ## Webcam and Microphone
 
 Choose **Webcam** or **Microphone** in the channel's **Misc** tab. These use the
-browser's default device and ask for capture permission. The config is pathless:
+browser's default device and ask for capture permission. Once enabled, the channel
+row and selection cards show the live camera image or microphone spectrum and
+waveform. These previews share the shader's capture stream. The config is pathless:
 
 ```json
 "inputs": {

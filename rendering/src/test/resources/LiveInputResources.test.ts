@@ -14,7 +14,7 @@ const spies = vi.hoisted(() => ({
 vi.mock("../../resources/LiveInputTextureManager", () => ({
   LiveInputTextureManager: vi.fn().mockImplementation(function() {
     const instance = {
-      load: vi.fn(), getTexture: vi.fn(), getVideoElement: vi.fn(), getAudioState: vi.fn(),
+      getPreview: vi.fn(), load: vi.fn(), getTexture: vi.fn(), getVideoElement: vi.fn(), getAudioState: vi.fn(),
       getSampleRate: vi.fn(() => 0), updateTextures: vi.fn(), cleanup: vi.fn(),
     };
     spies.live.push(instance);
@@ -70,6 +70,14 @@ describe("ResourceManager live input routing", () => {
     spies.audio.length = 0;
     vi.clearAllMocks();
     resources = new ResourceManager(backend);
+  });
+
+  it("exposes existing capture previews without loading resources", () => {
+    const preview = { frequency: new Uint8Array(512) };
+    spies.live[0].getPreview.mockReturnValue(preview);
+    expect(resources.getLiveInputPreview("microphone")).toBe(preview);
+    expect(spies.live[0].getPreview).toHaveBeenCalledWith("microphone");
+    expect(spies.live[0].load).not.toHaveBeenCalled();
   });
 
   it("stops removed live inputs even when file media is retained", async () => {

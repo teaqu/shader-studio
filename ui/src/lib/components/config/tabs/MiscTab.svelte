@@ -1,9 +1,11 @@
 <script lang="ts">
   import type { ConfigInput } from "@shader-studio/types";
+  import type { AudioVideoController } from "../../../AudioVideoController";
   import ChannelPreview from "../ChannelPreview.svelte";
 
   interface Props {
     tempInput?: ConfigInput;
+    audioVideoController?: AudioVideoController;
     getWebviewUri: (path: string) => string | undefined;
     onSelect: (input: ConfigInput) => void;
     availableBufferNames?: string[];
@@ -14,6 +16,7 @@
   let {
     tempInput = undefined as ConfigInput | undefined,
     getWebviewUri,
+    audioVideoController,
     onSelect,
     availableBufferNames = [],
   }: Props = $props();
@@ -93,7 +96,7 @@
         aria-label={type === "webcam" ? "Webcam" : "Microphone"}
         onclick={() => onSelect({ type: type as "webcam" | "microphone" })}
       >
-        <ChannelPreview channelInput={{ type: type as "webcam" | "microphone" }} {getWebviewUri} />
+        <ChannelPreview channelInput={{ type: type as "webcam" | "microphone" }} {getWebviewUri} {audioVideoController} />
         <div class="misc-card-label">{type === "webcam" ? "Webcam" : "Microphone"}</div>
       </button>
     {/each}

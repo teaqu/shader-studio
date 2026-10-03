@@ -1,4 +1,5 @@
 <script lang="ts">
+  import LiveInputPreview from "./LiveInputPreview.svelte";
   import { onDestroy } from "svelte";
   import type { ConfigInput } from "@shader-studio/types";
   import type { AudioVideoController } from "../../AudioVideoController";
@@ -300,10 +301,7 @@
       <div class="empty-icon">+</div>
     </div>
   {:else if channelInput.type === "webcam" || channelInput.type === "microphone"}
-    <div class="preview-fallback">
-      <i class="codicon" class:codicon-device-camera={channelInput.type === "webcam"} class:codicon-mic={channelInput.type === "microphone"}></i>
-      <div class="fallback-text">{channelInput.type === "webcam" ? "Webcam" : "Microphone"}</div>
-    </div>
+    <LiveInputPreview type={channelInput.type} {audioVideoController} />
   {:else if channelInput.type === "texture"}
     <!-- Texture preview -->
     <div class="texture-preview">

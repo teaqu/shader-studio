@@ -13,6 +13,15 @@ async function expectGreen(page) {
   }).toEqual([0, 255, 0]);
 }
 
+async function expectLivePreview(scope, label) {
+  const canvas = scope.getByLabel(`Live ${label.toLowerCase()} preview`);
+  await expect(canvas).toBeVisible();
+  await expect.poll(() => canvas.evaluate(element => {
+    const data = element.getContext('2d').getImageData(0, 0, element.width, element.height).data;
+    return data.some((value, index) => index % 4 !== 3 && value > 0);
+  })).toBe(true);
+}
+
 for (const language of ['glsl', 'wgsl', 'slang']) {
   test(`${language} selects webcam and microphone, samples live data and persists on reload`, async ({ page }) => {
     await page.addInitScript(() => {
@@ -42,12 +51,18 @@ for (const language of ['glsl', 'wgsl', 'slang']) {
       await page.locator('.channel-row').filter({ hasText: name }).click();
       await page.getByRole('tab', { name: 'Misc', exact: true }).click();
       await page.getByRole('button', { name: new RegExp(`^${label}`) }).click();
+      await expectLivePreview(page.getByRole('button', { name: label, exact: true }), label);
       await page.getByRole('button', { name: 'Close', exact: true }).click();
+      await expectLivePreview(page.locator('.channel-row').filter({ hasText: name }), label);
     }
     await expectGreen(page);
     await expect.poll(async () => JSON.parse((await workspace(page))['/shaders/live.sha.json']).passes.Image.inputs).toEqual({ camera: { type: 'webcam' }, sound: { type: 'microphone' } });
     await page.reload();
     await expectGreen(page);
+    for (const [name, label] of [['camera', 'Webcam'], ['sound', 'Microphone']]) {
+      await expectLivePreview(page.locator('.channel-row').filter({ hasText: name }), label);
+    }
+
     await expect.poll(() => page.evaluate(() => window.__liveCaptureStreams.length)).toBeGreaterThanOrEqual(2);
     // Make the shader independent of the channels before removing them, so
     // capture teardown is tested through a successful config compilation.

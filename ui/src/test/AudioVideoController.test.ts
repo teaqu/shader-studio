@@ -3,6 +3,18 @@ import { AudioVideoController } from '../lib/AudioVideoController';
 import { audioStore } from '../lib/stores/audioStore';
 
 describe('AudioVideoController', () => {
+  it('reads live previews from the active engine and tolerates missing engines', () => {
+    const preview = { frequency: new Uint8Array(512) };
+    const engine = { setGlobalVolume: vi.fn(), getLiveInputPreview: vi.fn(() => preview) };
+    const controller = new AudioVideoController(() => engine as unknown as import('../../../rendering/src/types').RenderingEngine);
+    expect(controller.getLiveInputPreview('microphone')).toBe(preview);
+    expect(engine.getLiveInputPreview).toHaveBeenCalledWith('microphone');
+    controller.dispose();
+    const empty = new AudioVideoController(() => undefined);
+    expect(empty.getLiveInputPreview('webcam')).toBeNull();
+    empty.dispose();
+  });
+
   it('should not crash when constructed with engine getter returning undefined', () => {
     expect(() => {
       const controller = new AudioVideoController(() => undefined);

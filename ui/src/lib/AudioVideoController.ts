@@ -78,6 +78,10 @@ export class AudioVideoController {
     return engine ? engine.getAudioFFTData(type, path) : null;
   }
 
+  getLiveInputPreview(type: import('../../../rendering/src/resources/LiveInputTextureManager').LiveInputType) {
+    return this.getEngine()?.getLiveInputPreview?.(type) ?? null;
+  }
+
   setVolume(volume: number): void {
     audioStore.setVolume(volume);
   }
