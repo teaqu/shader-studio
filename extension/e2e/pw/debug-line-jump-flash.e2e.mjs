@@ -202,6 +202,8 @@ test.describe('inline rendering across a line jump', () => {
     }, { message: 'inline rendering never showed line B as bright grey', timeout: 60_000 }).toBe('line-b');
     expect(seen.length, 'no frames observed during the jump').toBeGreaterThan(0);
 
+    // Intentional negative observation window; keep the full 1500ms to catch
+    // a forbidden late program installation after the expected image appears.
     // Let a lagging compile land: with the bug the baseline installs before
     // the instrumented program, so it is already logged - this only guards
     // against async reordering hiding it.

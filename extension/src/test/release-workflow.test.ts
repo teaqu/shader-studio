@@ -19,6 +19,7 @@ interface Job {
   uses?: string;
   needs?: string | string[];
   steps?: Step[];
+  env?: Record<string, string>;
 }
 
 interface Workflow {
@@ -83,6 +84,21 @@ suite('Packaged extension CI gates', () => {
         'installed-VSIX jobs must not rebuild the extension');
     }
     assert.ok(verify.jobs['vscode-e2e'].steps?.some(step => step.run === 'npx playwright install chromium'));
+  });
+
+  test('retains phase, memory and case measurements on successful and failed E2E runs', () => {
+    for (const name of ['vscode-e2e', 'vscode-e2e-linux']) {
+      const job = verify.jobs[name];
+      assert.strictEqual(job.env?.SHADER_STUDIO_E2E_TIMINGS_FILE, '${{ github.workspace }}/extension/e2e-timings.jsonl');
+      assert.strictEqual(job.env?.PLAYWRIGHT_JSON_OUTPUT_NAME, '${{ github.workspace }}/extension/e2e-results.json');
+      const upload = job.steps?.find(step => String(step.with?.name).endsWith('-measurements'));
+      assert.ok(upload);
+      assert.strictEqual(upload.if, '${{ always() }}');
+      assert.ok(String(upload.with?.path).includes('extension/e2e-timings.jsonl'));
+      assert.ok(String(upload.with?.path).includes('extension/e2e-results.json'));
+    }
+    const corpus = verify.jobs['vscode-e2e'].steps?.find(step => step.run?.includes('test:e2e:vscode:corpus'));
+    assert.strictEqual(corpus?.env?.PLAYWRIGHT_JSON_OUTPUT_NAME, '${{ github.workspace }}/extension/corpus-e2e-results.json');
   });
 
   test('publishes only the artifact from the completed shared verification workflow', () => {

@@ -41,9 +41,10 @@ function helpers(vscode, settingKey) {
         key, nextEnabled, vscode.ConfigurationTarget.Global,
       );
     }, enabled, settingKey);
-    await new Promise((resolve) => setTimeout(resolve, 500));
     await refreshFrame();
     await overlayReady();
+    await expect.poll(() => app().locator('.editor-wrapper').getAttribute('data-language-service-status'))
+      .toBe('ready');
   }
 
   /**

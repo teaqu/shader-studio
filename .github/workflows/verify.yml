@@ -126,6 +126,17 @@ jobs:
       - name: Build workspace test dependencies
         run: npm run build:deps -w extension
 
+      - name: Verify E2E test discovery
+        run: node .github/scripts/e2e-inventory.mjs e2e-inventory.json
+
+      - name: Upload E2E test inventory
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-test-inventory
+          path: e2e-inventory.json
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Run workspace Vitest suite
         run: npm test
 
@@ -231,6 +242,9 @@ jobs:
     runs-on: macos-15
     needs: package
     timeout-minutes: 45
+    env:
+      SHADER_STUDIO_E2E_TIMINGS_FILE: ${{ github.workspace }}/extension/e2e-timings.jsonl
+      PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ github.workspace }}/extension/e2e-results.json
 
     steps:
       - name: Checkout
@@ -259,6 +273,8 @@ jobs:
       # source workspace rather than the packaged extension, so retain it next
       # to the installed-VSIX pass instead of conflating the two hosts.
       - name: Run extension-host corpus E2E tests
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ github.workspace }}/extension/corpus-e2e-results.json
         run: npm run test:e2e:vscode:corpus -w extension
 
       # These selections are complementary: every spec runs once, using the
@@ -286,11 +302,26 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      - name: Upload VS Code E2E measurements
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: vscode-e2e-GPU-measurements
+          path: |
+            extension/e2e-timings.jsonl
+            extension/e2e-results.json
+            extension/corpus-e2e-results.json
+          if-no-files-found: ignore
+          retention-days: 14
+
   vscode-e2e-linux:
     name: Installed VSIX E2E (no GPU)
     runs-on: ubuntu-latest
     needs: package
     timeout-minutes: 45
+    env:
+      SHADER_STUDIO_E2E_TIMINGS_FILE: ${{ github.workspace }}/extension/e2e-timings.jsonl
+      PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ github.workspace }}/extension/e2e-results.json
 
     steps:
       - name: Checkout
@@ -335,6 +366,17 @@ jobs:
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Upload VS Code E2E measurements
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: vscode-e2e-no-GPU-measurements
+          path: |
+            extension/e2e-timings.jsonl
+            extension/e2e-results.json
+          if-no-files-found: ignore
+          retention-days: 14
 
   # One verdict for the run, for branch protection: it fails if any job
   # failed, was cancelled or was skipped. Once selection is enforced, the
