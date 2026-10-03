@@ -16,8 +16,8 @@
     const inputType = type;
     active = false;
     if (!controller || !ctx) {
- return; 
-}
+      return;
+    }
     const draw = () => {
       active = drawLiveInputPreview(ctx, inputType, controller.getLiveInputPreview(inputType));
     };

@@ -5,12 +5,12 @@ export function drawLiveInputPreview(ctx: CanvasRenderingContext2D, type: LiveIn
   const { width, height } = ctx.canvas;
   ctx.clearRect(0, 0, width, height);
   if (!input) {
-    return false; 
+    return false;
   }
   if (type === 'webcam') {
     const video = input.video;
     if (!video || video.readyState < 2 || !video.videoWidth || !video.videoHeight) {
-      return false; 
+      return false;
     }
     try {
       ctx.drawImage(video, 0, 0, width, height);
@@ -22,7 +22,7 @@ export function drawLiveInputPreview(ctx: CanvasRenderingContext2D, type: LiveIn
   }
   const { frequency, waveform } = input;
   if (!frequency?.length || !waveform?.length) {
-    return false; 
+    return false;
   }
   ctx.fillStyle = '#101820';
   ctx.fillRect(0, 0, width, height);
@@ -39,9 +39,9 @@ export function drawLiveInputPreview(ctx: CanvasRenderingContext2D, type: LiveIn
   for (let x = 0; x < width; x++) {
     const y = height * (1 - waveform[Math.floor(x * waveform.length / width)] / 255);
     if (x === 0) {
-      ctx.moveTo(x, y); 
+      ctx.moveTo(x, y);
     } else {
-      ctx.lineTo(x, y); 
+      ctx.lineTo(x, y);
     }
   }
   ctx.stroke();

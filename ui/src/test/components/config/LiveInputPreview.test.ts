@@ -9,7 +9,9 @@ function context() {
   return { canvas: { width: 160, height: 120 }, clearRect: vi.fn(), drawImage: vi.fn(), fillRect: vi.fn(), beginPath: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn() } as unknown as CanvasRenderingContext2D;
 }
 afterEach(() => {
-  cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); 
+  cleanup();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe('live channel previews', () => {
@@ -21,7 +23,7 @@ describe('live channel previews', () => {
     expect(drawLiveInputPreview(ctx, 'webcam', { video })).toBe(true);
     expect(ctx.drawImage).toHaveBeenCalledWith(video, 0, 0, 160, 120);
     vi.mocked(ctx.drawImage).mockImplementation(() => {
-      throw new Error('ended'); 
+      throw new Error('ended');
     });
     expect(drawLiveInputPreview(ctx, 'webcam', { video })).toBe(false);
   });
