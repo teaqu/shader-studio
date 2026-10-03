@@ -113,7 +113,7 @@ function sourceText(path) {
   if (extname(path) !== ".svelte") {
     return text;
   }
-  return [...text.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map((match) => match[1]).join("\n");
+  return [...text.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map((match) => match[1]).join("\n");
 }
 
 function isTypeOnlyImport(node) {
