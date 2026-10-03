@@ -82,6 +82,12 @@
         "^build"
       ],
       "cache": false
+    },
+    "test:e2e:vscode:cleanup:live": {
+      "dependsOn": [
+        "^build"
+      ],
+      "cache": false
     }
   }
 }

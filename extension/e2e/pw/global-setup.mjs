@@ -1,4 +1,5 @@
 import { downloadAndUnzipVSCode } from '@vscode/test-electron';
+import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -8,6 +9,13 @@ import { recordE2ePhase } from './e2e-timing.mjs';
 
 const extensionPath = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
+export function ensureE2eRunId(environment = process.env, createId = randomUUID) {
+  if (!environment.GITHUB_RUN_ID && !environment.SHADER_STUDIO_E2E_RUN_ID) {
+    environment.SHADER_STUDIO_E2E_RUN_ID = `local-${createId()}`;
+  }
+  return environment.GITHUB_RUN_ID ?? environment.SHADER_STUDIO_E2E_RUN_ID;
+}
+
 /**
  * Ensure the pinned VS Code exists before any worker starts.
  *
@@ -16,6 +24,7 @@ const extensionPath = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..
  * cold checkout. Downloading once here keeps workers to a fast path lookup.
  */
 export default async function globalSetup() {
+  ensureE2eRunId();
   const setupStartedAt = performance.now();
   const version = process.env.SHADER_STUDIO_E2E_VSCODE_VERSION ?? '1.109.5';
   const vscodeStartedAt = performance.now();
