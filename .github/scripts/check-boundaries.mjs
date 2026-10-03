@@ -18,6 +18,15 @@ const FORBIDDEN_IMPORTS = new Map([
   ["shader-studio", new Set(["shader-studio-ui"])],
 ]);
 
+// Foundation packages may only depend on lower-level foundations. This is
+// checked against manifests as well as source imports so adding a dependency
+// cannot pre-authorise a later layering violation.
+const FOUNDATION_DEPENDENCIES = new Map([
+  ["@shader-studio/types", new Set()],
+  ["@shader-studio/utils", new Set(["@shader-studio/types"])],
+  ["@shader-studio/language-server-core", new Set(["@shader-studio/types"])],
+]);
+
 // Worker entry points are intentionally published subpaths: the UI creates
 // them with `new Worker(new URL(..., import.meta.url))`, while each language
 // server's package root is its node-facing API. Keep this allow-list exact.
@@ -128,8 +137,13 @@ function importsIn(path) {
   const visit = (node) => {
     if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
       record(node.moduleSpecifier?.text, isTypeOnlyImport(node));
-    } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
-      record(ts.isStringLiteral(node.arguments[0]) ? node.arguments[0].text : undefined, false);
+    } else if (ts.isCallExpression(node)) {
+      const [firstArgument] = node.arguments;
+      const literalArgument = firstArgument && ts.isStringLiteral(firstArgument) ? firstArgument.text : undefined;
+      if (node.expression.kind === ts.SyntaxKind.ImportKeyword
+        || (ts.isIdentifier(node.expression) && node.expression.text === "require")) {
+        record(literalArgument, false);
+      }
     } else if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "URL") {
       const [specifier, base] = node.arguments ?? [];
       if (ts.isStringLiteral(specifier)
@@ -152,6 +166,15 @@ function declaredDependencies(manifest) {
     ...manifest.optionalDependencies,
     ...manifest.peerDependencies,
   }));
+}
+
+function isForbiddenDependency(source, target) {
+  const allowedFoundationDependencies = FOUNDATION_DEPENDENCIES.get(source);
+  if (allowedFoundationDependencies && !allowedFoundationDependencies.has(target)) {
+    return true;
+  }
+  const forbidden = FORBIDDEN_IMPORTS.get(source);
+  return forbidden === "*" || forbidden?.has(target) === true;
 }
 
 function findCycles(edges) {
@@ -183,7 +206,11 @@ function resolveLocalImport(sourcePath, specifier, sourcePaths) {
   if (!specifier.startsWith(".")) {
     return undefined;
   }
-  const candidate = resolve(dirname(sourcePath), specifier);
+  // Vite import suffixes select a loader, rather than changing the source
+  // file being imported. Resolve the path without the suffix while retaining
+  // the original specifier for diagnostics and exact exceptions.
+  const resolutionSpecifier = specifier.replace(/[?#].*$/, "");
+  const candidate = resolve(dirname(sourcePath), resolutionSpecifier);
   const candidates = [candidate];
   if (extname(candidate)) {
     candidates.push(candidate.slice(0, -extname(candidate).length));
@@ -215,7 +242,11 @@ export function checkBoundaries(root) {
   const localRuntimeEdges = new Map([...sourcePaths].map((path) => [path, new Set()]));
   for (const [name, { manifest }] of packages) {
     const dependencies = declaredDependencies(manifest);
-    const forbidden = FORBIDDEN_IMPORTS.get(name);
+    for (const target of dependencies) {
+      if (packages.has(target) && isForbiddenDependency(name, target)) {
+        errors.push(`${name} may not declare workspace dependency ${target}`);
+      }
+    }
     for (const path of filesByPackage.get(name)) {
       for (const { specifier, typeOnly } of importsIn(path)) {
         const localTarget = resolveLocalImport(path, specifier, sourcePaths);
@@ -225,6 +256,9 @@ export function checkBoundaries(root) {
             const exceptionKey = `${relative(root, path)}:${specifier}`;
             if (!RELATIVE_CROSS_PACKAGE_EXCEPTIONS.has(exceptionKey)) {
               errors.push(`${relative(root, path)}: relative import ${specifier} crosses into ${targetPackage}; use its public entry point`);
+            }
+            if (isForbiddenDependency(name, targetPackage)) {
+              errors.push(`${relative(root, path)}: ${name} may not import ${targetPackage}`);
             }
             if (!typeOnly) {
               runtimeEdges.get(name).add(targetPackage);
@@ -247,7 +281,7 @@ export function checkBoundaries(root) {
         if (!dependencies.has(target)) {
           errors.push(`${display}: ${name} imports undeclared workspace dependency ${target}`);
         }
-        if (forbidden === "*" || forbidden?.has(target)) {
+        if (isForbiddenDependency(name, target)) {
           errors.push(`${display}: ${name} may not import ${target}`);
         }
         if (!typeOnly && target !== name) {
