@@ -1,75 +1,33 @@
 import {
-  CompletionItemKind,
-  DiagnosticSeverity,
-  DiagnosticTag,
-  DocumentHighlightKind,
-  MarkupKind,
-  SymbolKind,
-  type CompletionItem,
-  type Diagnostic,
-  type DocumentHighlight,
-  type DocumentSymbol,
-  type Hover,
-  type Location,
-  type Position,
-  type Range,
-  type ParameterInformation,
-  type SignatureHelp,
-  type SignatureInformation,
-  type WorkspaceEdit,
-} from "vscode-languageserver-protocol";
-import {
   DocumentStore,
   VirtualFileSystem,
-  findMemberAccess,
   formatLiteralColorComponent,
-  isPositionInComment,
-  literalColorFromArguments,
-  swizzleCompletions,
-  memberSelectionAt,
   type ColorPresentationParams,
   type DocumentParams,
-  type DocumentPositionParams,
-  type LanguageService,
   type ReferenceParams,
   type RenameParams,
   type ServerCapabilities,
-  type ShaderDocumentSnapshot,
+  type ShaderDocumentSnapshot
 } from "@shader-studio/language-server-core";
 import {
   SHADER_STUDIO_SYMBOL_DOCS,
   buildWgslChannelAuthoringSource,
-  isShaderLanguageReservedTerm,
-  isValidShaderIdentifier,
-  isWgslReservedWord,
-  validateShaderAuthoringEnvironment,
-  wgslStorageElementType,
-  type ShaderAuthoringEnvironment,
+  type ShaderAuthoringEnvironment
 } from "@shader-studio/types";
 import {
   parseWgslDocument,
-  parseWgslDocumentAtPosition,
-  positionOffset,
-  resolveWgslExpressionType,
-  symbolAtPosition,
-  tokenizeWgsl,
   visibleSymbolsAtPosition,
-  wgslVectorTypeName,
   type WgslAnalysisDocument,
-  type WgslInferenceContext,
-  type WgslSymbol,
-  type WgslToken,
+  type WgslSymbol
 } from "@shader-studio/wgsl-analysis";
-import { WGSL_INTRINSICS, findWgslAttribute, findWgslIntrinsics } from "./intrinsics.js";
-import { WGSL_VERTEX_HOOK_FEATURES, type WgslVertexHookFeature } from "./vertexHook.js";
 import {
-  WGSL_MAIN_IMAGE_COORDINATE_DESCRIPTION,
-  WGSL_MAIN_IMAGE_DESCRIPTION,
-} from "./fragmentHook.js";
+  type Location,
+  type Position,
+  type Range
+} from "vscode-languageserver-protocol";
+import { deduplicateLocations, findWgslLiteralColors, identifierPosition, includedReferenceRanges, inferenceContext, orderedRanges, rangeKey, visibleIntrinsics, wordAt } from "./WgslLanguageServiceSupport.js";
 
 const CHANNEL_DECLARATIONS_URI = "shader-studio://generated/channels.wgsl";
-import { unusedSymbolDiagnostics, isRenameableName, orderedRanges, symbolAtRenamePosition, identifierPosition, includedReferenceRanges, deduplicateLocations, WGSL_SWIZZLE_SETS, memberCompletions, environmentTypeName, authoringValueWgslType, completionFromDoc, markdownDocumentation, markdownHover, completionKind, documentSymbolKind, vertexHookFeature, WGSL_VEC2_TYPES, WGSL_VEC4_TYPES, mainImageFeature, rangeContains, comparePosition, visibleIntrinsics, wgslStage, wordAt, zeroRange, SERVICE_SOURCE, GENERATED_CHANNEL_DESCRIPTION, generatedWgslFunctions, signatureInformation, functionSignatures, functionSignature, typedName, declarationLabel, declarationDocumentation, isAttributeName, leadingComment, callAt, templateListEnd, WGSL_COLOR_CONSTRUCTOR, findWgslLiteralColors, offsetPosition, rangeKey, errorDiagnostic, WGSL_PREDECLARED_NAMES, knownWgslNames, reservedWordDiagnostics, unresolvedReferenceDiagnostics, FRAGMENT_ONLY_BUILTINS, COMPUTE_ONLY_BUILTINS, stageDiagnostics, functionBodies, restrictedStageUses, includedStageViolations, stageEntryNames, calledNames, tokenRange, samplingStageWarnings, BUILTIN_RESULT_FIELDS, inferenceContext, includedFieldType, expressionContext, includedGlobalType, uniqueIntrinsicReturnType, identifierSite, memberHover } from "./WgslLanguageServiceSupport.js";
-import type { WgslMainImageFeature, WgslCallableDescription, WgslLiteralColor, RestrictedStageUse, IncludedStageViolation, IdentifierSite } from "./WgslLanguageServiceSupport.js";
 
 const CAPABILITIES: ServerCapabilities = {
   completion: true,
@@ -91,8 +49,12 @@ const CAPABILITIES: ServerCapabilities = {
 export interface WgslProviderContext {
   current(params: DocumentParams): WgslDocumentState | undefined;
   includes(uri: string): readonly WgslAnalysisDocument[];
-  getAnalyses(): ReadonlyMap<string, WgslAnalysisDocument>;
-  getAllIncludes(): ReadonlyMap<string, readonly WgslAnalysisDocument[]>;
+}
+
+/** Navigation queries leave the workspace indexes owned by the backend. */
+export interface WgslNavigationContext extends WgslProviderContext {
+  analysis(uri: string): WgslAnalysisDocument | undefined;
+  analysesIncluding(ownerUri: string, symbolId: string): Iterable<readonly [string, WgslAnalysisDocument]>;
 }
 
 export interface WgslDocumentState {
@@ -292,11 +254,19 @@ export class WgslLanguageServiceBackend {
     return this.includeAnalyses.get(uri) ?? [];
   }
 
-  getAnalyses(): ReadonlyMap<string, WgslAnalysisDocument> {
-    return this.analyses;
+  analysis(uri: string): WgslAnalysisDocument | undefined {
+    return this.analyses.get(uri);
   }
-  getAllIncludes(): ReadonlyMap<string, readonly WgslAnalysisDocument[]> {
-    return this.includeAnalyses;
+
+  *analysesIncluding(ownerUri: string, symbolId: string): Iterable<readonly [string, WgslAnalysisDocument]> {
+    for (const [uri, includes] of this.includeAnalyses) {
+      if (includes.some((analysis) => analysis.uri === ownerUri && analysis.symbols.some((symbol) => symbol.id === symbolId))) {
+        const analysis = this.analyses.get(uri);
+        if (analysis) {
+          yield [uri, analysis];
+        }
+      }
+    }
   }
 
 }

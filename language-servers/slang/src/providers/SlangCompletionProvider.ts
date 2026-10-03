@@ -1,82 +1,34 @@
-import { findSlangAuthoredDeclarations } from "@shader-studio/types";
 import {
-  CompletionItemKind,
-  DiagnosticSeverity,
-  DiagnosticTag,
-  MarkupKind,
-  SymbolKind,
-  type CompletionItem,
-  type Diagnostic,
-  type DocumentHighlight,
-  DocumentHighlightKind,
-  type DocumentSymbol,
-  type Hover,
-  type Location,
-  type MarkupContent,
-  type Position,
-  type Range,
-  type SignatureHelp,
-  type TextEdit,
-  type WorkspaceEdit,
-} from "vscode-languageserver-protocol";
-import {
-  DocumentStore,
-  VirtualFileSystem,
-  createLiteralColorPresentations,
   declarationContext,
-  findLiteralConstructorColors,
   findMemberAccess,
   isInsideBlock,
   isPositionInComment,
   rankCompletionsForContext,
-  swizzleCompletions,
-  memberSelectionAt,
-  type ColorPresentationParams,
-  type DocumentParams,
-  type DocumentPositionParams,
-  type LanguageService,
-  type RenameParams,
-  type ReferenceParams,
-  type ServerCapabilities,
-  type ShaderDocumentSnapshot,
+  type DocumentPositionParams
 } from "@shader-studio/language-server-core";
 import {
   SHADER_STUDIO_SYMBOL_DOCS,
-  buildSlangAuthoringModule,
-  describeSlangChannel,
-  isValidShaderIdentifier,
-  validateShaderAuthoringEnvironment,
-  type AuthoringResource,
-  type ShaderAuthoringEnvironment,
   isShaderEntryPointName,
   isShaderTypeKeyword,
-  shaderTypeCompletionKeywords,
+  shaderTypeCompletionKeywords
 } from "@shader-studio/types";
-import type {
-  SlangDiagnostic,
-  SlangCompilerGlobalSession,
-  SlangDocumentSymbol,
-  SlangLanguageServer,
-  SlangLanguageServerModule,
-  SlangList,
-} from "../slangLanguageServerTypes.js";
-import { SLANG_INTRINSICS, type SlangIntrinsic } from "../intrinsics.js";
-import { SLANG_COMPUTE_FEATURES, type SlangComputeFeature } from "../computeFeatures.js";
-import { SLANG_VERTEX_HOOK_FEATURES, type SlangVertexHookFeature } from "../vertexHook.js";
-import { SLANG_MAIN_IMAGE_COORDINATE_DESCRIPTION, SLANG_MAIN_IMAGE_DESCRIPTION } from "../fragmentHook.js";
-import { findSlangLocalAt, findUnusedSlangLocals, resolveSlangExpressionType, visibleSlangLocals, type SlangExpressionContext } from "../expressionType.js";
-import { SLANG_SWIZZLE_SETS, resolveSlangSwizzleType, slangVectorTypeName } from "../slangTypes.js";
-import { applySlangRenameEdits, renameSlangSymbol, resolveSlangSymbol, type SlangRenameDocument } from "../rename.js";
+import {
+  CompletionItemKind,
+  MarkupKind,
+  SymbolKind,
+  type CompletionItem
+} from "vscode-languageserver-protocol";
+import { SLANG_COMPUTE_FEATURES } from "../computeFeatures.js";
+import { visibleSlangLocals } from "../expressionType.js";
 
-import { contextualFiles, computeFeatureMarkup, vertexHookMarkup, contractMarkup, mainImageMarkup, mainImageFeatureAt, mainImageCompletionFeature, mainImageCoordinateCompletion, offsetAtPosition, matchingBrace, vertexHookFeatureAt, vertexHookCompletionFeatures, vertexHookMatches, consumeList, convertDocumentSymbol, convertDiagnostic, shiftedPosition, shiftedRange, userRange, zeroRange, comparePositions, rangesOverlap, consumeCompilerTargets, INCLUDE_STRING_PATTERN, INCLUDE_IDENT_PATTERN, IMPORT_PATTERN, MODULE_DECL_PATTERN, IMPLEMENTING_DECL_PATTERN, resolveCompilerDependencies, sourcePath, moduleName, parseCompilerDiagnostics, slangType, markup, localSourceHover, currentDocumentDefinitionLine, generatedLocalDefinitionLine, escapeRegExp, wordAt, memberCompletions, slangExpressionContext, memberHover, moduleDirectiveHover, completionDocumentation, shaderStudioInputMemberCompletions, inputMethodCompletion, isGeneratedInputImplementationSymbol, shaderStudioInputMethodSignaturesAtCall, nativeTextureMemberCompletions, nativeTextureMember, generatedEnvironmentGlobals, generatedSamplingFunctions, slangStorageBufferType, slangStorageElementType, environmentTypeName, intrinsicReturnType, declaresSlangType, findSlangDeclarations, authoredChannelCollisionDiagnostics, offsetRange, positionAtOffset, authoredPointRange, nativeDefinitionKey, identifierOccurrences, SLANG_CALL_KEYWORDS, callAt, documentedSlangFunctions, intrinsic, completionForIntrinsic, intrinsicMarkup } from "../SlangLanguageServiceSupport.js";
-import type { SlangMainImageFeature, SlangVertexHookMatch, SlangDeclaration } from "../SlangLanguageServiceSupport.js";
-import type { SlangLanguageServiceBackend } from "../SlangLanguageServiceBackend.js";
+import { completionForIntrinsic, computeFeatureMarkup, consumeList, contextualFiles, contractMarkup, declaresSlangType, documentedSlangFunctions, findSlangDeclarations, generatedEnvironmentGlobals, generatedSamplingFunctions, intrinsicMarkup, isGeneratedInputImplementationSymbol, mainImageCompletionFeature, mainImageCoordinateCompletion, markup, memberCompletions, shiftedPosition, slangExpressionContext, slangType, userRange, vertexHookCompletionFeatures, vertexHookMarkup } from "../SlangLanguageServiceSupport.js";
+import type { SlangCompletionContext } from "./SlangProviderContext.js";
 
 export class SlangCompletionProvider {
-  constructor(private readonly backend: SlangLanguageServiceBackend) {}
+  constructor(private readonly context: SlangCompletionContext) {}
 
   async provide(params: DocumentPositionParams): Promise<CompletionItem[]> {
-    const state = this.backend.current(params);
+    const state = this.context.current(params);
     if (!state) {
       return [];
     }
@@ -94,7 +46,7 @@ export class SlangCompletionProvider {
     const vertexFeatures = state.environment.stage === "vertex"
       ? vertexHookCompletionFeatures(state.document.text)
       : [];
-    const official = consumeList(this.backend.server.completion(params.document.uri, shiftedPosition(params.position, state.offset), {
+    const official = consumeList(this.context.completion(params.document.uri, shiftedPosition(params.position, state.offset), {
       triggerKind: 1,
       triggerCharacter: "",
     }), (item) => {

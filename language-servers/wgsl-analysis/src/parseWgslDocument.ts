@@ -106,18 +106,8 @@ class WgslParser {
       checkText: (text) => this.checkText(text),
       error: (message, token) => this.error(message, token),
       recoverToStatementEnd: () => this.recoverToStatementEnd(),
-      parseTemplateArgs: () => this.parseTemplateArgs(),
+      tryParseTemplateCallHead: () => this.tryParseTemplateCallHead(),
       recordValueReference: (name, token, isCall) => this.recordValueReference(name, token, isCall),
-      snapshotSideEffects: () => this.snapshotSideEffects(),
-      restoreSideEffects: (snapshot) => this.restoreSideEffects(snapshot as ReturnType<WgslParser["snapshotSideEffects"]>),
-      snapshotCursor: () => ({ index: this.index, pending: [...this.pending], lastConsumedEnd: this.lastConsumedEnd }),
-      restoreCursor: (snapshot) => {
-        const cursor = snapshot as { index: number; pending: WgslToken[]; lastConsumedEnd: number };
-        this.index = cursor.index;
-        this.pending.length = 0;
-        this.pending.push(...cursor.pending);
-        this.lastConsumedEnd = cursor.lastConsumedEnd;
-      },
     });
   }
 
@@ -534,6 +524,22 @@ class WgslParser {
       symbol.references.length = length;
     }
     this.diagnostics.length = snapshot.diagnosticLength;
+  }
+
+  /** Parses a template list transactionally, retaining it only for a call head. */
+  private tryParseTemplateCallHead(): number | undefined {
+    const cursor = { index: this.index, pending: [...this.pending], lastConsumedEnd: this.lastConsumedEnd };
+    const effects = this.snapshotSideEffects();
+    const end = this.parseTemplateArgs();
+    if (end !== undefined && this.checkText("(")) {
+      return end;
+    }
+    this.index = cursor.index;
+    this.pending.length = 0;
+    this.pending.push(...cursor.pending);
+    this.lastConsumedEnd = cursor.lastConsumedEnd;
+    this.restoreSideEffects(effects);
+    return undefined;
   }
 
   private recordUnresolved(name: string, kind: WgslUnresolvedReference["kind"], range: Range): void {

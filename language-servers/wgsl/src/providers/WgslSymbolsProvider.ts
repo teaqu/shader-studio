@@ -1,7 +1,7 @@
 import type { DocumentParams } from "@shader-studio/language-server-core";
 import type { DocumentSymbol } from "vscode-languageserver-protocol";
-import { documentSymbolKind } from "../WgslLanguageServiceSupport.js";
 import type { WgslProviderContext } from "../WgslLanguageServiceBackend.js";
+import { documentSymbolKind } from "../WgslLanguageServiceSupport.js";
 
 export class WgslSymbolsProvider {
   constructor(private readonly context: WgslProviderContext) {}

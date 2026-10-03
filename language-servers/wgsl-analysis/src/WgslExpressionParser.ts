@@ -12,12 +12,9 @@ export interface WgslExpressionParserContext {
   checkText(text: string): boolean;
   error(message: string, token: WgslToken): void;
   recoverToStatementEnd(): void;
-  parseTemplateArgs(): number | undefined;
+  /** Commits a template argument list only when it heads a call. */
+  tryParseTemplateCallHead(): number | undefined;
   recordValueReference(name: string, token: WgslToken, isCall: boolean): void;
-  snapshotSideEffects(): unknown;
-  restoreSideEffects(snapshot: unknown): void;
-  snapshotCursor(): unknown;
-  restoreCursor(snapshot: unknown): void;
 }
 
 /** Parses expressions while leaving document cursor and reference ownership with its caller. */
@@ -160,15 +157,10 @@ export class WgslExpressionParser {
     let name = token.text;
     let isCall = false;
     if (this.context.checkText("<")) {
-      const cursor = this.context.snapshotCursor();
-      const effects = this.context.snapshotSideEffects();
-      const typeEnd = this.context.parseTemplateArgs();
-      if (typeEnd !== undefined && this.context.checkText("(")) {
+      const typeEnd = this.context.tryParseTemplateCallHead();
+      if (typeEnd !== undefined) {
         name = this.context.source.slice(token.offset, typeEnd);
         isCall = true;
-      } else {
-        this.context.restoreCursor(cursor);
-        this.context.restoreSideEffects(effects);
       }
     } else if (this.context.checkText("(")) {
       isCall = true;

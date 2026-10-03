@@ -1,82 +1,26 @@
-import { findSlangAuthoredDeclarations } from "@shader-studio/types";
 import {
-  CompletionItemKind,
-  DiagnosticSeverity,
-  DiagnosticTag,
-  MarkupKind,
-  SymbolKind,
-  type CompletionItem,
-  type Diagnostic,
-  type DocumentHighlight,
-  DocumentHighlightKind,
-  type DocumentSymbol,
-  type Hover,
-  type Location,
-  type MarkupContent,
-  type Position,
-  type Range,
-  type SignatureHelp,
-  type TextEdit,
-  type WorkspaceEdit,
-} from "vscode-languageserver-protocol";
-import {
-  DocumentStore,
-  VirtualFileSystem,
-  createLiteralColorPresentations,
-  declarationContext,
-  findLiteralConstructorColors,
-  findMemberAccess,
-  isInsideBlock,
   isPositionInComment,
-  rankCompletionsForContext,
-  swizzleCompletions,
-  memberSelectionAt,
-  type ColorPresentationParams,
-  type DocumentParams,
-  type DocumentPositionParams,
-  type LanguageService,
-  type RenameParams,
-  type ReferenceParams,
-  type ServerCapabilities,
-  type ShaderDocumentSnapshot,
+  type DocumentPositionParams
 } from "@shader-studio/language-server-core";
 import {
   SHADER_STUDIO_SYMBOL_DOCS,
-  buildSlangAuthoringModule,
-  describeSlangChannel,
-  isValidShaderIdentifier,
-  validateShaderAuthoringEnvironment,
-  type AuthoringResource,
-  type ShaderAuthoringEnvironment,
-  isShaderEntryPointName,
-  isShaderTypeKeyword,
-  shaderTypeCompletionKeywords,
+  describeSlangChannel
 } from "@shader-studio/types";
-import type {
-  SlangDiagnostic,
-  SlangCompilerGlobalSession,
-  SlangDocumentSymbol,
-  SlangLanguageServer,
-  SlangLanguageServerModule,
-  SlangList,
-} from "../slangLanguageServerTypes.js";
-import { SLANG_INTRINSICS, type SlangIntrinsic } from "../intrinsics.js";
-import { SLANG_COMPUTE_FEATURES, type SlangComputeFeature } from "../computeFeatures.js";
-import { SLANG_VERTEX_HOOK_FEATURES, type SlangVertexHookFeature } from "../vertexHook.js";
-import { SLANG_MAIN_IMAGE_COORDINATE_DESCRIPTION, SLANG_MAIN_IMAGE_DESCRIPTION } from "../fragmentHook.js";
-import { findSlangLocalAt, findUnusedSlangLocals, resolveSlangExpressionType, visibleSlangLocals, type SlangExpressionContext } from "../expressionType.js";
-import { SLANG_SWIZZLE_SETS, resolveSlangSwizzleType, slangVectorTypeName } from "../slangTypes.js";
-import { applySlangRenameEdits, renameSlangSymbol, resolveSlangSymbol, type SlangRenameDocument } from "../rename.js";
+import {
+  MarkupKind,
+  type Hover
+} from "vscode-languageserver-protocol";
+import { SLANG_COMPUTE_FEATURES } from "../computeFeatures.js";
+import { findSlangLocalAt } from "../expressionType.js";
 
-import { contextualFiles, computeFeatureMarkup, vertexHookMarkup, contractMarkup, mainImageMarkup, mainImageFeatureAt, mainImageCompletionFeature, mainImageCoordinateCompletion, offsetAtPosition, matchingBrace, vertexHookFeatureAt, vertexHookCompletionFeatures, vertexHookMatches, consumeList, convertDocumentSymbol, convertDiagnostic, shiftedPosition, shiftedRange, userRange, zeroRange, comparePositions, rangesOverlap, consumeCompilerTargets, INCLUDE_STRING_PATTERN, INCLUDE_IDENT_PATTERN, IMPORT_PATTERN, MODULE_DECL_PATTERN, IMPLEMENTING_DECL_PATTERN, resolveCompilerDependencies, sourcePath, moduleName, parseCompilerDiagnostics, slangType, markup, localSourceHover, currentDocumentDefinitionLine, generatedLocalDefinitionLine, escapeRegExp, wordAt, memberCompletions, slangExpressionContext, memberHover, moduleDirectiveHover, completionDocumentation, shaderStudioInputMemberCompletions, inputMethodCompletion, isGeneratedInputImplementationSymbol, shaderStudioInputMethodSignaturesAtCall, nativeTextureMemberCompletions, nativeTextureMember, generatedEnvironmentGlobals, generatedSamplingFunctions, slangStorageBufferType, slangStorageElementType, environmentTypeName, intrinsicReturnType, declaresSlangType, findSlangDeclarations, authoredChannelCollisionDiagnostics, offsetRange, positionAtOffset, authoredPointRange, nativeDefinitionKey, identifierOccurrences, SLANG_CALL_KEYWORDS, callAt, documentedSlangFunctions, intrinsic, completionForIntrinsic, intrinsicMarkup } from "../SlangLanguageServiceSupport.js";
-import type { SlangMainImageFeature, SlangVertexHookMatch, SlangDeclaration } from "../SlangLanguageServiceSupport.js";
-import type { SlangLanguageServiceBackend } from "../SlangLanguageServiceBackend.js";
+import { computeFeatureMarkup, currentDocumentDefinitionLine, documentedSlangFunctions, findSlangDeclarations, generatedLocalDefinitionLine, generatedSamplingFunctions, intrinsicMarkup, localSourceHover, mainImageFeatureAt, mainImageMarkup, markup, memberHover, moduleDirectiveHover, shiftedPosition, slangExpressionContext, slangStorageBufferType, slangType, userRange, vertexHookFeatureAt, vertexHookMarkup, wordAt } from "../SlangLanguageServiceSupport.js";
+import type { SlangHoverContext } from "./SlangProviderContext.js";
 
 export class SlangHoverProvider {
-  constructor(private readonly backend: SlangLanguageServiceBackend) {}
+  constructor(private readonly context: SlangHoverContext) {}
 
   async provide(params: DocumentPositionParams): Promise<Hover | null> {
-    const state = this.backend.current(params);
+    const state = this.context.current(params);
     if (!state) {
       return null;
     }
@@ -165,14 +109,14 @@ export class SlangHoverProvider {
       };
     }
     const local = findSlangDeclarations(state.document.text).find((item) => item.name === word);
-    const result = this.backend.server.hover(params.document.uri, shiftedPosition(params.position, state.offset));
+    const result = this.context.hover(params.document.uri, shiftedPosition(params.position, state.offset));
     if (result) {
       const contents = markup(result.contents);
       if (/Defined in [0-9a-f]{32,64}\(\d+\)/i.test(contents.value)) {
         const line = local?.selectionRange.start.line !== undefined
           ? local.selectionRange.start.line + 1
           : currentDocumentDefinitionLine(
-            this.backend.server,
+            { gotoDefinition: this.context.definition },
             params.document.uri,
             shiftedPosition(params.position, state.offset),
             state.offset,

@@ -1,75 +1,42 @@
-import { findSlangAuthoredDeclarations } from "@shader-studio/types";
-import {
-  CompletionItemKind,
-  DiagnosticSeverity,
-  DiagnosticTag,
-  MarkupKind,
-  SymbolKind,
-  type CompletionItem,
-  type Diagnostic,
-  type DocumentHighlight,
-  DocumentHighlightKind,
-  type DocumentSymbol,
-  type Hover,
-  type Location,
-  type MarkupContent,
-  type Position,
-  type Range,
-  type SignatureHelp,
-  type TextEdit,
-  type WorkspaceEdit,
-} from "vscode-languageserver-protocol";
 import {
   DocumentStore,
-  VirtualFileSystem,
   createLiteralColorPresentations,
-  declarationContext,
   findLiteralConstructorColors,
-  findMemberAccess,
-  isInsideBlock,
   isPositionInComment,
-  rankCompletionsForContext,
-  swizzleCompletions,
-  memberSelectionAt,
   type ColorPresentationParams,
   type DocumentParams,
-  type DocumentPositionParams,
-  type LanguageService,
   type RenameParams,
-  type ReferenceParams,
   type ServerCapabilities,
-  type ShaderDocumentSnapshot,
+  type ShaderDocumentSnapshot
 } from "@shader-studio/language-server-core";
 import {
-  SHADER_STUDIO_SYMBOL_DOCS,
   buildSlangAuthoringModule,
-  describeSlangChannel,
-  isValidShaderIdentifier,
-  validateShaderAuthoringEnvironment,
-  type AuthoringResource,
-  type ShaderAuthoringEnvironment,
-  isShaderEntryPointName,
-  isShaderTypeKeyword,
-  shaderTypeCompletionKeywords,
+  type ShaderAuthoringEnvironment
 } from "@shader-studio/types";
+import {
+  DiagnosticSeverity,
+  DiagnosticTag,
+  type Diagnostic,
+  type TextEdit,
+  type WorkspaceEdit
+} from "vscode-languageserver-protocol";
+import { findUnusedSlangLocals } from "./expressionType.js";
+import { applySlangRenameEdits, type SlangRenameDocument } from "./rename.js";
 import type {
-  SlangDiagnostic,
   SlangCompilerGlobalSession,
-  SlangDocumentSymbol,
   SlangLanguageServer,
-  SlangLanguageServerModule,
-  SlangList,
+  SlangLanguageServerModule
 } from "./slangLanguageServerTypes.js";
-import { SLANG_INTRINSICS, type SlangIntrinsic } from "./intrinsics.js";
-import { SLANG_COMPUTE_FEATURES, type SlangComputeFeature } from "./computeFeatures.js";
-import { SLANG_VERTEX_HOOK_FEATURES, type SlangVertexHookFeature } from "./vertexHook.js";
-import { SLANG_MAIN_IMAGE_COORDINATE_DESCRIPTION, SLANG_MAIN_IMAGE_DESCRIPTION } from "./fragmentHook.js";
-import { findSlangLocalAt, findUnusedSlangLocals, resolveSlangExpressionType, visibleSlangLocals, type SlangExpressionContext } from "./expressionType.js";
-import { SLANG_SWIZZLE_SETS, resolveSlangSwizzleType, slangVectorTypeName } from "./slangTypes.js";
-import { applySlangRenameEdits, renameSlangSymbol, resolveSlangSymbol, type SlangRenameDocument } from "./rename.js";
 
-import { contextualFiles, computeFeatureMarkup, vertexHookMarkup, contractMarkup, mainImageMarkup, mainImageFeatureAt, mainImageCompletionFeature, mainImageCoordinateCompletion, offsetAtPosition, matchingBrace, vertexHookFeatureAt, vertexHookCompletionFeatures, vertexHookMatches, consumeList, convertDocumentSymbol, convertDiagnostic, shiftedPosition, shiftedRange, userRange, zeroRange, comparePositions, rangesOverlap, consumeCompilerTargets, INCLUDE_STRING_PATTERN, INCLUDE_IDENT_PATTERN, IMPORT_PATTERN, MODULE_DECL_PATTERN, IMPLEMENTING_DECL_PATTERN, resolveCompilerDependencies, sourcePath, moduleName, parseCompilerDiagnostics, slangType, markup, localSourceHover, currentDocumentDefinitionLine, generatedLocalDefinitionLine, escapeRegExp, wordAt, memberCompletions, slangExpressionContext, memberHover, moduleDirectiveHover, completionDocumentation, shaderStudioInputMemberCompletions, inputMethodCompletion, isGeneratedInputImplementationSymbol, shaderStudioInputMethodSignaturesAtCall, nativeTextureMemberCompletions, nativeTextureMember, generatedEnvironmentGlobals, generatedSamplingFunctions, slangStorageBufferType, slangStorageElementType, environmentTypeName, intrinsicReturnType, declaresSlangType, findSlangDeclarations, authoredChannelCollisionDiagnostics, offsetRange, positionAtOffset, authoredPointRange, nativeDefinitionKey, identifierOccurrences, SLANG_CALL_KEYWORDS, callAt, documentedSlangFunctions, intrinsic, completionForIntrinsic, intrinsicMarkup } from "./SlangLanguageServiceSupport.js";
-import type { SlangMainImageFeature, SlangVertexHookMatch, SlangDeclaration } from "./SlangLanguageServiceSupport.js";
+import { consumeCompilerTargets, contextualFiles, identifierOccurrences, moduleName, nativeDefinitionKey, parseCompilerDiagnostics, rangesOverlap, resolveCompilerDependencies, shiftedPosition, sourcePath, wordAt } from "./SlangLanguageServiceSupport.js";
+import type {
+  SlangCompletionContext,
+  SlangDiagnosticsContext,
+  SlangHoverContext,
+  SlangNavigationContext,
+  SlangProviderState,
+  SlangSymbolsContext,
+} from "./providers/SlangProviderContext.js";
 const CAPABILITIES: ServerCapabilities = {
   completion: true,
   hover: true,
@@ -86,8 +53,8 @@ const CAPABILITIES: ServerCapabilities = {
 };
 
 export class SlangLanguageServiceBackend {
-  readonly store = new DocumentStore();
-  readonly server: SlangLanguageServer;
+  private readonly store = new DocumentStore();
+  private readonly server: SlangLanguageServer;
   private readonly lineOffsets = new Map<string, number>();
   private readonly opened = new Set<string>();
   private readonly virtualOpened = new Set<string>();
@@ -193,7 +160,7 @@ export class SlangLanguageServiceBackend {
     this.opened.add(uri);
   }
 
-  current(params: DocumentParams) {
+  current(params: DocumentParams): SlangProviderState | undefined {
     if (!this.store.isCurrent(params.document)) {
       return undefined;
     }
@@ -203,6 +170,43 @@ export class SlangLanguageServiceBackend {
     return document && environment && offset !== undefined ? { document, environment, offset } : undefined;
   }
 
+  completionContext(): SlangCompletionContext {
+    return { current: this.current.bind(this), completion: this.server.completion.bind(this.server) };
+  }
+
+  diagnosticsContext(): SlangDiagnosticsContext {
+    return {
+      current: this.current.bind(this),
+      diagnostics: this.server.getDiagnostics.bind(this.server),
+      compilerDiagnostics: this.compilerDiagnostics.bind(this),
+      unusedLocalDiagnostics: this.unusedLocalDiagnostics.bind(this),
+    };
+  }
+
+  hoverContext(): SlangHoverContext {
+    return {
+      current: this.current.bind(this),
+      hover: this.server.hover.bind(this.server),
+      definition: this.server.gotoDefinition.bind(this.server),
+    };
+  }
+
+  navigationContext(): SlangNavigationContext {
+    return {
+      current: this.current.bind(this),
+      definition: this.server.gotoDefinition.bind(this.server),
+      signatureHelp: this.server.signatureHelp.bind(this.server),
+      renameDocuments: this.renameDocuments.bind(this),
+      documentText: this.documentText.bind(this),
+      nativeRename: this.nativeRename.bind(this),
+      renameCompiles: this.renameCompiles.bind(this),
+    };
+  }
+
+  symbolsContext(): SlangSymbolsContext {
+    return { current: this.current.bind(this), documentSymbols: this.server.documentSymbol.bind(this.server) };
+  }
+
   /**
    * Warns about Slang locals and parameters nothing reads, recovered from
    * source text because the bundled server exposes no reference index.
@@ -210,7 +214,7 @@ export class SlangLanguageServiceBackend {
    * so the same span is never squiggled twice.
    */
   unusedLocalDiagnostics(
-    state: NonNullable<ReturnType<SlangLanguageServiceBackend["current"]>>,
+    state: SlangProviderState,
     official: readonly Diagnostic[],
   ): Diagnostic[] {
     return findUnusedSlangLocals(state.document.text)
@@ -227,7 +231,7 @@ export class SlangLanguageServiceBackend {
       }));
   }
 
-  compilerDiagnostics(state: NonNullable<ReturnType<SlangLanguageServiceBackend["current"]>>): Diagnostic[] {
+  compilerDiagnostics(state: SlangProviderState): Diagnostic[] {
     const compiler = this.compiler();
     if (!compiler) {
       return [];
