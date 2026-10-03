@@ -179,6 +179,11 @@ export class WgslTraceSession {
       }
     }
     this.event('output', { category: 'console', output: `Captured ${recording.events.length} WGSL steps. Stops show locals before the highlighted statement. Helpers are stepped over.\n` });
+    const unavailable = new Map(recording.sites.flatMap(site => (site.unavailableVariables ?? [])
+      .map(variable => [variable.name, variable.type] as const)));
+    if (unavailable.size) {
+      this.event('output', { category: 'console', output: `Values not recorded by this PoC: ${[...unavailable].map(([name, type]) => `${name} (${type})`).join(', ')}. They remain visible as unavailable locals.\n` });
+    }
     if (recording.overflow) {
       this.event('output', { category: 'stderr', output: 'Trace capacity reached: this recording is incomplete. Increase capacity and launch again. Shader execution was not truncated.\n' });
     }

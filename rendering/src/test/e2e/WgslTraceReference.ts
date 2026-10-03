@@ -5,7 +5,7 @@ import { wrapWgslImageSource, WGSL_ENTRY_FRAGMENT, WGSL_ENTRY_VERTEX } from '../
 
 /** Independent, uninstrumented rgba32float reference. No trace planner/decoder. */
 export async function renderWgslTraceReference(device: GPUDevice, launch: WgslTraceLaunch): Promise<number[]> {
-  const module = device.createShaderModule({ code: wrapWgslImageSource(launch.source).source });
+  const module = device.createShaderModule({ code: wrapWgslImageSource(launch.source, { customUniforms: launch.customUniforms }).source });
   const errors = (await module.getCompilationInfo()).messages.filter(message => message.type === 'error');
   if (errors.length) {
     throw new Error(errors.map(message => message.message).join('\n'));
@@ -17,7 +17,7 @@ export async function renderWgslTraceReference(device: GPUDevice, launch: WgslTr
   const uniforms = packShaderToyUniforms({ width: launch.width, height: launch.height,
     time: launch.time, frame: launch.frame, timeDelta: 0, frameRate: 0,
     mouse: [0, 0, 0, 0], date: [0, 0, 0, 0], cameraPos: [0, 0, 0], cameraDir: [0, 0, 0],
-    channelTime: [], channelLoaded: [], channelResolution: [], sampleRate: 44100 });
+    channelTime: [], channelLoaded: [], channelResolution: [], sampleRate: 44100 }, launch.customUniforms, launch.customUniforms);
   const uniformBuffer = device.createBuffer({ size: uniforms.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   const readback = device.createBuffer({ size: 256, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
   const target = device.createTexture({ size: [launch.width, launch.height], format: 'rgba32float',

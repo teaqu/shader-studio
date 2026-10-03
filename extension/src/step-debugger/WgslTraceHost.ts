@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import type { WgslTraceLaunch, WgslTraceRecording } from '@shader-studio/types';
+import type { WgslTraceLaunch, WgslTraceRecording, WgslTraceUniform } from '@shader-studio/types';
 import { validateWgslTraceLaunch } from '@shader-studio/types';
 
 /** A dedicated runner panel; intentionally has no Messenger/ShaderStudio dependency. */
@@ -33,7 +33,8 @@ export class WgslTraceHost {
     const launch: WgslTraceLaunch = { source: this.source, path: this.document.uri.fsPath,
       width: (configuration.width ?? 256) as number, height: (configuration.height ?? 256) as number,
       pixel: (configuration.pixel ?? [128, 128]) as [number, number], time: (configuration.time ?? 0) as number,
-      frame: (configuration.frame ?? 0) as number, capacity: (configuration.capacity ?? 4096) as number };
+      frame: (configuration.frame ?? 0) as number, capacity: (configuration.capacity ?? 4096) as number,
+      customUniforms: configuration.customUniforms as WgslTraceUniform[] | undefined };
     validateWgslTraceLaunch(launch);
     const panel = vscode.window.createWebviewPanel('shader-studio.wgslTrace', 'WGSL Step Trace (PoC)',
       { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },

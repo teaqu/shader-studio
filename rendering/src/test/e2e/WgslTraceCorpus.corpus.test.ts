@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { WgslTraceLaunch } from '@shader-studio/types';
 import sources from 'virtual:wgsl-source-corpus';
 import { captureWgslTrace } from '../../trace/WgslTraceCapture';
-import { expectedTraceRefusals, supportedTraceSources } from './WgslTraceCorpusExpectations';
+import { expectedTraceRefusals, supportedTraceSources, traceLaunchInputs } from './WgslTraceCorpusExpectations';
 import { renderWgslTraceReference } from './WgslTraceReference';
 
 const samples = [
@@ -24,14 +24,14 @@ describe('WGSL trace: every corpus source', () => {
     const classified = [...supportedTraceSources, ...expectedTraceRefusals.keys()];
     expect(new Set(classified).size).toBe(classified.length);
     expect(classified.sort()).toEqual(sources.map(fixture => fixture.name).sort());
-    expect(supportedTraceSources.size).toBe(11);
-    expect(expectedTraceRefusals.size).toBe(82);
+    expect(supportedTraceSources.size).toBe(12);
+    expect(expectedTraceRefusals.size).toBe(81);
   });
 
   for (const fixture of sources) {
     it(fixture.name, async () => {
       const launch: WgslTraceLaunch = { source: fixture.source, path: fixture.name,
-        width: 16, height: 16, pixel: [8, 8], time: 0, frame: 0, capacity: 4096 };
+        width: 16, height: 16, pixel: [8, 8], time: 0, frame: 0, capacity: 4096, ...traceLaunchInputs[fixture.name] };
       const refusal = expectedTraceRefusals.get(fixture.name);
       if (refusal) {
         await expect(captureWgslTrace(launch)).rejects.toThrow(refusal);
@@ -49,7 +49,7 @@ describe('WGSL trace: every corpus source', () => {
         for (const event of recording.events) {
           const site = recording.sites.find(site => site.id === event.siteId)!;
           expect(event.line).toBe(site.line);
-          expect(event.values.map(value => value.name)).toEqual(site.variables.map(value => value.name));
+          expect(event.values.map(value => value.name)).toEqual([...site.variables, ...(site.unavailableVariables ?? [])].map(value => value.name));
           const coord = event.values.find(value => value.name === 'coord');
           const expectedCoord = [sample.pixel[0] + 0.5, input.height - sample.pixel[1] - 0.5];
           expect(coord?.value).toEqual(expectedCoord);

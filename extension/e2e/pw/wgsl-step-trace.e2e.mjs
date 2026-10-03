@@ -121,3 +121,53 @@ test('steps a GPU recording in VS Code while preserving the existing inspector @
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('launches explicit uniforms and steps else-if with unavailable aggregate values @gpu', async ({ vscode }) => {
+  const directory = join(workspacePath, `wgsl-trace-gaps-${process.pid}`);
+  mkdirSync(directory, { recursive: true });
+  const path = join(directory, 'image.wgsl');
+  writeFileSync(path, `fn mainImage(p: vec2f) -> vec4f {
+  let weights = array<f32, 2>(0.125, 0.25);
+  var value = gain;
+  if (p.x < 1.0) { value += weights[0]; }
+  else if (p.x < 2.0) { value += weights[1]; }
+  else { value = 1.0; }
+  let color = vec4f(value);
+  return color;
+}\n`);
+  try {
+    const started = await vscode.evaluateInHost(async (vscode, path) => {
+      await vscode.extensions.getExtension('teaqu.shader-studio')?.activate();
+      vscode.debug.addBreakpoints([new vscode.SourceBreakpoint(new vscode.Location(vscode.Uri.file(path), new vscode.Position(7, 0)))]);
+      return vscode.debug.startDebugging(undefined, { type: 'shader-studio-wgsl-trace', request: 'launch',
+        name: 'WGSL trace gaps', program: path, width: 4, height: 4, pixel: [1, 2], capacity: 64,
+        customUniforms: [{ name: 'gain', type: 'float', value: 0.25 }] });
+    }, path);
+    expect(started).toBe(true);
+    await expect.poll(() => vscode.evaluateInHost(async vscode => {
+      try {
+        return (await vscode.debug.activeDebugSession.customRequest('stackTrace', { threadId: 1 })).stackFrames[0].line;
+      } catch {
+        return null;
+      }
+    })).toBe(2);
+    const result = await vscode.evaluateInHost(async vscode => {
+      const session = vscode.debug.activeDebugSession;
+      await session.customRequest('continue', { threadId: 1 });
+      return { stack: await session.customRequest('stackTrace', { threadId: 1 }),
+        variables: await session.customRequest('variables', { variablesReference: 1 }) };
+    });
+    expect(result.stack.stackFrames[0].line).toBe(8);
+    expect(result.variables.variables.find(variable => variable.name === 'value')?.value).toBe('0.5');
+    expect(result.variables.variables.find(variable => variable.name === 'color')?.value).toBe('[0.5, 0.5, 0.5, 0.5]');
+    expect(result.variables.variables.find(variable => variable.name === 'weights')?.value).toBe('<not recorded: unsupported or unresolved type>');
+  } finally {
+    await vscode.evaluateInHost(async vscode => {
+      if (vscode.debug.activeDebugSession?.type === 'shader-studio-wgsl-trace') {
+        await vscode.debug.stopDebugging(vscode.debug.activeDebugSession);
+      }
+    });
+    await revertFixtureEditors(vscode, directory);
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

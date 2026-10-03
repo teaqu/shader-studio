@@ -1,3 +1,5 @@
+import { validateWgslTraceUniforms, type WgslTraceUniform } from './WgslTraceUniforms';
+
 /** Experimental single-file fragment tracing, independent of snapshot debugging. */
 export interface WgslTraceLaunch {
   source: string;
@@ -8,6 +10,7 @@ export interface WgslTraceLaunch {
   time: number;
   frame: number;
   capacity: number;
+  customUniforms?: WgslTraceUniform[];
 }
 
 export interface WgslTraceVariable {
@@ -23,6 +26,8 @@ export interface WgslTraceSite {
   line: number;
   column: number;
   variables: WgslTraceVariable[];
+  /** Visible locals whose values cannot be recorded by this PoC. */
+  unavailableVariables?: Array<{ name: string; type: string }>;
 }
 
 export interface WgslTracePlan {
@@ -57,6 +62,7 @@ export interface WgslTraceRecording {
 }
 
 export function validateWgslTraceLaunch(launch: WgslTraceLaunch): void {
+  validateWgslTraceUniforms(launch.customUniforms);
   if (!launch.path.endsWith('.wgsl') || typeof launch.source !== 'string') {
     throw new Error('The trace PoC requires a .wgsl source file.');
   }

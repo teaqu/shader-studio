@@ -393,6 +393,52 @@
                 "default": 4096,
                 "minimum": 1,
                 "maximum": 16384
+              },
+              "customUniforms": {
+                "type": "array",
+                "maxItems": 32,
+                "description": "Explicit custom-uniform values for this recording; scripts and preview state are not read.",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "name",
+                    "type",
+                    "value"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "float",
+                        "vec2",
+                        "vec3",
+                        "vec4",
+                        "bool"
+                      ]
+                    },
+                    "value": {
+                      "oneOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "number"
+                          },
+                          "minItems": 2,
+                          "maxItems": 4
+                        }
+                      ]
+                    }
+                  }
+                }
               }
             }
           }

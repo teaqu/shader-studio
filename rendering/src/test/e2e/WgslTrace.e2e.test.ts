@@ -73,3 +73,64 @@ describe('WGSL GPU trace PoC', () => {
     expect(recording.color).toEqual([0, 0, 0, 0]);
   });
 });
+
+describe('WGSL trace coverage gaps', () => {
+  it('takes every else-if branch and preserves preceding-statement locals', async () => {
+    const source = `fn mainImage(p: vec2f) -> vec4f {
+      var value = 0.0;
+      if (p.x < 1.0) { value = 0.25; }
+      else if (p.x < 2.0) { value = 0.5; }
+      else { value = 0.75; }
+      return vec4f(value);
+    }`;
+    for (const [pixel, line, value] of [[0, 3, 0.25], [1, 4, 0.5], [2, 5, 0.75]]) {
+      const recording = await captureWgslTrace({ ...launch, source, pixel: [pixel, 0] });
+      expect(recording.events.map(event => event.line)).toEqual([2, 3, line, 6]);
+      expect(recording.events.at(-2)!.values.find(local => local.name === 'value')?.value).toBe(0);
+      expect(recording.events.at(-1)!.values.find(local => local.name === 'value')?.value).toBe(value);
+      expect(recording.color).toEqual([value, value, value, value]);
+    }
+  });
+
+  it('marks aggregate locals unavailable and still captures scalar results', async () => {
+    const recording = await captureWgslTrace({ ...launch, source: `struct Sample { value: f32 }
+    fn mainImage(p: vec2f) -> vec4f {
+      let weights = array<f32, 2>(0.25, 0.5);
+      let basis = mat2x2f(1.0, 0.0, 0.0, 1.0);
+      let sample = Sample(0.125);
+      let total = weights[0] + weights[1] + sample.value;
+      return vec4f(total);
+    }` });
+    const locals = Object.fromEntries(recording.events.at(-1)!.values.map(local => [local.name, local.value]));
+    expect(locals).toMatchObject({ weights: '<not recorded: unsupported or unresolved type>',
+      basis: '<not recorded: unsupported or unresolved type>', sample: '<not recorded: unsupported or unresolved type>', total: 0.875 });
+    expect(recording.color).toEqual([0.875, 0.875, 0.875, 0.875]);
+  });
+
+  it('packs explicit custom float/vector/bool uniforms and infers their locals', async () => {
+    const recording = await captureWgslTrace({ ...launch, customUniforms: [
+      { name: 'gain', type: 'float', value: 0.5 }, { name: 'offset', type: 'vec2', value: [0.125, 0.25] },
+      { name: 'tint', type: 'vec3', value: [0.25, 0.5, 0.75] }, { name: 'alpha', type: 'vec4', value: [0, 0, 0, 1] },
+      { name: 'enabled', type: 'bool', value: true },
+    ], source: `fn mainImage(p: vec2f) -> vec4f {
+      let isEnabled = enabled;
+      let color = vec4f(tint * gain + vec3f(offset, 0.0), alpha.w);
+      return select(vec4f(0.0), color, isEnabled);
+    }` });
+    const values = Object.fromEntries(recording.events.at(-1)!.values.map(local => [local.name, local.value]));
+    expect(values).toMatchObject({ isEnabled: true, color: [0.25, 0.5, 0.375, 1] });
+    expect(recording.color).toEqual([0.25, 0.5, 0.375, 1]);
+    const off = await captureWgslTrace({ ...launch, customUniforms: [{ name: 'enabled', type: 'bool', value: false }],
+      source: 'fn mainImage(p: vec2f) -> vec4f { let isEnabled = enabled; return select(vec4f(0.0), vec4f(1.0), isEnabled); }' });
+    expect(off.color).toEqual([0, 0, 0, 0]);
+  });
+});
+
+it('allows a shader local named index without colliding with the trace counter', async () => {
+  const recording = await captureWgslTrace({ ...launch, source: `fn mainImage(p: vec2f) -> vec4f {
+    let index = 2u;
+    return vec4f(f32(index));
+  }` });
+  expect(recording.events.at(-1)!.values.find(value => value.name === 'index')?.value).toBe(2);
+  expect(recording.color).toEqual([2, 2, 2, 2]);
+});

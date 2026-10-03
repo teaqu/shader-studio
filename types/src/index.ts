@@ -23,3 +23,5 @@ export * from './shader-environment/SlangChannels';
 export { wgslStorageElementType } from "./wgslStorage";
 
 export { findSlangAuthoredDeclarations, type SlangAuthoredDeclaration } from "./shader-environment/SlangAuthoredDeclarations";
+
+export * from './WgslTraceUniforms';

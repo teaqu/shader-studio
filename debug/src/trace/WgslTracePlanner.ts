@@ -1,7 +1,7 @@
 import { parseWgslDocument, tokenizeWgsl, type WgslAnalysisDocument, type WgslStatement } from '@shader-studio/wgsl-analysis';
 import { applySourceEdits } from '@shader-studio/utils/dist/esm/source-edits';
 import type { WgslTraceLaunch, WgslTracePlan, WgslTraceSite, WgslTraceVariable } from '@shader-studio/types';
-import { validateWgslTraceLaunch } from '@shader-studio/types';
+import { validateWgslTraceLaunch, WGSL_TRACE_UNIFORM_TYPES } from '@shader-studio/types';
 import { containsPosition, containsRange, offsetAt } from '../wgsl/model';
 
 const PREFIX = '_ss_trace_';
@@ -11,9 +11,6 @@ function validateBracedControls(tokens: ReturnType<typeof tokenizeWgsl>, start: 
   for (const [index, token] of tokens.entries()) {
     if (token.offset < start || token.offset >= end) {
       continue;
-    }
-    if (token.text === 'else' && tokens[index + 1]?.text !== '{') {
-      throw new Error('The trace PoC requires braced else blocks; rewrite else if as else { if (...) { ... } }.');
     }
     if (!CONTROL.has(token.text)) {
       continue;
@@ -59,7 +56,7 @@ function localsBefore(document: WgslAnalysisDocument, statement: WgslStatement) 
     }
     names.add(value.name);
     return true;
-  }).map(value => traceVariable(value.name, value.typeName ?? ''));
+  });
 }
 
 export function traceVariable(name: string, type: string): WgslTraceVariable | undefined {
@@ -80,9 +77,15 @@ function analyseTraceEntry(launch: WgslTraceLaunch) {
     || tokens.some((token, index) => token.text === '@' && ['group', 'binding', 'compute', 'vertex', 'fragment'].includes(tokens[index + 1]?.text))) {
     throw new Error('The trace PoC requires a mainImage shader without authored GPU bindings/entry points or reserved _ss_trace_ names.');
   }
-  const document = parseWgslDocument(launch.path, launch.source, 'fragment');
+  const customUniforms = new Map((launch.customUniforms ?? []).map(uniform => [uniform.name, WGSL_TRACE_UNIFORM_TYPES[uniform.type]]));
+  const document = parseWgslDocument(launch.path, launch.source, 'fragment', { valueType: name => customUniforms.get(name) });
   if (!document.parsedSuccessfully) {
     throw new Error(`Cannot plan WGSL trace: ${document.diagnostics.map(item => item.message).join('; ')}`);
+  }
+  const globalScope = document.scopes.find(scope => scope.kind === 'global')!;
+  const collision = document.symbols.find(symbol => symbol.scopeId === globalScope.id && customUniforms.has(symbol.name));
+  if (collision) {
+    throw new Error(`Trace custom uniform '${collision.name}' conflicts with an authored global declaration.`);
   }
   const entry = document.scopes.find(scope => scope.kind === 'function' && scope.name === 'mainImage');
   const symbol = document.symbols.find(item => item.kind === 'function' && item.name === 'mainImage');
@@ -119,15 +122,16 @@ export function planWgslTrace(launch: WgslTraceLaunch): WgslTracePlan {
     if (insideHeader) {
       continue;
     }
-    const variables = localsBefore(document, statement);
-    if (variables.some(value => value === undefined)) {
-      throw new Error(`Trace locals at line ${statement.range.start.line + 1} include an unsupported type. Use f32/i32/u32/bool or numeric vectors for this PoC.`);
-    }
+    const locals = localsBefore(document, statement);
+    const variables = locals.map(value => traceVariable(value.name, value.typeName ?? ''))
+      .filter((value): value is WgslTraceVariable => value !== undefined);
+    const unavailableVariables = locals.filter(value => !traceVariable(value.name, value.typeName ?? ''))
+      .map(value => ({ name: value.name, type: value.typeName ?? 'unresolved' }));
     if (variables.length > 16) {
       throw new Error('The trace PoC supports at most 16 visible locals per statement.');
     }
     const site: WgslTraceSite = { id: sites.length, line: statement.range.start.line + 1,
-      column: statement.range.start.character + 1, variables: variables as WgslTraceVariable[] };
+      column: statement.range.start.character + 1, variables, ...(unavailableVariables.length ? { unavailableVariables } : {}) };
     sites.push(site);
     edits.push({ start, end: start, text: `\n  ${PREFIX}site${site.id}(${site.variables.map(value => value.name).join(', ')});\n  ` });
   }
@@ -170,13 +174,13 @@ var<private> ${PREFIX}full: bool;
 ${plan.sites.map(site => `
 fn ${PREFIX}site${site.id}(${site.variables.map(value => `${value.name}: ${value.type}`).join(', ')}) {
   if (!${PREFIX}enabled || ${PREFIX}full) { return; }
-  let index = atomicAdd(&${PREFIX}buffer.count, 1u);
-  if (index >= ${plan.capacity}u) {
+  let ${PREFIX}index = atomicAdd(&${PREFIX}buffer.count, 1u);
+  if (${PREFIX}index >= ${plan.capacity}u) {
     atomicStore(&${PREFIX}buffer.overflow, 1u);
     ${PREFIX}full = true;
     return;
   }
-  ${PREFIX}buffer.records[index].site = vec4u(${site.id}u, 0u, 0u, 0u);
-${site.variables.map((value, index) => `  ${PREFIX}buffer.records[index].values[${index}] = ${packedVariable(value)};`).join('\n')}
+  ${PREFIX}buffer.records[${PREFIX}index].site = vec4u(${site.id}u, 0u, 0u, 0u);
+${site.variables.map((value, index) => `  ${PREFIX}buffer.records[${PREFIX}index].values[${index}] = ${packedVariable(value)};`).join('\n')}
 }`).join('\n')}`;
 }

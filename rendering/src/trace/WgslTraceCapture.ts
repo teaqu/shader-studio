@@ -23,7 +23,7 @@ export async function captureWgslTrace(launch: WgslTraceLaunch, signal?: AbortSi
   let scopeOpen = false;
   try {
     signal?.throwIfAborted();
-    const wrapped = wrapWgslImageSource(`${plan.source}\n${emitWgslTracePrelude(plan)}`);
+    const wrapped = wrapWgslImageSource(`${plan.source}\n${emitWgslTracePrelude(plan)}`, { customUniforms: launch.customUniforms });
     if (wrapped.requiredFeatures?.length) {
       throw new Error('The trace PoC does not support enable directives requiring optional GPU features.');
     }
@@ -51,7 +51,7 @@ export async function captureWgslTrace(launch: WgslTraceLaunch, signal?: AbortSi
     const uniforms = packShaderToyUniforms({ width: launch.width, height: launch.height,
       time: launch.time, frame: launch.frame, timeDelta: 0, frameRate: 0,
       mouse: [0, 0, 0, 0], date: [0, 0, 0, 0], cameraPos: [0, 0, 0], cameraDir: [0, 0, 0],
-      channelTime: [], channelLoaded: [], channelResolution: [], sampleRate: 44100 });
+      channelTime: [], channelLoaded: [], channelResolution: [], sampleRate: 44100 }, launch.customUniforms, launch.customUniforms);
     const frameBuffer = makeBuffer(uniforms.byteLength, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST);
     device.queue.writeBuffer(frameBuffer, 0, uniforms);
     const selector = makeBuffer(16, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST);

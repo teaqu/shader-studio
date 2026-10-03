@@ -46,6 +46,20 @@ suite('WGSL trace DAP session', () => {
     assert.strictEqual(test.captures(), 1);
   });
 
+  test('displays unavailable locals and reports their recording limit explicitly', async () => {
+    const limited: WgslTraceRecording = { ...recording,
+      sites: recording.sites.map(site => ({ ...site, unavailableVariables: [{ name: 'weights', type: 'array<f32, 2>' }] })),
+      events: recording.events.map(event => ({ ...event, values: [...event.values,
+        { name: 'weights', type: 'array<f32, 2>', value: '<not recorded: unsupported or unresolved type>' }] })) };
+    const test = rig(async () => limited);
+    await test.send('launch');
+    assert.ok(test.messages.some(message => message.event === 'output'
+      && JSON.stringify(message.body).includes('weights (array<f32, 2>)')));
+    await test.send('variables', { variablesReference: 1 });
+    const variables = (test.messages.at(-1)!.body as { variables: { name: string; value: string }[] }).variables;
+    assert.strictEqual(variables.find(value => value.name === 'weights')?.value, '<not recorded: unsupported or unresolved type>');
+  });
+
   test('waits for configuration after capture', async () => {
     const test = rig();
     await test.send('launch');
