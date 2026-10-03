@@ -6,7 +6,7 @@ import { tick } from 'svelte';
 import type { ConfigInput } from '@shader-studio/types';
 
 describe('MiscTab', () => {
-  it.each(['webcam'] as const)('opens the capture preview from a VS Code %s selection', async type => {
+  it.each(['webcam', 'screen'] as const)('opens the capture preview from a VS Code %s selection', async type => {
     vi.stubGlobal('acquireVsCodeApi', vi.fn());
     const postMessage = vi.fn();
     const view = render(MiscTab, { ...defaultProps(), tempInput: { type }, postMessage });
@@ -32,21 +32,21 @@ describe('MiscTab', () => {
     onSelect: vi.fn(),
   });
 
-  it.each(['webcam'] as const)('selects a pathless %s input', async type => {
+  it.each(['webcam', 'screen'] as const)('selects a pathless %s input', async type => {
     const props = defaultProps();
     const { getByRole } = render(MiscTab, props);
-    await fireEvent.click(getByRole('button', { name: type === 'webcam' ? 'Webcam' : 'Audio' }));
+    await fireEvent.click(getByRole('button', { name: type === 'webcam' ? 'Webcam' : 'Screen' }));
     expect(props.onSelect).toHaveBeenCalledWith({ type });
   });
 
-  it('supplies the active capture controller to webcam and mic picker previews', async () => {
+  it('supplies the active capture controller to webcam and screen picker previews', async () => {
     const canvasContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation((() => ({ canvas: { width: 160, height: 120 }, clearRect: vi.fn() })) as unknown as typeof HTMLCanvasElement.prototype.getContext);
     const getLiveInputPreview = vi.fn(() => null);
     const controller = { getLiveInputPreview } as unknown as AudioVideoController;
     const { unmount } = render(MiscTab, { ...defaultProps(), audioVideoController: controller });
     await tick();
     expect(getLiveInputPreview).toHaveBeenCalledWith('webcam');
-    expect(getLiveInputPreview).not.toHaveBeenCalledWith('microphone');
+    expect(getLiveInputPreview).toHaveBeenCalledWith('screen');
     unmount();
     canvasContext.mockRestore();
   });
@@ -82,6 +82,20 @@ describe('MiscTab', () => {
   });
 
   describe('Selection', () => {
+    it('emits screen sampling changes', async () => {
+      const props = { ...defaultProps(), tempInput: { type: 'screen' } as ConfigInput };
+      render(MiscTab, props);
+      const filter = document.body.querySelector('#screen-filter') as HTMLSelectElement;
+      const wrap = document.body.querySelector('#screen-wrap') as HTMLSelectElement;
+      const vflip = document.body.querySelector('#screen-vflip') as HTMLInputElement;
+      await fireEvent.change(filter, { target: { value: 'nearest' } });
+      await fireEvent.change(wrap, { target: { value: 'repeat' } });
+      await fireEvent.click(vflip);
+      expect(props.onSelect).toHaveBeenNthCalledWith(1, { type: 'screen', filter: 'nearest' });
+      expect(props.onSelect).toHaveBeenNthCalledWith(2, { type: 'screen', wrap: 'repeat' });
+      expect(props.onSelect).toHaveBeenNthCalledWith(3, { type: 'screen', vflip: false });
+    });
+
     it('shows linear/clamp defaults and emits buffer sampling changes', async () => {
       const props = {
         ...defaultProps(),

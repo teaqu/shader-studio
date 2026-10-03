@@ -30,6 +30,11 @@ suite('Shader config JSON schema', () => {
     }
   });
 
+  test('accepts screen capture sampling settings', () => {
+    assertValid({ version: '1.0', passes: { Image: { inputs: { screen: { type: 'screen', filter: 'mipmap', wrap: 'repeat', vflip: false } } } } });
+    assertInvalid({ version: '1.0', passes: { Image: { inputs: { screen: { type: 'screen', path: 'file' } } } } }, 'additional properties');
+  });
+
   test('accepts every supported image and buffer geometry type plus omission', () => {
     for (const type of ['fullscreen', 'plane', 'cube', 'sphere']) {
       assertValid({

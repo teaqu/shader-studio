@@ -27,6 +27,12 @@ describe('live channel previews', () => {
     });
     expect(drawLiveInputPreview(ctx, 'webcam', { video })).toBe(false);
   });
+
+  it('uses ready screen frames', () => {
+    const ctx = context();
+    const video = { readyState: 2, videoWidth: 1920, videoHeight: 1080 } as HTMLVideoElement;
+    expect(drawLiveInputPreview(ctx, 'screen', { video })).toBe(true);
+  });
   it('draws mic spectrum and waveform, including silent input', () => {
     const ctx = context();
     expect(drawLiveInputPreview(ctx, 'microphone', {})).toBe(false);

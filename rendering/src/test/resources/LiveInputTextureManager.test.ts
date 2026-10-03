@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LiveInputTextureManager } from "../../resources/LiveInputTextureManager";
+import { ScreenCapture } from "../../resources/ScreenCapture";
 import { SystemAudioCapture } from "../../resources/SystemAudioCapture";
 import type { TextureBackend } from "../../resources/TextureBackend";
 
@@ -124,6 +125,28 @@ describe("LiveInputTextureManager", () => {
     getUserMedia.mockRejectedValue(new DOMException("denied", "NotAllowedError"));
     await expect(manager.startSystemAudio("default")).resolves.toContain("permission was denied");
     expect(manager.getPreview("system-audio")).toBeNull();
+  });
+
+  it("starts screen capture explicitly and binds shared video without requesting a camera", async () => {
+    const video = { muted: false, playsInline: false, autoplay: false, srcObject: null, videoWidth: 640, videoHeight: 480, style: {}, play: vi.fn().mockResolvedValue(undefined), pause: vi.fn(), remove: vi.fn() };
+    vi.spyOn(document, "createElement").mockReturnValue(video as unknown as HTMLVideoElement);
+    vi.spyOn(document.body, "appendChild").mockImplementation(node => node);
+    const capture = new ScreenCapture();
+    const start = vi.spyOn(capture, "start").mockResolvedValue(undefined);
+    const release = vi.fn();
+    const acquire = vi.spyOn(capture, "acquire").mockReturnValueOnce(null).mockReturnValue({ stream: mockStream as unknown as MediaStream, release });
+    const screen = new LiveInputTextureManager(textureBackend, new SystemAudioCapture(), capture);
+    expect((await screen.load("screen")).warning).toContain("Start sharing");
+    expect(start).not.toHaveBeenCalled();
+    await expect(screen.startScreen({ vflip: false })).resolves.toBeUndefined();
+    expect(screen.getVideoElement("screen")).toBe(video);
+    screen.updateTextures();
+    expect(textureBackend.updateTextureFromImage).toHaveBeenCalledWith(screen.getTexture("screen"), video);
+    expect(getUserMedia).not.toHaveBeenCalled();
+    screen.cleanup();
+    expect(release).toHaveBeenCalledOnce();
+    expect(video.remove).toHaveBeenCalled();
+    acquire.mockRestore();
   });
 
   it("loads one muted, inline webcam stream and updates its texture", async () => {

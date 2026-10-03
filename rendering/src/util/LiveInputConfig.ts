@@ -2,6 +2,7 @@ import type { ConfigInput } from "@shader-studio/types";
 
 // Runtime identities only: the persisted config retains the pathless device type.
 export const WEBCAM_PATH = "shader-studio-live://webcam";
+export const SCREEN_PATH = "shader-studio-live://screen";
 export const SYSTEM_AUDIO_PATH = "shader-studio-live://system-audio";
 export const MICROPHONE_PATH = "shader-studio-live://microphone";
 
@@ -9,6 +10,9 @@ export const MICROPHONE_PATH = "shader-studio-live://microphone";
 export function normalizeLiveInput(input: ConfigInput): ConfigInput {
   if (input.type === "webcam") {
     return { ...input, type: "video", path: WEBCAM_PATH, muted: true };
+  }
+  if (input.type === "screen") {
+    return { ...input, type: "video", path: SCREEN_PATH, muted: true };
   }
   if (input.type === "system-audio") {
     return { type: "audio", path: SYSTEM_AUDIO_PATH, muted: true };
@@ -32,8 +36,10 @@ export function liveInputPaths(passInputs: Record<string, ConfigInput>[]): Set<s
   const paths = new Set<string>();
   for (const inputs of passInputs) {
     for (const input of Object.values(inputs)) {
-      if (input.type === "video" && input.path === WEBCAM_PATH ||
-          input.type === "audio" && (input.path === MICROPHONE_PATH || input.path === SYSTEM_AUDIO_PATH)) {
+      if (
+        input.type === "video" && (input.path === WEBCAM_PATH || input.path === SCREEN_PATH) ||
+        input.type === "audio" && (input.path === MICROPHONE_PATH || input.path === SYSTEM_AUDIO_PATH)
+      ) {
         paths.add(input.path);
       }
     }

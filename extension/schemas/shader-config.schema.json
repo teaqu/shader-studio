@@ -360,6 +360,18 @@
         },
         {
           "type": "object",
+          "required": ["type"],
+          "properties": {
+            "type": { "const": "screen" },
+            "filter": { "enum": ["linear", "nearest", "mipmap"] },
+            "wrap": { "enum": ["repeat", "clamp"] },
+            "vflip": { "type": "boolean" }
+          },
+          "description": "Live video capture chosen through the browser screen, window, or tab picker.",
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
           "required": ["type", "source"],
           "properties": {
             "type": {

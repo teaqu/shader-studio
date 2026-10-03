@@ -478,6 +478,20 @@ system. If a VS Code webview blocks capture, use **Open in Browser** on localhos
 If permission is denied or a device is unavailable, the preview reports a warning;
 allow access and reload the shader to retry.
 
+### Screen
+
+Choose **Screen** next to Webcam in **Misc**, then click **Start screen sharing**.
+The browser picker can provide a screen, window, or browser tab as a live 2D video
+channel; audio is not used by this input. You can select its filter, wrap, and
+vertical-flip settings in the channel editor. The saved input is pathless, for
+example `{ "type": "screen", "filter": "linear" }`; the selected surface and its
+permission are session-only.
+
+Click **Stop screen sharing**, remove the channel, or switch away from a shader
+using Screen to release capture. A page reload also needs a new selection from the
+browser picker. Screen capture needs HTTPS or localhost, and browser/operating
+system permission just like Webcam.
+
 ### Browser Audio
 
 Choose **Browser Audio** in **Audio**, then click **Start sharing**. For a song

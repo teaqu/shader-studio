@@ -175,6 +175,8 @@ export class ConfigValidator {
       case 'microphone':
       case 'webcam':
         return Object.keys(input).every(key => key === 'type');
+      case 'screen':
+        return this.validateScreenInput(input);
       case 'keyboard':
         return this.validateKeyboardInput(input);
       case 'audio':
@@ -182,6 +184,15 @@ export class ConfigValidator {
       default:
         return false;
     }
+  }
+
+  private static validateScreenInput(input: any): boolean {
+    if (!Object.keys(input).every(key => ['type', 'filter', 'wrap', 'vflip'].includes(key))) {
+      return false;
+    }
+    return (input.filter === undefined || ['linear', 'nearest', 'mipmap'].includes(input.filter)) &&
+      (input.wrap === undefined || ['repeat', 'clamp'].includes(input.wrap)) &&
+      (input.vflip === undefined || typeof input.vflip === 'boolean');
   }
 
   private static validateBufferInput(input: any): boolean {

@@ -7,7 +7,7 @@ export function drawLiveInputPreview(ctx: CanvasRenderingContext2D, type: LiveIn
   if (!input) {
     return false;
   }
-  if (type === 'webcam') {
+  if (type === 'webcam' || type === 'screen') {
     const video = input.video;
     if (!video || video.readyState < 2 || !video.videoWidth || !video.videoHeight) {
       return false;

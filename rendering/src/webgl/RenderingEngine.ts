@@ -657,6 +657,10 @@ export class RenderingEngine implements RenderingEngineInterface {
     return controlSystemAudio(this.resourceManager, action, deviceId);
   }
 
+  controlScreen(action: "start" | "stop"): Promise<string | undefined> {
+    return this.resourceManager?.controlScreen(action) ?? Promise.resolve("Shader is not ready. Try again after it loads.");
+  }
+
   public getLiveInputPreview(type: LiveInputType): LiveInputPreview | null {
     return livePreviewData(this.resourceManager, type);
   }

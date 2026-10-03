@@ -55,6 +55,14 @@ export interface WebcamConfigInput {
     type: 'webcam';
 }
 
+/** A video stream chosen through the browser's screen/window/tab picker. */
+export interface ScreenConfigInput {
+    type: 'screen';
+    filter?: "linear" | "nearest" | "mipmap";
+    wrap?: "repeat" | "clamp";
+    vflip?: boolean;
+}
+
 export interface MicrophoneConfigInput {
     type: 'microphone';
 }
@@ -63,7 +71,7 @@ export interface SystemAudioConfigInput {
     type: 'system-audio';
 }
 
-export type ConfigInput = SystemAudioConfigInput | WebcamConfigInput | MicrophoneConfigInput | BufferConfigInput | TextureConfigInput | VideoConfigInput | CubemapConfigInput | KeyboardConfigInput | AudioConfigInput;
+export type ConfigInput = SystemAudioConfigInput | ScreenConfigInput | WebcamConfigInput | MicrophoneConfigInput | BufferConfigInput | TextureConfigInput | VideoConfigInput | CubemapConfigInput | KeyboardConfigInput | AudioConfigInput;
 
 export type AspectRatioMode = '16:9' | '4:3' | '1:1' | 'fill' | 'auto';
 export type BufferOutputFormat = 'auto' | 'rgba16float' | 'rgba32float';

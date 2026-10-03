@@ -3,6 +3,7 @@
   import type { AudioVideoController } from "../../../AudioVideoController";
   import { isVSCodeEnvironment } from "../../../transport/TransportFactory";
   import ChannelPreview from "../ChannelPreview.svelte";
+  import ScreenControls from "../ScreenControls.svelte";
 
   interface Props {
     postMessage?: (message: { type: string; payload: { command: string } }) => void;
@@ -50,6 +51,27 @@
     const wrap = (event.currentTarget as HTMLSelectElement).value as "repeat" | "clamp";
     onSelect({ ...tempInput, wrap });
   }
+
+  function updateScreenFilter(event: Event) {
+    if (tempInput?.type !== "screen") {
+return;
+}
+    onSelect({ ...tempInput, filter: (event.currentTarget as HTMLSelectElement).value as "linear" | "nearest" | "mipmap" });
+  }
+
+  function updateScreenWrap(event: Event) {
+    if (tempInput?.type !== "screen") {
+return;
+}
+    onSelect({ ...tempInput, wrap: (event.currentTarget as HTMLSelectElement).value as "repeat" | "clamp" });
+  }
+
+  function updateScreenVFlip(event: Event) {
+    if (tempInput?.type !== "screen") {
+return;
+}
+    onSelect({ ...tempInput, vflip: (event.currentTarget as HTMLInputElement).checked });
+  }
 </script>
 
 <div class="misc-grid">
@@ -96,8 +118,12 @@
       <ChannelPreview channelInput={{ type: "webcam" }} {getWebviewUri} {audioVideoController} />
       <div class="misc-card-label">Webcam</div>
     </button>
+    <button class="misc-card" class:selected={tempInput?.type === "screen"} aria-label="Screen" onclick={() => onSelect({ type: "screen" })}>
+      <ChannelPreview channelInput={{ type: "screen" }} {getWebviewUri} {audioVideoController} />
+      <div class="misc-card-label">Screen</div>
+    </button>
   </div>
-  {#if isVSCodeEnvironment() && tempInput?.type === "webcam"}
+  {#if isVSCodeEnvironment() && (tempInput?.type === "webcam" || tempInput?.type === "screen")}
     <p>VS Code panels block device capture. Apply your channel, then open the synced preview
       in VS Code’s Integrated Browser. Older VS Code versions open your external browser.</p>
     <button disabled={!postMessage} onclick={() => postMessage?.({ type: "extensionCommand", payload: { command: "openCapturePreview" } })}>
@@ -107,6 +133,23 @@
   {#if tempInput?.type === "webcam"}
     <p>Uses your default device. Allow access when prompted. If this host blocks capture,
       open Shader Studio in a browser on localhost or HTTPS. </p>
+  {/if}
+  {#if tempInput?.type === "screen"}
+    <ScreenControls {audioVideoController} />
+    <div class="screen-sampling">
+      <label for="screen-filter">Filter:</label>
+      <select id="screen-filter" value={tempInput.filter ?? "linear"} onchange={updateScreenFilter}>
+        <option value="linear">Linear</option>
+        <option value="nearest">Nearest</option>
+        <option value="mipmap">Mipmap</option>
+      </select>
+      <label for="screen-wrap">Wrap:</label>
+      <select id="screen-wrap" value={tempInput.wrap ?? "clamp"} onchange={updateScreenWrap}>
+        <option value="clamp">Clamp</option>
+        <option value="repeat">Repeat</option>
+      </select>
+      <label for="screen-vflip"><input id="screen-vflip" type="checkbox" checked={tempInput.vflip ?? true} onchange={updateScreenVFlip} /> Flip vertically</label>
+    </div>
   {/if}
 </div>
 
@@ -140,6 +183,16 @@
     gap: 8px;
     margin-bottom: 8px;
   }
+
+  .screen-sampling {
+    display: grid;
+    grid-template-columns: auto minmax(100px, 1fr);
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .screen-sampling label:last-child { grid-column: 1 / -1; }
 
   .misc-card {
     display: flex;

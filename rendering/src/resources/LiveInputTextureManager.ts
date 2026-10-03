@@ -1,7 +1,8 @@
+import { ScreenCapture } from "./ScreenCapture";
 import { SystemAudioCapture } from "./SystemAudioCapture";
 import type { TextureBackend, TextureFilter, TextureWrap } from "./TextureBackend";
 
-export type LiveInputType = "webcam" | "microphone" | "system-audio";
+export type LiveInputType = "webcam" | "screen" | "microphone" | "system-audio";
 
 export interface LiveInputPreview {
   unsupportedReason?: string;
@@ -49,11 +50,12 @@ export class LiveInputTextureManager<T> {
   private resumeListener: (() => void) | null = null;
   private readonly videoWaiters = new Set<() => void>();
   private readonly provisionalCaptures = new Map<MediaStream, HTMLVideoElement | undefined>();
+  private readonly provisionalReleases = new Map<MediaStream, () => void>();
   private readonly stoppedStreams = new WeakSet<MediaStream>();
   private disposed = false;
   private microphoneGeneration = 0;
 
-  constructor(private readonly backend: TextureBackend<T>, private readonly systemAudio = new SystemAudioCapture()) {}
+  constructor(private readonly backend: TextureBackend<T>, private readonly systemAudio = new SystemAudioCapture(), private readonly screenCapture = new ScreenCapture()) {}
 
   public async load(type: LiveInputType, options: LiveInputOptions = {}): Promise<LiveInputLoadResult<T>> {
     const cached = this.inputs.get(type);
@@ -107,6 +109,25 @@ export class LiveInputTextureManager<T> {
     return result.warning;
   }
 
+  public async startScreen(options: LiveInputOptions = {}): Promise<string | undefined> {
+    if (this.disposed) {
+      return "Screen capture is no longer available.";
+    }
+    const warning = await this.screenCapture.start();
+    if (warning) {
+      return warning;
+    }
+    if (this.disposed) {
+      this.screenCapture.stop();
+      return "Screen sharing stopped because the shader changed.";
+    }
+    return (await this.load("screen", options)).warning;
+  }
+
+  public stopScreen(): void {
+    this.screenCapture.stop();
+  }
+
   public stopSystemAudio(): void {
     this.systemAudio.stop();
   }
@@ -115,8 +136,8 @@ export class LiveInputTextureManager<T> {
     return this.inputs.get(type)?.texture ?? null;
   }
 
-  public getVideoElement(): HTMLVideoElement | undefined {
-    return this.inputs.get("webcam")?.video;
+  public getVideoElement(type: "webcam" | "screen" = "webcam"): HTMLVideoElement | undefined {
+    return this.inputs.get(type)?.video;
   }
 
   public getAudioState(type: LiveInputType = "microphone"): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null {
@@ -129,9 +150,11 @@ export class LiveInputTextureManager<T> {
   }
 
   public updateTextures(): void {
-    const webcam = this.inputs.get("webcam");
-    if (webcam?.video && webcam.video.videoWidth > 0 && webcam.video.videoHeight > 0) {
-      this.backend.updateTextureFromImage(webcam.texture, webcam.video);
+    for (const type of ["webcam", "screen"] as const) {
+      const video = this.inputs.get(type);
+      if (video?.video && video.video.videoWidth > 0 && video.video.videoHeight > 0) {
+        this.backend.updateTextureFromImage(video.texture, video.video);
+      }
     }
     for (const microphone of this.inputs.values()) {
       if (microphone?.analyser && microphone.frequency && microphone.waveform) {
@@ -165,7 +188,12 @@ export class LiveInputTextureManager<T> {
     this.videoWaiters.clear();
     this.removeResumeListener();
     for (const [stream, video] of this.provisionalCaptures) {
-      this.stopStream(stream);
+      const release = this.provisionalReleases.get(stream);
+      if (release) {
+        release();
+      } else {
+        this.stopStream(stream);
+      }
       video?.pause();
       if (video) {
         video.srcObject = null;
@@ -173,6 +201,7 @@ export class LiveInputTextureManager<T> {
       }
     }
     this.provisionalCaptures.clear();
+    this.provisionalReleases.clear();
     for (const [type, input] of this.inputs) {
       this.release(type, input);
     }
@@ -185,6 +214,25 @@ export class LiveInputTextureManager<T> {
   private async loadFresh(type: LiveInputType, options: LiveInputOptions): Promise<LiveInputLoadResult<T>> {
     if (this.disposed) {
       return { texture: null, warning: "Live input is no longer available." };
+    }
+    if (type === "screen") {
+      const lease = this.screenCapture.acquire(() => {
+        const input = this.inputs.get("screen");
+        if (input) {
+          this.release("screen", input);
+        }
+      });
+      if (!lease) {
+        return { texture: null, warning: "Open the Screen channel and click Start sharing to choose a screen, window or tab." };
+      }
+      this.provisionalCaptures.set(lease.stream, undefined);
+      this.provisionalReleases.set(lease.stream, lease.release);
+      try {
+        return await this.installWebcam(lease.stream, options, "screen", lease.release);
+      } finally {
+        this.provisionalCaptures.delete(lease.stream);
+        this.provisionalReleases.delete(lease.stream);
+      }
     }
     if (type === "system-audio") {
       const lease = this.systemAudio.acquire(() => {
@@ -222,7 +270,7 @@ export class LiveInputTextureManager<T> {
     }
   }
 
-  private async installWebcam(stream: MediaStream, options: LiveInputOptions): Promise<LiveInputLoadResult<T>> {
+  private async installWebcam(stream: MediaStream, options: LiveInputOptions, type: "webcam" | "screen" = "webcam", releaseCapture?: () => void): Promise<LiveInputLoadResult<T>> {
     const video = document.createElement("video");
     video.muted = true;
     video.playsInline = true;
@@ -240,8 +288,12 @@ export class LiveInputTextureManager<T> {
         video.pause();
         video.srcObject = null;
         video.remove();
-        this.stopStream(stream);
-        return { texture: null, warning: "Webcam capture was stopped before it became ready." };
+        if (releaseCapture) {
+          releaseCapture();
+        } else {
+          this.stopStream(stream);
+        }
+        return { texture: null, warning: `${type === "screen" ? "Screen" : "Webcam"} capture was stopped before it became ready.` };
       }
       const texture = this.backend.createTextureFromImage(video, {
         type: "2d", format: "rgba8", filter: options.filter ?? "linear", wrap: options.wrap ?? "clamp", vflip: options.vflip ?? true,
@@ -253,19 +305,23 @@ export class LiveInputTextureManager<T> {
         this.backend.destroyTexture(texture);
         throw new Error("capture was stopped during texture creation");
       }
-      const input: LiveInput<T> = { stream, texture, video };
-      input.onEnded = () => this.release("webcam", input);
+      const input: LiveInput<T> = { stream, texture, video, releaseCapture };
+      input.onEnded = () => this.release(type, input);
       for (const track of stream.getTracks()) {
         track.addEventListener("ended", input.onEnded);
       }
-      this.inputs.set("webcam", input);
+      this.inputs.set(type, input);
       return { texture };
     } catch (error) {
       video.pause();
       video.srcObject = null;
       video.remove();
-      this.stopStream(stream);
-      return { texture: null, warning: `Webcam is unavailable: ${error instanceof Error ? error.message : String(error)}` };
+      if (releaseCapture) {
+        releaseCapture();
+      } else {
+        this.stopStream(stream);
+      }
+      return { texture: null, warning: `${type === "screen" ? "Screen" : "Webcam"} is unavailable: ${error instanceof Error ? error.message : String(error)}` };
     }
   }
 

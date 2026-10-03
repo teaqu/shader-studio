@@ -22,9 +22,11 @@ export abstract class SharedMediaCapture {
    * device when an id is supplied. The display-media call intentionally occurs
    * before the first await so callers can invoke this directly from a click.
    */
+  constructor(private readonly label = "System audio") {}
+
   public async start(deviceId?: string): Promise<string | undefined> {
     if (this.disposed) {
-      return "System audio capture is no longer available.";
+      return `${this.label} capture is no longer available.`;
     }
 
     this.stop();
@@ -49,7 +51,7 @@ export abstract class SharedMediaCapture {
 
     if (this.disposed || generation !== this.generation) {
       this.stopStream(stream);
-      return "System audio capture was stopped before it became ready.";
+      return `${this.label} capture was stopped before it became ready.`;
     }
 
     const warning = this.prepareStream(stream);

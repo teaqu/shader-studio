@@ -67,6 +67,7 @@
     switch (type) {
       case "buffer":
       case "webcam":
+      case "screen":
       case "keyboard":
         return "Misc";
       case "texture":

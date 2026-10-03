@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ScreenCapture } from "../../resources/ScreenCapture";
 import { SystemAudioCapture } from "../../resources/SystemAudioCapture";
 import type { TextureBackend } from "../../resources/TextureBackend";
 import { ResourceManager } from "../../resources/ResourceManager";
-import { MICROPHONE_PATH, WEBCAM_PATH, SYSTEM_AUDIO_PATH } from "../../util/LiveInputConfig";
+import { MICROPHONE_PATH, WEBCAM_PATH, SCREEN_PATH, SYSTEM_AUDIO_PATH } from "../../util/LiveInputConfig";
 
 interface Texture { id: string }
 
@@ -15,7 +16,7 @@ const spies = vi.hoisted(() => ({
 vi.mock("../../resources/LiveInputTextureManager", () => ({
   LiveInputTextureManager: vi.fn().mockImplementation(function() {
     const instance = {
-      startAudioInput: vi.fn(), stopAudioInput: vi.fn(), startSystemAudio: vi.fn(), stopSystemAudio: vi.fn(), getPreview: vi.fn(), load: vi.fn(), getTexture: vi.fn(), getVideoElement: vi.fn(), getAudioState: vi.fn(),
+      startScreen: vi.fn(), stopScreen: vi.fn(), startAudioInput: vi.fn(), stopAudioInput: vi.fn(), startSystemAudio: vi.fn(), stopSystemAudio: vi.fn(), getPreview: vi.fn(), load: vi.fn(), getTexture: vi.fn(), getVideoElement: vi.fn(), getAudioState: vi.fn(),
       getSampleRate: vi.fn(() => 0), updateTextures: vi.fn(), cleanup: vi.fn(),
     };
     spies.live.push(instance);
@@ -71,6 +72,33 @@ describe("ResourceManager live input routing", () => {
     spies.audio.length = 0;
     vi.clearAllMocks();
     resources = new ResourceManager(backend);
+  });
+
+  it("starts configured screen capture, routes video and preserves it across rebuilds", async () => {
+    await expect(resources.controlScreen("start")).resolves.toContain("loading");
+    const capture = new ScreenCapture();
+    const release = vi.fn();
+    const acquire = vi.spyOn(capture, "acquire").mockReturnValue({ stream: {} as MediaStream, release });
+    const manager = new ResourceManager(backend, new SystemAudioCapture(), { deviceId: "default" }, capture);
+    const live = spies.live.at(-1)!;
+    live.load.mockResolvedValue({ texture: { id: "screen" } });
+    await manager.loadVideoTexture(SCREEN_PATH, { vflip: false });
+    expect(live.load).toHaveBeenCalledWith("screen", { vflip: false });
+    expect(manager.getLiveInputPreview("screen")?.ready).toBe(true);
+    await manager.controlScreen("start");
+    expect(live.startScreen).toHaveBeenCalledWith({ vflip: false });
+    manager.getVideoElement(SCREEN_PATH);
+    expect(live.getVideoElement).toHaveBeenCalledWith("screen");
+    manager.cleanup(false, true);
+    expect(acquire).toHaveBeenCalledOnce();
+    expect(release).not.toHaveBeenCalled();
+    const next = spies.live.at(-1)!;
+    next.load.mockResolvedValue({ texture: { id: "screen2" } });
+    await manager.loadVideoTexture(SCREEN_PATH);
+    expect(release).toHaveBeenCalledOnce();
+    await manager.controlScreen("stop");
+    expect(next.stopScreen).toHaveBeenCalledOnce();
+    manager.dispose();
   });
 
   it("holds shared audio across structural rebuilds until the new analyser acquires it", async () => {

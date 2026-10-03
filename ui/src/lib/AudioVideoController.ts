@@ -86,6 +86,10 @@ export class AudioVideoController {
     return this.getEngine()?.controlSystemAudio?.(action, deviceId) ?? Promise.resolve('Shader is not ready. Try again after it loads.');
   }
 
+  controlScreen(action: 'start' | 'stop'): Promise<string | undefined> {
+    return this.getEngine()?.controlScreen?.(action) ?? Promise.resolve('Shader is not ready. Try again after it loads.');
+  }
+
   getLiveInputPreview(type: import('../../../rendering/src/resources/LiveInputTextureManager').LiveInputType) {
     return this.getEngine()?.getLiveInputPreview?.(type) ?? null;
   }

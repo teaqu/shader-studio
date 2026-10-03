@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { buildSlangPassGraph } from "../../webgpu/SlangPassGraph";
 import { ConfigValidator } from "../../util/ConfigValidator";
-import { audioLoadWarning, liveInputPaths, normalizeLiveInputs, WEBCAM_PATH, MICROPHONE_PATH, SYSTEM_AUDIO_PATH } from "../../util/LiveInputConfig";
+import { audioLoadWarning, liveInputPaths, normalizeLiveInputs, WEBCAM_PATH, SCREEN_PATH, MICROPHONE_PATH, SYSTEM_AUDIO_PATH } from "../../util/LiveInputConfig";
 import type { ShaderConfig } from "@shader-studio/types";
 
 const config: ShaderConfig = { version: "1", passes: { Image: { inputs: {
-  camera: { type: "webcam" }, sound: { type: "microphone" }, music: { type: "system-audio" }, keys: { type: "keyboard" },
+  camera: { type: "webcam" }, screen: { type: "screen" }, sound: { type: "microphone" }, music: { type: "system-audio" }, keys: { type: "keyboard" },
 } } } };
 
 describe("live input configuration", () => {
@@ -16,7 +16,7 @@ describe("live input configuration", () => {
   });
   it("collects only requested live identities across passes", () => {
     const inputs = normalizeLiveInputs(config.passes.Image.inputs!);
-    expect(liveInputPaths([inputs, { movie: { type: "video", path: "clip.mp4" } }])).toEqual(new Set([WEBCAM_PATH, MICROPHONE_PATH, SYSTEM_AUDIO_PATH]));
+    expect(liveInputPaths([inputs, { movie: { type: "video", path: "clip.mp4" } }])).toEqual(new Set([WEBCAM_PATH, SCREEN_PATH, MICROPHONE_PATH, SYSTEM_AUDIO_PATH]));
     expect(liveInputPaths([{}, { keys: { type: "keyboard" } }])).toEqual(new Set());
   });
 
@@ -24,13 +24,14 @@ describe("live input configuration", () => {
     expect(ConfigValidator.validateConfig(config).isValid).toBe(true);
     const normalized = normalizeLiveInputs(config.passes.Image.inputs!);
     expect(normalized.camera).toEqual({ type: "video", path: WEBCAM_PATH, muted: true });
+    expect(normalized.screen).toEqual({ type: "video", path: SCREEN_PATH, muted: true });
     expect(normalized.music).toEqual({ type: "audio", path: SYSTEM_AUDIO_PATH, muted: true });
     expect(normalized.sound).toEqual({ type: "audio", path: MICROPHONE_PATH, muted: true });
     expect(normalized.keys).toBe(config.passes.Image.inputs!.keys);
     expect(config.passes.Image.inputs!.camera).toEqual({ type: "webcam" });
   });
 
-  it.each(["webcam", "microphone", "system-audio"])("rejects unexpected device settings for %s", type => {
+  it.each(["webcam", "screen", "microphone", "system-audio"])("rejects unexpected device settings for %s", type => {
     const invalid = { version: "1", passes: { Image: { inputs: { live: { type, path: "file.mp4" } } } } };
     expect(ConfigValidator.validateConfig(invalid as ShaderConfig).isValid).toBe(false);
   });
@@ -41,6 +42,7 @@ describe("live input configuration", () => {
     expect(graph.warnings).toEqual([]);
     expect(graph.passes.find(pass => pass.name === "Image")?.channels).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: "video", key: "camera", path: WEBCAM_PATH }),
+      expect.objectContaining({ kind: "video", key: "screen", path: SCREEN_PATH }),
       expect.objectContaining({ kind: "audio", key: "sound", path: MICROPHONE_PATH }),
       expect.objectContaining({ kind: "audio", key: "music", path: SYSTEM_AUDIO_PATH }),
     ]));
