@@ -1,73 +1,40 @@
-import { findSlangAuthoredDeclarations } from "@shader-studio/types";
 import {
-  CompletionItemKind,
-  DiagnosticSeverity,
-  DiagnosticTag,
-  MarkupKind,
-  SymbolKind,
-  type CompletionItem,
-  type Diagnostic,
-  type DocumentHighlight,
-  DocumentHighlightKind,
-  type DocumentSymbol,
-  type Hover,
-  type Location,
-  type MarkupContent,
-  type Position,
-  type Range,
-  type SignatureHelp,
-  type TextEdit,
-  type WorkspaceEdit,
-} from "vscode-languageserver-protocol";
-import {
-  DocumentStore,
   VirtualFileSystem,
-  createLiteralColorPresentations,
-  declarationContext,
-  findLiteralConstructorColors,
   findMemberAccess,
-  isInsideBlock,
-  isPositionInComment,
-  rankCompletionsForContext,
-  swizzleCompletions,
   memberSelectionAt,
-  type ColorPresentationParams,
-  type DocumentParams,
-  type DocumentPositionParams,
-  type LanguageService,
-  type RenameParams,
-  type ReferenceParams,
-  type ServerCapabilities,
-  type ShaderDocumentSnapshot,
+  swizzleCompletions
 } from "@shader-studio/language-server-core";
 import {
   SHADER_STUDIO_SYMBOL_DOCS,
   buildSlangAuthoringModule,
-  describeSlangChannel,
-  isValidShaderIdentifier,
-  validateShaderAuthoringEnvironment,
-  type AuthoringResource,
-  type ShaderAuthoringEnvironment,
-  isShaderEntryPointName,
-  isShaderTypeKeyword,
-  shaderTypeCompletionKeywords,
+  describeSlangChannel, findSlangAuthoredDeclarations, isValidShaderIdentifier, type AuthoringResource,
+  type ShaderAuthoringEnvironment
 } from "@shader-studio/types";
+import {
+  CompletionItemKind,
+  DiagnosticSeverity,
+  MarkupKind,
+  SymbolKind,
+  type CompletionItem,
+  type Diagnostic,
+  type DocumentSymbol,
+  type MarkupContent,
+  type Position,
+  type Range
+} from "vscode-languageserver-protocol";
+import { type SlangComputeFeature } from "./computeFeatures.js";
+import { resolveSlangExpressionType, type SlangExpressionContext } from "./expressionType.js";
+import { SLANG_MAIN_IMAGE_COORDINATE_DESCRIPTION, SLANG_MAIN_IMAGE_DESCRIPTION } from "./fragmentHook.js";
+import { SLANG_INTRINSICS, type SlangIntrinsic } from "./intrinsics.js";
+import type { SlangProviderState } from "./providers/SlangProviderContext.js";
 import type {
   SlangDiagnostic,
-  SlangCompilerGlobalSession,
   SlangDocumentSymbol,
   SlangLanguageServer,
-  SlangLanguageServerModule,
-  SlangList,
+  SlangList
 } from "./slangLanguageServerTypes.js";
-import { SLANG_INTRINSICS, type SlangIntrinsic } from "./intrinsics.js";
-import { SLANG_COMPUTE_FEATURES, type SlangComputeFeature } from "./computeFeatures.js";
-import { SLANG_VERTEX_HOOK_FEATURES, type SlangVertexHookFeature } from "./vertexHook.js";
-import { SLANG_MAIN_IMAGE_COORDINATE_DESCRIPTION, SLANG_MAIN_IMAGE_DESCRIPTION } from "./fragmentHook.js";
-import { findSlangLocalAt, findUnusedSlangLocals, resolveSlangExpressionType, visibleSlangLocals, type SlangExpressionContext } from "./expressionType.js";
 import { SLANG_SWIZZLE_SETS, resolveSlangSwizzleType, slangVectorTypeName } from "./slangTypes.js";
-import { applySlangRenameEdits, renameSlangSymbol, resolveSlangSymbol, type SlangRenameDocument } from "./rename.js";
-import type { SlangLanguageServiceBackend } from "./SlangLanguageServiceBackend.js";
+import { SLANG_VERTEX_HOOK_FEATURES, type SlangVertexHookFeature } from "./vertexHook.js";
 
 export function contextualFiles(environment: ShaderAuthoringEnvironment) {
   return environment.commonFile
@@ -172,11 +139,11 @@ export function mainImageCoordinateCompletion(
   return undefined;
 }
 
-export function offsetAtPosition(source: string, position: { line: number; character: number }): number {
+function offsetAtPosition(source: string, position: { line: number; character: number }): number {
   return source.split("\n").slice(0, position.line).reduce((sum, line) => sum + line.length + 1, 0) + position.character;
 }
 
-export function matchingBrace(source: string, start: number): number {
+function matchingBrace(source: string, start: number): number {
   let depth = 0;
   for (let index = start; index < source.length; index++) {
     if (source[index] === "{") {
@@ -213,7 +180,7 @@ export function vertexHookCompletionFeatures(source: string): readonly SlangVert
   return vertexHookMatches(source)[0]?.features ?? [SLANG_VERTEX_HOOK_FEATURES[0]];
 }
 
-export interface SlangVertexHookMatch {
+interface SlangVertexHookMatch {
   readonly start: number;
   readonly end: number;
   readonly nameStart: number;
@@ -221,7 +188,7 @@ export interface SlangVertexHookMatch {
   readonly features: readonly SlangVertexHookFeature[];
 }
 
-export function vertexHookMatches(source: string): SlangVertexHookMatch[] {
+function vertexHookMatches(source: string): SlangVertexHookMatch[] {
   const pattern = /\bvoid\s+(mainVertex)\s*\(\s*inout\s+float3\s+([A-Za-z_]\w*)\s*,\s*inout\s+float3\s+([A-Za-z_]\w*)\s*,\s*inout\s+float2\s+([A-Za-z_]\w*)\s*\)/g;
   return [...source.matchAll(pattern)].flatMap((match) => {
     const functionName = match[1];
@@ -292,7 +259,7 @@ export function convertDiagnostic(item: SlangDiagnostic, offset: number, source:
 export function shiftedPosition(position: { line: number; character: number }, lines: number) {
   return { line: position.line + lines, character: position.character };
 }
-export function shiftedRange(range: Range, lines: number): Range {
+function shiftedRange(range: Range, lines: number): Range {
   return { start: shiftedPosition(range.start, lines), end: shiftedPosition(range.end, lines) };
 }
 export function userRange(range: Range, offset: number, source: string): Range | undefined {
@@ -310,7 +277,7 @@ export function zeroRange(): Range {
   return { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } };
 }
 
-export function comparePositions(
+function comparePositions(
   left: { line: number; character: number },
   right: { line: number; character: number },
 ): number {
@@ -325,11 +292,11 @@ export function consumeCompilerTargets(targets: import("./slangLanguageServerTyp
   return Array.isArray(targets) ? targets : consumeList(targets, (item) => item);
 }
 
-export const INCLUDE_STRING_PATTERN = /^[ \t]*(?:#include[ \t]+"([^"]+)"|__include[ \t]+"([^"]+)")[ \t]*$/gm;
-export const INCLUDE_IDENT_PATTERN = /^[ \t]*__include[ \t]+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)[ \t]*;?[ \t]*$/gm;
-export const IMPORT_PATTERN = /^[ \t]*(?:__exported[ \t]+)?import[ \t]+(?:"([^"]+)"|([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*))[ \t]*;?[ \t]*$/gm;
-export const MODULE_DECL_PATTERN = /^[ \t]*module\s+[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*\s*;[ \t]*[\r\n]*/m;
-export const IMPLEMENTING_DECL_PATTERN = /^[ \t]*implementing\s+[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*\s*;[ \t]*[\r\n]*/m;
+const INCLUDE_STRING_PATTERN = /^[ \t]*(?:#include[ \t]+"([^"]+)"|__include[ \t]+"([^"]+)")[ \t]*$/gm;
+const INCLUDE_IDENT_PATTERN = /^[ \t]*__include[ \t]+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)[ \t]*;?[ \t]*$/gm;
+const IMPORT_PATTERN = /^[ \t]*(?:__exported[ \t]+)?import[ \t]+(?:"([^"]+)"|([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*))[ \t]*;?[ \t]*$/gm;
+const MODULE_DECL_PATTERN = /^[ \t]*module\s+[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*\s*;[ \t]*[\r\n]*/m;
+const IMPLEMENTING_DECL_PATTERN = /^[ \t]*implementing\s+[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*\s*;[ \t]*[\r\n]*/m;
 
 export function resolveCompilerDependencies(
   source: string,
@@ -436,7 +403,7 @@ export function localSourceHover(value: string, uri: string, line: number): stri
 }
 
 export function currentDocumentDefinitionLine(
-  server: SlangLanguageServer,
+  server: Pick<SlangLanguageServer, "gotoDefinition">,
   uri: string,
   position: { line: number; character: number },
   offset: number,
@@ -463,7 +430,7 @@ export function generatedLocalDefinitionLine(
   return new RegExp(`\\b${escapeRegExp(word)}\\b`).test(authoredLine) ? line : undefined;
 }
 
-export function escapeRegExp(value: string): string {
+function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
@@ -586,12 +553,12 @@ export function moduleDirectiveHover(
   return { kind: MarkupKind.Markdown, value: `\`\`\`slang\n${keyword} ${moduleName}\n\`\`\`\n\n${description}` };
 }
 
-export function completionDocumentation(item: CompletionItem): string | undefined {
+function completionDocumentation(item: CompletionItem): string | undefined {
   const documentation = typeof item.documentation === "string" ? item.documentation : item.documentation?.value;
   return documentation?.trim() || undefined;
 }
 
-export function shaderStudioInputMemberCompletions(typeName: string): CompletionItem[] | undefined {
+function shaderStudioInputMemberCompletions(typeName: string): CompletionItem[] | undefined {
   const kind = typeName === "ShaderStudioChannel2D" ? "texture-2d"
     : typeName === "ShaderStudioChannelCube" ? "texture-cube"
       : typeName === "ShaderStudioChannel3D" ? "texture-3d" : undefined;
@@ -612,7 +579,7 @@ export function shaderStudioInputMemberCompletions(typeName: string): Completion
   ])];
 }
 
-export function inputMethodCompletion(typeName: string, name: string, parameters: string): CompletionItem {
+function inputMethodCompletion(typeName: string, name: string, parameters: string): CompletionItem {
   return {
     label: name,
     kind: CompletionItemKind.Method,
@@ -626,7 +593,7 @@ export function isGeneratedInputImplementationSymbol(name: string): boolean {
 }
 
 export function shaderStudioInputMethodSignaturesAtCall(
-  state: NonNullable<ReturnType<SlangLanguageServiceBackend["current"]>>,
+  state: SlangProviderState,
   position: { line: number; character: number },
   name: string,
 ): string[] {
@@ -648,7 +615,7 @@ export function shaderStudioInputMethodSignaturesAtCall(
 }
 
 /** Native resource fallback for the bundled Slang server, which omits Texture* member completions. */
-export function nativeTextureMemberCompletions(typeName: string): CompletionItem[] {
+function nativeTextureMemberCompletions(typeName: string): CompletionItem[] {
   const texture = /^(Texture2D|TextureCube|Texture3D)<float4>$/.exec(typeName)?.[1];
   if (!texture) {
     return [];
@@ -666,7 +633,7 @@ export function nativeTextureMemberCompletions(typeName: string): CompletionItem
   ];
 }
 
-export function nativeTextureMember(texture: string, name: string, detail: string): CompletionItem {
+function nativeTextureMember(texture: string, name: string, detail: string): CompletionItem {
   return {
     label: name,
     kind: CompletionItemKind.Method,
@@ -693,12 +660,12 @@ export function slangStorageBufferType(resource: Readonly<AuthoringResource>, st
   return `${stage === "compute" ? "RWStructuredBuffer" : "StructuredBuffer"}<${elementType}>`;
 }
 
-export function slangStorageElementType(resource: Readonly<AuthoringResource>, stage: ShaderAuthoringEnvironment["stage"]): string {
+function slangStorageElementType(resource: Readonly<AuthoringResource>, stage: ShaderAuthoringEnvironment["stage"]): string {
   const elementType = resource.elementType ?? "float4";
   return stage === "compute" ? elementType : elementType.replace(/^Atomic<(u?int)>$/, "$1");
 }
 
-export function environmentTypeName(name: string, environment: ShaderAuthoringEnvironment): string | undefined {
+function environmentTypeName(name: string, environment: ShaderAuthoringEnvironment): string | undefined {
   const uniform = environment.customUniforms.find((item) => item.name === name);
   if (uniform) {
     return slangType(uniform.type);
@@ -714,7 +681,7 @@ export function environmentTypeName(name: string, environment: ShaderAuthoringEn
 }
 
 /** Leading type token of an intrinsic signature, such as `bool` in `bool all(T value)`. */
-export function intrinsicReturnType(signature: string | undefined): string | undefined {
+function intrinsicReturnType(signature: string | undefined): string | undefined {
   return signature === undefined ? undefined : /^\s*([A-Za-z_]\w*)\s+[A-Za-z_]/.exec(signature)?.[1];
 }
 
@@ -766,7 +733,7 @@ export function findSlangDeclarations(source: string): SlangDeclaration[] {
 
 /** Finds declarations at module scope without treating locals or members as globals. */
 export function authoredChannelCollisionDiagnostics(
-  state: NonNullable<ReturnType<SlangLanguageServiceBackend["current"]>>,
+  state: SlangProviderState,
 ): Diagnostic[] {
   const channels = new Set(state.environment.resources
     .filter((resource) => resource.kind !== "storage" && isValidShaderIdentifier(resource.name))
@@ -785,11 +752,11 @@ export function authoredChannelCollisionDiagnostics(
     }));
 }
 
-export function offsetRange(source: string, start: number, end: number): Range {
+function offsetRange(source: string, start: number, end: number): Range {
   return { start: positionAtOffset(source, start), end: positionAtOffset(source, end) };
 }
 
-export function positionAtOffset(source: string, offset: number) {
+function positionAtOffset(source: string, offset: number) {
   const lines = source.slice(0, offset).split("\n");
   return { line: lines.length - 1, character: lines[lines.length - 1]?.length ?? 0 };
 }
@@ -825,7 +792,7 @@ export function identifierOccurrences(source: string): { name: string; position:
   return result;
 }
 
-export const SLANG_CALL_KEYWORDS = new Set(["if", "for", "while", "switch", "return"]);
+const SLANG_CALL_KEYWORDS = new Set(["if", "for", "while", "switch", "return"]);
 
 /**
  * The call whose argument list holds `position`, and which argument it is in. Commas inside
@@ -914,7 +881,7 @@ export function documentedSlangFunctions(environment: ShaderAuthoringEnvironment
   return [...functions.values()];
 }
 
-export function intrinsic(name: string, signature: string, description: string): SlangIntrinsic {
+function intrinsic(name: string, signature: string, description: string): SlangIntrinsic {
   return { name, signatures: [signature], description };
 }
 

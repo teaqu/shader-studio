@@ -1,9 +1,9 @@
 import type { DocumentParams } from "@shader-studio/language-server-core";
+import { validateShaderAuthoringEnvironment } from "@shader-studio/types";
 import type { Diagnostic } from "vscode-languageserver-protocol";
 import { DiagnosticSeverity } from "vscode-languageserver-protocol";
-import { validateShaderAuthoringEnvironment } from "@shader-studio/types";
-import { comparePosition, errorDiagnostic, rangeKey, reservedWordDiagnostics, samplingStageWarnings, SERVICE_SOURCE, stageDiagnostics, unresolvedReferenceDiagnostics, unusedSymbolDiagnostics, zeroRange } from "../WgslLanguageServiceSupport.js";
 import type { WgslProviderContext } from "../WgslLanguageServiceBackend.js";
+import { comparePosition, errorDiagnostic, rangeKey, reservedWordDiagnostics, samplingStageWarnings, SERVICE_SOURCE, stageDiagnostics, unresolvedReferenceDiagnostics, unusedSymbolDiagnostics, zeroRange } from "../WgslLanguageServiceSupport.js";
 
 export class WgslDiagnosticsProvider {
   constructor(private readonly context: WgslProviderContext) {}

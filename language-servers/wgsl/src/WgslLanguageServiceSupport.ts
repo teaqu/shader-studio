@@ -1,71 +1,49 @@
 import {
-  CompletionItemKind,
-  DiagnosticSeverity,
-  DiagnosticTag,
-  DocumentHighlightKind,
-  MarkupKind,
-  SymbolKind,
-  type CompletionItem,
-  type Diagnostic,
-  type DocumentHighlight,
-  type DocumentSymbol,
-  type Hover,
-  type Location,
-  type Position,
-  type Range,
-  type ParameterInformation,
-  type SignatureHelp,
-  type SignatureInformation,
-  type WorkspaceEdit,
-} from "vscode-languageserver-protocol";
-import {
-  DocumentStore,
-  VirtualFileSystem,
   findMemberAccess,
-  formatLiteralColorComponent,
-  isPositionInComment,
   literalColorFromArguments,
-  swizzleCompletions,
   memberSelectionAt,
-  type ColorPresentationParams,
-  type DocumentParams,
-  type DocumentPositionParams,
-  type LanguageService,
-  type ReferenceParams,
-  type RenameParams,
-  type ServerCapabilities,
-  type ShaderDocumentSnapshot,
+  swizzleCompletions
 } from "@shader-studio/language-server-core";
 import {
   SHADER_STUDIO_SYMBOL_DOCS,
-  buildWgslChannelAuthoringSource,
   isShaderLanguageReservedTerm,
   isValidShaderIdentifier,
   isWgslReservedWord,
-  validateShaderAuthoringEnvironment,
   wgslStorageElementType,
-  type ShaderAuthoringEnvironment,
+  type ShaderAuthoringEnvironment
 } from "@shader-studio/types";
 import {
-  parseWgslDocument,
-  parseWgslDocumentAtPosition,
   positionOffset,
   resolveWgslExpressionType,
   symbolAtPosition,
   tokenizeWgsl,
-  visibleSymbolsAtPosition,
   wgslVectorTypeName,
   type WgslAnalysisDocument,
   type WgslInferenceContext,
   type WgslSymbol,
-  type WgslToken,
+  type WgslToken
 } from "@shader-studio/wgsl-analysis";
-import { WGSL_INTRINSICS, findWgslAttribute, findWgslIntrinsics } from "./intrinsics.js";
-import { WGSL_VERTEX_HOOK_FEATURES, type WgslVertexHookFeature } from "./vertexHook.js";
+import {
+  CompletionItemKind,
+  DiagnosticSeverity,
+  DiagnosticTag,
+  MarkupKind,
+  SymbolKind,
+  type CompletionItem,
+  type Diagnostic,
+  type Hover,
+  type Location,
+  type ParameterInformation,
+  type Position,
+  type Range,
+  type SignatureInformation
+} from "vscode-languageserver-protocol";
 import {
   WGSL_MAIN_IMAGE_COORDINATE_DESCRIPTION,
   WGSL_MAIN_IMAGE_DESCRIPTION,
 } from "./fragmentHook.js";
+import { WGSL_INTRINSICS } from "./intrinsics.js";
+import { WGSL_VERTEX_HOOK_FEATURES, type WgslVertexHookFeature } from "./vertexHook.js";
 
 const CHANNEL_DECLARATIONS_URI = "shader-studio://generated/channels.wgsl";
 
@@ -149,7 +127,7 @@ export function deduplicateLocations(locations: Location[]): Location[] {
 }
 
 /** WGSL swizzle components come in two interchangeable sets. */
-export const WGSL_SWIZZLE_SETS = ["xyzw", "rgba"] as const;
+const WGSL_SWIZZLE_SETS = ["xyzw", "rgba"] as const;
 
 /**
  * Completions for a member selection such as `uv.`, listing the members of the selected
@@ -202,7 +180,7 @@ export function memberCompletions(
 }
 
 /** Type of a name the document never declares, such as a uniform supplied by Shader Studio. */
-export function environmentTypeName(
+function environmentTypeName(
   name: string,
   environment: ShaderAuthoringEnvironment,
 ): string | undefined {
@@ -300,8 +278,8 @@ export interface WgslMainImageFeature {
   readonly description: string;
 }
 
-export const WGSL_VEC2_TYPES = new Set(["vec2f", "vec2<f32>"]);
-export const WGSL_VEC4_TYPES = new Set(["vec4f", "vec4<f32>"]);
+const WGSL_VEC2_TYPES = new Set(["vec2f", "vec2<f32>"]);
+const WGSL_VEC4_TYPES = new Set(["vec4f", "vec4<f32>"]);
 
 export function mainImageFeature(analysis: WgslAnalysisDocument, symbol: WgslSymbol): WgslMainImageFeature | undefined {
   const scope = symbol.kind === "function"
@@ -340,7 +318,7 @@ export function mainImageFeature(analysis: WgslAnalysisDocument, symbol: WgslSym
     : undefined;
 }
 
-export function rangeContains(outer: Range, inner: Range): boolean {
+function rangeContains(outer: Range, inner: Range): boolean {
   return comparePosition(outer.start, inner.start) <= 0 && comparePosition(outer.end, inner.end) >= 0;
 }
 
@@ -434,7 +412,7 @@ export function functionSignatures(analysis: WgslAnalysisDocument, name: string,
     .map((symbol) => functionSignature(analysis, symbol, declarationDocumentation(analysis, symbol, provenance)));
 }
 
-export function functionSignature(analysis: WgslAnalysisDocument, symbol: WgslSymbol, documentation?: string): SignatureInformation {
+function functionSignature(analysis: WgslAnalysisDocument, symbol: WgslSymbol, documentation?: string): SignatureInformation {
   const scope = analysis.scopes.find((item) => item.kind === "function" && item.name === symbol.name && rangeContains(item.range, symbol.definition));
   const parameters = (scope?.symbolIds ?? [])
     .map((id) => analysis.symbols.find((candidate) => candidate.id === id))
@@ -480,7 +458,7 @@ export function isAttributeName(source: string, position: Position): boolean {
 }
 
 /** Contiguous `//` lines directly above a declaration, skipping its attribute lines. */
-export function leadingComment(source: string, declarationLine: number): string | undefined {
+function leadingComment(source: string, declarationLine: number): string | undefined {
   const lines = source.split("\n");
   let line = declarationLine - 1;
   while (line >= 0 && /^\s*@/.test(lines[line] ?? "")) {
@@ -559,7 +537,7 @@ export function callAt(source: string, position: Position): { name: string; para
 }
 
 /** Index of the `>` closing the template list opened at `start`, if the prefix closes it. */
-export function templateListEnd(tokens: readonly WgslToken[], start: number): number | undefined {
+function templateListEnd(tokens: readonly WgslToken[], start: number): number | undefined {
   let depth = 0;
   let nesting = 0;
   for (let index = start; index < tokens.length; index++) {
@@ -594,7 +572,7 @@ export interface WgslLiteralColor {
 }
 
 /** `vec3f`/`vec4f` and `vec3<f32>`/`vec4<f32>`, with WGSL's optional template whitespace. */
-export const WGSL_COLOR_CONSTRUCTOR = /\bvec([34])(?:f|\s*<\s*f32\s*>)\s*\(([^()]*)\)/g;
+const WGSL_COLOR_CONSTRUCTOR = /\bvec([34])(?:f|\s*<\s*f32\s*>)\s*\(([^()]*)\)/g;
 
 export function findWgslLiteralColors(source: string): WgslLiteralColor[] {
   const colors: WgslLiteralColor[] = [];
@@ -615,7 +593,7 @@ export function findWgslLiteralColors(source: string): WgslLiteralColor[] {
   return colors;
 }
 
-export function offsetPosition(source: string, offset: number): Position {
+function offsetPosition(source: string, offset: number): Position {
   const lines = source.slice(0, offset).split("\n");
   return { line: lines.length - 1, character: lines[lines.length - 1]?.length ?? 0 };
 }
@@ -633,7 +611,7 @@ export function errorDiagnostic(range: Range, code: string, message: string): Di
  * constructors (`array(...)`, `vec3(...)`), texel formats in storage texture
  * templates, and types it does not classify as values.
  */
-export const WGSL_PREDECLARED_NAMES = new Set([
+const WGSL_PREDECLARED_NAMES = new Set([
   "array", "atomic", "ptr", "vec2", "vec3", "vec4",
   "mat2x2", "mat2x3", "mat2x4", "mat3x2", "mat3x3", "mat3x4", "mat4x2", "mat4x3", "mat4x4",
   "texture_external",
@@ -650,7 +628,7 @@ export const WGSL_PREDECLARED_NAMES = new Set([
  * order independent, so any global in the document counts, while locals were
  * already resolved in declaration order by the parser.
  */
-export function knownWgslNames(
+function knownWgslNames(
   analysis: WgslAnalysisDocument,
   environment: ShaderAuthoringEnvironment,
   includes: readonly WgslAnalysisDocument[],
@@ -704,7 +682,7 @@ export function unresolvedReferenceDiagnostics(
 }
 
 /** Builtins the WGSL specification restricts to the fragment stage, with their explicit alternative. */
-export const FRAGMENT_ONLY_BUILTINS = new Map<string, string | undefined>([
+const FRAGMENT_ONLY_BUILTINS = new Map<string, string | undefined>([
   ["textureSample", "textureSampleLevel with an explicit level"],
   ["textureSampleBias", "textureSampleLevel with an explicit level"],
   ["textureSampleCompare", "textureSampleCompareLevel"],
@@ -713,7 +691,7 @@ export const FRAGMENT_ONLY_BUILTINS = new Map<string, string | undefined>([
   ["fwidth", undefined], ["fwidthCoarse", undefined], ["fwidthFine", undefined],
 ]);
 
-export const COMPUTE_ONLY_BUILTINS = new Set(["storageBarrier", "textureBarrier", "workgroupBarrier", "workgroupUniformLoad"]);
+const COMPUTE_ONLY_BUILTINS = new Set(["storageBarrier", "textureBarrier", "workgroupBarrier", "workgroupUniformLoad"]);
 
 /**
  * Stage-restricted builtins and `discard` in functions reachable from this
@@ -794,7 +772,7 @@ export interface IncludedStageViolation {
   readonly line: number;
 }
 
-export function functionBodies(analysis: WgslAnalysisDocument, tokens: readonly WgslToken[]): Map<string, WgslToken[]> {
+function functionBodies(analysis: WgslAnalysisDocument, tokens: readonly WgslToken[]): Map<string, WgslToken[]> {
   const bodies = new Map<string, WgslToken[]>();
   for (const scope of analysis.scopes) {
     if (scope.kind === "function" && !bodies.has(scope.name)) {
@@ -805,7 +783,7 @@ export function functionBodies(analysis: WgslAnalysisDocument, tokens: readonly 
   return bodies;
 }
 
-export function restrictedStageUses(
+function restrictedStageUses(
   body: readonly WgslToken[],
   stage: "fragment" | "vertex" | "compute",
   authoredFunctions: ReadonlySet<string>,
@@ -834,7 +812,7 @@ export function restrictedStageUses(
 }
 
 /** Every restricted use an included helper reaches, each with the call chain from that helper; cycles end the walk. */
-export function includedStageViolations(
+function includedStageViolations(
   root: string,
   included: ReadonlyMap<string, { body: WgslToken[]; uri: string }>,
   stage: "fragment" | "vertex" | "compute",
@@ -863,7 +841,7 @@ export function includedStageViolations(
 }
 
 /** Shader Studio's hook for the stage, plus functions carrying the stage attribute. */
-export function stageEntryNames(tokens: readonly WgslToken[], stage: "fragment" | "vertex" | "compute"): Set<string> {
+function stageEntryNames(tokens: readonly WgslToken[], stage: "fragment" | "vertex" | "compute"): Set<string> {
   const names = new Set<string>(stage === "fragment" ? ["mainImage"] : stage === "vertex" ? ["mainVertex"] : []);
   for (let index = 0; index < tokens.length; index++) {
     const name = tokens[index + 1];
@@ -879,11 +857,11 @@ export function stageEntryNames(tokens: readonly WgslToken[], stage: "fragment" 
   return names;
 }
 
-export function calledNames(body: readonly WgslToken[]): WgslToken[] {
+function calledNames(body: readonly WgslToken[]): WgslToken[] {
   return body.filter((token, index) => token.kind === "identifier" && body[index + 1]?.text === "(");
 }
 
-export function tokenRange(token: WgslToken): Range {
+function tokenRange(token: WgslToken): Range {
   return {
     start: { line: token.line, character: token.character },
     end: { line: token.line, character: token.character + token.text.length },
@@ -928,7 +906,7 @@ export function samplingStageWarnings(
 }
 
 /** Declared result structures of builtins whose fields completion and hover can name. */
-export const BUILTIN_RESULT_FIELDS: Readonly<Record<string, readonly { name: string; type: string; description: string }[]>> = {
+const BUILTIN_RESULT_FIELDS: Readonly<Record<string, readonly { name: string; type: string; description: string }[]>> = {
   __modfResult: [
     { name: "fract", type: "T", description: "Fractional part, with the argument's type." },
     { name: "whole", type: "T", description: "Whole part, with the argument's type." },
@@ -951,7 +929,7 @@ export function inferenceContext(environment: ShaderAuthoringEnvironment, includ
 }
 
 /** A field of a struct declared in Common or generated declarations, following their aliases. */
-export function includedFieldType(includes: readonly WgslAnalysisDocument[], owner: string, field: string): string | undefined {
+function includedFieldType(includes: readonly WgslAnalysisDocument[], owner: string, field: string): string | undefined {
   const symbols = includes.flatMap((document) => document.symbols);
   let typeName = owner;
   for (const visited = new Set<string>(); !visited.has(typeName);) {
@@ -972,7 +950,7 @@ export function includedFieldType(includes: readonly WgslAnalysisDocument[], own
   return undefined;
 }
 
-export function expressionContext(environment: ShaderAuthoringEnvironment, includes: readonly WgslAnalysisDocument[]) {
+function expressionContext(environment: ShaderAuthoringEnvironment, includes: readonly WgslAnalysisDocument[]) {
   return {
     variableType: (name: string) => environmentTypeName(name, environment) ?? includedGlobalType(includes, name, false),
     functionType: (name: string) => includedGlobalType(includes, name, true)
@@ -984,7 +962,7 @@ export function expressionContext(environment: ShaderAuthoringEnvironment, inclu
   };
 }
 
-export function includedGlobalType(includes: readonly WgslAnalysisDocument[], name: string, isFunction: boolean): string | undefined {
+function includedGlobalType(includes: readonly WgslAnalysisDocument[], name: string, isFunction: boolean): string | undefined {
   for (const document of includes) {
     const global = document.scopes.find((scope) => scope.parentId === undefined);
     const symbol = document.symbols.find((candidate) => candidate.name === name && candidate.scopeId === global?.id
@@ -997,7 +975,7 @@ export function includedGlobalType(includes: readonly WgslAnalysisDocument[], na
 }
 
 /** An overload set's return type only when every overload agrees, such as textureSample's vec4f. */
-export function uniqueIntrinsicReturnType(stage: ShaderAuthoringEnvironment["stage"], name: string): string | undefined {
+function uniqueIntrinsicReturnType(stage: ShaderAuthoringEnvironment["stage"], name: string): string | undefined {
   const returns = new Set(visibleIntrinsics(stage)
     .filter((item) => item.kind === "function" && item.name === name)
     .map((item) => item.returnType));

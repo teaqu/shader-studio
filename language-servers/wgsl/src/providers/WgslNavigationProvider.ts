@@ -1,15 +1,14 @@
 import type { DocumentPositionParams, ReferenceParams, RenameParams } from "@shader-studio/language-server-core";
-import { DocumentHighlightKind, type DocumentHighlight, type Location, type Range, type SignatureHelp, type WorkspaceEdit } from "vscode-languageserver-protocol";
 import { isPositionInComment } from "@shader-studio/language-server-core";
-import { parseWgslDocumentAtPosition, symbolAtPosition, visibleSymbolsAtPosition } from "@shader-studio/wgsl-analysis";
-import { callAt, functionSignatures, GENERATED_CHANNEL_DESCRIPTION, generatedWgslFunctions, includedReferenceRanges, isRenameableName, orderedRanges, signatureInformation, symbolAtRenamePosition, visibleIntrinsics, wordAt } from "../WgslLanguageServiceSupport.js";
 import { SHADER_STUDIO_SYMBOL_DOCS } from "@shader-studio/types";
-import { deduplicateLocations, identifierPosition } from "../WgslLanguageServiceSupport.js";
-import type { WgslDocumentState, WgslProviderContext } from "../WgslLanguageServiceBackend.js";
 import type { WgslAnalysisDocument, WgslSymbol } from "@shader-studio/wgsl-analysis";
+import { parseWgslDocumentAtPosition, symbolAtPosition, visibleSymbolsAtPosition } from "@shader-studio/wgsl-analysis";
+import { DocumentHighlightKind, type DocumentHighlight, type Location, type Range, type SignatureHelp, type WorkspaceEdit } from "vscode-languageserver-protocol";
+import type { WgslDocumentState, WgslNavigationContext } from "../WgslLanguageServiceBackend.js";
+import { callAt, deduplicateLocations, functionSignatures, GENERATED_CHANNEL_DESCRIPTION, generatedWgslFunctions, identifierPosition, includedReferenceRanges, isRenameableName, orderedRanges, signatureInformation, symbolAtRenamePosition, visibleIntrinsics, wordAt } from "../WgslLanguageServiceSupport.js";
 
 export class WgslNavigationProvider {
-  constructor(private readonly context: WgslProviderContext) {}
+  constructor(private readonly context: WgslNavigationContext) {}
   async definition(params: DocumentPositionParams): Promise<Location[]> {
     const state = this.context.current(params);
     if (!state) {
@@ -121,21 +120,16 @@ export class WgslNavigationProvider {
 
   private commonUses(symbol: WgslSymbol, ownerUri: string): Map<string, Range[]> {
     const uses = new Map<string, Range[]>();
-    for (const [passUri, includes] of this.context.getAllIncludes()) {
-      if (!includes.some((analysis) => analysis.uri === ownerUri && analysis.symbols.some((candidate) => candidate.id === symbol.id))) {
-        continue;
-      }
-      const pass = this.context.getAnalyses().get(passUri);
-      if (pass) {
-        uses.set(passUri, includedReferenceRanges(pass, symbol));
-      }
+    for (const [passUri, pass] of this.context.analysesIncluding(ownerUri, symbol.id)) {
+      uses.set(passUri, includedReferenceRanges(pass, symbol));
     }
     return uses;
   }
 
   private commonRenameCollides(uses: ReadonlyMap<string, readonly Range[]>, symbol: WgslSymbol, newName: string): boolean {
     return [...uses].some(([uri, references]) => {
-      const analysis = this.context.getAnalyses().get(uri); return analysis !== undefined && references.some((reference) => visibleSymbolsAtPosition(analysis, reference.start).some((candidate) => candidate.name === newName && candidate.id !== symbol.id));
+      const analysis = this.context.analysis(uri);
+      return analysis !== undefined && references.some((reference) => visibleSymbolsAtPosition(analysis, reference.start).some((candidate) => candidate.name === newName && candidate.id !== symbol.id));
     });
   }
 

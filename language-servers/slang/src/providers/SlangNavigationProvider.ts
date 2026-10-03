@@ -1,86 +1,31 @@
-import { findSlangAuthoredDeclarations } from "@shader-studio/types";
 import {
-  CompletionItemKind,
-  DiagnosticSeverity,
-  DiagnosticTag,
-  MarkupKind,
-  SymbolKind,
-  type CompletionItem,
-  type Diagnostic,
-  type DocumentHighlight,
-  DocumentHighlightKind,
-  type DocumentSymbol,
-  type Hover,
-  type Location,
-  type MarkupContent,
-  type Position,
-  type Range,
-  type SignatureHelp,
-  type TextEdit,
-  type WorkspaceEdit,
-} from "vscode-languageserver-protocol";
-import {
-  DocumentStore,
-  VirtualFileSystem,
-  createLiteralColorPresentations,
-  declarationContext,
-  findLiteralConstructorColors,
-  findMemberAccess,
-  isInsideBlock,
   isPositionInComment,
-  rankCompletionsForContext,
-  swizzleCompletions,
-  memberSelectionAt,
-  type ColorPresentationParams,
-  type DocumentParams,
   type DocumentPositionParams,
-  type LanguageService,
-  type RenameParams,
   type ReferenceParams,
-  type ServerCapabilities,
-  type ShaderDocumentSnapshot,
+  type RenameParams
 } from "@shader-studio/language-server-core";
 import {
-  SHADER_STUDIO_SYMBOL_DOCS,
-  buildSlangAuthoringModule,
-  describeSlangChannel,
-  isValidShaderIdentifier,
-  validateShaderAuthoringEnvironment,
-  type AuthoringResource,
-  type ShaderAuthoringEnvironment,
-  isShaderEntryPointName,
-  isShaderTypeKeyword,
-  shaderTypeCompletionKeywords,
-} from "@shader-studio/types";
-import type {
-  SlangDiagnostic,
-  SlangCompilerGlobalSession,
-  SlangDocumentSymbol,
-  SlangLanguageServer,
-  SlangLanguageServerModule,
-  SlangList,
-} from "../slangLanguageServerTypes.js";
-import { SLANG_INTRINSICS, type SlangIntrinsic } from "../intrinsics.js";
-import { SLANG_COMPUTE_FEATURES, type SlangComputeFeature } from "../computeFeatures.js";
-import { SLANG_VERTEX_HOOK_FEATURES, type SlangVertexHookFeature } from "../vertexHook.js";
-import { SLANG_MAIN_IMAGE_COORDINATE_DESCRIPTION, SLANG_MAIN_IMAGE_DESCRIPTION } from "../fragmentHook.js";
-import { findSlangLocalAt, findUnusedSlangLocals, resolveSlangExpressionType, visibleSlangLocals, type SlangExpressionContext } from "../expressionType.js";
-import { SLANG_SWIZZLE_SETS, resolveSlangSwizzleType, slangVectorTypeName } from "../slangTypes.js";
-import { applySlangRenameEdits, renameSlangSymbol, resolveSlangSymbol, type SlangRenameDocument } from "../rename.js";
+  DocumentHighlightKind,
+  SymbolKind,
+  type DocumentHighlight,
+  type Location,
+  type SignatureHelp,
+  type WorkspaceEdit
+} from "vscode-languageserver-protocol";
+import { renameSlangSymbol, resolveSlangSymbol } from "../rename.js";
 
-import { contextualFiles, computeFeatureMarkup, vertexHookMarkup, contractMarkup, mainImageMarkup, mainImageFeatureAt, mainImageCompletionFeature, mainImageCoordinateCompletion, offsetAtPosition, matchingBrace, vertexHookFeatureAt, vertexHookCompletionFeatures, vertexHookMatches, consumeList, convertDocumentSymbol, convertDiagnostic, shiftedPosition, shiftedRange, userRange, zeroRange, comparePositions, rangesOverlap, consumeCompilerTargets, INCLUDE_STRING_PATTERN, INCLUDE_IDENT_PATTERN, IMPORT_PATTERN, MODULE_DECL_PATTERN, IMPLEMENTING_DECL_PATTERN, resolveCompilerDependencies, sourcePath, moduleName, parseCompilerDiagnostics, slangType, markup, localSourceHover, currentDocumentDefinitionLine, generatedLocalDefinitionLine, escapeRegExp, wordAt, memberCompletions, slangExpressionContext, memberHover, moduleDirectiveHover, completionDocumentation, shaderStudioInputMemberCompletions, inputMethodCompletion, isGeneratedInputImplementationSymbol, shaderStudioInputMethodSignaturesAtCall, nativeTextureMemberCompletions, nativeTextureMember, generatedEnvironmentGlobals, generatedSamplingFunctions, slangStorageBufferType, slangStorageElementType, environmentTypeName, intrinsicReturnType, declaresSlangType, findSlangDeclarations, authoredChannelCollisionDiagnostics, offsetRange, positionAtOffset, authoredPointRange, nativeDefinitionKey, identifierOccurrences, SLANG_CALL_KEYWORDS, callAt, documentedSlangFunctions, intrinsic, completionForIntrinsic, intrinsicMarkup } from "../SlangLanguageServiceSupport.js";
-import type { SlangMainImageFeature, SlangVertexHookMatch, SlangDeclaration } from "../SlangLanguageServiceSupport.js";
-import type { SlangLanguageServiceBackend } from "../SlangLanguageServiceBackend.js";
+import { authoredPointRange, callAt, consumeList, contextualFiles, documentedSlangFunctions, findSlangDeclarations, generatedSamplingFunctions, markup, shaderStudioInputMethodSignaturesAtCall, shiftedPosition, userRange, wordAt } from "../SlangLanguageServiceSupport.js";
+import type { SlangNavigationContext } from "./SlangProviderContext.js";
 
 export class SlangNavigationProvider {
-  constructor(private readonly backend: SlangLanguageServiceBackend) {}
+  constructor(private readonly context: SlangNavigationContext) {}
 
   async definition(params: DocumentPositionParams): Promise<Location[]> {
-    const state = this.backend.current(params);
+    const state = this.context.current(params);
     if (!state) {
       return [];
     }
-    const official = consumeList(this.backend.server.gotoDefinition(params.document.uri, shiftedPosition(params.position, state.offset)), (item) => {
+    const official = consumeList(this.context.definition(params.document.uri, shiftedPosition(params.position, state.offset)), (item) => {
       const range = item.uri === params.document.uri ? userRange(item.range, state.offset, state.document.text) : item.range;
       return range ? { uri: item.uri, range } : undefined;
     }).filter((item): item is Location => item !== undefined);
@@ -101,14 +46,14 @@ export class SlangNavigationProvider {
   }
 
   async signatureHelp(params: DocumentPositionParams): Promise<SignatureHelp | null> {
-    const state = this.backend.current(params);
+    const state = this.context.current(params);
     if (!state) {
       return null;
     }
     if (isPositionInComment(state.document.text, params.position)) {
       return null;
     }
-    const result = this.backend.server.signatureHelp(params.document.uri, shiftedPosition(params.position, state.offset));
+    const result = this.context.signatureHelp(params.document.uri, shiftedPosition(params.position, state.offset));
     if (result) {
       const signatures = consumeList(result.signatures, (signature) => ({
         label: signature.label,
@@ -138,49 +83,49 @@ export class SlangNavigationProvider {
   }
 
   async references(params: ReferenceParams): Promise<Location[]> {
-    if (!this.backend.current(params)) {
+    if (!this.context.current(params)) {
       return [];
     }
-    const target = resolveSlangSymbol(this.backend.renameDocuments(), params.document.uri, params.position);
+    const target = resolveSlangSymbol(this.context.renameDocuments(), params.document.uri, params.position);
     if (!target) {
       return [];
     }
     const points = params.includeDeclaration ? [target.declaration, ...target.references] : target.references;
     return points.flatMap(point => {
-      const range = authoredPointRange(this.backend.documentText(point.uri), point.offset);
+      const range = authoredPointRange(this.context.documentText(point.uri), point.offset);
       return range ? [{ uri: point.uri, range }] : [];
     });
   }
 
   async documentHighlights(params: DocumentPositionParams): Promise<DocumentHighlight[]> {
-    if (!this.backend.current(params)) {
+    if (!this.context.current(params)) {
       return [];
     }
-    const target = resolveSlangSymbol(this.backend.renameDocuments(), params.document.uri, params.position);
+    const target = resolveSlangSymbol(this.context.renameDocuments(), params.document.uri, params.position);
     if (!target) {
       return [];
     }
     const declaration = target.declaration.uri === params.document.uri
-      ? authoredPointRange(this.backend.documentText(target.declaration.uri), target.declaration.offset) : undefined;
+      ? authoredPointRange(this.context.documentText(target.declaration.uri), target.declaration.offset) : undefined;
     return [
       ...(declaration ? [{ range: declaration, kind: DocumentHighlightKind.Write }] : []),
       ...target.references.flatMap(point => {
-        const range = point.uri === params.document.uri ? authoredPointRange(this.backend.documentText(point.uri), point.offset) : undefined;
+        const range = point.uri === params.document.uri ? authoredPointRange(this.context.documentText(point.uri), point.offset) : undefined;
         return range ? [{ range, kind: DocumentHighlightKind.Read }] : [];
       }),
     ];
   }
 
   async rename(params: RenameParams): Promise<WorkspaceEdit | null> {
-    if (!this.backend.current(params)) {
+    if (!this.context.current(params)) {
       return null;
     }
-    const documents = this.backend.renameDocuments();
-    const source = this.backend.store.getDocument(params.document.uri)?.text ?? "";
+    const documents = this.context.renameDocuments();
+    const source = this.context.documentText(params.document.uri) ?? "";
     const native = /\bgeneric\s*<|\bimport\s+|\bstruct\s+\w+\s*\{[\s\S]*?\w+\s*\(/.test(source)
-      ? this.backend.nativeRename(documents, params) : null;
+      ? this.context.nativeRename(documents, params) : null;
     const edit = native ?? renameSlangSymbol(documents, params.document.uri, params.position, params.newName);
-    const valid = edit && this.backend.renameCompiles(documents, edit);
+    const valid = edit && this.context.renameCompiles(documents, edit);
     return valid ? edit : null;
   }
 

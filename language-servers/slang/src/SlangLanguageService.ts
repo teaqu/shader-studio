@@ -2,12 +2,12 @@ import type { ColorPresentationParams, DocumentParams, DocumentPositionParams, L
 import type { ShaderAuthoringEnvironment } from "@shader-studio/types";
 import type { CompletionItem, Diagnostic, DocumentHighlight, DocumentSymbol, Hover, Location, SignatureHelp, WorkspaceEdit } from "vscode-languageserver-protocol";
 import { SlangLanguageServiceBackend } from "./SlangLanguageServiceBackend.js";
-import type { SlangLanguageServerModule } from "./slangLanguageServerTypes.js";
 import { SlangCompletionProvider } from "./providers/SlangCompletionProvider.js";
 import { SlangDiagnosticsProvider } from "./providers/SlangDiagnosticsProvider.js";
 import { SlangHoverProvider } from "./providers/SlangHoverProvider.js";
 import { SlangNavigationProvider } from "./providers/SlangNavigationProvider.js";
 import { SlangSymbolsProvider } from "./providers/SlangSymbolsProvider.js";
+import type { SlangLanguageServerModule } from "./slangLanguageServerTypes.js";
 
 /** Coordinates document lifecycle and focused Slang language-feature providers. */
 export class SlangLanguageService implements LanguageService {
@@ -20,11 +20,11 @@ export class SlangLanguageService implements LanguageService {
 
   constructor(module: SlangLanguageServerModule) {
     this.backend = new SlangLanguageServiceBackend(module);
-    this.completionProvider = new SlangCompletionProvider(this.backend);
-    this.hoverProvider = new SlangHoverProvider(this.backend);
-    this.navigationProvider = new SlangNavigationProvider(this.backend);
-    this.symbolsProvider = new SlangSymbolsProvider(this.backend);
-    this.diagnosticsProvider = new SlangDiagnosticsProvider(this.backend);
+    this.completionProvider = new SlangCompletionProvider(this.backend.completionContext());
+    this.hoverProvider = new SlangHoverProvider(this.backend.hoverContext());
+    this.navigationProvider = new SlangNavigationProvider(this.backend.navigationContext());
+    this.symbolsProvider = new SlangSymbolsProvider(this.backend.symbolsContext());
+    this.diagnosticsProvider = new SlangDiagnosticsProvider(this.backend.diagnosticsContext());
   }
 
   initialize(): Promise<ServerCapabilities> {

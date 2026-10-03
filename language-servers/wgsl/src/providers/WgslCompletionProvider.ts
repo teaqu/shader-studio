@@ -1,10 +1,10 @@
 import { findMemberAccess, isPositionInComment, type DocumentPositionParams } from "@shader-studio/language-server-core";
-import { CompletionItemKind, MarkupKind, type CompletionItem } from "vscode-languageserver-protocol";
 import { SHADER_STUDIO_SYMBOL_DOCS } from "@shader-studio/types";
 import { parseWgslDocumentAtPosition, visibleSymbolsAtPosition } from "@shader-studio/wgsl-analysis";
+import { CompletionItemKind, MarkupKind, type CompletionItem } from "vscode-languageserver-protocol";
 import { WGSL_VERTEX_HOOK_FEATURES } from "../vertexHook.js";
-import { authoringValueWgslType, completionFromDoc, completionKind, generatedWgslFunctions, inferenceContext, mainImageFeature, markdownDocumentation, memberCompletions, signatureInformation, vertexHookFeature, visibleIntrinsics } from "../WgslLanguageServiceSupport.js";
 import type { WgslProviderContext } from "../WgslLanguageServiceBackend.js";
+import { authoringValueWgslType, completionFromDoc, completionKind, generatedWgslFunctions, inferenceContext, mainImageFeature, markdownDocumentation, memberCompletions, signatureInformation, vertexHookFeature, visibleIntrinsics } from "../WgslLanguageServiceSupport.js";
 
 export class WgslCompletionProvider {
   constructor(private readonly context: WgslProviderContext) {}

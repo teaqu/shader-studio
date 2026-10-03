@@ -2,11 +2,8 @@
 <script lang="ts">
   import { onMount, onDestroy, getContext } from "svelte";
   import { currentTheme, toggleTheme } from "../stores/themeStore";
-  import {
-    aspectRatioStore,
-    type AspectRatioMode,
-  } from "../stores/aspectRatioStore";
-  import { resolutionStore, type ResolutionState } from "../stores/resolutionStore";
+  import { aspectRatioStore } from "../stores/aspectRatioStore";
+  import { resolutionStore } from "../stores/resolutionStore";
   import { isVSCodeEnvironment } from "../transport/TransportFactory";
   import ErrorTooltip from "./ErrorTooltip.svelte";
   import TimeControls from "./TimeControls.svelte";
@@ -154,18 +151,15 @@
   let theme = $state<"light" | "dark">("light");
   let showThemeButton = $state(false);
   let showFullscreenButton = $state(false);
-  let currentAspectRatio = $state<AspectRatioMode>("16:9");
-  let currentResolution = $state<ResolutionState>({ scale: 1, forceBlackBackground: false, source: 'session' });
+  const currentAspectRatio = $derived($aspectRatioStore.mode);
+  const currentResolution = $derived($resolutionStore);
   const resolutionMenu = new MenuOverlay('below-left');
-  let widthInput = $state<number | null>(null);
-  let heightInput = $state<number | null>(null);
   const fpsMenu = new MenuOverlay('below-left');
   const optionsMenu = new MenuOverlay('below-right');
   const layoutMenu = new MenuOverlay('left-of');
   const editorMenu = new MenuOverlay('left-of');
   let menuBarEl = $state<HTMLElement | null>(null);
   let menuBarWidth = $state(Infinity);
-  let zoomLevel = $state(1.0);
   let currentFPSLimit = $state(0);
   let isPauseTooltipTriggerHovered = $state(false);
   let isPauseTooltipHovered = $state(false);
@@ -233,28 +227,11 @@
       theme = value;
     });
 
-    const unsubscribeAspectRatio = aspectRatioStore.subscribe((state) => {
-      currentAspectRatio = state.mode;
-    });
-
-    const unsubscribeResolution = resolutionStore.subscribe((state) => {
-      currentResolution = state;
-      if (state.width !== undefined && state.height !== undefined) {
-        widthInput = Number(state.width) || null;
-        heightInput = Number(state.height) || null;
-      } else {
-        widthInput = null;
-        heightInput = null;
-      }
-    });
-
     return () => {
       if (timeUpdateHandle !== null) {
         cancelAnimationFrame(timeUpdateHandle);
       }
       unsubscribeTheme();
-      unsubscribeAspectRatio();
-      unsubscribeResolution();
     };
   });
 
@@ -337,63 +314,6 @@
     optionsMenu.open = false;
     layoutMenu.open = false;
     onToggleRecordingPanel();
-  }
-
-  function handleAspectRatioSelect(mode: AspectRatioMode) {
-    resCtrl.setAspectRatio(mode);
-  }
-
-  function handleResolutionScaleSelect(scale: number) {
-    if (resCtrl.menuVM.targetKind === 'image') {
-      resCtrl.setImageScale(scale);
-    } else {
-      resCtrl.setBufferScale(scale);
-    }
-  }
-
-  function handleCustomResolutionInput() {
-    if (widthInput && heightInput) {
-      resCtrl.setImageCustomResolution(String(widthInput), String(heightInput));
-    }
-  }
-
-  function handleClearCustomResolution(event: MouseEvent) {
-    event.stopPropagation();
-    widthInput = null;
-    heightInput = null;
-    resCtrl.setImageCustomResolution(undefined, undefined);
-  }
-
-  function handleResetResolution() {
-    widthInput = null;
-    heightInput = null;
-    resCtrl.resetCurrentTarget();
-  }
-
-  function handleZoomChange(event: Event) {
-    const target = event.target as HTMLInputElement;
-    zoomLevel = parseFloat(target.value);
-    onZoomChange(zoomLevel);
-  }
-
-  function handleForceBlackBackgroundChange(event: Event) {
-    const target = event.target as HTMLInputElement;
-    resolutionStore.setForceBlackBackground(target.checked);
-  }
-
-  function handleSyncWithConfigChange(event: Event) {
-    const target = event.target as HTMLInputElement;
-    resCtrl.setSyncWithConfig(target.checked);
-  }
-
-  function handleBufferWidthInput(event: Event) {
-    const width = (event.target as HTMLInputElement).value;
-    resCtrl.setBufferFixedResolution(width, resCtrl.menuVM.bufferResolutionState.height);
-  }
-
-  function handleBufferHeightInput(event: Event) {
-    const height = (event.target as HTMLInputElement).value;
-    resCtrl.setBufferFixedResolution(resCtrl.menuVM.bufferResolutionState.width, height);
   }
 
   function handleToggleLock() {
