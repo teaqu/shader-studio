@@ -494,9 +494,9 @@ system permission just like Webcam.
 
 Screen requests 1920 × 1080 video at 30 fps when the browser supports these capture preferences and uploads only newly presented frames. Sources that do not support these preferences keep their available resolution. The channel dimensions report the captured video size. Filter, wrap and vertical flip affect sampling in the shader; the small channel preview shows the original capture. Wrap changes are visible when UV coordinates leave the 0–1 range, and filtering differences appear at pixel edges or when scaling.
 
-### Browser Audio
+### Shared Audio
 
-Choose **Browser Audio** in **Audio**, then click **Start sharing**. For a song
+Choose **Shared Audio** in **Audio**, then click **Start sharing**. For a song
 playing in a browser, choose that tab in the sharing picker and enable audio
 sharing. Where offered, the browser can also share system or app audio. These
 options depend on your browser and operating system; selecting a source without
@@ -507,7 +507,7 @@ a virtual audio input device and select it under **Audio → Mic → Audio devic
 devices** updates the list; microphone permission may be needed for device names.
 Shader Studio does not configure audio routing or install virtual audio drivers.
 
-Browser Audio uses the same 512 × 2 FFT/waveform texture and live tile preview as
+Shared Audio uses the same 512 × 2 FFT/waveform texture and live tile preview as
 the microphone. The saved config is `{ "type": "system-audio" }`; capture permission
 and source choices are session-only. Reloading requires an explicit reconnect.
 **Stop sharing**, removing the channel, or switching to a shader without Browser
@@ -518,4 +518,4 @@ through your speakers.
 
 The normal extension panel cannot grant camera or microphone access. Run **Shader Studio: Open Capture Preview** from the command palette or Shader Studio status menu. You can also select Webcam in Misc or a live input in Audio, apply it, and click **Open Capture Preview**. This starts the local web server and opens the synced viewer in VS Code’s Integrated Browser when available; older versions open an external browser. Shader edits continue to update the viewer through the extension’s existing connection.
 
-Allow camera and microphone access for the localhost page and for VS Code in your operating system when prompted. Browser Audio requires **Start sharing** in the preview. Sharing options depend on the host; choose a routed audio input device or use an external browser if tab/system sharing is unavailable. Device choices, source permissions and sharing sessions are not saved in shader configs.
+Allow camera and microphone access for the localhost page and for VS Code in your operating system when prompted. Shared Audio requires **Start sharing** in the preview. Sharing options depend on the host; choose a routed audio input device or use an external browser if tab/system sharing is unavailable. Device choices, source permissions and sharing sessions are not saved in shader configs.

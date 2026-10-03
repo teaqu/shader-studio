@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { workspace } from './language-service-fixtures.mjs';
 
-test('Firefox loads Audio assets and explains unsupported Browser Audio', async ({ page }) => {
+test('Firefox loads Audio assets and explains unsupported Shared Audio', async ({ page }) => {
   await page.addInitScript(() => {
     window.__screenSharingRequests = 0;
     navigator.mediaDevices.getDisplayMedia = async () => {

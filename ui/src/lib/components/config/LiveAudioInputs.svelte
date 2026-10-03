@@ -16,7 +16,7 @@
 </script>
 
 <div class="live-audio-options">
-  {#each [{ type: 'microphone', label: 'Mic' }, { type: 'system-audio', label: 'Browser Audio' }] as option}
+  {#each [{ type: 'microphone', label: 'Mic' }, { type: 'system-audio', label: 'Shared Audio' }] as option}
     <button class:selected={input?.type === option.type} aria-label={option.label} onclick={() => onSelect({ type: option.type as 'microphone' | 'system-audio' })}>
       <ChannelPreview channelInput={{ type: option.type as 'microphone' | 'system-audio' }} {getWebviewUri} {audioVideoController} />
       <span>{option.label}</span>

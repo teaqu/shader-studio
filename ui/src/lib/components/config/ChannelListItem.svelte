@@ -32,7 +32,7 @@
       case 'audio': return 'Audio';
       case 'buffer': return 'Buffer';
       case 'cubemap': return 'Cubemap';
-      case 'system-audio': return 'Browser Audio';
+      case 'system-audio': return 'Shared Audio';
       case 'webcam': return 'Webcam';
       case 'screen': return 'Screen';
       case 'microphone': return 'Mic';

@@ -27,7 +27,7 @@ describe('AudioTab', () => {
     const api = defaultProps();
     const view = render(AudioTab, { ...api, tempInput: { type } });
     expect(view.getByRole('button', { name: 'Mic' })).toBeVisible();
-    expect(view.getByRole('button', { name: 'Browser Audio' })).toBeVisible();
+    expect(view.getByRole('button', { name: 'Shared Audio' })).toBeVisible();
     expect(view.getByPlaceholderText('Path to audio or video file')).toBeVisible();
     await fireEvent.click(view.getByRole('button', { name: 'Mic' }));
     expect(api.onUpdateTempInput).toHaveBeenCalledWith({ type: 'microphone' });

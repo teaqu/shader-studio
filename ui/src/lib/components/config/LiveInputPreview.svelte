@@ -29,11 +29,11 @@
 </script>
 
 <div class="live-preview">
-  <canvas bind:this={canvas} width="160" height="120" aria-label={type === 'webcam' ? 'Live webcam preview' : type === 'screen' ? 'Live screen preview' : type === 'system-audio' ? 'Live browser audio preview' : 'Live mic preview'} class:active></canvas>
+  <canvas bind:this={canvas} width="160" height="120" aria-label={type === 'webcam' ? 'Live webcam preview' : type === 'screen' ? 'Live screen preview' : type === 'system-audio' ? 'Live shared audio preview' : 'Live mic preview'} class:active></canvas>
   {#if !active}
     <div class="fallback">
       <i class="codicon" class:codicon-device-camera={type === 'webcam' || type === 'screen'} class:codicon-mic={type === 'microphone'}></i>
-      <span>{type === 'webcam' ? 'Webcam' : type === 'screen' ? 'Screen' : type === 'system-audio' ? 'Browser Audio' : 'Mic'}</span>
+      <span>{type === 'webcam' ? 'Webcam' : type === 'screen' ? 'Screen' : type === 'system-audio' ? 'Shared Audio' : 'Mic'}</span>
     </div>
   {/if}
 </div>

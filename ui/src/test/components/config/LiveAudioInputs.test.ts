@@ -8,7 +8,7 @@ afterEach(() => {
 });
 
 describe('live audio inputs', () => {
-  it.each([['Mic', 'microphone'], ['Browser Audio', 'system-audio']] as const)('selects %s with its existing saved type', async (label, type) => {
+  it.each([['Mic', 'microphone'], ['Shared Audio', 'system-audio']] as const)('selects %s with its existing saved type', async (label, type) => {
     const api = props();
     const view = render(LiveAudioInputs, api);
     await fireEvent.click(view.getByRole('button', { name: label }));

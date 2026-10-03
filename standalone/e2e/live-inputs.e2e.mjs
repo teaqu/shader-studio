@@ -136,6 +136,18 @@ for (const language of ['glsl', 'wgsl', 'slang']) {
       if (source === 'device') {
         await expectGreen(page);
         const deviceSelect = page.getByLabel('Audio device');
+        await deviceSelect.evaluate(e => {
+          e.style.setProperty('--vscode-input-background', 'rgb(45, 45, 45)');
+          e.style.setProperty('--vscode-input-foreground', 'rgb(204, 204, 204)');
+          e.style.setProperty('--vscode-input-border', 'rgb(60, 60, 60)');
+          e.style.setProperty('--vscode-focusBorder', 'rgb(0, 122, 204)');
+        });
+        await expect(deviceSelect).toHaveCSS('background-color', 'rgb(45, 45, 45)');
+        await expect(deviceSelect).toHaveCSS('color', 'rgb(204, 204, 204)');
+        await expect(deviceSelect).toHaveCSS('border-top-color', 'rgb(60, 60, 60)');
+        await deviceSelect.focus();
+        await expect(deviceSelect).toHaveCSS('border-top-color', 'rgb(0, 122, 204)');
+        await deviceSelect.evaluate(e => e.removeAttribute('style'));
         await expect.poll(() => deviceSelect.locator('option').count()).toBeGreaterThan(1);
         selectedDevice = await deviceSelect.locator('option').nth(1).getAttribute('value');
         await deviceSelect.selectOption(selectedDevice);
@@ -144,7 +156,7 @@ for (const language of ['glsl', 'wgsl', 'slang']) {
       }
       await start.click();
       await expectGreen(page);
-      await expectLivePreview(page.getByRole('button', { name: source === 'device' ? 'Mic' : 'Browser Audio', exact: true }), source === 'device' ? 'Mic' : 'Browser audio');
+      await expectLivePreview(page.getByRole('button', { name: source === 'device' ? 'Mic' : 'Shared Audio', exact: true }), source === 'device' ? 'Mic' : 'Shared audio');
       expect(await page.evaluate(() => window.__displayCaptureCalls)).toBe(source === 'browser' ? 1 : 0);
       expect(await page.evaluate(() => window.__displayVideoTracks.every(track => track.readyState === 'ended'))).toBe(true);
       await page.getByRole('button', { name: 'Close', exact: true }).click();

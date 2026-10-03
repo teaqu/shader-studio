@@ -33,9 +33,10 @@ describe('system audio controls', () => {
   it('offers microphones and loopback devices under Audio without browser sharing', async () => {
     devices();
     const api = controller();
-    const { getByRole, getByLabelText, queryByRole, findByRole } = render(SystemAudioControls, { type: 'microphone', audioVideoController: api as unknown as AudioVideoController });
+    const { getByRole, getByLabelText, queryByRole, findByRole, getByText } = render(SystemAudioControls, { type: 'microphone', audioVideoController: api as unknown as AudioVideoController });
     await findByRole('option', { name: 'Loopback Audio' });
-    expect(queryByRole('option', { name: 'Browser Audio' })).toBeNull();
+    expect(getByText(/or use Shared Audio if your browser offers app or system audio sharing/)).toBeVisible();
+    expect(queryByRole('option', { name: 'Shared Audio' })).toBeNull();
     await fireEvent.change(getByLabelText('Audio device'), { target: { value: 'loopback' } });
     await fireEvent.click(getByRole('button', { name: 'Start mic' }));
     expect(api.controlAudioInput).toHaveBeenCalledWith('start', 'loopback');

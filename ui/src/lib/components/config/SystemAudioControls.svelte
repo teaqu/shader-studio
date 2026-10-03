@@ -90,19 +90,32 @@
     {#if type === "microphone"}<button onclick={refreshDevices} disabled={busy}>Refresh devices</button>{/if}
   </div>
   {#if unavailable || message}
-    <CaptureError title={unavailable ? 'Browser Audio unavailable' : type === 'microphone' ? 'Mic capture failed' : 'Browser Audio failed'} message={unavailable || message} />
+    <CaptureError title={unavailable ? 'Shared Audio unavailable' : type === 'microphone' ? 'Mic capture failed' : 'Shared Audio failed'} message={unavailable || message} />
   {/if}
   {#if type === "microphone"}
-    <p>Choose your microphone here or in your browser’s permission controls. To capture music from Spotify or Apple Music, route playback into a loopback input and select it here.</p>
+    <p>Choose your microphone here or in your browser’s permission controls. To capture music from Spotify or Apple Music, select a loopback input here, or use Shared Audio if your browser offers app or system audio sharing.</p>
   {:else}
-    <p>Choose a browser tab and enable sharing audio. The browser may require a screen or tab selection; video is discarded. If no audio is offered, use a loopback device in Audio instead.</p>
+    <p>Choose a tab, window or screen and enable sharing audio when offered. Available audio sources depend on your browser and operating system; video is discarded. If no audio is offered, select a loopback audio device under Mic instead.</p>
   {/if}
   <p>Only audio is used by the shader. Sound is never replayed through your speakers. Device choices are session-only. Browser sharing needs reconnecting after reload.</p>
 </div>
 
 <style>
   .system-audio-controls { display: flex; flex-direction: column; gap: 8px; }
-  select { max-width: 100%; }
+  select {
+    max-width: 100%;
+    min-width: 0;
+    padding: 8px 12px;
+    border: 1px solid var(--vscode-input-border, #3c3c3c);
+    border-radius: 4px;
+    background: var(--vscode-input-background, #2d2d2d);
+    color: var(--vscode-input-foreground, #cccccc);
+    font-size: 14px;
+  }
+  select:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder, #007acc);
+  }
   .actions { display: flex; flex-wrap: wrap; gap: 6px; }
   .actions button {
     flex: 0 0 auto;
