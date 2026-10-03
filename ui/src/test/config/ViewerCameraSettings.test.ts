@@ -5,11 +5,22 @@ import type { ShaderConfig } from '@shader-studio/types';
 import type { Transport } from '../../lib/transport/MessageTransport';
 import { ViewerCameraSettingsController } from '../../lib/config/ViewerCameraSettingsController';
 import { getGlobalViewerCamera, setGlobalViewerCamera, viewerCameraRuntimeConfig } from '../../lib/state/viewerCameraState.svelte';
-import ViewerCameraDefaults from '../../lib/components/config/ViewerCameraDefaults.svelte';
 import PassGeometryControls from '../../lib/components/config/PassGeometryControls.svelte';
+import ConfigPanel from '../../lib/components/config/ConfigPanel.svelte';
 
 describe('viewer camera defaults', () => {
   beforeEach(() => setGlobalViewerCamera(true));
+
+  it.each(['wgsl', 'slang'] as const)('keeps %s camera controls per pass and omits shader defaults from Config', language => {
+    const transport: Transport = { postMessage: vi.fn(), onMessage: vi.fn(), dispose: vi.fn(), getType: () => 'vscode', isConnected: () => true };
+    const view = render(ConfigPanel, {
+      config: { version: '1.0', passes: { Image: { geometry: { type: 'cube' } } } },
+      language, transport, shaderPath: `/a.${language}`, isVisible: true,
+    });
+    expect(view.getByLabelText('Use viewer camera')).toBeChecked();
+    expect(view.queryByText('Viewer camera defaults')).toBeNull();
+    expect(view.queryByLabelText('Shader viewer camera')).toBeNull();
+  });
 
   it('applies a global opt-out only to runtime config and preserves shader overrides', () => {
     const config: ShaderConfig = { version: '1.0', webgpu: { defaultRenderAuthoring: 'native' }, passes: { Image: {} } };
@@ -45,22 +56,6 @@ describe('viewer camera defaults', () => {
     expect(getGlobalViewerCamera()).toBe(false);
   });
 
-  it('persists shader on/off/inherit without baking global preferences or changing passes', async () => {
-    const postMessage = vi.fn();
-    const onChange = vi.fn();
-    const config: ShaderConfig = { version: '1.0', webgpu: { defaultRenderAuthoring: 'native', useViewerCamera: false }, passes: { Image: { useViewerCamera: true } } };
-    const view = render(ViewerCameraDefaults, { config, transport: { postMessage } as unknown as Transport, shaderPath: '/a.wgsl', onChange });
-    const select = view.getByLabelText('Shader viewer camera');
-    expect(select).toHaveValue('off');
-    await fireEvent.change(select, { target: { value: 'on' } });
-    expect(onChange).toHaveBeenLastCalledWith({ ...config, webgpu: { ...config.webgpu, useViewerCamera: true } });
-    await fireEvent.change(select, { target: { value: 'inherit' } });
-    expect(onChange).toHaveBeenLastCalledWith({ ...config, webgpu: { defaultRenderAuthoring: 'native' } });
-    expect(postMessage).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'updateConfig', payload: expect.objectContaining({ config: onChange.mock.calls.at(-1)![0] }) }));
-    expect(view.queryByLabelText('Use viewer camera globally')).toBeNull();
-    expect(postMessage.mock.calls.every(([message]) => message.type !== 'updateViewerCameraSettings')).toBe(true);
-  });
-
   it('updates an inherited pass from the global preference and can clear an explicit override', async () => {
     const onUpdate = vi.fn();
     const view = render(PassGeometryControls, { config: {}, geometry: 'cube', showViewerCamera: true, onGeometryChange: vi.fn(), onUpdate });
@@ -71,7 +66,7 @@ describe('viewer camera defaults', () => {
     expect(checkbox).not.toBeChecked();
     await view.rerender({ config: { useViewerCamera: true } });
     expect(checkbox).toBeChecked();
-    await fireEvent.click(view.getByRole('button', { name: 'Use shader default' }));
+    await fireEvent.click(view.getByRole('button', { name: 'Use default' }));
     expect(onUpdate).toHaveBeenLastCalledWith({});
   });
 });
