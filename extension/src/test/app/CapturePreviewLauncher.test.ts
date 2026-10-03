@@ -8,14 +8,14 @@ suite('CapturePreviewLauncher', () => {
       getCommands: async () => commands,
       isServerRunning: () => running,
       startServer: () => {
-        events.push('start'); running = true; 
+        events.push('start'); running = true;
       },
       getServerUrl: () => 'http://localhost:3000',
       openIntegratedBrowser: async url => {
-        events.push(`integrated:${url}`); 
+        events.push(`integrated:${url}`);
       },
       openExternalBrowser: async url => {
-        events.push(`external:${url}`); 
+        events.push(`external:${url}`);
       },
     };
     return { host, events };
@@ -42,7 +42,7 @@ suite('CapturePreviewLauncher', () => {
   test('does not open a browser when server startup fails', async () => {
     const { host, events } = fixture();
     host.startServer = () => {
-      events.push('failed-start'); 
+      events.push('failed-start');
     };
     await assert.rejects(openCapturePreview(host), /could not start/);
     assert.deepStrictEqual(events, ['failed-start']);
@@ -51,7 +51,7 @@ suite('CapturePreviewLauncher', () => {
   test('propagates integrated browser errors', async () => {
     const { host } = fixture();
     host.openIntegratedBrowser = async () => {
-      throw new Error('browser unavailable'); 
+      throw new Error('browser unavailable');
     };
     await assert.rejects(openCapturePreview(host), /browser unavailable/);
   });
