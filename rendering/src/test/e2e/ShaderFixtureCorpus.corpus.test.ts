@@ -187,7 +187,10 @@ const coverageFloors: Record<ShaderLanguage, {
   capture: number;
   unanalysedRatio: number;
 }> = {
-  glsl: { lines: 960, inline: 818, capture: 828, unanalysedRatio: 0.16 },
+  // The new geometry examples add ten executable lines (all previewable),
+  // four explanatory comments and three trailing empty lines. The ratio counts
+  // those seven non-code lines; pin all 929 previewable lines as well.
+  glsl: { lines: 1_110, inline: 929, capture: 828, unanalysedRatio: 0.164 },
   slang: { lines: 2_180, inline: 840, capture: 1_138, unanalysedRatio: 0.39 },
   wgsl: { lines: 2_200, inline: 791, capture: 1_095, unanalysedRatio: 0.42 },
 };
@@ -390,7 +393,7 @@ describe("slang-multipass-test shader corpus", () => {
   });
 
   it("discovers every configured root shader", () => {
-    expect(projects).toHaveLength(156);
+    expect(projects).toHaveLength(165);
   });
 
   it("provides a GLSL counterpart for every portable Slang project", () => {
