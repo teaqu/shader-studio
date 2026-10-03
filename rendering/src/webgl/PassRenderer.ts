@@ -9,6 +9,7 @@ import { bindTextures } from "../util/TextureBinder";
 import { resolveBufferSamplerSettings, resolveTextureBindings } from "../util/TextureBindingResolver";
 import type { WebGLMeshResources } from "./WebGLMeshResources";
 import { OrbitCamera } from "../preview3d/OrbitCamera";
+import { ShaderCameraSession } from "../preview3d/ShaderCameraSession";
 import { createModelMatrix, createNormalMatrix3 } from "../preview3d/math";
 import { WebGLSamplerCache } from "./WebGLSamplerCache";
 
@@ -21,6 +22,7 @@ export class PassRenderer {
   private gl: WebGL2RenderingContext | null = null;
   private samplerCache: WebGLSamplerCache | null = null;
   private readonly meshCamera = new OrbitCamera();
+  private readonly meshCameraSession = new ShaderCameraSession(this.meshCamera);
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -47,6 +49,10 @@ export class PassRenderer {
 
   public attachMeshCamera(): void {
     this.meshCamera.attach(this.canvas);
+  }
+
+  public installShaderCamera(path: string): void {
+    this.meshCameraSession.install(path);
   }
 
   public dispose(): void {

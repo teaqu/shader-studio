@@ -54,6 +54,7 @@ import { WebGPUMeshResources } from "./WebGPUMeshResources";
 import { nativeRasterCaptureContext } from "./NativeRasterCaptureContext";
 import { extractStructSizes } from "./wgslStructSize";
 import { OrbitCamera } from "../preview3d/OrbitCamera";
+import { ShaderCameraSession } from "../preview3d/ShaderCameraSession";
 import { meshUniformData } from "./MeshUniformData";
 import { renderOutputAttachments } from "./RenderOutputAttachments";
 import { debugPlanDisplaySource } from "./DebugPlanDisplaySource";
@@ -261,6 +262,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private resourceManager: ResourceManager<WebGPUTextureHandle> | null = null;
   private meshResources: WebGPUMeshResources | null = null;
   private meshCamera = new OrbitCamera();
+  private readonly meshCameraSession = new ShaderCameraSession(this.meshCamera);
 
   private passGraph: RenderPassNode[] = [];
   private passPipelines = new Map<string, SlangPassPipeline>();
@@ -1338,6 +1340,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.publishPreparedStorage(preparedStorage);
       this.installPipelineCandidates(pipelineCandidates);
       this.renderedCaptureState.clear();
+      this.meshCameraSession.install(path);
       this.shaderPath = path;
       this.installedResourceKey = resourceKey;
       this.reloadOnNextApply = false;
