@@ -35,7 +35,7 @@ describe('system audio controls', () => {
     const api = controller();
     const { getByRole, getByLabelText, queryByRole, findByRole } = render(SystemAudioControls, { type: 'microphone', audioVideoController: api as unknown as AudioVideoController });
     await findByRole('option', { name: 'Loopback Audio' });
-    expect(queryByRole('option', { name: /Browser/ })).toBeNull();
+    expect(queryByRole('option', { name: 'Browser Audio' })).toBeNull();
     await fireEvent.change(getByLabelText('Audio device'), { target: { value: 'loopback' } });
     await fireEvent.click(getByRole('button', { name: 'Start mic' }));
     expect(api.controlAudioInput).toHaveBeenCalledWith('start', 'loopback');
@@ -58,7 +58,7 @@ describe('system audio controls', () => {
     const { getByRole } = render(SystemAudioControls, { audioVideoController: api as unknown as AudioVideoController });
     await tick();
     expect(getByRole('button', { name: 'Start sharing' })).toBeDisabled();
-    expect(getByRole('status').textContent).toContain('Firefox does not support');
+    expect(getByRole('alert').textContent).toContain('Firefox does not support');
     expect(api.controlSystemAudio).not.toHaveBeenCalled();
   });
 
@@ -68,7 +68,7 @@ describe('system audio controls', () => {
     api.controlSystemAudio.mockResolvedValue('Choose Share audio');
     const { getByRole } = render(SystemAudioControls, { audioVideoController: api as unknown as AudioVideoController });
     await fireEvent.click(getByRole('button', { name: 'Start sharing' }));
-    expect(getByRole('status').textContent).toContain('Choose Share audio');
+    expect(getByRole('alert').textContent).toContain('Choose Share audio');
   });
 
   it('stops active sharing and leaves reconnection manual', async () => {

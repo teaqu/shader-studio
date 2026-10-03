@@ -23,13 +23,16 @@ test('Firefox loads Audio assets and explains unsupported Browser Audio', async 
   await expect(page.getByRole('button', { name: 'Start sharing', exact: true })).toBeDisabled({ timeout: 3000 });
   await expect(page.getByText('Loading files...', { exact: true })).toHaveCount(0, { timeout: 1000 });
   await expect(page.getByText('No files found', { exact: true })).toBeVisible();
+  await expect.poll(() => page.getByRole('button', { name: 'Start sharing', exact: true }).evaluate(e => e.getBoundingClientRect().height)).toBeLessThanOrEqual(28);
   await expect(page.getByRole('heading', { name: 'Audio file', exact: true })).toBeVisible();
   await expect(page.getByPlaceholder('Path to audio or video file')).toBeVisible();
-  await expect(page.getByRole('status').filter({ hasText: 'Firefox does not support' })).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: 'Firefox does not support' })).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: 'Firefox does not support' })).toHaveCSS('border-left-style', 'solid');
   expect(await page.evaluate(() => window.__screenSharingRequests)).toBe(0);
   await page.reload();
   await page.locator('.channel-row').filter({ hasText: 'sound' }).click();
   await expect(page.getByRole('button', { name: 'Start sharing', exact: true })).toBeDisabled();
   await expect(page.getByText('No files found', { exact: true })).toBeVisible({ timeout: 1000 });
+  await expect(page.getByRole('alert').filter({ hasText: 'Firefox does not support' })).toHaveCSS('border-left-style', 'solid');
   expect(await page.evaluate(() => window.__screenSharingRequests)).toBe(0);
 });

@@ -52,6 +52,9 @@ throw new Error('Screen sharing must start from a click without audio');
     expect(await page.evaluate(() => window.__screenCalls)).toBe(0);
     await start.click();
     await expect(page.getByRole('button', { name: 'Stop screen sharing', exact: true })).toBeVisible();
+    for (const name of ['Change screen', 'Stop screen sharing']) {
+      await expect.poll(() => page.getByRole('button', { name, exact: true }).evaluate(e => e.getBoundingClientRect().height)).toBeLessThanOrEqual(28);
+    }
     const output = page.getByTestId('web-preview').locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
     const expectColor = async (color = [0, 255, 0]) => {
       await expect.poll(async () => {

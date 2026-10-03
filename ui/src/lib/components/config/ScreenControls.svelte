@@ -1,4 +1,5 @@
 <script lang="ts">
+  import CaptureError from './CaptureError.svelte';
   import type { AudioVideoController } from '../../AudioVideoController';
 
   interface Props { audioVideoController?: AudioVideoController }
@@ -45,12 +46,23 @@ return;
     <button onclick={start} disabled={busy || !audioVideoController || !ready}>{busy ? 'Connecting…' : active ? 'Change screen' : 'Start screen sharing'}</button>
     {#if active}<button onclick={stop}>Stop screen sharing</button>{/if}
   </div>
+  {#if message}<CaptureError title="Screen sharing failed" {message} />{/if}
   <p>Choose a screen, window, or browser tab. Only the video is used by this input.</p>
-  {#if message}<p role="status">{message}</p>{/if}
 </div>
 
 <style>
   .screen-controls { display: flex; flex-direction: column; gap: 8px; }
   .actions { display: flex; flex-wrap: wrap; gap: 6px; }
+  .actions button {
+    flex: 0 0 auto;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    line-height: 16px;
+  }
+  .actions button:focus-visible {
+    outline: 2px solid var(--vscode-focusBorder, #007acc);
+    outline-offset: 2px;
+  }
   p { margin: 0; font-size: 12px; color: var(--vscode-descriptionForeground, #888); }
 </style>
