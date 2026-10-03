@@ -1,5 +1,7 @@
 <svelte:options runes={true} />
 <script lang="ts">
+  import { sharedSourcePassNames, shaderPathsEqual } from "../editor/sharedSourcePassNames";
+  import { clearCurrentEditorSource, setCurrentEditorSource } from "../state/currentEditorSourceState.svelte";
   import { onMount, onDestroy, tick, setContext, untrack } from "svelte";
   import { get } from "svelte/store";
   import { ShaderPipeline } from "../ShaderPipeline";
@@ -244,6 +246,7 @@
   let originalShaderCode = $state('');
   let editorBufferName = $state('Image');
   let editorFilePath = $state('');
+  const editorSourcePassNames = $derived(sharedSourcePassNames(editorFilePath, shaderPath, bufferPathMap));
   let editorFileCode = $state('');
   let editorBufferNames = $state<string[]>(['Image']);
   let configSelectedBuffer = $state('Image');
@@ -1051,10 +1054,6 @@
     return renderingEngine.getUniforms();
   }
 
-  function shaderPathsEqual(firstPath: string, secondPath: string) {
-    return firstPath.replace(/\\/g, '/') === secondPath.replace(/\\/g, '/');
-  }
-
   /**
    * Publish the common pass for the in-app editor's language service.
    *
@@ -1097,6 +1096,9 @@
       }
       const prevShaderPath = shaderPath;
       const nextShaderPath = event.data.path || "";
+      if (prevShaderPath && !shaderPathsEqual(nextShaderPath, prevShaderPath)) {
+        clearCurrentEditorSource(prevShaderPath);
+      }
       const isSameShader = nextShaderPath !== ""
         && shaderPathsEqual(nextShaderPath, prevShaderPath);
       currentConfig = event.data.config || null;
@@ -1407,6 +1409,7 @@
   const editorOverlayCallbacks: EditorOverlayCallbacks = {
     onStateChanged: (state) => {
       editorFilePath = state.filePath;
+      setCurrentEditorSource(shaderPath, state.filePath);
       editorFileCode = state.fileCode;
       editorBufferName = state.bufferName;
       editorBufferNames = state.bufferNames;
@@ -1639,6 +1642,7 @@
           {slangModules}
           commonPath={authoringCommonPath}
           commonSource={authoringCommonSource}
+          sourcePassNames={editorSourcePassNames}
           vimMode={editorVimMode}
           bufferNames={editorBufferNames}
           activeBufferName={editorBufferName}
@@ -1676,6 +1680,7 @@
         {pathMap}
         {bufferPathMap}
         {bufferSources}
+        shaderSource={currentShaderCode}
         onReadStorage={SHADER_LANGUAGES[engineLanguage].engine === 'webgpu' ? readStorageBuffer : undefined}
         onWriteStorage={SHADER_LANGUAGES[engineLanguage].engine === 'webgpu' ? writeStorageBuffer : undefined}
         {transport}

@@ -4,6 +4,57 @@ WGSL (WebGPU Shading Language) supports image shaders, vertex shaders, storage b
 
 WGSL shaders require WebGPU support in your browser and device.
 
+## Native entry points and shared files
+
+WGSL and Slang can keep vertex, fragment, and compute entry points in one source file. Choose **Native entry points** in the Image or buffer settings, then select the vertex and fragment functions. Compute settings have their own entry-point selector. Discovery reads the stage annotations in the source; saving a selection writes `entryPoints` in `.sha.json`. A single candidate for a stage can be selected automatically; multiple candidates require a choice. Discovery does not create passes automatically.
+
+```wgsl
+@vertex fn fullscreen(@builtin(vertex_index) index: u32) -> @builtin(position) vec4f {
+    let p = array(vec2f(-1, -1), vec2f(3, -1), vec2f(-1, 3));
+    return vec4f(p[index], 0, 1);
+}
+
+@fragment fn image(@builtin(position) pixel: vec4f) -> @location(0) vec4f {
+    return vec4f(pixel.xy / iResolution.xy, 0.5, 1);
+}
+
+@compute @workgroup_size(1)
+fn advance(@builtin(global_invocation_id) id: vec3u) {
+    // Update configured storage here.
+}
+```
+
+```json
+{
+  "version": "1.0",
+  "webgpu": { "defaultRenderAuthoring": "native" },
+  "passes": {
+    "ComputeAdvance": {
+      "type": "compute", "path": "shared.wgsl",
+      "entryPoints": { "compute": "advance" },
+      "dispatch": { "count": 1 }
+    },
+    "BufferA": {
+      "path": "shared.wgsl",
+      "entryPoints": { "vertex": "fullscreen", "fragment": "image" }
+    },
+    "Image": { "entryPoints": { "vertex": "fullscreen", "fragment": "image" } }
+  }
+}
+```
+
+Open `shared.wgsl` as the Image source in this example. Each pass compiles its selected stages and reachable helpers using that pass’s configured channels, uniforms, and storage. Functions belonging to other passes are excluded, so they can use resources configured on their own pass. Common code and global initializer helpers are retained.
+
+When adding a buffer or compute pass, **Create** makes a new source file and **Insert** appends uniquely named entry points to the current source. Insert connects the new pass to that source and saves its stage choices. The VS Code source insertion is undoable. Choose the project’s default render authoring style in the config panel, or choose it when creating a shader. The default affects new shaders and passes; existing ShaderToy hooks remain supported.
+
+Native fragments receive WebGPU coordinates with a top-left origin. The `mainImage` hook below receives bottom-left coordinates. Native stages still receive Shader Studio’s built-in globals, configured channel helpers, and storage declarations. Group 0 bindings are reserved for these generated resources; do not redeclare their bindings.
+
+For mesh geometry, native vertex inputs must match the supplied mesh layout: location 0 is `vec3f` position, location 1 is `vec3f` normal, and location 2 is `vec2f` UV. Native shaders own their transforms and vertex-to-fragment interface. A render pass chooses either native stage entry points or the separate `vertex` hook file.
+
+Native fragment inline previews and captures currently support a location-0 `vec4f` color result with no arguments or one `@builtin(position)` argument. They replay over the pixel grid; arbitrary interpolated inputs, sample builtins, and structured outputs need raster replay. Use ShaderToy hooks when those debug operations are needed.
+
+Runnable WGSL and Slang examples live in `tests/fixtures/shader-corpus/*/native-entrypoints/shared.*`; matching `samefile-hooks` examples demonstrate existing `mainVertex` and `mainImage` hooks in one source file.
+
 ## The `mainImage` Function
 
 Like Slang, WGSL image shaders define a `mainImage` free function. It receives the current pixel coordinate and returns its color:

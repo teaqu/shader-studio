@@ -40,6 +40,7 @@ export class WgslCompiler implements AsyncSlangCompiler {
         vertexCode: options.vertexCode,
         vertexSpace: options.vertexSpace,
         captureMode: options.captureMode,
+        renderEntryPoints: options.renderEntryPoints,
         customUniforms: options.customUniforms,
       });
     return {

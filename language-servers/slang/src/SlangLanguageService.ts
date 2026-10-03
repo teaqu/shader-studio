@@ -374,7 +374,7 @@ export class SlangLanguageService implements LanguageService {
       return {
         contents: {
           kind: MarkupKind.Markdown,
-          value: `\`\`\`slang\n${slangStorageBufferType(storage, state.environment.stage)} ${storage.name}\n\`\`\`\n\nConfigured storage buffer. Index it to read or write an element.`,
+          value: `\`\`\`slang\n${slangStorageBufferType(storage, state.environment)} ${storage.name}\n\`\`\`\n\nConfigured storage buffer. Index it to read or write an element.`,
         },
       };
     }
@@ -1496,14 +1496,15 @@ function generatedSamplingFunctions(environment: ShaderAuthoringEnvironment): Sl
 
 /** Type of a name the document never declares, such as a uniform supplied by Shader Studio. */
 /** Buffer type the generated module declares for a storage resource; only compute passes may write. */
-function slangStorageBufferType(resource: Readonly<AuthoringResource>, stage: ShaderAuthoringEnvironment["stage"]): string {
-  const elementType = slangStorageElementType(resource, stage);
-  return `${stage === "compute" ? "RWStructuredBuffer" : "StructuredBuffer"}<${elementType}>`;
+function slangStorageBufferType(resource: Readonly<AuthoringResource>, environment: ShaderAuthoringEnvironment): string {
+  const writable = environment.stage === "compute" || environment.storageWritable;
+  const elementType = slangStorageElementType(resource, environment.stage, writable);
+  return `${writable ? "RWStructuredBuffer" : "StructuredBuffer"}<${elementType}>`;
 }
 
-function slangStorageElementType(resource: Readonly<AuthoringResource>, stage: ShaderAuthoringEnvironment["stage"]): string {
+function slangStorageElementType(resource: Readonly<AuthoringResource>, stage: ShaderAuthoringEnvironment["stage"], writable = false): string {
   const elementType = resource.elementType ?? "float4";
-  return stage === "compute" ? elementType : elementType.replace(/^Atomic<(u?int)>$/, "$1");
+  return stage === "compute" || writable ? elementType : elementType.replace(/^Atomic<(u?int)>$/, "$1");
 }
 
 function environmentTypeName(name: string, environment: ShaderAuthoringEnvironment): string | undefined {
@@ -1513,7 +1514,7 @@ function environmentTypeName(name: string, environment: ShaderAuthoringEnvironme
   }
   const storage = environment.resources.find((resource) => resource.kind === "storage" && resource.name === name);
   if (storage) {
-    return `${slangStorageElementType(storage, environment.stage)}[]`;
+    return `${slangStorageElementType(storage, environment.stage, environment.storageWritable)}[]`;
   }
   const documented = SHADER_STUDIO_SYMBOL_DOCS.find((item) => item.name === name
     && item.languages.includes("slang")

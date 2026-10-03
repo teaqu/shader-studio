@@ -1,4 +1,5 @@
-import { findSlangAuthoredDeclarations } from "@shader-studio/types";
+import { isolateShaderEntryPoints } from "@shader-studio/types";
+import { findSlangAuthoredDeclarations, getShaderSourceFunctions } from "@shader-studio/types";
 import { buildSlangBindingPlan, type SlangBindingChannel } from "./SlangBindingPlan";
 import { stripComments } from "../util/ShaderText";
 // Slang ShaderToy authoring convention for the WebGPU pipeline.
@@ -183,8 +184,8 @@ MeshVertexOut ${SLANG_ENTRY_VERTEX}([[vk::location(0)]] float3 position : POSITI
 ${MESH_FRAGMENT_ENTRY_POINT}`;
 }
 
-function buildFullscreenEntryPoints(vertexCode: string): string {
-  if (!vertexCode.trim()) {
+function buildFullscreenEntryPoints(vertexCode: string, hasAuthoredHook = false): string {
+  if (!vertexCode.trim() && !hasAuthoredHook) {
     return ENTRY_POINTS;
   }
   return `${vertexCode}
@@ -268,6 +269,8 @@ export interface SlangWrapOptions {
    * immutable, so the remap cannot be injected into the user body like GLSL.
    */
   captureMode?: boolean;
+  /** Authored native render stages selected by the pass configuration. */
+  renderEntryPoints?: { vertex: string; fragment: string };
 }
 
 export interface SlangComputeWrapOptions {
@@ -388,6 +391,11 @@ export function wrapSlangImageSource(userSource: string, options: SlangWrapOptio
     options.passKind ?? "render",
     buildSlangBindingPlan(options.channels ?? []).nextBinding,
   );
+  // Native stages retain the shared Shader Studio declarations but own their
+  // stage interfaces. Do not append the mainImage/mainVertex adapters.
+  if (options.renderEntryPoints) {
+    return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}#line 1\n${userSource}`;
+  }
   if (options.captureMode) {
     // Capture uniforms bind after the channel texture/sampler pairs and storage buffers.
     const captureBinding = buildSlangBindingPlan(options.channels ?? []).nextBinding + (options.storage?.length ?? 0);
@@ -398,15 +406,17 @@ export function wrapSlangImageSource(userSource: string, options: SlangWrapOptio
   // above the user source (after commonCode and custom storage declarations)
   // to keep user diagnostics on the user's real line numbers.
   const meshBinding = buildSlangBindingPlan(options.channels ?? []).nextBinding + (options.storage?.length ?? 0);
-  const { meshPrelude, entryPoints } = buildGeometryEntryPoints(options, meshBinding);
+  const { meshPrelude, entryPoints } = buildGeometryEntryPoints(options, meshBinding, `${commonCode}\n${userSource}`);
   return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${meshPrelude}#line 1\n${userSource}\n${entryPoints}`;
 }
 
 /** The camera-uniform prelude (meshes and world-space vertices only) and entry points for a pass's geometry. */
-function buildGeometryEntryPoints(options: SlangWrapOptions, meshBinding: number): { meshPrelude: string; entryPoints: string } {
+function buildGeometryEntryPoints(options: SlangWrapOptions, meshBinding: number, authoredSource: string): { meshPrelude: string; entryPoints: string } {
   const vertexCode = options.vertexCode?.trim() ?? "";
+  const hasAuthoredHook = getShaderSourceFunctions(authoredSource, "slang")
+    .some((fn) => fn.name === "mainVertex");
   if (isMeshGeometry(options.geometry)) {
-    return { meshPrelude: buildMeshPrelude(meshBinding), entryPoints: buildMeshEntryPoints(vertexCode || SLANG_VERTEX_HOOK_STUB) };
+    return { meshPrelude: buildMeshPrelude(meshBinding), entryPoints: buildMeshEntryPoints(vertexCode || (hasAuthoredHook ? "" : SLANG_VERTEX_HOOK_STUB)) };
   }
   if (options.geometry === "vertices") {
     const space = options.vertexSpace ?? DEFAULT_VERTEX_SPACE;
@@ -416,7 +426,7 @@ function buildGeometryEntryPoints(options: SlangWrapOptions, meshBinding: number
       entryPoints: buildVerticesEntryPoints(vertexCode, space),
     };
   }
-  return { meshPrelude: "", entryPoints: buildFullscreenEntryPoints(vertexCode) };
+  return { meshPrelude: "", entryPoints: buildFullscreenEntryPoints(vertexCode, hasAuthoredHook) };
 }
 
 function buildOutputPrelude(binding: number, outputLayers: number, imageFormat: "rgba16f" | "rgba32f" = "rgba16f"): string {
@@ -489,6 +499,11 @@ export function getNativeComputeEntryPoints(source: string): Array<{ name: strin
     }
   }
   return entries;
+}
+
+/** Blank unselected native stage declarations without moving diagnostic lines. */
+export function isolateSlangEntryPoints(source: string, selected: readonly string[], commonCode = ""): string {
+  return isolateShaderEntryPoints(source, "slang", selected, [commonCode]);
 }
 
 export function getNativeComputeWorkgroupSize(source: string): [number, number, number] | null {

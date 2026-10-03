@@ -92,6 +92,8 @@ export interface RenderPassNode extends VerticesDrawConfig, InstanceDrawConfig, 
   dispatchOnce: boolean;
   workgroupSize: [number, number, number];
   entryPoint?: string;
+  /** Fully resolved authored render stages; absent keeps ShaderToy hooks. */
+  entryPoints?: { vertex: string; fragment: string };
   width: number;
   height: number;
   channels: RenderPassChannel[];

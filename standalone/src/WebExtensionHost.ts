@@ -1,4 +1,4 @@
-import { configPathForShader, parseVertexPassKey, resolveConfiguredPath, shaderLanguageForPath, stageForPass, vertexPassKey } from '@shader-studio/types';
+import { configPathForShader, createNativeComputeSource, createNativeRenderSource, parseVertexPassKey, resolveConfiguredPath, shaderLanguageForPath, stageForPass, vertexPassKey } from '@shader-studio/types';
 import type { ConfiguredPathHost, ProfileData, ProfileIndex, ShaderConfig, ShaderLanguageId } from '@shader-studio/types';
 import type { VirtualWorkspace } from './VirtualWorkspace';
 import { virtualConfiguredPathHost } from './passSources';
@@ -283,9 +283,20 @@ export class WebExtensionHost {
         if (this.workspace.exists(path)) {
           return;
         }
-        const source = language === 'slang' ? SLANG_STARTER_SHADER : language === 'wgsl' ? WGSL_STARTER_SHADER : GLSL_STARTER_SHADER;
+        const authoringMode = payload.authoringMode === 'native' && language !== 'glsl' ? 'native' : 'hooks';
+        const native = authoringMode === 'native'
+          ? createNativeRenderSource(language === 'slang' ? 'slang' : 'wgsl', '', 'Image')
+          : null;
+        const source = native?.text.trimStart()
+          ?? (language === 'slang' ? SLANG_STARTER_SHADER : language === 'wgsl' ? WGSL_STARTER_SHADER : GLSL_STARTER_SHADER);
         this.workspace.writeText(path, source);
-        this.workspace.writeText(configPathForShader(path), DEFAULT_CONFIG_TEXT);
+        this.workspace.writeText(configPathForShader(path), native
+          ? JSON.stringify({
+            version: '1.0',
+            webgpu: { defaultRenderAuthoring: 'native' },
+            passes: { Image: { inputs: {}, entryPoints: native.entryPoints } },
+          }, null, 2)
+          : DEFAULT_CONFIG_TEXT);
         this.setActiveShader(path);
         this.emitViewer(this.shaderSourceMessage(path));
         return;
@@ -295,6 +306,8 @@ export class WebExtensionHost {
         if (!shaderPath || typeof payload.suggestedPath !== 'string' || typeof payload.fileType !== 'string') {
           return;
         }
+        const authoringMode = payload.authoringMode === 'native' ? 'native' : 'hooks';
+        const passName = typeof payload.passName === 'string' ? payload.passName : 'Buffer';
         const templates: Record<string, string> = {
           'glsl-buffer': GLSL_STARTER_SHADER,
           glsl: GLSL_STARTER_SHADER,
@@ -311,7 +324,7 @@ export class WebExtensionHost {
           'slang-compute': '[shader("compute")]\n[numthreads(8, 8, 1)]\nvoid compute(uint3 dispatchThreadID : SV_DispatchThreadID) {\n}\n',
           'wgsl-compute': '@compute @workgroup_size(8, 8, 1)\nfn compute(@builtin(global_invocation_id) dispatchThreadID: vec3u) {\n}\n',
         };
-        const template = templates[payload.fileType];
+        let template = templates[payload.fileType];
         if (template === undefined) {
           return;
         }
@@ -326,10 +339,77 @@ export class WebExtensionHost {
         if (!path) {
           return;
         }
+        let entryPoints: { vertex?: string; fragment?: string; compute?: string } | undefined;
+        let created = false;
         if (!this.workspace.exists(path)) {
+          if (authoringMode === 'native' && payload.fileType === 'wgsl-buffer') {
+            const native = createNativeRenderSource('wgsl', '', passName);
+            template = native.text.trimStart();
+            entryPoints = native.entryPoints;
+          } else if (authoringMode === 'native' && payload.fileType === 'slang-buffer') {
+            const native = createNativeRenderSource('slang', '', passName);
+            template = native.text.trimStart();
+            entryPoints = native.entryPoints;
+          } else if (authoringMode === 'native' && payload.fileType === 'wgsl-compute') {
+            const native = createNativeComputeSource('wgsl', '', passName);
+            template = native.text.trimStart();
+            entryPoints = native.entryPoints;
+          } else if (authoringMode === 'native' && payload.fileType === 'slang-compute') {
+            const native = createNativeComputeSource('slang', '', passName);
+            template = native.text.trimStart();
+            entryPoints = native.entryPoints;
+          }
           this.workspace.writeText(path, template);
+          created = true;
         }
-        this.emitViewer({ type: 'fileSelected', payload: { path: requested, requestId: payload.requestId } });
+        this.emitViewer({ type: 'fileSelected', payload: {
+          path: requested,
+          requestId: payload.requestId,
+          ...(created && authoringMode === 'native' && { authoringMode }),
+          ...(entryPoints && { entryPoints }),
+        } });
+        this.sendShaderList();
+        return;
+      }
+      case 'insertShaderSource': {
+        const shaderPath = typeof payload.shaderPath === 'string' ? payload.shaderPath : this.activeShaderPath;
+        const configuredSourcePath = typeof payload.sourcePath === 'string' ? payload.sourcePath : shaderPath;
+        const fileType = typeof payload.fileType === 'string' ? payload.fileType : '';
+        const requestId = typeof payload.requestId === 'string' ? payload.requestId : '';
+        const fail = (error: string) => this.emitViewer({ type: 'fileSelected', payload: { path: '', requestId, error } });
+        const sourcePath = shaderPath && configuredSourcePath
+          ? resolveConfiguredPath(virtualConfiguredPathHost, configPathForShader(shaderPath), configuredSourcePath)
+          : null;
+        if (!shaderPath || !sourcePath || payload.authoringMode !== 'native' || !this.workspace.exists(sourcePath)) {
+          fail('Insert into current source requires an existing native WebGPU source.');
+          return;
+        }
+        const language = fileType.startsWith('wgsl-') ? 'wgsl' : fileType.startsWith('slang-') ? 'slang' : null;
+        if (!language) {
+          fail('Native source insertion is supported for WGSL and Slang only.');
+          return;
+        }
+        if (fileType !== `${language}-buffer` && fileType !== `${language}-compute`) {
+          fail('Insert supports Buffer and Compute pass sources only.');
+          return;
+        }
+        if (shaderLanguageForPath(sourcePath) !== language) {
+          fail('Insert source language must match the target source language.');
+          return;
+        }
+        const source = this.workspace.readText(sourcePath);
+        const passName = typeof payload.passName === 'string' ? payload.passName : fileType.endsWith('-compute') ? 'Compute' : 'Buffer';
+        const generated = fileType.endsWith('-compute')
+          ? createNativeComputeSource(language, source, passName)
+          : createNativeRenderSource(language, source, passName);
+        this.workspace.writeText(sourcePath, source + generated.text);
+        this.emitViewer({ type: 'fileSelected', payload: {
+          path: sourcePath,
+          requestId,
+          authoringMode: 'native',
+          entryPoints: generated.entryPoints,
+        } });
+        this.sendShaderList();
         return;
       }
       case 'requestFileContents': {

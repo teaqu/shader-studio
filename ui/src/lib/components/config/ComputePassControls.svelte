@@ -178,9 +178,12 @@
 </script>
 
 <section class="compute-controls" aria-label="Compute settings">
-  {#if entryPointNames.length > 1}
-    <label>Entrypoint
-      <select aria-label="Entrypoint" value={pass.entryPoint ?? ''} onchange={(event) => commit({ ...pass, entryPoint: event.currentTarget.value })}>
+  {#if entryPointNames.length > 0}
+    <label>Compute entry point
+      <select aria-label="Compute entry point" value={pass.entryPoints?.compute ?? pass.entryPoint ?? ''} onchange={(event) => {
+        const { entryPoint: _legacyEntryPoint, ...canonicalPass } = pass;
+        commit({ ...canonicalPass, entryPoints: { compute: event.currentTarget.value } });
+      }}>
         {#each entryPointNames as entryPoint}<option value={entryPoint}>{entryPoint}</option>{/each}
       </select>
     </label>

@@ -10,6 +10,12 @@ cubemaps, audio/video, keyboard input, module imports, model geometry, and
 script uniforms. See
 [Channels](channels.md) for channel metadata and sampling.
 
+## Native entry points
+
+Slang supports the same [shared-file workflow and entry-point configuration](wgsl-authoring.md#native-entry-points-and-shared-files) as WGSL. Declare stages with `[shader("vertex")]`, `[shader("fragment")]`, and `[shader("compute")]`, then choose them in the config panel. Native render outputs use `SV_Position` and `SV_Target0`; compute uses `[numthreads(x, y, z)]`. Built-in uniforms, channel helpers, and configured storage remain available. Image and buffer passes can select different fragments from the same source.
+
+New compute configuration uses `entryPoints.compute`; the older `entryPoint` field still loads for compatibility. Choose **Insert** to append native stages to the current source or **Create** for a separate source file.
+
 ## Channels
 
 Every configured channel is a direct Slang global. For example, use

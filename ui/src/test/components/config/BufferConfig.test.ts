@@ -11,6 +11,9 @@ import {
   setOverlayActiveFile,
 } from '../../../lib/state/editorOverlayState.svelte';
 import { resetVerticesDrawMemory } from '../../../lib/state/verticesDrawMemory.svelte';
+    });
+
+import { clearCurrentEditorSource, setCurrentEditorSource } from '../../../lib/state/currentEditorSourceState.svelte';
 
 vi.mock('../../../../../rendering/src/preview3d/GltfMeshLoader', () => ({
   listGlbMeshNames: vi.fn().mockResolvedValue(['Body', 'Visor']),
@@ -105,6 +108,41 @@ describe('BufferConfig', () => {
 
     expect(onUpdate).toHaveBeenCalledWith('Image', expect.objectContaining({ vertex: './warp.vert.glsl' }));
   });
+  it('inserts native source into the active same-language editor file instead of Image', async () => {
+    const postMessage = vi.fn();
+    setCurrentEditorSource('/shaders/image.wgsl', '/shaders/existing-buffer.wgsl');
+    const { getByText } = render(BufferConfig, {
+      bufferName: 'ComputeA', passType: 'compute', language: 'wgsl',
+      config: { path: '', type: 'compute', entryPoints: {} } as ComputePass,
+      onUpdate: vi.fn(), getWebviewUri: () => undefined, shaderPath: '/shaders/image.wgsl', postMessage,
+    });
+
+    await fireEvent.click(getByText('Insert'));
+
+    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'insertShaderSource',
+      payload: expect.objectContaining({ sourcePath: '/shaders/existing-buffer.wgsl' }),
+    }));
+    clearCurrentEditorSource();
+  });
+
+  it('falls back to its configured path when the active editor language differs', async () => {
+    const postMessage = vi.fn();
+    setCurrentEditorSource('/shaders/image.wgsl', '/shaders/other.slang');
+    const { getByText } = render(BufferConfig, {
+      bufferName: 'ComputeA', passType: 'compute', language: 'wgsl',
+      config: { path: '/shaders/compute.wgsl', type: 'compute', entryPoints: {} } as ComputePass,
+      onUpdate: vi.fn(), getWebviewUri: () => undefined, shaderPath: '/shaders/image.wgsl', postMessage,
+    });
+
+    await fireEvent.click(getByText('Insert'));
+
+    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      payload: expect.objectContaining({ sourcePath: '/shaders/compute.wgsl' }),
+    }));
+    clearCurrentEditorSource();
+  });
+
   it('creates a Slang vertex file for a Slang shader', async () => {
     const postMessage = vi.fn();
     const { getByText } = render(BufferConfig, {
@@ -205,6 +243,47 @@ describe('BufferConfig', () => {
   });
 
   describe('Create File Button', () => {
+    it('offers native WGSL pass insertion and sends the current source target', async () => {
+      const config: BufferPass = { path: '', inputs: {}, entryPoints: {} };
+      const { getByText } = render(BufferConfig, {
+        bufferName: 'BufferA', config, onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri,
+        language: 'wgsl', shaderPath: '/shaders/image.wgsl', postMessage: mockPostMessage,
+      });
+
+      await fireEvent.click(getByText('Insert'));
+
+      expect(mockPostMessage).toHaveBeenCalledWith(expect.objectContaining({
+        type: 'insertShaderSource',
+        payload: expect.objectContaining({
+          shaderPath: '/shaders/image.wgsl', sourcePath: '/shaders/image.wgsl',
+          fileType: 'wgsl-buffer', authoringMode: 'native', passName: 'BufferA',
+        }),
+      }));
+    });
+
+    it('offers native Slang pass insertion', async () => {
+      const config: BufferPass = { path: '', inputs: {}, entryPoints: {} };
+      const { getByText } = render(BufferConfig, {
+        bufferName: 'BufferA', config, onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri,
+        language: 'slang', shaderPath: '/shaders/image.slang', postMessage: mockPostMessage,
+      });
+
+      await fireEvent.click(getByText('Insert'));
+      expect(mockPostMessage).toHaveBeenCalledWith(expect.objectContaining({
+        type: 'insertShaderSource',
+        payload: expect.objectContaining({ fileType: 'slang-buffer', authoringMode: 'native' }),
+      }));
+    });
+
+    it('does not offer insertion for hook-style WGSL render passes', () => {
+      const { queryByText } = render(BufferConfig, {
+        bufferName: 'BufferA', config: { path: '', inputs: {} }, onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri, language: 'wgsl', shaderPath: '/shaders/image.wgsl', postMessage: mockPostMessage,
+      });
+
+      expect(queryByText('Insert')).toBeNull();
+    });
+
     it('should show create file button when path is empty and postMessage provided', () => {
       const config: BufferPass = { path: '', inputs: {} };
 
@@ -449,6 +528,8 @@ describe('BufferConfig', () => {
           suggestedPath: 'image.computea.slang',
           fileType: 'slang-compute',
           requestId: expect.any(String),
+          authoringMode: 'native',
+          passName: 'ComputeA',
         },
       });
     });
@@ -1282,6 +1363,23 @@ describe('BufferConfig', () => {
         expect(common.queryByLabelText('Blend')).toBeNull();
         expect(common.queryByText('Rendering')).toBeNull();
       });
+    });
+
+    it('replaces the hook vertex file control with native entry point controls', () => {
+      const native = render(BufferConfig, {
+        bufferName: 'BufferA', language: 'wgsl',
+        config: { path: 'a.wgsl', inputs: {}, entryPoints: {} },
+        renderEntryPoints: [{ name: 'nativeVertex', stage: 'vertex' }, { name: 'nativeFragment', stage: 'fragment' }],
+        onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri,
+      });
+      expect(native.queryByRole('heading', { name: 'Vertex shader' })).toBeNull();
+      expect(native.getByLabelText('Vertex entrypoint')).toBeInTheDocument();
+
+      const hooks = render(BufferConfig, {
+        bufferName: 'BufferA', language: 'wgsl', config: { path: 'a.wgsl', inputs: {} },
+        onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri,
+      });
+      expect(hooks.getByRole('heading', { name: 'Vertex shader' })).toBeInTheDocument();
     });
 
     it('does not show geometry controls for Common', () => {

@@ -99,6 +99,12 @@ export class ShaderPipeline {
     if (this.disposed) {
       return { success: false, errors: ["Shader pipeline disposed"], superseded: true };
     }
+    const nativePass = Object.entries(config?.passes ?? {}).find(([, pass]) =>
+      pass && typeof pass === "object" && "entryPoints" in pass && pass.entryPoints !== undefined,
+    );
+    if (nativePass) {
+      return { success: false, errors: [`${nativePass[0]}: native entryPoints are only supported by WebGPU`] };
+    }
     const generation = ++this.compileGeneration;
     const resetGeneration = this.pendingResetGeneration;
     const pathChanged = this.shaderPath !== "" && this.shaderPath !== path;
@@ -182,6 +188,10 @@ export class ShaderPipeline {
     return passNames
       .map(passName => {
         const pass = config?.passes?.[passName];
+        if (pass && typeof pass === "object" && "type" in pass && pass.type === "compute") {
+          return null;
+        }
+        const renderPass = pass as BufferPass | ImagePass | undefined;
         const shaderSrc = buffers[passName] || (passName === "Image" ? code : "");
 
         // Skip common buffer if there's no meaningful content

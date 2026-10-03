@@ -46,17 +46,31 @@ describe('ShaderDebugManager - WGSL language mode', () => {
     const withMetadata = buildWgslRequest({
       version: '1.0',
       storage: { particles: { count: 16, elementType: 'f32' } },
-      passes: { Image: {}, Simulate: { type: 'compute', path: '/simulate.wgsl', entryPoint: 'simulate' } },
+      passes: { Image: {}, Simulate: { type: 'compute', path: '/simulate.wgsl', entryPoints: { compute: 'simulate' } } },
     }, source);
     const changedMetadata = buildWgslRequest({
       version: '1.0',
       storage: { velocity: { count: 16, elementType: 'vec4<f32>' } },
-      passes: { Image: {}, Simulate: { type: 'compute', path: '/simulate.wgsl', entryPoint: 'alternate' } },
+      passes: { Image: {}, Simulate: { type: 'compute', path: '/simulate.wgsl', entryPoints: { compute: 'alternate' } } },
     }, source);
 
     expect(withMetadata?.workspace.compute).toEqual({ entryPoint: 'simulate', storageNames: ['particles'] });
     expect(changedMetadata?.workspace.compute).toEqual({ entryPoint: 'alternate', storageNames: ['velocity'] });
     expect(changedMetadata?.workspace.contentHash).not.toBe(withMetadata?.workspace.contentHash);
+  });
+
+  it('includes the selected native fragment entry point in the debug workspace', () => {
+    const source = '@fragment fn renderImage() -> @location(0) vec4f { return vec4f(1.0); }';
+    const strategy = debugPlanStrategy('wgsl')!;
+    const request = strategy.buildRequest({
+      imageCode: source, originalImageCode: source,
+      config: { version: '1.0', passes: { Image: { entryPoints: { fragment: 'renderImage' } } } },
+      currentLine: 0, lineContent: source, filePath: '/image.wgsl', variablePreview: null,
+      imagePassPath: '/image.wgsl', bufferPathMap: { Image: '/image.wgsl' }, bufferCodes: {}, slangModules: [], customUniforms: [],
+      getDebugTarget: (_code, config) => ({ passName: 'Image', code: source, config }),
+    });
+
+    expect(request?.workspace.render).toEqual({ entryPoint: 'renderImage' });
   });
 
   it('includes storage types in WGSL requests and invalidates plans when the type changes', () => {
@@ -219,6 +233,47 @@ describe('ShaderDebugManager - WGSL language mode', () => {
     expect(output).toContain('_ssdbg_full_userMain');
     expect(output).toContain('/ (abs(');
     expect(output).toContain('step(vec3f(0.5000)');
+  });
+
+  it('post-processes the selected native WGSL fragment instead of a co-located mainImage', () => {
+    const source = 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(coord, 0.0, 1.0); }\n@fragment fn selected() -> @location(0) vec4f { return vec4f(0.25); }';
+    manager.toggleEnabled();
+    manager.cycleNormalizeMode();
+    const output = manager.applyFullShaderPostProcessing(source, {
+      version: '1', passes: { Image: { entryPoints: { fragment: 'selected' } } },
+    });
+
+    expect(output).toContain('fn _ssdbg_full_userMain()');
+    expect(output).toContain('@fragment\nfn selected(');
+    expect(output).toContain('_ssdbg_full_legacyMainImage');
+  });
+
+  it('infers the sole native fragment for empty Image entry points', () => {
+    const source = 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(0.0); }\n@fragment fn nativeImage() -> @location(0) vec4f { return vec4f(0.25); }';
+    manager.toggleEnabled();
+    manager.cycleNormalizeMode();
+    const output = manager.applyFullShaderPostProcessing(source, {
+      version: '1', passes: { Image: { entryPoints: {} } },
+    });
+
+    expect(output).toContain('@fragment\nfn nativeImage(');
+    expect(output).toContain('fn _ssdbg_full_userMain()');
+  });
+
+  it('uses the active native Buffer fragment instead of Image while post-processing', () => {
+    const source = '@fragment fn bufferImage() -> @location(0) vec4f { return vec4f(0.25); }';
+    const config: ShaderConfig = {
+      version: '1',
+      passes: { Image: {}, BufferA: { path: '/buffer.wgsl', entryPoints: { fragment: 'bufferImage' } } },
+    };
+    manager.setShaderContext(config, '/image.wgsl', { BufferA: source }, [], { BufferA: '/buffer.wgsl' });
+    manager.toggleEnabled();
+    manager.cycleNormalizeMode();
+    manager.updateDebugLine(0, source, '/buffer.wgsl');
+    const output = manager.applyFullShaderPostProcessing(source, config);
+
+    expect(output).toContain('@fragment\nfn bufferImage(');
+    expect(output).toContain('fn _ssdbg_full_userMain()');
   });
 
   it('builds a native WGSL capture plan with user slots after the hidden marker', () => {

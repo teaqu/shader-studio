@@ -26,6 +26,7 @@
 - Fixed Slang shaders failing to compile with "unreachable" after the preview had been recreated about a dozen times in one session.
 - Clear colour, Clear alpha and Instances controls now follow the VS Code or standalone theme.
 - Fixed new standalone Slang vertex files declaring `uv` as `vec2` instead of `float2`.
+- WGSL and Slang can share native vertex, fragment, and compute entry points in one source file. Select stages per pass in the config panel, insert new stages into the current file, and choose native or ShaderToy templates for new render passes. Selections are saved under `entryPoints`; existing ShaderToy hooks and legacy compute settings still load.
 
 ### 1.2.0
 

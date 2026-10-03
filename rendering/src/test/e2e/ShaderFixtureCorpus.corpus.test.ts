@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ShaderDebugger, SlangDebugEngine, VariableCaptureBuilder, WgslDebugEngine } from "@shader-studio/debug";
-import type { DebugAnalysisRequest, ShaderDebugEngine } from "@shader-studio/types";
+import { getShaderEntryPoints, type DebugAnalysisRequest, type ShaderDebugEngine } from "@shader-studio/types";
 import projects from "virtual:shader-fixture-corpus";
 import {
   createShaderCanvasHarness,
@@ -8,6 +8,7 @@ import {
   type ShaderLanguage,
 } from "./ShaderCanvasHarness";
 import type { CaptureRequest, IVariableCapturer } from "../../capture/VariableCapturer";
+import { PIXEL_INSPECTOR_REGION_SIZE } from "../../types/PixelRegion";
 
 const expectedCompileErrors = new Map<string, RegExp>([
   ["slang/foundation/versions/invalid-version/preview.slang", /unknown language version '2024'/],
@@ -23,6 +24,8 @@ const slangSpecificRenderProjects = new Set([
   "slang/foundation/versions/slang-2026/preview.slang",
   "slang/foundation/versions/version-mismatch/preview.slang",
   "slang/foundation/workspace/foundation.slang",
+  "slang/native-entrypoints/shared.slang",
+  "slang/samefile-hooks/shared.slang",
 ]);
 
 function expectedCompileError(project: (typeof projects)[number]): RegExp | undefined {
@@ -101,6 +104,7 @@ function nonBlackPixelCount(bytes: Uint8ClampedArray): number {
  * liveness (the project drew something) at the engine layer.
  */
 const SENTINEL_RGB: readonly [number, number, number] = [253, 7, 151];
+const PIXEL_REGION_CENTER_OFFSET = ((PIXEL_INSPECTOR_REGION_SIZE / 2) * PIXEL_INSPECTOR_REGION_SIZE + PIXEL_INSPECTOR_REGION_SIZE / 2) * 4;
 
 const SENTINEL_SOURCE: Record<ShaderLanguage, string> = {
   glsl: `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
@@ -254,9 +258,15 @@ function slangRequest(
   const passConfig = project.config?.passes?.[ownerPass];
   const compute = passConfig && "type" in passConfig && passConfig.type === "compute"
     ? {
-      ...("entryPoint" in passConfig && passConfig.entryPoint ? { entryPoint: passConfig.entryPoint as string } : {}),
+      ...("entryPoints" in passConfig && passConfig.entryPoints?.compute
+        ? { entryPoint: passConfig.entryPoints.compute }
+        : "entryPoint" in passConfig && passConfig.entryPoint ? { entryPoint: passConfig.entryPoint as string } : {}),
       storageNames: Object.keys(project.config?.storage ?? {}),
     }
+    : undefined;
+  const render = !compute && passConfig && "entryPoints" in passConfig && passConfig.entryPoints !== undefined
+    ? { entryPoint: passConfig.entryPoints.fragment
+      ?? getShaderEntryPoints(rootSource, "slang").filter((entry) => entry.stage === "fragment")[0]?.name }
     : undefined;
   return {
     workspace: {
@@ -264,6 +274,7 @@ function slangRequest(
       rootPath,
       passName: ownerPass,
       ...(compute ? { compute } : {}),
+      ...(render ? { render } : {}),
       contentHash: `${project.name}:${pass}`,
       files,
     },
@@ -344,9 +355,15 @@ function wgslRequest(
   const passConfig = project.config?.passes?.[ownerPass];
   const compute = passConfig && "type" in passConfig && passConfig.type === "compute"
     ? {
-      ...("entryPoint" in passConfig && passConfig.entryPoint ? { entryPoint: passConfig.entryPoint as string } : {}),
+      ...("entryPoints" in passConfig && passConfig.entryPoints?.compute
+        ? { entryPoint: passConfig.entryPoints.compute }
+        : "entryPoint" in passConfig && passConfig.entryPoint ? { entryPoint: passConfig.entryPoint as string } : {}),
       storageNames: Object.keys(project.config?.storage ?? {}),
     }
+    : undefined;
+  const render = !compute && passConfig && "entryPoints" in passConfig && passConfig.entryPoints !== undefined
+    ? { entryPoint: passConfig.entryPoints.fragment
+      ?? getShaderEntryPoints(rootSource, "wgsl").filter((entry) => entry.stage === "fragment")[0]?.name }
     : undefined;
   return {
     workspace: {
@@ -354,6 +371,7 @@ function wgslRequest(
       rootPath,
       passName: ownerPass,
       ...(compute ? { compute } : {}),
+      ...(render ? { render } : {}),
       files,
       contentHash: `${project.name}:${pass}`,
     },
@@ -393,7 +411,31 @@ describe("slang-multipass-test shader corpus", () => {
   });
 
   it("discovers every configured root shader", () => {
-    expect(projects).toHaveLength(165);
+    expect(projects).toHaveLength(169);
+  });
+
+  it("hot-reloads a shared native entry-point selection", { timeout: 30_000 }, async () => {
+    for (const language of ["wgsl", "slang"] as const) {
+      const project = projects.find((candidate) => candidate.name === `${language}/native-entrypoints/shared.${language}`)!;
+      const harness = harnesses.get(language)!;
+      harness.resize(32, 32);
+      await harness.compile(project);
+      // Buffer channels are sampled from the prior completed render, so prime
+      // the BufferA target before reading Image's selected fragment.
+      await harness.renderAndReadRegion(0);
+      const cool = await harness.renderAndReadRegion(0);
+
+      const config = structuredClone(project.config!);
+      config.passes.BufferA!.entryPoints = { vertex: "fullscreenVertex", fragment: "bufferWarm" };
+      await harness.compile({ ...project, config });
+      await harness.renderAndReadRegion(0);
+      const warm = await harness.renderAndReadRegion(0);
+
+      // `present` swaps BufferA's RGB. Cool makes the canvas red-dominant;
+      // choosing bufferWarm from the same file makes it blue-dominant.
+      expect(cool[PIXEL_REGION_CENTER_OFFSET]!).toBeGreaterThan(cool[PIXEL_REGION_CENTER_OFFSET + 2]! + 20);
+      expect(warm[PIXEL_REGION_CENTER_OFFSET + 2]!).toBeGreaterThan(warm[PIXEL_REGION_CENTER_OFFSET]! + 20);
+    }
   });
 
   it("provides a GLSL counterpart for every portable Slang project", () => {

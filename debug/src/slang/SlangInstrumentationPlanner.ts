@@ -15,6 +15,7 @@ import { slangComputeReplayLimitation } from "./SlangComputeReplay";
 import { emitSlangFloat4, emitSlangStatic } from "./SlangEmitter";
 import type { SlangCallableNode } from "./model";
 import type { SlangWorkspace, SlangWorkspaceFile } from "./SlangWorkspace";
+import { buildNativeFragmentReplay, preserveLegacyMainImage } from "../native/NativeFragmentReplay";
 
 export type SlangInstrumentationMode = "preview" | "capture";
 
@@ -34,7 +35,7 @@ export function planSlangInstrumentation(
     return failure(analysis.sourceUri, analysis.selectedRange.start, "slang-debug-stale-request", "The requested Slang debug value is no longer visible at this location.");
   }
   const rootFile = workspace.filesByUri.get(workspace.rootUri);
-  const rootEntry = rootFile && findRootEntry(rootFile);
+  const rootEntry = rootFile && findRootEntry(rootFile, workspace);
   if (!rootEntry) {
     return failure(workspace.rootUri, { line: 0, character: 0 }, "slang-debug-unsupported-syntax", "The Slang workspace root has no mainImage or supported compute entry function.");
   }
@@ -43,6 +44,11 @@ export function planSlangInstrumentation(
     return failure(analysis.sourceUri, analysis.selectedRange.start, "slang-debug-unsupported-syntax", computeLimitation);
   }
   const prefix = instrumentationPrefix(workspace.contentHash);
+  const native = workspace.render
+    ? buildNativeFragmentReplay(rootFile!.source.source, "slang", workspace.render.entryPoint, prefix) : undefined;
+  if (typeof native === "string") {
+    return failure(analysis.sourceUri, analysis.selectedRange.start, "slang-debug-unsupported-syntax", native);
+  }
   if ([...workspace.filesByUri.values()].some((file) => [...file.document.tokens].some((token) => token.kind === "identifier" && token.text.startsWith(prefix)))) {
     return failure(analysis.sourceUri, analysis.selectedRange.start, "slang-debug-instrumentation-conflict", `Slang debug identifier '${prefix}' already exists.`);
   }
@@ -100,14 +106,14 @@ export function planSlangInstrumentation(
   });
   const computeCall = rootEntry.kind === "compute"
     ? `${prefix}_userMain(${computeEntryArguments(rootFile!, rootEntry.callable).join(", ")})`
-    : `${prefix}_userMain(fragCoord)`;
+    : native?.call ?? `${prefix}_userMain(fragCoord)`;
   const wrapper = emitRootWrapper(
     prefix,
     wrapperSlots,
     mode,
     imported ? `${prefix}_wasExecuted()` : `${prefix}_executed`,
     computeCall,
-    rootEntry.kind === "render",
+    rootEntry.kind !== "compute",
     previewOptions,
     imported && behavior.setupStatements.length > 0
       ? [`${prefix}_prepare(fragCoord);`]
@@ -125,7 +131,8 @@ export function planSlangInstrumentation(
     { start: selectedFile.source.source.length, end: selectedFile.source.source.length, text: `\n${declarations}\n` },
   ];
   const rootEdits = [
-    ...(rootEntry.kind === "compute"
+    ...(rootEntry.kind === "compute" ? preserveLegacyMainImage(rootFile!.source.source, "slang", prefix) : []),
+    ...(native ? native.edits : rootEntry.kind === "compute"
       ? computeAttributeRemoval(rootFile!.source.source, rootEntry.callable, `${prefix}_userMain`)
       : [{ start: rootEntry.callable.nameToken.startOffset, end: rootEntry.callable.nameToken.endOffset, text: `${prefix}_userMain` }]),
     {
@@ -203,10 +210,17 @@ function computeAttributeRemoval(
     : [{ start: signatureStart, end: signatureEnd, text: replaySignature }];
 }
 
-function findRootEntry(rootFile: SlangWorkspaceFile): { kind: "render" | "compute"; callable: SlangCallableNode } | undefined {
+function findRootEntry(rootFile: SlangWorkspaceFile, workspace: SlangWorkspace): { kind: "render" | "compute" | "native"; callable: SlangCallableNode } | undefined {
   const callables = [...rootFile.structure.callables.values()].filter((callable) => callable.kind === "free");
+  if (workspace.render) {
+    const fragments = callables.filter(callable => callable.attributes.some(attribute => /^shader\s*\(\s*["']fragment["']\s*\)$/i.test(attribute)));
+    const fragment = workspace.render.entryPoint
+      ? fragments.find(callable => callable.name === workspace.render?.entryPoint)
+      : fragments.length === 1 ? fragments[0] : undefined;
+    return fragment ? { kind: "native", callable: fragment } : undefined;
+  }
   const mainImage = callables.find((callable) => callable.name === "mainImage");
-  if (mainImage) {
+  if (mainImage && !workspace.compute) {
     return { kind: "render", callable: mainImage };
   }
 
@@ -215,7 +229,9 @@ function findRootEntry(rootFile: SlangWorkspaceFile): { kind: "render" | "comput
       callable.attributes.some((attribute) => /^shader\s*\(\s*[\"']compute[\"']\s*\)$/i.test(attribute))
     ),
   );
-  const compute = computeCandidates[0];
+  const compute = workspace.compute?.entryPoint
+    ? computeCandidates.find(callable => callable.name === workspace.compute?.entryPoint)
+    : computeCandidates.length === 1 ? computeCandidates[0] : undefined;
   return compute ? { kind: "compute", callable: compute } : undefined;
 }
 

@@ -1,3 +1,4 @@
+import { imageConfigForActiveRenderPass, nativeFragmentEntryPoint } from "./nativeRenderConfig";
 import type { DebugFunctionContext, ShaderDebugState, NormalizeMode } from "./types/ShaderDebugState";
 import { ShaderDebugger } from "@shader-studio/debug";
 import type { CapturedVariable } from "./VariableCaptureManager";
@@ -183,20 +184,10 @@ export class ShaderDebugManager {
       return { passName, code, config, inputConfig, ...sourceDetails };
     }
 
-    if (!passConfig || !('inputs' in passConfig)) {
-      return { passName, code, config, inputConfig, ...sourceDetails };
-    }
-
     return {
       passName,
       code,
-      config: {
-        ...config,
-        passes: {
-          ...config.passes,
-          Image: { ...config.passes.Image, inputs: passConfig.inputs },
-        },
-      },
+      config: imageConfigForActiveRenderPass(config, passName),
       inputConfig,
       ...sourceDetails,
     };
@@ -711,13 +702,16 @@ export class ShaderDebugManager {
    * Applies normalize/step post-processing to the full shader output.
    * Used when no line is selected or inline rendering is off.
    */
-  public applyFullShaderPostProcessing(originalCode: string): string | null {
+  public applyFullShaderPostProcessing(originalCode: string, config?: ShaderConfig | null): string | null {
     const strategy = this.planStrategy();
     if (strategy) {
+      const pass = config?.passes[this.state.activeBufferName] ?? config?.passes.Image;
+      const entryPoint = nativeFragmentEntryPoint(originalCode, pass, this.language);
       return strategy.postProcessFullShader(
         originalCode,
         this.state.normalizeMode,
         this.state.isStepEnabled ? this.state.stepEdge : null,
+        entryPoint,
       );
     }
     if (!this.isLanguageSupported()) {

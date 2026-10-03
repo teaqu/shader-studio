@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ShaderDebugManager } from '../../lib/ShaderDebugManager';
+import { debugPlanStrategy } from '../../lib/debugLanguageStrategies';
+import type { ShaderConfig } from '@shader-studio/types';
 
 const slangShader = `float4 mainImage(float2 fragCoord)
 {
@@ -24,6 +26,23 @@ describe('ShaderDebugManager - Slang language mode', () => {
 
   it('stores the configured language', () => {
     expect(manager.getLanguage()).toBe('slang');
+  });
+
+  it('uses canonical compute entry points in Slang workspaces and hashes', () => {
+    const source = '[shader("compute")] void simulate(uint3 id : SV_DispatchThreadID) {}';
+    const build = (config: ShaderConfig) => debugPlanStrategy('slang')!.buildRequest({
+      imageCode: slangShader, originalImageCode: slangShader, config, currentLine: 0, lineContent: source,
+      filePath: '/simulate.slang', variablePreview: null, imagePassPath: '/image.slang',
+      bufferPathMap: { Image: '/image.slang', Simulate: '/simulate.slang' }, bufferCodes: { Simulate: source },
+      slangModules: [], customUniforms: [],
+      getDebugTarget: () => ({ passName: 'Simulate', code: source, config }),
+    });
+    const first = build({ version: '1', passes: { Image: {}, Simulate: { type: 'compute', path: '/simulate.slang', entryPoints: { compute: 'simulate' } } } });
+    const second = build({ version: '1', passes: { Image: {}, Simulate: { type: 'compute', path: '/simulate.slang', entryPoints: { compute: 'alternate' } } } });
+
+    expect(first?.workspace.compute).toEqual({ entryPoint: 'simulate', storageNames: [] });
+    expect(second?.workspace.compute).toEqual({ entryPoint: 'alternate', storageNames: [] });
+    expect(second?.workspace.contentHash).not.toBe(first?.workspace.contentHash);
   });
 
   it('builds an in-place Slang preview plan without calling the GLSL modifier', () => {
@@ -123,6 +142,19 @@ float4 mainImage(float2 fragCoord)
     expect(output).toContain('_ssdbg_full_userMain');
     expect(output).toContain('/ (abs(');
     expect(output).toContain('step(float3(0.5000)');
+  });
+
+  it('post-processes the selected native Slang fragment instead of a co-located mainImage', () => {
+    const source = 'float4 mainImage(float2 fragCoord) { return float4(fragCoord, 0, 1); }\n[shader("fragment")] float4 selected() : SV_Target0 { return float4(0.25); }';
+    manager.toggleEnabled();
+    manager.cycleNormalizeMode();
+    const output = manager.applyFullShaderPostProcessing(source, {
+      version: '1', passes: { Image: { entryPoints: { fragment: 'selected' } } },
+    });
+
+    expect(output).toContain('float4 _ssdbg_full_userMain()');
+    expect(output).toContain('[shader("fragment")]\nfloat4 selected(');
+    expect(output).toContain('_ssdbg_full_legacyMainImage');
   });
 
   it('builds a native preview plan for the default Slang shader return value', () => {

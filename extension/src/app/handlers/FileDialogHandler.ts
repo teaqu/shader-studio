@@ -8,7 +8,7 @@ import { writeWorkspaceTypeDefs } from "../WorkspaceTypeDefs";
 import { Logger } from "../services/Logger";
 import { getConfigPathForShaderPath } from "../ShaderConfigPaths";
 import type { ErrorMessage } from "@shader-studio/types";
-import { GLSL_EXTENSIONS, SCRIPT_EXTENSIONS, TEXTURE_EXTENSIONS, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, CUBEMAP_EXTENSIONS, WGSL_EXTENSIONS } from "@shader-studio/types";
+import { GLSL_EXTENSIONS, SCRIPT_EXTENSIONS, TEXTURE_EXTENSIONS, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, CUBEMAP_EXTENSIONS, WGSL_EXTENSIONS, createNativeComputeSource, createNativeRenderSource, shaderLanguageForPath } from "@shader-studio/types";
 
 function fileTypeToFilters(fileType: string): { [name: string]: string[] } {
   switch (fileType) {
@@ -74,7 +74,7 @@ export class FileDialogHandler {
   }
 
   async handleCreateFile(
-    payload: { shaderPath: string; suggestedPath: string; fileType: string; requestId: string },
+    payload: { shaderPath: string; suggestedPath: string; fileType: string; requestId: string; authoringMode?: 'hooks' | 'native'; passName?: string },
     respondFn: (msg: any) => void,
   ): Promise<void> {
     try {
@@ -101,6 +101,8 @@ export class FileDialogHandler {
       }
       const filePath = result.fsPath;
       const outputPath = this.resolveOutputPath(filePath, shaderDir);
+      let entryPoints: { vertex?: string; fragment?: string; compute?: string } | undefined;
+      let created = false;
       if (!fs.existsSync(filePath)) {
         let template: string;
         if (isScript) {
@@ -115,6 +117,22 @@ export class FileDialogHandler {
           template = `void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {\n}\n`;
         } else if (payload.fileType === 'slang-vertex') {
           template = `void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {\n\n}\n`;
+        } else if (payload.authoringMode === 'native' && payload.fileType === 'slang-compute') {
+          const native = createNativeComputeSource('slang', '', payload.passName ?? 'Compute');
+          template = native.text;
+          entryPoints = native.entryPoints;
+        } else if (payload.authoringMode === 'native' && payload.fileType === 'wgsl-compute') {
+          const native = createNativeComputeSource('wgsl', '', payload.passName ?? 'Compute');
+          template = native.text;
+          entryPoints = native.entryPoints;
+        } else if (payload.authoringMode === 'native' && payload.fileType === 'slang-buffer') {
+          const native = createNativeRenderSource('slang', '', payload.passName ?? 'Buffer');
+          template = native.text.trimStart();
+          entryPoints = native.entryPoints;
+        } else if (payload.authoringMode === 'native' && payload.fileType === 'wgsl-buffer') {
+          const native = createNativeRenderSource('wgsl', '', payload.passName ?? 'Buffer');
+          template = native.text.trimStart();
+          entryPoints = native.entryPoints;
         } else if (payload.fileType === 'slang-compute') {
           template = `[shader("compute")]\n[numthreads(8, 8, 1)]\nvoid compute(uint3 dispatchThreadID : SV_DispatchThreadID) {\n\n}\n`;
         } else if (payload.fileType === 'wgsl-common') {
@@ -131,6 +149,7 @@ export class FileDialogHandler {
           template = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n    vec2 uv = fragCoord / iResolution.xy;\n    fragColor = vec4(uv, 0.0, 1.0);\n}\n`;
         }
         fs.writeFileSync(filePath, template, 'utf-8');
+        created = true;
         this.logger.info(`Created file: ${filePath}`);
       } else {
         this.logger.info(`File already exists: ${filePath}`);
@@ -138,9 +157,68 @@ export class FileDialogHandler {
       if (isScript && filePath.endsWith('.ts')) {
         writeWorkspaceTypeDefs(this.extensionPath, true);
       }
-      respondFn({ type: 'fileSelected', payload: { path: outputPath, requestId: payload.requestId } });
+      respondFn({ type: 'fileSelected', payload: {
+        path: outputPath,
+        requestId: payload.requestId,
+        ...(created && payload.authoringMode === 'native' && { authoringMode: 'native' }),
+        ...(entryPoints && { entryPoints }),
+      } });
     } catch (error) {
       this.logger.error(`Failed to create file: ${error}`);
+    }
+  }
+
+  async handleInsertShaderSource(
+    payload: { shaderPath: string; sourcePath?: string; fileType: string; requestId: string; authoringMode?: 'hooks' | 'native'; passName?: string },
+    respondFn: (msg: any) => void,
+  ): Promise<void> {
+    const fail = (error: string) => respondFn({ type: 'fileSelected', payload: { path: '', requestId: payload.requestId, error } });
+    try {
+      if (payload.authoringMode !== 'native') {
+        fail('Insert into current source requires native WebGPU entry points.');
+        return;
+      }
+      const language = payload.fileType.startsWith('wgsl-') ? 'wgsl'
+        : payload.fileType.startsWith('slang-') ? 'slang' : null;
+      if (!language) {
+        fail('Native source insertion is supported for WGSL and Slang only.');
+        return;
+      }
+      if (payload.fileType !== `${language}-buffer` && payload.fileType !== `${language}-compute`) {
+        fail('Insert supports Buffer and Compute pass sources only.');
+        return;
+      }
+      const configured = payload.sourcePath || payload.shaderPath;
+      const workspaceRoot = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(payload.shaderPath))?.uri.fsPath;
+      const sourcePath = configured.startsWith('@/') && workspaceRoot
+        ? path.resolve(workspaceRoot, configured.slice(2))
+        : path.isAbsolute(configured) ? configured : path.resolve(path.dirname(payload.shaderPath), configured);
+      if (shaderLanguageForPath(sourcePath) !== language) {
+        fail('Insert source language must match the target source language.');
+        return;
+      }
+      const uri = vscode.Uri.file(sourcePath);
+      const document = await vscode.workspace.openTextDocument(uri);
+      const source = document.getText();
+      const isCompute = payload.fileType.endsWith('-compute');
+      const generated = isCompute
+        ? createNativeComputeSource(language, source, payload.passName ?? 'Compute')
+        : createNativeRenderSource(language, source, payload.passName ?? 'Buffer');
+      const edit = new vscode.WorkspaceEdit();
+      edit.insert(uri, document.positionAt(source.length), generated.text);
+      if (!await vscode.workspace.applyEdit(edit)) {
+        fail('Could not insert the shader entry point.');
+        return;
+      }
+      respondFn({ type: 'fileSelected', payload: {
+        path: sourcePath,
+        requestId: payload.requestId,
+        authoringMode: 'native',
+        entryPoints: generated.entryPoints,
+      } });
+    } catch (error) {
+      this.logger.error(`Failed to insert shader source: ${error}`);
+      fail(`Could not insert the shader entry point: ${String(error)}`);
     }
   }
 

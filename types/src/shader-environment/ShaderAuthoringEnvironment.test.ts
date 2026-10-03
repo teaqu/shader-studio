@@ -295,6 +295,12 @@ describe("ShaderAuthoringEnvironment", () => {
     expect(render.text).toContain("StructuredBuffer<uint> counters;");
   });
 
+  it("makes shared native-compute Slang storage writable without changing the render default", () => {
+    const base = { ...baseEnvironment("slang"), resources: [{ name: "particles", kind: "storage" as const, elementType: "Particle" }] };
+    expect(buildSlangAuthoringModule(base).text).toContain("StructuredBuffer<Particle> particles;");
+    expect(buildSlangAuthoringModule({ ...base, storageWritable: true }).text).toContain("RWStructuredBuffer<Particle> particles;");
+  });
+
   it("preserves user-authored identifiers named inputs after removing the inputs container", () => {
     const environment = {
       ...baseEnvironment("slang"),

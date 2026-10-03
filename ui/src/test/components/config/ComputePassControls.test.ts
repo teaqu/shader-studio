@@ -73,9 +73,9 @@ describe('ComputePassControls', () => {
       entryPointNames: ['clearSamples', 'animateSamples'], onCommit,
     });
 
-    await fireEvent.change(getByLabelText('Entrypoint'), { target: { value: 'animateSamples' } });
+    await fireEvent.change(getByLabelText('Compute entry point'), { target: { value: 'animateSamples' } });
 
-    expect(onCommit).toHaveBeenCalledWith({ type: 'compute', path: 'kernels.slang', entryPoint: 'animateSamples' });
+    expect(onCommit).toHaveBeenCalledWith({ type: 'compute', path: 'kernels.slang', entryPoints: { compute: 'animateSamples' } });
   });
 
   it('shows and commits a selected native entrypoint when a source has multiple entries', async () => {
@@ -85,7 +85,7 @@ describe('ComputePassControls', () => {
       storageNames: [], channelNames: [], entryPointNames: ['clearSamples', 'animateSamples'], onCommit,
     });
 
-    await fireEvent.change(getByLabelText('Entrypoint'), { target: { value: 'animateSamples' } });
-    expect(onCommit).toHaveBeenCalledWith({ type: 'compute', path: 'kernels.slang', entryPoint: 'animateSamples' });
+    await fireEvent.change(getByLabelText('Compute entry point'), { target: { value: 'animateSamples' } });
+    expect(onCommit).toHaveBeenCalledWith({ type: 'compute', path: 'kernels.slang', entryPoints: { compute: 'animateSamples' } });
   });
 });

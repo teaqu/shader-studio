@@ -138,6 +138,22 @@ export interface ModelGeometryConfig {
 }
 export type GeometryConfig = BuiltinGeometryConfig | ModelGeometryConfig;
 
+export type WebGPUAuthoringMode = "hooks" | "native";
+
+export interface ShaderEntryPoints {
+  vertex?: string;
+  fragment?: string;
+  compute?: string;
+}
+
+/** Presence opts a render pass into native stages; omitted names resolve only when unambiguous. */
+export interface RenderEntryPoints {
+  vertex?: string;
+  fragment?: string;
+}
+
+export interface ComputeEntryPoints { compute?: string; }
+
 /** How a render pass combines its output with what its own draw already wrote this frame. */
 export const BLEND_MODES = ["none", "alpha", "premultiplied", "additive"] as const;
 export type BlendMode = (typeof BLEND_MODES)[number];
@@ -185,6 +201,7 @@ export interface ImagePass extends RenderPassSettings {
   resolution?: ResolutionSettings;
   geometry?: GeometryConfig;
   vertex?: string;
+  entryPoints?: RenderEntryPoints;
 }
 
 export interface BufferPass extends RenderPassSettings {
@@ -193,6 +210,7 @@ export interface BufferPass extends RenderPassSettings {
   resolution?: BufferResolution;
   geometry?: GeometryConfig;
   vertex?: string;
+  entryPoints?: RenderEntryPoints;
   outputFormat?: BufferOutputFormat;
 }
 
@@ -206,6 +224,7 @@ export interface CommonPass {
   clear?: never;
   depth?: never;
   cull?: never;
+  entryPoints?: never;
 }
 
 /** Describes the layout of a named GPU storage buffer. Stride is always
@@ -221,9 +240,9 @@ export type ComputeDispatch =
     | { x: number; y: number; z: number; count?: never; cover?: never }
     | { cover: string; count?: never; x?: never; y?: never; z?: never };
 
-/** A Slang compute pass with optional inputs, output dimensions, and dispatch configuration. */
+/** A WebGPU compute pass with optional inputs, output dimensions, and dispatch configuration. */
 export interface ComputePass {
-    /** Identifies this pass as a Slang compute pass, independent of its name. */
+    /** Identifies this pass as a compute pass, independent of its name. */
     type: "compute";
     path: string;
     inputs?: Record<string, ConfigInput>;
@@ -233,7 +252,7 @@ export interface ComputePass {
     dispatch?: ComputeDispatch;
     dispatchCount?: number;
     dispatchOnce?: boolean;
-    /** Named native `[shader("compute")]` entrypoint in this pass source. */
+    /** Legacy compute selection; new configs use entryPoints.compute. */
     entryPoint?: string;
     geometry?: never;
     vertex?: never;
@@ -241,6 +260,7 @@ export interface ComputePass {
     clear?: never;
     depth?: never;
     cull?: never;
+    entryPoints?: ComputeEntryPoints;
 }
 
 export interface ShaderPasses {
@@ -258,5 +278,7 @@ export interface ShaderConfig {
     script?: string;
     scriptMaxPollingFps?: number;
     storage?: Record<string, StorageBufferConfig>;
+    /** Project preference for new render templates; existing pass execution is unchanged. */
+    webgpu?: { defaultRenderAuthoring?: WebGPUAuthoringMode };
     passes: ShaderPasses;
 }

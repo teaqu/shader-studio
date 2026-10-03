@@ -16,6 +16,16 @@
     suggestedPath?: string;
     fileType?: FileDialogFileType;
     allowCreate?: boolean;
+    allowInsert?: boolean;
+    sourcePath?: string;
+    authoringMode?: 'hooks' | 'native';
+    passName?: string;
+    onCreated?: (result: {
+      path: string;
+      entryPoints?: { vertex?: string; fragment?: string; compute?: string };
+      entryPoint?: string;
+      authoringMode?: 'hooks' | 'native';
+    }) => void;
     postMessage?: (msg: any) => void;
     onMessage?: (handler: (event: MessageEvent) => void) => void;
   }
@@ -33,6 +43,11 @@
     suggestedPath = '',
     fileType = 'glsl-buffer',
     allowCreate = true,
+    allowInsert = false,
+    sourcePath = undefined,
+    authoringMode = undefined,
+    passName = undefined,
+    onCreated = undefined,
     postMessage = undefined,
     onMessage = undefined,
   }: Props = $props();
@@ -94,6 +109,7 @@
   let showCreate = $derived(allowCreate && !suppressCreate && (localPath === '' || !fileExists));
 
   let pendingRequestId: string | null = null;
+  let requestError = $state<string | null>(null);
 
   onMount(() => {
     if (onMessage) {
@@ -103,22 +119,43 @@
           event.data.payload?.requestId === pendingRequestId
         ) {
           pendingRequestId = null;
-          onPathChange?.(event.data.payload.path);
+          if (event.data.payload.path) {
+            requestError = null;
+            onPathChange?.(event.data.payload.path);
+            onCreated?.(event.data.payload);
+          } else if (typeof event.data.payload.error === 'string' && event.data.payload.error) {
+            requestError = event.data.payload.error;
+          }
         }
       });
     }
   });
 
   function handleSelect() {
+    requestError = null;
     const requestId = crypto.randomUUID();
     pendingRequestId = requestId;
     postMessage?.({ type: 'selectFile', payload: { shaderPath, fileType, requestId } });
   }
 
   function handleCreate() {
+    requestError = null;
     const requestId = crypto.randomUUID();
     pendingRequestId = requestId;
-    postMessage?.({ type: 'createFile', payload: { shaderPath, suggestedPath, fileType, requestId } });
+    postMessage?.({
+      type: 'createFile',
+      payload: { shaderPath, suggestedPath, fileType, requestId, authoringMode, passName },
+    });
+  }
+
+  function handleInsert() {
+    requestError = null;
+    const requestId = crypto.randomUUID();
+    pendingRequestId = requestId;
+    postMessage?.({
+      type: 'insertShaderSource',
+      payload: { shaderPath, sourcePath, fileType, requestId, authoringMode, passName },
+    });
   }
 </script>
 
@@ -145,6 +182,9 @@
       {#if showCreate}
         <button class="create-file-btn" onclick={handleCreate}>Create</button>
       {/if}
+      {#if allowInsert}
+        <button class="insert-file-btn" onclick={handleInsert}>Insert</button>
+      {/if}
       {#if note}
         <span class="input-note">{note}</span>
       {/if}
@@ -152,6 +192,7 @@
   {:else if note}
     <span class="input-note">{note}</span>
   {/if}
+  {#if requestError}<p class="request-error" role="alert">{requestError}</p>{/if}
 </div>
 
 <style>
@@ -198,9 +239,11 @@
     gap: 6px;
     margin-top: 4px;
   }
+  .request-error { margin: 0; color: var(--vscode-errorForeground, #f48771); font-size: 12px; }
 
   .select-file-btn,
-  .create-file-btn {
+  .create-file-btn,
+  .insert-file-btn {
     padding: 4px 12px;
     font-size: 13px;
     background: none;
@@ -213,7 +256,8 @@
   }
 
   .select-file-btn:hover,
-  .create-file-btn:hover {
+  .create-file-btn:hover,
+  .insert-file-btn:hover {
     color: var(--vscode-foreground, #cccccc);
     border-color: var(--vscode-focusBorder, #007acc);
   }

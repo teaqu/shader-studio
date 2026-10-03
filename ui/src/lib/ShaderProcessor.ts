@@ -1,3 +1,4 @@
+import { hookConfigForDebugPlan } from "./nativeRenderConfig";
 import type { RenderingEngine } from "../../../rendering/src/types/RenderingEngine";
 import type { ShaderDebugManager } from "./ShaderDebugManager";
 import { debugPlanStrategy } from "./debugLanguageStrategies";
@@ -113,7 +114,7 @@ export class ShaderProcessor {
       }
 
       const result = debugPlan && this.renderEngine.compileDebugPlan
-        ? await this.renderEngine.compileDebugPlan(debugPlan, config ?? null)
+        ? await this.renderEngine.compileDebugPlan(debugPlan, configToCompile)
         : await this.compileWithSlangContext(
           codeToCompile,
           configToCompile,
@@ -324,13 +325,18 @@ export class ShaderProcessor {
       originalImageShaderCode,
     );
     if (debugPlan) {
-      return { code: imageShaderCode, config, passName: 'Image', debugPlan: debugPlan };
+      return {
+        code: imageShaderCode,
+        config: hookConfigForDebugPlan(debugConfig),
+        passName: 'Image',
+        debugPlan,
+      };
     }
     // Plan-based languages (Slang, WGSL) never go through the GLSL source
     // modifier below; the strategy table owns the language dispatch.
     if (debugPlanStrategy(this.shaderDebugManager.getLanguage?.() ?? 'glsl')) {
       const postProcessed = debugState.isEnabled
-        ? this.shaderDebugManager.applyFullShaderPostProcessing(sourceCode)
+        ? this.shaderDebugManager.applyFullShaderPostProcessing(sourceCode, debugConfig)
         : null;
       return postProcessed
         ? {
@@ -361,7 +367,7 @@ export class ShaderProcessor {
 
     // Fallback: apply full-shader post-processing (normalize/step without a specific line)
     if (debugState.isEnabled) {
-      const postProcessed = this.shaderDebugManager.applyFullShaderPostProcessing(sourceCode);
+      const postProcessed = this.shaderDebugManager.applyFullShaderPostProcessing(sourceCode, debugConfig);
       if (postProcessed) {
         return {
           code: postProcessed,
@@ -539,7 +545,7 @@ export class ShaderProcessor {
     // Cursor movement uses this path, so native Slang preview plans must be
     // routed here as well as through the initial shader-source compilation.
     const structuredResult = debugPlan && this.renderEngine.compileDebugPlan
-      ? await this.renderEngine.compileDebugPlan(debugPlan, config ?? null)
+      ? await this.renderEngine.compileDebugPlan(debugPlan, configToCompile)
       : undefined;
     let result: CompilationResult = structuredResult ?? (debugPlan
       ? { success: false, errors: ["Native Slang debug compilation is unavailable"] }

@@ -1069,6 +1069,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
                 ? { outputImageFormat: this.wgslImageFormat(pass.resolvedOutputFormat ?? this.bufferTextureFormat) }
                 : {}),
               ...(pass.kind === "compute" ? { entryPoint: pass.entryPoint } : {}),
+              ...(pass.kind === "render" && pass.entryPoints ? { renderEntryPoints: pass.entryPoints } : {}),
               ...(passModules.length > 0 ? { modules: passModules } : {}),
               ...(slangSourcePaths?.[pass.name]
                 ? { sourcePath: slangSourcePaths[pass.name] }
@@ -2163,6 +2164,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       SLANG_WGSL_CACHE_KEY_VERSION,
       pass.kind,
       pass.entryPoint,
+      pass.entryPoints,
       pass.source,
       pass.geometry,
       pass.vertexSrc,
@@ -2363,6 +2365,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         renderState: resolveRenderState(pass),
         channels,
         vertexChannels: Boolean(pass.vertexSrc),
+        entryPoints: pass.entryPoints,
         vertexRange: compilation?.vertexRange,
         storage,
         uniformBufferSize,

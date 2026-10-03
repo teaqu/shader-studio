@@ -15,7 +15,7 @@
     resetShellState, setNewShaderVisible,
   } from './state/shellState.svelte';
   import { clearStandaloneWorkspace } from './clearWorkspace';
-  import type { ShaderLanguageId } from '@shader-studio/types';
+  import type { ShaderLanguageId, WebGPUAuthoringMode } from '@shader-studio/types';
 
   interface Props { transport: WebTransport; }
   let { transport }: Props = $props();
@@ -52,8 +52,8 @@
     }
   });
 
-  function createShader(name: string, language: ShaderLanguageId) {
-    transport.postMessage({ type: 'createShader', payload: { name, language } });
+  function createShader(name: string, language: ShaderLanguageId, authoringMode?: WebGPUAuthoringMode) {
+    transport.postMessage({ type: 'createShader', payload: { name, language, ...(authoringMode ? { authoringMode } : {}) } });
     setNewShaderVisible(false);
   }
 

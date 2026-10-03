@@ -76,6 +76,23 @@ describe('ShaderProcessor', () => {
     expect(mockRenderEngine.compileShaderPipeline).not.toHaveBeenCalled();
   });
 
+  it('uses generated hook entry points for an instrumented native render pass', async () => {
+    const config = {
+      version: '1.0',
+      passes: { Image: { entryPoints: { fragment: 'renderImage' } } },
+    };
+    (mockShaderDebugManager as any).getPreviewPlan = vi.fn().mockReturnValue({
+      workspaceHash: 'hash', rootUri: 'file:///main.wgsl', selectedSourceUri: 'file:///main.wgsl', executionMarkerSlot: 0, captureSlots: [], files: [],
+    });
+    (mockRenderEngine as any).compileDebugPlan = vi.fn().mockResolvedValue({ success: true });
+
+    await shaderProcessor.processMainShaderCompilation({ type: 'shaderSource', code: '@fragment fn renderImage() -> vec4f { return vec4f(); }', config, path: '/main.wgsl', buffers: {} });
+
+    expect((mockRenderEngine as any).compileDebugPlan).toHaveBeenCalledWith(expect.any(Object), {
+      version: '1.0', passes: { Image: { geometry: { type: 'fullscreen' } } },
+    });
+  });
+
   it('uses the original Slang source to map an editor cursor after dependency expansion', async () => {
     const processedSource = [
       '// expanded dependency',
@@ -200,6 +217,7 @@ describe('ShaderProcessor', () => {
     expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(
       expect.stringContaining('return normalized'), null, '/main.slang', {}, undefined, undefined,
     );
+    expect(mockShaderDebugManager.applyFullShaderPostProcessing).toHaveBeenCalledWith(expect.any(String), null);
   });
 
   it('never sends WGSL through the GLSL debug modifier when native planning is unavailable', async () => {
@@ -226,6 +244,7 @@ describe('ShaderProcessor', () => {
     expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(
       expect.stringContaining('return normalized'), null, '/main.wgsl', {}, undefined, undefined,
     );
+    expect(mockShaderDebugManager.applyFullShaderPostProcessing).toHaveBeenCalledWith(expect.any(String), null);
   });
 
   describe('isCurrentlyProcessing', () => {

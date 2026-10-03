@@ -21,11 +21,12 @@
   import { initVimMode, VimMode } from "monaco-vim";
   import { setupMonacoGlsl, setupMonacoJson, setupMonacoSlang, setupMonacoWgsl, setCompilerMarkers } from "@shader-studio/monaco";
   import type { AuthoringResource, ShaderConfig, ShaderLanguageId, ShaderStage, SlangSourceModule } from "@shader-studio/types";
-  import { isAuthoringValueType, isShaderLanguageId, parseVertexPassKey, resourcesForPass, shaderLanguageForPath, SHADER_LANGUAGES, stageForPass } from "@shader-studio/types";
+  import { isAuthoringValueType, isShaderLanguageId, parseVertexPassKey, resourcesForSharedSource, shaderLanguageForPath, SHADER_LANGUAGES, stageForPass } from "@shader-studio/types";
   import { bindRenamePopupKeys } from "../editor/renamePopupKeys";
   import { createLanguageServiceController } from "../editor/createLanguageServiceController";
   import type { LanguageServiceController } from "../editor/LanguageServiceController.svelte";
   import { commonAuthoringFile, slangAuthoringVirtualFiles } from "../editor/authoringVirtualFiles";
+  import { nativeAuthoringMetadata } from "../editor/nativeAuthoringMetadata";
   import { getCommonShaderSource } from "../state/commonSourceState.svelte";
   import { currentTheme, type Theme } from "../stores/themeStore";
   import { getRenameFeedback } from "../state/renameFeedback.svelte";
@@ -57,6 +58,7 @@
     slangModules?: SlangSourceModule[];
     commonPath?: string;
     commonSource?: string;
+    sourcePassNames?: string[];
     onCursorChange?: (line: number, lineContent: string, bufferName: string) => void;
     displayMode?: "overlay" | "pane";
     /** Portal for Monaco completion/hover widgets when an ancestor clips or transforms them. */
@@ -95,6 +97,7 @@
     slangModules = [],
     commonPath = undefined,
     commonSource = undefined,
+    sourcePassNames = [],
     onCursorChange = (_line: number, _lineContent: string, _bufferName: string) => {},
     displayMode = "overlay",
     overflowWidgetsDomNode = undefined,
@@ -107,7 +110,7 @@
   // the configured input and storage resources the renderer declares for them.
   const dynamicUniformNames = $derived([
     ...customUniformInfo.map(({ name }) => name),
-    ...resourcesForPass(config, activePassName).map(({ name }) => name),
+    ...resourcesForSharedSource(config, activePassName, sourcePassNames).map(({ name }) => name),
   ]);
 
   let containerEl = $state<HTMLDivElement | null>(null);
@@ -803,6 +806,7 @@
     const configuredCommonSource = commonSource;
     const bufferName = activeBufferName;
     const passName = activePassName;
+    const authoringMetadata = isShaderLanguageId(language) ? nativeAuthoringMetadata(shaderCode, language) : {};
     if (!controller || !model?.uri || !isShaderLanguageId(language)
       || (shaderPath && modelUri !== monaco.Uri.file(shaderPath).toString())) {
       languageServiceStatus = "pending";
@@ -821,8 +825,9 @@
       passName,
       stage: parseVertexPassKey(bufferName) !== undefined ? "vertex" : stageForPass(currentConfig, passName, shaderPath),
       customUniforms: uniforms.flatMap(({ name, type }) => isAuthoringValueType(type) ? [{ name, type }] : []),
-      resources: resourcesForPass(currentConfig, passName),
+      resources: resourcesForSharedSource(currentConfig, passName, sourcePassNames),
       ...(commonFile && language !== "slang" ? { commonFile } : {}),
+      ...authoringMetadata,
       virtualFiles: SHADER_LANGUAGES[language].hasImports
         ? slangAuthoringVirtualFiles(modules, passName, (filePath) => monaco.Uri.file(filePath).toString())
         : [],

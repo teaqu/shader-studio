@@ -67,6 +67,7 @@ import {
   WGSL_MAIN_IMAGE_COORDINATE_DESCRIPTION,
   WGSL_MAIN_IMAGE_DESCRIPTION,
 } from "./fragmentHook.js";
+import { isFragmentOnlyNativePosition } from "./NativeStageReachability.js";
 
 const CHANNEL_DECLARATIONS_URI = "shader-studio://generated/channels.wgsl";
 
@@ -113,7 +114,10 @@ export class WgslLanguageService implements LanguageService {
       parseWgslDocument(CHANNEL_DECLARATIONS_URI, buildWgslChannelAuthoringSource(
         environment.resources.filter(resource => resource.kind !== 'storage').map((resource, slot) => ({
           name: resource.name, kind: resource.kind as 'texture-2d' | 'texture-cube' | 'texture-3d', slot: resource.slot ?? slot,
-        })), environment.stage === 'fragment'), environment.stage),
+        // A native shared module can contain fragment functions beside a
+        // focused compute entry. Keep fragment helpers available for those
+        // functions; diagnostics below still reject their use from compute.
+        })), true), environment.stage),
     ]);
     this.rebuild(environment.documentUri);
   }
@@ -191,6 +195,11 @@ export class WgslLanguageService implements LanguageService {
     for (const analysis of this.includeAnalyses.get(params.document.uri) ?? []) {
       for (const symbol of analysis.symbols) {
         if (analysis.uri === CHANNEL_DECLARATIONS_URI && (symbol.name.startsWith('_ss') || !analysis.scopes.some(scope => scope.id === symbol.scopeId && scope.kind === 'global'))) {
+          continue;
+        }
+        if (analysis.uri === CHANNEL_DECLARATIONS_URI && state.environment.stage !== "fragment"
+          && !isFragmentOnlyNativePosition(state.document.text, params.position)
+          && /(?:Sample|SampleBias)$/.test(symbol.name)) {
           continue;
         }
         if (items.has(symbol.name)) {
@@ -1481,6 +1490,12 @@ function samplingStageWarnings(
       continue;
     }
     for (const range of reference.ranges) {
+      // A shared native module may contain a fragment entry beside the focused
+      // compute entry. Its implicit sampling is valid in that fragment and
+      // must not inherit the document-level compute context.
+      if (isFragmentOnlyNativePosition(analysis.source, range.start)) {
+        continue;
+      }
       diagnostics.push({
         range, severity: DiagnosticSeverity.Warning, source: SERVICE_SOURCE,
         code: "sampling-requires-fragment",
@@ -1490,6 +1505,7 @@ function samplingStageWarnings(
   }
   return diagnostics;
 }
+
 
 /** Declared result structures of builtins whose fields completion and hover can name. */
 const BUILTIN_RESULT_FIELDS: Readonly<Record<string, readonly { name: string; type: string; description: string }[]>> = {
