@@ -27,10 +27,14 @@ function helpers(vscode) {
       editor.selection = new vscode.Selection(position, position);
       editor.revealRange(new vscode.Range(position, position));
     }, filePath, zeroBasedLine);
-    // The webview is torn down and rebuilt on a file switch; the original suite
-    // settled here too before reattaching.
-    await new Promise((resolve) => setTimeout(resolve, 350));
-    await refreshFrame();
+    // Reattach while waiting for the requested line: a frame from the previous
+    // file can remain visible briefly during the host's update.
+    await expect.poll(async () => {
+      await refreshFrame();
+      return app().locator('.header-info').allTextContents();
+    }, { message: `debug panel did not follow ${filePath}:${zeroBasedLine + 1}` }).toContainEqual(
+      expect.stringContaining(`L${zeroBasedLine + 1}`),
+    );
   }
 
   const texts = (selector) => app().evaluate(

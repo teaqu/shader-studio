@@ -1,0 +1,737 @@
+[
+  {
+    "id": "4fdf373967410ece119e-ca89ceb84925b911fe20:",
+    "title": "common-storage-debug.e2e.mjs › glsl Common selection captures the authored value and follows an edit",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "4fdf373967410ece119e-7aa8b7c5d63d28ae22b6:",
+    "title": "common-storage-debug.e2e.mjs › slang Common selection captures the authored value and follows an edit @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "4fdf373967410ece119e-a8188017b6ae1721465f:",
+    "title": "common-storage-debug.e2e.mjs › wgsl Common selection captures the authored value and follows an edit @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "4fdf373967410ece119e-2cfce28c0e1da59673d7:",
+    "title": "common-storage-debug.e2e.mjs › slang fragment debug rows read the live GPU storage value @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "4fdf373967410ece119e-7f9f733f6a83744555d2:",
+    "title": "common-storage-debug.e2e.mjs › slang compute debug rows read the live GPU storage value @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "4fdf373967410ece119e-0f7b2d33b20ae093f905:",
+    "title": "common-storage-debug.e2e.mjs › wgsl fragment debug rows read the live GPU storage value @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "4fdf373967410ece119e-074533ee93d01a29234c:",
+    "title": "common-storage-debug.e2e.mjs › wgsl compute debug rows read the live GPU storage value @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "4fdf373967410ece119e-913a030e23abfcaee847:",
+    "title": "common-storage-debug.e2e.mjs › wgsl keyword-prefix assignment captures the updated value @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "4fdf373967410ece119e-7bf361f8f748d183fe07:",
+    "title": "common-storage-debug.e2e.mjs › slang keyword-prefix assignment captures the updated value @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "4fdf373967410ece119e-70e2acc8c2c7e2e98a28:",
+    "title": "common-storage-debug.e2e.mjs › Slang compute replay refuses subgroup results and recovers after an edit @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "4fdf373967410ece119e-0b9e06482fca028c3ece:",
+    "title": "common-storage-debug.e2e.mjs › WGSL helper capture resolves array struct fields and shadowing @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "4fdf373967410ece119e-008928d319b1105aed7b:",
+    "title": "common-storage-debug.e2e.mjs › WGSL unmatched brace reports an error and recovers without freezing @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "39dbebb8c0807c4f6612-c7c2b91fa0d944195de2:",
+    "title": "completion-declaration.e2e.mjs › completion while declaring a variable › offers vector types but never void, which declares no variable",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "6df67bce375cd4e4fe5f-563b427448dad850b803:",
+    "title": "conditional-macros.e2e.mjs › GLSL conditional macros › shows active common macros but excludes inactive, undefined, and commented definitions",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "da56739a2a347957d03f-9f7482243845aae6933e:",
+    "title": "config-edit-feedback-glsl.e2e.mjs › GLSL buffer feedback across a config edit  › a reload-class config edit leaves running buffer feedback intact",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "726071cfa6157323d834-f26caefaa0c26ba5a879:",
+    "title": "config-edit-feedback-slang.e2e.mjs › Slang buffer feedback across a config edit @gpu › a reload-class config edit leaves running buffer feedback intact",
+    "environment": "gpu"
+  },
+  {
+    "id": "c190417f6efb86227ea5-749e79952b5ecf9088a3:",
+    "title": "config-edit-feedback-wgsl.e2e.mjs › WGSL buffer feedback across a config edit @gpu › a reload-class config edit leaves running buffer feedback intact",
+    "environment": "gpu"
+  },
+  {
+    "id": "7c861d36bd9ed4a739f2-5357c46d5538933d0135:",
+    "title": "config-parse-error.e2e.mjs › a shader config that cannot be parsed › reports the parse failure and clears it once the config parses again",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "c254835b4bb004627450-5e07feead10bac2b7817:",
+    "title": "debug-compile-errors.e2e.mjs › compile errors while debug mode is on › still reports the real compiler error",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "c254835b4bb004627450-49bc85be523751818191:",
+    "title": "debug-compile-errors.e2e.mjs › compile errors while debug mode is on › gives the error its own block",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "c254835b4bb004627450-861a821e8a591322ceed:",
+    "title": "debug-compile-errors.e2e.mjs › compile errors while debug mode is on › resolves the inspected line to the function it is in",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "c254835b4bb004627450-9e5cf0da3dd355d523bb:",
+    "title": "debug-compile-errors.e2e.mjs › compile errors while debug mode is on › shows only the variables of the function being inspected",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "c254835b4bb004627450-d248d324e864d18a129e:",
+    "title": "debug-compile-errors.e2e.mjs › compile errors while debug mode is on › captures a healthy function while another one is broken",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "c254835b4bb004627450-97ec5e5752e00eb7847e:",
+    "title": "debug-compile-errors.e2e.mjs › compile errors while debug mode is on › reports no capture problem when the cursor is in the healthy function",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "c254835b4bb004627450-0a260d745ce56e92a9b2:",
+    "title": "debug-compile-errors.e2e.mjs › compile errors while debug mode is on › keeps the scope right as the cursor moves in and out of the broken function",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "efda663f678cf7b6bc19-c1efa65dfe68b71bbfff:",
+    "title": "debug-line-jump-flash-slang.e2e.mjs › Slang inline rendering across line jumps @gpu › goes from one line to the next without showing the whole shader",
+    "environment": "gpu"
+  },
+  {
+    "id": "99cfe9606b9099e148db-a1729c13b56a15a57cd2:",
+    "title": "debug-line-jump-flash-wgsl.e2e.mjs › WGSL inline rendering across line jumps @gpu › goes from one line to the next without showing the whole shader",
+    "environment": "gpu"
+  },
+  {
+    "id": "b36bd222a9cca9d3191e-ca5c044b007d4f601d9f:",
+    "title": "debug-line-jump-flash.e2e.mjs › inline rendering across a line jump › goes from one line to the next without showing the whole shader",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "b6f1fef62bfe0b013e34-d659a51d90a874c8c5b0:",
+    "title": "empty-common.e2e.mjs › clears the GLSL syntax error when the user empties a Common file",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "b7640cb1940a621368ae-fe2418b301775d7857a2:",
+    "title": "glsl-rename.e2e.mjs › renames a GLSL reference selected through the editor",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "596e2bccd500bb226420-a1e88d6c2fc5dda119c0:",
+    "title": "inspector-pointer.e2e.mjs › hidden line tooltip leaves inspector interactive @gpu › clicking a size under the hidden tooltip changes the active sample size",
+    "environment": "gpu"
+  },
+  {
+    "id": "596e2bccd500bb226420-3fbe93d7040964836e56:",
+    "title": "inspector-pointer.e2e.mjs › hidden line tooltip leaves inspector interactive @gpu › hovering a captured variable under the hidden tooltip shows its full canvas preview",
+    "environment": "gpu"
+  },
+  {
+    "id": "596e2bccd500bb226420-7f9183702c7120e0d944:",
+    "title": "inspector-pointer.e2e.mjs › hidden line tooltip leaves inspector interactive @gpu › the visible line tooltip still accepts hover from its badge",
+    "environment": "gpu"
+  },
+  {
+    "id": "eb2c30b5cd32879cede0-f24740e6f7603a51431a:",
+    "title": "language-server-overlay-wgsl.e2e.mjs › WGSL language server in the Monaco overlay › shows documented WGSL hover content",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "eb2c30b5cd32879cede0-cca18a201deda836f195:",
+    "title": "language-server-overlay-wgsl.e2e.mjs › WGSL language server in the Monaco overlay › shows renderer WGSL compiler diagnostics when the language server is disabled",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "eb2c30b5cd32879cede0-cb49b5ff50265c299a80:",
+    "title": "language-server-overlay-wgsl.e2e.mjs › WGSL language server in the Monaco overlay › reports a shared diagnostic once when the language server and the compiler agree",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "eb2c30b5cd32879cede0-c21f919efc85f7a4c8ab:",
+    "title": "language-server-overlay-wgsl.e2e.mjs › WGSL language server in the Monaco overlay › opens the completion dropdown while typing",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "ef5da5b01c66de685b2e-6a7851a03a1a94782d84:",
+    "title": "language-server-overlay.e2e.mjs › Slang language server in the Monaco overlay › shows documented Slang hover content",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "ef5da5b01c66de685b2e-730b1ea3e00fabb144fb:",
+    "title": "language-server-overlay.e2e.mjs › Slang language server in the Monaco overlay › shows renderer Slang compiler diagnostics when the language server is disabled",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "ef5da5b01c66de685b2e-2b83234aad29b51de410:",
+    "title": "language-server-overlay.e2e.mjs › Slang language server in the Monaco overlay › reports a shared diagnostic once when the language server and the compiler agree",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "ef5da5b01c66de685b2e-6632da6066f5c1088acc:",
+    "title": "language-server-overlay.e2e.mjs › Slang language server in the Monaco overlay › opens the completion dropdown while typing",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "883176b4733e62bbab59-755b1169407c1b6f2932:",
+    "title": "language-server-settings.e2e.mjs › Shader language servers settings in VS Code › honours independent GLSL, Slang, and WGSL enable settings after every server is loaded",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "978121ba983c0ff9c61f-6271f82d718f24c57ca7:",
+    "title": "language-servers.e2e.mjs › Shader language servers in VS Code › provides the complete GLSL authoring feature set",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "978121ba983c0ff9c61f-e1c6660478aa97531971:",
+    "title": "language-servers.e2e.mjs › Shader language servers in VS Code › sees the macros the common file defines",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "978121ba983c0ff9c61f-a8e0c9dd334a38331fa2:",
+    "title": "language-servers.e2e.mjs › Shader language servers in VS Code › resolves GLSL references, highlights, and renames",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "978121ba983c0ff9c61f-bd3c905ed93c26b0f9e8:",
+    "title": "language-servers.e2e.mjs › Shader language servers in VS Code › provides the complete Slang authoring feature set through bundled WASM",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "978121ba983c0ff9c61f-b091ef3a85a8e936c9d8:",
+    "title": "language-servers.e2e.mjs › Shader language servers in VS Code › provides the complete WGSL authoring feature set",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "978121ba983c0ff9c61f-947e400bc9e1f7b96ab0:",
+    "title": "language-servers.e2e.mjs › Shader language servers in VS Code › resolves WGSL references, highlights, and renames across Common",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "978121ba983c0ff9c61f-8cae86eaa063dbf7a875:",
+    "title": "language-servers.e2e.mjs › Shader language servers in VS Code › describes locals, members, and nested arguments in GLSL, Slang, and WGSL",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "978121ba983c0ff9c61f-430c4cd0a317b63e583f:",
+    "title": "language-servers.e2e.mjs › Shader language servers in VS Code › provides vertex and compute contracts only in their configured stages",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "978121ba983c0ff9c61f-4b2a075e6d63a722085e:",
+    "title": "language-servers.e2e.mjs › Shader language servers in VS Code › publishes GLSL parser, Slang compiler, and WGSL service diagnostics",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "c4005cb3607e1e1b7838-d7fd1f85e03564ef295f:",
+    "title": "named-channels.e2e.mjs › edits, saves and reloads glsl named sampling in VS Code",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "c4005cb3607e1e1b7838-91891f3ff6fe32f34096:",
+    "title": "named-channels.e2e.mjs › edits, saves and reloads slang named sampling in VS Code @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "c4005cb3607e1e1b7838-4a116603b34cfbbf1543:",
+    "title": "named-channels.e2e.mjs › edits, saves and reloads wgsl named sampling in VS Code @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "c4005cb3607e1e1b7838-ba2450c351d247b249e4:",
+    "title": "named-channels.e2e.mjs › WGSL Common diagnostics retain authored ownership and line after editing and reopening @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "c4005cb3607e1e1b7838-bb908c1bc68c800827cf:",
+    "title": "named-channels.e2e.mjs › WGSL compute recovers from implicit sampling through an editor correction, save and reload @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "c4005cb3607e1e1b7838-5f62a2b7eca68203e906:",
+    "title": "named-channels.e2e.mjs › WGSL hoisted directive diagnostics keep Image source coordinates @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "c4005cb3607e1e1b7838-a2a8d71f8984faa348ef:",
+    "title": "named-channels.e2e.mjs › WGSL hoisted directive diagnostics keep Common source coordinates @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "c4005cb3607e1e1b7838-631e9cdc9e5e968c575e:",
+    "title": "named-channels.e2e.mjs › WGSL hoisted directive diagnostics keep vertex source coordinates @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "7c3d273c727d8e292d2b-34fb77566000a11da7ca:",
+    "title": "open-config-shows-shader.e2e.mjs › opening a config file shows its own shader immediately, with no edit required",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "4520aa34a5b8958a17ec-e39c9fd36405a20107bc:",
+    "title": "overlay-common.e2e.mjs › GLSL common symbols in the Monaco overlay › reports no undefined identifier for a macro and a helper the common file owns",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "4520aa34a5b8958a17ec-06fe5f27690fabb1c639:",
+    "title": "overlay-common.e2e.mjs › GLSL common symbols in the Monaco overlay › hovers a common macro with its definition",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "b4c6966d9da6ab576fbc-f5706d7c4ef3b9172276:",
+    "title": "panel-focus.e2e.mjs › opening the preview does not take keyboard focus from typing in the shader editor",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "ec98ea2aa2e7c9e2d223-a7c724b9450d65d258ab:",
+    "title": "panel-locking.e2e.mjs › preview remains available while another file opens before its group is activated and locked",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "70cd01f50ed8c1dbd422-900f03252601f89be6a1:",
+    "title": "pause-error-tooltip.e2e.mjs › pause error tooltip geometry › overflows its own content rather than the pane",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "70cd01f50ed8c1dbd422-f84dd9566272f524ca27:",
+    "title": "pause-error-tooltip.e2e.mjs › pause error tooltip geometry › stays inside the pane on every edge",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "70cd01f50ed8c1dbd422-c2f005558d8da8a36ad7:",
+    "title": "pause-error-tooltip.e2e.mjs › pause error tooltip geometry › counts padding and border inside its measured cap",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "70cd01f50ed8c1dbd422-c57f5852bc921cb6ca23:",
+    "title": "pause-error-tooltip.e2e.mjs › pause error tooltip geometry › is not painted over by the panels around it",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "70cd01f50ed8c1dbd422-7bc34377ab4640eafb7b:",
+    "title": "pause-error-tooltip.e2e.mjs › pause error tooltip geometry › splits the compile into one block per diagnostic",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "70cd01f50ed8c1dbd422-1effc6fdc47984614463:",
+    "title": "pause-error-tooltip.e2e.mjs › pause error tooltip geometry › opens flush against the pause button, leaving no gap to cross",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "70cd01f50ed8c1dbd422-8f32ff83a0dee6e6aae9:",
+    "title": "pause-error-tooltip.e2e.mjs › pause error tooltip geometry › can be walked into from the pause button to copy the errors",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "8a51fccc5dc91145d7bd-066fdc8611870ef88c05:",
+    "title": "production-vsix.e2e.mjs › uses the installed production extension to render a WGSL shader @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "34825f506342eb81529b-f1a72dad73c661d99171:",
+    "title": "reset-startup.e2e.mjs › first GLSL panel initializes and resets when the first source arrives before the startup response",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "34825f506342eb81529b-a8bfaceda0505058e500:",
+    "title": "reset-startup.e2e.mjs › first GLSL panel initializes and resets when the first source is lost before the listener is ready",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "7a01cef424e28c49f0fc-487145d70fa65edd7246:",
+    "title": "script-constants-slang.e2e.mjs › a script constant across a bare-file preview slang @gpu › keeps the constant after opening a helper with no mainImage",
+    "environment": "gpu"
+  },
+  {
+    "id": "ccec73d610cd1c708bca-96468c4eef563b8eb9cf:",
+    "title": "script-constants-wgsl.e2e.mjs › a script constant across a bare-file preview wgsl @gpu › keeps the constant after opening a helper with no mainImage",
+    "environment": "gpu"
+  },
+  {
+    "id": "5d5b1ba13a051b2c20d1-a6f27bee17f9ac6a3b01:",
+    "title": "script-constants.e2e.mjs › a script constant across a bare-file preview glsl  › keeps the constant after opening a helper with no mainImage",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "db97dbd4b5f86dbec10b-2f30ebec778be7c3d0f5:",
+    "title": "script-context.e2e.mjs › the context a uniform script is given glsl  › matches the shader on resolution, time, and mouse - through a pause",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "db97dbd4b5f86dbec10b-d97852b94142db02d067:",
+    "title": "script-context.e2e.mjs › the context a uniform script is given slang @gpu › matches the shader on resolution, time, and mouse - through a pause",
+    "environment": "gpu"
+  },
+  {
+    "id": "db97dbd4b5f86dbec10b-b7d74ed16a22b124cfa7:",
+    "title": "script-context.e2e.mjs › the context a uniform script is given wgsl @gpu › matches the shader on resolution, time, and mouse - through a pause",
+    "environment": "gpu"
+  },
+  {
+    "id": "e10364874063235e93da-c9a8e3adbc6789b19f83:",
+    "title": "script-pause.e2e.mjs › a paused shader driven by a uniform script › stops changing while paused, and moves again when resumed",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "e10364874063235e93da-dee9ac5ab9315ff73f28:",
+    "title": "script-pause.e2e.mjs › a paused Slang shader driven by a uniform script @gpu › stops changing while paused, and moves again when resumed",
+    "environment": "gpu"
+  },
+  {
+    "id": "e10364874063235e93da-ddb58d3dbe3e7b7bc898:",
+    "title": "script-pause.e2e.mjs › a paused WGSL shader driven by a uniform script @gpu › stops changing while paused, and moves again when resumed",
+    "environment": "gpu"
+  },
+  {
+    "id": "8a254be05f6483135ef2-b2ce38bdb845b321cccb:",
+    "title": "script-polling-rate.e2e.mjs › GLSL script Max Polling Rate control › writes the chosen rate to the shader config and keeps it across a reload",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "8a254be05f6483135ef2-f9ae69244c91df0a9d4c:",
+    "title": "script-polling-rate.e2e.mjs › Slang @gpu script Max Polling Rate control › writes the chosen rate to the shader config and keeps it across a reload",
+    "environment": "gpu"
+  },
+  {
+    "id": "8a254be05f6483135ef2-08c5b1b61f6a29dd09dc:",
+    "title": "script-polling-rate.e2e.mjs › WGSL @gpu script Max Polling Rate control › writes the chosen rate to the shader config and keeps it across a reload",
+    "environment": "gpu"
+  },
+  {
+    "id": "3d1f983598b48d76b0ea-c286f299838e4d8e5ab4:",
+    "title": "script-runtime-glsl.e2e.mjs › script runtime parity glsl  › shows constant values even when the new backend cannot compile @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "3d1f983598b48d76b0ea-a0b877af62e2442e6547:",
+    "title": "script-runtime-glsl.e2e.mjs › script runtime parity glsl  › keeps a paused script snapshot when Reset recompiles the shader",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "3d1f983598b48d76b0ea-3119acc1289412009ac5:",
+    "title": "script-runtime-glsl.e2e.mjs › script runtime parity glsl  › updates script FPS after changing the renderer limit",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "1cb9f5c88b4c7ed5e5e8-520646ae23fe4dc6f9fb:",
+    "title": "script-runtime-slang.e2e.mjs › script runtime parity slang @gpu › shows constant values even when the new backend cannot compile @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "1cb9f5c88b4c7ed5e5e8-c4f9651302d63de6af36:",
+    "title": "script-runtime-slang.e2e.mjs › script runtime parity slang @gpu › keeps a paused script snapshot when Reset recompiles the shader",
+    "environment": "gpu"
+  },
+  {
+    "id": "1cb9f5c88b4c7ed5e5e8-b58c575836238e72a00d:",
+    "title": "script-runtime-slang.e2e.mjs › script runtime parity slang @gpu › updates script FPS after changing the renderer limit",
+    "environment": "gpu"
+  },
+  {
+    "id": "db8911bf8acdbc0bbcef-0604c746709038f01301:",
+    "title": "script-runtime-wgsl.e2e.mjs › script runtime parity wgsl @gpu › shows constant values even when the new backend cannot compile @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "db8911bf8acdbc0bbcef-84ba7ce031cafcd673a5:",
+    "title": "script-runtime-wgsl.e2e.mjs › script runtime parity wgsl @gpu › keeps a paused script snapshot when Reset recompiles the shader",
+    "environment": "gpu"
+  },
+  {
+    "id": "db8911bf8acdbc0bbcef-305df2f868111233208f:",
+    "title": "script-runtime-wgsl.e2e.mjs › script runtime parity wgsl @gpu › updates script FPS after changing the renderer limit",
+    "environment": "gpu"
+  },
+  {
+    "id": "e421c10191a7542d6f09-d2901a3f939e29052c08:",
+    "title": "script-uniform-error-slang.e2e.mjs › Slang @gpu uniform-script errors › shows the valid script uniform and constant value while the source fails",
+    "environment": "gpu"
+  },
+  {
+    "id": "e421c10191a7542d6f09-aeb28058622d9dafd3e4:",
+    "title": "script-uniform-error-slang.e2e.mjs › Slang @gpu uniform-script errors › names the missing script alongside the undeclared uniform, and clears once the script exists",
+    "environment": "gpu"
+  },
+  {
+    "id": "4ace34e15c53c73f460a-d5dd43c97b76cec91706:",
+    "title": "script-uniform-error-wgsl.e2e.mjs › WGSL @gpu uniform-script errors › shows the valid script uniform and constant value while the source fails",
+    "environment": "gpu"
+  },
+  {
+    "id": "4ace34e15c53c73f460a-39d71e184ee693017873:",
+    "title": "script-uniform-error-wgsl.e2e.mjs › WGSL @gpu uniform-script errors › names the missing script alongside the undeclared uniform, and clears once the script exists",
+    "environment": "gpu"
+  },
+  {
+    "id": "bb7d6896e80d68c9ed8f-1ea50d7c1a4bd87ce619:",
+    "title": "script-uniform-error.e2e.mjs › GLSL uniform-script errors › shows the valid script uniform and constant value while the source fails",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "bb7d6896e80d68c9ed8f-a7c9fd952c0ed87bd19c:",
+    "title": "script-uniform-error.e2e.mjs › GLSL uniform-script errors › names the missing script alongside the undeclared uniform, and clears once the script exists",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "22c84224861e748b98b8-a6b1b1f2bec94e357b10:",
+    "title": "script-uniforms-debug-panel.e2e.mjs › debug panel uniforms @gpu › glsl keeps script values out of the debug Uniforms section",
+    "environment": "gpu"
+  },
+  {
+    "id": "22c84224861e748b98b8-651ec4636a50ea3caace:",
+    "title": "script-uniforms-debug-panel.e2e.mjs › debug panel uniforms @gpu › slang keeps script values out of the debug Uniforms section",
+    "environment": "gpu"
+  },
+  {
+    "id": "22c84224861e748b98b8-49f9bf7e886e34466614:",
+    "title": "script-uniforms-debug-panel.e2e.mjs › debug panel uniforms @gpu › wgsl keeps script values out of the debug Uniforms section",
+    "environment": "gpu"
+  },
+  {
+    "id": "a503f73d1c3570e63ffb-19a26fc4862d1070da70:",
+    "title": "slang-broken-capture.e2e.mjs › Slang capture around a broken statement › captures the values declared above the break",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "a503f73d1c3570e63ffb-9706ac22350b7467f95c:",
+    "title": "slang-broken-capture.e2e.mjs › Slang capture around a broken statement › includes the value on the line immediately above the break",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "a503f73d1c3570e63ffb-2368be75b66cab2a79d9:",
+    "title": "slang-broken-capture.e2e.mjs › Slang capture around a broken statement › still reports that the shader itself does not compile",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "abed695a45ecafc604c2-bddcba7113653927bc22:",
+    "title": "slang-dedup.e2e.mjs › Slang dedup full app flows @gpu › renders and captures 24 texture inputs, updates aliases, and survives VS Code reload",
+    "environment": "gpu"
+  },
+  {
+    "id": "abed695a45ecafc604c2-0cdea67d3ace3715d9c8:",
+    "title": "slang-dedup.e2e.mjs › Slang dedup full app flows @gpu › renders and captures through the browser-connected UI and survives page reload",
+    "environment": "gpu"
+  },
+  {
+    "id": "82d6f564ce859fb2861c-5ab3af472e3f2cc2ccdb:",
+    "title": "slang-parity.e2e.mjs › Slang parity in the VS Code webview @gpu › keeps explicit parameter overrides and resets to deterministic defaults",
+    "environment": "gpu"
+  },
+  {
+    "id": "82d6f564ce859fb2861c-bbfa14e90fd6d4a74f38:",
+    "title": "slang-parity.e2e.mjs › Slang parity in the VS Code webview @gpu › honours inline rendering, normalize, and step controls",
+    "environment": "gpu"
+  },
+  {
+    "id": "82d6f564ce859fb2861c-682176609097bb5f014e:",
+    "title": "slang-parity.e2e.mjs › Slang parity in the VS Code webview @gpu › captures both declarations from one Slang statement",
+    "environment": "gpu"
+  },
+  {
+    "id": "82d6f564ce859fb2861c-498f1b47b84833665dfc:",
+    "title": "slang-parity.e2e.mjs › Slang parity in the VS Code webview @gpu › debugs native compute and linked common-module functions in the same VS Code window",
+    "environment": "gpu"
+  },
+  {
+    "id": "2ae4ebf9fe0a9d6f569a-10950097c6fc053325f6:",
+    "title": "slang-rename.e2e.mjs › renames a Slang local helper through F2 and saves every reference",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "2ae4ebf9fe0a9d6f569a-cc2fdfaf725dfbfd1d68:",
+    "title": "slang-rename.e2e.mjs › renames a Slang Common helper through F2 and saves every reference",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "74a495475daae8b9432f-be456fddfc97efd24ff6:",
+    "title": "swizzle-completion.e2e.mjs › native vector swizzle completion › GLSL replaces a typed swizzle prefix and compiles the preview",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "74a495475daae8b9432f-1b85be66c4248efc866c:",
+    "title": "swizzle-completion.e2e.mjs › native vector swizzle completion › Slang replaces a typed swizzle prefix and compiles the preview @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "74a495475daae8b9432f-b23e84be9f5c1ff4cf96:",
+    "title": "swizzle-completion.e2e.mjs › native vector swizzle completion › WGSL replaces a typed swizzle prefix and compiles the preview @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "75c5e8537b50fd6488db-bf8a5a6bf32a589b9098:",
+    "title": "websocket-origin.e2e.mjs › browser WebSocket access follows the confirmed web server port",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "15b945f901fbdaba970b-a70ce4a634f4b7454f0f:",
+    "title": "webview-window-focus.e2e.mjs › the preview webview while another worker opens a window › keeps the config panel add menu open",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "15b945f901fbdaba970b-29fa332f59801ad72da6:",
+    "title": "webview-window-focus.e2e.mjs › the preview webview while another worker opens a window › keeps the overlay suggest widget open",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "f8d11a8edaed14cc6a8f-412db1c463c53c54904c:",
+    "title": "wgsl-authoring.e2e.mjs › WGSL authoring in VS Code @gpu › recognizes .wgsl files and provides WGSL completions",
+    "environment": "gpu"
+  },
+  {
+    "id": "f8d11a8edaed14cc6a8f-6071b92946916216ca6f:",
+    "title": "wgsl-authoring.e2e.mjs › WGSL authoring in VS Code @gpu › accepts native WGSL vector and nonsquare matrix storage in the editor",
+    "environment": "gpu"
+  },
+  {
+    "id": "f8d11a8edaed14cc6a8f-a9df948f65353c837573:",
+    "title": "wgsl-authoring.e2e.mjs › WGSL authoring in VS Code @gpu › renames a Common WGSL helper across its configured pass",
+    "environment": "gpu"
+  },
+  {
+    "id": "f8d11a8edaed14cc6a8f-137c4b2d6d2ee7f43beb:",
+    "title": "wgsl-authoring.e2e.mjs › WGSL authoring in VS Code @gpu › publishes and clears WGSL diagnostics",
+    "environment": "gpu"
+  },
+  {
+    "id": "f8d11a8edaed14cc6a8f-714a33eebc80888a032c:",
+    "title": "wgsl-authoring.e2e.mjs › WGSL authoring in VS Code @gpu › captures WGSL variables at the existing cursor when enabling the debugger",
+    "environment": "gpu"
+  },
+  {
+    "id": "f8d11a8edaed14cc6a8f-3ee86054fb2716eb79bb:",
+    "title": "wgsl-authoring.e2e.mjs › WGSL authoring in VS Code @gpu › renders a WGSL shader in the preview and survives reload",
+    "environment": "gpu"
+  },
+  {
+    "id": "0db7d1bd4c5368d690bc-0a1198d8ebf97b6a0656:",
+    "title": "wgsl-broken-capture.e2e.mjs › WGSL capture around a broken statement › captures the values declared above the break",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "0db7d1bd4c5368d690bc-ead603bbc1f73eba23f6:",
+    "title": "wgsl-broken-capture.e2e.mjs › WGSL capture around a broken statement › includes the value on the line immediately above the break",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "0db7d1bd4c5368d690bc-4521e374d5a00d872db5:",
+    "title": "wgsl-broken-capture.e2e.mjs › WGSL capture around a broken statement › still reports that the shader itself does not compile",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "31c72dc6fa857874d0d2-675100f152b7bdba602b:",
+    "title": "wgsl-debug-parity.e2e.mjs › WGSL debug parity in the VS Code webview @gpu › captures a visible value from a configured Common pass",
+    "environment": "gpu"
+  },
+  {
+    "id": "31c72dc6fa857874d0d2-f12fa4466ea63f397d28:",
+    "title": "wgsl-debug-parity.e2e.mjs › WGSL debug parity in the VS Code webview @gpu › applies parameter overrides and loop caps while debugging a WGSL helper",
+    "environment": "gpu"
+  },
+  {
+    "id": "31c72dc6fa857874d0d2-d5f8817e1286e5befef6:",
+    "title": "wgsl-debug-parity.e2e.mjs › WGSL debug parity in the VS Code webview @gpu › captures a WGSL compute-pass local through an Image-linked output",
+    "environment": "gpu"
+  },
+  {
+    "id": "31c72dc6fa857874d0d2-33528ebf8f03d9f7c40b:",
+    "title": "wgsl-debug-parity.e2e.mjs › WGSL debug parity in the VS Code webview @gpu › captures WGSL 2x2 matrices in authored column order from Image and Common",
+    "environment": "gpu"
+  },
+  {
+    "id": "31c72dc6fa857874d0d2-cba06cdfcb7ba70c6083:",
+    "title": "wgsl-debug-parity.e2e.mjs › WGSL debug parity in the VS Code webview @gpu › applies step and normalize controls to WGSL inline and full-shader previews",
+    "environment": "gpu"
+  },
+  {
+    "id": "7357a8aa70c3fba65bd7-94c198c79cd62eff1da7:",
+    "title": "wgsl-entrypoint.e2e.mjs › opens a WGSL entry point with a return type before and after reloading VS Code @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "21d8adef35b0c628fede-8f7aac1b9f35358a5395:",
+    "title": "wgsl-file-creation.e2e.mjs › GLSL file creation in the VS Code config panel › uses the shader basename for scripts and creates a vertex hook",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "21d8adef35b0c628fede-9e0e8599decbe1473027:",
+    "title": "wgsl-file-creation.e2e.mjs › Slang file creation in the VS Code config panel @gpu › uses the shader basename for scripts and creates a vertex hook",
+    "environment": "gpu"
+  },
+  {
+    "id": "21d8adef35b0c628fede-8e362d23c926999fefcb:",
+    "title": "wgsl-file-creation.e2e.mjs › WGSL file creation in the VS Code config panel @gpu › uses the shader basename for scripts and creates a vertex hook",
+    "environment": "gpu"
+  },
+  {
+    "id": "80c8e0a8d56adc881c8f-1ca43cd79b3ea0085369:",
+    "title": "wgsl-inference-native.e2e.mjs › WGSL inference through the native VS Code editor @gpu › completes a direct normalize expression, persists inferred source, hovers it, and captures supported derived values",
+    "environment": "gpu"
+  },
+  {
+    "id": "16fb1dbc8f7685ee6210-ba0214fe25cf2e376d32:",
+    "title": "wgsl-language-parity.e2e.mjs › WGSL authoring parity in VS Code › shows service errors before compilation, yields each line to the renderer, and clears after typing a fix @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "16fb1dbc8f7685ee6210-8a0bd08db4756f4cf62e:",
+    "title": "wgsl-language-parity.e2e.mjs › WGSL authoring parity in VS Code › shows structured signature help while typing nested arguments",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "16fb1dbc8f7685ee6210-fb5bdf9652feaa978298:",
+    "title": "wgsl-language-parity.e2e.mjs › WGSL authoring parity in VS Code › edits vec3f and vec3<f32> swatches through the colour picker without changing their constructors",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "a59c3586e7880158a8be-c911fa67a07c8221c04a:",
+    "title": "wgsl-rename.e2e.mjs › renames a WGSL local helper through F2 and saves every reference",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "a59c3586e7880158a8be-7204adf5858154663814:",
+    "title": "wgsl-rename.e2e.mjs › renames a WGSL Common helper through F2 and saves every reference",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "919caa1601507fcd26bc-0a9bb05978c1a447788a:",
+    "title": "wgsl-script-uniform-debug.e2e.mjs › debugging a script-driven WGSL chain captures locals and lists no script uniforms @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "51f5e0fd5362ee469e98-13c7a6591ace806f7184:",
+    "title": "wgsl-textmate-scopes.e2e.mjs › WGSL TextMate scopes in VS Code › scopes generic bitcast calls and xyzw swizzles in the native inspector",
+    "environment": "non-gpu"
+  }
+]

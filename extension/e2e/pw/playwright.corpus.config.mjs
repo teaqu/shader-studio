@@ -24,7 +24,7 @@ export default defineConfig({
   expect: { timeout: 60_000 },
   forbidOnly: !!process.env.CI,
   retries: 0,
-  reporter: process.env.CI ? [['list'], ['github']] : [['list']],
+  reporter: process.env.CI ? [['list'], ['github'], ['json']] : [['list']],
   use: {
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',

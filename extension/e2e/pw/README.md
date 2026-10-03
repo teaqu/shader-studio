@@ -8,10 +8,34 @@ For per-session timing, set `SHADER_STUDIO_E2E_TIMINGS_FILE` to a writable
 `.jsonl` path. Each record includes the worker key, phase and duration in
 milliseconds. The phases distinguish VS Code cache lookup, optional VSIX seed
 installation, profile preparation, Electron launch, workbench and bridge
-readiness, extension-host readiness, test execution and teardown. Playwright's
-JSON reporter provides per-case durations. Measure whole-command time and peak
-process-tree memory separately. CI job timestamps are needed for runner
-queueing and dependency waits.
+readiness, extension-host readiness, test execution and teardown. Records also
+carry absolute start/end times, revision, run/attempt identity and worker PID.
+One-second process samples and teardown summaries report Electron descendant
+RSS by role; RSS sums include shared pages, and renderer/node-service roles do
+not uniquely identify a webview or extension host. The separate Chromium and
+Playwright worker require whole-command tree sampling when benchmarking.
+CI retains these measurements and the JSON reporter's per-case durations on
+success and failure. Job timestamps distinguish dependency and scheduling
+waits from execution; local test caches do not cache test execution.
+
+After building workspace dependencies, regenerate the machine-readable test
+inventory and verify the complementary CI selections with:
+
+    node .github/scripts/e2e-inventory.mjs /tmp/e2e-inventory.json
+
+The unit job retains this inventory on every run. Discovery errors, missing
+cases, overlapping selections and duplicates fail verification.
+The reviewed `expected-environments.json` also detects a removed case or a
+lost GPU annotation that would silently move it to the Linux selection.
+For intentional test additions/removals, append `--refresh-environments` to
+the command and review the manifest diff together with the contract change.
+
+Each window has a tracked owned process tree. Teardown first requests graceful
+`app.close()` with the existing 15-second bound, then uses TERM/KILL only for
+the tracked PIDs whose start identities still match. It verifies exit before
+stopping the private display or deleting the profile. An unverified exit fails
+teardown and retains the profile path; a cleanup error does not replace a
+launch/test exception. Forced cleanup and sampling gaps remain in diagnostics.
 
 ## Why Playwright
 
