@@ -5,6 +5,20 @@ const shaderPath = join(workspacePath, 'broken-capture.glsl');
 
 test.use({ vscodeKey: 'debug-compile-errors' });
 
+async function waitForScope(vscode, line, required, forbidden) {
+  let names;
+  await expect.poll(async () => {
+    const frame = await vscode.shaderFrame();
+    const state = await frame.evaluate(() => ({
+      header: document.querySelector('.header-info')?.textContent ?? '',
+      names: Array.from(document.querySelectorAll('.var-name'), el => el.textContent?.trim()),
+    }));
+    names = state.names;
+    return state.header.includes(`L${line + 1}`) && names.includes(required) && !names.includes(forbidden);
+  }, { message: `debug capture did not reach line ${line + 1} and its scope` }).toBe(true);
+  return names;
+}
+
 /**
  * Debug instrumentation truncates the shader body at the inspected line, so a
  * broken statement below it is not in what gets compiled. The instrumented
@@ -59,7 +73,7 @@ test.describe('compile errors while debug mode is on', () => {
 
     // Land inside the broken function first, then move out: the panel must
     // replace what it showed there rather than keep it around.
-    await new Promise((resolve) => setTimeout(resolve, 2500));
+    await waitForScope(vscode, 15, 'i', 'uv');
     await vscode.evaluateInHost(async (vscode, targetPath, line) => {
       const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
       const editor = await vscode.window.showTextDocument(document, {
@@ -77,8 +91,8 @@ test.describe('compile errors while debug mode is on', () => {
       { message: 'debug panel never followed the cursor to line 57', timeout: 30_000 },
     ).toContain('L57');
     await expect.poll(async () => {
-      const names = await frame.locator('.variables-section .var-name').count();
-      if (names > 0) {
+      const names = await frame.locator('.variables-section .var-name').allTextContents();
+      if (names.includes('uv') && !names.includes('i')) {
         return 'captured';
       }
       return frame.evaluate(() => JSON.stringify({
@@ -147,7 +161,7 @@ test.describe('compile errors while debug mode is on', () => {
     // has to re-resolve the scope every time, not reuse the last one.
     const frame = await vscode.shaderFrame();
 
-    const inspect = async (line) => {
+    const inspect = async (line, required, forbidden) => {
       await vscode.evaluateInHost(async (vscode, targetPath, zeroBased) => {
         const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
         const editor = await vscode.window.showTextDocument(document, {
@@ -157,17 +171,14 @@ test.describe('compile errors while debug mode is on', () => {
         editor.selection = new vscode.Selection(position, position);
         editor.revealRange(new vscode.Range(position, position));
       }, shaderPath, line);
-      await new Promise((resolve) => setTimeout(resolve, 2500));
-      return (await vscode.shaderFrame()).evaluate(() => Array.from(
-        document.querySelectorAll('.var-name'), (el) => el.textContent?.trim(),
-      ));
+      return waitForScope(vscode, line, required, forbidden);
     };
 
     expect(await frame.locator('.variables-section').count()).toBeGreaterThan(0);
 
     // Inside noise(), then out to mainImage, then back in again.
-    for (const [line, forbidden] of [[15, 'uv'], [56, 'i'], [15, 'uv'], [40, 'i']]) {
-      const names = await inspect(line);
+    for (const [line, required, forbidden] of [[15, 'i', 'uv'], [56, 'uv', 'i'], [15, 'i', 'uv'], [40, 'uv', 'i']]) {
+      const names = await inspect(line, required, forbidden);
       expect(names, `line ${line + 1} showed ${forbidden}`).not.toContain(forbidden);
     }
   });
