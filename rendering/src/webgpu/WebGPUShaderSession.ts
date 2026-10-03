@@ -377,7 +377,7 @@ export class WebGPUShaderSession {
         nextCustomUniformManager, prospectiveInstalledCompile, resourceKey,
         path, config, sessionChanged, appliesReset, resetGeneration,
       }, () => {
-        published = true; 
+        published = true;
       });
 
       this.host.diagnostics.logCompileTiming("success", {
