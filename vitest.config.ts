@@ -8,6 +8,21 @@ export default defineConfig({
     // sweeps past their timeouts; the cap keeps total workers near the core
     // count no matter how many projects are listed below.
     maxWorkers: 4,
+    coverage: {
+      // V8 precise profiling slows the exhaustive Slang sweep enough to exceed its
+      // unchanged timeout. Istanbul limits instrumentation to our source scope.
+      provider: 'istanbul',
+      include: ['debug/src/**/*.ts', 'rendering/src/**/*.ts', 'ui/src/**/*.{ts,svelte}'],
+      exclude: ['**/*.d.ts', '**/test/**', '**/tests/**', '**/*.test.*', '**/*.spec.*', '**/generated/**', 'ui/src/slang/**'],
+      reporter: ['text', 'json-summary', 'json', 'html'],
+      reportOnFailure: true,
+      // Package ratchets measured with the full unit suite (Istanbul).
+      thresholds: {
+        'debug/src/**': { statements: 90, branches: 82.5, functions: 96, lines: 89.5 },
+        'rendering/src/**': { statements: 92, branches: 85.5, functions: 93, lines: 92 },
+        'ui/src/**': { statements: 90, branches: 79.5, functions: 85.5, lines: 90.5 },
+      },
+    },
     projects: [
       'types/vitest.config.ts',
       'standalone/vitest.config.ts',

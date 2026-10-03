@@ -8,18 +8,11 @@ import svelte from "eslint-plugin-svelte";
 // epic (split WebGPURenderingEngine, language services/parsers, MenuBar, and
 // the ShaderViewer session refactor).
 const oversizedFileBaseline = [
-  "debug/src/slang/SlangStructuralParser.ts",
-  "language-servers/glsl-analysis/src/parseGlslDocument.ts",
-  "language-servers/slang/src/SlangLanguageService.ts",
-  "language-servers/wgsl-analysis/src/parseWgslDocument.ts",
-  "language-servers/wgsl/src/WgslLanguageService.ts",
-  "rendering/src/webgpu/WebGPURenderingEngine.ts",
-  "ui/src/lib/components/MenuBar.svelte",
   "ui/src/lib/components/ShaderViewer.svelte",
 ];
 
-// Counted without blank lines and comments. AGENTS.md asks for a split well
-// before this, at around 800 lines.
+// Counted without blank lines and comments. The ~800-line guidance in
+// AGENTS.md is a design review trigger; this is the existing lint ceiling.
 const MAX_LINES = 1200;
 
 const sharedRules = {
@@ -117,6 +110,10 @@ export default [{
     "no-console": "off",
     "@typescript-eslint/no-explicit-any": "off",
   },
+}, {
+  // Generated files do not benefit from handwritten file-size limits.
+  files: ["**/generated/**", "**/*.generated.ts"],
+  rules: { "max-lines": "off", "max-lines-per-function": "off", complexity: "off" },
 }, {
   files: oversizedFileBaseline,
   rules: {

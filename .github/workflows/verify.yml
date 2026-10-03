@@ -80,6 +80,12 @@ jobs:
       - name: Run ESLint
         run: npm run lint
 
+      - name: Check declared dependency boundaries
+        run: npm run knip
+
+      - name: Check workspace dependency boundaries
+        run: npm run boundaries
+
       - name: Build workspace dependencies
         run: npm run build:deps -w extension
 
@@ -137,8 +143,25 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Type check source and tests in every workspace
+        run: npm run typecheck
+
       - name: Run workspace Vitest suite
-        run: npm test
+        id: unit-tests
+        run: npm test -- --coverage
+
+      - name: Report package coverage
+        if: ${{ always() && (steps.unit-tests.outcome == 'success' || steps.unit-tests.outcome == 'failure') }}
+        run: npm run coverage:summary
+
+      - name: Upload unit coverage
+        if: ${{ always() && (steps.unit-tests.outcome == 'success' || steps.unit-tests.outcome == 'failure') }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: unit-coverage
+          path: coverage/
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Run UI type check
         run: npm run check -w ui
