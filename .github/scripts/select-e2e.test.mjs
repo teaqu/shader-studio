@@ -65,6 +65,7 @@ test('a pull request selects the jobs of the affected tasks', () => {
     'standalone-e2e': false,
     'vscode-e2e': false,
     'vscode-e2e-linux': false,
+    'cleanup-e2e': false,
   });
 });
 
@@ -79,6 +80,7 @@ test('the installed-VSIX task selects both the GPU and the no-GPU job', () => {
     'standalone-e2e': false,
     'vscode-e2e': true,
     'vscode-e2e-linux': true,
+    'cleanup-e2e': false,
   });
 });
 
@@ -301,8 +303,20 @@ test('controlled live cleanup selects both supported host lanes', () => {
   const decision = decide({ eventName: 'pull_request', labels: [],
     queryAffected: () => [item('shader-studio#test:e2e:vscode:cleanup:live')],
   });
-  assert.equal(selectedJobs(decision)['vscode-e2e'], true);
-  assert.equal(selectedJobs(decision)['vscode-e2e-linux'], true);
+  assert.equal(selectedJobs(decision)['cleanup-e2e'], true);
+  assert.equal(selectedJobs(decision)['vscode-e2e'], false);
+  assert.equal(selectedJobs(decision)['vscode-e2e-linux'], false);
   assert.equal(selectedJobs(decision)['rendering-e2e'], false);
   assert.equal(selectedJobs(decision)['standalone-e2e'], false);
+});
+
+test('controlled cleanup cannot add serial work to either installed suite', () => {
+  for (const job of ['vscode-e2e', 'vscode-e2e-linux']) {
+    assert.doesNotMatch(jobs[job], /test:e2e:vscode:cleanup:live/);
+    assert.match(jobs[job], /needs: package/);
+  }
+  assert.match(jobs['cleanup-e2e'] ?? '', /needs: package/);
+  assert.match(jobs['cleanup-e2e'] ?? '', /os: macos-15/);
+  assert.match(jobs['cleanup-e2e'] ?? '', /os: ubuntu-latest/);
+  assert.match(jobs['cleanup-e2e'] ?? '', /if: \$\{\{ always\(\) \}\}/);
 });

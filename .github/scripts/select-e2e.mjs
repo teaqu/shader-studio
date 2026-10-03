@@ -16,8 +16,7 @@ export const suites = [
   { task: 'shader-studio#test:e2e:vscode:corpus', job: 'vscode-e2e', step: 'Run extension-host corpus E2E tests' },
   { task: 'shader-studio#test:e2e:vsix', job: 'vscode-e2e', step: 'Run installed-VSIX E2E tests' },
   { task: 'shader-studio#test:e2e:vsix', job: 'vscode-e2e-linux', step: 'Run installed-VSIX E2E tests' },
-  { task: 'shader-studio#test:e2e:vscode:cleanup:live', job: 'vscode-e2e', step: 'Validate controlled live Electron cleanup' },
-  { task: 'shader-studio#test:e2e:vscode:cleanup:live', job: 'vscode-e2e-linux', step: 'Validate controlled live Electron cleanup' },
+  { task: 'shader-studio#test:e2e:vscode:cleanup:live', job: 'cleanup-e2e', step: 'Validate controlled live Electron cleanup' },
 ];
 
 export const taskNames = [...new Set(suites.map(suite => suite.task.split('#')[1]))];
