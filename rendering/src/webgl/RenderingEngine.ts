@@ -380,6 +380,7 @@ export class RenderingEngine implements RenderingEngineInterface {
       } catch (error) {
         return { success: false, errors: [error instanceof Error ? error.message : String(error)] };
       }
+      this.passRenderer.installShaderCamera(path);
       const shaderTime = this.timeManager.getCurrentTime(performance.now());
       const paused = this.timeManager.isPaused();
       this.resourceManager.syncAllVideosToTime(shaderTime);
