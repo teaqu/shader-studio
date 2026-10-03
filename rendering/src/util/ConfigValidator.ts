@@ -262,6 +262,9 @@ export class ConfigValidator {
       errors.push("Image pass cannot define outputFormat");
     }
     errors.push(...validatePassRenderSettings(pass, "Image"));
+    if (pass.useViewerCamera !== undefined && typeof pass.useViewerCamera !== "boolean") {
+      errors.push("useViewerCamera must be a boolean");
+    }
 
     if (pass.inputs) {
       this.validateInputs(pass.inputs, 'Image', errors);
@@ -278,6 +281,9 @@ export class ConfigValidator {
     }
 
     errors.push(...validatePassRenderSettings(pass, passName));
+    if (pass.useViewerCamera !== undefined && typeof pass.useViewerCamera !== "boolean") {
+      errors.push("useViewerCamera must be a boolean");
+    }
 
     if (pass.inputs) {
       this.validateInputs(pass.inputs, passName, errors);

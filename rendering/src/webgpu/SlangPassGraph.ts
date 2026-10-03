@@ -11,7 +11,8 @@ import type {
 import { assignInputSlots } from "../util/InputSlotAssigner";
 import { getNativeComputeEntryPoints } from "./SlangPrelude";
 import { getWgslComputeEntryPoints, maskWgslNonCode } from "./WgslPrelude";
-import { resolveInstanceDraw, resolveMeshTopology, resolvePassGeometry, resolvePassRenderSettings, resolveVerticesDraw, type InstanceDrawConfig, type VerticesDrawConfig } from "../types/Geometry";
+import { resolveInstanceDraw, resolveMeshTopology, resolvePassGeometry, resolvePassRenderSettings, resolveVerticesDraw } from "../types/Geometry";
+import { createImagePass, resolveMeshSettings } from "./RenderPassGeometry";
 import { parseSlangStructs } from "./slangStructSize";
 import { parseWgslStructs } from "./wgslStructSize";
 import { resolveRenderEntryPoints } from "./RenderEntryPointResolution";
@@ -272,11 +273,11 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       source,
       language,
       geometry: resolvePassGeometry(passConfig),
-      ...resolveModelGeometry(passConfig),
       ...resolveVerticesDraw(passConfig),
       ...resolveInstanceDraw(passConfig),
       ...resolveMeshTopology(passConfig),
       ...resolvePassRenderSettings(passConfig),
+      ...resolveMeshSettings(passConfig),
       vertexSrc: options.buffers[vertexPassKey(name)],
       ...(entryPoints ? { entryPoints } : {}),
       path,
@@ -305,7 +306,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
     warnings,
     errors,
   });
-  const imagePass = createImagePass(options.imageCode, canvasWidth, canvasHeight, imageChannels, resolvePassGeometry(imageConfig), options.buffers[vertexPassKey("Image")], resolveModelGeometry(imageConfig), language, { ...resolveVerticesDraw(imageConfig), ...resolveInstanceDraw(imageConfig), ...resolveMeshTopology(imageConfig), ...resolvePassRenderSettings(imageConfig) });
+  const imagePass = createImagePass(options.imageCode, canvasWidth, canvasHeight, imageChannels, resolvePassGeometry(imageConfig), options.buffers[vertexPassKey("Image")], resolveMeshSettings(imageConfig), language, { ...resolveVerticesDraw(imageConfig), ...resolveInstanceDraw(imageConfig), ...resolveMeshTopology(imageConfig), ...resolvePassRenderSettings(imageConfig) });
   const imageEntryPoints = resolveRenderEntryPoints("Image", imageConfig, options.imageCode, language, errors);
   if (imageEntryPoints === null) {
     return { passes: [...computePasses, ...renderPasses], storage, commonCode, warnings, errors };
@@ -323,44 +324,6 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
   assignChannelReadTiming(passes);
 
   return { passes, storage, commonCode, warnings, errors };
-}
-
-function createImagePass(
-  source: string,
-  width: number,
-  height: number,
-  channels: RenderPassChannel[],
-  geometry: ReturnType<typeof resolvePassGeometry>,
-  vertexSrc?: string,
-  modelGeometry: { modelPath?: string; modelMesh?: string } = {},
-  language: ShaderLanguageId = "slang",
-  drawSettings: VerticesDrawConfig & InstanceDrawConfig & RenderPassSettings = {},
-): RenderPassNode {
-  return {
-    name: "Image",
-    source,
-    language,
-    geometry,
-    ...modelGeometry,
-    ...drawSettings,
-    vertexSrc,
-    kind: "render",
-    output: "canvas",
-    outputLayers: 1,
-    dispatchCount: 1,
-    dispatchOnce: false,
-    workgroupSize: [...TEXEL_WORKGROUP_SIZE],
-    width,
-    height,
-    channels,
-  };
-}
-
-function resolveModelGeometry(pass: { geometry?: { type: string; path?: string; mesh?: string; resolved_path?: string } } | undefined): { modelPath?: string; modelMesh?: string } {
-  if (pass?.geometry?.type !== "model") {
-    return {};
-  }
-  return { modelPath: pass.geometry.resolved_path ?? pass.geometry.path, modelMesh: pass.geometry.mesh };
 }
 
 function resolveOutputLayersByPass(

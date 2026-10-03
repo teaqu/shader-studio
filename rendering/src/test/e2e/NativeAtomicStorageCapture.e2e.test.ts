@@ -4,11 +4,12 @@ import type { DebugWorkspace, ShaderConfig } from "@shader-studio/types";
 import type { CaptureResult, IVariableCapturer } from "../../capture/VariableCapturer";
 import { createShaderCanvasHarness } from "./ShaderCanvasHarness";
 
-async function collect(capturer: IVariableCapturer): Promise<CaptureResult[]> {
+async function collect(capturer: IVariableCapturer, expectedCount: number): Promise<CaptureResult[]> {
   const deadline = performance.now() + 5_000;
+  const results: CaptureResult[] = [];
   while (performance.now() < deadline) {
-    const results = capturer.collectResults();
-    if (results.length > 0) {
+    results.push(...capturer.collectResults());
+    if (results.length >= expectedCount) {
       return results;
     }
     await new Promise(resolve => setTimeout(resolve, 0));
@@ -63,7 +64,8 @@ it("runs native fragment atomic capture against a storage snapshot", { timeout: 
       const captures = plan.plan.captureSlots.map(slot => ({ varName: slot.name, varType: slot.typeName, captureShader: root.source, selectorIndex: slot.index, hidden: slot.hidden, debugPlan: plan.plan }));
       expect({ issued: await capturer.issueCaptureAtPixel(captures, 0, 0, 2, 2, harness.engine.getCaptureUniforms()), error: capturer.getLastError() })
         .toEqual({ issued: captures.length, error: null });
-      const captured = (await collect(capturer)).find(result => result.varName === "capturedValue")!;
+      const captured = (await collect(capturer, captures.length)).find(result => result.varName === "capturedValue")!;
+      expect(captured).toBeDefined();
       expect(captured.rgba[0]).toBeGreaterThanOrEqual(before);
     } finally {
       capturer.dispose();

@@ -13,6 +13,19 @@ const computeCode = `[shader("compute")]
 void computeKernel(uint3 id : SV_DispatchThreadID) {}`;
 
 describe("buildSlangPassGraph", () => {
+  it.each([undefined, true, false])("retains the viewer-camera choice %s on Image and Buffer independently", useViewerCamera => {
+    const graph = buildSlangPassGraph({ imageCode, buffers: { BufferA: imageCode }, canvasWidth: 80, canvasHeight: 80,
+      config: { version: "1.0", passes: {
+        Image: { geometry: { type: "cube" }, useViewerCamera },
+        BufferA: { path: "a.slang", geometry: { type: "model", path: "mesh.glb" }, useViewerCamera },
+      } } });
+    expect(graph.errors).toEqual([]);
+    for (const pass of graph.passes) {
+      expect(pass.useViewerCamera).toBe(useViewerCamera);
+    }
+    expect(graph.passes[0]?.modelPath).toBe("mesh.glb");
+  });
+
   it("creates an Image pass when no config is provided", () => {
     const graph = buildSlangPassGraph({
       imageCode,

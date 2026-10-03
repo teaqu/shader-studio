@@ -405,7 +405,8 @@ export class SlangComputePipeline {
         depthOrArrayLayers: this.descriptor.outputLayers,
       },
       format: this.descriptor.bufferTextureFormat || "rgba16float",
-      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+      // Fragment captures freeze sampled compute outputs with texture copies.
+      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
     });
   }
 

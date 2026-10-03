@@ -51,6 +51,7 @@
   import ChannelConfigModal from "./ChannelConfigModal.svelte";
   import ComputePassControls from "./ComputePassControls.svelte";
   import RenderEntryPointControls from "./RenderEntryPointControls.svelte";
+  import GeometrySelector from "./GeometrySelector.svelte";
   import PathInput from "./PathInput.svelte";
   import DepthTestingControls from "./DepthTestingControls.svelte";
   import { getEditorOverlayVisible, setEditorOverlayVisible, setOverlayActiveFile } from "../../state/editorOverlayState.svelte";
@@ -60,6 +61,7 @@
   import { listGlbMeshNames } from "../../../../../rendering/src/preview3d/GltfMeshLoader";
 
   type EditableConfig = BufferPass | ImagePass | ComputePass;
+  type RenderConfig = (BufferPass | ImagePass) & { useViewerCamera?: boolean };
 
   type BufferConfigProps = {
     bufferName: string;
@@ -211,6 +213,7 @@
     .join('')}`);
   let vertexCountError = $state<string | null>(null);
   let instanceCountError = $state<string | null>(null);
+  const showViewerCamera = $derived(isWebGpuLanguage && selectedGeometry !== 'fullscreen' && selectedGeometry !== 'vertices');
   const modelUrl = $derived(modelGeometry?.resolved_path ?? (modelGeometry ? getWebviewUri(modelGeometry.path) : undefined));
 
   let currentPath = $state("path" in config ? config.path : "");
@@ -662,6 +665,12 @@
     updateConfig({ ...renderConfig, geometry: { type: 'model', path: modelGeometry?.path ?? '', ...(mesh ? { mesh } : {}), ...carriedMeshTopology(), ...carriedInstanceCount() } });
   }
 
+  function handleUseViewerCameraChange(useViewerCamera: boolean) {
+    if (passType !== 'compute') {
+      updateConfig({ ...(config as RenderConfig), useViewerCamera });
+    }
+  }
+
   function handleVertexPathChange(path: string) {
     if (passType === 'compute') {
       return;
@@ -923,19 +932,13 @@
 
     {#if bufferName !== "common" && passType !== 'compute'}
       <div class="config-item geometry-section">
-        <h3 class="section-title">Geometry</h3>
-        <select
-          aria-label="Geometry"
-          value={selectedGeometry}
-          onchange={(event) => handleGeometryChange((event.currentTarget as HTMLSelectElement).value as GeometryType)}
-        >
-          <option value="fullscreen">Fullscreen</option>
-          <option value="vertices">Vertices</option>
-          <option value="plane">Plane</option>
-          <option value="cube">Cube</option>
-          <option value="sphere">Sphere</option>
-          <option value="model">GLB model</option>
-        </select>
+        <GeometrySelector
+          geometry={selectedGeometry}
+          {showViewerCamera}
+          useViewerCamera={(config as RenderConfig).useViewerCamera ?? true}
+          onGeometryChange={handleGeometryChange}
+          onUseViewerCameraChange={handleUseViewerCameraChange}
+        />
         {#if modelGeometry}
           <PathInput
             label="Model file:"

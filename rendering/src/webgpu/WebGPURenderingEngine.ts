@@ -2738,7 +2738,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.device.queue.writeBuffer(pipeline.getUniformBuffer()!, 0, data);
       if (pass.geometry && pass.geometry !== "fullscreen" && pipeline.getMeshUniformBuffer?.()) {
         this.device.queue.writeBuffer(pipeline.getMeshUniformBuffer()!, 0,
-          meshUniformData(this.meshCamera, pass.width, pass.height));
+          meshUniformData(this.meshCamera, pass.width, pass.height, pass.useViewerCamera));
       }
 
       const targetView = pass.output === "canvas"
@@ -2748,7 +2748,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         continue;
       }
       const meshData = pass.geometry && pass.geometry !== "fullscreen"
-        ? meshUniformData(this.meshCamera, pass.width, pass.height)
+        ? meshUniformData(this.meshCamera, pass.width, pass.height, pass.useViewerCamera)
         : undefined;
       const captureUniforms: CaptureUniforms = {
         time: frameInput.time, timeDelta: frameInput.timeDelta, frameRate: frameInput.frameRate, frame: frameInput.frame,
@@ -3659,7 +3659,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
           this.renderedCaptureState.get(targetPass.name)?.bufferInputs) : null,
       nativeRender: nativeRasterCaptureContext(targetPass, () => this.meshResources, () =>
         this.renderedCaptureState.get(targetPass?.name ?? "")?.meshData
-          ?? meshUniformData(this.meshCamera, targetPass?.width ?? 1, targetPass?.height ?? 1),
+          ?? meshUniformData(this.meshCamera, targetPass?.width ?? 1, targetPass?.height ?? 1, targetPass?.useViewerCamera),
       Boolean(targetPass && this.passPipelines.get(targetPass.name)?.getDepthView())),
       ...(sourcePath ? { slangSourcePath: sourcePath } : {}),
     };

@@ -28,6 +28,42 @@ function getMainPathConfig(container: HTMLElement): HTMLElement {
 }
 
 describe('BufferConfig', () => {
+  it('defaults the WebGPU mesh camera on and persists an explicit opt-out', async () => {
+    const onUpdate = vi.fn();
+    const view = render(BufferConfig, { bufferName: 'Image', isImagePass: true, language: 'wgsl',
+      config: { geometry: { type: 'cube' } }, onUpdate, getWebviewUri: () => undefined });
+    const checkbox = view.getByRole('checkbox', { name: 'Use viewer camera' });
+    expect(checkbox).toBeChecked();
+    await fireEvent.click(checkbox);
+    expect(onUpdate).toHaveBeenCalledWith('Image', expect.objectContaining({ useViewerCamera: false, geometry: { type: 'cube' } }));
+  });
+
+  it('shows the camera control for native WebGPU meshes and preserves its selected state', async () => {
+    const onUpdate = vi.fn();
+    const view = render(BufferConfig, {
+      bufferName: 'BufferA', language: 'wgsl',
+      config: { path: 'a.wgsl', geometry: { type: 'sphere' }, entryPoints: { vertex: 'vertices' }, useViewerCamera: false },
+      onUpdate, getWebviewUri: () => undefined,
+    });
+
+    const checkbox = view.getByRole('checkbox', { name: 'Use viewer camera' });
+    expect(checkbox).not.toBeChecked();
+    expect(view.getByLabelText('Geometry')).toHaveValue('sphere');
+    await fireEvent.click(checkbox);
+    expect(onUpdate).toHaveBeenLastCalledWith('BufferA', expect.objectContaining({ useViewerCamera: true, geometry: { type: 'sphere' } }));
+  });
+
+  it.each([
+    ['GLSL mesh', { language: 'glsl', config: { path: 'a.glsl', geometry: { type: 'cube' } } }],
+    ['WebGPU fullscreen', { language: 'wgsl', config: { path: 'a.wgsl' } }],
+    ['compute pass', { language: 'wgsl', passType: 'compute' as const, config: { path: 'a.wgsl', geometry: { type: 'cube' } } }],
+  ])('hides the viewer camera control for %s', (_label, props) => {
+    const view = render(BufferConfig, {
+      bufferName: 'BufferA', onUpdate: vi.fn(), getWebviewUri: () => undefined, ...props,
+    } as any);
+    expect(view.queryByRole('checkbox', { name: 'Use viewer camera' })).toBeNull();
+  });
+
   it('keeps the implicit first output, caps additions by device format capacity, and preserves configured outputs', async () => {
     const onUpdate = vi.fn();
     const { getByLabelText, getByText, rerender } = render(BufferConfig, {
