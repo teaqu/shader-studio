@@ -14,15 +14,11 @@ import type {
 import { tokenizeWgsl, type WgslToken } from "./tokenizer.js";
 import { isBuiltinValueType } from "./wgslTypes.js";
 import { inferWgslExpressionType } from "./inferWgslExpressionType.js";
-
-export type WgslExpression =
-  | { readonly kind: "identifier"; readonly name: string }
-  | { readonly kind: "literal"; readonly text: string }
-  | { readonly kind: "call"; readonly name: string; readonly callee?: string; readonly templateArguments?: readonly string[]; readonly args: readonly WgslExpression[] }
-  | { readonly kind: "member"; readonly object: WgslExpression; readonly member: string }
-  | { readonly kind: "index"; readonly object: WgslExpression; readonly index: WgslExpression }
-  | { readonly kind: "unary"; readonly operator: string; readonly operand: WgslExpression }
-  | { readonly kind: "binary"; readonly operator: string; readonly left: WgslExpression; readonly right: WgslExpression };
+import { buildLineStarts, comparePosition, containsDocumentRange, splitDeclarationInitializer, wgslHostGlobalType } from "./WgslDocumentSupport.js";
+import { WgslExpressionParser } from "./WgslExpressionParser.js";
+import type { WgslExpression } from "./WgslExpression.js";
+export { symbolAtPosition, visibleSymbolsAtPosition } from "./WgslDocumentSupport.js";
+export type { WgslExpression } from "./WgslExpression.js";
 
 interface MutableSymbol {
   id: string;
@@ -96,11 +92,33 @@ class WgslParser {
   private readonly hostGlobalIds = new Set<string>();
   /** End offset of the last token consumed, where a statement ends. */
   private lastConsumedEnd = 0;
+  private readonly expressionParser: WgslExpressionParser;
 
   constructor(source: string, private readonly context: WgslInferenceContext = {}) {
     this.source = source;
     this.tokens = tokenizeWgsl(source);
     this.lineStarts = buildLineStarts(source);
+    this.expressionParser = new WgslExpressionParser({
+      source,
+      peek: () => this.peek(),
+      advance: () => this.advance(),
+      atEnd: () => this.atEnd(),
+      checkText: (text) => this.checkText(text),
+      error: (message, token) => this.error(message, token),
+      recoverToStatementEnd: () => this.recoverToStatementEnd(),
+      parseTemplateArgs: () => this.parseTemplateArgs(),
+      recordValueReference: (name, token, isCall) => this.recordValueReference(name, token, isCall),
+      snapshotSideEffects: () => this.snapshotSideEffects(),
+      restoreSideEffects: (snapshot) => this.restoreSideEffects(snapshot as ReturnType<WgslParser["snapshotSideEffects"]>),
+      snapshotCursor: () => ({ index: this.index, pending: [...this.pending], lastConsumedEnd: this.lastConsumedEnd }),
+      restoreCursor: (snapshot) => {
+        const cursor = snapshot as { index: number; pending: WgslToken[]; lastConsumedEnd: number };
+        this.index = cursor.index;
+        this.pending.length = 0;
+        this.pending.push(...cursor.pending);
+        this.lastConsumedEnd = cursor.lastConsumedEnd;
+      },
+    });
   }
 
   parseDocument(uri: string, stage: ShaderStage): WgslAnalysisDocument {
@@ -1286,263 +1304,19 @@ class WgslParser {
     this.statements.push({ kind, start, end: this.statementEnd(), scopeId });
   }
 
-  /**
-   * An expression that may be an assignment. The left side can be an
-   * identifier, a member or index access chain, or a pointer dereference.
-   */
+  /** An expression that may be an assignment. */
   private parseAssignmentExpression(): WgslExpression | undefined {
-    const expression = this.parseExpression();
-    const isAssignable = expression?.kind === "identifier"
-      || expression?.kind === "member"
-      || expression?.kind === "index"
-      || (expression?.kind === "unary" && expression.operator === "*");
-    if (isAssignable && ASSIGNMENT_OPERATORS.has(this.peek().text)) {
-      const operator = this.advance().text;
-      const rhs = this.parseExpression();
-      if (!rhs) {
-        this.error(`Expected a value after '${operator}'.`, this.peek());
-        return expression;
-      }
-      return { kind: "binary", operator, left: expression, right: rhs };
-    }
-    // WGSL only permits postfix increment/decrement as complete statements or
-    // as the update clause of a for loop. Keep them out of parsePostfix so an
-    // expression such as `let value = i++` remains a syntax error.
-    if (isAssignable && (this.checkText("++") || this.checkText("--"))) {
-      return { kind: "unary", operator: this.advance().text, operand: expression };
-    }
-    return expression;
+    return this.expressionParser.parseAssignmentExpression();
   }
-
-  // -- expressions --------------------------------------------------------------
 
   /** Entry point for expression parsing. Public for parseWgslExpression. */
   parseExpression(): WgslExpression | undefined {
-    return this.parseLogicalOr();
+    return this.expressionParser.parseExpression();
   }
 
-  private parseBinaryLevel(
-    parseOperand: () => WgslExpression | undefined,
-    operators: ReadonlySet<string>,
-  ): WgslExpression | undefined {
-    let left = parseOperand();
-    while (left && operators.has(this.peek().text)) {
-      const operator = this.advance().text;
-      const right = parseOperand();
-      if (!right) {
-        this.error(`Expected an operand after '${operator}'.`, this.peek());
-        return left;
-      }
-      left = { kind: "binary", operator, left, right };
-    }
-    return left;
-  }
-
-  private parseLogicalOr(): WgslExpression | undefined {
-    return this.parseBinaryLevel(() => this.parseLogicalAnd(), new Set(["||"]));
-  }
-
-  private parseLogicalAnd(): WgslExpression | undefined {
-    return this.parseBinaryLevel(() => this.parseBitwiseOr(), new Set(["&&"]));
-  }
-
-  private parseBitwiseOr(): WgslExpression | undefined {
-    return this.parseBinaryLevel(() => this.parseBitwiseXor(), new Set(["|"]));
-  }
-
-  private parseBitwiseXor(): WgslExpression | undefined {
-    return this.parseBinaryLevel(() => this.parseBitwiseAnd(), new Set(["^"]));
-  }
-
-  private parseBitwiseAnd(): WgslExpression | undefined {
-    return this.parseBinaryLevel(() => this.parseEquality(), new Set(["&"]));
-  }
-
-  private parseEquality(): WgslExpression | undefined {
-    return this.parseBinaryLevel(() => this.parseRelational(), new Set(["==", "!="]));
-  }
-
-  private parseRelational(): WgslExpression | undefined {
-    return this.parseBinaryLevel(() => this.parseShift(), new Set(["<", ">", "<=", ">="]));
-  }
-
-  private parseShift(): WgslExpression | undefined {
-    return this.parseBinaryLevel(() => this.parseAdditive(), new Set(["<<", ">>"]));
-  }
-
-  private parseAdditive(): WgslExpression | undefined {
-    return this.parseBinaryLevel(() => this.parseMultiplicative(), new Set(["+", "-"]));
-  }
-
-  private parseMultiplicative(): WgslExpression | undefined {
-    return this.parseBinaryLevel(() => this.parseUnary(), new Set(["*", "/", "%"]));
-  }
-
-  private parseUnary(): WgslExpression | undefined {
-    const token = this.peek();
-    if (token.text === "-" || token.text === "!" || token.text === "~" || token.text === "*" || token.text === "&") {
-      this.advance();
-      const operand = this.parseUnary();
-      if (!operand) {
-        this.error(`Expected an operand after '${token.text}'.`, this.peek());
-        return undefined;
-      }
-      return { kind: "unary", operator: token.text, operand };
-    }
-    return this.parsePostfix();
-  }
-
-  private parsePostfix(): WgslExpression | undefined {
-    let expression = this.parsePrimary();
-    while (expression) {
-      if (this.checkText(".")) {
-        this.advance();
-        const member = this.peek();
-        if (member.kind !== "identifier") {
-          this.error("Expected a member name after '.'.", member);
-          return expression;
-        }
-        this.advance();
-        expression = { kind: "member", object: expression, member: member.text };
-      } else if (this.checkText("[")) {
-        this.advance();
-        const index = this.parseExpression();
-        if (!this.checkText("]")) {
-          this.error("Expected ']' after the index expression.", this.peek());
-          return expression;
-        }
-        this.advance();
-        expression = { kind: "index", object: expression, index: index ?? { kind: "literal", text: "0" } };
-      } else {
-        return expression;
-      }
-    }
-    return expression;
-  }
-
-  private parsePrimary(): WgslExpression | undefined {
-    const token = this.peek();
-    if (token.kind === "intLiteral" || token.kind === "floatLiteral") {
-      this.advance();
-      return { kind: "literal", text: token.text };
-    }
-    if (token.kind === "keyword" && (token.text === "true" || token.text === "false")) {
-      this.advance();
-      return { kind: "literal", text: token.text };
-    }
-    if (token.text === "(") {
-      this.advance();
-      const inner = this.parseExpression();
-      if (!this.checkText(")")) {
-        this.error("Expected ')' after the parenthesized expression.", this.peek());
-        return inner;
-      }
-      this.advance();
-      return inner;
-    }
-    if (token.kind !== "identifier") {
-      this.error(`Unexpected '${token.text}' in expression position.`, token);
-      return undefined;
-    }
-    this.advance();
-    // A `<` after an identifier may open a template list (a type constructor
-    // or bitcast); otherwise it is a relational operator for the caller.
-    let name = token.text;
-    let isCall = false;
-    if (this.checkText("<")) {
-      const savedIndex = this.index;
-      const savedPending = [...this.pending];
-      const savedEffects = this.snapshotSideEffects();
-      const savedConsumedEnd = this.lastConsumedEnd;
-      const typeEnd = this.parseTemplateArgs();
-      if (typeEnd !== undefined && this.checkText("(")) {
-        name = this.source.slice(token.offset, typeEnd);
-        isCall = true;
-      } else {
-        this.lastConsumedEnd = savedConsumedEnd;
-        this.index = savedIndex;
-        this.pending.length = 0;
-        this.pending.push(...savedPending);
-        this.restoreSideEffects(savedEffects);
-      }
-    } else if (this.checkText("(")) {
-      isCall = true;
-    }
-    if (isCall) {
-      this.recordValueReference(token.text, token, true);
-      this.advance();
-      const args: WgslExpression[] = [];
-      while (!this.atEnd() && !this.checkText(")")) {
-        const argument = this.parseExpression();
-        if (argument) {
-          args.push(argument);
-        } else {
-          this.recoverToStatementEnd();
-          break;
-        }
-        if (this.checkText(",")) {
-          this.advance();
-        } else {
-          break;
-        }
-      }
-      if (!this.checkText(")")) {
-        this.error(`Expected ')' after the '${token.text}' arguments.`, this.peek());
-      } else {
-        this.advance();
-      }
-      return {
-        kind: "call",
-        name,
-        callee: token.text,
-        templateArguments: name === token.text ? undefined : splitTemplateArgumentText(name),
-        args,
-      };
-    }
-    this.recordValueReference(token.text, token, false);
-    return { kind: "identifier", name: token.text };
-  }
 }
 
-function buildLineStarts(source: string): number[] {
-  const starts = [0];
-  for (let index = 0; index < source.length; index++) {
-    if (source[index] === "\n") {
-      starts.push(index + 1);
-    }
-  }
-  return starts;
-}
-
-function splitTemplateArgumentText(name: string): string[] {
-  const start = name.indexOf("<");
-  if (start < 0 || !name.endsWith(">")) {
-    return [];
-  }
-  const arguments_: string[] = [];
-  let depth = 0;
-  let argumentStart = start + 1;
-  for (let index = argumentStart; index < name.length - 1; index++) {
-    const character = name[index];
-    if (character === "<") {
-      depth += 1;
-    } else if (character === ">") {
-      depth -= 1;
-    } else if (character === "," && depth === 0) {
-      arguments_.push(name.slice(argumentStart, index).trim());
-      argumentStart = index + 1;
-    }
-  }
-  arguments_.push(name.slice(argumentStart, -1).trim());
-  return arguments_.filter(Boolean);
-}
-
-export function parseWgslDocument(
-  uri: string,
-  source: string,
-  stage: ShaderStage,
-  context: WgslInferenceContext = {},
-): WgslAnalysisDocument {
+export function parseWgslDocument(uri: string, source: string, stage: ShaderStage, context: WgslInferenceContext = {}): WgslAnalysisDocument {
   return new WgslParser(source, context).parseDocument(uri, stage);
 }
 
@@ -1550,144 +1324,5 @@ export function parseWgslDocument(
 export function parseWgslExpression(source: string): WgslExpression | undefined {
   const parser = new WgslParser(source);
   const expression = parser.parseExpression();
-  if (expression && !parser.isAtEnd()) {
-    return undefined;
-  }
-  return expression;
-}
-
-function isValidPosition(source: string, position: Position): boolean {
-  const lines = source.split("\n");
-  const line = lines[position.line];
-  return line !== undefined && position.character >= 0 && position.character <= line.length;
-}
-
-function rangeContains(range: Range, position: Position): boolean {
-  return comparePosition(range.start, position) <= 0 && comparePosition(position, range.end) < 0;
-}
-
-function rangeContainsInclusiveEnd(range: Range, position: Position): boolean {
-  return comparePosition(range.start, position) <= 0 && comparePosition(position, range.end) <= 0;
-}
-
-function comparePosition(left: Position, right: Position): number {
-  return left.line - right.line || left.character - right.character;
-}
-
-function containsDocumentRange(outer: Range, inner: Range): boolean {
-  return comparePosition(outer.start, inner.start) <= 0 && comparePosition(inner.end, outer.end) <= 0;
-}
-
-const SLANG_TO_WGSL_TYPE: Record<string, string> = {
-  bool: "bool",
-  float: "f32",
-  float2: "vec2f",
-  float3: "vec3f",
-  float4: "vec4f",
-  int: "i32",
-  uint: "u32",
-};
-
-/** Maps a catalog slang type to its WGSL spelling, if it has a plain one. */
-function wgslHostGlobalType(slangType: string): string | undefined {
-  return SLANG_TO_WGSL_TYPE[slangType.trim()];
-}
-
-/**
- * Splits the initializer off a declaration statement's source: the first `=`
- * outside any bracket pair that is not part of `==`, `!=`, `<=`, or `>=`.
- * Returns undefined when there is no initializer or it cannot be isolated.
- */
-function splitDeclarationInitializer(
-  source: string,
-  statement: { start: Position; end: Position },
-): string | undefined {
-  const text = sliceSourceLines(source, statement.start, statement.end).replace(/;\s*$/, "").trim();
-  let depth = 0;
-  for (let index = 0; index < text.length; index += 1) {
-    const character = text[index]!;
-    if (character === "(" || character === "[" || character === "{") {
-      depth += 1;
-      continue;
-    }
-    if (character === ")" || character === "]" || character === "}") {
-      depth = Math.max(0, depth - 1);
-      continue;
-    }
-    if (character === "=" && depth === 0 && text[index + 1] !== "="
-      && text[index - 1] !== "=" && text[index - 1] !== "!" && text[index - 1] !== "<" && text[index - 1] !== ">") {
-      return text.slice(index + 1).trim() || undefined;
-    }
-  }
-  return undefined;
-}
-
-function sliceSourceLines(source: string, start: Position, end: Position): string {
-  const lines = source.split("\n");
-  if (start.line === end.line) {
-    return lines[start.line]?.slice(start.character, end.character) ?? "";
-  }
-  const parts: string[] = [lines[start.line]?.slice(start.character) ?? ""];
-  for (let line = start.line + 1; line < end.line; line += 1) {
-    parts.push(lines[line] ?? "");
-  }
-  parts.push(lines[end.line]?.slice(0, end.character) ?? "");
-  return parts.join("\n");
-}
-
-export function symbolAtPosition(
-  document: WgslAnalysisDocument,
-  position: Position,
-): WgslSymbol | null {
-  if (!isValidPosition(document.source, position)) {
-    return null;
-  }
-  for (const symbol of document.symbols) {
-    if (rangeContains(symbol.declaration, position)) {
-      return symbol;
-    }
-    if (symbol.references.some((reference) => rangeContains(reference, position))) {
-      return symbol;
-    }
-  }
-  return null;
-}
-
-export function visibleSymbolsAtPosition(
-  document: WgslAnalysisDocument,
-  position: Position,
-): readonly WgslSymbol[] {
-  if (!isValidPosition(document.source, position)) {
-    return [];
-  }
-  const containingScopes = document.scopes
-    .filter((scope) => rangeContainsInclusiveEnd(scope.range, position))
-    .sort((left, right) => comparePosition(right.range.start, left.range.start));
-  const innermost = containingScopes[0];
-  if (!innermost) {
-    return [];
-  }
-  const scopesById = new Map(document.scopes.map((scope) => [scope.id, scope]));
-  const symbolsById = new Map(document.symbols.map((symbol) => [symbol.id, symbol]));
-  const visible: WgslSymbol[] = [];
-  const hiddenNames = new Set<string>();
-  let scope: WgslScope | undefined = innermost;
-  while (scope) {
-    for (const symbolId of scope.symbolIds) {
-      const symbol = symbolsById.get(symbolId);
-      if (!symbol || comparePosition(symbol.declaration.start, position) > 0) {
-        continue;
-      }
-      const hidesByName = symbol.kind !== "function";
-      if (hidesByName && hiddenNames.has(symbol.name)) {
-        continue;
-      }
-      visible.push(symbol);
-      if (hidesByName) {
-        hiddenNames.add(symbol.name);
-      }
-    }
-    scope = scope.parentId ? scopesById.get(scope.parentId) : undefined;
-  }
-  return Object.freeze(visible);
+  return expression && parser.isAtEnd() ? expression : undefined;
 }
