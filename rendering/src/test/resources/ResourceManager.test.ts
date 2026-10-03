@@ -70,6 +70,7 @@ vi.mock("../../resources/VideoTextureManager", () => ({
       setGlobalAudioState: vi.fn(),
       isVideoPaused: vi.fn(),
       isVideoMuted: vi.fn(),
+      updateTextures: vi.fn(),
       cleanup: vi.fn(),
     };
   }),
@@ -878,6 +879,14 @@ describe("ResourceManager", () => {
       audioManager.getAudioFFTData.mockReturnValue(null);
 
       expect(resourceManager.getAudioFFTData("audio.mp3")).toBeNull();
+    });
+  });
+
+  describe("updateVideoTextures", () => {
+    it("should delegate to VideoTextureManager", () => {
+      const videoManager = (resourceManager as any).videoTextureManager;
+      resourceManager.updateVideoTextures();
+      expect(videoManager.updateTextures).toHaveBeenCalledTimes(1);
     });
   });
 

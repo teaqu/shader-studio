@@ -2500,6 +2500,7 @@ describe("WebGPURenderingEngine", () => {
         loadAudioSource: vi.fn(async () => audioHandle),
         updateAudioLoopRegion: vi.fn(),
         updateAudioTextures: vi.fn(),
+        updateVideoTextures: vi.fn(),
         getAudioTexture: vi.fn(() => audioHandle),
         getAudioState: vi.fn(() => ({
           paused: false, muted: true, currentTime: 1.75, duration: 3,
@@ -2523,6 +2524,7 @@ describe("WebGPURenderingEngine", () => {
       engine.render(1000);
 
       expect(resourceManager.updateAudioTextures).toHaveBeenCalledTimes(1);
+      expect(resourceManager.updateVideoTextures).toHaveBeenCalledTimes(1);
       expect(resourceManager.getAudioTexture).toHaveBeenCalledWith("/audio/test.wav");
       expect(device.createBindGroup.mock.calls[0][0].entries).toEqual([
         { binding: 0, resource: { buffer: expect.anything() } },

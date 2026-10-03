@@ -2539,6 +2539,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       }
 
       this.resourceManager?.updateAudioTextures?.();
+      this.resourceManager?.updateVideoTextures?.();
 
       const cameraDelta = this.lastCameraTimestamp === null
         ? 0
