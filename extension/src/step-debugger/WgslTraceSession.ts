@@ -124,10 +124,8 @@ export class WgslTraceSession {
       case 'stackTrace': {
         const current = this.current();
         this.respond(request, { stackFrames: [{ id: 1, name: 'mainImage', line: current.line,
-          // No shader extension/path on the virtual document: the existing
-          // inspector must not treat DAP line highlighting as shader cursors.
           column: current.column, source: {
-            name: `${this.recording!.path.split(/[\\/]/).at(-1)} (GPU recording)`, sourceReference: 1 } }], totalFrames: 1 });
+            name: this.recording!.path.split(/[\\/]/).at(-1), path: this.recording!.path, sourceReference: 0 } }], totalFrames: 1 });
         break;
       }
       case 'source':

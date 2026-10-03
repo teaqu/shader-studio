@@ -19,6 +19,7 @@
   import type { RenderingEngine as IRenderingEngine } from "../../../../rendering/src/types/RenderingEngine";
   import { createEngineForLanguage } from "../engineFactory";
   import { PixelInspectorManager } from "../PixelInspectorManager";
+  import { WgslTraceLaunchManager } from "../WgslTraceLaunchManager.svelte";
   import { ScriptRuntimeReporter } from "../ScriptRuntimeReporter";
   import { getInspectorState, setInspectorState, registerLockAtHandler } from "../state/pixelInspectorState.svelte";
   import { ShaderDebugManager } from "../ShaderDebugManager";
@@ -181,6 +182,7 @@
   const profileAdapter = new FileProfileAdapter(transport);
   let timeManager: any = null;
   let pixelInspectorManager: PixelInspectorManager | undefined;
+  let wgslTraceLaunchManager: WgslTraceLaunchManager | undefined;
   let shaderDebugManager = $state<ShaderDebugManager | undefined>(undefined);
   let variableCaptureManager = $state<VariableCaptureManager | undefined>(undefined);
   let audioVideoController = $state<AudioVideoController | undefined>(undefined);
@@ -1374,6 +1376,22 @@
       pixelInspectorManager.initialize(renderingEngine, timeManager, glCanvas);
       pixelInspectorManager.setEnabled($debugPanelStore.isPixelInspectorEnabled && debugState.isEnabled);
       registerLockAtHandler((x, y) => pixelInspectorManager?.lockToPosition(x, y));
+      wgslTraceLaunchManager = new WgslTraceLaunchManager({
+        transport,
+        getEngine: () => renderingEngine,
+        getViewerSession: () => {
+          const lastEvent = pipeline.getLastEvent()?.data;
+          return {
+            source: currentShaderCode,
+            path: shaderPath,
+            config: currentConfig,
+            isCurrentPreviewSource: errors.length === 0
+              && !pipeline.isCompiling()
+              && lastEvent?.path === shaderPath
+              && lastEvent?.code === currentShaderCode,
+          };
+        },
+      });
 
       variableCaptureManager = new VariableCaptureManager(renderingEngine, (vars) => {
         shaderDebugManager?.setCapturedVariables(vars);
@@ -1599,6 +1617,8 @@
     if (pixelInspectorManager) {
       pixelInspectorManager.dispose();
     }
+    wgslTraceLaunchManager?.dispose();
+    wgslTraceLaunchManager = undefined;
     if (renderingEngine) {
       renderingEngine.dispose();
     }

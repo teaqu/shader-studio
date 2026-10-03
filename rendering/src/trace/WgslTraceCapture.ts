@@ -49,9 +49,10 @@ export async function captureWgslTrace(launch: WgslTraceLaunch, signal?: AbortSi
       return buffer;
     };
     const uniforms = packShaderToyUniforms({ width: launch.width, height: launch.height,
-      time: launch.time, frame: launch.frame, timeDelta: 0, frameRate: 0,
-      mouse: [0, 0, 0, 0], date: [0, 0, 0, 0], cameraPos: [0, 0, 0], cameraDir: [0, 0, 0],
-      channelTime: [], channelLoaded: [], channelResolution: [], sampleRate: 44100 }, launch.customUniforms, launch.customUniforms);
+      time: launch.time, frame: launch.frame, timeDelta: launch.uniforms?.timeDelta ?? 0, frameRate: launch.uniforms?.frameRate ?? 0,
+      mouse: launch.uniforms?.mouse ?? [0, 0, 0, 0], date: launch.uniforms?.date ?? [0, 0, 0, 0],
+      cameraPos: launch.uniforms?.cameraPos ?? [0, 0, 0], cameraDir: launch.uniforms?.cameraDir ?? [0, 0, 0],
+      channelTime: [], channelLoaded: [], channelResolution: [], sampleRate: launch.uniforms?.sampleRate ?? 44100 }, launch.customUniforms, launch.customUniforms);
     const frameBuffer = makeBuffer(uniforms.byteLength, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST);
     device.queue.writeBuffer(frameBuffer, 0, uniforms);
     const selector = makeBuffer(16, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST);

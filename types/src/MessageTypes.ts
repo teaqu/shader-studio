@@ -5,6 +5,11 @@ import type { SlangDependencyDiagnostic, SlangSourceModule } from './SlangSource
 import type { ShaderAuthoringEnvironment } from './shader-environment/ShaderAuthoringEnvironment';
 import type { ShaderLanguageId } from './shader-environment/ShaderLanguages';
 
+export interface StartWgslTraceMessage {
+  type: 'startWgslTrace';
+  payload: Omit<import('./WgslTrace').WgslTraceLaunch, 'path'> & { program: string };
+}
+
 export interface BaseMessage {
   type: string;
 }
@@ -354,4 +359,4 @@ export interface ProfileDeleteProfileMessage extends BaseMessage {
   id: string;
 }
 
-export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | ShaderLockStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage | ResetLayoutMessage | ManualCompileMessage | SetCompileModeMessage | NavigateToBufferMessage | RequestWorkspaceFilesMessage | WorkspaceFilesMessage | ForkShaderMessage | GoToLineMessage | SaveFileMessage | SaveFileResultMessage | SelectFileMessage | CreateFileMessage | FileSelectedMessage | CustomUniformValuesMessage | RequestCustomUniformValuesMessage | ScriptRuntimeStateMessage | LanguageServiceSettingsMessage | ShaderAuthoringEnvironmentMessage | ProfileReadIndexMessage | ProfileIndexDataMessage | ProfileReadProfileMessage | ProfileDataMessage | ProfileWriteProfileMessage | ProfileWriteIndexMessage | ProfileDeleteProfileMessage;
+export type MessageEvent = StartWgslTraceMessage | LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | ShaderLockStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage | ResetLayoutMessage | ManualCompileMessage | SetCompileModeMessage | NavigateToBufferMessage | RequestWorkspaceFilesMessage | WorkspaceFilesMessage | ForkShaderMessage | GoToLineMessage | SaveFileMessage | SaveFileResultMessage | SelectFileMessage | CreateFileMessage | FileSelectedMessage | CustomUniformValuesMessage | RequestCustomUniformValuesMessage | ScriptRuntimeStateMessage | LanguageServiceSettingsMessage | ShaderAuthoringEnvironmentMessage | ProfileReadIndexMessage | ProfileIndexDataMessage | ProfileReadProfileMessage | ProfileDataMessage | ProfileWriteProfileMessage | ProfileWriteIndexMessage | ProfileDeleteProfileMessage;

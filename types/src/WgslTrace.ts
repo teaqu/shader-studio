@@ -1,5 +1,16 @@
 import { validateWgslTraceUniforms, type WgslTraceUniform } from './WgslTraceUniforms';
 
+/** Built-in inputs frozen from the preview when launching a pixel trace. */
+export interface WgslTraceFrameUniforms {
+  timeDelta?: number;
+  frameRate?: number;
+  mouse?: number[];
+  date?: number[];
+  cameraPos?: number[];
+  cameraDir?: number[];
+  sampleRate?: number;
+}
+
 /** Experimental single-file fragment tracing, independent of snapshot debugging. */
 export interface WgslTraceLaunch {
   source: string;
@@ -11,6 +22,7 @@ export interface WgslTraceLaunch {
   frame: number;
   capacity: number;
   customUniforms?: WgslTraceUniform[];
+  uniforms?: WgslTraceFrameUniforms;
 }
 
 export interface WgslTraceVariable {
@@ -63,6 +75,7 @@ export interface WgslTraceRecording {
 
 export function validateWgslTraceLaunch(launch: WgslTraceLaunch): void {
   validateWgslTraceUniforms(launch.customUniforms);
+  validateWgslTraceFrameUniforms(launch.uniforms);
   if (!launch.path.endsWith('.wgsl') || typeof launch.source !== 'string') {
     throw new Error('The trace PoC requires a .wgsl source file.');
   }
@@ -81,5 +94,26 @@ export function validateWgslTraceLaunch(launch: WgslTraceLaunch): void {
   }
   if (!Number.isInteger(launch.capacity) || launch.capacity < 1 || launch.capacity > 16384) {
     throw new Error('Trace capacity must be an integer from 1 to 16384.');
+  }
+}
+
+function validateWgslTraceFrameUniforms(uniforms: WgslTraceFrameUniforms | undefined): void {
+  if (uniforms === undefined) {
+    return;
+  }
+  if (!uniforms || typeof uniforms !== 'object' || Array.isArray(uniforms)) {
+    throw new Error('Trace frame inputs must be an object.');
+  }
+  const finiteFloat = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && Number.isFinite(Math.fround(value));
+  for (const key of ['timeDelta', 'frameRate', 'sampleRate'] as const) {
+    if (uniforms[key] !== undefined && !finiteFloat(uniforms[key])) {
+      throw new Error(`Trace ${key} must be a finite float.`);
+    }
+  }
+  for (const [key, width] of [['mouse', 4], ['date', 4], ['cameraPos', 3], ['cameraDir', 3]] as const) {
+    const value = uniforms[key];
+    if (value !== undefined && (!Array.isArray(value) || value.length !== width || !value.every(finiteFloat))) {
+      throw new Error(`Trace ${key} must contain ${width} finite floats.`);
+    }
   }
 }

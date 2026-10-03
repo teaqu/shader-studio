@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import type { WgslTraceLaunch, WgslTraceRecording, WgslTraceUniform } from '@shader-studio/types';
+import type { WgslTraceLaunch, WgslTraceRecording, WgslTraceUniform, WgslTraceFrameUniforms } from '@shader-studio/types';
 import { validateWgslTraceLaunch } from '@shader-studio/types';
 
 /** A dedicated runner panel; intentionally has no Messenger/ShaderStudio dependency. */
@@ -30,11 +30,15 @@ export class WgslTraceHost {
     }
     this.version = this.document.version;
     this.source = this.document.getText();
+    if (configuration.source !== undefined && configuration.source !== this.source) {
+      throw new Error('The preview shader differs from the current editor. Refresh the preview before tracing.');
+    }
     const launch: WgslTraceLaunch = { source: this.source, path: this.document.uri.fsPath,
       width: (configuration.width ?? 256) as number, height: (configuration.height ?? 256) as number,
       pixel: (configuration.pixel ?? [128, 128]) as [number, number], time: (configuration.time ?? 0) as number,
       frame: (configuration.frame ?? 0) as number, capacity: (configuration.capacity ?? 4096) as number,
-      customUniforms: configuration.customUniforms as WgslTraceUniform[] | undefined };
+      customUniforms: configuration.customUniforms as WgslTraceUniform[] | undefined,
+      uniforms: configuration.uniforms as WgslTraceFrameUniforms | undefined };
     validateWgslTraceLaunch(launch);
     const panel = vscode.window.createWebviewPanel('shader-studio.wgslTrace', 'WGSL Step Trace (PoC)',
       { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
@@ -75,7 +79,7 @@ export class WgslTraceHost {
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}';">
 </head><body><h2>WGSL step debugger proof of concept</h2>
 <p id="status">Starting the GPU runner…</p>
-<p>Single-file mainImage tracing with explicit launch inputs. The existing preview and variable inspector remain independent.</p>
+<p>Single-file mainImage tracing with explicit launch inputs. Trace values are recorded on the GPU. Stepping highlights the original shader editor.</p>
 <script nonce="${nonce}" src="${script}"></script></body></html>`;
     });
   }

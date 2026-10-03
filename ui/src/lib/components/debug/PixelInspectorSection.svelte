@@ -2,6 +2,7 @@
 
 <script lang="ts">
   import { getInspectorState, requestLockAt } from '../../state/pixelInspectorState.svelte';
+  import { getWgslTraceState, requestWgslTraceStart } from '../../state/wgslTraceState.svelte';
   import { debugPanelStore } from '../../stores/debugPanelStore';
   import type { PixelInspectorRegion } from '../../types/PixelInspectorState';
 
@@ -44,6 +45,7 @@
   }
 
   const inspector = $derived(getInspectorState());
+  const trace = $derived(getWgslTraceState());
   const region = $derived(inspector.region);
 
   let dragActive = false;
@@ -314,6 +316,16 @@
           <span class="info-val">{(fragCoord.x / canvasWidth).toFixed(3)}, {(fragCoord.y / canvasHeight).toFixed(3)}</span>
         {/if}
       </div>
+      <button
+        class="trace-button"
+        type="button"
+        disabled={!trace.available}
+        title={trace.reason ?? 'Record this pixel for VS Code step debugging'}
+        onclick={requestWgslTraceStart}
+      >Start Trace</button>
+      {#if trace.reason}
+        <span class="trace-reason">{trace.reason}</span>
+      {/if}
     </div>
   {:else}
     <span class="hint-text">Hover over canvas<br>to inspect pixel</span>
@@ -449,6 +461,34 @@
     flex: 1;
     min-width: 0;
     align-self: center;
+  }
+
+  .trace-button {
+    margin-top: 8px;
+    padding: 3px 7px;
+    border: 1px solid var(--vscode-button-border, transparent);
+    border-radius: 3px;
+    color: var(--vscode-button-foreground);
+    background: var(--vscode-button-background);
+    cursor: pointer;
+    font-size: 11px;
+  }
+
+  .trace-button:hover:not(:disabled) {
+    background: var(--vscode-button-hoverBackground);
+  }
+
+  .trace-button:disabled {
+    cursor: default;
+    opacity: 0.55;
+  }
+
+  .trace-reason {
+    display: block;
+    margin-top: 4px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 10px;
+    line-height: 1.3;
   }
 
   .info-grid {

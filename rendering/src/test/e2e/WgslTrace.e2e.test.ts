@@ -27,6 +27,26 @@ describe('WGSL GPU trace PoC', () => {
     expect(recording.color).toEqual([4.25, 1, 0.375, 0.375]);
   });
 
+  it('captures the preview mouse, clock and camera inputs instead of defaults', async () => {
+    const recording = await captureWgslTrace({ ...launch, uniforms: {
+      mouse: [7, 8, 9, 10], date: [2026, 10, 3, 100], cameraPos: [1, 2, 3], cameraDir: [4, 5, 6],
+      timeDelta: 0.25, frameRate: 60, sampleRate: 48000,
+    }, source: `fn mainImage(p: vec2f) -> vec4f {
+      let mouse = iMouse;
+      let date = iDate;
+      let delta = iTimeDelta;
+      let rate = iFrameRate;
+      let camera = iCameraPos;
+      let direction = iCameraDir;
+      let sample = iSampleRate;
+      return vec4f(mouse.x, date.z, delta, rate);
+    }` });
+    expect(recording.color).toEqual([7, 3, 0.25, 60]);
+    const final = Object.fromEntries(recording.events.at(-1)!.values.map(value => [value.name, value.value]));
+    expect(final).toMatchObject({ mouse: [7, 8, 9, 10], date: [2026, 10, 3, 100], delta: 0.25, rate: 60,
+      camera: [1, 2, 3], direction: [4, 5, 6], sample: 48000 });
+  });
+
   it('stops recording at capacity while letting the shader finish unchanged', async () => {
     const recording = await captureWgslTrace({ ...launch, capacity: 2 });
     expect(recording.events).toHaveLength(2);

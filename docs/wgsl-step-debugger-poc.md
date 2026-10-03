@@ -19,7 +19,9 @@ Launch a single-file `.wgsl` fragment shader from Run and Debug with:
 }
 ```
 
-`pixel` uses a top-left origin. The shader receives ordinary bottom-left `mainImage` coordinates. The runner renders at the specified resolution, preserving neighbouring fragment execution and derivatives; only the selected pixel records events. Launch inputs are independent of the preview. Mouse/date/camera inputs are zero, sample rate is 44100, and time/frame are explicit.
+To trace the preview, enable the pixel inspector, select a pixel, and click **Start Trace** in its section. The button snapshots the selected pixel, render resolution, time/frame, mouse/date/camera inputs and current custom uniform values. It is available through VS Code and its connected preview host for a single fullscreen WGSL Image without channels, buffers, Common code or storage. Unsupported configurations show a disabled button with the reason. If the editor source differs from the preview snapshot, refresh the preview before tracing.
+
+`pixel` uses a top-left origin. The shader receives ordinary bottom-left `mainImage` coordinates. The runner renders at the specified resolution, preserving neighbouring fragment execution and derivatives; only the selected pixel records events. Manual launch inputs remain explicit; optional `uniforms` supplies `timeDelta`, `frameRate`, `mouse`, `date`, `cameraPos`, `cameraDir` and `sampleRate`. Without those inputs, mouse/date/camera values are zero and sample rate is 44100. The Start Trace button supplies the current preview inputs.
 
 For example:
 
@@ -35,7 +37,7 @@ fn mainImage(p: vec2f) -> vec4f {
 
 Stops show locals **before** the highlighted statement executes. Braced `else if` chains are supported: taken branch bodies are recorded, while the whole chain has one outer condition site. Step Over visits subsequent recorded statements, including repeated loop-body visits. Continue searches unconditional line breakpoints. Step Back and reverse continue navigate the same recording without recompilation. Helpers execute normally, but Step Into currently behaves as Step Over; Step Out and call stacks are not implemented. Loop control headers are recorded on entry, while body statements are recorded on each execution.
 
-The debugger opens a read-only source snapshot with a separate document name, so stepping does not send shader-cursor updates to the existing inspector. Set initial breakpoints in the original file or add them to the recording. Editing the original shader invalidates the session; stop and launch again for new values. Closing the GPU runner panel ends the session.
+The debugger highlights the original shader editor with its normal syntax highlighting. Set breakpoints there. Stepping may move the existing inspector with the editor cursor; its capture implementation is unchanged. Recorded trace values remain frozen from launch. Editing the original shader invalidates the session; stop and launch again for new values. Closing the GPU runner panel ends the session.
 
 Recorded locals: `f32`, `i32`, `u32`, `bool`, and numeric vectors with two to four components. Other visible locals (including arrays, matrices and structs) remain listed as `<not recorded: unsupported or unresolved type>`; they do not prevent stepping or change shader execution. The Debug Console reports these values at launch. Integer values retain their bits. There are at most 16 recorded locals per site and 16384 events per recording. Overflow is reported explicitly: recording stops, but shader loops continue normally. The GPU runner has a 30-second capture deadline; a hung shader may still hit the browser's GPU watchdog.
 
@@ -51,9 +53,9 @@ Supply explicit custom uniforms in the launch configuration, for example:
 ]
 ```
 
-Types are `float`, `vec2`, `vec3`, `vec4` and `bool`; vector values are numeric arrays and bool values are booleans. Names must be unique WGSL identifiers, excluding built-ins/generated names and authored global declarations, with at most 32 uniforms. Values are validated before capture. These inputs are separate from script execution and the preview's live values.
+Types are `float`, `vec2`, `vec3`, `vec4` and `bool`; vector values are numeric arrays and bool values are booleans. Names must be unique WGSL identifiers, excluding built-ins/generated names and authored global declarations, with at most 32 uniforms. Values are validated before capture. Manual launches supply these explicitly. Start Trace snapshots the preview's current custom uniform values, including those produced by scripts; it does not re-run the scripts.
 
-Tracing creates a separate GPU device and offscreen target for each launch. It never installs an instrumented shader into the preview or calls the existing inspector managers. Active capture still consumes GPU time. This is a PoC for deterministic fragment execution, not a guarantee of reproducing races or previously rendered resource state.
+Tracing creates a separate GPU device and offscreen target for each launch. It never installs an instrumented shader into the preview. The existing inspector may follow debugger cursor movements in the original editor. Active capture still consumes GPU time. This is a PoC for deterministic fragment execution, not a guarantee of reproducing races or previously rendered resource state.
 
 Tracked in private [debugger issue #32](https://github.com/teaqu/shader-studio-dev/issues/32).
 

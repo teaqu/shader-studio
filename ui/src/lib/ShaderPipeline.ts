@@ -493,6 +493,11 @@ export class ShaderPipeline {
     return this.lastEvent;
   }
 
+  /** True while the latest Image source has not finished installing in the preview. */
+  public isCompiling(): boolean {
+    return this.shaderProcessor.isCurrentlyProcessing();
+  }
+
   public updateCurrentConfig(config: ShaderConfig): void {
     if (!this.lastEvent) {
       return;

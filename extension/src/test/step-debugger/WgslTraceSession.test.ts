@@ -22,7 +22,7 @@ suite('WGSL trace DAP session', () => {
     return { session, send, messages, cleaned: () => cleaned, captures: () => captures };
   }
 
-  test('handshakes, steps repeated lines, evaluates locals and returns immutable virtual source', async () => {
+  test('handshakes, steps repeated lines, evaluates locals and uses the original shader source editor', async () => {
     const test = rig();
     await test.send('initialize');
     await test.send('configurationDone');
@@ -33,9 +33,9 @@ suite('WGSL trace DAP session', () => {
     await test.send('evaluate', { expression: 'x' });
     assert.deepStrictEqual(test.messages.at(-1)!.body, { result: '4000000002', type: 'u32', variablesReference: 0 });
     await test.send('stackTrace');
-    const stack = test.messages.at(-1)!.body as { stackFrames: { source: { sourceReference: number }; line: number }[] };
+    const stack = test.messages.at(-1)!.body as { stackFrames: { source: { sourceReference: number; path: string; name: string }; line: number }[] };
     assert.strictEqual(stack.stackFrames[0].line, 3);
-    assert.strictEqual(stack.stackFrames[0].source.sourceReference, 1);
+    assert.deepStrictEqual(stack.stackFrames[0].source, { name: 'image.wgsl', path: '/image.wgsl', sourceReference: 0 });
     await test.send('source', { sourceReference: 1 });
     assert.deepStrictEqual(test.messages.at(-1)!.body, { content: 'immutable shader source', mimeType: 'text/plain' });
     await test.send('source', { sourceReference: 99 });

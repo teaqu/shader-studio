@@ -20,19 +20,6 @@ module.exports = Object.freeze({
       return (completions?.items ?? []).map(item => typeof item.label === 'string' ? item.label : item.label.label);
     },
   "00fc92c56bbd71757664d75edfd294fd10f8a9ad6f9e9e60780262c0e7b8e847": async vscode => vscode.window.activeTextEditor?.document.getText() ?? '',
-  "01a8d679e1352c754b73891b845c49b1f109ca93de0843e5e099d506362ec449": async (vscode, path) => {
-      vscode.debug.addBreakpoints([new vscode.SourceBreakpoint(new vscode.Location(vscode.Uri.file(path), new vscode.Position(5, 0)))]);
-      return vscode.debug.startDebugging(undefined, {
-        type: 'shader-studio-wgsl-trace',
-        request: 'launch',
-        name: 'WGSL trace E2E',
-        program: path,
-        width: 4,
-        height: 4,
-        pixel: [1, 2],
-        capacity: 64
-      });
-    },
   "01e9b025be435bae653d19ee67475828aebcc5483c5aaecf27dd3595ed894e7a": (vscode, path) => vscode.languages.getDiagnostics(vscode.Uri.file(path))
           .filter(d => d.severity === vscode.DiagnosticSeverity.Error).map(d => ({ line: d.range.start.line, column: d.range.start.character })),
   "02e77b29798c968c723a6254f0bbd9e0a9bdf627964b235282757d5383a3cec1": async vscode => {
@@ -413,6 +400,11 @@ module.exports = Object.freeze({
   "22082465fa913471459f28abcde68ee1d1ca1e56c65c7ab013d230f7d37a155f": async api => {
       await api.commands.executeCommand('shader-studio.toggleEditorOverlay');
     },
+  "2275efbd07ff3729f72dd610a8d264c1171c6c6db0e359aa4c9d20ebb3b1c667": (vscode, path) => {
+      vscode.debug.addBreakpoints([new vscode.SourceBreakpoint(
+        new vscode.Location(vscode.Uri.file(path), new vscode.Position(5, 0)),
+      )]);
+    },
   "23997a58eead2b1f2350cdbb0da2b962b7e82a7284f3e220bbea707ea8eea64a": async vscode => {
       await vscode.commands.executeCommand('notifications.clearAll');
     },
@@ -427,11 +419,6 @@ module.exports = Object.freeze({
             await vscode.workspace.fs.delete(vscode.Uri.file(path), { useTrash: false }).then(undefined, () => {});
           }
         },
-  "25cfe78f442a305aebcab50e29016831997f1d803bc2b89a69da94c977d6871f": async (vscode, path) => {
-      vscode.debug.addBreakpoints([new vscode.SourceBreakpoint(new vscode.Location(vscode.Uri.file(path), new vscode.Position(5, 0)))]);
-      return vscode.debug.startDebugging(undefined, { type: 'shader-studio-wgsl-trace', request: 'launch',
-        name: 'WGSL trace E2E', program: path, width: 4, height: 4, pixel: [1, 2], capacity: 64 });
-    },
   "26614840d891288489ec234c6d52383b9d095363f8fa025f670db34cf8c94a55": async (vscode) => vscode.commands.executeCommand('workbench.action.closeAllEditors'),
   "26d090af7938d8191fc6998d148773a82d599f0c8146bc666a0e157ed9201845": async (vscode, documentUri, expected) => {
     const found = vscode.languages.getDiagnostics(vscode.Uri.parse(documentUri))
@@ -515,6 +502,9 @@ module.exports = Object.freeze({
         await vscode.workspace.applyEdit(edit);
         await document.save();
       },
+  "339d5ec1f872a86b730fdabeff55308f1f4b995b376df0463e0b28c69e6fbf21": (vscode, path) => {
+      vscode.debug.addBreakpoints([new vscode.SourceBreakpoint(new vscode.Location(vscode.Uri.file(path), new vscode.Position(5, 0)))]);
+    },
   "342938e5316d253e1d0e9ee7fb01f09c43574346c6b985c0eac7432c4e2282ce": async (vscode, targetPath, zeroBased) => {
         const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
         const editor = await vscode.window.showTextDocument(document, {
@@ -665,6 +655,7 @@ module.exports = Object.freeze({
       line: d.range.start.line,
       column: d.range.start.character
     })),
+  "401e33fdb81def9a28074e856d69aa02e79719833fa52848ff3733ea5b544585": (vscode, path) => vscode.window.activeTextEditor?.document.uri.fsPath,
   "4030de1ddef3890392199d063f2fbe96d65ab3f8f55242151a93c75fd0dccce1": async (api, target) =>
     api.languages.getDiagnostics(api.Uri.file(target))
       .filter(item => item.source === 'shader-studio-glsl-ls')
@@ -784,6 +775,9 @@ module.exports = Object.freeze({
   "4cbf72a8de022c998ae415fe62abd4a7f11d99a1f0947fd9c97f3afe9abc3367": async vscode => {
       setTimeout(() => vscode.commands.executeCommand('workbench.action.reloadWindow'), 100);
     },
+  "4cf5f7fd5999d564544c9e86a27e0ce654ea079ed15ef8425cbabac4ae7867c6": async vscode => {
+      await vscode.debug.stopDebugging(vscode.debug.activeDebugSession);
+    },
   "4d13b9ec6e1f559fb538888280b14ced39a413cef35dc5ee47f513b792973d3b": async (vscode, files) => {
         const commonDocument = await vscode.workspace.openTextDocument(vscode.Uri.file(files.commonPath));
         const passDocument = await vscode.workspace.openTextDocument(vscode.Uri.file(files.passPath));
@@ -822,13 +816,6 @@ module.exports = Object.freeze({
         new vscode.Position(0, 0),
       );
       return document.uri.toString();
-    },
-  "51497f3d2ea7a006066b3ebb84081d47e07c791232b25063ba06f3bc0dc2f9a3": async (vscode, path) => {
-      const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
-      const editor = await vscode.window.showTextDocument(document, {
-        preview: false
-      });
-      editor.selection = new vscode.Selection(1, 4, 1, 4);
     },
   "520fdec2e7bbc3b55517178cc1692ead13b490388b4b26b7a718da9428854bf5": async (vscode, targetPath) => {
       const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
@@ -1484,13 +1471,6 @@ module.exports = Object.freeze({
         });
         await vscode.commands.executeCommand('shader-studio.view');
       },
-  "b168f6ae7c11cd6caf13d16b71d2640dcf9f77ea0cdcb6342b761ace197d42e2": async vscode => {
-      const runner = vscode.window.tabGroups.all.flatMap(group => group.tabs).find(tab => tab.label === 'WGSL Step Trace (PoC)');
-      if (!runner) {
-        throw new Error('The dedicated GPU runner tab is missing.');
-      }
-      await vscode.window.tabGroups.close(runner);
-    },
   "b188fb190fbf48a4024d9bf153634fb105ea216a194b9dd5a3dc2e25528c721a": async (vscode, targetPath) => {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
     await vscode.commands.executeCommand(
@@ -2153,11 +2133,6 @@ module.exports = Object.freeze({
       const position = new vscode.Position(0, 0);
       editor.selection = new vscode.Selection(position, position);
       await vscode.commands.executeCommand('shader-studio.view');
-    },
-  "f9c318af26d9b5aacae1a7f0a4b20c7ade8ae219bb9db15a864d72e3b2215b31": async (vscode, path) => {
-      const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
-      const editor = await vscode.window.showTextDocument(document, { preview: false });
-      editor.selection = new vscode.Selection(1, 4, 1, 4);
     },
   "f9f019819e0a5b21b0497afeb1051728069100d5e983e53c0d8994901eebb14f": async (vscode, paths) => {
       await vscode.extensions.getExtension('teaqu.shader-studio')?.activate();

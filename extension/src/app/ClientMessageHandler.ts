@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { startWgslTrace } from "../step-debugger/startWgslTrace";
 import { ShaderProvider } from "./ShaderProvider";
 import { GlslFileTracker } from "./GlslFileTracker";
 import { Messenger } from "./transport/Messenger";
@@ -58,6 +59,9 @@ export class ClientMessageHandler {
     this.logger.debug(`ClientMessageHandler: handling ${message.type}`);
 
     switch (message.type) {
+      case 'startWgslTrace':
+        await startWgslTrace(message.payload);
+        break;
       case 'updateConfig':
         await this.config.handleConfigUpdate(message.payload);
         break;
