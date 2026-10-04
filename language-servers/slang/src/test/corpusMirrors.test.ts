@@ -213,7 +213,7 @@ const collectDocs = (): MirrorDoc[] => {
       }
       const text = readFileSync(join(CORPUS, fileRel), "utf8");
       const sharedPassNames = Object.entries(passes).filter(([name, peer]) => name !== "common"
-        && (peer.path ? normalize(join(dir, peer.path)) : join(dir, `${stem}.slang`)) === fileRel).map(([name]) => name);
+        && normalize(peer.path ? join(dir, peer.path) : join(dir, `${stem}.slang`)) === normalize(fileRel)).map(([name]) => name);
       const sharedResources = resourcesForSharedSource(cfg as never, passName, sharedPassNames);
       const stage = stageForPass(cfg as never, passName, fileRel);
       if (stage !== "fragment" && stage !== "vertex" && stage !== "compute") {
