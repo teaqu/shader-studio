@@ -16,7 +16,7 @@ interface SwitchDiagWindow {
   __shaderSwitchDiag?: boolean;
 }
 
-export function switchTimingEnabled(): boolean {
+function switchTimingEnabled(): boolean {
   // Keep test output clean — never log under the test runner.
   const proc = (globalThis as unknown as { process?: { env?: Record<string, string | undefined> } }).process;
   if (proc?.env?.VITEST || proc?.env?.NODE_ENV === 'test') {

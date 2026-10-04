@@ -1,7 +1,10 @@
+import { engineOwners } from "./engineOwners";
 import { getSlangTextureIdentity } from "../../webgpu/SlangBindingPlan";
 import { getWebGPUSampler } from "../../webgpu/WebGPUSamplerCache";
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
-import type { ShaderConfig } from "@shader-studio/types";
+import type { DebugInstrumentationPlan, ShaderConfig } from "@shader-studio/types";
+import type { CompilationResult } from "../../models";
+import type { AsyncSlangCompiler } from "../../webgpu/AsyncSlangCompiler";
 import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
 import { WgslCompiler } from "../../webgpu/WgslCompiler";
 import { SlangPassPipeline } from "../../webgpu/SlangPassPipeline";
@@ -47,6 +50,10 @@ function noWebGpuCanvas(): HTMLCanvasElement {
 }
 
 const assets = { scriptUrl: "slang.js", wasmUrl: "slang.wasm" };
+
+type MockCompiler = AsyncSlangCompiler & {
+  compile: ReturnType<typeof vi.fn<AsyncSlangCompiler["compile"]>>;
+};
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -217,7 +224,7 @@ describe("WebGPURenderingEngine", () => {
 
   it("compiles a structured Slang debug plan through the normal image/module pipeline", async () => {
     const engine = new WebGPURenderingEngine(assets);
-    const compile = vi.spyOn(engine, "compileShaderPipeline").mockResolvedValue({ success: true });
+    const compile = vi.spyOn(engineOwners(engine).session, "compileShaderPipeline").mockResolvedValue({ success: true });
 
     await engine.compileDebugPlan({
       workspaceHash: "hash", rootUri: "file:///main.slang", selectedSourceUri: "file:///main.slang", executionMarkerSlot: 0, captureSlots: [],
@@ -234,7 +241,7 @@ describe("WebGPURenderingEngine", () => {
 
   it("uses the current config for a structured debug plan instead of the previous compile snapshot", async () => {
     const engine = new WebGPURenderingEngine(assets);
-    const compile = vi.spyOn(engine, "compileShaderPipeline").mockResolvedValue({ success: true });
+    const compile = vi.spyOn(engineOwners(engine).session, "compileShaderPipeline").mockResolvedValue({ success: true });
     const previousConfig: ShaderConfig = {
       version: "1.0",
       passes: { Image: { inputs: { iChannel0: { type: "texture", path: "before.png" } } } },
@@ -243,7 +250,7 @@ describe("WebGPURenderingEngine", () => {
       version: "1.0",
       passes: { Image: { inputs: { iChannel0: { type: "texture", path: "after.png" } } } },
     };
-    (engine as unknown as { lastCompile: unknown }).lastCompile = {
+    (engineOwners(engine).session as unknown as { lastCompile: unknown }).lastCompile = {
       code: "float4 mainImage(float2 c) { return 0; }",
       config: previousConfig,
       path: "/main.slang",
@@ -267,7 +274,7 @@ describe("WebGPURenderingEngine", () => {
 
   it("attributes structured Slang debug failures to the selected imported module", async () => {
     const engine = new WebGPURenderingEngine(assets);
-    vi.spyOn(engine, "compileShaderPipeline").mockResolvedValue({ success: false, errors: ["unexpected token"] });
+    vi.spyOn(engineOwners(engine).session, "compileShaderPipeline").mockResolvedValue({ success: false, errors: ["unexpected token"] });
 
     const result = await engine.compileDebugPlan({
       workspaceHash: "hash", rootUri: "file:///main.slang", selectedSourceUri: "file:///helper.slang", executionMarkerSlot: 0, captureSlots: [],
@@ -282,7 +289,7 @@ describe("WebGPURenderingEngine", () => {
 
   it("compiles a selected common file as common code while retaining Image as the debug root", async () => {
     const engine = new WebGPURenderingEngine(assets);
-    const compile = vi.spyOn(engine, "compileShaderPipeline").mockResolvedValue({ success: true });
+    const compile = vi.spyOn(engineOwners(engine).session, "compileShaderPipeline").mockResolvedValue({ success: true });
     const previous = {
       code: "float4 mainImage(float2 coord) { return shared(coord.x); }",
       config: { version: "1.0", passes: { Image: {}, common: { path: "common.slang" } } },
@@ -292,7 +299,7 @@ describe("WebGPURenderingEngine", () => {
       slangSourcePath: "/image.slang",
       slangSourcePaths: { Image: "/image.slang", common: "/common.slang" },
     };
-    (engine as unknown as { lastCompile: typeof previous }).lastCompile = previous;
+    (engineOwners(engine).session as unknown as { lastCompile: typeof previous }).lastCompile = previous;
 
     await engine.compileDebugPlan({
       workspaceHash: "hash", rootUri: "file:///image.slang", selectedSourceUri: "file:///common.slang", executionMarkerSlot: 0, captureSlots: [],
@@ -317,7 +324,7 @@ describe("WebGPURenderingEngine", () => {
 
   it("compiles WGSL common exactly once when the selected file is the image", async () => {
     const engine = new WebGPURenderingEngine(assets);
-    const compile = vi.spyOn(engine, "compileShaderPipeline").mockResolvedValue({ success: true });
+    const compile = vi.spyOn(engineOwners(engine).session, "compileShaderPipeline").mockResolvedValue({ success: true });
     const previous = {
       code: "float4 mainImage(float2 coord) { return shared(coord.x); }",
       config: { version: "1.0", passes: { Image: {}, common: { path: "common.wgsl" } } },
@@ -327,7 +334,7 @@ describe("WebGPURenderingEngine", () => {
       slangSourcePath: "/image.wgsl",
       slangSourcePaths: { Image: "/image.wgsl", common: "/common.wgsl" },
     };
-    (engine as unknown as { lastCompile: typeof previous }).lastCompile = previous;
+    (engineOwners(engine).session as unknown as { lastCompile: typeof previous }).lastCompile = previous;
 
     await engine.compileDebugPlan({
       workspaceHash: "hash", rootUri: "file:///image.wgsl", selectedSourceUri: "file:///image.wgsl", executionMarkerSlot: 0, captureSlots: [],
@@ -352,7 +359,7 @@ describe("WebGPURenderingEngine", () => {
 
   it("preserves the installed compute workspace while compiling an image debug wrapper", async () => {
     const engine = new WebGPURenderingEngine(assets);
-    const compile = vi.spyOn(engine, "compileShaderPipeline").mockResolvedValue({ success: true });
+    const compile = vi.spyOn(engineOwners(engine).session, "compileShaderPipeline").mockResolvedValue({ success: true });
     const previous = {
       code: "float4 mainImage(float2 coord) { return 0; }",
       config: { version: "1.0", passes: { Image: { inputs: {} }, ComputeUpdate: { type: 'compute', path: "update.slang" } } },
@@ -363,7 +370,7 @@ describe("WebGPURenderingEngine", () => {
       slangModules: [{ moduleName: "support", path: "/support.slang", source: "module support;", ownerPass: "ComputeUpdate" }],
       slangSourcePath: "/image.slang",
     };
-    (engine as unknown as { lastCompile: typeof previous }).lastCompile = previous;
+    (engineOwners(engine).session as unknown as { lastCompile: typeof previous }).lastCompile = previous;
 
     await engine.compileDebugPlan({
       workspaceHash: "hash", rootUri: "file:///update.slang", selectedSourceUri: "file:///update.slang", executionMarkerSlot: 0, captureSlots: [],
@@ -378,7 +385,7 @@ describe("WebGPURenderingEngine", () => {
 
   it("preserves the installed WGSL compute workspace while compiling its image debug replay", async () => {
     const engine = new WebGPURenderingEngine(assets);
-    const compile = vi.spyOn(engine, "compileShaderPipeline").mockResolvedValue({ success: true });
+    const compile = vi.spyOn(engineOwners(engine).session, "compileShaderPipeline").mockResolvedValue({ success: true });
     const previous = {
       code: "fn mainImage(coord: vec2f) -> vec4f { return vec4f(0.0); }",
       config: {
@@ -399,7 +406,7 @@ describe("WebGPURenderingEngine", () => {
       slangSourcePath: "/image.wgsl",
       slangSourcePaths: { Image: "/image.wgsl", ComputeUpdate: "/update.wgsl" },
     };
-    (engine as unknown as { lastCompile: typeof previous }).lastCompile = previous;
+    (engineOwners(engine).session as unknown as { lastCompile: typeof previous }).lastCompile = previous;
 
     await engine.compileDebugPlan({
       workspaceHash: "hash", rootUri: "file:///update.wgsl", selectedSourceUri: "file:///update.wgsl", executionMarkerSlot: 0, captureSlots: [],
@@ -661,10 +668,10 @@ describe("WebGPURenderingEngine", () => {
       getCurrentOutputView: () => null,
       getPreviousOutputView: () => null,
     });
-    (engine as any).passGraph = [
+    (engineOwners(engine).session as any).passGraph = [
       { name: "Image", width: 320, height: 180, output: "canvas", channels: [] },
     ];
-    (engine as any).passPipelines = new Map([["Image", imagePipeline]]);
+    (engineOwners(engine).session as any).passPipelines = new Map([["Image", imagePipeline]]);
     engine.setFPSLimit(1);
 
     engine.render(1000);
@@ -726,11 +733,11 @@ describe("WebGPURenderingEngine", () => {
       getPreviousOutputView: () => null,
     });
 
-    (engine as any).passGraph = [
+    (engineOwners(engine).session as any).passGraph = [
       { name: "BufferA", width: 320, height: 180, output: "texture", channels: [] },
       { name: "Image", width: 320, height: 180, output: "canvas", channels: [] },
     ];
-    (engine as any).passPipelines = new Map([
+    (engineOwners(engine).session as any).passPipelines = new Map([
       ["BufferA", bufferPipeline],
       ["Image", imagePipeline],
     ]);
@@ -888,7 +895,7 @@ describe("WebGPURenderingEngine", () => {
     it("freezes script uniforms at pause entry while the host keeps sending values", () => {
       const { engine } = pausableEngine();
       const custom = { value: 7 };
-      (engine as any).customUniformManager = {
+      (engineOwners(engine).session as any).customUniformManager = {
         getUniformInfo: () => [{ name: "uFast", type: "float" }],
         getCurrentValues: () => [{ name: "uFast", type: "float", value: custom.value }],
         hasUniforms: () => true,
@@ -922,7 +929,7 @@ describe("WebGPURenderingEngine", () => {
 
       const [imageUniforms] = lastFrameUniformWrites(engine, 1);
       expect([imageUniforms[4], imageUniforms[5]]).toEqual([50, 60]);
-      expect((engine as any).pausedUniformInput).not.toBeNull();
+      expect((engineOwners(engine).frameRenderer as any).pausedUniformInput).not.toBeNull();
     });
 
     it("synchronizes and pauses or resumes audio and video with shader time", () => {
@@ -936,7 +943,7 @@ describe("WebGPURenderingEngine", () => {
         resumeAllVideos: vi.fn(),
         resumeAllAudio: vi.fn(),
       };
-      (engine as any).resourceManager = resourceManager;
+      (engineOwners(engine).session as any).resourceManager = resourceManager;
 
       engine.togglePause();
 
@@ -1006,7 +1013,7 @@ describe("WebGPURenderingEngine", () => {
 
       engine.render(1000);
       engine.render(1000); // duplicate frame (zero delta)
-      (engine as any).renderFrame(1016, true);
+      (engineOwners(engine).frameRenderer as any).renderFrame(1016, true);
 
       expect(endFrame).toHaveBeenCalledOnce();
     });
@@ -1025,12 +1032,12 @@ describe("WebGPURenderingEngine", () => {
 
   it("collects loaded state and resolution metadata for channel 15", () => {
     const engine = new WebGPURenderingEngine(assets);
-    (engine as any).resourceManager = {
+    (engineOwners(engine).session as any).resourceManager = {
       getImageTextureCache: () => ({ [getSlangTextureIdentity({ kind: "texture", slot: 15, key: "", path: "high" })]: { width: 4096, height: 2048 } }),
       getAudioSampleRate: () => 48000,
     };
 
-    const uniforms = (engine as any).getChannelUniforms({
+    const uniforms = (engineOwners(engine).channels as any).getChannelUniforms({
       channels: [{ slot: 15, key: 'iChannel15', kind: 'texture', path: 'high' }],
     });
 
@@ -1046,7 +1053,7 @@ describe("WebGPURenderingEngine", () => {
     expect(engine.getCustomUniformDeclarations()).toBe("");
     expect(engine.requestPixelRegion(1, 0, 0)).toBe(false);
     expect(engine.collectPixelRegionResults()).toEqual([]);
-    expect(engine.getAudioFFTData()).toBeNull();
+    expect(engine.getAudioFFTData("")).toBeNull();
   });
 
   it("throws a clear error if variable capture is attempted before the device is ready", () => {
@@ -1073,14 +1080,15 @@ describe("WebGPURenderingEngine", () => {
   it("compiles configured Slang buffer and image passes", async () => {
     const engine = new WebGPURenderingEngine(assets);
     const device = {
-      createShaderModule: vi.fn(() => ({ getCompilationInfo: vi.fn(async () => ({ messages: [] })) })),
+      createShaderModule: vi.fn(() => ({ getCompilationInfo: vi.fn(async () => ({ messages: [] as GPUCompilationMessage[] })) })),
       createRenderPipeline: vi.fn(() => ({ getBindGroupLayout: vi.fn(() => ({})) })),
-      createBindGroupLayout: vi.fn(() => ({})),
+      createBindGroupLayout: vi.fn((descriptor: GPUBindGroupLayoutDescriptor) => descriptor),
       createPipelineLayout: vi.fn(() => ({})),
       createBuffer: vi.fn(() => ({})),
       createSampler: vi.fn(() => ({})),
-      createBindGroup: vi.fn(() => ({})),
-      createTexture: vi.fn(() => ({
+      createBindGroup: vi.fn((descriptor: GPUBindGroupDescriptor) => ({ descriptor })),
+      createTexture: vi.fn((descriptor: GPUTextureDescriptor) => ({
+        descriptor,
         createView: vi.fn(() => ({})),
         destroy: vi.fn(),
       })),
@@ -1167,14 +1175,14 @@ describe("WebGPURenderingEngine", () => {
     };
     const code = "float4 mainImage(float2 c) { return float4(0); }";
     await engine.compileShaderPipeline(code, config, "/image.slang", { BufferA: code });
-    const buffer = (engine as any).passPipelines.get("BufferA") as SlangPassPipeline;
+    const buffer = (engineOwners(engine).session as any).passPipelines.get("BufferA") as SlangPassPipeline;
 
     engine.resetTime();
-    expect((engine as any).passPipelines.get("BufferA")).toBe(buffer);
+    expect((engineOwners(engine).session as any).passPipelines.get("BufferA")).toBe(buffer);
     const result = await engine.compileShaderPipeline(code, config, "/image.slang", { BufferA: code });
 
     expect(result?.success).toBe(true);
-    expect((engine as any).passPipelines.get("BufferA")).not.toBe(buffer);
+    expect((engineOwners(engine).session as any).passPipelines.get("BufferA")).not.toBe(buffer);
   });
 
   it("invalidates paused uniforms only when a reset compilation publishes", async () => {
@@ -1193,18 +1201,18 @@ describe("WebGPURenderingEngine", () => {
       cameraPos: [0, 0, 0],
       cameraDir: [0, 0, -1],
     };
-    (engine as any).pausedUniformInput = frozen;
-    (engine as any).pausedCustomUniformValues = [{ name: "seed", type: "float", value: 9 }];
+    (engineOwners(engine).frameRenderer as any).pausedUniformInput = frozen;
+    (engineOwners(engine).frameRenderer as any).pausedCustomUniformValues = [{ name: "seed", type: "float", value: 9 }];
 
     engine.resetTime();
 
-    expect((engine as any).pausedUniformInput).toBe(frozen);
+    expect((engineOwners(engine).frameRenderer as any).pausedUniformInput).toBe(frozen);
     expect(engine.getTimeManager().isPaused()).toBe(true);
 
     await engine.compileShaderPipeline(`${code}\n// reset`, null, "/image.slang");
 
-    expect((engine as any).pausedUniformInput).toBeNull();
-    expect((engine as any).pausedCustomUniformValues).toBeNull();
+    expect((engineOwners(engine).frameRenderer as any).pausedUniformInput).toBeNull();
+    expect((engineOwners(engine).frameRenderer as any).pausedCustomUniformValues).toBeNull();
     expect(engine.getTimeManager().getFrame()).toBe(0);
     expect(engine.getTimeManager().isPaused()).toBe(true);
   });
@@ -1261,7 +1269,10 @@ describe("WebGPURenderingEngine", () => {
     expect(result?.success).toBe(true);
     const bufferTextures = device.createTexture.mock.calls
       .map(([descriptor]) => descriptor)
-      .filter(descriptor => descriptor.size.width === 320 && descriptor.size.height === 180);
+      .filter(descriptor => {
+        const size = descriptor.size as GPUExtent3DDict;
+        return size.width === 320 && size.height === 180;
+      });
     expect(bufferTextures).toHaveLength(2);
     expect(bufferTextures.every(descriptor => descriptor.format === "rgba32float")).toBe(true);
     expect(device.createRenderPipeline).toHaveBeenCalledWith(expect.objectContaining({
@@ -1308,14 +1319,15 @@ describe("WebGPURenderingEngine", () => {
   it("disposes discarded pass pipelines on recompile", async () => {
     const engine = new WebGPURenderingEngine(assets);
     const device = {
-      createShaderModule: vi.fn(() => ({ getCompilationInfo: vi.fn(async () => ({ messages: [] })) })),
+      createShaderModule: vi.fn(() => ({ getCompilationInfo: vi.fn(async () => ({ messages: [] as GPUCompilationMessage[] })) })),
       createRenderPipeline: vi.fn(() => ({ getBindGroupLayout: vi.fn(() => ({})) })),
-      createBindGroupLayout: vi.fn(() => ({})),
+      createBindGroupLayout: vi.fn((descriptor: GPUBindGroupLayoutDescriptor) => descriptor),
       createPipelineLayout: vi.fn(() => ({})),
       createBuffer: vi.fn(() => ({})),
       createSampler: vi.fn(() => ({})),
-      createBindGroup: vi.fn(() => ({})),
-      createTexture: vi.fn(() => ({
+      createBindGroup: vi.fn((descriptor: GPUBindGroupDescriptor) => ({ descriptor })),
+      createTexture: vi.fn((descriptor: GPUTextureDescriptor) => ({
+        descriptor,
         createView: vi.fn(() => ({})),
         destroy: vi.fn(),
       })),
@@ -1332,7 +1344,7 @@ describe("WebGPURenderingEngine", () => {
     (engine as any).compiler = compiler;
     (engine as any).format = "bgra8unorm";
 
-    const config = {
+    const config: ShaderConfig = {
       version: "1",
       passes: {
         Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
@@ -1347,7 +1359,7 @@ describe("WebGPURenderingEngine", () => {
       "/image.slang",
       buffers,
     );
-    const firstPipelines = (engine as any).passPipelines as Map<string, { dispose: () => void }>;
+    const firstPipelines = (engineOwners(engine).session as any).passPipelines as Map<string, { dispose: () => void }>;
     expect(firstPipelines.size).toBe(2);
     const disposeSpies = [...firstPipelines.values()].map((pipeline) => vi.spyOn(pipeline, "dispose"));
 
@@ -1379,8 +1391,9 @@ describe("WebGPURenderingEngine", () => {
       createPipelineLayout: vi.fn(() => ({})),
       createBuffer: vi.fn(() => ({ destroy: vi.fn() })),
       createSampler: vi.fn(() => ({})),
-      createBindGroup: vi.fn(() => ({})),
-      createTexture: vi.fn(() => ({
+      createBindGroup: vi.fn((descriptor: GPUBindGroupDescriptor) => ({ descriptor })),
+      createTexture: vi.fn((descriptor: GPUTextureDescriptor) => ({
+        descriptor,
         createView: vi.fn(() => ({})),
         destroy: vi.fn(),
       })),
@@ -1619,11 +1632,11 @@ describe("WebGPURenderingEngine", () => {
       getCurrentTexture: () => ({ createView: () => ({ label: "canvas" }) }),
     };
     (engine as any).canvas = { width: 320, height: 180 };
-    (engine as any).passGraph = [
+    (engineOwners(engine).session as any).passGraph = [
       { name: "BufferA", width: 320, height: 180, output: "texture", channels: [] },
       { name: "Image", width: 320, height: 180, output: "canvas", channels: [] },
     ];
-    (engine as any).passPipelines = new Map([
+    (engineOwners(engine).session as any).passPipelines = new Map<string, unknown>([
       ["BufferA", bufferPipeline],
       ["Image", imagePipeline],
     ]);
@@ -1672,11 +1685,11 @@ describe("WebGPURenderingEngine", () => {
       getCurrentTexture: () => ({ createView: () => ({ label: "canvas" }) }),
     };
     (engine as any).canvas = { width: 320, height: 180 };
-    (engine as any).passGraph = [
+    (engineOwners(engine).session as any).passGraph = [
       { name: "BufferA", width: 320, height: 180, output: "texture", channels: [] },
       { name: "Image", width: 320, height: 180, output: "canvas", channels: [] },
     ];
-    (engine as any).passPipelines = new Map([
+    (engineOwners(engine).session as any).passPipelines = new Map<string, unknown>([
       ["BufferA", bufferPipeline],
       ["Image", imagePipeline],
     ]);
@@ -1702,12 +1715,12 @@ describe("WebGPURenderingEngine", () => {
     };
     (engine as any).context = { getCurrentTexture };
     (engine as any).canvas = { width: 320, height: 180 };
-    (engine as any).passGraph = [
+    (engineOwners(engine).session as any).passGraph = [
       { name: "Image", width: 320, height: 180, output: "canvas", channels: [] },
     ];
     // No entry in passPipelines for "Image" -> render() must skip it entirely
     // rather than crashing on a missing pipeline.
-    (engine as any).passPipelines = new Map();
+    (engineOwners(engine).session as any).passPipelines = new Map();
 
     expect(() => engine.render(0)).not.toThrow();
     expect(writeBuffer).not.toHaveBeenCalled();
@@ -1756,11 +1769,11 @@ describe("WebGPURenderingEngine", () => {
       getCurrentTexture: () => ({ createView: () => ({ label: "canvas" }) }),
     };
     (engine as any).canvas = { width: 640, height: 480 };
-    (engine as any).passGraph = [
+    (engineOwners(engine).session as any).passGraph = [
       { name: "BufferA", width: 64, height: 32, output: "texture", channels: [] },
       { name: "Image", width: 640, height: 480, output: "canvas", channels: [] },
     ];
-    (engine as any).passPipelines = new Map([
+    (engineOwners(engine).session as any).passPipelines = new Map<string, unknown>([
       ["BufferA", bufferPipeline],
       ["Image", imagePipeline],
     ]);
@@ -1780,14 +1793,15 @@ describe("WebGPURenderingEngine", () => {
 
   function fullDevice() {
     return {
-      createShaderModule: vi.fn(() => ({ getCompilationInfo: vi.fn(async () => ({ messages: [] })) })),
+      createShaderModule: vi.fn(() => ({ getCompilationInfo: vi.fn(async () => ({ messages: [] as GPUCompilationMessage[] })) })),
       createRenderPipeline: vi.fn(() => ({ getBindGroupLayout: vi.fn(() => ({})) })),
       createBindGroupLayout: vi.fn(() => ({})),
       createPipelineLayout: vi.fn(() => ({})),
       createBuffer: vi.fn(() => ({ destroy: vi.fn() })),
       createSampler: vi.fn(() => ({})),
-      createBindGroup: vi.fn(() => ({})),
-      createTexture: vi.fn(() => ({
+      createBindGroup: vi.fn((descriptor: GPUBindGroupDescriptor) => ({ descriptor })),
+      createTexture: vi.fn((descriptor: GPUTextureDescriptor) => ({
+        descriptor,
         createView: vi.fn(() => ({})),
         destroy: vi.fn(),
       })),
@@ -1817,7 +1831,10 @@ describe("WebGPURenderingEngine", () => {
 
   function stubEngineInternals(engine: WebGPURenderingEngine) {
     const device = fullDevice();
-    const compiler = { compile: vi.fn(() => ({ success: true, wgsl: "// wgsl" })), dispose: vi.fn() };
+    const compiler = {
+      compile: vi.fn<AsyncSlangCompiler["compile"]>(async () => ({ success: true, wgsl: "// wgsl" })),
+      dispose: vi.fn(),
+    } as MockCompiler;
     const canvas = { width: 320, height: 180 };
 
     (engine as any).canvas = canvas;
@@ -1988,7 +2005,7 @@ describe("WebGPURenderingEngine", () => {
         "uniform float gain;",
         [{ name: "gain", type: "float" }],
       );
-      compiler.compile.mockReturnValue({ success: false, errors: ["syntax error"] });
+      compiler.compile.mockResolvedValue({ success: false, errors: ["syntax error"] });
 
       const result = await engine.compileShaderPipeline(
         "broken",
@@ -2096,7 +2113,7 @@ describe("WebGPURenderingEngine", () => {
       const engine = new WebGPURenderingEngine(assets);
       stubDeviceAndContext(engine);
       const textureHandle = { width: 640, height: 360, view: {}, sampler: {} };
-      (engine as any).resourceManager = {
+      (engineOwners(engine).session as any).resourceManager = {
         getImageTextureCache: () => ({ [getSlangTextureIdentity({ kind: "texture", slot: 0, key: "", path: "/tex.png" })]: textureHandle }),
         getDefaultTexture: () => textureHandle,
         getAudioTexture: () => textureHandle,
@@ -2113,7 +2130,7 @@ describe("WebGPURenderingEngine", () => {
         getCurrentOutputView: () => null,
         getPreviousOutputView: () => null,
       });
-      (engine as any).passGraph = [{
+      (engineOwners(engine).session as any).passGraph = [{
         name: "Image",
         width: 320,
         height: 180,
@@ -2125,7 +2142,7 @@ describe("WebGPURenderingEngine", () => {
           { kind: "texture", slot: 16, key: "iChannel16", path: "/tex.png" },
         ],
       }];
-      (engine as any).passPipelines = new Map([["Image", imagePipeline]]);
+      (engineOwners(engine).session as any).passPipelines = new Map([["Image", imagePipeline]]);
 
       engine.render(1000);
 
@@ -2149,7 +2166,7 @@ describe("WebGPURenderingEngine", () => {
       stubEngineInternals(engine);
       const bufferHandle = { width: 64, height: 32, view: { label: "buffer-input" }, sampler: {} };
       const imageHandle = { width: 256, height: 128, view: { label: "image-input" }, sampler: {} };
-      (engine as any).resourceManager = {
+      (engineOwners(engine).session as any).resourceManager = {
         getImageTextureCache: () => ({
           [getSlangTextureIdentity({ kind: "texture", slot: 0, key: "", path: "/buffer.png" })]: bufferHandle,
           [getSlangTextureIdentity({ kind: "texture", slot: 0, key: "", path: "/image.png" })]: imageHandle,
@@ -2157,7 +2174,7 @@ describe("WebGPURenderingEngine", () => {
         getDefaultTexture: () => imageHandle,
         getAudioSampleRate: () => 44100,
       };
-      (engine as any).passGraph = [
+      (engineOwners(engine).session as any).passGraph = [
         {
           name: "BufferA",
           width: 160,
@@ -2175,7 +2192,7 @@ describe("WebGPURenderingEngine", () => {
           channels: [{ kind: "texture", slot: 0, key: "iChannel0", path: "/image.png" }],
         },
       ];
-      (engine as any).lastCompile = {
+      (engineOwners(engine).session as any).lastCompile = {
         code: 'image-source',
         path: '/image.slang',
         buffers: { BufferA: 'buffer-source', common: 'import palette;\nfloat helper() { return 1; }' },
@@ -2216,14 +2233,14 @@ describe("WebGPURenderingEngine", () => {
       stubEngineInternals(engine);
       const keyboardHandle = { width: 256, height: 3, view: { label: "keyboard" }, sampler: {} };
       const updateKeyboardTexture = vi.fn();
-      (engine as any).resourceManager = {
+      (engineOwners(engine).session as any).resourceManager = {
         getImageTextureCache: () => ({}),
         getDefaultTexture: () => keyboardHandle,
         getKeyboardTexture: () => keyboardHandle,
         updateKeyboardTexture,
         getAudioSampleRate: () => 44100,
       };
-      (engine as any).passGraph = [{
+      (engineOwners(engine).session as any).passGraph = [{
         name: "Image",
         width: 320,
         height: 180,
@@ -2266,7 +2283,7 @@ describe("WebGPURenderingEngine", () => {
       const engine = new WebGPURenderingEngine(assets);
       const { compiler } = stubEngineInternals(engine);
       const loadVideoTexture = vi.fn(async () => ({ texture: {}, warning: undefined }));
-      (engine as any).resourceManager = { loadVideoTexture };
+      (engineOwners(engine).session as any).resourceManager = { loadVideoTexture };
 
       const result = await engine.compileShaderPipeline(
         "float4 mainImage(float2 c) { return float4(0); }",
@@ -2307,7 +2324,7 @@ describe("WebGPURenderingEngine", () => {
         getVideoTexture: vi.fn(() => videoHandle),
         getDefaultTexture: vi.fn(() => null),
       };
-      (engine as any).resourceManager = resourceManager;
+      (engineOwners(engine).session as any).resourceManager = resourceManager;
 
       const result = await engine.compileShaderPipeline(
         "float4 mainImage(float2 c) { return float4(0); }",
@@ -2332,7 +2349,7 @@ describe("WebGPURenderingEngine", () => {
       const engine = new WebGPURenderingEngine(assets);
       stubEngineInternals(engine);
       const warning = "Video is not loading: vscode-webview://clip.mp4";
-      (engine as any).resourceManager = {
+      (engineOwners(engine).session as any).resourceManager = {
         loadVideoTexture: vi.fn(async () => ({ texture: null, warning })),
       };
 
@@ -2358,7 +2375,7 @@ describe("WebGPURenderingEngine", () => {
         getVideoTexture: vi.fn(() => null),
         getDefaultTexture: vi.fn(() => defaultHandle),
       };
-      (engine as any).resourceManager = resourceManager;
+      (engineOwners(engine).session as any).resourceManager = resourceManager;
 
       const result = await engine.compileShaderPipeline(
         "float4 mainImage(float2 c) { return float4(0); }",
@@ -2385,7 +2402,7 @@ describe("WebGPURenderingEngine", () => {
         controlVideo: vi.fn(),
         getVideoState: vi.fn(() => state),
       };
-      (engine as any).resourceManager = resourceManager;
+      (engineOwners(engine).session as any).resourceManager = resourceManager;
 
       engine.controlVideo("clip.mp4", "pause");
       const result = engine.getVideoState("clip.mp4");
@@ -2417,7 +2434,7 @@ describe("WebGPURenderingEngine", () => {
         },
       };
       const loadVideoTexture = vi.fn(async () => ({ texture: {}, warning: undefined }));
-      (engine as any).resourceManager = { loadVideoTexture };
+      (engineOwners(engine).session as any).resourceManager = { loadVideoTexture };
 
       const result = await engine.compileShaderPipeline(
         "float4 mainImage(float2 c) { return float4(0); }",
@@ -2435,7 +2452,7 @@ describe("WebGPURenderingEngine", () => {
     it("setGlobalVolume delegates to resourceManager.setGlobalAudioState", () => {
       const engine = new WebGPURenderingEngine(assets);
       const setGlobalAudioState = vi.fn();
-      (engine as any).resourceManager = { setGlobalAudioState };
+      (engineOwners(engine).session as any).resourceManager = { setGlobalAudioState };
 
       engine.setGlobalVolume(0.5, true);
 
@@ -2444,7 +2461,7 @@ describe("WebGPURenderingEngine", () => {
 
     it("setGlobalVolume is a no-op when no resource manager is attached", () => {
       const engine = new WebGPURenderingEngine(assets);
-      (engine as any).resourceManager = null;
+      (engineOwners(engine).session as any).resourceManager = null;
 
       expect(() => engine.setGlobalVolume(0.5, true)).not.toThrow();
     });
@@ -2482,7 +2499,7 @@ describe("WebGPURenderingEngine", () => {
         seekAudio: vi.fn(),
         getAudioFFTData: vi.fn(() => fft),
       };
-      (engine as any).resourceManager = resourceManager;
+      (engineOwners(engine).session as any).resourceManager = resourceManager;
 
       await engine.resumeAudioContext();
       engine.resumeAllAudio();
@@ -2506,7 +2523,7 @@ describe("WebGPURenderingEngine", () => {
 
     it("reports the Image pass channel times", () => {
       const engine = new WebGPURenderingEngine(assets);
-      (engine as any).resourceManager = {
+      (engineOwners(engine).session as any).resourceManager = {
         getAudioState: vi.fn(() => ({ paused: false, muted: false, currentTime: 12.5, duration: 60 })),
         getAudioSampleRate: vi.fn(() => 48000),
         getVideoElement: vi.fn(() => undefined),
@@ -2515,7 +2532,7 @@ describe("WebGPURenderingEngine", () => {
         getCubemapTexture: vi.fn(() => undefined),
         getKeyboardTexture: vi.fn(() => null),
       };
-      (engine as any).passGraph = [{
+      (engineOwners(engine).session as any).passGraph = [{
         name: "Image",
         width: 320,
         height: 180,
@@ -2528,20 +2545,20 @@ describe("WebGPURenderingEngine", () => {
 
     it("returns zeros when no Image pass is installed", () => {
       const engine = new WebGPURenderingEngine(assets);
-      (engine as any).passGraph = [];
+      (engineOwners(engine).session as any).passGraph = [];
 
       expect(engine.getChannelTimes()).toEqual([0, 0, 0, 0]);
     });
 
     it("delegates the audio sample rate with a 44100 fallback", () => {
       const engine = new WebGPURenderingEngine(assets);
-      (engine as any).resourceManager = { getAudioSampleRate: vi.fn(() => 48000) };
+      (engineOwners(engine).session as any).resourceManager = { getAudioSampleRate: vi.fn(() => 48000) };
       expect(engine.getAudioSampleRate()).toBe(48000);
 
-      (engine as any).resourceManager = { getAudioSampleRate: vi.fn(() => 0) };
+      (engineOwners(engine).session as any).resourceManager = { getAudioSampleRate: vi.fn(() => 0) };
       expect(engine.getAudioSampleRate()).toBe(44100);
 
-      (engine as any).resourceManager = null;
+      (engineOwners(engine).session as any).resourceManager = null;
       expect(engine.getAudioSampleRate()).toBe(44100);
     });
 
@@ -2553,7 +2570,7 @@ describe("WebGPURenderingEngine", () => {
         updateAudioLoopRegion: vi.fn(),
         controlAudio: vi.fn(),
       };
-      (engine as any).resourceManager = resourceManager;
+      (engineOwners(engine).session as any).resourceManager = resourceManager;
 
       const result = await engine.compileShaderPipeline(
         "float4 mainImage(float2 c) { return iChannel1.Sample(float2(c.x, 0.25)); }",
@@ -2582,7 +2599,7 @@ describe("WebGPURenderingEngine", () => {
     it("keeps shader compilation successful when audio loading fails", async () => {
       const engine = new WebGPURenderingEngine(assets);
       stubEngineInternals(engine);
-      (engine as any).resourceManager = {
+      (engineOwners(engine).session as any).resourceManager = {
         loadAudioSource: vi.fn(async () => {
           throw new Error("decode failed");
         }),
@@ -2597,7 +2614,7 @@ describe("WebGPURenderingEngine", () => {
 
       expect(result?.success).toBe(true);
       expect(result?.warnings).toContain("Audio loading failed: /audio/test.wav");
-      expect((engine as any).resourceManager.updateAudioLoopRegion).not.toHaveBeenCalled();
+      expect((engineOwners(engine).session as any).resourceManager.updateAudioLoopRegion).not.toHaveBeenCalled();
     });
 
     it("updates and binds the audio texture with its timing uniforms", async () => {
@@ -2621,7 +2638,7 @@ describe("WebGPURenderingEngine", () => {
         updateKeyboardTexture: vi.fn(),
         getKeyboardTexture: vi.fn(() => null),
       };
-      (engine as any).resourceManager = resourceManager;
+      (engineOwners(engine).session as any).resourceManager = resourceManager;
 
       const result = await engine.compileShaderPipeline(
         "float4 mainImage(float2 c) { return iChannel1.Sample(float2(c.x, 0.25)); }",
@@ -2667,7 +2684,7 @@ describe("WebGPURenderingEngine", () => {
         updateKeyboardTexture: vi.fn(),
         getKeyboardTexture: vi.fn(() => null),
       };
-      (engine as any).resourceManager = resourceManager;
+      (engineOwners(engine).session as any).resourceManager = resourceManager;
 
       await engine.compileShaderPipeline(
         "float4 mainImage(float2 c) { return iChannel1.Sample(float2(c.x, 0.25)); }",
@@ -2703,7 +2720,7 @@ describe("WebGPURenderingEngine", () => {
         pauseAllVideos: vi.fn(),
         resumeAllVideos: vi.fn(),
       };
-      (engine as any).resourceManager = resourceManager;
+      (engineOwners(engine).session as any).resourceManager = resourceManager;
       (engine as any).timeManager = {
         getCurrentTime: vi.fn().mockReturnValue(7.5),
         isPaused: vi.fn().mockReturnValue(false),
@@ -2729,7 +2746,7 @@ describe("WebGPURenderingEngine", () => {
         pauseAllVideos: vi.fn(),
         resumeAllVideos: vi.fn(),
       };
-      (engine as any).resourceManager = resourceManager;
+      (engineOwners(engine).session as any).resourceManager = resourceManager;
       (engine as any).timeManager = {
         getCurrentTime: vi.fn().mockReturnValue(3.0),
         isPaused: vi.fn().mockReturnValue(true),
@@ -2755,7 +2772,7 @@ describe("WebGPURenderingEngine", () => {
         pauseAllVideos: vi.fn(),
         resumeAllVideos: vi.fn(),
       };
-      (engine as any).resourceManager = resourceManager;
+      (engineOwners(engine).session as any).resourceManager = resourceManager;
       (engine as any).timeManager = {
         getCurrentTime: vi.fn().mockReturnValue(0),
         isPaused: vi.fn().mockReturnValue(false),
@@ -2784,7 +2801,7 @@ describe("WebGPURenderingEngine", () => {
         pauseAllVideos: vi.fn(),
         resumeAllVideos: vi.fn(),
       };
-      (engine as any).resourceManager = resourceManager;
+      (engineOwners(engine).session as any).resourceManager = resourceManager;
 
       const result = await engine.compileShaderPipeline(
         "float4 mainImage(float2 c) { return float4(0); }",
@@ -2822,7 +2839,7 @@ describe("WebGPURenderingEngine", () => {
       const engine = new WebGPURenderingEngine(assets);
       const { compiler } = stubEngineInternals(engine);
       const loadCubemapTexture = vi.fn(async () => ({}));
-      (engine as any).resourceManager = { loadCubemapTexture };
+      (engineOwners(engine).session as any).resourceManager = { loadCubemapTexture };
 
       const result = await engine.compileShaderPipeline(
         "float4 mainImage(float2 c) { return float4(0); }",
@@ -2863,7 +2880,7 @@ describe("WebGPURenderingEngine", () => {
         getCubemapTexture: vi.fn(() => cubemapHandle),
         getDefaultTexture: vi.fn(() => null),
       };
-      (engine as any).resourceManager = resourceManager;
+      (engineOwners(engine).session as any).resourceManager = resourceManager;
 
       const result = await engine.compileShaderPipeline(
         "float4 mainImage(float2 c) { return float4(0); }",
@@ -2896,7 +2913,7 @@ describe("WebGPURenderingEngine", () => {
         getCubemapTexture: vi.fn(() => null),
         getDefaultTexture: vi.fn(() => defaultHandle),
       };
-      (engine as any).resourceManager = resourceManager;
+      (engineOwners(engine).session as any).resourceManager = resourceManager;
 
       const result = await engine.compileShaderPipeline(
         "float4 mainImage(float2 c) { return float4(0); }",
@@ -3061,7 +3078,7 @@ describe("WebGPURenderingEngine", () => {
     it("redraws Image immediately after resize while running without advancing feedback again", async () => {
       const { engine, device } = await compiledEngine();
       (engine as any).running = true;
-      const pipelines = (engine as any).passPipelines as Map<string, SlangPassPipeline>;
+      const pipelines = (engineOwners(engine).session as any).passPipelines as Map<string, SlangPassPipeline>;
       const swap = vi.spyOn(pipelines.get("BufferA")!, "swap");
       device.createCommandEncoder.mockClear();
       device.queue.submit.mockClear();
@@ -3127,9 +3144,10 @@ describe("WebGPURenderingEngine", () => {
         [256, 128],
         [6448, 8192],
       ]);
-      for (const call of device.createTexture.mock.calls.slice(4)) {
-        expect(call[0].size.width).toBeLessThanOrEqual(8192);
-        expect(call[0].size.height).toBeLessThanOrEqual(8192);
+      for (const [descriptor] of device.createTexture.mock.calls.slice(4)) {
+        const size = descriptor.size as GPUExtent3DDict;
+        expect(size.width).toBeLessThanOrEqual(8192);
+        expect(size.height).toBeLessThanOrEqual(8192);
       }
     });
 
@@ -3196,9 +3214,9 @@ describe("WebGPURenderingEngine", () => {
       const { engine } = await compiledEngine();
       engine.setFPSLimit(30);
 
-      (engine as any).gpuFrameMs = 12.5;
+      (engineOwners(engine).timing as any).gpuFrameMs = 12.5;
       engine.render(1000);
-      (engine as any).gpuFrameMs = 47.1;
+      (engineOwners(engine).timing as any).gpuFrameMs = 47.1;
       engine.render(1034);
 
       expect(engine.getFrameTimeHistory()).toEqual([34]);
@@ -3444,14 +3462,14 @@ describe("WebGPURenderingEngine", () => {
 
     it("keeps the previous pipelines when the recompile fails", async () => {
       const { engine, device, compiler } = await compiledEngine();
-      const pipelinesBefore = new Map((engine as any).passPipelines as Map<string, unknown>);
-      compiler.compile.mockReturnValue({ success: false, errors: ["syntax error"] });
+      const pipelinesBefore = new Map((engineOwners(engine).session as any).passPipelines as Map<string, unknown>);
+      compiler.compile.mockResolvedValue({ success: false, errors: ["syntax error"] });
 
       const result = await engine.updateBufferAndRecompile("BlurPass", "broken {");
 
       expect(result?.success).toBe(false);
       expect(result?.errors?.[0]).toMatch(/syntax error/);
-      expect((engine as any).passPipelines).toEqual(pipelinesBefore);
+      expect((engineOwners(engine).session as any).passPipelines).toEqual(pipelinesBefore);
       expect(engine.getPasses().map((pass: { name: string }) => pass.name)).toEqual(["BlurPass", "Image"]);
       expect(device.createCommandEncoder).not.toHaveBeenCalled();
       expect(device.queue.submit).not.toHaveBeenCalled();
@@ -3460,14 +3478,14 @@ describe("WebGPURenderingEngine", () => {
     it("discards the installed shader and clears the canvas when a different shader path fails", async () => {
       const { engine, device, compiler } = await compiledEngine();
       const installedPipelineMap = new Map(
-        (engine as any).passPipelines as Map<string, SlangPassPipeline>,
+        (engineOwners(engine).session as any).passPipelines as Map<string, SlangPassPipeline>,
       );
       const installedPipelines = [...installedPipelineMap.values()];
       const disposeSpies = installedPipelines.map((pipeline) => vi.spyOn(pipeline, "dispose"));
       const disposeResources = vi.fn();
-      (engine as any).resourceManager = { dispose: disposeResources };
+      (engineOwners(engine).session as any).resourceManager = { dispose: disposeResources };
       const cleanupTime = vi.spyOn(engine.getTimeManager(), "cleanup");
-      compiler.compile.mockReturnValue({ success: false, errors: ["syntax error"] });
+      compiler.compile.mockResolvedValue({ success: false, errors: ["syntax error"] });
 
       const result = await engine.compileShaderPipeline(
         "float4 mainImage(float2 c) { broken syntax }",
@@ -3479,7 +3497,7 @@ describe("WebGPURenderingEngine", () => {
       expect(result?.success).toBe(false);
       expect(result?.errors?.[0]).toMatch(/syntax error/);
       expect(engine.getPasses()).toEqual([]);
-      expect((engine as any).passPipelines.size).toBe(0);
+      expect((engineOwners(engine).session as any).passPipelines.size).toBe(0);
       for (const dispose of disposeSpies) {
         expect(dispose).toHaveBeenCalledOnce();
       }
@@ -3491,7 +3509,7 @@ describe("WebGPURenderingEngine", () => {
 
     it("does not render after a different shader path fails", async () => {
       const { engine, device, compiler } = await compiledEngine();
-      compiler.compile.mockReturnValue({ success: false, errors: ["syntax error"] });
+      compiler.compile.mockResolvedValue({ success: false, errors: ["syntax error"] });
 
       await engine.compileShaderPipeline(
         "float4 mainImage(float2 c) { broken syntax }",
@@ -3564,7 +3582,7 @@ describe("WebGPURenderingEngine", () => {
         resumeAllVideos: vi.fn(),
       };
       resourceManager.dispose = resourceManager.cleanup;
-      (engine as any).resourceManager = resourceManager;
+      (engineOwners(engine).session as any).resourceManager = resourceManager;
       return { engine, device, compiler, resourceManager };
     }
 
@@ -3602,7 +3620,7 @@ describe("WebGPURenderingEngine", () => {
         BufferA: bufferSource,
       });
       const firstPipelines = new Map(
-        (engine as any).passPipelines as Map<string, SlangPassPipeline>,
+        (engineOwners(engine).session as any).passPipelines as Map<string, SlangPassPipeline>,
       );
       const disposeSpies = new Map(
         [...firstPipelines].map(([name, pipeline]) => [name, vi.spyOn(pipeline, "dispose")]),
@@ -3613,7 +3631,7 @@ describe("WebGPURenderingEngine", () => {
       });
 
       expect(result?.success).toBe(true);
-      const secondPipelines = (engine as any).passPipelines as Map<string, SlangPassPipeline>;
+      const secondPipelines = (engineOwners(engine).session as any).passPipelines as Map<string, SlangPassPipeline>;
       for (const [name, firstPipeline] of firstPipelines) {
         expect(secondPipelines.get(name)).not.toBe(firstPipeline);
         expect(disposeSpies.get(name)).toHaveBeenCalledTimes(1);
@@ -3626,7 +3644,7 @@ describe("WebGPURenderingEngine", () => {
         BufferA: bufferSource,
       });
       const predecessors = new Map(
-        (engine as any).passPipelines as Map<string, SlangPassPipeline>,
+        (engineOwners(engine).session as any).passPipelines as Map<string, SlangPassPipeline>,
       );
       const bufferDispose = vi.spyOn(predecessors.get("BufferA")!, "dispose")
         .mockImplementation(() => {
@@ -3640,7 +3658,7 @@ describe("WebGPURenderingEngine", () => {
         "/second.slang",
         { BufferA: "float4 mainImage(float2 c) { return float4(2); }" },
       );
-      const installed = (engine as any).passPipelines as Map<string, SlangPassPipeline>;
+      const installed = (engineOwners(engine).session as any).passPipelines as Map<string, SlangPassPipeline>;
 
       expect(result?.success).toBe(true);
       expect(result?.warnings?.join("\n")).toMatch(/old render disposal failed/i);
@@ -3660,7 +3678,7 @@ describe("WebGPURenderingEngine", () => {
         BufferA: bufferSource,
       });
       const predecessors = new Map(
-        (engine as any).passPipelines as Map<string, SlangPassPipeline>,
+        (engineOwners(engine).session as any).passPipelines as Map<string, SlangPassPipeline>,
       );
       const cleanupTime = vi.spyOn(engine.getTimeManager(), "cleanup");
       resourceManager.cleanup.mockImplementationOnce(() => {
@@ -3677,7 +3695,7 @@ describe("WebGPURenderingEngine", () => {
       expect(result?.success).toBe(true);
       expect(result?.warnings?.join("\n")).toMatch(/old resource disposal failed/i);
       expect(engine.getResourceManager()).not.toBe(resourceManager);
-      expect((engine as any).passPipelines).not.toEqual(predecessors);
+      expect((engineOwners(engine).session as any).passPipelines).not.toEqual(predecessors);
       expect(resourceManager.cleanup).toHaveBeenCalledTimes(1);
       expect(cleanupTime).toHaveBeenCalledTimes(1);
       expect(engine.getPasses().map(({ name }) => name)).toEqual(["BufferA", "Image"]);
@@ -3687,7 +3705,7 @@ describe("WebGPURenderingEngine", () => {
     it("discards the installed generation when candidate video synchronization throws on a path switch", async () => {
       const engine = new WebGPURenderingEngine(assets);
       const { device } = stubEngineInternals(engine);
-      (engine as any).resourceManager = new ResourceManager(
+      (engineOwners(engine).session as any).resourceManager = new ResourceManager(
         new WebGPUTextureBackend(device as unknown as GPUDevice),
       );
       await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/first.slang", {
@@ -3730,7 +3748,7 @@ describe("WebGPURenderingEngine", () => {
           success: false,
           errors: [expect.stringMatching(/candidate video synchronization failed/i)],
         });
-        expect((engine as any).passPipelines.size).toBe(0);
+        expect((engineOwners(engine).session as any).passPipelines.size).toBe(0);
         expect(engine.getCurrentConfig()).toBeNull();
         expect(engine.getResourceManager()).not.toBe(installedResourceManager);
         expect(disposeSpy.mock.instances.filter((instance) =>
@@ -3749,7 +3767,7 @@ describe("WebGPURenderingEngine", () => {
       const installedResourceManager = new ResourceManager(
         new WebGPUTextureBackend(device as unknown as GPUDevice),
       );
-      (engine as any).resourceManager = installedResourceManager;
+      (engineOwners(engine).session as any).resourceManager = installedResourceManager;
       await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/first.slang", {
         BufferA: bufferSource,
       });
@@ -3794,7 +3812,7 @@ describe("WebGPURenderingEngine", () => {
     it("applies the engine's global media state before loading candidate videos", async () => {
       const engine = new WebGPURenderingEngine(assets);
       const { device } = stubEngineInternals(engine);
-      (engine as any).resourceManager = new ResourceManager(
+      (engineOwners(engine).session as any).resourceManager = new ResourceManager(
         new WebGPUTextureBackend(device as unknown as GPUDevice),
       );
       await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/first.slang", {
@@ -3843,7 +3861,7 @@ describe("WebGPURenderingEngine", () => {
     it("keeps installed resources isolated from a failed same-path image/video candidate", async () => {
       const engine = new WebGPURenderingEngine(assets);
       const { device, compiler } = stubEngineInternals(engine);
-      (engine as any).resourceManager = new ResourceManager(
+      (engineOwners(engine).session as any).resourceManager = new ResourceManager(
         new WebGPUTextureBackend(device as unknown as GPUDevice),
       );
       await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/same.slang", {
@@ -3893,7 +3911,7 @@ describe("WebGPURenderingEngine", () => {
     it("disposes a same-path resource candidate when a newer compile supersedes it", async () => {
       const engine = new WebGPURenderingEngine(assets);
       const { device, compiler } = stubEngineInternals(engine);
-      (engine as any).resourceManager = new ResourceManager(
+      (engineOwners(engine).session as any).resourceManager = new ResourceManager(
         new WebGPUTextureBackend(device as unknown as GPUDevice),
       );
       await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/same.slang", {
@@ -3957,7 +3975,7 @@ describe("WebGPURenderingEngine", () => {
     it("promptly settles a compile whose pending video load is superseded", async () => {
       const engine = new WebGPURenderingEngine(assets);
       const { device } = stubEngineInternals(engine);
-      (engine as any).resourceManager = new ResourceManager(
+      (engineOwners(engine).session as any).resourceManager = new ResourceManager(
         new WebGPUTextureBackend(device as unknown as GPUDevice),
       );
       await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/same.slang", {
@@ -4016,7 +4034,7 @@ describe("WebGPURenderingEngine", () => {
     it("cleans a cancelled resource candidate again after its in-flight image load settles", async () => {
       const engine = new WebGPURenderingEngine(assets);
       const { device } = stubEngineInternals(engine);
-      (engine as any).resourceManager = new ResourceManager(
+      (engineOwners(engine).session as any).resourceManager = new ResourceManager(
         new WebGPUTextureBackend(device as unknown as GPUDevice),
       );
       await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/same.slang", {
@@ -4069,7 +4087,7 @@ describe("WebGPURenderingEngine", () => {
       await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/same.slang", {
         BufferA: bufferSource,
       });
-      const predecessors = (engine as any).passPipelines;
+      const predecessors = (engineOwners(engine).session as any).passPipelines;
       let enumerations = 0;
       const buffers = new Proxy({
         BufferA: "float4 mainImage(float2 c) { return float4(9); }",
@@ -4092,7 +4110,7 @@ describe("WebGPURenderingEngine", () => {
 
       expect(result?.success).toBe(true);
       expect(enumerations).toBe(1);
-      expect((engine as any).passPipelines).not.toBe(predecessors);
+      expect((engineOwners(engine).session as any).passPipelines).not.toBe(predecessors);
       expect(engine.getVariableCaptureCompileContext()).toEqual({
         commonCode: "",
         slangPassName: "Image",
@@ -4106,7 +4124,7 @@ describe("WebGPURenderingEngine", () => {
     it("does not let a failed first attempt leak media into the first successful session", async () => {
       const engine = new WebGPURenderingEngine(assets);
       const { device, compiler } = stubEngineInternals(engine);
-      (engine as any).resourceManager = new ResourceManager(
+      (engineOwners(engine).session as any).resourceManager = new ResourceManager(
         new WebGPUTextureBackend(device as unknown as GPUDevice),
       );
       const loadVideoSpy = vi.spyOn(ResourceManager.prototype, "loadVideoTexture")
@@ -4160,7 +4178,7 @@ describe("WebGPURenderingEngine", () => {
     it("applies the latest global media state to a candidate immediately before it commits", async () => {
       const engine = new WebGPURenderingEngine(assets);
       const { device, compiler } = stubEngineInternals(engine);
-      (engine as any).resourceManager = new ResourceManager(
+      (engineOwners(engine).session as any).resourceManager = new ResourceManager(
         new WebGPUTextureBackend(device as unknown as GPUDevice),
       );
       await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/same.slang", {
@@ -4217,7 +4235,7 @@ describe("WebGPURenderingEngine", () => {
     it("keeps the installed manager on the latest global media state when a candidate fails", async () => {
       const engine = new WebGPURenderingEngine(assets);
       const { device, compiler } = stubEngineInternals(engine);
-      (engine as any).resourceManager = new ResourceManager(
+      (engineOwners(engine).session as any).resourceManager = new ResourceManager(
         new WebGPUTextureBackend(device as unknown as GPUDevice),
       );
       await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/same.slang", {
@@ -4271,7 +4289,7 @@ describe("WebGPURenderingEngine", () => {
     it("commits a successful same-path resource candidate and retires its predecessor once", async () => {
       const engine = new WebGPURenderingEngine(assets);
       const { device } = stubEngineInternals(engine);
-      (engine as any).resourceManager = new ResourceManager(
+      (engineOwners(engine).session as any).resourceManager = new ResourceManager(
         new WebGPUTextureBackend(device as unknown as GPUDevice),
       );
       await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/same.slang", {
@@ -4335,7 +4353,7 @@ describe("WebGPURenderingEngine", () => {
       const blockedCandidate = new Promise<{ success: false; errors: string[] }>((resolve) => {
         rejectCandidate = () => resolve({ success: false, errors: ["candidate failed"] });
       });
-      compiler.compile.mockImplementation((source: string) => source === "pending candidate"
+      compiler.compile.mockImplementation(async (source) => source === "pending candidate"
         ? blockedCandidate
         : { success: true, wgsl: "// wgsl" });
 
@@ -4374,7 +4392,7 @@ describe("WebGPURenderingEngine", () => {
           BufferB: { path: "buffer-b.slang", inputs: {} },
         },
       };
-      compiler.compile.mockReturnValue({ success: false, errors: ["candidate failed"] });
+      compiler.compile.mockResolvedValue({ success: false, errors: ["candidate failed"] });
       const failed = await engine.compileShaderPipeline(
         "candidate image",
         candidateConfig,
@@ -4383,7 +4401,7 @@ describe("WebGPURenderingEngine", () => {
       );
       expect(failed?.success).toBe(false);
       expect(engine.getCurrentConfig()).toBeNull();
-      compiler.compile.mockReturnValue({ success: true, wgsl: "// fixed candidate" });
+      compiler.compile.mockResolvedValue({ success: true, wgsl: "// fixed candidate" });
 
       const recovered = await engine.updateBufferAndRecompile("BufferB", "fixed candidate");
 
@@ -4413,7 +4431,7 @@ describe("WebGPURenderingEngine", () => {
       const blockedCandidate = new Promise<{ success: false; errors: string[] }>((resolve) => {
         rejectCandidate = () => resolve({ success: false, errors: ["candidate failed"] });
       });
-      compiler.compile.mockImplementation((source: string) => source === "buffer B"
+      compiler.compile.mockImplementation(async (source) => source === "buffer B"
         ? blockedCandidate
         : { success: true, wgsl: "// wgsl" });
 
@@ -4451,7 +4469,7 @@ describe("WebGPURenderingEngine", () => {
         slangModules: [],
       });
 
-      compiler.compile.mockReturnValue({ success: false, errors: ["same-path edit failed"] });
+      compiler.compile.mockResolvedValue({ success: false, errors: ["same-path edit failed"] });
       const failedSamePath = await engine.compileShaderPipeline(
         "same-path candidate image",
         lifecycleConfig,
@@ -4517,7 +4535,7 @@ describe("WebGPURenderingEngine", () => {
       engine.render(1016);
       const frameBefore = engine.getTimeManager().getFrame();
       const pipelinesBefore = new Map(
-        (engine as any).passPipelines as Map<string, SlangPassPipeline>,
+        (engineOwners(engine).session as any).passPipelines as Map<string, SlangPassPipeline>,
       );
       resourceManager.cleanup.mockClear();
 
@@ -4527,7 +4545,7 @@ describe("WebGPURenderingEngine", () => {
 
       expect(result?.success).toBe(true);
       expect(engine.getTimeManager().getFrame()).toBe(frameBefore);
-      expect((engine as any).passPipelines).toEqual(pipelinesBefore);
+      expect((engineOwners(engine).session as any).passPipelines).toEqual(pipelinesBefore);
       expect(resourceManager.cleanup).not.toHaveBeenCalled();
     });
 
@@ -4536,13 +4554,13 @@ describe("WebGPURenderingEngine", () => {
       await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/working.slang", {
         BufferA: bufferSource,
       });
-      compiler.compile.mockReturnValue({ success: false, errors: ["syntax error"] });
+      compiler.compile.mockResolvedValue({ success: false, errors: ["syntax error"] });
 
       const failed = await engine.compileShaderPipeline("broken image", null, "/broken.slang");
       expect(failed?.success).toBe(false);
       expect(engine.getPasses()).toEqual([]);
 
-      compiler.compile.mockReturnValue({ success: true, wgsl: "// corrected" });
+      compiler.compile.mockResolvedValue({ success: true, wgsl: "// corrected" });
       const recovered = await engine.compileShaderPipeline(
         "float4 mainImage(float2 c) { return float4(0, 1, 0, 1); }",
         null,
@@ -4551,7 +4569,7 @@ describe("WebGPURenderingEngine", () => {
 
       expect(recovered?.success).toBe(true);
       expect(engine.getPasses().map((pass) => pass.name)).toEqual(["Image"]);
-      expect((engine as any).passPipelines.get("Image")).toBeTruthy();
+      expect((engineOwners(engine).session as any).passPipelines.get("Image")).toBeTruthy();
     });
   });
 
@@ -4601,7 +4619,7 @@ describe("WebGPURenderingEngine", () => {
       getPreviousOutputView: () => null,
     });
 
-    (engine as any).passGraph = [
+    (engineOwners(engine).session as any).passGraph = [
       {
         name: "BufferA",
         width: 320,
@@ -4612,7 +4630,7 @@ describe("WebGPURenderingEngine", () => {
       },
       { name: "Image", width: 320, height: 180, output: "canvas", channels: [] },
     ];
-    (engine as any).passPipelines = new Map([
+    (engineOwners(engine).session as any).passPipelines = new Map([
       ["BufferA", bufferPipeline],
       ["Image", imagePipeline],
     ]);
@@ -4638,7 +4656,7 @@ describe("WebGPURenderingEngine", () => {
       getPreviousOutputView: () => null,
     });
 
-    (engine as any).passGraph = [
+    (engineOwners(engine).session as any).passGraph = [
       { name: "BufferA", width: 320, height: 180, output: "texture", channels: [] },
       {
         name: "Image",
@@ -4648,7 +4666,7 @@ describe("WebGPURenderingEngine", () => {
         channels: [{ kind: "buffer", slot: 0, key: "iChannel0", source: "BufferA", readFrom: "current-frame" }],
       },
     ];
-    (engine as any).passPipelines = new Map([
+    (engineOwners(engine).session as any).passPipelines = new Map([
       ["BufferA", bufferPipeline],
       ["Image", imagePipeline],
     ]);
@@ -4672,7 +4690,7 @@ describe("WebGPURenderingEngine", () => {
       getCurrentOutputView: () => ({ label: "bufferA-current" }),
     });
     const imagePipeline = renderablePipeline();
-    (engine as any).passGraph = [
+    (engineOwners(engine).session as any).passGraph = [
       { name: "BufferA", width: 320, height: 180, output: "texture", channels: [] },
       {
         name: "Image", width: 320, height: 180, output: "canvas",
@@ -4682,7 +4700,7 @@ describe("WebGPURenderingEngine", () => {
         }],
       },
     ];
-    (engine as any).passPipelines = new Map([
+    (engineOwners(engine).session as any).passPipelines = new Map([
       ["BufferA", bufferPipeline],
       ["Image", imagePipeline],
     ]);
@@ -4713,8 +4731,8 @@ describe("WebGPURenderingEngine", () => {
       getCurrentOutputView: () => null,
       getPreviousOutputView: () => null,
     });
-    (engine as any).storageBuffers = installedStorage;
-    (engine as any).passGraph = [
+    (engineOwners(engine).storage as any).storageBuffers = installedStorage;
+    (engineOwners(engine).session as any).passGraph = [
       { name: "BufferA", width: 320, height: 180, output: "texture", channels: [] },
       {
         name: "Image",
@@ -4730,7 +4748,7 @@ describe("WebGPURenderingEngine", () => {
         }],
       },
     ];
-    (engine as any).passPipelines = new Map([
+    (engineOwners(engine).session as any).passPipelines = new Map([
       ["BufferA", bufferPipeline],
       ["Image", imagePipeline],
     ]);
@@ -4757,7 +4775,7 @@ describe("WebGPURenderingEngine", () => {
       getPreviousOutputView: () => null,
     });
 
-    (engine as any).passGraph = [
+    (engineOwners(engine).session as any).passGraph = [
       { name: "BufferA", width: 320, height: 180, output: "texture", channels: [] },
       {
         name: "Image",
@@ -4773,7 +4791,7 @@ describe("WebGPURenderingEngine", () => {
         ],
       },
     ];
-    (engine as any).passPipelines = new Map([
+    (engineOwners(engine).session as any).passPipelines = new Map([
       ["BufferA", bufferPipeline],
       ["Image", imagePipeline],
     ]);
@@ -4801,11 +4819,11 @@ describe("WebGPURenderingEngine", () => {
       getPreviousOutputView: () => null,
     });
 
-    (engine as any).passGraph = [
+    (engineOwners(engine).session as any).passGraph = [
       { name: "BufferA", width: 320, height: 180, output: "texture", channels: [] },
       { name: "Image", width: 320, height: 180, output: "canvas", channels: [] },
     ];
-    (engine as any).passPipelines = new Map([
+    (engineOwners(engine).session as any).passPipelines = new Map([
       ["BufferA", bufferPipeline],
       ["Image", imagePipeline],
     ]);
@@ -4836,7 +4854,7 @@ describe("WebGPURenderingEngine", () => {
       getPreviousOutputView: () => null,
     });
 
-    (engine as any).passGraph = [
+    (engineOwners(engine).session as any).passGraph = [
       { name: "BufferA", width: 320, height: 180, output: "texture", channels: [] },
       {
         name: "Image",
@@ -4846,7 +4864,7 @@ describe("WebGPURenderingEngine", () => {
         channels: [{ kind: "buffer", slot: 0, key: "iChannel0", source: "BufferA", readFrom: "current-frame" }],
       },
     ];
-    (engine as any).passPipelines = new Map([
+    (engineOwners(engine).session as any).passPipelines = new Map([
       ["BufferA", bufferPipeline],
       ["Image", imagePipeline],
     ]);
@@ -4872,7 +4890,7 @@ describe("WebGPURenderingEngine", () => {
       getPreviousOutputView: () => null,
     });
 
-    (engine as any).passGraph = [
+    (engineOwners(engine).session as any).passGraph = [
       { name: "BufferA", width: 320, height: 180, output: "texture", channels: [] },
       {
         name: "Image",
@@ -4882,7 +4900,7 @@ describe("WebGPURenderingEngine", () => {
         channels: [{ kind: "buffer", slot: 0, key: "iChannel0", source: "BufferA", readFrom: "previous-frame" }],
       },
     ];
-    (engine as any).passPipelines = new Map([
+    (engineOwners(engine).session as any).passPipelines = new Map([
       ["BufferA", bufferPipeline],
       ["Image", imagePipeline],
     ]);
@@ -4944,14 +4962,14 @@ describe("WebGPURenderingEngine", () => {
 
       expect(first.compiler.compile).toHaveBeenCalledTimes(2);
       expect(second.compiler.compile).not.toHaveBeenCalled();
-      expect((second.engine as any).passPipelines.get("Image")).toBeTruthy();
-      expect((second.engine as any).passPipelines.get("BufferA")).toBeTruthy();
+      expect((engineOwners(second.engine).session as any).passPipelines.get("Image")).toBeTruthy();
+      expect((engineOwners(second.engine).session as any).passPipelines.get("BufferA")).toBeTruthy();
     });
 
     it("does not reuse a failed Slang compile across fresh engine instances", async () => {
       const first = cachedSetup();
       const second = cachedSetup();
-      first.compiler.compile.mockImplementation((source: string) =>
+      first.compiler.compile.mockImplementation(async (source) =>
         source === "buf cache failure"
           ? { success: false, errors: ["bad buffer"] }
           : { success: true, wgsl: "// wgsl" });
@@ -5032,8 +5050,8 @@ describe("WebGPURenderingEngine", () => {
           Image: { inputs: { iChannel0: { type: "cubemap", path: "sky.png" } } },
         },
       };
-      (first.engine as any).resourceManager = { loadImageTexture: vi.fn(async () => ({})) };
-      (second.engine as any).resourceManager = { loadCubemapTexture: vi.fn(async () => ({})) };
+      (engineOwners(first.engine).session as any).resourceManager = { loadImageTexture: vi.fn(async () => ({})) };
+      (engineOwners(second.engine).session as any).resourceManager = { loadCubemapTexture: vi.fn(async () => ({})) };
 
       await first.engine.compileShaderPipeline("img channel kind cache", textureConfig, "/channel-kind-cache.slang", {});
       await second.engine.compileShaderPipeline("img channel kind cache", cubemapConfig, "/channel-kind-cache.slang", {});
@@ -5047,7 +5065,7 @@ describe("WebGPURenderingEngine", () => {
     it("skips recompiling when nothing changed and reuses the same pipelines", async () => {
       const { engine, compiler } = cachedSetup();
       await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf" });
-      const firstGen = new Map((engine as any).passPipelines);
+      const firstGen = new Map((engineOwners(engine).session as any).passPipelines);
       expect(compiler.compile).toHaveBeenCalledTimes(2);
 
       compiler.compile.mockClear();
@@ -5055,15 +5073,15 @@ describe("WebGPURenderingEngine", () => {
 
       expect(result?.success).toBe(true);
       expect(compiler.compile).not.toHaveBeenCalled();
-      expect((engine as any).passPipelines.get("Image")).toBe(firstGen.get("Image"));
-      expect((engine as any).passPipelines.get("BufferA")).toBe(firstGen.get("BufferA"));
+      expect((engineOwners(engine).session as any).passPipelines.get("Image")).toBe(firstGen.get("Image"));
+      expect((engineOwners(engine).session as any).passPipelines.get("BufferA")).toBe(firstGen.get("BufferA"));
     });
 
     it("recompiles only the edited pass and disposes only its predecessor", async () => {
       const { engine, compiler } = cachedSetup();
       await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf" });
-      const firstImage = (engine as any).passPipelines.get("Image");
-      const firstBufferA = (engine as any).passPipelines.get("BufferA");
+      const firstImage = (engineOwners(engine).session as any).passPipelines.get("Image");
+      const firstBufferA = (engineOwners(engine).session as any).passPipelines.get("BufferA");
       const imageDispose = vi.spyOn(firstImage, "dispose");
       const bufferDispose = vi.spyOn(firstBufferA, "dispose");
 
@@ -5072,7 +5090,7 @@ describe("WebGPURenderingEngine", () => {
 
       expect(compiler.compile).toHaveBeenCalledTimes(1);
       expect(compiler.compile.mock.calls[0][0]).toBe("buf v2");
-      expect((engine as any).passPipelines.get("Image")).toBe(firstImage);
+      expect((engineOwners(engine).session as any).passPipelines.get("Image")).toBe(firstImage);
       expect(imageDispose).not.toHaveBeenCalled();
       expect(bufferDispose).toHaveBeenCalledTimes(1);
     });
@@ -5103,8 +5121,8 @@ describe("WebGPURenderingEngine", () => {
       };
 
       await engine.compileShaderPipeline("img", fullscreenConfig, "/s.slang", { BufferA: "buf" });
-      const firstImage = (engine as any).passPipelines.get("Image");
-      const firstBufferA = (engine as any).passPipelines.get("BufferA");
+      const firstImage = (engineOwners(engine).session as any).passPipelines.get("Image");
+      const firstBufferA = (engineOwners(engine).session as any).passPipelines.get("BufferA");
       const imageDispose = vi.spyOn(firstImage, "dispose");
       const bufferDispose = vi.spyOn(firstBufferA, "dispose");
 
@@ -5115,9 +5133,9 @@ describe("WebGPURenderingEngine", () => {
       expect(compiler.compile).toHaveBeenCalledWith("buf", expect.objectContaining({
         passName: "BufferA",
       }));
-      expect((engine as any).passPipelines.get("Image")).toBe(firstImage);
+      expect((engineOwners(engine).session as any).passPipelines.get("Image")).toBe(firstImage);
       expect(imageDispose).not.toHaveBeenCalled();
-      expect((engine as any).passPipelines.get("BufferA")).not.toBe(firstBufferA);
+      expect((engineOwners(engine).session as any).passPipelines.get("BufferA")).not.toBe(firstBufferA);
       expect(bufferDispose).toHaveBeenCalledTimes(1);
     });
 
@@ -5138,29 +5156,29 @@ describe("WebGPURenderingEngine", () => {
     it("keeps reused pipelines alive when the changed pass fails to compile", async () => {
       const { engine, compiler } = cachedSetup();
       await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf" });
-      const firstImage = (engine as any).passPipelines.get("Image");
-      const firstBufferA = (engine as any).passPipelines.get("BufferA");
+      const firstImage = (engineOwners(engine).session as any).passPipelines.get("Image");
+      const firstBufferA = (engineOwners(engine).session as any).passPipelines.get("BufferA");
       const imageDispose = vi.spyOn(firstImage, "dispose");
 
-      compiler.compile.mockImplementation((src: string) =>
+      compiler.compile.mockImplementation(async (src) =>
         src === "buf broken" ? { success: false, errors: ["bad"] } : { success: true, wgsl: "wgsl" });
       const result = await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf broken" });
 
       expect(result?.success).toBe(false);
       expect(imageDispose).not.toHaveBeenCalled();
-      expect((engine as any).passPipelines.get("Image")).toBe(firstImage);
-      expect((engine as any).passPipelines.get("BufferA")).toBe(firstBufferA);
+      expect((engineOwners(engine).session as any).passPipelines.get("Image")).toBe(firstImage);
+      expect((engineOwners(engine).session as any).passPipelines.get("BufferA")).toBe(firstBufferA);
     });
 
     it("reuses WGSL but replaces GPU pipelines when graph dimensions change", async () => {
       const { engine, device, compiler } = cachedSetup();
       await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf" });
-      const image = (engine as any).passPipelines.get("Image");
+      const image = (engineOwners(engine).session as any).passPipelines.get("Image");
 
       (engine as any).canvas = { width: 640, height: 360 };
       await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf" });
 
-      expect((engine as any).passPipelines.get("Image")).not.toBe(image);
+      expect((engineOwners(engine).session as any).passPipelines.get("Image")).not.toBe(image);
       expect(compiler.compile).toHaveBeenCalledTimes(2); // only the first compile's two calls
       expect(device.createRenderPipeline).toHaveBeenCalledTimes(4);
     });
@@ -5180,7 +5198,7 @@ describe("WebGPURenderingEngine", () => {
         BufferB: "buffer b",
       });
       const installedPipelines = new Map(
-        (engine as any).passPipelines as Map<string, SlangPassPipeline>,
+        (engineOwners(engine).session as any).passPipelines as Map<string, SlangPassPipeline>,
       );
       const installedTextures = device.createTexture.mock.results
         .map((result) => result.value);
@@ -5193,8 +5211,8 @@ describe("WebGPURenderingEngine", () => {
         destroy: vi.fn(),
       };
       device.createTexture
-        .mockImplementationOnce(() => candidateTextureA)
-        .mockImplementationOnce(() => candidateTextureB)
+        .mockImplementationOnce((descriptor) => ({ ...candidateTextureA, descriptor }))
+        .mockImplementationOnce((descriptor) => ({ ...candidateTextureB, descriptor }))
         .mockImplementationOnce(() => {
           throw new Error("later resize allocation failed");
         });
@@ -5209,7 +5227,7 @@ describe("WebGPURenderingEngine", () => {
         success: false,
         errors: ["BufferB: later resize allocation failed"],
       });
-      expect((engine as any).passPipelines).toEqual(installedPipelines);
+      expect((engineOwners(engine).session as any).passPipelines).toEqual(installedPipelines);
       expect(installedTextures.every((texture) => texture.destroy.mock.calls.length === 0)).toBe(true);
       expect(candidateTextureA.destroy).toHaveBeenCalledTimes(1);
       expect(candidateTextureB.destroy).toHaveBeenCalledTimes(1);
@@ -5289,7 +5307,7 @@ describe("WebGPURenderingEngine", () => {
 
       // Baseline compile: establishes the per-pass cache for both passes.
       await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf-base" });
-      const baselineImage = (engine as any).passPipelines.get("Image");
+      const baselineImage = (engineOwners(engine).session as any).passPipelines.get("Image");
 
       const disposeSpy = vi.spyOn(SlangPassPipeline.prototype, "dispose");
       try {
@@ -5314,8 +5332,8 @@ describe("WebGPURenderingEngine", () => {
         const resultB = await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf-B" });
 
         expect(resultB?.success).toBe(true);
-        const installedAfterB_BufferA = (engine as any).passPipelines.get("BufferA");
-        const installedAfterB_Image = (engine as any).passPipelines.get("Image");
+        const installedAfterB_BufferA = (engineOwners(engine).session as any).passPipelines.get("BufferA");
+        const installedAfterB_Image = (engineOwners(engine).session as any).passPipelines.get("Image");
         // Image was unchanged across all three compiles, so it's the same
         // carried-over pipeline throughout.
         expect(installedAfterB_Image).toBe(baselineImage);
@@ -5329,8 +5347,8 @@ describe("WebGPURenderingEngine", () => {
         expect(resultA).toEqual({ success: false, errors: ["Superseded by a newer compile"], superseded: true });
         // The installed pipelines are still B's; A's late arrival didn't
         // clobber them.
-        expect((engine as any).passPipelines.get("BufferA")).toBe(installedAfterB_BufferA);
-        expect((engine as any).passPipelines.get("Image")).toBe(baselineImage);
+        expect((engineOwners(engine).session as any).passPipelines.get("BufferA")).toBe(installedAfterB_BufferA);
+        expect((engineOwners(engine).session as any).passPipelines.get("Image")).toBe(baselineImage);
         // A became stale while still awaiting Slang, so it never allocates a
         // candidate pipeline. Neither installed winner is disposed.
         expect(disposeSpy.mock.instances).not.toContain(installedAfterB_BufferA);
@@ -5370,7 +5388,7 @@ describe("WebGPURenderingEngine", () => {
         "/current.slang",
         { BufferA: "buf-current" },
       );
-      const currentPipelines = new Map((engine as any).passPipelines as Map<string, SlangPassPipeline>);
+      const currentPipelines = new Map((engineOwners(engine).session as any).passPipelines as Map<string, SlangPassPipeline>);
       const submitsBeforeStaleFailure = device.queue.submit.mock.calls.length;
 
       releaseFailure!();
@@ -5382,7 +5400,7 @@ describe("WebGPURenderingEngine", () => {
         errors: ["Superseded by a newer compile"],
         superseded: true,
       });
-      expect((engine as any).passPipelines).toEqual(currentPipelines);
+      expect((engineOwners(engine).session as any).passPipelines).toEqual(currentPipelines);
       expect(engine.getPasses().map((pass) => pass.name)).toEqual(["BufferA", "Image"]);
       expect(device.queue.submit).toHaveBeenCalledTimes(submitsBeforeStaleFailure);
     });
@@ -5432,7 +5450,7 @@ describe("WebGPURenderingEngine", () => {
         BufferB: "buffer b",
       });
       const installedPipelines = new Map(
-        (engine as any).passPipelines as Map<string, SlangPassPipeline>,
+        (engineOwners(engine).session as any).passPipelines as Map<string, SlangPassPipeline>,
       );
       let releaseImage!: () => void;
       compiler.compile.mockImplementationOnce(() => new Promise((resolve) => {
@@ -5460,8 +5478,8 @@ describe("WebGPURenderingEngine", () => {
         destroy: vi.fn(),
       };
       device.createTexture
-        .mockImplementationOnce(() => candidateTextureA)
-        .mockImplementationOnce(() => candidateTextureB)
+        .mockImplementationOnce((descriptor) => ({ ...candidateTextureA, descriptor }))
+        .mockImplementationOnce((descriptor) => ({ ...candidateTextureB, descriptor }))
         .mockImplementationOnce(() => {
           throw new Error("final resolution allocation failed");
         });
@@ -5473,7 +5491,7 @@ describe("WebGPURenderingEngine", () => {
         success: false,
         errors: ["BufferB: final resolution allocation failed"],
       });
-      expect((engine as any).passPipelines).toEqual(installedPipelines);
+      expect((engineOwners(engine).session as any).passPipelines).toEqual(installedPipelines);
       expect(installedTexturesAtLiveSize.every((texture) =>
         texture.destroy.mock.calls.length === 0)).toBe(true);
       expect(candidateTextureA.destroy).toHaveBeenCalledTimes(1);
@@ -5529,22 +5547,22 @@ describe("WebGPURenderingEngine", () => {
         "/image.slang",
         {},
       );
-      const pipeline = (engine as any).passPipelines.get("Image");
+      const pipeline = (engineOwners(engine).session as any).passPipelines.get("Image");
       const disposeSpy = vi.spyOn(pipeline, "dispose");
 
       engine.dispose();
 
       expect(disposeSpy).toHaveBeenCalledTimes(1);
-      expect((engine as any).passPipelines.size).toBe(0);
-      expect((engine as any).passKeys.size).toBe(0);
+      expect((engineOwners(engine).session as any).passPipelines.size).toBe(0);
+      expect((engineOwners(engine).session as any).passKeys.size).toBe(0);
       expect(engine.getPasses()).toEqual([]);
     });
 
     it("cleans up the resource manager", async () => {
       const engine = new WebGPURenderingEngine(assets);
       const { device } = stubEngineInternals(engine);
-      (engine as any).resourceManager = new ResourceManager(new WebGPUTextureBackend(device as unknown as GPUDevice));
-      const cleanupSpy = vi.spyOn((engine as any).resourceManager, "cleanup");
+      (engineOwners(engine).session as any).resourceManager = new ResourceManager(new WebGPUTextureBackend(device as unknown as GPUDevice));
+      const cleanupSpy = vi.spyOn((engineOwners(engine).session as any).resourceManager, "cleanup");
 
       engine.dispose();
 
@@ -5576,7 +5594,7 @@ describe("WebGPURenderingEngine", () => {
         [loader]: vi.fn(() => pending.promise),
         updateAudioLoopRegion: vi.fn(),
       };
-      (engine as any).resourceManager = resources;
+      (engineOwners(engine).session as any).resourceManager = resources;
       const compile = engine.compileShaderPipeline(
         "float4 mainImage(float2 c) { return float4(0); }",
         { version: "1", passes: { Image: { inputs: { iChannel0: { type, path: `input.${type}` } } } } } as ShaderConfig,
@@ -5590,7 +5608,7 @@ describe("WebGPURenderingEngine", () => {
 
       await expect(compile).resolves.toMatchObject({ success: false, superseded: true });
       expect(resources.cleanup).toHaveBeenCalledTimes(2);
-      expect((engine as any).passPipelines.size).toBe(0);
+      expect((engineOwners(engine).session as any).passPipelines.size).toBe(0);
     });
 
     it("cleans late resources when a caught audio load rejects after dispose", async () => {
@@ -5602,7 +5620,7 @@ describe("WebGPURenderingEngine", () => {
         loadAudioSource: vi.fn(() => pending.promise),
         updateAudioLoopRegion: vi.fn(),
       };
-      (engine as any).resourceManager = resources;
+      (engineOwners(engine).session as any).resourceManager = resources;
       const compile = engine.compileShaderPipeline(
         "float4 mainImage(float2 c) { return float4(0); }",
         { version: "1", passes: { Image: { inputs: { iChannel0: { type: "audio", path: "input.wav" } } } } },
@@ -5627,7 +5645,7 @@ describe("WebGPURenderingEngine", () => {
         cleanup: vi.fn(),
         loadImageTexture: vi.fn(() => pending.promise),
       };
-      (engine as any).resourceManager = resources;
+      (engineOwners(engine).session as any).resourceManager = resources;
       const staleCompile = engine.compileShaderPipeline(
         "float4 mainImage(float2 c) { return float4(0); }",
         { version: "1", passes: { Image: { inputs: { iChannel0: { type: "texture", path: "late.png" } } } } },
@@ -5663,13 +5681,13 @@ describe("WebGPURenderingEngine", () => {
       const internals = disposableInternals(engine);
       internals.compiler = compiler;
       internals.pixelRegionCapturer = inspector;
-      internals.passPipelines = new Map([
+      (engineOwners(internals).session as unknown as typeof internals).passPipelines = new Map([
         ["BufferA", firstPipeline],
         ["Image", secondPipeline],
       ]);
-      internals.passKeys = new Map([["Image", "key"]]);
-      internals.passGraph = [{ name: "Image" }];
-      internals.resourceManager = resources;
+      (engineOwners(internals).session as unknown as typeof internals).passKeys = new Map([["Image", "key"]]);
+      (engineOwners(internals).session as unknown as typeof internals).passGraph = [{ name: "Image" }];
+      (engineOwners(internals).session as unknown as typeof internals).resourceManager = resources;
       internals.device = device;
 
       expect(() => engine.dispose()).toThrow(compilerError);
@@ -5682,10 +5700,10 @@ describe("WebGPURenderingEngine", () => {
       expect(device.destroy).toHaveBeenCalledOnce();
       expect(internals.compiler).toBeNull();
       expect(internals.pixelRegionCapturer).toBeNull();
-      expect(internals.passPipelines.size).toBe(0);
-      expect(internals.passKeys.size).toBe(0);
-      expect(internals.passGraph).toEqual([]);
-      expect(internals.resourceManager).toBeNull();
+      expect((engineOwners(internals).session as unknown as typeof internals).passPipelines.size).toBe(0);
+      expect((engineOwners(internals).session as unknown as typeof internals).passKeys.size).toBe(0);
+      expect((engineOwners(internals).session as unknown as typeof internals).passGraph).toEqual([]);
+      expect((engineOwners(internals).session as unknown as typeof internals).resourceManager).toBeNull();
       expect(internals.device).toBeNull();
 
       expect(() => engine.dispose()).not.toThrow();
@@ -5730,13 +5748,13 @@ describe("WebGPURenderingEngine", () => {
       Object.assign(engine as any, { mouseManager, keyboardManager });
       internals.compiler = compiler;
       internals.pixelRegionCapturer = inspector;
-      internals.passPipelines = new Map([
+      (engineOwners(internals).session as unknown as typeof internals).passPipelines = new Map([
         ["BufferA", failedPipeline],
         ["Image", successfulPipeline],
       ]);
-      internals.passKeys = new Map([["Image", "key"]]);
-      internals.passGraph = [{ name: "Image" }];
-      internals.resourceManager = resources;
+      (engineOwners(internals).session as unknown as typeof internals).passKeys = new Map([["Image", "key"]]);
+      (engineOwners(internals).session as unknown as typeof internals).passGraph = [{ name: "Image" }];
+      (engineOwners(internals).session as unknown as typeof internals).resourceManager = resources;
       internals.device = device;
 
       expect(() => engine.dispose()).toThrow(stopError);
@@ -5752,12 +5770,12 @@ describe("WebGPURenderingEngine", () => {
       expect(internals).toMatchObject({
         compiler: null,
         pixelRegionCapturer: null,
-        resourceManager: null,
         device: null,
       });
-      expect(internals.passPipelines.size).toBe(0);
-      expect(internals.passKeys.size).toBe(0);
-      expect(internals.passGraph).toEqual([]);
+      expect(engineOwners(internals).session.resourceManager).toBeNull();
+      expect((engineOwners(internals).session as unknown as typeof internals).passPipelines.size).toBe(0);
+      expect((engineOwners(internals).session as unknown as typeof internals).passKeys.size).toBe(0);
+      expect((engineOwners(internals).session as unknown as typeof internals).passGraph).toEqual([]);
 
       stopSpy.mockRestore();
       expect(() => engine.dispose()).not.toThrow();
@@ -5768,8 +5786,8 @@ describe("WebGPURenderingEngine", () => {
     it("cleans up the resource manager without disposing the device", () => {
       const engine = new WebGPURenderingEngine(assets);
       const { device } = stubEngineInternals(engine);
-      (engine as any).resourceManager = new ResourceManager(new WebGPUTextureBackend(device as unknown as GPUDevice));
-      const cleanupSpy = vi.spyOn((engine as any).resourceManager, "cleanup");
+      (engineOwners(engine).session as any).resourceManager = new ResourceManager(new WebGPUTextureBackend(device as unknown as GPUDevice));
+      const cleanupSpy = vi.spyOn((engineOwners(engine).session as any).resourceManager, "cleanup");
 
       engine.cleanup();
 
@@ -5827,7 +5845,7 @@ describe("WebGPURenderingEngine", () => {
     function compiledEngine() {
       const engine = new WebGPURenderingEngine(assets);
       const { device, compiler } = stubEngineInternals(engine);
-      (engine as any).resourceManager = new ResourceManager(new WebGPUTextureBackend(device as unknown as GPUDevice));
+      (engineOwners(engine).session as any).resourceManager = new ResourceManager(new WebGPUTextureBackend(device as unknown as GPUDevice));
       return { engine, device, compiler };
     }
 
@@ -5942,7 +5960,7 @@ describe("WebGPURenderingEngine", () => {
       }));
 
       const textureHandle = { view: { label: "tex-view" }, sampler: { label: "tex-sampler" } };
-      (engine as any).resourceManager = {
+      (engineOwners(engine).session as any).resourceManager = {
         getImageTextureCache: () => ({ [getSlangTextureIdentity({ kind: "texture", slot: 0, key: "", path: "/tex.png" })]: textureHandle }),
         getDefaultTexture: () => null,
       };
@@ -5956,7 +5974,7 @@ describe("WebGPURenderingEngine", () => {
         getPreviousOutputView: () => null,
       });
 
-      (engine as any).passGraph = [
+      (engineOwners(engine).session as any).passGraph = [
         {
           name: "BufferA",
           width: 320,
@@ -5975,7 +5993,7 @@ describe("WebGPURenderingEngine", () => {
           ],
         },
       ];
-      (engine as any).passPipelines = new Map([
+      (engineOwners(engine).session as any).passPipelines = new Map([
         ["BufferA", bufferPipeline],
         ["Image", imagePipeline],
       ]);
@@ -6010,7 +6028,7 @@ describe("WebGPURenderingEngine", () => {
     async function compiledEngineFactory(config: ShaderConfig) {
       const engine = new WebGPURenderingEngine(assets);
       const { device } = stubEngineInternals(engine);
-      (engine as any).resourceManager = new ResourceManager(new WebGPUTextureBackend(device as unknown as GPUDevice));
+      (engineOwners(engine).session as any).resourceManager = new ResourceManager(new WebGPUTextureBackend(device as unknown as GPUDevice));
       // stubEngineInternals bypasses initialize(), which is normally what wires
       // the keyboard manager to `window` — attach it directly so the real
       // KeyboardManager instance reacts to dispatched KeyboardEvents.
@@ -6100,9 +6118,11 @@ describe("WebGPURenderingEngine", () => {
 
     function wgslDevice(compilationMessages: unknown[] = []) {
       return {
-        createShaderModule: vi.fn(() => ({
-          getCompilationInfo: vi.fn(async () => ({ messages: compilationMessages })),
-        })),
+        createShaderModule: vi.fn<(descriptor: GPUShaderModuleDescriptor) => {
+          getCompilationInfo: ReturnType<typeof vi.fn<() => Promise<{ messages: unknown[] }>>>;
+        }>(() => ({
+            getCompilationInfo: vi.fn<() => Promise<{ messages: unknown[] }>>(async () => ({ messages: compilationMessages })),
+          })),
         createRenderPipeline: vi.fn(() => ({ getBindGroupLayout: vi.fn(() => ({})) })),
         createBindGroupLayout: vi.fn(() => ({})),
         createPipelineLayout: vi.fn(() => ({})),
@@ -6130,8 +6150,8 @@ describe("WebGPURenderingEngine", () => {
     for (const owner of ["Common", "vertex", "Image"] as const) {
       it(`retains ${owner} diagnostic ownership on cold compilation and compiled-source cache hits`, async () => {
         const device = wgslDevice();
-        device.createShaderModule.mockImplementation(({ code }: { code: string }) => ({
-          getCompilationInfo: vi.fn(async () => ({ messages: [{
+        device.createShaderModule.mockImplementation(({ code }) => ({
+          getCompilationInfo: vi.fn<() => Promise<{ messages: unknown[] }>>(async () => ({ messages: [{
             type: "error", lineNum: code.split("\n").findIndex(line => line.includes("missingOwner")) + 1,
             linePos: 3, message: "unknown identifier",
           }] })),
@@ -6142,7 +6162,7 @@ describe("WebGPURenderingEngine", () => {
           common: { path: "common.wgsl" },
           Image: { ...(owner === "vertex" ? { vertex: "vertex.wgsl" } : {}) },
         } };
-        const buffers = owner === "Common" ? { common: broken }
+        const buffers: Record<string, string> = owner === "Common" ? { common: broken }
           : owner === "vertex" ? { "__shader_studio_vertex__:Image": broken } : {};
         const expected = owner === "vertex" ? "Image (vertex): L4:3 unknown identifier"
           : `${owner}: WGSL L4:3 unknown identifier`;
@@ -6164,8 +6184,8 @@ describe("WebGPURenderingEngine", () => {
     it("retains compute Common and directive coordinates through cached source", async () => {
       const device = wgslDevice();
       Object.assign(device, { createComputePipeline: vi.fn(() => ({})), queue: { writeBuffer: vi.fn() } });
-      device.createShaderModule.mockImplementation(({ code }: { code: string }) => ({
-        getCompilationInfo: vi.fn(async () => ({ messages: [{
+      device.createShaderModule.mockImplementation(({ code }) => ({
+        getCompilationInfo: vi.fn<() => Promise<{ messages: unknown[] }>>(async () => ({ messages: [{
           type: "error", lineNum: code.split("\n").findIndex(line => line.includes("unknown_extension")) + 1,
           linePos: 5, message: "unsupported extension",
         }] })),
@@ -6249,7 +6269,7 @@ describe("WebGPURenderingEngine", () => {
 
 it('retains WGSL storage layout in capture context before a graph is installed', () => {
   const engine = new WebGPURenderingEngine(undefined, 'wgsl');
-  (engine as unknown as { lastCompile: unknown }).lastCompile = {
+  (engineOwners(engine).session as unknown as { lastCompile: unknown }).lastCompile = {
     code: 'struct Particle { value: vec4f, }\nfn mainImage(coord: vec2f) -> vec4f { return vec4f(1); }',
     config: { version: '1.0', storage: { particles: { count: 4, elementType: 'Particle' } }, passes: { Image: {} } },
     path: '/main.wgsl', buffers: {}, slangModules: [],

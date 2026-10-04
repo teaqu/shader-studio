@@ -10,7 +10,7 @@ describe('requestShaderCode', () => {
         receive = handler;
         return remove;
       }),
-      postMessage: vi.fn((message: { path: string; requestId: number }) => {
+      postMessage: vi.fn((message: { type: string; path: string; requestId: number }) => {
         receive?.(new MessageEvent('message', { data: {
           type: 'shaderCode',
           path: message.path,
@@ -103,7 +103,7 @@ describe('requestShaderCode', () => {
   it('ignores a stale same-path response with a different request ID', async () => {
     let requestId = 0;
     const vscodeApi = {
-      postMessage: vi.fn((message: { requestId: number }) => {
+      postMessage: vi.fn((message: { type: string; requestId: number }) => {
         requestId = message.requestId;
       }),
     };

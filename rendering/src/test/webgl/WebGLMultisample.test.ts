@@ -86,9 +86,13 @@ describe("WebGLMultisampleTargets", () => {
   });
 
   it.each([
-    ["size", { ...bufferTarget, width: 128 }, gl => gl.RGBA16F],
-    ["format", bufferTarget, gl => gl.RGBA8],
-  ] as const)("recreates the buffers when the %s changes", (_change, target, format) => {
+    ["size", { ...bufferTarget, width: 128 }, (gl: ReturnType<typeof createGl>) => gl.RGBA16F],
+    ["format", bufferTarget, (gl: ReturnType<typeof createGl>) => gl.RGBA8],
+  ] as const)("recreates the buffers when the %s changes", (
+    _change: string,
+    target: typeof bufferTarget,
+    format: (context: ReturnType<typeof createGl>) => number,
+  ) => {
     targets.begin("BufferA", bufferTarget, 4, gl.RGBA16F);
     const first = gl.createFramebuffer.mock.results[0]!.value;
 

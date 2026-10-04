@@ -318,7 +318,7 @@ describe("VariableCapturer", () => {
     });
 
     it("should return 0 when FBO creation fails", async () => {
-      vi.mocked(gl.createFramebuffer).mockReturnValue(null);
+      vi.mocked(gl.createFramebuffer).mockReturnValue(null as unknown as WebGLFramebuffer);
 
       const captures = [
         { varName: "x", varType: "float", captureShader: "code" },
@@ -508,7 +508,7 @@ describe("VariableCapturer", () => {
     });
 
     it("should return 0 when FBO creation fails", async () => {
-      vi.mocked(gl.createFramebuffer).mockReturnValue(null);
+      vi.mocked(gl.createFramebuffer).mockReturnValue(null as unknown as WebGLFramebuffer);
 
       const captures = [
         { varName: "x", varType: "float", captureShader: "code" },
@@ -525,7 +525,7 @@ describe("VariableCapturer", () => {
     });
 
     it("should skip captures with failed shader compilation", async () => {
-      vi.mocked(shaderCompiler.compileShaderAsync).mockReturnValue(null);
+      vi.mocked(shaderCompiler.compileShaderAsync).mockReturnValue(null as unknown as Promise<PiShader | null>);
 
       const captures = [
         { varName: "x", varType: "float", captureShader: "bad_code" },

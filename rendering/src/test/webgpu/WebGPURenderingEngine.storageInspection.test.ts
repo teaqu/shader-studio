@@ -1,3 +1,4 @@
+import { engineOwners } from "./engineOwners";
 import { describe, expect, it, vi } from 'vitest';
 import { WebGPURenderingEngine } from '../../webgpu/WebGPURenderingEngine';
 
@@ -21,8 +22,8 @@ function engineWithStorage() {
   } as unknown as GPUDevice;
   const engine = new WebGPURenderingEngine({ scriptUrl: 'slang.js', wasmUrl: 'slang.wasm' });
   (engine as unknown as { device: GPUDevice }).device = device;
-  (engine as unknown as { storageBuffers: Map<string, GPUBuffer> }).storageBuffers = new Map([['particles', source]]);
-  (engine as unknown as { storageLayouts: Map<string, unknown> }).storageLayouts = new Map([[
+  (engineOwners(engine).storage as unknown as { storageBuffers: Map<string, GPUBuffer> }).storageBuffers = new Map([['particles', source]]);
+  (engineOwners(engine).storage as unknown as { storageLayouts: Map<string, unknown> }).storageLayouts = new Map([[
     'particles', { name: 'particles', elementType: 'float4', stride: 16, count: 8 },
   ]]);
   return { engine, source, device, readback, copyBufferToBuffer, writeBuffer };
@@ -56,7 +57,7 @@ describe('WebGPURenderingEngine storage inspection', () => {
 
   it('copies an aligned envelope and trims it for an unaligned f16 element read', async () => {
     const { engine, source, copyBufferToBuffer, readback } = engineWithStorage();
-    (engine as unknown as { storageLayouts: Map<string, unknown> }).storageLayouts.set(
+    (engineOwners(engine).storage as unknown as { storageLayouts: Map<string, unknown> }).storageLayouts.set(
       'particles', { name: 'particles', elementType: 'f16', stride: 2, count: 2 },
     );
     (readback.getMappedRange as ReturnType<typeof vi.fn>).mockReturnValueOnce(new Uint8Array([9, 8, 7, 6]).buffer);
@@ -69,7 +70,7 @@ describe('WebGPURenderingEngine storage inspection', () => {
 
   it('read-modify-writes an aligned envelope for an unaligned f16 element edit', async () => {
     const { engine, source, writeBuffer, readback } = engineWithStorage();
-    (engine as unknown as { storageLayouts: Map<string, unknown> }).storageLayouts.set(
+    (engineOwners(engine).storage as unknown as { storageLayouts: Map<string, unknown> }).storageLayouts.set(
       'particles', { name: 'particles', elementType: 'f16', stride: 2, count: 2 },
     );
     (readback.getMappedRange as ReturnType<typeof vi.fn>).mockReturnValueOnce(new Uint8Array([9, 8, 7, 6]).buffer);

@@ -80,6 +80,12 @@ jobs:
       - name: Run ESLint
         run: npm run lint
 
+      - name: Check declared dependency boundaries
+        run: npm run knip
+
+      - name: Check workspace dependency boundaries
+        run: npm run boundaries
+
       - name: Build workspace dependencies
         run: npm run build:deps -w extension
 
@@ -108,6 +114,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Direct pushes may contain several commits; retain their before SHA.
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -137,8 +146,31 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Type check source and tests in every workspace
+        run: npm run typecheck
+
       - name: Run workspace Vitest suite
-        run: npm test
+        id: unit-tests
+        run: npm test -- --coverage
+
+      - name: Check coverage of new runtime source files
+        if: ${{ always() && (steps.unit-tests.outcome == 'success' || steps.unit-tests.outcome == 'failure') }}
+        env:
+          COVERAGE_BASE_REF: ${{ github.event_name == 'push' && github.ref_type == 'branch' && github.event.before || 'HEAD^' }}
+        run: npm run coverage:new-files -- "$COVERAGE_BASE_REF"
+
+      - name: Report package coverage
+        if: ${{ always() && (steps.unit-tests.outcome == 'success' || steps.unit-tests.outcome == 'failure') }}
+        run: npm run coverage:summary
+
+      - name: Upload unit coverage
+        if: ${{ always() && (steps.unit-tests.outcome == 'success' || steps.unit-tests.outcome == 'failure') }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: unit-coverage
+          path: coverage/
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Run UI type check
         run: npm run check -w ui

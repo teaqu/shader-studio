@@ -55,7 +55,7 @@ export const BUILTIN_STORAGE_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /** WGSL spellings of the same built-in storage element types. */
-export const BUILTIN_STORAGE_TYPES_WGSL: ReadonlySet<string> = new Set([
+const BUILTIN_STORAGE_TYPES_WGSL: ReadonlySet<string> = new Set([
   "f16", "f32", "vec2<f16>", "vec3<f16>", "vec4<f16>", "vec2<f32>", "vec3<f32>", "vec4<f32>",
   "i32", "vec2<i32>", "vec3<i32>", "vec4<i32>",
   "u32", "vec2<u32>", "vec3<u32>", "vec4<u32>",
@@ -70,7 +70,7 @@ export const BUILTIN_STORAGE_TYPES_WGSL: ReadonlySet<string> = new Set([
 ]);
 
 /** WGSL storage sizes for built-in element types. Used to auto-fill stride. */
-export const BUILTIN_STORAGE_SIZES: ReadonlyMap<string, number> = new Map([
+const BUILTIN_STORAGE_SIZES: ReadonlyMap<string, number> = new Map([
   ["float", 4], ["float2", 8], ["float3", 16], ["float4", 16],
   ["int", 4], ["int2", 8], ["int3", 16], ["int4", 16],
   ["uint", 4], ["uint2", 8], ["uint3", 16], ["uint4", 16],
@@ -79,7 +79,7 @@ export const BUILTIN_STORAGE_SIZES: ReadonlyMap<string, number> = new Map([
 ]);
 
 /** WGSL storage sizes for built-in element types. Used to auto-fill stride. */
-export const BUILTIN_STORAGE_SIZES_WGSL: ReadonlyMap<string, number> = new Map([
+const BUILTIN_STORAGE_SIZES_WGSL: ReadonlyMap<string, number> = new Map([
   ["f16", 2],
   ["f32", 4], ["vec2<f32>", 8], ["vec3<f32>", 16], ["vec4<f32>", 16],
   ["vec2<f16>", 4], ["vec3<f16>", 8], ["vec4<f16>", 8],
@@ -454,7 +454,7 @@ function collectLikelyStorageAccesses(source: string): Set<string> {
  * preprocessor, so Slang's tokenizer cannot be reused; the declaration
  * heuristics in findLikelyStorageAccesses are language-agnostic.
  */
-export function collectWgslStorageAccesses(source: string): Set<string> {
+function collectWgslStorageAccesses(source: string): Set<string> {
   return findLikelyStorageAccesses(collectWgslTokens(source));
 }
 

@@ -14,8 +14,8 @@ export interface BufferFormatCapabilities {
   float32Blendable?: boolean;
 }
 
-export const FLOAT32_BLEND_FALLBACK_REASON = "rgba32float blending is unavailable on this device";
-export const FLOAT32_MULTISAMPLE_FALLBACK_REASON = "rgba32float cannot be multisampled";
+const FLOAT32_BLEND_FALLBACK_REASON = "rgba32float blending is unavailable on this device";
+const FLOAT32_MULTISAMPLE_FALLBACK_REASON = "rgba32float cannot be multisampled";
 
 /**
  * The format a buffer pass actually renders into. Blending into rgba32float
