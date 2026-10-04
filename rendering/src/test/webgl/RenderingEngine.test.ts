@@ -18,6 +18,9 @@ describe("RenderingEngine", () => {
 
   beforeEach(() => {
     renderingEngine = new RenderingEngine();
+    Object.defineProperty(renderingEngine, 'passRenderer', {
+      value: { installShaderCamera: vi.fn(), dispose: vi.fn() }, writable: true, configurable: true,
+    });
     vi.spyOn(console, "log").mockImplementation(() => { });
 
     mockFrameRenderer = {

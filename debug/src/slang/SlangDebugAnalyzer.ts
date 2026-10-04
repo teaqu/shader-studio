@@ -11,7 +11,7 @@ import type {
 import type { SlangCallableNode, SlangControlFlowNode, SlangDeclarationNode, SlangScopeNode, SlangStatementNode } from "./model";
 import type { SlangWorkspaceFile } from "./SlangWorkspace";
 
-const captureTypeNames = new Set(["float", "float2", "float3", "float4", "int", "bool", "float2x2"]);
+const captureTypeNames = new Set(["float", "float2", "float3", "float4", "int", "uint", "uint2", "bool", "float2x2"]);
 
 export function isSlangCapturableType(typeName: string): boolean {
   return captureTypeNames.has(typeName);

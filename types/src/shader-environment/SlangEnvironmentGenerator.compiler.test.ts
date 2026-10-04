@@ -124,6 +124,15 @@ describe.runIf(hasBundledSlangWasm)("Slang authoring modules with bundled slang-
     expect(result.success, result.error).toBe(true);
   });
 
+  it("types native WebGPU mesh matrices in the authoring module", () => {
+    const result = compile(
+      { ...baseEnvironment(), stage: "vertex" },
+      "float4 meshVertex(float3 position) { return mul(iViewProjectionMatrix, mul(iModelMatrix, float4(position + iNormalMatrix[0].xyz, 1))); }",
+    );
+
+    expect(result.success, result.error).toBe(true);
+  });
+
   it.each([
     [1, "writeOutput(dispatchId.xy, float4(1.0));"],
     [3, "writeOutput(dispatchId.xy, 2u, float4(1.0));"],

@@ -1,3 +1,7 @@
+import { getShaderOutputs } from "@shader-studio/types";
+import { viewerCameraRuntimeConfig } from "./state/viewerCameraState.svelte";
+import { hookConfigForDebugPlan, nativeFragmentEntryPoint } from "./nativeRenderConfig";
+import { projectNativeRasterDisplay } from "@shader-studio/debug";
 import type { RenderingEngine } from "../../../rendering/src/types/RenderingEngine";
 import type { ShaderDebugManager } from "./ShaderDebugManager";
 import { debugPlanStrategy } from "./debugLanguageStrategies";
@@ -17,6 +21,15 @@ interface BaselineInputs {
   path: string;
   buffers: Record<string, string>;
   customUniformDeclarations?: string;
+}
+
+interface DebugCompileArgs {
+  code: string;
+  config: ShaderConfig | null;
+  passName: string;
+  slangModules?: import("@shader-studio/types").SlangSourceModule[];
+  sourcePath?: string;
+  debugPlan?: DebugInstrumentationPlan;
 }
 
 export class ShaderProcessor {
@@ -113,7 +126,7 @@ export class ShaderProcessor {
       }
 
       const result = debugPlan && this.renderEngine.compileDebugPlan
-        ? await this.renderEngine.compileDebugPlan(debugPlan, config ?? null)
+        ? await this.renderEngine.compileDebugPlan(debugPlan, viewerCameraRuntimeConfig(configToCompile))
         : await this.compileWithSlangContext(
           codeToCompile,
           configToCompile,
@@ -305,14 +318,7 @@ export class ShaderProcessor {
     imageShaderCode: string,
     config: ShaderConfig | null,
     originalImageShaderCode = imageShaderCode,
-  ): {
-    code: string;
-    config: ShaderConfig | null;
-    passName: string;
-    slangModules?: import("@shader-studio/types").SlangSourceModule[];
-    sourcePath?: string;
-    debugPlan?: DebugInstrumentationPlan;
-  } {
+  ): DebugCompileArgs {
     const debugState = this.shaderDebugManager.getState();
     const debugTarget = this.shaderDebugManager.getDebugTarget(imageShaderCode, config);
     const sourceCode = debugTarget.code;
@@ -324,23 +330,23 @@ export class ShaderProcessor {
       originalImageShaderCode,
     );
     if (debugPlan) {
-      return { code: imageShaderCode, config, passName: 'Image', debugPlan: debugPlan };
+      return {
+        code: imageShaderCode,
+        config: hookConfigForDebugPlan(debugConfig, debugPlan),
+        passName: 'Image',
+        debugPlan,
+      };
     }
-    // Plan-based languages (Slang, WGSL) never go through the GLSL source
-    // modifier below; the strategy table owns the language dispatch.
-    if (debugPlanStrategy(this.shaderDebugManager.getLanguage?.() ?? 'glsl')) {
-      const postProcessed = debugState.isEnabled
-        ? this.shaderDebugManager.applyFullShaderPostProcessing(sourceCode)
-        : null;
-      return postProcessed
-        ? {
-          code: postProcessed,
-          config: debugConfig,
-          passName: debugTarget.passName,
-          slangModules: debugTarget.slangModules,
-          sourcePath: debugTarget.sourcePath,
-        }
-        : { code: imageShaderCode, config, passName: 'Image' };
+    const planBasedArgs = this.getPlanBasedDebugCompileArgs(
+      imageShaderCode,
+      config,
+      sourceCode,
+      debugConfig,
+      debugState,
+      debugTarget,
+    );
+    if (planBasedArgs) {
+      return planBasedArgs;
     }
 
     if (debugState.isActive && debugState.currentLine !== null) {
@@ -361,11 +367,12 @@ export class ShaderProcessor {
 
     // Fallback: apply full-shader post-processing (normalize/step without a specific line)
     if (debugState.isEnabled) {
-      const postProcessed = this.shaderDebugManager.applyFullShaderPostProcessing(sourceCode);
+      const postProcessed = this.shaderDebugManager.applyFullShaderPostProcessing(sourceCode, debugConfig);
       if (postProcessed) {
+        const display = this.projectMrtDisplay(postProcessed, debugConfig, debugState);
         return {
-          code: postProcessed,
-          config: debugConfig,
+          code: display?.code ?? postProcessed,
+          config: display?.config ?? debugConfig,
           passName: debugTarget.passName,
           slangModules: debugTarget.slangModules,
           sourcePath: debugTarget.sourcePath,
@@ -374,6 +381,70 @@ export class ShaderProcessor {
     }
 
     return { code: imageShaderCode, config, passName: 'Image' };
+  }
+
+  /** Plan-based languages own their instrumentation. Keep their dispatch out
+   * of the GLSL cursor path so each branch remains small and testable. */
+  private getPlanBasedDebugCompileArgs(
+    imageShaderCode: string,
+    config: ShaderConfig | null,
+    sourceCode: string,
+    debugConfig: ShaderConfig | null,
+    debugState: ReturnType<ShaderDebugManager['getState']>,
+    debugTarget: ReturnType<ShaderDebugManager['getDebugTarget']>,
+  ): DebugCompileArgs | null {
+    if (!debugPlanStrategy(this.shaderDebugManager.getLanguage?.() ?? 'glsl')) {
+      return null;
+    }
+    const postProcessed = debugState.isEnabled
+      ? this.shaderDebugManager.applyFullShaderPostProcessing(sourceCode, debugConfig)
+      : null;
+    if (!postProcessed) {
+      const display = debugState.isEnabled
+        ? this.projectMrtDisplay(sourceCode, debugConfig, debugState)
+        : null;
+      if (display) {
+        return {
+          code: display.code,
+          config: display.config,
+          passName: debugTarget.passName,
+          slangModules: debugTarget.slangModules,
+          sourcePath: debugTarget.sourcePath,
+        };
+      }
+      return { code: imageShaderCode, config, passName: 'Image' };
+    }
+    const display = this.projectMrtDisplay(postProcessed, debugConfig, debugState);
+    return {
+      code: display?.code ?? postProcessed,
+      config: display?.config ?? debugConfig,
+      passName: debugTarget.passName,
+      slangModules: debugTarget.slangModules,
+      sourcePath: debugTarget.sourcePath,
+    };
+  }
+
+  /** A full-shader debug preview still compiles through Image. Project only the
+   * selected native MRT attachment and make that temporary Image single-target. */
+  private projectMrtDisplay(
+    code: string,
+    config: ShaderConfig | null,
+    debugState: ReturnType<ShaderDebugManager['getState']>,
+  ): { code: string; config: ShaderConfig } | null {
+    const image = config?.passes.Image;
+    if (!config || !image || getShaderOutputs(code, this.shaderDebugManager.getLanguage(), 'entryPoints' in image ? image.entryPoints?.fragment : undefined).outputs.length < 2) {
+      return null;
+    }
+    const entryPoint = nativeFragmentEntryPoint(code, image, this.shaderDebugManager.getLanguage());
+    if (!entryPoint) {
+      return null;
+    }
+    const projected = projectNativeRasterDisplay(code, this.shaderDebugManager.getLanguage(), entryPoint, debugState.renderOutput ?? 0);
+    if (!projected) {
+      return null;
+    }
+    const { outputs: _outputs, ...singleOutputImage } = image as typeof image & { outputs?: { name?: string }[] };
+    return { code: projected, config: { ...config, passes: { ...config.passes, Image: singleOutputImage } } };
   }
 
   private async compile(
@@ -429,7 +500,7 @@ export class ShaderProcessor {
   ): ReturnType<RenderingEngine['compileShaderPipeline']> {
     const args: Parameters<RenderingEngine['compileShaderPipeline']> = [
       code,
-      config,
+      viewerCameraRuntimeConfig(config),
       path,
       buffers,
       customUniformDeclarations,
@@ -539,7 +610,7 @@ export class ShaderProcessor {
     // Cursor movement uses this path, so native Slang preview plans must be
     // routed here as well as through the initial shader-source compilation.
     const structuredResult = debugPlan && this.renderEngine.compileDebugPlan
-      ? await this.renderEngine.compileDebugPlan(debugPlan, config ?? null)
+      ? await this.renderEngine.compileDebugPlan(debugPlan, viewerCameraRuntimeConfig(configToCompile))
       : undefined;
     let result: CompilationResult = structuredResult ?? (debugPlan
       ? { success: false, errors: ["Native Slang debug compilation is unavailable"] }

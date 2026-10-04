@@ -1,6 +1,7 @@
 import type {
   BaseMessage,
   CreateFileMessage,
+  InsertShaderSourceMessage,
   SelectFileMessage,
 } from '@shader-studio/types';
 
@@ -9,6 +10,8 @@ export type TransportMessage<TMessage extends BaseMessage> = TMessage & (
     ? SelectFileMessage
     : TMessage extends { type: 'createFile' }
       ? CreateFileMessage
+      : TMessage extends { type: 'insertShaderSource' }
+        ? InsertShaderSourceMessage
       : TMessage
 );
 

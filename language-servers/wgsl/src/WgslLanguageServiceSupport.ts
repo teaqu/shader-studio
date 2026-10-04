@@ -1,3 +1,4 @@
+import { isFragmentOnlyNativePosition } from "./NativeStageReachability.js";
 import { declarationDocumentation } from "./documentation.js";
 export { declarationDocumentation } from "./documentation.js";
 import {
@@ -874,6 +875,9 @@ export function samplingStageWarnings(
       continue;
     }
     for (const range of reference.ranges) {
+      if (isFragmentOnlyNativePosition(analysis.source, range.start)) {
+        continue;
+      }
       diagnostics.push({
         range, severity: DiagnosticSeverity.Warning, source: SERVICE_SOURCE,
         code: "sampling-requires-fragment",

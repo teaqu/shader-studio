@@ -69,6 +69,23 @@ describe('ShaderDebugManager — buffer debugging', () => {
     manager.setImageShaderCode(IMAGE_CODE);
   });
 
+  it('uses labelled active-buffer outputs and clamps a stale selected attachment', () => {
+    const config: ShaderConfig = {
+      version: '1',
+      passes: {
+        Image: {},
+        BufferA: { path: 'bufferA.wgsl', entryPoints: { fragment: 'draw' }, outputs: [{ name: 'colour' }, { name: 'normal' }] },
+      },
+    };
+    manager.setLanguage('wgsl');
+    manager.setShaderContext(config, '/shaders/image.wgsl', { BufferA: 'struct R { @location(0) colour: vec4f, @location(1) normal: vec4f, } @fragment fn draw() -> R { return R(); }' }, [], { BufferA: '/shaders/bufferA.wgsl' });
+    manager.updateDebugLine(0, 'draw', '/shaders/bufferA.wgsl');
+    manager.getDebugTarget('', config);
+    expect(manager.getState().renderOutputs).toEqual(['Output 0 (colour)', 'Output 1 (normal)']);
+    manager.setRenderOutput(99);
+    expect(manager.getState().renderOutput).toBe(1);
+  });
+
   // -------------------------------------------------------------------------
   describe('setShaderContext', () => {
     it('accepts null config without throwing', () => {
@@ -201,6 +218,41 @@ describe('ShaderDebugManager — buffer debugging', () => {
       expect(target.passName).toBe('BufferA');
       expect(target.code).toBe(BUFFER_A_CODE);
       expect(target.config?.passes.Image.inputs).toEqual(makeConfig().passes.BufferA?.inputs);
+    });
+
+    it('remaps a native Buffer render contract into Image for full-shader debugging', () => {
+      const nativeConfig: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: { entryPoints: { vertex: 'imageVertex', fragment: 'imageFragment' }, vertex: 'image-hook.wgsl', geometry: { type: 'sphere' } },
+          BufferA: { path: '/shaders/bufferA.wgsl', entryPoints: { vertex: 'bufferVertex', fragment: 'bufferFragment' }, vertex: 'buffer-hook.wgsl', geometry: { type: 'plane' } },
+        },
+      };
+      manager.setLanguage('wgsl');
+      manager.setShaderContext(nativeConfig, '/shaders/image.wgsl', { BufferA: BUFFER_A_CODE });
+      manager.updateDebugLine(1, 'line', '/shaders/bufferA.wgsl');
+
+      const target = manager.getDebugTarget(IMAGE_CODE, nativeConfig);
+
+      expect(manager.getState().nativeFragmentEntryPoint).toBe('bufferFragment');
+
+      expect(target.config?.passes.Image).toEqual({
+        entryPoints: { vertex: 'bufferVertex', fragment: 'bufferFragment' },
+        vertex: 'buffer-hook.wgsl',
+        geometry: { type: 'plane' },
+      });
+    });
+
+    it('clears native Image stages when a hook Buffer is the debug target', () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: { Image: { entryPoints: { fragment: 'imageFragment' } }, BufferA: { path: '/shaders/bufferA.wgsl' } },
+      };
+      manager.setLanguage('wgsl');
+      manager.setShaderContext(config, '/shaders/image.wgsl', { BufferA: BUFFER_A_CODE });
+      manager.updateDebugLine(1, 'line', '/shaders/bufferA.wgsl');
+
+      expect(manager.getDebugTarget(IMAGE_CODE, config).config?.passes.Image).toEqual({});
     });
 
     it('returns BufferB code when activeBufferName is BufferB', () => {

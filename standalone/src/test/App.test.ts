@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { tick } from 'svelte';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AppLayoutStub, { layoutStub } from './AppLayoutStub.svelte';
 import AppShaderStudioStub from './AppShaderStudioStub.svelte';
 import AppShaderExplorerStub from './AppShaderExplorerStub.svelte';
@@ -15,6 +15,8 @@ vi.mock('@shader-studio/ui', async () => {
 });
 
 import App from '../App.svelte';
+import { StandaloneSettings } from '../settings/StandaloneSettings';
+afterEach(() => vi.unstubAllGlobals());
 import type { WebTransport } from '../WebTransport';
 import type { PwaController, PwaStatus } from '../pwa';
 import {
@@ -40,6 +42,7 @@ type TestTransport = WebTransport & {
 
 function createTransport(): TestTransport {
   return {
+    settings: new StandaloneSettings(),
     postMessage: vi.fn(),
     getShaderExplorerHostApi: vi.fn(() => ({ getShaders: vi.fn() })),
     clearWorkspace: vi.fn().mockResolvedValue(undefined),
@@ -86,6 +89,17 @@ function createStorage(): Storage {
 }
 
 describe('standalone App', () => {
+  it('uses the global Native mode when opening a new shader', async () => {
+    const transport = createTransport();
+    transport.settings.update('webgpu.defaultRenderAuthoring', 'native');
+    render(App, { props: { transport } });
+    setNewShaderVisible(true);
+    await tick();
+    await fireEvent.change(screen.getByLabelText('Shader language'), { target: { value: 'wgsl' } });
+    expect((screen.getByLabelText('Shader functions') as HTMLSelectElement).value).toBe('native');
+    await fireEvent.click(screen.getByRole('button', { name: 'Create Shader' }));
+    expect(transport.postMessage).toHaveBeenCalledWith({ type: 'createShader', payload: { name: 'untitled', language: 'wgsl', authoringMode: 'native' } });
+  });
   beforeEach(() => {
     vi.restoreAllMocks();
     layoutStub.selectEditor.mockReset();
@@ -353,7 +367,11 @@ describe('standalone App', () => {
   it('exports a portable workspace backup from the Workspace menu', async () => {
     const transport = createTransport();
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:backup'), revokeObjectURL: vi.fn() });
+    vi.stubGlobal('URL', class extends URL {
+      static createObjectURL = vi.fn(() => 'blob:backup');
+      static revokeObjectURL = vi.fn();
+    });
+    expect(new URL('./backup', 'https://example.com/').href).toBe('https://example.com/backup');
     render(App, { props: { transport } });
 
     await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
@@ -556,7 +574,7 @@ describe('standalone App', () => {
     await fireEvent.change(screen.getByLabelText('Shader language'), { target: { value: 'slang' } });
     await fireEvent.click(screen.getByRole('button', { name: 'Create Shader' }));
 
-    expect(transport.postMessage).toHaveBeenCalledWith({ type: 'createShader', payload: { name: 'aurora', language: 'slang' } });
+    expect(transport.postMessage).toHaveBeenCalledWith({ type: 'createShader', payload: { name: 'aurora', language: 'slang', authoringMode: 'hooks' } });
     expect(screen.queryByRole('dialog', { name: 'New Shader' })).toBeNull();
 
     setNewShaderVisible(true);

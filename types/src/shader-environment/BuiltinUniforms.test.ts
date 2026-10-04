@@ -3,6 +3,7 @@ import {
   SHADER_STUDIO_BUILTIN_UNIFORMS,
   SHADER_STUDIO_DOCUMENTATION_ONLY_BUILTIN_NAMES,
   SHADER_STUDIO_FRAGMENT_CONTEXT_SYMBOLS,
+  SHADER_STUDIO_MESH_MATRIX_SYMBOLS,
   SHADER_STUDIO_INDEXED_CHANNEL_PATTERN_SOURCE,
   SHADER_STUDIO_INDEXED_CHANNEL_METADATA_PATTERN_SOURCE,
   shaderStudioBuiltinUniformNames,
@@ -132,6 +133,19 @@ describe("shaderStudioBuiltinUniformNames", () => {
     });
   });
 
+  it("exposes native mesh matrices to WebGPU authoring languages only", () => {
+    for (const language of ["slang", "wgsl"] as const) {
+      const names = shaderStudioBuiltinUniformNames(language);
+      for (const symbol of SHADER_STUDIO_MESH_MATRIX_SYMBOLS) {
+        expect(names).toContain(symbol.name);
+      }
+    }
+    const glslNames = shaderStudioBuiltinUniformNames("glsl");
+    for (const symbol of SHADER_STUDIO_MESH_MATRIX_SYMBOLS) {
+      expect(glslNames).not.toContain(symbol.name);
+    }
+  });
+
   it("keeps ShaderToy channel metadata accessors in GLSL only", () => {
     for (const name of ["iCh0", "iCh1", "iCh2", "iCh3"]) {
       expect(shaderStudioBuiltinUniformNames("glsl")).toContain(name);
@@ -174,6 +188,15 @@ describe("builtin uniform WGSL spellings", () => {
     for (const uniform of wgslUniforms) {
       expect(typeof uniform.wgslType, uniform.name).toBe("string");
       expect(uniform.wgslType?.length, uniform.name).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("native mesh matrix authoring declarations", () => {
+  it("has concrete Slang declarations and WGSL matrix types", () => {
+    for (const symbol of SHADER_STUDIO_MESH_MATRIX_SYMBOLS) {
+      expect(symbol.slangDeclaration).toBe(`float4x4 ${symbol.name};`);
+      expect(symbol.wgslType).toBe("mat4x4f");
     }
   });
 });

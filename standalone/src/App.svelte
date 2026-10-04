@@ -8,6 +8,9 @@
   import ShaderExplorer from '@shader-studio/shader-explorer/lib/components/ShaderExplorer.svelte';
   import StandaloneLayout from './StandaloneLayout.svelte';
   import EditorPane from './EditorPane.svelte';
+  import SettingsPanel from './settings/SettingsPanel.svelte';
+  import { connectSettings, getDefaultShaderMode } from './settings/settingsState.svelte';
+  import WorkspaceFilePicker from './WorkspaceFilePicker.svelte';
   import NewShaderModal from './NewShaderModal.svelte';
   import type { WebTransport, WorkspaceStorageStatus } from './WebTransport';
   import {
@@ -15,7 +18,7 @@
     resetShellState, setNewShaderVisible,
   } from './state/shellState.svelte';
   import { clearStandaloneWorkspace } from './clearWorkspace';
-  import type { ShaderLanguageId } from '@shader-studio/types';
+  import type { ShaderLanguageId, WebGPUAuthoringMode } from '@shader-studio/types';
   import type { PwaController, PwaStatus } from './pwa';
   import type { WorkspacePersistenceStatus } from './VirtualWorkspace';
 
@@ -50,6 +53,9 @@
   setContext(PANEL_HOST_CONTEXT, hostedPanels);
   let layout = $state<StandaloneLayout>();
   let workspaceError = $state('');
+  const disconnectSettings = connectSettings(transport.settings);
+  onDestroy(disconnectSettings);
+  let settingsOpen = $state(false);
   let alphaNoticeVisible = $state(shouldShowAlphaNotice());
   let viewMenuOpen = $state(false);
   let workspaceMenuOpen = $state(false);
@@ -127,8 +133,8 @@
     }
   });
 
-  function createShader(name: string, language: ShaderLanguageId) {
-    transport.postMessage({ type: 'createShader', payload: { name, language } });
+  function createShader(name: string, language: ShaderLanguageId, authoringMode?: WebGPUAuthoringMode) {
+    transport.postMessage({ type: 'createShader', payload: { name, language, ...(authoringMode ? { authoringMode } : {}) } });
     setNewShaderVisible(false);
   }
 
@@ -284,6 +290,7 @@
 
   onDestroy(resetShellState);
 </script>
+<WorkspaceFilePicker />
 
 <svelte:window onclick={closeMenusOnOutsideClick} onkeydown={closeMenusOnEscape} />
 <div class="standalone-app">
@@ -354,6 +361,11 @@
         </div>
       {/if}
     </div>
+    <button class="menu-trigger" onclick={() => {
+      settingsOpen = true;
+      viewMenuOpen = false;
+      workspaceMenuOpen = false;
+    }}>Settings</button>
     <a class="toolbar-right" href="https://teaqu.github.io/shader-studio/docs/" target="_blank" rel="noopener noreferrer">Documentation</a>
     <a href="https://github.com/teaqu/shader-studio" target="_blank" rel="noopener noreferrer">GitHub</a>
     <span
@@ -402,8 +414,13 @@
       <div class="panel-content" data-testid="web-preview"><ShaderStudioApp /></div>
     {/snippet}
   </StandaloneLayout>
+  {#if settingsOpen}
+    <SettingsPanel settings={transport.settings} onClose={() => {
+      settingsOpen = false;
+    }} />
+  {/if}
   {#if getNewShaderVisible()}
-    <NewShaderModal onCreate={createShader} onClose={() => setNewShaderVisible(false)} />
+    <NewShaderModal defaultAuthoringMode={getDefaultShaderMode()} onCreate={createShader} onClose={() => setNewShaderVisible(false)} />
   {/if}
 </div>
 

@@ -5,6 +5,7 @@
   import type { ShaderDebugState, DebugLoopInfo } from "../../types/ShaderDebugState";
   import type { PassUniforms } from "../../../../../rendering/src/models/PassUniforms";
   import ParameterEditor from "./ParameterEditor.svelte";
+  import NativeRasterParameters from "./NativeRasterParameters.svelte";
 
   import type { ShaderDebugManager } from "../../ShaderDebugManager";
   import type { CaptureIssue, VariableCaptureManager, RefreshMode } from "../../VariableCaptureManager";
@@ -104,10 +105,19 @@
   let internalVariableCaptureIssues = $state<CaptureIssue[]>([]);
 
   const ctx = $derived(debugState?.functionContext);
+  const hasNativeRasterParameters = $derived(
+    ctx?.functionName !== undefined
+    && debugState?.nativeFragmentEntryPoint === ctx.functionName
+  );
   const isInlineOn = $derived(debugState?.isInlineRenderingEnabled);
   const isLineLocked = $derived(debugState?.isLineLocked);
   const lineNum = $derived(debugState?.currentLine !== null && debugState?.currentLine !== undefined ? debugState.currentLine + 1 : null);
   const isInFunction = $derived(ctx !== null && ctx !== undefined && ctx.isFunction);
+  const hasMultipleRenderOutputs = $derived((debugState?.renderOutputs?.length ?? 0) > 1);
+
+  function selectRenderOutput(event: Event) {
+    shaderDebugManager?.setRenderOutput(Number((event.currentTarget as HTMLSelectElement).value));
+  }
   const hasVariable = $derived(debugState?.lineContent !== null && debugState?.lineContent !== undefined && debugState?.isActive);
   const normalizeMode = $derived(debugState?.normalizeMode);
   const isStepEnabled = $derived(debugState?.isStepEnabled);
@@ -603,6 +613,15 @@
     {#if debugState?.isEnabled && debugState?.activeBufferName && debugState.activeBufferName !== 'Image'}
       <span class="buffer-badge">{debugState.activeBufferName}</span>
     {/if}
+    {#if hasMultipleRenderOutputs}
+      <label class="output-selector">Output
+        <select aria-label="Preview output" value={debugState?.renderOutput ?? 0} onchange={selectRenderOutput}>
+          {#each debugState?.renderOutputs ?? [] as label, index}
+            <option value={index}>{label}</option>
+          {/each}
+        </select>
+      </label>
+    {/if}
   </div>
 
   <div class="debug-content">
@@ -629,21 +648,27 @@
         <div class="section">
           <div class="section-heading">
             <div class="section-label">Parameters</div>
-            <button
-              class="section-reset"
-              type="button"
-              onclick={() => shaderDebugManager?.resetCustomParameters()}
-              aria-label="Reset parameters"
-            >
-              Reset
-            </button>
+            {#if !hasNativeRasterParameters}
+              <button
+                class="section-reset"
+                type="button"
+                onclick={() => shaderDebugManager?.resetCustomParameters()}
+                aria-label="Reset parameters"
+              >
+                Reset
+              </button>
+            {/if}
           </div>
-          {#each ctx.parameters as param, index}
-            <ParameterEditor
-              {param}
-              onChange={(value) => shaderDebugManager?.setCustomParameter(index, value)}
-            />
-          {/each}
+          {#if hasNativeRasterParameters}
+            <NativeRasterParameters parameters={ctx.parameters} />
+          {:else}
+            {#each ctx.parameters as param, index}
+              <ParameterEditor
+                {param}
+                onChange={(value) => shaderDebugManager?.setCustomParameter(index, value)}
+              />
+            {/each}
+          {/if}
         </div>
       {/if}
 

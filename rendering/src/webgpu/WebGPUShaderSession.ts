@@ -1,3 +1,5 @@
+import { debugPlanDisplaySource } from "./DebugPlanDisplaySource";
+import { audioLoadWarning } from "../util/LiveInputConfig";
 import type { DebugInstrumentationPlan,ShaderConfig,ShaderLanguageId,SlangSourceModule } from "@shader-studio/types";
 import { CameraManager } from "../input/CameraManager";
 import type { CompilationResult } from "../models";
@@ -35,6 +37,7 @@ interface WebGPUShaderSessionHost {
   constraints: WebGPUDeviceConstraints;
   passFactory: Pick<WebGPUPassFactory, "createPassPipeline" | "reconcileCandidateResolutions">;
   resetPausedFrame(): void;
+  onShaderInstalled(path: string): void;
   disposed: boolean;
   ready: Promise<void> | null;
   context: GPUCanvasContext | null;
@@ -604,8 +607,8 @@ export class WebGPUShaderSession {
               channel.startTime,
               channel.endTime,
             );
-          } catch {
-            warnings.push(`Audio loading failed: ${channel.path}`);
+          } catch (error) {
+            warnings.push(audioLoadWarning(channel.path, error));
           }
         }
         if (generation !== this.compileGeneration || this.host.disposed) {
@@ -644,6 +647,7 @@ export class WebGPUShaderSession {
     }
     this.host.storage.publishPreparedStorage(preparedStorage);
     this.host.candidates.installPipelineCandidates(pipelineCandidates);
+    this.host.onShaderInstalled(path);
     this.shaderPath = path;
     this.installedResourceKey = resourceKey;
     this.reloadOnNextApply = false;
@@ -798,6 +802,10 @@ export class WebGPUShaderSession {
       return { success: false, errors: ["Debug plan root is missing"] };
     }
     const previous = this.lastCompile;
+    const display = debugPlanDisplaySource(root, plan, config ?? previous?.config ?? this.currentConfig, this.host.language);
+    if (typeof display === "string") {
+      return { success: false, errors: [display] };
+    }
     const selectedSource = plan.files.find((file) => file.uri === plan.selectedSourceUri);
     const commonSource = plan.files.find(file => file.uri !== root.uri && (
       previous?.slangSourcePaths?.common === file.path
@@ -813,8 +821,8 @@ export class WebGPUShaderSession {
       ...planModules,
     ];
     const result = await this.compileShaderPipeline(
-      root.source,
-      config ?? previous?.config ?? this.currentConfig,
+      display.source,
+      display.config ?? null,
       previous?.path ?? root.path,
       commonSource
         ? { ...(previous?.buffers ?? {}), common: commonSource.source }

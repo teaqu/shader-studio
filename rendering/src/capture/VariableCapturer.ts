@@ -57,12 +57,39 @@ export interface CaptureCompileContext {
     key: string;
     kind?: "texture" | "video" | "cubemap" | "audio" | "buffer" | "keyboard";
   }>;
+  /** Frozen channel views for a capture batch; implementations release copies after GPU work completes. */
+  captureChannelSnapshot?: () => {
+    resources: Array<{ slot: number; textureView: GPUTextureView; sampler?: GPUSampler }>;
+    textureCount: number;
+    destroy(): void;
+  } | null;
   /** Slang/WebGPU path: pass whose resources and uniforms capture must use. */
   slangPassName?: string;
   /** Slang modules that must be preloaded before compiling the capture root. */
   slangModules?: Array<Omit<SlangSourceModule, 'ownerPass'>>;
   /** Original selected file path used for capture diagnostics. */
   slangSourcePath?: string;
+  /** Original native render entries and geometry for raster-faithful capture. */
+  nativeRender?: {
+    vertexEntryPoint?: string;
+    vertexCode?: string;
+    fragmentEntryPoint?: string;
+    geometry: "fullscreen" | "vertices" | "plane" | "sphere" | "cube" | "model";
+    topology?: GPUPrimitiveTopology;
+    vertexSpace?: "world" | "clip";
+    width: number;
+    height: number;
+    /** Native render attachment count; capture reads attachment zero for now. */
+    outputCount?: number;
+    /** The selected fragment writes frag depth and therefore needs a depth target. */
+    writesDepth?: boolean;
+    /** Whether the installed mesh pass uses the interactive viewer camera. */
+    useViewerCamera?: boolean;
+    /** Encodes the pass's original geometry and mesh vertex bindings. */
+    draw?: (pass: GPURenderPassEncoder) => void;
+    /** Returns the installed mesh camera/model uniform data for this capture batch. */
+    meshUniformData?: () => Float32Array;
+  };
 }
 
 interface PendingCapture {
