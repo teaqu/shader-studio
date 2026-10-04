@@ -3,6 +3,20 @@ import type { WgslTraceLaunch } from '@shader-studio/types';
 // Every refusal is pinned to a fixture and a narrow diagnostic. New files and
 // unexpected failures must be reviewed; a blanket catch would hide regressions.
 export const supportedTraceSources = new Set([
+  'wgsl/vertices/alpha-discs.wgsl',
+  'wgsl/vertices/buffer-glow.buffer.wgsl',
+  'wgsl/vertices/camera-matrices.wgsl',
+  'wgsl/vertices/depth-greater.wgsl',
+  'wgsl/vertices/hexagon.wgsl',
+  'wgsl/vertices/particles.wgsl',
+  'wgsl/vertices/points.wgsl',
+  'wgsl/vertices/waveform.wgsl',
+  'wgsl/vertices/cube-inside.wgsl',
+  'wgsl/vertices/instanced-cubes.wgsl',
+  'wgsl/vertices/mesh-points.wgsl',
+  'wgsl/vertices/msaa-cube.wgsl',
+  'wgsl/vertices/tetrahedron.wgsl',
+  'wgsl/vertices/wireframe-sphere.wgsl',
   'wgsl/cat-head.wgsl',
   'wgsl/custom-uniforms.wgsl',
   'wgsl/foundation/debugging/passes/history-source.wgsl',
@@ -25,6 +39,7 @@ export const traceLaunchInputs: Record<string, Pick<WgslTraceLaunch, 'customUnif
 };
 
 const exclusions: Array<{ diagnostic: RegExp; files: string[] }> = [
+  { diagnostic: /^WGSL trace compilation failed: unresolved value 'iChannel0Texture'$/, files: ['wgsl/vertices/buffer-glow.wgsl'] },
   { diagnostic: /^WGSL trace compilation failed: unresolved call target 'iChannel0Sample'$/, files: [
     'wgsl/33channels.wgsl',
     'wgsl/backend-differences/precision/history.wgsl',
@@ -62,6 +77,15 @@ const exclusions: Array<{ diagnostic: RegExp; files: string[] }> = [
     'wgsl/video.wgsl',
   ] },
   { diagnostic: /^The trace PoC requires fn mainImage\(coord: vec2f\) -> vec4f\.$/, files: [
+    'wgsl/vertices/alpha-discs.vert.wgsl',
+    'wgsl/vertices/buffer-glow.buffer.vert.wgsl',
+    'wgsl/vertices/depth-greater.vert.wgsl',
+    'wgsl/vertices/hexagon.vert.wgsl',
+    'wgsl/vertices/instanced-cubes.vert.wgsl',
+    'wgsl/vertices/particles.vert.wgsl',
+    'wgsl/vertices/points.vert.wgsl',
+    'wgsl/vertices/tetrahedron.vert.wgsl',
+    'wgsl/vertices/waveform.vert.wgsl',
     'wgsl/common.wgsl',
     'wgsl/feature-coverage.common.wgsl',
     'wgsl/feature-coverage.vert.wgsl',

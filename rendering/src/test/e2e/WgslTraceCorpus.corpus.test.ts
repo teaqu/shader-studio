@@ -5,6 +5,14 @@ import { captureWgslTrace } from '../../trace/WgslTraceCapture';
 import { expectedTraceRefusals, supportedTraceSources, traceLaunchInputs } from './WgslTraceCorpusExpectations';
 import { renderWgslTraceReference } from './WgslTraceReference';
 
+function expectColorMatches(value: number, reference: number) {
+  if (Number.isFinite(value) && Number.isFinite(reference)) {
+    expect(value).toBeCloseTo(reference, 5);
+  } else {
+    expect(Object.is(value, reference)).toBe(true);
+  }
+}
+
 const samples = [
   { pixel: [0, 0], time: 0, frame: 0 },
   { pixel: [8, 8], time: 0.75, frame: 3 },
@@ -24,8 +32,8 @@ describe('WGSL standalone launch: explicit source-only inputs', () => {
     const classified = [...supportedTraceSources, ...expectedTraceRefusals.keys()];
     expect(new Set(classified).size).toBe(classified.length);
     expect(classified.sort()).toEqual(sources.map(fixture => fixture.name).sort());
-    expect(supportedTraceSources.size).toBe(12);
-    expect(expectedTraceRefusals.size).toBe(81);
+    expect(supportedTraceSources.size).toBe(26);
+    expect(expectedTraceRefusals.size).toBe(91);
   });
 
   for (const fixture of sources) {
@@ -50,7 +58,9 @@ describe('WGSL standalone launch: explicit source-only inputs', () => {
           const site = recording.sites.find(site => site.id === event.siteId)!;
           expect(event.line).toBe(site.line);
           expect(event.values.map(value => value.name)).toEqual([...site.variables, ...(site.unavailableVariables ?? [])].map(value => value.name));
-          const coord = event.values.find(value => value.name === 'coord');
+          const coordinateName = fixture.source.match(/\bfn\s+mainImage\s*\(\s*(\w+)\s*:/)?.[1];
+          expect(coordinateName).toBeDefined();
+          const coord = event.values.find(value => value.name === coordinateName);
           const expectedCoord = [sample.pixel[0] + 0.5, input.height - sample.pixel[1] - 0.5];
           expect(coord?.value).toEqual(expectedCoord);
           const uv = event.values.find(value => value.name === 'uv');
@@ -58,14 +68,14 @@ describe('WGSL standalone launch: explicit source-only inputs', () => {
             expect(uv.value).toEqual(expectedCoord.map(value => value / 16));
           }
         }
-        recording.color.forEach((value, channel) => expect(value).toBeCloseTo(reference[channel], 5));
+        recording.color.forEach((value, channel) => expectColorMatches(value, reference[channel]));
       }
       const full = await captureWgslTrace(launch);
       const overflow = await captureWgslTrace({ ...launch, capacity: 1 });
       expect(overflow.events).toEqual(full.events.slice(0, 1));
       expect(overflow.overflow).toBe(full.events.length > 1);
       const reference = await renderWgslTraceReference(device, launch);
-      overflow.color.forEach((value, channel) => expect(value).toBeCloseTo(reference[channel], 5));
+      overflow.color.forEach((value, channel) => expectColorMatches(value, reference[channel]));
     });
   }
 });

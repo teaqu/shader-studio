@@ -142,7 +142,7 @@ function demoteVertexEntry(source: string) {
 }
 export function vertexReplayEntry(fullscreen: boolean, vertexIndex: number, vertices = false) {
   if (vertices) {
-    return `@compute @workgroup_size(1) fn _ss_vertexTraceReplay() { _ss_trace_vertexResult[0] = ${WGSL_ENTRY_VERTEX}(u32(${vertexIndex}),0u).position; }`; 
+    return `@compute @workgroup_size(1) fn _ss_vertexTraceReplay() { _ss_trace_vertexResult[0] = ${WGSL_ENTRY_VERTEX}(u32(${vertexIndex}),0u).position; }`;
   }
   return fullscreen ? `@compute @workgroup_size(1) fn _ss_vertexTraceReplay() { _ss_trace_vertexResult[0] = ${WGSL_ENTRY_VERTEX}(u32(${vertexIndex})).position; }` : `@compute @workgroup_size(1) fn _ss_vertexTraceReplay() { var p=vec3f(_ss_trace_vertexData[0],_ss_trace_vertexData[1],_ss_trace_vertexData[2]); var n=vec3f(_ss_trace_vertexData[3],_ss_trace_vertexData[4],_ss_trace_vertexData[5]); var uv=vec2f(_ss_trace_vertexData[6],_ss_trace_vertexData[7]); _ss_trace_vertexResult[0] = ${WGSL_ENTRY_VERTEX}(p,n,uv,u32(${vertexIndex}),0u).position; }`;
 }

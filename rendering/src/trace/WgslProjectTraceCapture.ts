@@ -334,7 +334,7 @@ async function executeFragmentTrace(context: TraceExecution): Promise<WgslTraceR
   const target = device.createTexture({ size: [pass.width, pass.height], format, usage: T.RENDER_ATTACHMENT | T.COPY_SRC }); ownedTextures.push(target);
   const multisampled = state.samples > 1 ? device.createTexture({ size: [pass.width, pass.height], format, sampleCount: state.samples, usage: T.RENDER_ATTACHMENT }) : undefined;
   if (multisampled) {
-    ownedTextures.push(multisampled); 
+    ownedTextures.push(multisampled);
   }
   const colorReadback = makeBuffer(256, U.MAP_READ | U.COPY_DST);
   const group = device.createBindGroup({ layout: group0Layout, entries });
@@ -388,7 +388,7 @@ export function traceNeedsVertexBuffers(pass: Pick<RenderPassNode, 'geometry'>):
 function traceMeshPrimitiveCount(snapshot: WgslProjectTraceSnapshot): number {
   const mesh = snapshot.mesh;
   if (!mesh) {
-    return 0; 
+    return 0;
   }
   const topology = meshTopology(snapshot.pass);
   const count = topology === 'point-list' ? mesh.vertexCount ?? mesh.vertexBuffer.size / 32 : topology === 'line-list' ? mesh.edgeIndexCount ?? mesh.indexCount : mesh.indexCount;
