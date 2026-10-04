@@ -817,13 +817,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   private getTraceMesh(pass: RenderPassNode) {
-    if (pass.geometry === "fullscreen") {
-      return undefined;
-    }
-    if (pass.modelPath) {
-      return this.meshResources?.getModel(pass.name);
-    }
-    return pass.geometry === "model" ? undefined : this.meshResources?.get(pass.geometry);
+    return this.geometry.resolvePassMesh(pass);
   }
 
   getCaptureUniforms(): CaptureUniforms {
