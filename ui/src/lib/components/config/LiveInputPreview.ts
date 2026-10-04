@@ -1,4 +1,4 @@
-import type { LiveInputPreview, LiveInputType } from '../../../../../rendering/src/resources/LiveInputTextureManager';
+import type { LiveInputPreview, LiveInputType } from '@shader-studio/rendering';
 
 /** Paint existing capture data without creating or owning device resources. */
 export function drawLiveInputPreview(ctx: CanvasRenderingContext2D, type: LiveInputType, input: LiveInputPreview | null): boolean {

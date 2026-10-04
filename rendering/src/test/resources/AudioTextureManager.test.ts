@@ -73,7 +73,7 @@ const createMockAudioContext = () => ({
 });
 
 describe("AudioTextureManager", () => {
-  let backend: TextureBackend<FakeTex>;
+  let backend: ReturnType<typeof mockBackend>;
   let manager: AudioTextureManager<FakeTex>;
   let mockAudioContext: ReturnType<typeof createMockAudioContext>;
   let originalAudioContext: typeof AudioContext;
