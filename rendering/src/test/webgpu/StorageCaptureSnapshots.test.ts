@@ -29,7 +29,7 @@ describe("storage capture snapshots", () => {
     const copied = { destroy } as unknown as GPUBuffer;
     const onDestroy = vi.fn();
     const createBuffer = vi.fn().mockReturnValueOnce(copied).mockImplementationOnce(() => {
-      throw new Error('allocation failed'); 
+      throw new Error('allocation failed');
     });
     const device = {
       createBuffer,
@@ -50,7 +50,7 @@ describe("storage capture snapshots", () => {
     const device = { queue: {
       ...(mode === 'absent' ? {} : { onSubmittedWorkDone: mode === 'throw'
         ? () => {
-          throw new Error('lost device'); 
+          throw new Error('lost device');
         } : () => Promise.reject(new Error('lost device')) }),
     } } as unknown as GPUDevice;
     releaseStorageCaptureSnapshot(device, { buffers: new Map(), copies: [{ destroy } as unknown as GPUBuffer] }, onDestroy);

@@ -37,7 +37,7 @@ it('reports missing uniforms, native mesh snapshots and device creation errors',
   expect(createCaptureBindGroup(device, layout, [{ slot: 0, key: 'iChannel0' }], [], [], new Map(), null, uniform, uniform, undefined, false).error).toContain('channel resources');
   expect(createBindGroup).not.toHaveBeenCalled();
   createBindGroup.mockImplementation(() => {
-    throw new Error('invalid layout'); 
+    throw new Error('invalid layout');
   });
   expect(build(uniform, uniform, undefined, false).error).toBe('invalid layout');
   createBindGroup.mockImplementation(() => {

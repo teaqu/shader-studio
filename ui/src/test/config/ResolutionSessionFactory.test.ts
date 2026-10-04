@@ -7,7 +7,7 @@ import { getDefaultAuthoringMode, setDefaultAuthoringMode } from '../../lib/stat
 
 const lifecycle = vi.hoisted(() => ({ mount: undefined as (() => (() => void)) | undefined }));
 vi.mock('svelte', async importOriginal => ({ ...await importOriginal<typeof import('svelte')>(), onMount: (callback: () => (() => void)) => {
-  lifecycle.mount = callback; 
+  lifecycle.mount = callback;
 } }));
 vi.mock('../../lib/resolution/ResolutionSessionController.svelte', () => ({ ResolutionSessionController: class {} }));
 beforeEach(() => {

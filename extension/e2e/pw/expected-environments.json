@@ -585,6 +585,11 @@
     "environment": "gpu"
   },
   {
+    "id": "8740fb339880f59c0a69-fbf6515bcbebe36d7295:",
+    "title": "vertex-topology.e2e.mjs › glsl vertices geometry, blend, depth and cull in VS Code › keeps newer clip-space controls when an older world-space host echo is delayed",
+    "environment": "non-gpu"
+  },
+  {
     "id": "8740fb339880f59c0a69-4fe0644fee67aaa5ed33:",
     "title": "vertex-topology.e2e.mjs › glsl vertices geometry, blend, depth and cull in VS Code › edits vertices, blend, depth and cull in the config panel, keeps them after reload, and restores vertices fields after a mesh",
     "environment": "non-gpu"
@@ -610,6 +615,11 @@
     "environment": "non-gpu"
   },
   {
+    "id": "8740fb339880f59c0a69-7f4ab40f2ac760aa6fcd:",
+    "title": "vertex-topology.e2e.mjs › slang vertices geometry, blend, depth and cull in VS Code @gpu › keeps newer clip-space controls when an older world-space host echo is delayed",
+    "environment": "gpu"
+  },
+  {
     "id": "8740fb339880f59c0a69-6789d395d98e06e756fe:",
     "title": "vertex-topology.e2e.mjs › slang vertices geometry, blend, depth and cull in VS Code @gpu › edits vertices, blend, depth and cull in the config panel, keeps them after reload, and restores vertices fields after a mesh",
     "environment": "gpu"
@@ -632,6 +642,11 @@
   {
     "id": "8740fb339880f59c0a69-70adff1c47f325309309:",
     "title": "vertex-topology.e2e.mjs › slang vertices geometry, blend, depth and cull in VS Code @gpu › reports vertices, depth and cull fields on the wrong geometry as config errors",
+    "environment": "gpu"
+  },
+  {
+    "id": "8740fb339880f59c0a69-8474046f519fd2df5b1e:",
+    "title": "vertex-topology.e2e.mjs › wgsl vertices geometry, blend, depth and cull in VS Code @gpu › keeps newer clip-space controls when an older world-space host echo is delayed",
     "environment": "gpu"
   },
   {
