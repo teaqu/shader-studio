@@ -167,7 +167,7 @@ function buildProject(root, configPath, shaderPath) {
 
   const rootSource = fs.readFileSync(shaderPath, "utf8");
   return {
-    name: path.relative(root, shaderPath),
+    name: path.relative(root, shaderPath).split(path.sep).join("/"),
     path: shaderPath,
     language,
     image: language === "slang" ? inlineSlangDependencies(rootSource, shaderPath) : rootSource,
@@ -208,6 +208,6 @@ export function loadShaderFixtureSources(root, extension) {
   }
   return walk(root)
     .filter((filePath) => path.extname(filePath) === extension)
-    .map((filePath) => ({ name: path.relative(root, filePath), source: fs.readFileSync(filePath, "utf8") }))
+    .map((filePath) => ({ name: path.relative(root, filePath).split(path.sep).join("/"), source: fs.readFileSync(filePath, "utf8") }))
     .sort((left, right) => left.name.localeCompare(right.name));
 }

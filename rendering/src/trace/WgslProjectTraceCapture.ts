@@ -1,5 +1,8 @@
 /// <reference types="@webgpu/types" />
 import type { WgslProjectTraceRequest, WgslTraceRecording } from '@shader-studio/types';
+import { isMeshGeometry } from '../preview3d/MeshFragmentContext';
+import { depthClearValue, geometryInstanceCount, meshTopology, resolveRenderState, verticesTopology, verticesVertexCount } from '../types/Geometry';
+import { webgpuBlendState } from '../webgpu/WebGPURenderState';
 import { getSlangChannels } from '../webgpu/SlangBindingPlan';
 import { buildSlangBindingPlan, validateSlangBindingBudget } from '../webgpu/SlangBindingPlan';
 import { slangChannelLayoutEntries, slangChannelResourceEntries } from '../webgpu/SlangBindingResources';
@@ -27,7 +30,7 @@ export interface WgslProjectTraceSnapshot {
   sourcePath: string;
   commonPath?: string;
   vertexPath?: string;
-  mesh?: { vertexBuffer: GPUBuffer; indexBuffer: GPUBuffer; indexFormat: GPUIndexFormat; indexCount: number };
+  mesh?: { vertexBuffer: GPUBuffer; indexBuffer: GPUBuffer; indexFormat: GPUIndexFormat; indexCount: number; vertexCount?: number; edgeIndexBuffer?: GPUBuffer; edgeIndexCount?: number };
   meshUniformData?: ArrayBuffer;
   dispatchWorkgroups?: [number, number, number];
   dispatchUniforms?: ArrayBuffer[];
@@ -72,9 +75,9 @@ export async function captureWgslProjectTrace(
     const uniform = makeBuffer(snapshot.uniformData.byteLength, U.UNIFORM | U.COPY_DST);
     device.queue.writeBuffer(uniform, 0, snapshot.uniformData);
     const storage = cloneWgslTraceStorage(device, snapshot.storage, snapshot.storageBuffers, ownedBuffers);
-    const mesh = isMesh(pass) ? cloneWgslTraceMesh(device, snapshot.mesh, ownedBuffers, pass.name) : undefined;
+    const mesh = traceNeedsVertexBuffers(pass) ? cloneWgslTraceMesh(device, snapshot.mesh, ownedBuffers, pass) : undefined;
     const traceSize = traceBytes;
-    const selector = plan ? makeBuffer(16, U.UNIFORM | U.COPY_DST) : undefined;
+    const selector = plan ? makeBuffer(16, U.UNIFORM | U.COPY_DST | U.STORAGE) : undefined;
     if (selector) {
       writeSelector(device, selector, request, stage);
     }
@@ -85,7 +88,7 @@ export async function captureWgslProjectTrace(
     const {pipeline, output} = await prepareTracePipeline(snapshot, traceSource, layouts, computeEntry, stage, ownedTextures, signal);
     const {entries, dispatchBuffers} = prepareTraceInputs(snapshot, bindings, channelResources, uniform, storage, output, stage, makeBuffer);
     const meshSelection = mesh && selector && stage === 'fragment'
-      ? await prepareWgslMeshPrimitiveSelection(device, allowNonUniformDerivatives(wrapped.source), mesh, group0Layout, meshVertexLayout(), pass.width, pass.height, ownedBuffers, ownedTextures) : undefined;
+      ? await prepareWgslMeshPrimitiveSelection(device, allowNonUniformDerivatives(wrapped.source), mesh, group0Layout, meshVertexLayout(), pass.width, pass.height, ownedBuffers, ownedTextures, pass) : undefined;
     signal?.throwIfAborted();
     const traceGroupBind = selector && trace && traceLayout ? device.createBindGroup({ layout: traceLayout, entries: [{ binding: 0, resource: { buffer: selector } }, { binding: 1, resource: { buffer: trace } }] }) : undefined;
     const encoder = device.createCommandEncoder();
@@ -109,6 +112,7 @@ async function prepareTracePipeline(snapshot: WgslProjectTraceSnapshot, traceSou
   if (errors.length) {
     throw new Error(`WGSL project trace compilation failed: ${errors.map(error => error.message).join('\n')}`);
   }
+  const state = resolveRenderState(pass);
   const pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: layouts });
   const output = stage === 'compute' && pass.output === 'texture'
     ? createComputeOutput(device, pass, ownedTextures)
@@ -116,12 +120,13 @@ async function prepareTracePipeline(snapshot: WgslProjectTraceSnapshot, traceSou
   const pipeline = stage === 'compute'
     ? await device.createComputePipelineAsync({ layout: pipelineLayout, compute: { module, entryPoint: computeEntry } })
     : await device.createRenderPipelineAsync({ layout: pipelineLayout,
-      vertex: { module, entryPoint: SLANG_ENTRY_VERTEX, ...(isMesh(pass) ? { buffers: meshVertexLayout() } : {}) },
+      vertex: { module, entryPoint: SLANG_ENTRY_VERTEX, ...(traceNeedsVertexBuffers(pass) ? { buffers: meshVertexLayout() } : {}) },
       // Trace colour is an independent diagnostic readback. Keep it f32 so
       // comparison is not affected by the canvas' presentation format.
-      fragment: { module, entryPoint: SLANG_ENTRY_FRAGMENT, targets: [{ format: 'rgba32float' }] },
-      primitive: { topology: 'triangle-list' },
-      ...(isMesh(pass) ? { depthStencil: { format: 'depth24plus', depthWriteEnabled: true, depthCompare: 'less' } } : {}),
+      fragment: { module, entryPoint: SLANG_ENTRY_FRAGMENT, targets: [{ format: traceColorFormat(pass), ...webgpuBlendState(state.blend) }] },
+      primitive: { topology: pass.geometry === 'vertices' ? verticesTopology(pass) : traceNeedsVertexBuffers(pass) ? meshTopology(pass) : 'triangle-list', frontFace: 'ccw', cullMode: state.cull },
+      multisample: { count: state.samples },
+      ...(state.depth ? { depthStencil: { format: 'depth24plus', depthWriteEnabled: state.depth.write, depthCompare: state.depth.test ? state.depth.compare : 'always' } } : {}),
     });
   signal?.throwIfAborted();
   return {pipeline, output};
@@ -240,7 +245,7 @@ function prepareTraceProgram(snapshot: WgslProjectTraceSnapshot, request: WgslPr
     })
     : wrapWgslImageSource(pass.source, {
       passName: pass.name, commonCode: snapshot.commonCode, channels, storage: snapshot.storage,
-      geometry: pass.geometry, vertexCode: pass.vertexSrc, customUniforms: snapshot.customUniformInfo as never[],
+      geometry: pass.geometry, vertexSpace: pass.space, vertexCode: pass.vertexSrc, customUniforms: snapshot.customUniformInfo as never[],
     });
   const sourceEnd = wrapped.preludeLineCount + wrapped.userLineCount;
   const ranges = [
@@ -248,8 +253,8 @@ function prepareTraceProgram(snapshot: WgslProjectTraceSnapshot, request: WgslPr
     ...(snapshot.commonPath && wrapped.commonRange ? [{ path: snapshot.commonPath, startLine: wrapped.commonRange.startLine, endLine: wrapped.commonRange.startLine + wrapped.commonRange.lineCount - 1 }] : []),
   ];
   const plan = reference ? undefined : planWgslTraceProgram({
-    source: stage === 'fragment' && isMesh(pass) ? patchWgslMeshPrimitiveTrace(wrapped.source) : wrapped.source,
-    ...(stage === 'fragment' && isMesh(pass) ? { fragmentPredicate: '_ss_trace_primitive == _ss_trace_u._pad.x' } : {}),
+    source: stage === 'fragment' && traceNeedsVertexBuffers(pass) ? patchWgslMeshPrimitiveTrace(wrapped.source, meshTopology(pass), traceMeshPrimitiveCount(snapshot)) : wrapped.source,
+    ...(stage === 'fragment' && traceNeedsVertexBuffers(pass) ? { fragmentPredicate: '_ss_trace_primitive == _ss_trace_u._pad.x' } : {}),
     entryPoint: stage === 'compute' ? computeEntry : SLANG_ENTRY_FRAGMENT,
     stage,
     capacity: request.capacity,
@@ -324,27 +329,33 @@ async function executeComputeTrace(context: TraceExecution): Promise<WgslTraceRe
 async function executeFragmentTrace(context: TraceExecution): Promise<WgslTraceRecording> {
   const { snapshot, request, signal, pipeline, group0Layout, entries, traceGroupBind, traceGroup, encoder, plan, trace, traceReadback, traceSize, makeBuffer, ownedTextures, mesh, meshSelection, selector } = context;
   const { device, pass } = snapshot;
-  const target = device.createTexture({ size: [pass.width, pass.height], format: 'rgba32float', usage: T.RENDER_ATTACHMENT | T.COPY_SRC }); ownedTextures.push(target);
+  const state = resolveRenderState(pass);
+  const format = traceColorFormat(pass);
+  const target = device.createTexture({ size: [pass.width, pass.height], format, usage: T.RENDER_ATTACHMENT | T.COPY_SRC }); ownedTextures.push(target);
+  const multisampled = state.samples > 1 ? device.createTexture({ size: [pass.width, pass.height], format, sampleCount: state.samples, usage: T.RENDER_ATTACHMENT }) : undefined;
+  if (multisampled) {
+    ownedTextures.push(multisampled); 
+  }
   const colorReadback = makeBuffer(256, U.MAP_READ | U.COPY_DST);
   const group = device.createBindGroup({ layout: group0Layout, entries });
   meshSelection?.encode(encoder, group, selector!, request.pixel);
-  const depth = isMesh(pass) ? device.createTexture({ size: [pass.width, pass.height], format: 'depth24plus', usage: T.RENDER_ATTACHMENT }) : undefined;
+  const depth = isMesh(pass) ? device.createTexture({ size: [pass.width, pass.height], format: 'depth24plus', sampleCount: state.samples, usage: T.RENDER_ATTACHMENT }) : undefined;
   if (depth) {
     ownedTextures.push(depth);
   }
-  const render = encoder.beginRenderPass({ colorAttachments: [{ view: target.createView(), loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 0] }],
-    ...(depth ? { depthStencilAttachment: { view: depth.createView(), depthClearValue: 1, depthLoadOp: 'clear' as const, depthStoreOp: 'store' as const } } : {}) });
+  const render = encoder.beginRenderPass({ colorAttachments: [{ view: (multisampled ?? target).createView(), ...(multisampled ? { resolveTarget: target.createView() } : {}), loadOp: 'clear', storeOp: 'store', clearValue: state.clear }],
+    ...(depth ? { depthStencilAttachment: { view: depth.createView(), depthClearValue: depthClearValue(state), depthLoadOp: 'clear' as const, depthStoreOp: 'store' as const } } : {}) });
   render.setPipeline(pipeline as GPURenderPipeline); render.setBindGroup(0, group); if (traceGroupBind) {
     render.setBindGroup(traceGroup, traceGroupBind);
   }
-  if (isMesh(pass)) {
+  if (traceNeedsVertexBuffers(pass)) {
     if (meshSelection) {
-      render.setVertexBuffer(0, meshSelection.vertexBuffer); render.draw(mesh!.indexCount);
+      render.setVertexBuffer(0, meshSelection.vertexBuffer); render.draw(mesh!.indexCount, geometryInstanceCount(pass));
     } else {
-      render.setVertexBuffer(0, mesh!.vertexBuffer); render.setIndexBuffer(mesh!.indexBuffer, mesh!.indexFormat); render.drawIndexed(mesh!.indexCount);
+      render.setVertexBuffer(0, mesh!.vertexBuffer); render.setIndexBuffer(mesh!.indexBuffer, mesh!.indexFormat); render.drawIndexed(mesh!.indexCount, geometryInstanceCount(pass));
     }
   } else {
-    render.draw(3);
+    render.draw(pass.geometry === 'vertices' ? verticesVertexCount(pass) : 3, geometryInstanceCount(pass));
   }
   render.end();
   encoder.copyTextureToBuffer({ texture: target, origin: [request.pixel[0], request.pixel[1]] }, { buffer: colorReadback, bytesPerRow: 256 }, [1, 1]);
@@ -355,7 +366,7 @@ async function executeFragmentTrace(context: TraceExecution): Promise<WgslTraceR
   await Promise.all([...(traceReadback ? [traceReadback.mapAsync(GPUMapMode.READ)] : []), colorReadback.mapAsync(GPUMapMode.READ)]);
   signal?.throwIfAborted();
   const decoded = decodeTraceReadback(plan, traceReadback);
-  const color = Array.from(new Float32Array(colorReadback.getMappedRange().slice(0, 16)));
+  const color = decodeWgslProjectTracePixel(colorReadback.getMappedRange(), format);
   traceReadback?.unmap(); colorReadback.unmap();
   return { path: snapshot.sourcePath, source: pass.source, sites: plan?.sites ?? [], ...decoded, color };
 }
@@ -371,21 +382,46 @@ function align4(value: number) {
 function isMesh(pass: RenderPassNode) {
   return pass.geometry !== 'fullscreen';
 }
+export function traceNeedsVertexBuffers(pass: Pick<RenderPassNode, 'geometry'>): boolean {
+  return isMeshGeometry(pass.geometry);
+}
+function traceMeshPrimitiveCount(snapshot: WgslProjectTraceSnapshot): number {
+  const mesh = snapshot.mesh;
+  if (!mesh) {
+    return 0; 
+  }
+  const topology = meshTopology(snapshot.pass);
+  const count = topology === 'point-list' ? mesh.vertexCount ?? mesh.vertexBuffer.size / 32 : topology === 'line-list' ? mesh.edgeIndexCount ?? mesh.indexCount : mesh.indexCount;
+  return Math.ceil(count / (topology === 'point-list' ? 1 : topology === 'line-list' ? 2 : 3));
+}
+function traceColorFormat(pass: RenderPassNode): GPUTextureFormat {
+  const state = resolveRenderState(pass);
+  return state.blend !== 'none' || state.samples > 1 ? 'rgba16float' : 'rgba32float';
+}
 function meshVertexLayout(): GPUVertexBufferLayout[] {
   return [{ arrayStride: 32, attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' }, { shaderLocation: 1, offset: 12, format: 'float32x3' }, { shaderLocation: 2, offset: 24, format: 'float32x2' }] }];
 }
-function cloneWgslTraceMesh(device: GPUDevice, mesh: WgslProjectTraceSnapshot['mesh'], owned: GPUBuffer[], passName: string) {
+function cloneWgslTraceMesh(device: GPUDevice, mesh: WgslProjectTraceSnapshot['mesh'], owned: GPUBuffer[], pass: RenderPassNode) {
+  const passName = pass.name;
   if (!mesh) {
     throw new Error(`Pass '${passName}' needs frozen mesh buffers.`);
   }
   const vertexBuffer = device.createBuffer({ size: mesh.vertexBuffer.size, usage: U.VERTEX | U.STORAGE | U.COPY_DST });
-  const indexBuffer = device.createBuffer({ size: mesh.indexBuffer.size, usage: U.INDEX | U.STORAGE | U.COPY_DST });
+  const topology = meshTopology(pass);
+  const sourceIndices = topology === 'line-list' ? mesh.edgeIndexBuffer ?? mesh.indexBuffer : mesh.indexBuffer;
+  const indexCount = topology === 'point-list' ? mesh.vertexCount ?? mesh.vertexBuffer.size / 32 : topology === 'line-list' ? mesh.edgeIndexCount ?? mesh.indexCount : mesh.indexCount;
+  const indexFormat = topology === 'point-list' ? 'uint32' as const : mesh.indexFormat;
+  const indexBuffer = device.createBuffer({ size: topology === 'point-list' ? Math.max(4, indexCount * 4) : sourceIndices.size, usage: U.INDEX | U.STORAGE | U.COPY_DST });
   owned.push(vertexBuffer, indexBuffer);
   const encoder = device.createCommandEncoder();
   encoder.copyBufferToBuffer(mesh.vertexBuffer, 0, vertexBuffer, 0, mesh.vertexBuffer.size);
-  encoder.copyBufferToBuffer(mesh.indexBuffer, 0, indexBuffer, 0, mesh.indexBuffer.size);
+  if (topology === 'point-list') {
+    device.queue.writeBuffer(indexBuffer, 0, Uint32Array.from({ length: indexCount }, (_, index) => index));
+  } else {
+    encoder.copyBufferToBuffer(sourceIndices, 0, indexBuffer, 0, sourceIndices.size);
+  }
   device.queue.submit([encoder.finish()]);
-  return { ...mesh, vertexBuffer, indexBuffer };
+  return { ...mesh, vertexBuffer, indexBuffer, indexCount, indexFormat };
 }
 function writeSelector(device: GPUDevice, buffer: GPUBuffer, request: WgslProjectTraceRequest, stage: string) {
   const invocation = request.invocation ?? [request.pixel[0], request.pixel[1], 0];

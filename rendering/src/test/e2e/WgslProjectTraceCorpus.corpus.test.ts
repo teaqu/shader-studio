@@ -205,11 +205,11 @@ describe("WGSL project trace: configured corpus", () => {
         (project) => project.language === "wgsl",
       );
       const rawBySource = new Map(rawSources.map((source) => [source.source, source.name]));
-      expect(wgslProjects).toHaveLength(45);
-      expect(rawSources).toHaveLength(93);
-      expect(rawSources.filter((source) => /\bfn\s+mainImage\b/.test(source.source))).toHaveLength(58);
+      expect(wgslProjects).toHaveLength(59);
+      expect(rawSources).toHaveLength(117);
+      expect(rawSources.filter((source) => /\bfn\s+mainImage\b/.test(source.source))).toHaveLength(73);
       expect(rawSources.filter((source) => /@compute\b/.test(source.source))).toHaveLength(23);
-      expect(rawSources.filter((source) => /\bfn\s+mainVertex\b/.test(source.source))).toHaveLength(6);
+      expect(rawSources.filter((source) => /\bfn\s+mainVertex\b/.test(source.source))).toHaveLength(15);
       expect(rawSources.filter((source) => !/\bfn\s+(mainImage|mainVertex)\b|@compute\b/.test(source.source))).toHaveLength(6);
       let configuredPasses = 0;
       let vertexHooks = 0;
@@ -262,9 +262,9 @@ describe("WGSL project trace: configured corpus", () => {
           harness.dispose();
         }
       }
-      expect(configuredPasses).toBe(87);
-      expect(vertexHooks).toBe(6);
-      expect(targetSources.size).toBe(85);
+      expect(configuredPasses).toBe(102);
+      expect(vertexHooks).toBe(15);
+      expect(targetSources.size).toBe(109);
       expect(computeEntries.size).toBe(27);
       expect(rawSources.filter((source) => !targetSources.has(source.source)).map((source) => source.name).sort()).toEqual([
         "wgsl/common.wgsl",
@@ -306,10 +306,15 @@ describe("WGSL project trace: configured corpus", () => {
         for (const target of targets) {
           expect(sourceForTarget(project, target)).toBe(target.source);
           const request = requestFor(target, imagePixel);
+          // Buffer glow draws an annulus of lines; its centre has no fragment.
+          // Select a point inside that annulus for the configured buffer trace.
+          if (project.name === 'wgsl/vertices/buffer-glow.wgsl' && target.passName === 'BufferA' && target.stage === 'fragment') {
+            request.pixel = [Math.floor(target.width * 5 / 8), Math.floor(target.height / 2)];
+          }
           const reference = await engine.captureWgslProjectReference(request);
           const recording = await engine.captureWgslProjectTrace(request);
           expectTraceMatchesReference(recording, reference);
-        if (target.passName === "Image" && target.stage === "fragment" && canCompareImageToLive(project)) {
+          if (target.passName === "Image" && target.stage === "fragment" && canCompareImageToLive(project)) {
             const liveColor = renderedColor(
               region,
               imageTarget!.width,

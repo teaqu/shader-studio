@@ -16,6 +16,12 @@ const meshModule = `struct _ss_MeshVertexOut {
 `;
 
 describe('WGSL mesh primitive trace patch', () => {
+  it.each([['point-list', 1], ['line-list', 2], ['triangle-list', 3]] as const)('uses %s primitive sizes and distinct IDs for instances', (topology, size) => {
+    const source = wrapWgslImageSource('fn mainImage(p: vec2f) -> vec4f { return vec4f(p, 0., 1.); }', { geometry: 'cube' }).source;
+    const patched = patchWgslMeshPrimitiveTrace(source, topology, 12);
+    expect(patched).toContain(`output._ss_trace_primitive = vid / ${size}u + 1u + iid * 12u;`);
+    expect(patchWgslMeshPrimitiveIdPass(source, topology, 12)).toContain(`vid / ${size}u + 1u + iid * 12u;`);
+  });
   it.each([patchWgslMeshPrimitiveTrace, patchWgslMeshPrimitiveIdPass])('keeps primitive and instance varyings distinct in the current mesh prelude', (patch) => {
     const source = wrapWgslImageSource('fn mainImage(p: vec2f) -> vec4f { return vec4f(p, 0., 1.); }', { geometry: 'cube' }).source;
     const patched = patch(source);

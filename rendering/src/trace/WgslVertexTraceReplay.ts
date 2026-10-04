@@ -1,6 +1,7 @@
 /// <reference types="@webgpu/types" />
 import type { WgslProjectTraceRequest, WgslTraceRecording } from '@shader-studio/types';
 import type { WgslProjectTraceSnapshot } from './WgslProjectTraceCapture';
+import { isMeshGeometry } from '../preview3d/MeshFragmentContext';
 import { getSlangChannels, buildSlangBindingPlan } from '../webgpu/SlangBindingPlan';
 import { slangChannelLayoutEntries, slangChannelResourceEntries } from '../webgpu/SlangBindingResources';
 import { wrapWgslImageSource, WGSL_ENTRY_VERTEX } from '../webgpu/WgslPrelude';
@@ -60,7 +61,7 @@ function prepareVertexBuffers(snapshot: WgslProjectTraceSnapshot, request: WgslP
   const uniform = make(snapshot.uniformData.byteLength, U.UNIFORM | U.COPY_DST); device.queue.writeBuffer(uniform, 0, snapshot.uniformData);
   const vertexData = make(32, U.STORAGE | U.COPY_DST | U.COPY_SRC);
   const vertex = request.vertexIndex ?? 0;
-  if (pass.geometry !== 'fullscreen') {
+  if (isMeshGeometry(pass.geometry)) {
     if (!snapshot.mesh) {
       throw new Error(`Pass '${pass.name}' has no frozen mesh vertex buffer.`);
     }
@@ -92,7 +93,7 @@ function prepareVertexReplay(snapshot: WgslProjectTraceSnapshot, request: WgslPr
   }
   const channels = getSlangChannels(pass.channels);
   const bindings = buildSlangBindingPlan(channels);
-  const wrapped = wrapWgslImageSource(pass.source, { passName: pass.name, commonCode: snapshot.commonCode, channels, storage: snapshot.storage, geometry: pass.geometry, vertexCode: pass.vertexSrc, customUniforms: snapshot.customUniformInfo as never[] });
+  const wrapped = wrapWgslImageSource(pass.source, { passName: pass.name, commonCode: snapshot.commonCode, channels, storage: snapshot.storage, geometry: pass.geometry, vertexSpace: pass.space, vertexCode: pass.vertexSrc, customUniforms: snapshot.customUniformInfo as never[] });
   const features: Record<string, GPUFeatureName> = { f16: 'shader-f16', dual_source_blending: 'dual-source-blending', clip_distances: 'clip-distances', subgroups: 'subgroups' };
   const missing = wrapped.requiredFeatures.filter(feature => features[feature] !== undefined && !device.features.has(features[feature]));
   if (missing.length) {
@@ -101,7 +102,7 @@ function prepareVertexReplay(snapshot: WgslProjectTraceSnapshot, request: WgslPr
   const demoted = demoteVertexEntry(wrapped.source);
   const dataBinding = bindings.nextBinding + snapshot.storage.length + (pass.geometry === 'fullscreen' ? 0 : 1);
   const resultBinding = dataBinding + 1;
-  const replay = `${demoted}\n@group(0) @binding(${dataBinding}) var<storage, read> _ss_trace_vertexData: array<f32>;\n@group(0) @binding(${resultBinding}) var<storage, read_write> _ss_trace_vertexResult: array<vec4f>;\n${vertexReplayEntry(pass.geometry === 'fullscreen', request.vertexIndex ?? 0)}`;
+  const replay = `${demoted}\n@group(0) @binding(${dataBinding}) var<storage, read> _ss_trace_vertexData: array<f32>;\n@group(0) @binding(${resultBinding}) var<storage, read_write> _ss_trace_vertexResult: array<vec4f>;\n${vertexReplayEntry(pass.geometry === 'fullscreen', request.vertexIndex ?? 0, pass.geometry === 'vertices')}`;
   const ranges = [
     ...(snapshot.vertexPath && wrapped.vertexRange ? [{ path: snapshot.vertexPath, startLine: wrapped.vertexRange.startLine, endLine: wrapped.vertexRange.startLine + wrapped.vertexRange.lineCount - 1 }] : []),
     ...(snapshot.commonPath && wrapped.commonRange ? [{ path: snapshot.commonPath, startLine: wrapped.commonRange.startLine, endLine: wrapped.commonRange.startLine + wrapped.commonRange.lineCount - 1 }] : []),
@@ -139,7 +140,10 @@ function demoteVertexEntry(source: string) {
     throw new Error('WGSL vertex entry was not generated.');
   } const end = source.indexOf('{', start); return `${source.slice(0, start)}${source.slice(start, end).replace('@vertex ', '').replace(/@(?:builtin|location)\([^)]*\)\s*/g, '')}${source.slice(end)}`;
 }
-export function vertexReplayEntry(fullscreen: boolean, vertexIndex: number) {
+export function vertexReplayEntry(fullscreen: boolean, vertexIndex: number, vertices = false) {
+  if (vertices) {
+    return `@compute @workgroup_size(1) fn _ss_vertexTraceReplay() { _ss_trace_vertexResult[0] = ${WGSL_ENTRY_VERTEX}(u32(${vertexIndex}),0u).position; }`; 
+  }
   return fullscreen ? `@compute @workgroup_size(1) fn _ss_vertexTraceReplay() { _ss_trace_vertexResult[0] = ${WGSL_ENTRY_VERTEX}(u32(${vertexIndex})).position; }` : `@compute @workgroup_size(1) fn _ss_vertexTraceReplay() { var p=vec3f(_ss_trace_vertexData[0],_ss_trace_vertexData[1],_ss_trace_vertexData[2]); var n=vec3f(_ss_trace_vertexData[3],_ss_trace_vertexData[4],_ss_trace_vertexData[5]); var uv=vec2f(_ss_trace_vertexData[6],_ss_trace_vertexData[7]); _ss_trace_vertexResult[0] = ${WGSL_ENTRY_VERTEX}(p,n,uv,u32(${vertexIndex}),0u).position; }`;
 }
 function layoutEntries(snapshot: WgslProjectTraceSnapshot, plan: ReturnType<typeof buildSlangBindingPlan>, data: number, result: number): GPUBindGroupLayoutEntry[] {

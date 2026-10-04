@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { decodeWgslProjectTracePixel, traceBindGroupIndexes } from '../../trace/WgslProjectTraceCapture';
+import { decodeWgslProjectTracePixel, traceBindGroupIndexes, traceNeedsVertexBuffers } from '../../trace/WgslProjectTraceCapture';
 
 describe('WGSL project trace capture helpers', () => {
+  it('does not require frozen vertex buffers for shader-generated vertices', () => {
+    expect(traceNeedsVertexBuffers({ geometry: 'vertices' })).toBe(false);
+    expect(traceNeedsVertexBuffers({ geometry: 'fullscreen' })).toBe(false);
+    expect(traceNeedsVertexBuffers({ geometry: 'cube' })).toBe(true);
+    expect(traceNeedsVertexBuffers({ geometry: 'model' })).toBe(true);
+  });
   it('does not allocate a trace bind group for a reference render', () => {
     expect(traceBindGroupIndexes(3, false)).toEqual([0]);
     expect(traceBindGroupIndexes(3, true)).toEqual([0, 1, 2, 3]);

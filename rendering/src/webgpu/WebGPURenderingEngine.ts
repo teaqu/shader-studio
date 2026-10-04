@@ -1,3 +1,4 @@
+import { geometryInstanceCount } from "../types/Geometry";
 import { packDefaultMeshUniforms } from "./meshUniforms";
 import { captureInstalledWgslTrace, traceDispatchUniforms, validateProjectTraceRequest, wgslTraceTargets } from "../trace/WgslProjectTraceController";
 import { vertexPassKey } from "@shader-studio/types";
@@ -801,7 +802,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
     if (!resources) {
       throw new Error("The pass input resources are not ready.");
     }
-    const uniformData = packShaderToyUniforms({ channelCount: getShaderToyChannelCount(pass.channels),
+    const camera = this.geometry.passCameraMatrices(pass);
+    const uniformData = packShaderToyUniforms({ vertexCount: this.geometry.resolvePassVertexCount(pass), instanceCount: geometryInstanceCount(pass),
+      viewMatrix: camera.view, projectionMatrix: camera.projection, viewProjection: camera.viewProjection, channelCount: getShaderToyChannelCount(pass.channels),
       width: pass.width, height: pass.height, ...this.getUniforms(), ...this.channels.getChannelUniforms(pass),
     }, this.session.customUniformManager.getUniformInfo(), this.getCurrentCustomUniforms());
     const mesh = this.getTraceMesh(pass);
@@ -810,7 +813,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       commonCode: sources.get(paths.common ?? "") ?? project.buffers.common ?? "", customUniformInfo: this.session.customUniformManager.getUniformInfo(),
       sourcePath: this.getWgslTraceTargets().find(candidate => candidate.passName === pass.name && candidate.stage !== "vertex")!.path,
       commonPath: paths.common, vertexPath: paths[vertexPassKey(pass.name)], mesh,
-      ...(mesh ? { meshUniformData: packDefaultMeshUniforms(this.meshCamera, pass.width, pass.height).buffer as ArrayBuffer } : {}),
+      ...(pass.geometry !== "fullscreen" ? { meshUniformData: packDefaultMeshUniforms(this.meshCamera, pass.width, pass.height).buffer as ArrayBuffer } : {}),
       dispatchWorkgroups: resolveWorkgroupCounts(pass, this.storage.storageLayouts, resources) ?? undefined,
       dispatchUniforms: traceDispatchUniforms(pass.dispatchCount),
     }, { ...target, source: sources.get(target.path) ?? target.source }, request, signal, () => !this.disposed && generation === this.session.compileGeneration, reference);
