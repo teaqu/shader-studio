@@ -134,3 +134,11 @@ describe('monaco-editor deep imports in bundled dependencies', () => {
     }
   });
 });
+
+describe('standalone preview server', () => {
+  it('accepts private Tailscale HTTPS hostnames', () => {
+    const configSource = fs.readFileSync(path.join(repoRoot, 'standalone/vite.config.ts'), 'utf8');
+
+    expect(configSource).toMatch(/preview:\s*{[^}]*allowedHosts:\s*\['\.ts\.net'\]/s);
+  });
+});

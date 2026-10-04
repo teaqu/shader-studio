@@ -13,11 +13,19 @@
   } from 'dockview-core';
   import 'dockview-core/dist/styles/dockview.css';
   import { StandaloneLayoutController, type StandalonePanelId } from './StandaloneLayoutController';
+  import { StandalonePanelSizing } from './StandalonePanelSizing';
   import { getViewerSession } from '@shader-studio/ui/lib/state/viewerSession.svelte';
   import EditorPane from './EditorPane.svelte';
   import type { WebTransport } from './WebTransport';
   import { HostedPanels } from './HostedPanels';
   import type { HostedPanelId } from '@shader-studio/ui/lib/layout/PanelHost';
+  import {
+    getMobilePanel,
+    isMobileViewport,
+    setMobilePanel,
+    setMobileViewport,
+    type MobileShellPanel,
+  } from './state/mobileShellState.svelte';
 
   interface Props {
     transport?: WebTransport;
@@ -36,10 +44,34 @@
   let previewSource: HTMLElement;
   let controller = $state<StandaloneLayoutController | null>(null);
   let dockviewApi: DockviewApi | null = null;
+  let panelSizing: StandalonePanelSizing | null = null;
   let dropDisposable: DockviewIDisposable | null = null;
+  let removeViewportListener: (() => void) | null = null;
+  let activeMobileTool = $state<HostedPanelId>('config');
+  const mobilePanel = $derived(getMobilePanel());
+  const mobileViewport = $derived(isMobileViewport());
 
   $effect(() => {
     controller?.setEditorPath(getViewerSession()?.shaderPath ?? '');
+  });
+
+  $effect(() => {
+    if (!controller) {
+      return;
+    }
+    if (!mobileViewport) {
+      controller.restoreDesktopPanels();
+      panelSizing?.refresh();
+      return;
+    }
+    if (mobilePanel === 'tools') {
+      activeMobileTool = hostedPanels.getLastSelectedTool();
+      controller.showMobileDockviewPanel(hostedPanels.showLastSelectedTool());
+      panelSizing?.refresh();
+      return;
+    }
+    controller.showMobilePanel(mobilePanel);
+    panelSizing?.refresh();
   });
 
   const sources = new Map<StandalonePanelId, HTMLElement>();
@@ -97,13 +129,17 @@
         : new StableSourceRenderer(options.name as StandalonePanelId),
       theme: { ...themeVisualStudio, name: 'shader-studio-standalone', className: 'shader-studio-standalone-theme' },
       disableFloatingGroups: true,
+      disableAutoResizing: true,
     });
     dropDisposable = dockviewApi.onWillDrop((event: DockviewWillDropEvent) => {
       if (event.getData()?.viewId !== dockviewApi?.id) {
         event.preventDefault();
       }
     });
-    hostedPanels.connect(dockviewApi, () => controller?.resetLayout());
+    hostedPanels.connect(dockviewApi, () => {
+      controller?.resetLayout();
+      panelSizing?.reset();
+    });
     controller = new StandaloneLayoutController(dockviewApi, undefined, (path) => {
       transport?.getShaderExplorerHostApi().postMessage({ type: 'activateShader', path });
     });
@@ -111,9 +147,24 @@
     dockviewApi.layout(dockviewElement.clientWidth, dockviewElement.clientHeight);
     controller.initialize();
     hostedPanels.restoreVisiblePanels();
+    panelSizing = new StandalonePanelSizing(dockviewApi, dockviewElement, isMobileViewport);
+
+    const media = window.matchMedia?.('(max-width: 767px)');
+    if (!media) {
+      setMobileViewport(false);
+      return;
+    }
+    const updateViewport = () => setMobileViewport(media.matches);
+    updateViewport();
+    media.addEventListener('change', updateViewport);
+    removeViewportListener = () => media.removeEventListener('change', updateViewport);
   });
 
   onDestroy(() => {
+    removeViewportListener?.();
+    removeViewportListener = null;
+    panelSizing?.dispose();
+    panelSizing = null;
     hostedPanels.dispose();
     controller?.dispose();
     controller = null;
@@ -145,16 +196,58 @@
 
   export function resetLayout(): void {
     hostedPanels.resetLayout(() => controller?.resetLayout());
+    panelSizing?.reset();
+  }
+
+  /** Selects the phone shell destination without altering the desktop layout. */
+  export function selectMobilePanel(panelId: MobileShellPanel): void {
+    setMobilePanel(panelId);
+  }
+
+  export function getSelectedMobilePanel(): MobileShellPanel {
+    return getMobilePanel();
+  }
+
+  export function isMobileLayout(): boolean {
+    return isMobileViewport();
+  }
+
+  export function selectMobileTool(panelId: HostedPanelId): void {
+    activeMobileTool = panelId;
+    setMobilePanel('tools');
+    controller?.showMobileDockviewPanel(hostedPanels.showTool(panelId));
   }
 </script>
 
-<div class="standalone-layout">
+<div class:mobile-layout={mobileViewport} class="standalone-layout" data-mobile-panel={mobilePanel}>
   <div class="standalone-dockview" bind:this={dockviewElement}></div>
   <div class="standalone-panel-sources" bind:this={sourceElement} aria-hidden="true">
     <div class="standalone-panel-source" bind:this={explorerSource}>{@render explorer()}</div>
     <div class="standalone-panel-source" bind:this={editorSource}>{@render editor()}</div>
     <div class="standalone-panel-source" bind:this={previewSource}>{@render preview()}</div>
   </div>
+  {#if mobileViewport}
+    {#if mobilePanel === 'tools'}
+      <nav class="mobile-tools-navigation" aria-label="Tools">
+        {#each ([['config', 'Config'], ['debug', 'Debug'], ['performance', 'Frame Times'], ['recording', 'Export']] as const) as [panelId, label]}
+          <button
+            class:active={activeMobileTool === panelId}
+            aria-current={activeMobileTool === panelId ? 'page' : undefined}
+            onclick={() => selectMobileTool(panelId)}
+          >{label}</button>
+        {/each}
+      </nav>
+    {/if}
+    <nav class="mobile-panel-navigation" aria-label="Workspace panels">
+      {#each ([['explorer', 'Explorer'], ['editor', 'Editor'], ['preview', 'Preview'], ['tools', 'Tools']] as const) as [panelId, label]}
+        <button
+          class:active={mobilePanel === panelId}
+          aria-current={mobilePanel === panelId ? 'page' : undefined}
+          onclick={() => setMobilePanel(panelId)}
+        >{label}</button>
+      {/each}
+    </nav>
+  {/if}
 </div>
 
 <style>
@@ -182,4 +275,51 @@
   .standalone-dockview :global(.dv-content-container) { min-width: 0; min-height: 0; }
   .standalone-panel-sources { display: none; }
   .standalone-panel-source, :global(.standalone-panel-content) { width: 100%; height: 100%; min-width: 0; min-height: 0; }
+  .mobile-panel-navigation { display: none; }
+  .mobile-tools-navigation { display: none; }
+
+  @media (max-width: 767px) {
+    .standalone-layout { position: relative; flex-direction: column; padding-bottom: env(safe-area-inset-bottom); }
+    .standalone-dockview { min-height: 0; }
+    .mobile-layout .standalone-dockview :global(.dv-tabs-and-actions-container) { display: none; }
+    .mobile-panel-navigation {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 2px;
+      flex: 0 0 auto;
+      padding: 6px max(8px, env(safe-area-inset-right)) 6px max(8px, env(safe-area-inset-left));
+      border-top: 1px solid var(--vscode-panel-border);
+      background: var(--vscode-sideBar-background);
+    }
+    .mobile-tools-navigation {
+      display: flex;
+      gap: 4px;
+      overflow-x: auto;
+      flex: 0 0 auto;
+      padding: 6px max(8px, env(safe-area-inset-right)) 2px max(8px, env(safe-area-inset-left));
+      border-top: 1px solid var(--vscode-panel-border);
+      background: var(--vscode-sideBar-background);
+    }
+    .mobile-tools-navigation button {
+      min-height: 44px;
+      padding: 6px 12px;
+      border: 0;
+      border-radius: 4px;
+      color: var(--vscode-foreground);
+      background: transparent;
+      font: inherit;
+      white-space: nowrap;
+    }
+    .mobile-tools-navigation button.active { background: var(--vscode-list-hoverBackground); }
+    .mobile-panel-navigation button {
+      min-height: 44px;
+      padding: 6px 4px;
+      border: 0;
+      border-radius: 4px;
+      color: var(--vscode-foreground);
+      background: transparent;
+      font: inherit;
+    }
+    .mobile-panel-navigation button.active { background: var(--vscode-list-hoverBackground); }
+  }
 </style>

@@ -42,7 +42,15 @@ export class MouseManager {
     }
     this.isMouseDown = false;
     this.updateSigns();
-    this.canvas?.releasePointerCapture(e.pointerId);
+    if (this.canvas?.hasPointerCapture?.(e.pointerId)) {
+      this.canvas.releasePointerCapture(e.pointerId);
+    }
+  };
+
+  private readonly onPointerCancel = (): void => {
+    this.isMouseDown = false;
+    this.clickSignalled = false;
+    this.updateSigns();
   };
 
   public getMouse(): Float32Array {
@@ -61,6 +69,11 @@ export class MouseManager {
     canvas.addEventListener("pointerdown", this.onPointerDown);
     canvas.addEventListener("pointerup", this.onPointerUp);
     canvas.addEventListener("pointermove", this.onPointerMove);
+    canvas.addEventListener("pointercancel", this.onPointerCancel);
+    canvas.addEventListener("lostpointercapture", this.onPointerCancel);
+    if (canvas.style) {
+      canvas.style.touchAction = "none";
+    }
   }
 
   public dispose(): void {
@@ -70,6 +83,11 @@ export class MouseManager {
     this.canvas.removeEventListener?.("pointerdown", this.onPointerDown);
     this.canvas.removeEventListener?.("pointerup", this.onPointerUp);
     this.canvas.removeEventListener?.("pointermove", this.onPointerMove);
+    this.canvas.removeEventListener?.("pointercancel", this.onPointerCancel);
+    this.canvas.removeEventListener?.("lostpointercapture", this.onPointerCancel);
+    if (this.canvas.style) {
+      this.canvas.style.touchAction = "";
+    }
     this.canvas = null;
     this.isMouseDown = false;
   }

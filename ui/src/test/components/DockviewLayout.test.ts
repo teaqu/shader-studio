@@ -83,6 +83,30 @@ describe('hosted tool panels', () => {
       expect(cleanup).toHaveBeenCalledOnce();
     }
   });
+
+  it('announces which tool the shell showed, so the viewer can mark it visible again', async () => {
+    const definitions = new Map<HostedPanelId, HostedPanelDefinition>();
+    const host = {
+      register: vi.fn((id: HostedPanelId, definition: HostedPanelDefinition) => {
+        definitions.set(id, definition);
+        return vi.fn();
+      }),
+      setVisible: vi.fn(),
+    };
+    const restored = vi.fn();
+    render(DockviewLayout, {
+      props: {},
+      context: new Map([[PANEL_HOST_CONTEXT, host]]),
+      events: { toolRestored: restored },
+    });
+    await tick();
+
+    for (const id of ['debug', 'config', 'performance', 'recording'] as const) {
+      definitions.get(id)?.onShow?.();
+    }
+
+    expect(restored.mock.calls.map(([event]) => event.detail)).toEqual(['debug', 'config', 'performance', 'recording']);
+  });
 });
 
 // --- dockview-core mock ---
