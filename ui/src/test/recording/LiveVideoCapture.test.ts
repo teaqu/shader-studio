@@ -2,11 +2,12 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { createLiveVideoCapture } from "../../lib/recording/LiveVideoCapture";
 
 const mocks = vi.hoisted(() => ({
-  start: vi.fn(), finalize: vi.fn(), cancel: vi.fn(), close: vi.fn(), stopTrack: vi.fn(), canEncode: vi.fn(),
+  start: vi.fn(), finalize: vi.fn(), cancel: vi.fn(), close: vi.fn(), stopTrack: vi.fn(), canEncode: vi.fn(), bridge: vi.fn(),
   config: null as Record<string, unknown> | null,
   target: { buffer: new ArrayBuffer(4) as ArrayBuffer | null },
   error: (_error: unknown) => {},
 }));
+vi.mock("../../lib/recording/LivePreviewCanvas", () => ({ createLivePreviewCanvas: mocks.bridge }));
 vi.mock("mediabunny", () => ({
   Quality: class {
     constructor(readonly options: unknown) {}
@@ -46,6 +47,41 @@ function canvas() {
   const track = { stop: mocks.stopTrack };
   return { width: 815, height: 459, captureStream: vi.fn(() => ({ getVideoTracks: () => [track], getTracks: () => [track] })) } as unknown as HTMLCanvasElement;
 }
+it("uses stable GPU frames and disposes the bridge after finalization", async () => {
+  const stableCanvas = canvas();
+  const dispose = vi.fn();
+  const captureFrame = vi.fn();
+  mocks.bridge.mockResolvedValue({ canvas: stableCanvas, dispose, error: new Promise(() => {}) });
+  const capture = await createLiveVideoCapture(canvas(), 60, "webm", new AbortController().signal, captureFrame);
+  expect(mocks.bridge).toHaveBeenCalledWith(expect.anything(), captureFrame, 60, expect.any(AbortSignal));
+  expect(stableCanvas.captureStream).toHaveBeenCalledWith(60);
+  capture.stop();
+  await capture.result;
+  expect(dispose).toHaveBeenCalledOnce();
+});
+it("disposes stable GPU capture when creating the browser stream fails", async () => {
+  const stableCanvas = canvas();
+  vi.mocked(stableCanvas.captureStream).mockImplementation(() => {
+    throw new Error("stream unavailable");
+  });
+  const dispose = vi.fn();
+  mocks.bridge.mockResolvedValue({ canvas: stableCanvas, dispose, error: new Promise(() => {}) });
+  await expect(createLiveVideoCapture(canvas(), 60, "webm", new AbortController().signal, vi.fn())).rejects.toThrow("stream unavailable");
+  expect(dispose).toHaveBeenCalledOnce();
+});
+it("propagates a later stable frame readback failure and releases the encoder", async () => {
+  let reject!: (reason: Error) => void;
+  const dispose = vi.fn();
+  mocks.bridge.mockResolvedValue({ canvas: canvas(), dispose, error: new Promise((_resolve, fail) => {
+    reject = fail;
+  }) });
+  const capture = await createLiveVideoCapture(canvas(), 60, "webm", new AbortController().signal, vi.fn());
+  const rejected = expect(capture.result).rejects.toThrow("GPU lost");
+  reject(new Error("GPU lost"));
+  await rejected;
+  expect(dispose).toHaveBeenCalledOnce();
+  expect(mocks.cancel).toHaveBeenCalledOnce();
+});
 it.each(["mp4", "webm"] as const)("encodes %s at explicit quality and releases the track on stop", async format => {
   const capture = await createLiveVideoCapture(canvas(), 60, format, new AbortController().signal);
   expect(mocks.config?.codec).toBe(format === "mp4" ? "avc" : "vp9");
@@ -57,12 +93,12 @@ it.each(["mp4", "webm"] as const)("encodes %s at explicit quality and releases t
   expect(mocks.finalize).toHaveBeenCalledOnce();
   expect(mocks.stopTrack).toHaveBeenCalledOnce();
 });
-it("preserves native MP4 frame pixels when no resizing is needed", async () => {
+it("retains the original MP4 pixel preprocessing at even preview dimensions", async () => {
   const preview = canvas();
   preview.width = 816;
   preview.height = 458;
   const capture = await createLiveVideoCapture(preview, 60, "mp4", new AbortController().signal);
-  expect(mocks.config?.transform).toBeUndefined();
+  expect(mocks.config?.transform).toEqual({ width: 816, height: 458, fit: "fill" });
   expect(mocks.config?.quality).toMatchObject({ options: { quantizer: 12 } });
   expect(mocks.config?.hardwareAcceleration).toBeUndefined();
   capture.stop();
