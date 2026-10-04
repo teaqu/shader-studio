@@ -1,6 +1,15 @@
 import { expect, test } from '@playwright/test';
 import { PNG } from 'pngjs';
 import { addShaderFiles } from './workspace-store.mjs';
+async function waitForStoragePreview(page, expected) {
+  const canvas = page.getByTestId('web-preview').locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
+  await expect.poll(async () => {
+    const url = await canvas.evaluate(item => item.toDataURL());
+    const { data, width, height } = PNG.sync.read(Buffer.from(url.split(',')[1], 'base64'));
+    const offset = (Math.floor(height / 2) * width + Math.floor(width / 2)) * 4;
+    return [...data.subarray(offset, offset + 3)];
+  }).toEqual(expected);
+}
 async function pasteSource(page, editor, source) {
   await editor.locator('.view-lines').click();
   await page.keyboard.press('ControlOrMeta+A');
@@ -35,6 +44,7 @@ test('inspects WGSL vec3 storage read-only through the standalone config UI', as
   ]);
 
   await page.getByTestId('shader-option-inspector-wgsl').click();
+  await waitForStoragePreview(page, [64, 191, 128]);
   const preview = page.getByTestId('web-preview');
   await preview.getByLabel('Toggle config panel').click();
   const config = page.locator('.config-panel');
@@ -57,7 +67,9 @@ await preview.getByLabel('Toggle config panel').click();
   await expect(inspector.getByLabel('Element 0 component 1')).toHaveText('0.75');
 });
 
-test('storage workspace saves structured layout and lifecycle changes and uses consistent tabs and controls', async ({ page }) => {
+for (const theme of ['light', 'dark']) {
+test(`storage workspace saves structured layout and lifecycle changes and uses consistent tabs and controls (${theme})`, async ({ page }) => {
+  await page.addInitScript(value => localStorage.setItem('shader-studio-theme', value), theme);
   await seedWgslAuditFiles(page, [
     ['storage-design.wgsl', 'fn mainImage(p: vec2f) -> vec4f { return vec4f(0.5); }'],
     ['storage-design.sha.json', JSON.stringify({ version: '1', storage: { particles: { count: 32, elementType: 'float4' }, counters: { count: 4, elementType: 'u32' } }, passes: { Image: {} } })],
@@ -90,10 +102,12 @@ test('storage workspace saves structured layout and lifecycle changes and uses c
   expect(tabStyle).toEqual({ radius: '0px', top: '0px' });
   const navRow = config.getByRole('button', { name: 'Select storage particles' });
   expect(await navRow.evaluate(item => item.scrollHeight <= item.clientHeight)).toBe(true);
-  await config.screenshot({ path: 'test-results/storage-settings.png' });
+  await config.screenshot({ path: `test-results/storage-settings-${theme}.png` });
   await page.setViewportSize({ width: 1000, height: 900 });
   expect(await config.locator('.storage-panel').evaluate(item => item.scrollWidth <= item.clientWidth)).toBe(true);
 });
+
+}
 
 test('storage inspector focuses one struct field and captures scalar values before and after compute', async ({ page }) => {
   await seedWgslAuditFiles(page, [
@@ -105,6 +119,7 @@ test('storage inspector focuses one struct field and captures scalar values befo
     }, passes: { Image: {}, Simulate: { type: 'compute', path: 'storage-inspect.compute.wgsl', entryPoint: 'update', dispatch: { x: 1, y: 1, z: 1 } } } })],
   ]);
   await page.getByTestId('shader-option-storage-inspect-wgsl').click();
+  await waitForStoragePreview(page, [64, 128, 191]);
   const config = page.locator('.config-panel');
   await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
   await config.getByRole('button', { name: 'Storage', exact: true }).click();
