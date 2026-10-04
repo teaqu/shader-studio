@@ -15,12 +15,15 @@ test('storage protection is requested automatically and the Workspace menu expla
   });
   await page.goto('/');
   await expect.poll(() => page.evaluate(() => window.__storageProtectionRequests)).toBe(1);
-  await expect(page.getByTestId('storage-warning')).toBeVisible();
-  const warningBox = await page.getByTestId('storage-warning').boundingBox();
+  const warning = page.getByRole('button', { name: 'Storage warning' });
+  await expect(warning).toBeVisible();
+  await expect(warning).toHaveAttribute('title', /space runs low/);
+  await expect(page.locator('.build-status').getByRole('button', { name: 'Storage warning' })).toBeVisible();
+  await expect(page.getByTestId('storage-warning')).toHaveCount(0);
+  const warningBox = await warning.boundingBox();
   expect(warningBox.x + warningBox.width).toBeLessThanOrEqual(page.viewportSize().width);
-  await page.getByRole('button', { name: 'Dismiss storage warning' }).click();
   await page.reload();
-  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
+  await warning.click();
   const menu = page.getByRole('menu', { name: 'Workspace' });
   await expect(menu).toContainText('Work saves automatically.');
   await expect(menu).toContainText('The browser may remove local work if space runs low.');
@@ -30,6 +33,7 @@ test('storage protection is requested automatically and the Workspace menu expla
   await expect(menu).toBeHidden();
   await page.getByRole('button', { name: 'Workspace', exact: true }).click();
   await expect(menu).toContainText('Storage protection is enabled.');
+  await expect(warning).toHaveCount(0);
   await expect(menu.getByRole('button', { name: 'Request storage protection' })).toHaveCount(0);
   expect(await page.evaluate(() => window.__storageProtectionRequests)).toBe(2);
   const box = await menu.boundingBox();

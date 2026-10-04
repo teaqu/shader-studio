@@ -22,15 +22,6 @@
   interface Props { transport: WebTransport; pwa?: PwaController; }
   const ALPHA_NOTICE_DISMISSED_KEY = 'shader-studio.alpha-notice-dismissed';
   const STORAGE_PROTECTION_ATTEMPTED_KEY = 'shader-studio.storage-protection-attempted';
-  const STORAGE_WARNING_DISMISSED_KEY = 'shader-studio.storage-warning-dismissed';
-
-  function shouldShowStorageWarning(): boolean {
-    try {
-      return localStorage.getItem(STORAGE_WARNING_DISMISSED_KEY) !== 'true';
-    } catch {
-      return true;
-    }
-  }
 
   function claimAutomaticStorageRequest(): boolean {
     try {
@@ -45,12 +36,6 @@
     }
   }
 
-  function dismissStorageWarning() {
-    storageWarningVisible = false;
-    try {
-      localStorage.setItem(STORAGE_WARNING_DISMISSED_KEY, 'true');
-    } catch { /* Dismiss for this session even if preferences cannot be saved. */ }
-  }
 
   function shouldShowAlphaNotice(): boolean {
     try {
@@ -79,7 +64,11 @@
   });
   let storageStatus = $state<WorkspaceStorageStatus | null>(null);
   let storageProtectionPending = $state(false);
-  let storageWarningVisible = $state(shouldShowStorageWarning());
+  const storageWarning = $derived(storageStatus && !storageStatus.persisted && !storageProtectionPending
+    ? storageStatus.backend === 'session'
+      ? 'Session-only: closing the app will lose your work. Export a workspace backup to keep it.'
+      : `Work saves automatically. ${storageStatus.persisted === null ? 'Storage protection could not be confirmed.' : 'Storage protection is not enabled.'} The browser may remove local work if space runs low. Export workspace backups to keep a separate copy.`
+    : '');
   let workspaceFileInput: HTMLInputElement;
   const session = $derived(getViewerSession());
   const explorerApi = transport.getShaderExplorerHostApi();
@@ -280,7 +269,7 @@
   }
 
   function closeMenusOnOutsideClick(event: MouseEvent) {
-    if (!(event.target as Element).closest('.toolbar-menu')) {
+    if (!(event.target as Element).closest('.toolbar-menu, .storage-warning-icon')) {
       viewMenuOpen = false;
       workspaceMenuOpen = false;
     }
@@ -374,7 +363,14 @@
       title={`${workspaceStatusLabel()} · ${pwaStatus.buildId ? `Build ${pwaStatus.buildId}` : 'Development build'}`}
     >
       <i class="codicon {pwaStatus.online ? 'codicon-cloud' : 'codicon-debug-disconnect'}" aria-hidden="true"></i>
-      <i class="codicon {saveStatusIcon()}" class:spinning={persistenceStatus.state === 'saving'} aria-hidden="true"></i>
+      {#if storageStatus?.backend !== 'session'}
+        <i class="codicon {saveStatusIcon()}" class:spinning={persistenceStatus.state === 'saving'} aria-hidden="true"></i>
+      {/if}
+      {#if storageWarning}
+        <button class="storage-warning-icon" aria-label="Storage warning" aria-haspopup="menu" aria-expanded={workspaceMenuOpen} title={storageWarning} onclick={toggleWorkspaceMenu}>
+          <i class="codicon codicon-warning" aria-hidden="true"></i>
+        </button>
+      {/if}
       {#if pwaStatus.offlinePreparation.state === 'ready'}
         <i class="codicon codicon-package" aria-hidden="true"></i>
       {/if}
@@ -389,21 +385,6 @@
         Changes are saved only in this browser. Clearing browser data will delete them.
       </span>
       <button class="dismiss-alpha-notice" aria-label="Dismiss alpha notice" title="Dismiss" onclick={dismissAlphaNotice}>×</button>
-    </aside>
-  {/if}
-  {#if storageStatus && !storageStatus.persisted && !storageProtectionPending && (storageWarningVisible || storageStatus.backend === 'session')}
-    <aside class="storage-warning" data-testid="storage-warning" role="note">
-      <span>
-        {#if storageStatus.backend === 'session'}
-          Session-only: closing the app will lose your work. Export a backup to keep it.
-        {:else}
-          Work saves automatically in this browser, but storage protection is not enabled. The browser may remove local work if space runs low. Export backups to keep a separate copy.
-        {/if}
-      </span>
-      <button onclick={exportWorkspace}>Export backup</button>
-      {#if storageStatus.backend !== 'session'}
-        <button aria-label="Dismiss storage warning" onclick={dismissStorageWarning}>×</button>
-      {/if}
     </aside>
   {/if}
   {#if workspaceError}<p role="alert">{workspaceError}</p>{/if}
@@ -442,9 +423,7 @@
   .dropdown-menu button:not([role="menuitemcheckbox"]) { display: block; }
   .dropdown-menu .danger-action { color: var(--vscode-errorForeground, #f48771); }
   .storage-notice { max-width: 280px; margin: 4px 0; padding: 8px 12px; font-size: 12px; line-height: 1.5; white-space: normal; color: var(--vscode-descriptionForeground); border-top: 1px solid var(--vscode-panel-border); }
-  .storage-warning { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 12px; line-height: 1.5; color: var(--vscode-editorWarning-foreground, #cca700); border-bottom: 1px solid var(--vscode-panel-border); }
-  .storage-warning span { flex: 1; min-width: 0; }
-  .storage-warning button { flex-shrink: 0; }
+  .build-status .storage-warning-icon { display: flex; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent; color: var(--vscode-editorWarning-foreground, #cca700); cursor: pointer; }
   .alpha-notice { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 3px 10px; font-size: 11px; text-align: center; color: var(--vscode-descriptionForeground); border-bottom: 1px solid var(--vscode-panel-border); }
   .dismiss-alpha-notice { flex: 0 0 auto; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; color: inherit; background: transparent; font: inherit; font-size: 18px; line-height: 1; cursor: pointer; }
   .dismiss-alpha-notice:hover { background: var(--vscode-list-hoverBackground); }
