@@ -6,6 +6,7 @@ import { containsPosition, containsRange, offsetAt } from '../wgsl/model';
 
 import { planWgslTraceValues } from './WgslTraceAggregate';
 import { planWgslTraceCalls } from './WgslTraceCalls';
+import { normalizeWgslTraceDerivatives } from './WgslTraceDerivatives';
 
 const PREFIX = '_ss_trace_';
 const CONTROL = new Set(['if', 'for', 'while', 'switch', 'loop']);
@@ -142,7 +143,13 @@ export function planWgslTrace(launch: WgslTraceLaunch): WgslTracePlan {
   if (!applied.ok) {
     throw new Error('WGSL trace instrumentation overlaps.');
   }
-  return { source: applied.source, sites, stackSize: calls.stackSize, capacity: launch.capacity,
+  const source = normalizeWgslTraceDerivatives(document, applied.source, () => true, {
+    variableType: name => {
+      const uniform = launch.customUniforms?.find(value => value.name === name);
+      return uniform ? WGSL_TRACE_UNIFORM_TYPES[uniform.type] : undefined;
+    },
+  });
+  return { source, sites, stackSize: calls.stackSize, capacity: launch.capacity,
     recordWords: 4 + Math.max(1, ...sites.map(site => site.variables.length)) * 4 };
 }
 

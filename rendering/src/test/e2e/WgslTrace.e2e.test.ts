@@ -16,6 +16,20 @@ const launch = { source, path: '/image.wgsl', width: 4, height: 4, pixel: [1, 2]
   time: 0, frame: 0, capacity: 64 };
 
 describe('WGSL GPU trace PoC', () => {
+  it('preserves scalar and vector derivative width after storage-writing trace hooks', async () => {
+    const recording = await captureWgslTrace({ ...launch, width: 64, height: 64, source: `fn mainImage(p: vec2f) -> vec4f {
+      let uv = p / vec2f(64.0);
+      let normal = fwidth(uv);
+      let fine = fwidthFine(uv.x);
+      let coarse = fwidthCoarse(uv.y);
+      return vec4f(normal.x, fine, coarse, 1.0);
+    }` });
+    for (const channel of recording.color.slice(0, 3)) {
+      expect(channel).toBeCloseTo(1 / 64, 5);
+    }
+    expect(recording.color[3]).toBe(1);
+    expect(recording.overflow).toBe(false);
+  });
   it('records repeated loop visits, exact locals and normal fragment derivatives', async () => {
     const recording = await captureWgslTrace(launch);
     expect(recording.overflow).toBe(false);

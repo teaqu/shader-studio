@@ -4,6 +4,7 @@ import type { WgslTracePlan, WgslTraceSite } from '@shader-studio/types';
 import { containsPosition, offsetAt } from '../wgsl/model';
 import { planWgslTraceValues } from './WgslTraceAggregate';
 import { planWgslTraceCalls } from './WgslTraceCalls';
+import { normalizeWgslTraceDerivatives } from './WgslTraceDerivatives';
 
 const PREFIX = '_ss_trace_';
 const CONTROL = new Set(['if', 'for', 'while', 'switch', 'loop']);
@@ -232,7 +233,7 @@ export function planWgslTraceProgram(request: WgslTraceProgramRequest): WgslTrac
     throw new Error('WGSL trace instrumentation overlaps.');
   }
   return {
-    source: applied.source,
+    source: normalizeWgslTraceDerivatives(document, applied.source, line => sourceRangeAt(request.sourceRanges, line) !== undefined),
     stackSize: calls.stackSize,
     sites,
     capacity: request.capacity,

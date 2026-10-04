@@ -18,6 +18,40 @@ fn mainImage(p: vec2f) -> vec4f {
 const launch: WgslTraceLaunch = { source, path: '/image.wgsl', width: 4, height: 4,
   pixel: [1, 2], time: 0, frame: 0, capacity: 8 };
 
+describe('trace derivative contracts', () => {
+  it('normalizes scalar width after trace-site calls without duplicating its argument', () => {
+    const plan = planWgslTrace({ ...launch, source: `fn sample(x: f32) -> f32 { return x; }
+      fn mainImage(p: vec2f) -> vec4f {
+        let uv = p / vec2f(64.0);
+        let width = fwidth(sample(uv.x));
+        return vec4f(width);
+      }` });
+    expect(plan.source).toContain('return abs(dpdx(x)) + abs(dpdy(x));');
+    expect(plan.source).toMatch(/_ss_trace_fwidth_f32\(sample\(uv.x\)\)/);
+    expect(plan.source.match(/sample\(uv.x\)/g)).toHaveLength(1);
+  });
+
+  it('normalizes width inside rewritten returns and preserves authored site locations', () => {
+    const shader = `@fragment fn image(@builtin(position) p: vec4f) -> @location(0) vec4f {
+      let uv = p.xy / vec2f(64.0);
+      return vec4f(fwidth(uv.x));
+    }`;
+    const plan = planWgslTraceProgram({ source: shader, entryPoint: 'image', stage: 'fragment', capacity: 8,
+      sourceRanges: [{ path: '/image.wgsl', startLine: 1, endLine: 4 }] });
+    expect(plan.source).toMatch(/_ss_trace_return\d+: vec4f = vec4f\(_ss_trace_fwidth_f32\(uv.x\)\)/);
+    expect(plan.sites.map(site => site.line)).toEqual([2, 3]);
+  });
+
+  it('resolves custom uniform widths and preserves unknown argument types', () => {
+    const shader = 'fn mainImage(p: vec2f) -> vec4f { return vec4f(fwidth(gain)); }';
+    const typed = planWgslTrace({ ...launch, source: shader, customUniforms: [{ name: 'gain', type: 'float', value: 0.5 }] });
+    expect(typed.source).toContain('_ss_trace_fwidth_f32(gain)');
+    const unknown = planWgslTrace({ ...launch, source: shader });
+    expect(unknown.source).toContain('vec4f(fwidth(gain))');
+    expect(unknown.source).not.toContain('fn _ss_trace_fwidth');
+  });
+});
+
 describe('isolated WGSL trace planner', () => {
   it('records every callable while preserving the input source', () => {
     const plan = planWgslTrace(launch);
