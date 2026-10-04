@@ -71,7 +71,6 @@
 <section class="storage-panel" bind:this={panel} aria-label="Storage buffers">
   <header>
     <div>
-      <p class="eyebrow">Shader configuration / Resources</p>
       <h2>GPU storage</h2>
     </div>
     <button class="primary" onclick={addStorage} aria-label="Add storage buffer"
@@ -167,7 +166,7 @@
       var(--storage-text) 14%,
       var(--storage-bg)
     );
-    --storage-accent: var(--vscode-focusBorder, #a9b6ff);
+    --storage-accent: color-mix(in srgb, var(--vscode-focusBorder, #a9b6ff) 55%, var(--storage-text));
     --storage-selected: color-mix(
       in srgb,
       var(--storage-accent) 14%,
@@ -233,13 +232,13 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 18px 22px;
+    padding: 14px 16px;
     gap: 12px;
     border-bottom: 1px solid var(--storage-line);
   }
   h2 {
     margin: 0;
-    font-size: 19px;
+    font-size: 17px;
     font-weight: 500;
   }
   p {
@@ -248,10 +247,6 @@
     font-size: 12px;
     color: var(--storage-muted);
   }
-  .eyebrow {
-    padding: 0;
-    margin-bottom: 6px;
-  }
   .workspace {
     display: grid;
     grid-template-columns: 175px minmax(0, 1fr);
@@ -259,7 +254,7 @@
   }
   nav {
     background: var(--storage-soft);
-    padding: 14px 10px;
+    padding: 10px;
     border-right: 1px solid var(--storage-line);
   }
   .storage-panel nav button {
