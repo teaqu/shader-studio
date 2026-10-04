@@ -69,10 +69,10 @@ test('WGSL native Insert appends one buffer and one compute entry point, then pe
 
   await page.getByRole('button', { name: '+ New' }).click();
   await page.getByRole('menuitem', { name: 'Compute' }).click();
-  // Render authoring preferences apply to render passes. Choose native
-  // compute insertion explicitly to request its named entry point.
-  await page.getByLabel('Insert mode').selectOption('native');
-  await page.getByRole('button', { name: 'Insert', exact: true }).click();
+  await page.getByRole('button', { name: 'Change…' }).click();
+  await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: `/shaders/${stem}.wgsl`, exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'Insert mode' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Add function…', exact: true }).click();
 
   await expect.poll(async () => {
     const files = await workspace(page);
@@ -295,7 +295,9 @@ test('new native Slang Image compiles, then inserts Buffer and Compute into the 
 
   await page.getByRole('button', { name: '+ New' }).click();
   await page.getByRole('menuitem', { name: 'Compute' }).click();
-  await page.getByRole('button', { name: 'Insert', exact: true }).click();
+  await page.getByRole('button', { name: 'Change…' }).click();
+  await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: '/shaders/native-slang-created.slang', exact: true }).click();
+  await page.getByRole('button', { name: 'Add function…', exact: true }).click();
 
   await expect.poll(async () => {
     const files = await workspace(page);
@@ -322,7 +324,7 @@ test('new native Slang Image compiles, then inserts Buffer and Compute into the 
   });
 });
 
-test('native Compute Insert follows the active separate Buffer editor source and persists that source path', async ({ page }) => {
+test('native Compute Add reuses a Buffer source selected from the config and persists that path', async ({ page }) => {
   const stem = 'native-current-buffer';
   const image = 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(1, 0, 0, 1); }';
   const buffer = `@vertex fn BufferAVertex(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
@@ -350,7 +352,9 @@ test('native Compute Insert follows the active separate Buffer editor source and
 
   await page.getByRole('button', { name: '+ New' }).click();
   await page.getByRole('menuitem', { name: 'Compute' }).click();
-  await page.getByRole('button', { name: 'Insert', exact: true }).click();
+  await page.getByRole('button', { name: 'Change…' }).click();
+  await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: `${stem}/buffer.wgsl`, exact: true }).click();
+  await page.getByRole('button', { name: 'Add function…', exact: true }).click();
 
   await expect.poll(async () => {
     const files = await workspace(page);

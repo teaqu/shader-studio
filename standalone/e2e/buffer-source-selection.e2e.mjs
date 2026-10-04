@@ -1,6 +1,45 @@
 import { test, expect } from '@playwright/test';
 import { workspace } from './language-service-fixtures.mjs';
 
+test('compute file and function rows add native code to their source and expose layers in Misc', async ({ page }) => {
+  await page.route('**/__compute_ui_fixture__', route => route.fulfill({ contentType: 'text/html', body: '<title>Fixture</title>' }));
+  await page.goto('/__compute_ui_fixture__');
+  const main = 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(1); }';
+  const kernels = '@compute @workgroup_size(1) fn clear() {}\n@compute @workgroup_size(1) fn step() {}';
+  await workspace(page, [['compute-ui.wgsl', main], ['kernels.wgsl', kernels], ['compute-ui.sha.json', JSON.stringify({
+    version: '1.0', passes: {
+      Image: { inputs: { iChannel0: { type: 'buffer', source: 'ComputeA' } } },
+      ComputeA: { type: 'compute', path: 'kernels.wgsl', entryPoints: { compute: 'clear' }, outputLayers: 3 },
+    },
+  })]]);
+  await page.goto('/');
+  await page.getByTestId('shader-option-compute-ui-wgsl').click();
+  await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
+  await page.locator('[data-tab-name="ComputeA"]').click();
+  await expect(page.getByRole('heading', { name: 'Compute shader' })).toHaveCount(0);
+  await expect(page.getByLabel('File', { exact: true })).toHaveValue('kernels.wgsl');
+  await page.getByRole('button', { name: 'Change…' }).click();
+  await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: 'kernels.wgsl', exact: true }).click();
+  const functions = page.getByRole('group', { name: 'Compute function controls' });
+  await expect(functions.getByRole('radio', { name: '@compute clear' })).toBeChecked();
+  await expect(functions.getByRole('combobox')).toHaveCount(0);
+  await functions.getByRole('radio', { name: '@compute step' }).check();
+  await functions.getByRole('button', { name: 'Add function…' }).click();
+  await expect(functions.getByRole('radio', { name: '@compute ComputeACompute' })).toBeChecked();
+  await expect.poll(async () => (await workspace(page))['/shaders/kernels.wgsl']).toContain('ComputeACompute');
+  expect((await workspace(page))['/shaders/compute-ui.wgsl']).toBe(main);
+  await page.locator('[data-tab-name="Image"]').click();
+  await page.getByRole('button', { name: 'Configure iChannel0', exact: true }).click();
+  await page.getByRole('tab', { name: 'Misc', exact: true }).click();
+  await page.getByLabel('Compute output layer').selectOption('2');
+  await page.reload();
+  const config = JSON.parse((await workspace(page))['/shaders/compute-ui.sha.json']);
+  expect(config.passes.Image.inputs.iChannel0.layer).toBe(2);
+  expect(config.passes.ComputeA.entryPoints.compute).toBe('ComputeACompute');
+  await page.locator('[data-tab-name="ComputeA"]').click();
+  await expect(page.getByRole('radio', { name: '@compute ComputeACompute' })).toBeChecked();
+});
+
 test('standalone source controls select config and workspace files, add to the correct vertex file, and persist', async ({ page }) => {
  await page.route('**/__select_fixture__', route => route.fulfill({ contentType: 'text/html', body: '<title>Fixture</title>' }));
  await page.goto('/__select_fixture__');

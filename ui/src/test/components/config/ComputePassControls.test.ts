@@ -68,24 +68,25 @@ describe('ComputePassControls', () => {
 
   it('commits a selected native entrypoint', async () => {
     const onCommit = vi.fn(() => ({}));
-    const { getByLabelText } = render(ComputePassControls, {
+    const { getByRole } = render(ComputePassControls, {
       pass: { type: 'compute', path: 'kernels.slang' }, storageNames: [], channelNames: [],
       entryPointNames: ['clearSamples', 'animateSamples'], onCommit,
     });
 
-    await fireEvent.change(getByLabelText('Compute entry point'), { target: { value: 'animateSamples' } });
+    await fireEvent.click(getByRole('radio', { name: '@compute animateSamples' }));
 
     expect(onCommit).toHaveBeenCalledWith({ type: 'compute', path: 'kernels.slang', entryPoints: { compute: 'animateSamples' } });
   });
 
   it('shows and commits a selected native entrypoint when a source has multiple entries', async () => {
     const onCommit = vi.fn(() => ({}));
-    const { getByLabelText } = render(ComputePassControls, {
+    const { getByRole } = render(ComputePassControls, {
       pass: { type: 'compute', path: 'kernels.slang', entryPoint: 'clearSamples' },
       storageNames: [], channelNames: [], entryPointNames: ['clearSamples', 'animateSamples'], onCommit,
     });
 
-    await fireEvent.change(getByLabelText('Compute entry point'), { target: { value: 'animateSamples' } });
+    expect(getByRole('radio', { name: '@compute clearSamples' })).toBeChecked();
+    await fireEvent.click(getByRole('radio', { name: '@compute animateSamples' }));
     expect(onCommit).toHaveBeenCalledWith({ type: 'compute', path: 'kernels.slang', entryPoints: { compute: 'animateSamples' } });
   });
 });

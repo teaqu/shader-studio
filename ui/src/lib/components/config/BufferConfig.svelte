@@ -697,6 +697,14 @@ return;
     }
   }
 
+  function commitCompute(next: ComputePass): Record<string, string> {
+    if (onComputeCommit) {
+      return onComputeCommit(next);
+    }
+    updateConfig(next);
+    return {};
+  }
+
   function applyCreatedSource(result: {
     path: string;
     entryPoints?: { vertex?: string; fragment?: string; compute?: string };
@@ -729,6 +737,16 @@ return;
     {/if}
 {/snippet}
 
+{#snippet computeAuthoring()}
+  <PathInput value="" hidePath={true} allowCreate={false} allowSelect={false} allowInsert={true} insertLabel="Add function…"
+    sourcePath={ownedSourcePath} {fileType} {shaderPath} {postMessage} {onMessage} passName={bufferName}
+    authoringMode="native" onCreated={applyCreatedSource} />
+{/snippet}
+
+{#snippet computeOutput()}
+  <OutputFormatControl value={bufferPassConfig?.outputFormat ?? 'auto'} onchange={handleOutputFormat} />
+{/snippet}
+
 <div class="buffer-config">
   <div class="buffer-details">
     {#if !isImagePass}
@@ -739,14 +757,14 @@ return;
           sourcePath={nativeInsertionPath} builtInSourcePath={ownedSourcePath} {passType} {hasNativeTemplate}
           outputCount={Math.max(1, renderOutputs.length)} {passSource} onCreated={applyCreatedSource} />
 
-        {#if passType === 'compute'}<OutputFormatControl value={bufferPassConfig?.outputFormat ?? 'auto'} onchange={handleOutputFormat} />{/if}
-        {#if passType === 'compute' && onComputeCommit}
+        {#if passType === 'compute'}
           <ComputePassControls
             pass={config as ComputePass}
             {storageNames}
             channelNames={configuredChannelNames}
             {entryPointNames}
-            onCommit={onComputeCommit}
+            {language} section="functions" authoringControls={computeAuthoring}
+            onCommit={commitCompute}
           />
         {/if}
 
@@ -806,6 +824,13 @@ return;
             </button>
           {/if}
         </div>
+      </div>
+    {/if}
+
+    {#if passType === 'compute'}
+      <div class="config-item">
+        <ComputePassControls pass={config as ComputePass} {storageNames} channelNames={configuredChannelNames}
+          {language} section="settings" outputControls={computeOutput} onCommit={commitCompute} />
       </div>
     {/if}
 

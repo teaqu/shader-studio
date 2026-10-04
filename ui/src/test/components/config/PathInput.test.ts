@@ -4,6 +4,13 @@ import { describe, expect, it, vi } from 'vitest';
 import PathInput from '../../../lib/components/config/PathInput.svelte';
 
 describe('PathInput', () => {
+  it.each(['wgsl-compute', 'slang-compute'] as const)('uses native %s insertion with no mode chooser', async fileType => {
+    const postMessage = vi.fn();
+    const view = render(PathInput, { value: '', fileType, authoringMode: 'hooks', allowInsert: true, postMessage });
+    expect(view.queryByRole('combobox', { name: 'Insert mode' })).toBeNull();
+    await fireEvent.click(view.getByRole('button', { name: 'Insert' }));
+    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({ payload: expect.objectContaining({ authoringMode: 'native' }) }));
+  });
   it('hides the redundant mode dropdown for GLSL while keeping Add', () => {
     const view = render(PathInput, { value: '', fileType: 'glsl-vertex', allowInsert: true, postMessage: vi.fn() });
     expect(view.queryByRole('combobox', { name: 'Insert mode' })).toBeNull();

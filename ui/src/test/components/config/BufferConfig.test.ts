@@ -136,7 +136,7 @@ describe('BufferConfig', () => {
       onUpdate: vi.fn(),
       getWebviewUri: () => undefined,
     });
-    expect(container.querySelector(passType === 'compute' ? '.buffer-details > :first-child select[aria-label="Output format"]' : '[aria-label="Output"] select[aria-label="Output format"]')).not.toBeNull();
+    expect(container.querySelector(passType === 'compute' ? '.compute-controls select[aria-label="Output format"]' : '[aria-label="Output"] select[aria-label="Output format"]')).not.toBeNull();
   });
 
   it('loads and updates producer output precision without showing it for Image', async () => {
@@ -209,7 +209,7 @@ describe('BufferConfig', () => {
 
     expect(onUpdate).toHaveBeenCalledWith('Image', expect.objectContaining({ vertex: './warp.vert.glsl' }));
   });
-  it('inserts native source into the active same-language editor file instead of Image', async () => {
+  it('adds compute functions to its selected source rather than an unrelated active editor', async () => {
     const postMessage = vi.fn();
     setCurrentEditorSource('/shaders/image.wgsl', '/shaders/existing-buffer.wgsl');
     const { container } = render(BufferConfig, {
@@ -218,12 +218,11 @@ describe('BufferConfig', () => {
       onUpdate: vi.fn(), getWebviewUri: () => undefined, shaderPath: '/shaders/image.wgsl', postMessage,
     });
 
-    await fireEvent.change(getMainPathConfig(container).querySelector('select[aria-label="Insert mode"]')!, { target: { value: 'native' } });
     await fireEvent.click(getMainPathConfig(container).querySelector('.insert-file-btn')!);
 
     expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
       type: 'insertShaderSource',
-      payload: expect.objectContaining({ sourcePath: '/shaders/existing-buffer.wgsl' }),
+      payload: expect.objectContaining({ sourcePath: '/shaders/image.computea.wgsl' }),
     }));
     clearCurrentEditorSource();
   });
@@ -599,7 +598,8 @@ describe('BufferConfig', () => {
         shaderPath: '/shaders/image.slang',
       });
 
-      await fireEvent.click(getMainPathConfig(container).querySelector('.select-file-btn')!);
+      await fireEvent.click(within(getMainPathConfig(container)).getByRole('button', { name: 'Change…' }));
+      await fireEvent.click(document.querySelector('[role="dialog"] .select-file-btn')!);
 
       expect(mockPostMessage).toHaveBeenCalledWith({
         type: 'selectFile',
@@ -628,7 +628,8 @@ describe('BufferConfig', () => {
 
       const mainPathConfig = getMainPathConfig(container);
       expect(mainPathConfig.querySelector('.config-input')).toHaveAttribute('placeholder', 'image.computea.slang');
-      await fireEvent.click(mainPathConfig.querySelector('.create-file-btn')!);
+      await fireEvent.click(within(mainPathConfig).getByRole('button', { name: 'Change…' }));
+      await fireEvent.click(document.querySelector('[role="dialog"] .create-file-btn')!);
 
       expect(mockPostMessage).toHaveBeenCalledWith({
         type: 'createFile',
@@ -655,7 +656,8 @@ describe('BufferConfig', () => {
         passType: 'compute',
       });
 
-      await fireEvent.click(getMainPathConfig(container).querySelector('.select-file-btn')!);
+      await fireEvent.click(within(getMainPathConfig(container)).getByRole('button', { name: 'Change…' }));
+      await fireEvent.click(document.querySelector('[role="dialog"] .select-file-btn')!);
 
       expect(mockPostMessage.mock.calls[0][0].payload.fileType).toBe('glsl-compute');
     });

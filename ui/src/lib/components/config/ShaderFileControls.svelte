@@ -28,7 +28,7 @@ open = false;
 }} />
 
 <div class="file-row">
-  <PathInput {value} label="File" {inputId} {onPathChange} {hasError} allowSelect={false} allowCreate={false} />
+  <PathInput {value} placeholder={suggestedPath} label="File" {inputId} {onPathChange} {hasError} allowSelect={false} allowCreate={false} />
   <button type="button" onclick={() => open = true}>Change…</button>
 </div>
 {#if open}
@@ -40,7 +40,7 @@ open = false;
  open = false; onPathChange(path);
 }}>{path}</button>{/each}</div>
       <PathInput value="" hidePath={true} showSelectWhenHidden={true} {shaderPath} {suggestedPath} {fileType} {postMessage} {onMessage}
-        {passName} createAuthoringMode={getDefaultAuthoringMode()} selectLabel="Browse workspace…" onCreated={accept} />
+        {passName} createAuthoringMode={fileType.endsWith('-compute') ? 'native' : getDefaultAuthoringMode()} selectLabel="Browse workspace…" onCreated={accept} />
     </div>
   </div>
 {/if}

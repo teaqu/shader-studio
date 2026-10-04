@@ -82,7 +82,7 @@
 
   let selectedMode = $state<'hooks' | 'native' | null>(null);
   const supportsNative = $derived(fileType.startsWith('wgsl-') || fileType.startsWith('slang-'));
-  const effectiveMode = $derived(supportsNative ? selectedMode ?? authoringMode ?? getDefaultAuthoringMode() : 'hooks');
+  const effectiveMode = $derived(supportsNative ? fileType.endsWith('-compute') ? 'native' : selectedMode ?? authoringMode ?? getDefaultAuthoringMode() : 'hooks');
   let pathInputFocused = $state(false);
   let localPath = $state(value);
   $effect(() => {
@@ -220,7 +220,7 @@ onPathChange?.(event.data.payload.path);
         <button class="create-file-btn" onclick={handleCreate}>Create</button>
       {/if}
       {#if allowInsert}
-        {#if supportsNative}
+        {#if supportsNative && !fileType.endsWith('-compute')}
         <select aria-label="Insert mode" value={effectiveMode} onchange={(event) => selectedMode = event.currentTarget.value as 'hooks' | 'native'}>
           <option value="hooks">Built-in</option>
           <option value="native">Native</option>

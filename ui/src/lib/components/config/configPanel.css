@@ -40,7 +40,7 @@
 .config-panel .buffer-details { gap: 0; }
 .config-panel .buffer-details > .config-item,
 .config-panel .buffer-details > .rendering {
-  padding: 18px 0;
+  padding: 8px 0 18px;
   border-bottom: 1px solid var(--vscode-panel-border);
 }
 .config-panel .buffer-details > :last-child { border-bottom: 0; }
