@@ -1,3 +1,5 @@
+import { declarationDocumentation } from "./documentation.js";
+export { declarationDocumentation } from "./documentation.js";
 import {
   findMemberAccess,
   literalColorFromArguments,
@@ -251,8 +253,9 @@ export function vertexHookFeature(analysis: WgslAnalysisDocument, symbol: WgslSy
   const functionSymbol = analysis.symbols.find((candidate) => (
     candidate.kind === "function"
     && candidate.name === "mainVertex"
-    && parameters.length === 3
-    && parameters.every((parameter) => parameter.typeName?.startsWith("ptr<function,") ?? false)
+    && parameters.length === 4
+    && parameters[0]?.typeName === "u32"
+    && parameters.slice(1).every((parameter) => parameter.typeName?.startsWith("ptr<function,") ?? false)
     && rangeContains(scope.range, candidate.definition)
   ));
   const functionFeature = WGSL_VERTEX_HOOK_FEATURES[0];
@@ -444,35 +447,11 @@ export function declarationLabel(analysis: WgslAnalysisDocument, symbol: WgslSym
   }
 }
 
-/** A declaration's leading `//` comment, when it has one, above where it came from. */
-export function declarationDocumentation(analysis: WgslAnalysisDocument, symbol: WgslSymbol, provenance: string): string {
-  const comment = leadingComment(analysis.source, symbol.declaration.start.line);
-  return [comment, provenance].filter(Boolean).join("\n\n");
-}
-
 /** Whether the identifier under the cursor names an attribute: `@` sits right before it. */
 export function isAttributeName(source: string, position: Position): boolean {
   const line = source.split("\n")[position.line] ?? "";
   const start = position.character - (line.slice(0, position.character).match(/[A-Za-z_][A-Za-z0-9_]*$/)?.[0].length ?? 0);
   return /@\s*$/.test(line.slice(0, start));
-}
-
-/** Contiguous `//` lines directly above a declaration, skipping its attribute lines. */
-function leadingComment(source: string, declarationLine: number): string | undefined {
-  const lines = source.split("\n");
-  let line = declarationLine - 1;
-  while (line >= 0 && /^\s*@/.test(lines[line] ?? "")) {
-    line -= 1;
-  }
-  const comments: string[] = [];
-  for (; line >= 0; line--) {
-    const match = /^\s*\/\/+\s?(.*)$/.exec(lines[line] ?? "");
-    if (!match) {
-      break;
-    }
-    comments.unshift(match[1]!.trimEnd());
-  }
-  return comments.length > 0 ? comments.join("\n") : undefined;
 }
 
 /**

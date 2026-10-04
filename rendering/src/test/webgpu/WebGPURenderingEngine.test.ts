@@ -113,7 +113,7 @@ describe("WebGPURenderingEngine", () => {
 
   it("compiles a structured Slang debug plan through the normal image/module pipeline", async () => {
     const engine = new WebGPURenderingEngine(assets);
-    const compile = vi.spyOn(engine, "compileShaderPipeline").mockResolvedValue({ success: true });
+    const compile = vi.spyOn(engineOwners(engine).session, "compileShaderPipeline").mockResolvedValue({ success: true });
 
     await engine.compileDebugPlan({
       workspaceHash: "hash", rootUri: "file:///main.slang", selectedSourceUri: "file:///main.slang", executionMarkerSlot: 0, captureSlots: [],
@@ -130,7 +130,7 @@ describe("WebGPURenderingEngine", () => {
 
   it("uses the current config for a structured debug plan instead of the previous compile snapshot", async () => {
     const engine = new WebGPURenderingEngine(assets);
-    const compile = vi.spyOn(engine, "compileShaderPipeline").mockResolvedValue({ success: true });
+    const compile = vi.spyOn(engineOwners(engine).session, "compileShaderPipeline").mockResolvedValue({ success: true });
     const previousConfig: ShaderConfig = {
       version: "1.0",
       passes: { Image: { inputs: { iChannel0: { type: "texture", path: "before.png" } } } },
@@ -163,7 +163,7 @@ describe("WebGPURenderingEngine", () => {
 
   it("attributes structured Slang debug failures to the selected imported module", async () => {
     const engine = new WebGPURenderingEngine(assets);
-    vi.spyOn(engine, "compileShaderPipeline").mockResolvedValue({ success: false, errors: ["unexpected token"] });
+    vi.spyOn(engineOwners(engine).session, "compileShaderPipeline").mockResolvedValue({ success: false, errors: ["unexpected token"] });
 
     const result = await engine.compileDebugPlan({
       workspaceHash: "hash", rootUri: "file:///main.slang", selectedSourceUri: "file:///helper.slang", executionMarkerSlot: 0, captureSlots: [],
@@ -178,7 +178,7 @@ describe("WebGPURenderingEngine", () => {
 
   it("compiles a selected common file as common code while retaining Image as the debug root", async () => {
     const engine = new WebGPURenderingEngine(assets);
-    const compile = vi.spyOn(engine, "compileShaderPipeline").mockResolvedValue({ success: true });
+    const compile = vi.spyOn(engineOwners(engine).session, "compileShaderPipeline").mockResolvedValue({ success: true });
     const previous = {
       code: "float4 mainImage(float2 coord) { return shared(coord.x); }",
       config: { version: "1.0", passes: { Image: {}, common: { path: "common.slang" } } },
@@ -213,7 +213,7 @@ describe("WebGPURenderingEngine", () => {
 
   it("compiles WGSL common exactly once when the selected file is the image", async () => {
     const engine = new WebGPURenderingEngine(assets);
-    const compile = vi.spyOn(engine, "compileShaderPipeline").mockResolvedValue({ success: true });
+    const compile = vi.spyOn(engineOwners(engine).session, "compileShaderPipeline").mockResolvedValue({ success: true });
     const previous = {
       code: "float4 mainImage(float2 coord) { return shared(coord.x); }",
       config: { version: "1.0", passes: { Image: {}, common: { path: "common.wgsl" } } },
@@ -248,7 +248,7 @@ describe("WebGPURenderingEngine", () => {
 
   it("preserves the installed compute workspace while compiling an image debug wrapper", async () => {
     const engine = new WebGPURenderingEngine(assets);
-    const compile = vi.spyOn(engine, "compileShaderPipeline").mockResolvedValue({ success: true });
+    const compile = vi.spyOn(engineOwners(engine).session, "compileShaderPipeline").mockResolvedValue({ success: true });
     const previous = {
       code: "float4 mainImage(float2 coord) { return 0; }",
       config: { version: "1.0", passes: { Image: { inputs: {} }, ComputeUpdate: { type: 'compute', path: "update.slang" } } },
@@ -274,7 +274,7 @@ describe("WebGPURenderingEngine", () => {
 
   it("preserves the installed WGSL compute workspace while compiling its image debug replay", async () => {
     const engine = new WebGPURenderingEngine(assets);
-    const compile = vi.spyOn(engine, "compileShaderPipeline").mockResolvedValue({ success: true });
+    const compile = vi.spyOn(engineOwners(engine).session, "compileShaderPipeline").mockResolvedValue({ success: true });
     const previous = {
       code: "fn mainImage(coord: vec2f) -> vec4f { return vec4f(0.0); }",
       config: {

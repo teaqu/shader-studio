@@ -1,4 +1,5 @@
 import type { StorageBindingNode } from "../types/PassGraph";
+import { renderPipelineStateKey,verticesSpace } from "../types/Geometry";
 import { buildSlangBindingPlan,getSlangChannels } from "./SlangBindingPlan";
 import {
   type RenderPassNode
@@ -29,6 +30,7 @@ export function wgslCacheKey(
     pass.source,
     pass.geometry,
     pass.vertexSrc,
+    pass.geometry === "vertices" ? verticesSpace(pass) : null,
     commonCode,
     channels,
     storageLayout,
@@ -80,6 +82,7 @@ export function pipelineCacheKey(
     pass.output,
     pass.outputLayers,
     pass.resolvedOutputFormat,
+    pass.kind === "render" ? renderPipelineStateKey(pass) : null,
   ]);
 }
 

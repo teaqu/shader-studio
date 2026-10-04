@@ -32,6 +32,7 @@ import { WebGPUCompileDiagnostics } from "./WebGPUCompileDiagnostics";
 import { WebGPUCompilerLoader } from "./WebGPUCompilerLoader";
 import { WebGPUDeviceConstraints } from "./WebGPUDeviceConstraints";
 import { WebGPUFrameRenderer } from "./WebGPUFrameRenderer";
+import { WebGPUGeometry } from "./WebGPUGeometry";
 import { WebGPUFrameTiming } from "./WebGPUFrameTiming";
 import { WebGPUMeshResources } from "./WebGPUMeshResources";
 import { WebGPUPassFactory } from "./WebGPUPassFactory";
@@ -85,76 +86,77 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private readonly passFactory: WebGPUPassFactory;
   private readonly session: WebGPUShaderSession;
   private readonly frameRenderer: WebGPUFrameRenderer;
+  private readonly geometry: WebGPUGeometry;
 
   constructor(private slangAssets?: SlangAssetUrls, private language: ShaderLanguageId = "slang") {
     const engine = this;
-    const host = {
-      compileShaderPipeline: (...args: Parameters<RenderingEngine["compileShaderPipeline"]>) => engine.compileShaderPipeline(...args),
-      get constraints() {
-        return engine.constraints;
-      },
-      get diagnostics() {
-        return engine.diagnostics;
-      },
-      get storage() {
-        return engine.storage;
-      },
-      get candidates() {
-        return engine.candidates;
-      },
-      get compilerLoader() {
-        return engine.compilerLoader;
-      },
-      get timing() {
-        return engine.timing;
-      },
-      get channels() {
-        return engine.channels;
-      },
-      get capture() {
-        return engine.capture;
-      },
-      get passFactory() {
-        return engine.passFactory;
-      },
-      get session() {
-        return engine.session;
-      },
-      get frameRenderer() {
-        return engine.frameRenderer;
-      },
+    this.diagnostics = new WebGPUCompileDiagnostics({
       get slangAssets() {
         return engine.slangAssets;
       },
+    });
+    this.constraints = new WebGPUDeviceConstraints({
       get canvas() {
         return engine.canvas;
       },
       get device() {
         return engine.device;
       },
-      retireAfterPublication(resource: string, retire: () => void, warnings: string[]): void {
-        return engine.retireAfterPublication(resource, retire, warnings);
+    });
+    this.storage = new WebGPUStorage({
+      get device() {
+        return engine.device;
+      },
+      retireAfterPublication: (resource, retire, warnings) => this.retireAfterPublication(resource, retire, warnings),
+    });
+    this.candidates = new WebGPUPipelineCandidates({
+      get disposed() {
+        return engine.disposed;
+      },
+    });
+    this.compilerLoader = new WebGPUCompilerLoader({
+      diagnostics: this.diagnostics,
+      get language() {
+        return engine.language;
+      },
+      get slangAssets() {
+        return engine.slangAssets;
       },
       get disposed() {
         return engine.disposed;
       },
-      get language() {
-        return engine.language;
-      },
+    });
+    this.timing = new WebGPUFrameTiming({
+      diagnostics: this.diagnostics,
       get running() {
         return engine.running;
+      },
+      get device() {
+        return engine.device;
+      },
+      get disposed() {
+        return engine.disposed;
       },
       get timeManager() {
         return engine.timeManager;
       },
-      get keyboardManager() {
-        return engine.keyboardManager;
+    });
+    this.geometry = new WebGPUGeometry({
+      get meshResources() {
+        return engine.meshResources;
       },
-      get compiler() {
-        return engine.compiler;
+      get meshCamera() {
+        return engine.meshCamera;
       },
-      getUniforms(): PassUniforms {
-        return engine.getUniforms();
+    });
+    this.passFactory = new WebGPUPassFactory({
+      get session() {
+        return engine.session;
+      },
+      candidates: this.candidates,
+      constraints: this.constraints,
+      get device() {
+        return engine.device;
       },
       get bufferTextureFormat() {
         return engine.bufferTextureFormat;
@@ -162,17 +164,44 @@ export class WebGPURenderingEngine implements RenderingEngine {
       get format() {
         return engine.format;
       },
+      get disposed() {
+        return engine.disposed;
+      },
+      get canvas() {
+        return engine.canvas;
+      },
+    });
+    this.session = new WebGPUShaderSession({
+      storage: this.storage,
+      candidates: this.candidates,
+      diagnostics: this.diagnostics,
+      constraints: this.constraints,
+      passFactory: this.passFactory,
+      resetPausedFrame: () => this.frameRenderer.resetPausedFrame(),
+      get disposed() {
+        return engine.disposed;
+      },
       get ready() {
         return engine.ready;
       },
       get context() {
         return engine.context;
       },
+      get device() {
+        return engine.device;
+      },
+      get compiler() {
+        return engine.compiler;
+      },
       get initError() {
         return engine.initError;
       },
-      describeUnavailableInitState(): string {
-        return engine.describeUnavailableInitState();
+      describeUnavailableInitState: () => this.describeUnavailableInitState(),
+      get canvas() {
+        return engine.canvas;
+      },
+      get language() {
+        return engine.language;
       },
       get globalVolume() {
         return engine.globalVolume;
@@ -183,17 +212,75 @@ export class WebGPURenderingEngine implements RenderingEngine {
       get meshResources() {
         return engine.meshResources;
       },
+      get bufferTextureFormat() {
+        return engine.bufferTextureFormat;
+      },
+      get timeManager() {
+        return engine.timeManager;
+      },
       get cameraManager() {
         return engine.cameraManager;
       },
-      clearCanvas(): void {
-        return engine.clearCanvas();
+      retireAfterPublication: (resource, retire, warnings) => this.retireAfterPublication(resource, retire, warnings),
+      clearCanvas: () => this.clearCanvas(),
+      stopRenderLoop: () => this.stopRenderLoop(),
+    });
+    this.channels = new WebGPUChannels({
+      session: this.session,
+      get device() {
+        return engine.device;
       },
-      stopRenderLoop(): void {
-        return engine.stopRenderLoop();
+      get keyboardManager() {
+        return engine.keyboardManager;
+      },
+    });
+    this.capture = new WebGPUCapture({
+      session: this.session,
+      geometry: this.geometry,
+      channels: this.channels,
+      storage: this.storage,
+      constraints: this.constraints,
+      get device() {
+        return engine.device;
+      },
+      get compiler() {
+        return engine.compiler;
+      },
+      get timeManager() {
+        return engine.timeManager;
+      },
+      get disposed() {
+        return engine.disposed;
+      },
+      get language() {
+        return engine.language;
+      },
+      get canvas() {
+        return engine.canvas;
+      },
+      getUniforms: () => this.getUniforms(),
+    });
+    this.frameRenderer = new WebGPUFrameRenderer({
+      timing: this.timing,
+      session: this.session,
+      channels: this.channels,
+      storage: this.storage,
+      constraints: this.constraints,
+      get device() {
+        return engine.device;
+      },
+      get context() {
+        return engine.context;
+      },
+      clearCanvas: () => this.clearCanvas(),
+      get timeManager() {
+        return engine.timeManager;
       },
       get fps() {
         return engine.fps;
+      },
+      get cameraManager() {
+        return engine.cameraManager;
       },
       get mouseManager() {
         return engine.mouseManager;
@@ -201,21 +288,17 @@ export class WebGPURenderingEngine implements RenderingEngine {
       get meshCamera() {
         return engine.meshCamera;
       },
+      geometry: this.geometry,
+      get canvas() {
+        return engine.canvas;
+      },
       get pixelRegionCapturer() {
         return engine.pixelRegionCapturer;
       },
-    };
-    this.diagnostics = new WebGPUCompileDiagnostics(host);
-    this.constraints = new WebGPUDeviceConstraints(host);
-    this.storage = new WebGPUStorage(host);
-    this.candidates = new WebGPUPipelineCandidates(host);
-    this.compilerLoader = new WebGPUCompilerLoader(host);
-    this.timing = new WebGPUFrameTiming(host);
-    this.channels = new WebGPUChannels(host);
-    this.capture = new WebGPUCapture(host);
-    this.passFactory = new WebGPUPassFactory(host);
-    this.session = new WebGPUShaderSession(host);
-    this.frameRenderer = new WebGPUFrameRenderer(host);
+      get keyboardManager() {
+        return engine.keyboardManager;
+      },
+    });
   }
 
   initialize(glCanvas: HTMLCanvasElement, _preserveDrawingBuffer = false): void {

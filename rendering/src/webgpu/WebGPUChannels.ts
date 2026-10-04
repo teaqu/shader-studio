@@ -13,7 +13,7 @@ import type { WebGPUShaderSession } from "./WebGPUShaderSession";
 import { type WebGPUTextureHandle } from "./WebGPUTextureBackend";
 
 interface WebGPUChannelsHost {
-  session: WebGPUShaderSession;
+  session: Pick<WebGPUShaderSession, "computePipelines" | "passGraph" | "passPipelines" | "resourceManager">;
   device: GPUDevice | null;
   keyboardManager: KeyboardManager;
 }

@@ -7,7 +7,7 @@ import { TimeManager } from "../util/TimeManager";
 import type { WebGPUCompileDiagnostics } from "./WebGPUCompileDiagnostics";
 
 interface WebGPUFrameTimingHost {
-  diagnostics: WebGPUCompileDiagnostics;
+  diagnostics: Pick<WebGPUCompileDiagnostics, "ms" | "now">;
   running: boolean;
   device: GPUDevice | null;
   disposed: boolean;

@@ -1,5 +1,6 @@
 import type { ShaderConfig,SlangSourceModule } from "@shader-studio/types";
 import type { StorageBindingNode } from "../types/PassGraph";
+import { meshTopology,resolveRenderState,verticesSpace,verticesTopology } from "../types/Geometry";
 import { buildSlangBindingPlan,getSlangChannels,validateSlangBindingBudget } from "./SlangBindingPlan";
 import { SlangComputePipeline } from "./SlangComputePipeline";
 import {
@@ -21,10 +22,14 @@ import {
   createSlangCustomUniformLayout
 } from "./uniforms";
 
+type PassFactorySession = Pick<WebGPUShaderSession,
+  "compileGeneration" | "passGraph" | "currentConfig" | "computePipelines" |
+  "dispatchOnceRan" | "passPipelines">;
+
 interface WebGPUPassFactoryHost {
-  session: WebGPUShaderSession;
-  candidates: WebGPUPipelineCandidates;
-  constraints: WebGPUDeviceConstraints;
+  session: PassFactorySession;
+  candidates: Pick<WebGPUPipelineCandidates, "registerPipelineCandidate">;
+  constraints: Pick<WebGPUDeviceConstraints, "clampResolutionToTextureLimit">;
   device: GPUDevice | null;
   bufferTextureFormat: GPUTextureFormat;
   format: GPUTextureFormat;
@@ -76,6 +81,10 @@ export class WebGPUPassFactory {
         height: pass.height,
         output: pass.output === "canvas" ? "canvas" : "texture",
         geometry: pass.geometry,
+        ...(pass.geometry === "vertices"
+          ? { topology: verticesTopology(pass), vertexSpace: verticesSpace(pass) }
+          : pass.geometry && pass.geometry !== "fullscreen" ? { topology: meshTopology(pass) } : {}),
+        renderState: resolveRenderState(pass),
         channels,
         vertexChannels: Boolean(pass.vertexSrc),
         vertexRange: compilation?.vertexRange,

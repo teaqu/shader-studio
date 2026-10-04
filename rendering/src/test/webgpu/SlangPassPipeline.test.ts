@@ -1558,7 +1558,10 @@ describe("SlangPassPipeline", () => {
     it("bakes the descriptor's render state into blend, depth and primitive state", async () => {
       const { pipeline } = await build({
         geometry: "vertices",
-        renderState: { blend: "additive", depth: { test: true, write: false, compare: "greater-equal" }, cull: "front" },
+        renderState: {
+          blend: "additive", clear: [0, 0, 0, 1],
+          depth: { test: true, write: false, compare: "greater-equal" }, cull: "front", samples: 1,
+        },
       });
 
       expect(pipeline.fragment!.targets).toEqual([{
@@ -1573,9 +1576,9 @@ describe("SlangPassPipeline", () => {
     });
 
     it("blends a fullscreen pass without adding depth state", async () => {
-      const { pipeline } = await build({ renderState: { blend: "alpha", depth: null, cull: "none" } });
+      const { pipeline } = await build({ renderState: { blend: "alpha", clear: [0, 0, 0, 1], depth: null, cull: "none", samples: 1 } });
 
-      expect(pipeline.fragment!.targets![0]).toMatchObject({ blend: { color: { srcFactor: "src-alpha" } } });
+      expect(Array.from(pipeline.fragment!.targets!)[0]).toMatchObject({ blend: { color: { srcFactor: "src-alpha" } } });
       expect(pipeline.depthStencil).toBeUndefined();
     });
 

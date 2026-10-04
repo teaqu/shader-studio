@@ -1,5 +1,6 @@
 import type { SlangSourceModule } from "@shader-studio/types";
 import { CustomUniformManager } from "../webgl/CustomUniformManager";
+import { verticesSpace } from "../types/Geometry";
 import { type AsyncSlangCompiler } from "./AsyncSlangCompiler";
 import { getSlangChannels } from "./SlangBindingPlan";
 import { SlangComputePipeline } from "./SlangComputePipeline";
@@ -27,20 +28,23 @@ import { extractStructSizes } from "./wgslStructSize";
 import type { WebGPUShaderSession } from "./WebGPUShaderSession";
 
 interface PipelineBuildDependencies {
-  diagnostics: WebGPUCompileDiagnostics;
-  constraints: WebGPUDeviceConstraints;
-  passFactory: WebGPUPassFactory;
-  candidates: WebGPUPipelineCandidates;
+  diagnostics: Pick<WebGPUCompileDiagnostics, "now" | "ms">;
+  constraints: Pick<WebGPUDeviceConstraints, "wgslImageFormat">;
+  passFactory: Pick<WebGPUPassFactory, "createPassPipeline">;
+  candidates: Pick<WebGPUPipelineCandidates, "registerPipelineCandidate">;
   readonly disposed: boolean;
-  readonly compiler: AsyncSlangCompiler | null;
+  readonly compiler: Pick<AsyncSlangCompiler, "compile"> | null;
   readonly device: GPUDevice | null;
   readonly bufferTextureFormat: GPUTextureFormat;
 }
 
+type InstalledPipelineState = Pick<WebGPUShaderSession,
+  "compileGeneration" | "computePipelines" | "passPipelines" | "computeKeys" | "passKeys">;
+
 /** Build candidates without touching installed pipelines. Caller publishes only after all passes succeed. */
 export async function buildWebGPUPipelines(
   dependencies: PipelineBuildDependencies,
-  installed: WebGPUShaderSession,
+  installed: InstalledPipelineState,
   graph: ReturnType<typeof buildSlangPassGraph>,
   generation: number,
   sessionChanged: boolean,
@@ -127,6 +131,7 @@ export async function buildWebGPUPipelines(
           passKind: pass.kind,
           ...(pass.geometry !== "fullscreen" ? { geometry: pass.geometry } : {}),
           ...(pass.vertexSrc ? { vertexCode: pass.vertexSrc } : {}),
+          ...(pass.geometry === "vertices" ? { vertexSpace: verticesSpace(pass) } : {}),
           workgroupSize: pass.workgroupSize,
           outputLayers: pass.outputLayers,
           hasOutput: pass.output === "texture",

@@ -1,3 +1,5 @@
+import { geometryInstanceCount } from "../types/Geometry";
+import type { WebGPUGeometry } from "./WebGPUGeometry";
 import type { ShaderLanguageId } from "@shader-studio/types";
 import type {
   CaptureCompileContext,
@@ -21,10 +23,11 @@ import type { WebGPUStorage } from "./WebGPUStorage";
 import { WebGPUVariableCapturer } from "./WebGPUVariableCapturer";
 
 interface WebGPUCaptureHost {
-  session: WebGPUShaderSession;
-  channels: WebGPUChannels;
-  storage: WebGPUStorage;
-  constraints: WebGPUDeviceConstraints;
+  session: Pick<WebGPUShaderSession, "installedCompile" | "lastCompile" | "passGraph">;
+  geometry: Pick<WebGPUGeometry, "passCameraMatrices" | "resolvePassVertexCount">;
+  channels: Pick<WebGPUChannels, "getChannelResources" | "getChannelUniforms">;
+  storage: Pick<WebGPUStorage, "storageBuffers" | "storageLayouts">;
+  constraints: Pick<WebGPUDeviceConstraints, "resolveComputeWorkgroupLimits" | "resolveMaxOutputLayers" | "resolveMaxStorageBuffers">;
   device: GPUDevice | null;
   compiler: AsyncSlangCompiler | null;
   timeManager: TimeManager;
@@ -159,6 +162,7 @@ export class WebGPUCapture {
       date: u.date as number[],
       cameraPos: u.cameraPos as number[],
       cameraDir: u.cameraDir as number[],
+      ...(pass ? { vertexCount: this.host.geometry.resolvePassVertexCount(pass), instanceCount: geometryInstanceCount(pass), camera: this.host.geometry.passCameraMatrices(pass) } : {}),
       ...channelUniforms,
     };
   }

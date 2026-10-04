@@ -34,7 +34,7 @@ class RevokingAsyncSlangCompiler implements AsyncSlangCompiler {
 }
 
 interface WebGPUCompilerLoaderHost {
-  diagnostics: WebGPUCompileDiagnostics;
+  diagnostics: Pick<WebGPUCompileDiagnostics, "logSlangPerf" | "ms" | "now">;
   language: ShaderLanguageId;
   slangAssets?: SlangAssetUrls;
   disposed: boolean;

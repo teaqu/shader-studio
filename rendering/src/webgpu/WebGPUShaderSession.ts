@@ -21,7 +21,6 @@ import type { PassTiming,PendingPipelineCandidates,PreparedStorageBuffers,Shader
 import type { WebGPUCompileDiagnostics } from "./WebGPUCompileDiagnostics";
 import * as compileKeys from "./WebGPUCompileKeys";
 import type { WebGPUDeviceConstraints } from "./WebGPUDeviceConstraints";
-import type { WebGPUFrameRenderer } from "./WebGPUFrameRenderer";
 import { WebGPUMeshResources } from "./WebGPUMeshResources";
 import type { WebGPUPassFactory } from "./WebGPUPassFactory";
 import { buildWebGPUPipelines } from "./WebGPUPipelineBuilder";
@@ -34,8 +33,8 @@ interface WebGPUShaderSessionHost {
   candidates: WebGPUPipelineCandidates;
   diagnostics: WebGPUCompileDiagnostics;
   constraints: WebGPUDeviceConstraints;
-  passFactory: WebGPUPassFactory;
-  frameRenderer: WebGPUFrameRenderer;
+  passFactory: Pick<WebGPUPassFactory, "createPassPipeline" | "reconcileCandidateResolutions">;
+  resetPausedFrame(): void;
   disposed: boolean;
   ready: Promise<void> | null;
   context: GPUCanvasContext | null;
@@ -47,14 +46,13 @@ interface WebGPUShaderSessionHost {
   language: ShaderLanguageId;
   globalVolume: number;
   globalMuted: boolean;
-  meshResources: WebGPUMeshResources | null;
+  meshResources: Pick<WebGPUMeshResources, "loadModel"> | null;
   bufferTextureFormat: GPUTextureFormat;
   timeManager: TimeManager;
   cameraManager: CameraManager;
   retireAfterPublication(resource: string, retire: () => void, warnings: string[]): void;
   clearCanvas(): void;
   stopRenderLoop(): void;
-  compileShaderPipeline: WebGPUShaderSession["compileShaderPipeline"];
 }
 
 
@@ -516,6 +514,7 @@ export class WebGPUShaderSession {
       rgba16floatRenderable: true,
       rgba32floatRenderable: true,
       float32Filterable: this.host.device.features?.has?.("float32-filterable") === true,
+      float32Blendable: this.host.device.features?.has?.("float32-blendable") === true,
     });
     const graphMs = this.host.diagnostics.now() - graphStartedAt;
 
@@ -656,8 +655,7 @@ export class WebGPUShaderSession {
     this.customUniformManager = nextCustomUniformManager;
     if (appliesReset) {
       this.host.timeManager.cleanup();
-      this.host.frameRenderer.pausedUniformInput = null;
-      this.host.frameRenderer.pausedCustomUniformValues = null;
+      this.host.resetPausedFrame();
       this.host.cameraManager.reset();
       this.host.storage.consumePendingReset(resetGeneration!, preparedStorage, graph.warnings);
     }
@@ -814,7 +812,7 @@ export class WebGPUShaderSession {
       ...(previous?.slangModules.filter((module) => !planModulePaths.has(module.path)) ?? []),
       ...planModules,
     ];
-    const result = await this.host.compileShaderPipeline(
+    const result = await this.compileShaderPipeline(
       root.source,
       config ?? previous?.config ?? this.currentConfig,
       previous?.path ?? root.path,
@@ -849,7 +847,7 @@ export class WebGPUShaderSession {
       return { success: false, errors: ["Cannot update a buffer before a shader has been compiled"] };
     }
     this.lastCompile.buffers = { ...this.lastCompile.buffers, [bufferName]: bufferContent };
-    return this.host.compileShaderPipeline(
+    return this.compileShaderPipeline(
       this.lastCompile.code,
       this.lastCompile.config,
       this.lastCompile.path,

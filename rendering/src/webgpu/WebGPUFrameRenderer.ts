@@ -1,3 +1,6 @@
+import { FULLSCREEN_VERTEX_COUNT } from "@shader-studio/types";
+import { depthClearValue, geometryInstanceCount, meshTopology, resolveRenderState, verticesVertexCount } from "../types/Geometry";
+import type { WebGPUGeometry } from "./WebGPUGeometry";
 import type {
   CaptureCustomUniform
 } from "../capture/VariableCapturer";
@@ -5,7 +8,7 @@ import { CameraManager } from "../input/CameraManager";
 import { KeyboardManager } from "../input/KeyboardManager";
 import { MouseManager } from "../input/MouseManager";
 import { OrbitCamera } from "../preview3d/OrbitCamera";
-import { createModelMatrix,createNormalMatrix3,multiplyMatrices } from "../preview3d/math";
+import { createModelMatrix,createNormalMatrix3 } from "../preview3d/math";
 import { FPSCalculator } from "../util/FPSCalculator";
 import { TimeManager } from "../util/TimeManager";
 import { getShaderToyChannelCount } from "./SlangPrelude";
@@ -13,7 +16,6 @@ import type { WebGPUChannels } from "./WebGPUChannels";
 import type { WebGPUDeviceConstraints } from "./WebGPUDeviceConstraints";
 import { resolveWorkgroupCounts,validateWorkgroupCounts } from "./WebGPUDispatch";
 import type { WebGPUFrameTiming } from "./WebGPUFrameTiming";
-import { WebGPUMeshResources } from "./WebGPUMeshResources";
 import { WebGPUPixelRegionCapturer } from "./WebGPUPixelRegionCapturer";
 import type { WebGPUShaderSession } from "./WebGPUShaderSession";
 import type { WebGPUStorage } from "./WebGPUStorage";
@@ -23,11 +25,11 @@ import {
 } from "./uniforms";
 
 interface WebGPUFrameRendererHost {
-  timing: WebGPUFrameTiming;
-  session: WebGPUShaderSession;
-  channels: WebGPUChannels;
-  storage: WebGPUStorage;
-  constraints: WebGPUDeviceConstraints;
+  timing: Pick<WebGPUFrameTiming, "probeGpuFrameTime" | "recordFrameTime" | "shouldRenderFrame" | "trackFrameInFlight">;
+  session: Pick<WebGPUShaderSession, "computePipelines" | "customUniformManager" | "dispatchOnceRan" | "hasSubmittedFrameForInstalledGeneration" | "passGraph" | "passPipelines" | "resourceManager" | "shaderPath">;
+  channels: Pick<WebGPUChannels, "getChannelResources" | "getChannelUniforms">;
+  storage: Pick<WebGPUStorage, "storageBuffers" | "storageLayouts">;
+  constraints: Pick<WebGPUDeviceConstraints, "resolveComputeWorkgroupLimit">;
   device: GPUDevice | null;
   context: GPUCanvasContext | null;
   clearCanvas(): void;
@@ -36,7 +38,7 @@ interface WebGPUFrameRendererHost {
   cameraManager: CameraManager;
   mouseManager: MouseManager;
   meshCamera: OrbitCamera;
-  meshResources: WebGPUMeshResources | null;
+  geometry: Pick<WebGPUGeometry, "passCameraMatrices" | "resolvePassMesh" | "resolvePassVertexCount">;
   canvas: HTMLCanvasElement | null;
   pixelRegionCapturer: WebGPUPixelRegionCapturer | null;
   keyboardManager: KeyboardManager;
@@ -59,6 +61,11 @@ export class WebGPUFrameRenderer {
   pausedCustomUniformValues: CaptureCustomUniform[] | null = null;
 
   lastCameraTimestamp: number | null = null;
+
+  resetPausedFrame(): void {
+    this.pausedUniformInput = null;
+    this.pausedCustomUniformValues = null;
+  }
 
   renderFrame(time: number, capture: boolean, imageOnly = false): void {
     if (!this.host.device || !this.host.context) {
@@ -202,20 +209,25 @@ export class WebGPUFrameRenderer {
         continue;
       }
 
+      const fullscreen = !pass.geometry || pass.geometry === "fullscreen";
+      const mesh = this.host.geometry.resolvePassMesh(pass);
+      const camera = this.host.geometry.passCameraMatrices(pass);
       const data = packShaderToyUniforms({
         channelCount: getShaderToyChannelCount(pass.channels),
         width: pass.width,
         height: pass.height,
+        vertexCount: this.host.geometry.resolvePassVertexCount(pass),
+        instanceCount: geometryInstanceCount(pass),
+        viewMatrix: camera.view,
+        projectionMatrix: camera.projection,
+        viewProjection: camera.viewProjection,
         ...frameInput,
         ...this.host.channels.getChannelUniforms(pass),
       }, this.host.session.customUniformManager.getUniformInfo(), frameCustomUniformValues);
       this.host.device.queue.writeBuffer(pipeline.getUniformBuffer()!, 0, data);
       if (pass.geometry && pass.geometry !== "fullscreen" && pipeline.getMeshUniformBuffer?.()) {
         const model = createModelMatrix({ position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] });
-        const viewProjection = multiplyMatrices(
-          this.host.meshCamera.getProjectionMatrix(pass.width / Math.max(pass.height, 1), "webgpu"),
-          this.host.meshCamera.getViewMatrix(),
-        );
+        const viewProjection = camera.viewProjection;
         const normal = createNormalMatrix3(model);
         const meshData = new Float32Array(64);
         meshData.set(model, 0);
@@ -232,29 +244,40 @@ export class WebGPUFrameRenderer {
         continue;
       }
 
+      const renderState = resolveRenderState(pass);
+      const [clearR, clearG, clearB, clearA] = renderState.clear;
+      // With MSAA the pass draws into the multisampled texture and resolves into
+      // its output; the samples themselves are not needed after the pass.
+      const msaaView = pipeline.getMsaaView?.() ?? null;
       const renderPass = encoder.beginRenderPass({
         colorAttachments: [{
-          view: targetView,
-          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+          ...(msaaView ? { view: msaaView, resolveTarget: targetView, storeOp: "discard" as const } : { view: targetView, storeOp: "store" as const }),
+          clearValue: { r: clearR, g: clearG, b: clearB, a: clearA },
           loadOp: "clear",
-          storeOp: "store",
         }],
         ...(pass.geometry && pass.geometry !== "fullscreen" && pipeline.getDepthView?.() ? {
-          depthStencilAttachment: { view: pipeline.getDepthView()!, depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store" },
+          depthStencilAttachment: { view: pipeline.getDepthView()!, depthClearValue: depthClearValue(renderState), depthLoadOp: "clear", depthStoreOp: "store" },
         } : {}),
       });
       renderPass.setPipeline(pipeline.getPipeline()!);
       renderPass.setBindGroup(0, bindGroup);
-      if (!pass.geometry || pass.geometry === "fullscreen") {
-        renderPass.draw(3);
-      } else {
-        const mesh = pass.modelPath
-          ? this.host.meshResources?.getModel(pass.name)
-          : pass.geometry === "model" ? undefined : this.host.meshResources?.get(pass.geometry);
-        if (mesh) {
-          renderPass.setVertexBuffer(0, mesh.vertexBuffer);
+      if (fullscreen) {
+        renderPass.draw(FULLSCREEN_VERTEX_COUNT);
+      } else if (pass.geometry === "vertices") {
+        // Non-indexed with no vertex buffers; mainVertex places every vertex.
+        renderPass.draw(verticesVertexCount(pass), geometryInstanceCount(pass));
+      } else if (mesh) {
+        renderPass.setVertexBuffer(0, mesh.vertexBuffer);
+        const topology = meshTopology(pass);
+        if (topology === "point-list") {
+          // Each unique vertex once, without the index buffer.
+          renderPass.draw(mesh.vertexCount, geometryInstanceCount(pass));
+        } else if (topology === "line-list") {
+          renderPass.setIndexBuffer(mesh.edgeIndexBuffer, mesh.indexFormat);
+          renderPass.drawIndexed(mesh.edgeIndexCount, geometryInstanceCount(pass));
+        } else {
           renderPass.setIndexBuffer(mesh.indexBuffer, mesh.indexFormat);
-          renderPass.drawIndexed(mesh.indexCount);
+          renderPass.drawIndexed(mesh.indexCount, geometryInstanceCount(pass));
         }
       }
       renderPass.end();
