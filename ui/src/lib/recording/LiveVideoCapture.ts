@@ -11,6 +11,10 @@ export async function createLiveVideoCapture(canvas: HTMLCanvasElement, fps: num
   signal.throwIfAborted();
   const width = canvas.width + (format === "mp4" ? canvas.width % 2 : 0);
   const height = canvas.height + (format === "mp4" ? canvas.height % 2 : 0);
+  // Native AVC frames already have the required YUV layout. Resampling an
+  // even-sized track through a canvas adds another YUV/RGB conversion.
+  // WebM keeps its existing RGB conversion; MP4 only needs it for resizing.
+  const needsTransform = format !== "mp4" || width !== canvas.width || height !== canvas.height;
   const quality = new Quality({ quantizer: 12, bitrate: automaticVideoBitrate({ width, height, fps }) });
   const codec = format === "mp4" ? "avc" : await canEncodeVideo("vp9", { width, height, quality, frameRate: fps }) ? "vp9" : "vp8";
   signal.throwIfAborted();
@@ -63,7 +67,7 @@ export async function createLiveVideoCapture(canvas: HTMLCanvasElement, fps: num
       onEncodedPacket: () => {
         packetCount++;
       },
-      transform: { width, height, fit: "fill" },
+      ...(needsTransform ? { transform: { width, height, fit: "fill" as const } } : {}),
     }, { frameRate: fps, timestampBase: "zero" });
     output.addVideoTrack(source, { frameRate: fps });
     void source.errorPromise.catch(error => fail(error));
