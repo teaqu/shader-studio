@@ -23,7 +23,7 @@ export interface VideoEncoderOptions {
  * Colour detail is additionally limited by 4:2:0 chroma, which no bitrate
  * can recover.
  */
-export const VIDEO_BITS_PER_PIXEL_CEILING = 5;
+const VIDEO_BITS_PER_PIXEL_CEILING = 5;
 export const MIN_VIDEO_BITRATE = 2_000_000;
 export const MAX_VIDEO_BITRATE = 250_000_000;
 
