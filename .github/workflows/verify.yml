@@ -20,12 +20,25 @@ permissions:
 
 jobs:
   # Asks Turbo which E2E suites a pull request affects (see
-  # .github/scripts/select-e2e.mjs). Shadow mode: every suite still runs, and
-  # the step summary records what would have been selected.
+  # .github/scripts/select-e2e.mjs). PRs run affected suites, with periodic
+  # full audits, a ci:full override, and full runs when Turbo cannot compare.
   select:
     name: E2E selection
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      rendering_e2e: ${{ steps.selection.outputs.rendering_e2e }}
+      standalone_e2e: ${{ steps.selection.outputs.standalone_e2e }}
+      vscode_e2e: ${{ steps.selection.outputs.vscode_e2e }}
+      vscode_e2e_linux: ${{ steps.selection.outputs.vscode_e2e_linux }}
+      rendering_e2e_rendering_test_e2e: ${{ steps.selection.outputs.rendering_e2e_rendering_test_e2e }}
+      rendering_e2e_rendering_test_e2e_corpus: ${{ steps.selection.outputs.rendering_e2e_rendering_test_e2e_corpus }}
+      rendering_e2e_shader_studio_ui_test_e2e: ${{ steps.selection.outputs.rendering_e2e_shader_studio_ui_test_e2e }}
+      standalone_e2e_standalone_test_e2e: ${{ steps.selection.outputs.standalone_e2e_standalone_test_e2e }}
+      vscode_e2e_shader_studio_test_e2e_vscode_corpus: ${{ steps.selection.outputs.vscode_e2e_shader_studio_test_e2e_vscode_corpus }}
+      vscode_e2e_shader_studio_test_e2e_vsix: ${{ steps.selection.outputs.vscode_e2e_shader_studio_test_e2e_vsix }}
+      vscode_e2e_linux_shader_studio_test_e2e_vsix: ${{ steps.selection.outputs.vscode_e2e_linux_shader_studio_test_e2e_vsix }}
+      allowed_skips: ${{ steps.selection.outputs.allowed_skips }}
 
     steps:
       # A pull request checks out GitHub's merge commit; Turbo compares it
@@ -46,6 +59,7 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Select E2E suites for the change
+        id: selection
         run: node .github/scripts/select-e2e.mjs
 
   package:
@@ -186,7 +200,9 @@ jobs:
 
   rendering-e2e:
     name: Rendering browser E2E
+    needs: select
     runs-on: macos-15
+    if: ${{ needs.select.outputs.rendering_e2e == 'true' }}
     timeout-minutes: 45
 
     steps:
@@ -214,17 +230,22 @@ jobs:
         run: npm run build:deps -w extension
 
       - name: Run rendering browser E2E tests
+        if: ${{ needs.select.outputs.rendering_e2e_rendering_test_e2e == 'true' }}
         run: npm run test:e2e -w rendering
 
       - name: Run shader fixture corpus E2E tests
+        if: ${{ needs.select.outputs.rendering_e2e_rendering_test_e2e_corpus == 'true' }}
         run: npm run test:e2e:corpus -w rendering
 
       - name: Run UI transport corpus E2E tests
+        if: ${{ needs.select.outputs.rendering_e2e_shader_studio_ui_test_e2e == 'true' }}
         run: npm run test:e2e -w ui
 
   standalone-e2e:
     name: Standalone browser E2E
+    needs: select
     runs-on: macos-15
+    if: ${{ needs.select.outputs.standalone_e2e == 'true' }}
     timeout-minutes: 45
 
     steps:
@@ -256,6 +277,7 @@ jobs:
           echo "STANDALONE_E2E_DEV_PORT=$((30000 + PORT_SEED % 10000))" >> "${GITHUB_ENV}"
 
       - name: Run all standalone browser projects
+        if: ${{ needs.select.outputs.standalone_e2e_standalone_test_e2e == 'true' }}
         id: standalone-e2e
         run: npm run test:e2e -w @shader-studio/standalone
 
@@ -272,7 +294,8 @@ jobs:
   vscode-e2e:
     name: Installed VSIX E2E (GPU)
     runs-on: macos-15
-    needs: package
+    needs: [select, package]
+    if: ${{ needs.select.outputs.vscode_e2e == 'true' }}
     timeout-minutes: 45
     env:
       SHADER_STUDIO_E2E_TIMINGS_FILE: ${{ github.workspace }}/extension/e2e-timings.jsonl
@@ -305,6 +328,7 @@ jobs:
       # source workspace rather than the packaged extension, so retain it next
       # to the installed-VSIX pass instead of conflating the two hosts.
       - name: Run extension-host corpus E2E tests
+        if: ${{ needs.select.outputs.vscode_e2e_shader_studio_test_e2e_vscode_corpus == 'true' }}
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ github.workspace }}/extension/corpus-e2e-results.json
         run: npm run test:e2e:vscode:corpus -w extension
@@ -312,6 +336,7 @@ jobs:
       # These selections are complementary: every spec runs once, using the
       # same archive that a release publishes. No development build is loaded.
       - name: Run installed-VSIX E2E tests
+        if: ${{ needs.select.outputs.vscode_e2e_shader_studio_test_e2e_vsix == 'true' }}
         id: vsix-e2e
         env:
           SHADER_STUDIO_E2E_VSIX: ${{ github.workspace }}/${{ needs.package.outputs.vsix_path }}
@@ -349,7 +374,8 @@ jobs:
   vscode-e2e-linux:
     name: Installed VSIX E2E (no GPU)
     runs-on: ubuntu-latest
-    needs: package
+    needs: [select, package]
+    if: ${{ needs.select.outputs.vscode_e2e_linux == 'true' }}
     timeout-minutes: 45
     env:
       SHADER_STUDIO_E2E_TIMINGS_FILE: ${{ github.workspace }}/extension/e2e-timings.jsonl
@@ -381,6 +407,7 @@ jobs:
       # These selections are complementary: every spec runs once, using the
       # same archive that a release publishes. No development build is loaded.
       - name: Run installed-VSIX E2E tests
+        if: ${{ needs.select.outputs.vscode_e2e_linux_shader_studio_test_e2e_vsix == 'true' }}
         id: vsix-e2e
         env:
           SHADER_STUDIO_E2E_VSIX: ${{ github.workspace }}/${{ needs.package.outputs.vsix_path }}
@@ -411,8 +438,8 @@ jobs:
           retention-days: 14
 
   # One verdict for the run, for branch protection: it fails if any job
-  # failed, was cancelled or was skipped. Once selection is enforced, the
-  # jobs it omits are passed in allowed-skips.
+  # failed, was cancelled or unexpectedly skipped. Only jobs explicitly
+  # omitted by a successful selector are allowed to skip.
   result:
     name: Verification result
     if: ${{ always() }}
@@ -424,4 +451,5 @@ jobs:
       - name: Check every job verified the change
         uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # v1.3.0
         with:
+          allowed-skips: ${{ needs.select.result == 'success' && needs.select.outputs.allowed_skips || '' }}
           jobs: ${{ toJSON(needs) }}

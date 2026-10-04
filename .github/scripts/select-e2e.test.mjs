@@ -8,9 +8,12 @@ import { fileURLToPath } from 'node:url';
 
 import {
   FULL_RUN_LABEL,
+  AUDIT_INTERVAL,
   decide,
   formatSummary,
   selectedJobs,
+  selectionOutputs,
+  suiteOutput,
   suites,
   taskNames,
   turboAffected,
@@ -51,6 +54,70 @@ test('a failed Turbo query selects everything', () => {
   });
   assert.equal(decision.full, true);
   assert.equal(decision.reason, 'Turbo could not compare the change: bad revision');
+});
+
+test('every tenth workflow run audits every PR suite without querying Turbo', () => {
+  const decision = decide({ eventName: 'pull_request', labels: [], runNumber: AUDIT_INTERVAL * 2, queryAffected: unreachable });
+  assert.equal(decision.full, true);
+  assert.match(decision.reason, /periodic full audit/);
+  assert.equal(selectionOutputs(decision).allowed_skips, '');
+});
+
+test('ordinary runs and invalid run numbers do not accidentally trigger audits', () => {
+  for (const runNumber of [1, 9, 11, 0, -10, NaN, undefined, 10.5]) {
+    assert.equal(decide({ eventName: 'pull_request', labels: [], runNumber, queryAffected: () => [] }).full, false);
+  }
+});
+
+test('malformed Turbo responses fail open to full verification', () => {
+  for (const response of [null, {}, [null], [{ fullName: 'task' }]]) {
+    const decision = decide({ eventName: 'pull_request', labels: [], queryAffected: () => response });
+    assert.equal(decision.full, true);
+    assert.equal(selectionOutputs(decision).allowed_skips, '');
+  }
+});
+
+test('suite outputs narrow individual steps within a selected job', () => {
+  const outputs = selectionOutputs(decide({ eventName: 'pull_request', labels: [], queryAffected: () => [item('shader-studio-ui#test:e2e')] }));
+  assert.equal(outputs.rendering_e2e, true);
+  assert.equal(outputs[suiteOutput(suites[0])], false);
+  assert.equal(outputs[suiteOutput(suites[1])], false);
+  assert.equal(outputs[suiteOutput(suites[2])], true);
+  assert.equal(outputs.allowed_skips, 'standalone-e2e,vscode-e2e,vscode-e2e-linux');
+});
+
+test('suite output names are unique and every job is allowed to skip only when no suite is selected', () => {
+  assert.equal(new Set(suites.map(suiteOutput)).size, suites.length);
+  for (const affected of [[], ...suites.map(suite => [item(suite.task)])]) {
+    const decision = decide({ eventName: 'pull_request', labels: [], queryAffected: () => affected });
+    const outputs = selectionOutputs(decision);
+    const skipped = outputs.allowed_skips.split(',').filter(Boolean);
+    for (const [job, selected] of Object.entries(selectedJobs(decision))) {
+      assert.equal(skipped.includes(job), !selected);
+      assert.equal(selected, suites.filter(suite => suite.job === job).some(suite => outputs[suiteOutput(suite)]));
+    }
+  }
+});
+
+test('CLI publishes full selection and summary for pushes, explicit overrides and periodic audits', t => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'select-e2e-outputs-'));
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  for (const [eventName, labels, runNumber] of [['push', [], 1], ['pull_request', [FULL_RUN_LABEL], 1], ['pull_request', [], 10]]) {
+    const eventFile = path.join(temp, 'event.json');
+    const outputFile = path.join(temp, 'outputs');
+    const summaryFile = path.join(temp, 'summary');
+    fs.writeFileSync(eventFile, JSON.stringify({ pull_request: { labels: labels.map(name => ({ name })) } }));
+    fs.writeFileSync(outputFile, '');
+    fs.writeFileSync(summaryFile, '');
+    execFileSync(process.execPath, [path.join(root, '.github/scripts/select-e2e.mjs')], {
+      cwd: root,
+      env: { ...process.env, GITHUB_EVENT_NAME: eventName, GITHUB_EVENT_PATH: eventFile, GITHUB_RUN_NUMBER: String(runNumber), GITHUB_OUTPUT: outputFile, GITHUB_STEP_SUMMARY: summaryFile },
+    });
+    const outputs = Object.fromEntries(fs.readFileSync(outputFile, 'utf8').trimEnd().split('\n').map(line => line.split('=')));
+    const expected = Object.fromEntries(Object.entries(selectionOutputs(decide({ eventName: 'push', labels: [], queryAffected: unreachable }))).map(([key, value]) => [key, String(value)]));
+    assert.deepEqual(outputs, expected);
+    assert.match(fs.readFileSync(summaryFile, 'utf8'), /Every suite selected/);
+  }
 });
 
 test('a pull request selects the jobs of the affected tasks', () => {
@@ -98,7 +165,7 @@ test('formatSummary explains each decision', () => {
     labels: [],
     queryAffected: () => [item('@shader-studio/standalone#test:e2e', 'TaskDependencyTaskChanged')],
   }));
-  assert.match(narrowed, /shadow mode: every suite still runs/);
+  assert.match(narrowed, /Only selected suites run/);
   assert.match(narrowed, /\| standalone-e2e \| Run all standalone browser projects \| `@shader-studio\/standalone#test:e2e` \| yes \(TaskDependencyTaskChanged\) \|/);
   assert.match(narrowed, /\| vscode-e2e-linux \| Run installed-VSIX E2E tests \| `shader-studio#test:e2e:vsix` \| no \|/);
   assert.doesNotMatch(narrowed, /Every suite selected/);
@@ -198,13 +265,30 @@ test('the verdict job waits for every job, even after failures', () => {
   assert.match(jobs.result, /if: \$\{\{ always\(\) \}\}/);
   assert.match(jobs.result, /re-actors\/alls-green@[0-9a-f]{40}/);
   assert.match(jobs.result, /jobs: \$\{\{ toJSON\(needs\) \}\}/);
-  // Shadow mode: nothing may be skipped yet, and no job depends on selection.
-  assert.doesNotMatch(jobs.result, /allowed-skips/);
+  assert.match(jobs.result, /allowed-skips: \$\{\{ needs.select.result == 'success' && needs.select.outputs.allowed_skips \|\| '' \}\}/);
   for (const [job, body] of Object.entries(jobs)) {
-    if (job !== 'result') {
+    if (['select', 'package', 'test'].includes(job)) {
       assert.doesNotMatch(body, /^ {4}if:/m, `${job} is conditional`);
     }
   }
+});
+
+test('every E2E job and suite uses its published selection output', () => {
+  assert.match(jobs.select, /id: selection/);
+  for (const suite of suites) {
+    const jobKey = suite.job.replaceAll('-', '_');
+    const key = suiteOutput(suite);
+    assert.ok(jobs.select.includes(`${jobKey}: \u0024{{ steps.selection.outputs.${jobKey} }}`));
+    assert.ok(jobs.select.includes(`${key}: \u0024{{ steps.selection.outputs.${key} }}`));
+    assert.ok(jobs[suite.job].includes(`if: \u0024{{ needs.select.outputs.${jobKey} == 'true' }}`));
+    assert.ok(jobs[suite.job].includes(`- name: ${suite.step}\n        if: \u0024{{ needs.select.outputs.${key} == 'true' }}`));
+    assert.match(jobs[suite.job], /needs: (?:select|\[select, package\])/);
+  }
+});
+
+test('ci:full label changes retrigger the caller workflow', () => {
+  const caller = fs.readFileSync(path.join(root, '.github/workflows/test.yml'), 'utf8');
+  assert.match(caller, /types: \[opened, synchronize, reopened, labeled, unlabeled\]/);
 });
 
 /**
