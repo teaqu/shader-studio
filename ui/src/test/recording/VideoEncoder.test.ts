@@ -66,12 +66,13 @@ describe('VideoEncoderWrapper', () => {
   });
 
   describe('constructor', () => {
-    it('sets the automatic bitrate ceiling at 3 bits per pixel for every codec', () => {
-      expect(automaticVideoBitrate({ width: 640, height: 360, fps: 30 })).toBe(20_736_000);
+    it('budgets enough bitrate for the high-detail saved-media regression across hosts', () => {
+      expect(automaticVideoBitrate({ width: 640, height: 360, fps: 30 })).toBe(34_560_000);
       expect(automaticVideoBitrate({ width: 1280, height: 720, fps: 30 }))
         .toBeLessThan(automaticVideoBitrate({ width: 1920, height: 1080, fps: 30 }));
-      expect(automaticVideoBitrate({ width: 1920, height: 1080, fps: 30 }))
-        .toBeLessThan(automaticVideoBitrate({ width: 1920, height: 1080, fps: 60 }));
+      // Compare below the global cap; 1080p reaches it at both rates.
+      expect(automaticVideoBitrate({ width: 640, height: 360, fps: 30 }))
+        .toBeLessThan(automaticVideoBitrate({ width: 640, height: 360, fps: 60 }));
     });
 
     it('keeps the automatic bitrate between its floor and cap', () => {
@@ -82,7 +83,7 @@ describe('VideoEncoderWrapper', () => {
     it('encodes in variable-bitrate mode so the ceiling is only spent when needed', () => {
       expect(videoEncoderConfig({ width: 640, height: 360, fps: 30, format: 'webm' })).toMatchObject({
         codec: 'vp8',
-        bitrate: 20_736_000,
+        bitrate: 34_560_000,
         bitrateMode: 'variable',
       });
     });
@@ -321,7 +322,7 @@ describe('VideoEncoderWrapper', () => {
 
   describe('supportedBitrate', () => {
     const options = { width: 1920, height: 1080, fps: 60, format: 'mp4' as const };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the global VideoEncoder is a test mock
+
     const encoderGlobal = () => (globalThis as any).VideoEncoder;
 
     afterEach(() => {
@@ -353,12 +354,12 @@ describe('VideoEncoderWrapper', () => {
 
     it('rejects when WebCodecs is unavailable', async () => {
       const saved = encoderGlobal();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- removing the test mock global
+
       delete (globalThis as any).VideoEncoder;
       try {
         await expect(VideoEncoderWrapper.supportedBitrate(options)).rejects.toThrow('WebCodecs unavailable');
       } finally {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- restoring the test mock global
+
         (globalThis as any).VideoEncoder = saved;
       }
     });

@@ -46,7 +46,7 @@ on the host: a format it can't record is disabled, and a saved choice it can't
 record falls back to one it can, with a note in the panel. MP4 needs even
 dimensions; an odd custom size is rounded up and the panel tells you the saved
 size. Video quality is automatic. The encoder uses variable bitrate with a
-high ceiling (3 bits per pixel), so detailed, fast-changing shaders keep their
+high ceiling (5 bits per pixel), so detailed, fast-changing shaders keep their
 detail while simple shaders stay small, because the encoder only spends what the
 content needs. Video stores colour at half resolution (4:2:0), so single-pixel
 coloured detail softens in any video file; use a PNG screenshot when

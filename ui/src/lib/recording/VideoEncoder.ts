@@ -18,10 +18,12 @@ export interface VideoEncoderOptions {
  * changes every frame, needs about 3 bits per pixel to reach ~32 dB luma
  * (0.1 bpp gave 18-19 dB, visibly blocky), while a smooth gradient shader
  * stays near 1.1 Mbps at 640x360 whether the ceiling is 1 or 6 bpp.
+ * Windows Chromium fell below the saved-media 28 dB floor at that ceiling;
+ * budget 5 bits per pixel to allow for host encoder differences.
  * Colour detail is additionally limited by 4:2:0 chroma, which no bitrate
  * can recover.
  */
-export const VIDEO_BITS_PER_PIXEL_CEILING = 3;
+export const VIDEO_BITS_PER_PIXEL_CEILING = 5;
 export const MIN_VIDEO_BITRATE = 2_000_000;
 export const MAX_VIDEO_BITRATE = 250_000_000;
 
