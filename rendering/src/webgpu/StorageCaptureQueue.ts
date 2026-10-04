@@ -22,7 +22,7 @@ export class StorageCaptureQueue {
     return new Promise((resolve, reject) => {
       const request: Request = { name, start, count, point, resolve, reject, timeout: setTimeout(() => {
         this.pending.delete(request);
-        reject(new Error(`Capture point ${point.timing} ${point.pass} was not reached. Resume the shader or choose the current buffer.`));
+        reject(new Error(`Capture point ${point.timing} ${point.pass} was not reached. Resume the shader or choose Latest values.`));
       }, 3000) };
       this.pending.add(request);
     });

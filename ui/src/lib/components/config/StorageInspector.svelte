@@ -136,6 +136,7 @@
     <label
       >Capture point<select
         aria-label="Capture point"
+        title="Latest values reads the buffer now. Before/after captures the next execution of a GPU pass."
         bind:value={point}
         onchange={() => {
           live = false;
@@ -143,7 +144,7 @@
         }}
         disabled={loading}
       >
-        <option value="">Current buffer</option>
+        <option value="">Latest values</option>
         {#each passes as pass}<option
             value={JSON.stringify({ pass, timing: "before" })}
             >Before {pass}</option
@@ -178,7 +179,7 @@
     <p class="capture-meta" aria-live="polite">
       {snapshot.frame === undefined ? "Snapshot" : `Frame ${snapshot.frame}`} · {snapshot.capturePoint
         ? `${snapshot.capturePoint.timing === "before" ? "Before" : "After"} ${snapshot.capturePoint.pass}`
-        : "Current buffer"}{stale ? " · Previous range" : ""}
+        : "Latest values"}{stale ? " · Previous range" : ""}
     </p>
     {#if fields.length > 1}<label
         >Field<select

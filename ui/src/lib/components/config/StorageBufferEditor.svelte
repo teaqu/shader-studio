@@ -1,6 +1,8 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { untrack } from "svelte";
+  import { setPendingStorageForm } from "../../state/storageViewState.svelte";
   import {
     configuredStorageLayout,
     storageStructDeclaration,
@@ -11,6 +13,8 @@
   import { getBuiltinStorageStride } from "../../config/StorageTypeLayout";
   interface Props {
     name: string;
+    scope?: string;
+    formId?: string;
     declaration: StorageBufferConfig;
     existingNames: string[];
     referencedBy: string[];
@@ -28,6 +32,8 @@
   }
   let {
     name,
+    scope = "",
+    formId = "",
     declaration,
     existingNames,
     referencedBy,
@@ -61,6 +67,12 @@
       count !== String(declaration.count) ||
       JSON.stringify(draft) !== JSON.stringify(declaration),
   );
+  $effect(() => {
+    const currentScope = scope;
+    const pending = dirty ? formId : "";
+    untrack(() => setPendingStorageForm(currentScope, pending));
+    return () => setPendingStorageForm(currentScope, "");
+  });
   const fieldTypes = [
     "float",
     "float2",
@@ -175,7 +187,15 @@
   }
 </script>
 
-<article class="storage-editor" data-storage-name={name}>
+<form
+  id={formId || undefined}
+  class="storage-editor"
+  data-storage-name={name}
+  onsubmit={(event) => {
+    event.preventDefault();
+    apply();
+  }}
+>
   <section>
     <div class="heading">
       <h3>{name}</h3>
@@ -235,6 +255,7 @@
                 bind:value={field.type}
               /></label
             ><button
+              type="button"
               aria-label="Remove field {index + 1}"
               disabled={draft.fields.length === 1}
               onclick={() => draft.fields?.splice(index, 1)}>×</button
@@ -245,6 +266,7 @@
         >{#each fieldTypes as type}<option value={type}
           ></option>{/each}</datalist
       ><button
+        type="button"
         disabled={draft.fields.length >= 64}
         onclick={() =>
           draft.fields?.push({
@@ -281,8 +303,8 @@
         >
       </div>{/each}
     <p class="meta">
-      Storage is shared by all WebGPU passes. Shader source determines which
-      buffers a pass uses.
+      Buffers are available to every pass. Each shader accesses only the buffers
+      its code uses.
     </p>
     {#if referencedBy.length}<p class="meta">
         Dispatch target for {referencedBy.join(", ")}
@@ -350,9 +372,13 @@
       />Reset when the shader restarts</label
     >
     <div class="actions">
-      {#if onReset}<button onclick={reset} disabled={dirty || resetting}
+      {#if onReset}<button
+          type="button"
+          onclick={reset}
+          disabled={dirty || resetting}
           >{resetting ? "Resetting…" : "Reset data now"}</button
         >{/if}<button
+        type="button"
         aria-label="Delete {name}"
         onclick={remove}
         disabled={referencedBy.length > 0}>Remove buffer</button
@@ -365,16 +391,16 @@
   </section>
   {#each Object.values(errors) as error}<p role="alert">{error}</p>{/each}
   {#if dirty}<div class="actions">
-      <button class="primary" aria-label="Apply {name} changes" onclick={apply}
+      <button type="submit" class="primary" aria-label="Apply {name} changes"
         >Apply changes</button
-      ><button aria-label="Cancel {name} changes" onclick={cancel}
+      ><button type="button" aria-label="Cancel {name} changes" onclick={cancel}
         >Cancel</button
       >
     </div>
     <p class="meta">
       Applying a layout, size, or initial data change recreates the buffer.
     </p>{/if}
-</article>
+</form>
 
 <style>
   .storage-editor {

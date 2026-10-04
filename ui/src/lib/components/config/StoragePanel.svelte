@@ -10,6 +10,7 @@
   import type { ConfigFieldErrors } from "../../config/ComputeConfigMutations";
   import {
     getStorageView,
+    getPendingStorageForm,
     selectStorageBuffer,
     selectStorageTab,
   } from "../../state/storageViewState.svelte";
@@ -34,7 +35,7 @@
     onReset?: (name: string) => Promise<void>;
     scope?: string;
     language?: "wgsl" | "slang" | "glsl";
-    passes?: Array<{ name: string; compute: boolean }>;
+    passes?: Array<{ name: string; compute: boolean; dispatchOnce?: boolean }>;
   }
   let {
     storage,
@@ -50,6 +51,7 @@
   }: Props = $props();
   let panel = $state<HTMLElement>();
   const id = $props.id();
+  const pendingForm = $derived(getPendingStorageForm(scope));
   const view = $derived(getStorageView(scope));
   const names = $derived(Object.keys(storage));
   const selected = $derived(storage[view.selected] ? view.selected : names[0]);
@@ -73,9 +75,19 @@
     <div>
       <h2>GPU storage</h2>
     </div>
-    <button class="primary" onclick={addStorage} aria-label="Add storage buffer"
-      >+ Add buffer</button
-    >
+    <div class="header-actions">
+      {#if tab === "settings" && pendingForm}<button
+          class="primary"
+          type="submit"
+          form={pendingForm}
+          aria-label="Apply pending storage changes">Apply changes</button
+        >{/if}
+      <button
+        class="primary"
+        onclick={addStorage}
+        aria-label="Add storage buffer">+ Add buffer</button
+      >
+    </div>
   </header>
   {#if !names.length}<p>No storage buffers are configured.</p>
   {:else}<div class="workspace">
@@ -114,6 +126,8 @@
               >
                 <StorageBufferEditor
                   name={selected}
+                  {scope}
+                  formId={`${id}-storage-form`}
                   declaration={storage[selected]!}
                   existingNames={names}
                   referencedBy={referencesFor(selected)}
@@ -142,7 +156,9 @@
                   name={selected}
                   count={storage[selected]!.count}
                   {scope}
-                  passes={passes.map((pass) => pass.name)}
+                  passes={passes
+                    .filter((pass) => !pass.dispatchOnce)
+                    .map((pass) => pass.name)}
                   {onRead}
                 />
               </div>{/if}
@@ -152,6 +168,11 @@
 </section>
 
 <style>
+  .header-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
   .storage-panel {
     --storage-bg: var(--vscode-editor-background, #202124);
     --storage-text: var(--vscode-foreground, #edeef2);
@@ -166,7 +187,11 @@
       var(--storage-text) 14%,
       var(--storage-bg)
     );
-    --storage-accent: color-mix(in srgb, var(--vscode-focusBorder, #a9b6ff) 55%, var(--storage-text));
+    --storage-accent: color-mix(
+      in srgb,
+      var(--vscode-focusBorder, #a9b6ff) 55%,
+      var(--storage-text)
+    );
     --storage-selected: color-mix(
       in srgb,
       var(--storage-accent) 14%,
@@ -203,7 +228,7 @@
     line-height: 18px;
     flex: 0 0 auto;
   }
-  .storage-panel :global(input[type='checkbox']) {
+  .storage-panel :global(input[type="checkbox"]) {
     min-height: 0;
     width: 14px;
     height: 14px;

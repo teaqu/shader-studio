@@ -13,3 +13,11 @@ export function selectStorageField(scope: string, buffer: string, field: string)
   const view = getStorageView(scope);
   views[scope] = { ...view, fields: { ...view.fields, [buffer]: field } };
 }
+
+let pendingForms = $state<Record<string, string>>({});
+export function getPendingStorageForm(scope: string): string {
+  return pendingForms[scope] ?? '';
+}
+export function setPendingStorageForm(scope: string, form: string): void {
+  pendingForms[scope] = form;
+}

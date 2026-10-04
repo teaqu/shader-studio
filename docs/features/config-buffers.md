@@ -97,6 +97,10 @@ When a 3D geometry type is selected, a **Vertex shader** section appears below t
 
 The **Rendering** section below it sets the pass's **Blend** mode, and for every geometry but fullscreen its **Depth test**, **Depth write**, **Compare** and **Cull**. See [Render settings](vertex-shaders.md#render-settings).
 
+## GPU Storage
+
+The **Storage** tab opens a workspace with a buffer list and **Settings** / **Inspect** tabs. Apply pending settings from the header or below the form. See [GPU Storage](storage.md) for layouts, binary initial data, resets and read-only inspection.
+
 ## Compute Passes
 
 Use **+ Compute** to add a compute pass, then select its `.slang` or `.wgsl` file.

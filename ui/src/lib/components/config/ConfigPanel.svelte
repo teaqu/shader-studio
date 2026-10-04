@@ -793,7 +793,7 @@
           onReset={onResetStorage}
           scope={shaderPath}
           {language}
-          passes={Object.entries(config?.passes ?? {}).filter(([name, pass]) => name !== 'common' && !!pass).map(([name, pass]) => ({ name, compute: !!pass && 'type' in pass && pass.type === 'compute' }))}
+          passes={Object.entries(config?.passes ?? {}).filter(([name, pass]) => name !== 'common' && !!pass).map(([name, pass]) => ({ name, compute: !!pass && 'type' in pass && pass.type === 'compute', dispatchOnce: !!pass && 'type' in pass && pass.type === 'compute' && !!pass.dispatchOnce }))}
         />
       {:else if activeTab === "Image"}
         <BufferConfig
