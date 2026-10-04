@@ -1,6 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { inventory, assertPartition, assertExpectedEnvironments, discover } from './e2e-inventory.mjs';
+
+test('the checked-in environment manifest covers every discovered extension test', () => {
+  const cases = discover('extension/e2e/pw/playwright.config.mjs');
+  const expected = JSON.parse(readFileSync(new URL('../../extension/e2e/pw/expected-environments.json', import.meta.url), 'utf8'));
+  assertExpectedEnvironments(cases, expected);
+});
 
 test('inventory preserves nested titles, source references, backend tags and project repetitions', () => {
   const cases = inventory({ suites: [{ title: 'file', suites: [{ title: 'language', specs: [{

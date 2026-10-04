@@ -1,3 +1,4 @@
+import { audioLoadWarning, liveInputPaths, normalizeLiveInputs, SCREEN_PATH, SYSTEM_AUDIO_PATH } from "../util/LiveInputConfig";
 import type { ShaderCompiler, ChannelSamplerType } from "./ShaderCompiler";
 import type { ResourceManager } from "../resources/ResourceManager";
 import { ShaderErrorFormatter } from "../util/ShaderErrorFormatter";
@@ -197,7 +198,7 @@ export class ShaderPipeline {
           name: passName,
           shaderSrc,
           vertexSrc: buffers[`${VERTEX_SOURCE_PREFIX}${passName}`],
-          inputs: pass?.inputs ?? {},
+          inputs: normalizeLiveInputs(pass?.inputs ?? {}),
           geometry: resolvePassGeometry(pass && "geometry" in pass ? pass : undefined),
           ...resolveVerticesDraw(pass && "geometry" in pass ? pass : undefined),
           ...resolveInstanceDraw(pass && "geometry" in pass ? pass : undefined),
@@ -420,7 +421,11 @@ export class ShaderPipeline {
     } else if (appliesReset) {
       this.resourceManager.cleanupAllExceptMedia();
     } else if (reloadsStructure) {
-      this.resourceManager.cleanup();
+      const retainedLiveInputs = liveInputPaths(nextPasses.map(pass => pass.inputs));
+      this.resourceManager.cleanup(
+        retainedLiveInputs.has(SYSTEM_AUDIO_PATH),
+        retainedLiveInputs.has(SCREEN_PATH),
+      );
     }
     this.cleanupShaders(this.passShaders);
 
@@ -453,6 +458,7 @@ export class ShaderPipeline {
 
   private async updateResources(): Promise<string[] | null> {
     const warnings: string[] = [];
+    this.resourceManager.retainLiveInputs?.(liveInputPaths(this.passes.map(pass => pass.inputs)));
     for (const pass of this.passes) {
       for (const key of Object.keys(pass.inputs)) {
         const input = pass.inputs[key];
@@ -509,7 +515,7 @@ export class ShaderPipeline {
             if (this.cleanupLateResources()) {
               return null;
             }
-            warnings.push(`Audio loading failed: ${input.path}`);
+            warnings.push(audioLoadWarning(input.path, error));
           }
         }
       }
