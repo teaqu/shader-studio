@@ -730,6 +730,31 @@
     "environment": "gpu"
   },
   {
+    "id": "5265205325de056db891-00b6a2597cc0c74c6875:",
+    "title": "wgsl-step-trace.e2e.mjs › starts a GPU recording from the inspected pixel and steps it in the shader editor @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "5265205325de056db891-cdb0efeb6d1ebe0e7403:",
+    "title": "wgsl-step-trace.e2e.mjs › launches explicit uniforms and steps else-if with unavailable aggregate values @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "5265205325de056db891-27778972d09b474e61b6:",
+    "title": "wgsl-step-trace.e2e.mjs › traces an installed WGSL Image pass with Common and a named texture @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "5265205325de056db891-115068b44556a598ccbf:",
+    "title": "wgsl-step-trace.e2e.mjs › selects a WGSL compute target and traces its chosen invocation @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "5265205325de056db891-6b1187bf623529922598:",
+    "title": "wgsl-step-trace.e2e.mjs › selects a WGSL vertex replay target and exposes its recorded local @gpu",
+    "environment": "gpu"
+  },
+  {
     "id": "51f5e0fd5362ee469e98-13c7a6591ace806f7184:",
     "title": "wgsl-textmate-scopes.e2e.mjs › WGSL TextMate scopes in VS Code › scopes generic bitcast calls and xyzw swizzles in the native inspector",
     "environment": "non-gpu"
