@@ -9,6 +9,8 @@ import { ConfigPathConverter } from '../../app/transport/ConfigPathConverter';
 import { Logger } from '../../app/services/Logger';
 import { ScriptBundler } from '../../app/ScriptBundler';
 import { ScriptEvaluator } from '../../app/ScriptEvaluator';
+import { ThumbnailCache } from '../../app/ThumbnailCache';
+import { SHADER_EXPLORER_REFRESH_DELAY_MS, SHADER_EXPLORER_WATCH_GLOB } from '../../app/ShaderExplorerBackend';
 
 suite('ShaderExplorerProvider Test Suite', () => {
   let provider: ShaderExplorerProvider;
@@ -1679,13 +1681,13 @@ suite('ShaderExplorerProvider Test Suite', () => {
         type: 'saveThumbnail',
         path: '/test/shader.glsl',
         thumbnail: 'data:image/png;base64,...',
-        modifiedTime: 1000
+        thumbnailVersion: 1000
       });
 
       assert.ok(true, 'Should handle saveThumbnail without error');
     });
 
-    test('should handle saveThumbnail with missing modifiedTime', async () => {
+    test('should handle saveThumbnail with missing thumbnailVersion', async () => {
       sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
       const messageHandler = setupMessageHandler(mockPanel);
 
@@ -1695,7 +1697,23 @@ suite('ShaderExplorerProvider Test Suite', () => {
         thumbnail: 'data:image/png;base64,...'
       });
 
-      assert.ok(true, 'Should handle missing modifiedTime');
+      assert.ok(true, 'Should handle missing thumbnailVersion');
+    });
+
+    test('should key the saved thumbnail by thumbnailVersion', async () => {
+      const saveStub = sandbox.stub(ThumbnailCache.prototype, 'saveThumbnail').returns(true);
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      const messageHandler = setupMessageHandler(mockPanel);
+
+      await messageHandler({
+        type: 'saveThumbnail',
+        path: '/test/shader.glsl',
+        thumbnail: 'data:image/png;base64,abc',
+        modifiedTime: 1,
+        thumbnailVersion: 4_000,
+      });
+
+      assert.ok(saveStub.calledOnceWithExactly('/test/shader.glsl', 'data:image/png;base64,abc', 4_000));
     });
   });
 
@@ -2171,6 +2189,224 @@ suite('ShaderExplorerProvider Test Suite', () => {
       // Should not throw
       await messageHandler({});
       assert.ok(true, 'Should handle undefined message type');
+    });
+  });
+
+  suite('File watching', () => {
+    type FileEventHandler = (uri: vscode.Uri) => void;
+    interface FakeWatcher {
+      create: FileEventHandler[];
+      change: FileEventHandler[];
+      delete: FileEventHandler[];
+      dispose: sinon.SinonStub;
+    }
+
+    let watcher: FakeWatcher;
+    let createWatcherStub: sinon.SinonStub;
+    let clock: sinon.SinonFakeTimers;
+    let findFilesStub: sinon.SinonStub;
+    let statMtimes: Record<string, number>;
+
+    const shaderPath = '/workspace/shaders/main.glsl';
+    const configPath = '/workspace/shaders/main.sha.json';
+
+    setup(() => {
+      const fs = require('fs');
+      watcher = { create: [], change: [], delete: [], dispose: sandbox.stub() };
+      createWatcherStub = sandbox.stub(vscode.workspace, 'createFileSystemWatcher').callsFake(() => ({
+        onDidCreate: (handler: FileEventHandler) => {
+          watcher.create.push(handler); return { dispose: () => {} }; 
+        },
+        onDidChange: (handler: FileEventHandler) => {
+          watcher.change.push(handler); return { dispose: () => {} }; 
+        },
+        onDidDelete: (handler: FileEventHandler) => {
+          watcher.delete.push(handler); return { dispose: () => {} }; 
+        },
+        dispose: watcher.dispose,
+      }) as unknown as vscode.FileSystemWatcher);
+      sandbox.stub(vscode.workspace, 'workspaceFolders').value([{ uri: vscode.Uri.file('/workspace') }]);
+      findFilesStub = sandbox.stub(vscode.workspace, 'findFiles').resolves([vscode.Uri.file(shaderPath)]);
+      statMtimes = { [shaderPath]: 1_000 };
+      sandbox.stub(fs, 'statSync').callsFake((...args: unknown[]) => {
+        const mtimeMs = statMtimes[args[0] as string];
+        if (mtimeMs === undefined) {
+          throw new Error(`ENOENT: ${args[0]}`);
+        }
+        return { mtimeMs, birthtimeMs: 500 };
+      });
+      existsSyncStub.callsFake((filePath: string) => (
+        filePath.endsWith('.sha.json') ? filePath in statMtimes : !filePath.includes('index.html')
+      ));
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      // Real git runs child processes the fake clock cannot settle.
+      provider = new ShaderExplorerProvider(mockContext, {
+        getMetadataForWorkspace: async () => null,
+        clearCache: () => {},
+      });
+      clock = sandbox.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    });
+
+    function shadersUpdates(): any[] {
+      return postMessageSpy.getCalls()
+        .map(call => call.args[0])
+        .filter(message => message.type === 'shadersUpdate');
+    }
+
+    function useConfig(config: unknown, mtime: number): void {
+      statMtimes[configPath] = mtime;
+      readFileSyncStub.callsFake((filePath: string) => {
+        if (filePath === configPath) {
+          return JSON.stringify(config);
+        }
+        if (filePath.includes('index.html')) {
+          return '<html><head></head><body></body></html>';
+        }
+        return 'void mainImage(out vec4 color, in vec2 coord) { color = vec4(1.0); }';
+      });
+    }
+
+    async function settleRefresh(): Promise<void> {
+      await clock.tickAsync(SHADER_EXPLORER_REFRESH_DELAY_MS);
+      // Let the list scan's awaited filesystem and git calls finish.
+      for (let i = 0; i < 20; i++) {
+        await Promise.resolve();
+      }
+    }
+
+    test('watches shader sources and configs in the workspace', () => {
+      provider.show();
+
+      assert.ok(createWatcherStub.calledOnceWithExactly(SHADER_EXPLORER_WATCH_GLOB));
+      assert.strictEqual(SHADER_EXPLORER_WATCH_GLOB, '**/*.{glsl,frag,vert,slang,wgsl,sha.json}');
+      assert.strictEqual(watcher.create.length, 1);
+      assert.strictEqual(watcher.change.length, 1);
+      assert.strictEqual(watcher.delete.length, 1);
+    });
+
+    test('pushes the shader list once after a burst of file events', async () => {
+      provider.show();
+
+      watcher.create[0](vscode.Uri.file('/workspace/shaders/new.glsl'));
+      watcher.change[0](vscode.Uri.file(shaderPath));
+      await clock.tickAsync(SHADER_EXPLORER_REFRESH_DELAY_MS - 1);
+      watcher.delete[0](vscode.Uri.file('/workspace/shaders/old.glsl'));
+      await clock.tickAsync(SHADER_EXPLORER_REFRESH_DELAY_MS - 1);
+      assert.strictEqual(shadersUpdates().length, 0, 'Each event restarts the debounce');
+
+      await settleRefresh();
+
+      assert.strictEqual(shadersUpdates().length, 1);
+      assert.strictEqual(findFilesStub.callCount, 1);
+      assert.strictEqual(shadersUpdates()[0].shaders[0].path, shaderPath);
+    });
+
+    test('ignores file events inside node_modules', async () => {
+      provider.show();
+
+      watcher.change[0](vscode.Uri.file('/workspace/node_modules/pkg/shader.glsl'));
+      await settleRefresh();
+
+      assert.strictEqual(shadersUpdates().length, 0);
+    });
+
+    test('logs instead of throwing when a watcher refresh fails', async () => {
+      provider.show();
+      findFilesStub.rejects(new Error('scan failed'));
+
+      watcher.change[0](vscode.Uri.file(shaderPath));
+      await settleRefresh();
+
+      assert.strictEqual(shadersUpdates().length, 0);
+      assert.ok(loggerErrorStub.calledWithMatch('Failed to refresh shader list after file change'));
+    });
+
+    test('stops watching and drops pending refreshes when the explorer closes', async () => {
+      let onDispose: (() => void) | undefined;
+      mockPanel.onDidDispose = (callback: () => void) => {
+        onDispose = callback; return { dispose: () => {} }; 
+      };
+      provider.show();
+
+      watcher.change[0](vscode.Uri.file(shaderPath));
+      onDispose!();
+      await settleRefresh();
+
+      assert.ok(watcher.dispose.calledOnce);
+      assert.strictEqual(shadersUpdates().length, 0);
+    });
+
+    test('publishes only the newest of overlapping list scans', async () => {
+      let releaseFirstScan!: (uris: vscode.Uri[]) => void;
+      findFilesStub.onFirstCall().returns(new Promise(resolve => {
+        releaseFirstScan = resolve; 
+      }));
+      findFilesStub.onSecondCall().resolves([vscode.Uri.file(shaderPath)]);
+      const messageHandler = setupMessageHandler(mockPanel);
+
+      const firstScan = messageHandler({ type: 'requestShaders' });
+      await messageHandler({ type: 'requestShaders' });
+      releaseFirstScan([]);
+      await firstScan;
+
+      assert.strictEqual(shadersUpdates().length, 1);
+      assert.strictEqual(shadersUpdates()[0].shaders.length, 1);
+    });
+
+    test('versions thumbnails by the newest shader, config and pass source', async () => {
+      useConfig({
+        version: '1.0',
+        passes: {
+          Image: { vertex: 'main.vert' },
+          BufferA: { path: 'buffer-a.glsl' },
+          BufferB: { path: '@/shared/buffer-b.glsl' },
+          Missing: { path: 'missing.glsl' },
+          Broken: null,
+        },
+      }, 1_500);
+      statMtimes['/workspace/shaders/main.vert'] = 1_200;
+      statMtimes['/workspace/shaders/buffer-a.glsl'] = 3_000;
+      statMtimes['/workspace/shared/buffer-b.glsl'] = 2_000;
+      (vscode.workspace.getWorkspaceFolder as sinon.SinonStub).returns({ uri: vscode.Uri.file('/workspace') } as vscode.WorkspaceFolder);
+      const messageHandler = setupMessageHandler(mockPanel);
+
+      await messageHandler({ type: 'requestShaders' });
+
+      const shader = shadersUpdates()[0].shaders[0];
+      assert.strictEqual(shader.modifiedTime, 1_000);
+      assert.strictEqual(shader.thumbnailVersion, 3_000);
+    });
+
+    test('uses the shader mtime when the config cannot be parsed or has no passes', async () => {
+      const messageHandler = setupMessageHandler(mockPanel);
+
+      useConfig({ version: '1.0' }, 900);
+      await messageHandler({ type: 'requestShaders' });
+      assert.strictEqual(shadersUpdates()[0].shaders[0].thumbnailVersion, 1_000);
+
+      statMtimes[configPath] = 4_000;
+      readFileSyncStub.callsFake((filePath: string) => (
+        filePath === configPath ? '{ not json' : 'void mainImage(out vec4 color, in vec2 coord) { color = vec4(1.0); }'
+      ));
+      await messageHandler({ type: 'requestShaders' });
+      assert.strictEqual(shadersUpdates()[1].shaders[0].thumbnailVersion, 4_000, 'The config itself still counts');
+    });
+
+    test('looks up and prunes cached thumbnails by thumbnail version', async () => {
+      useConfig({ version: '1.0', passes: { BufferA: { path: 'buffer-a.glsl' } } }, 1_000);
+      statMtimes['/workspace/shaders/buffer-a.glsl'] = 5_000;
+      const getStub = sandbox.stub(ThumbnailCache.prototype, 'getThumbnail').returns('data:image/png;base64,cached');
+      const pruneStub = sandbox.stub(ThumbnailCache.prototype, 'pruneCache').resolves();
+      const messageHandler = setupMessageHandler(mockPanel);
+
+      await messageHandler({ type: 'requestShaders' });
+
+      assert.ok(getStub.calledOnceWithExactly(shaderPath, 5_000));
+      assert.deepStrictEqual(
+        pruneStub.firstCall.args[0].map((shader: { path: string; thumbnailVersion?: number }) => [shader.path, shader.thumbnailVersion]),
+        [[shaderPath, 5_000]],
+      );
+      assert.strictEqual(shadersUpdates()[0].shaders[0].cachedThumbnail, 'data:image/png;base64,cached');
     });
   });
 });
