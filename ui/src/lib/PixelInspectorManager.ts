@@ -4,6 +4,8 @@ import type { TimeManager } from '../../../rendering/src/util/TimeManager';
 import type { PixelInspectorState } from './types/PixelInspectorState';
 
 const READ_INTERVAL_MS = 1000 / 30;
+/** A second tap this close (CSS px) to the pin reads as "tap the pin". */
+const TOUCH_UNPIN_RADIUS = 16;
 const EMPTY_SNAPSHOT = { pixelRGB: null, fragCoord: null, canvasPosition: null, region: null } as const;
 
 export class PixelInspectorManager {
@@ -86,6 +88,36 @@ export class PixelInspectorManager {
       return;
     }
     this.state.isLocked = !this.state.isLocked;
+    this.notifyStateChange();
+  }
+
+  /**
+   * Touch has no hover, so a tap is the whole gesture: it pins the tapped
+   * pixel, a tap elsewhere moves the pin, and tapping the pin removes it.
+   */
+  public handleTouchTap(clientX: number, clientY: number): void {
+    if (!this.state.isActive || !this.glCanvas) {
+      return;
+    }
+    if (this.state.isLocked && Math.hypot(clientX - this.state.mouseX, clientY - this.state.mouseY) <= TOUCH_UNPIN_RADIUS) {
+      this.state.isLocked = false;
+      this.desiredCanvasPosition = null;
+      this.invalidatePending();
+      this.clearSnapshot();
+      this.notifyStateChange();
+      return;
+    }
+    const rect = this.glCanvas.getBoundingClientRect();
+    const canvasX = ((clientX - rect.left) / rect.width) * this.glCanvas.width;
+    const canvasY = ((clientY - rect.top) / rect.height) * this.glCanvas.height;
+    if (!(canvasX >= 0 && canvasX < this.glCanvas.width && canvasY >= 0 && canvasY < this.glCanvas.height)) {
+      return;
+    }
+    this.state.mouseX = clientX;
+    this.state.mouseY = clientY;
+    this.desiredCanvasPosition = { x: Math.floor(canvasX), y: Math.floor(canvasY) };
+    this.state.isLocked = true;
+    this.lastRequestTime = -Infinity;
     this.notifyStateChange();
   }
 
