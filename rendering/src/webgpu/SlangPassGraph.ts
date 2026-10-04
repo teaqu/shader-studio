@@ -1,4 +1,4 @@
-import type { ComputePass, ConfigInput, RenderPassSettings, ShaderConfig, ShaderLanguageId } from "@shader-studio/types";
+import type { ComputePass, ConfigInput, ShaderConfig, ShaderLanguageId } from "@shader-studio/types";
 import { vertexPassKey } from "@shader-studio/types";
 import type {
   DispatchSpec,

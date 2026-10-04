@@ -641,7 +641,7 @@ describe("WebGPUVariableCapturer", () => {
       },
     });
 
-    await expect(capturer.issueCaptureGrid([{ ...captures[0], debugPlan: { nativeRender: { fragmentEntryPoint: "sceneFragment", output: 0 } } }], uniforms, 8, 4)).resolves.toBe(0);
+    await expect(capturer.issueCaptureGrid([{ ...captures[0], debugPlan: { workspaceHash: "allocation-failure", rootUri: "/image.wgsl", selectedSourceUri: "/image.wgsl", files: [], captureSlots: [], executionMarkerSlot: 0, nativeRender: { fragmentEntryPoint: "sceneFragment", output: 0 } } }], uniforms, 8, 4)).resolves.toBe(0);
     expect(destroyChannels).toHaveBeenCalledOnce();
     expect(gpu.createdBuffers[0].destroy).toHaveBeenCalledOnce();
     expect(gpu.createdBuffers[1].destroy).toHaveBeenCalledOnce();
