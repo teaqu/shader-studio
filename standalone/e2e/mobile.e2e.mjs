@@ -1,19 +1,45 @@
 import { expect, test } from '@playwright/test';
 import { readWorkspaceFiles } from './workspace-store.mjs';
 
-test('preview and explorer recover minimum widths after repeated window resizing', async ({ page }) => {
+for (const [explorerWidth, previewWidth] of [[180, 280], [350, 700]]) {
+test(`preview and explorer keep user widths ${explorerWidth}/${previewWidth} while the editor absorbs window resizing`, async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 900 });
   await page.goto('/');
   const explorer = page.getByTestId('web-shader-explorer');
   const preview = page.getByTestId('web-preview');
+  const editor = page.getByTestId('web-editor');
   await expect(explorer).toBeVisible();
+  const dragEdge = async (panel, edge, targetWidth) => {
+    const box = await panel.boundingBox();
+    const x = edge === 'right' ? box.x + box.width : box.x;
+    const change = edge === 'right' ? targetWidth - box.width : box.width - targetWidth;
+    await page.mouse.move(x, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(x + change, box.y + box.height / 2, { steps: 10 });
+    await page.mouse.up();
+  };
+  await dragEdge(explorer, 'right', explorerWidth);
+  await expect.poll(async () => Math.abs((await explorer.boundingBox()).width - explorerWidth)).toBeLessThan(4);
+  await dragEdge(preview, 'left', previewWidth);
+  await expect.poll(async () => Math.abs((await preview.boundingBox()).width - previewWidth)).toBeLessThan(4);
+  const wanted = { explorer: (await explorer.boundingBox()).width, preview: (await preview.boundingBox()).width };
   const expectWidths = async () => {
-    await expect.poll(async () => (await explorer.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(220);
-    await expect.poll(async () => (await preview.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(320);
+    await expect.poll(async () => Math.abs((await explorer.boundingBox()).width - wanted.explorer)).toBeLessThan(4);
+    await expect.poll(async () => Math.abs((await preview.boundingBox()).width - wanted.preview)).toBeLessThan(4);
   };
   for (let cycle = 0; cycle < 3; cycle++) {
     await page.setViewportSize({ width: 800, height: 700 });
+      if (explorerWidth + previewWidth < 692) {
+        await expectWidths();
+        await expect.poll(async () => Math.abs((await editor.boundingBox()).width - (800 - wanted.explorer - wanted.preview))).toBeLessThan(4);
+      } else {
+        await expect.poll(async () => (await preview.boundingBox()).width).toBeLessThan(wanted.preview);
+        await expect.poll(async () => (await editor.boundingBox()).width).toBeLessThan(150);
+    }
+    const narrowEditorWidth = (await editor.boundingBox()).width;
+    await page.setViewportSize({ width: 2200, height: 900 });
     await expectWidths();
+      await expect.poll(async () => (await editor.boundingBox()).width).toBeGreaterThan(narrowEditorWidth + 900);
     await page.setViewportSize({ width: 390, height: 780 });
     await expect(page.getByRole('navigation', { name: 'Workspace panels' })).toBeVisible();
     await page.setViewportSize({ width: 1600, height: 900 });
@@ -23,7 +49,7 @@ test('preview and explorer recover minimum widths after repeated window resizing
   await page.reload();
   await expectWidths();
 });
-
+}
 test('phone shell preserves the selected shader across Explorer, Preview, Editor, and Tools', async ({ page }) => {
   await page.goto('/');
   const workspaceNav = page.getByRole('navigation', { name: 'Workspace panels' });

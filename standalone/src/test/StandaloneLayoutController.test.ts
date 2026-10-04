@@ -107,18 +107,19 @@ describe('StandaloneLayoutController', () => {
     storage = createStorage();
   });
 
-  it('keeps useful minimum widths for new and reopened preview and explorer panels', () => {
+  it('allows user widths without hard minimums for new and reopened panels', () => {
     const controller = new StandaloneLayoutController(api, storage);
     controller.initialize();
-    for (const [id, minimumWidth] of [['explorer', 220], ['preview', 320]] as const) {
-      expect(api.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id, minimumWidth }));
+    for (const id of ['explorer', 'preview'] as const) {
+      expect(api.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id }));
       api.remove(id);
       controller.showPanel(id);
-      expect(api.addPanel).toHaveBeenLastCalledWith(expect.objectContaining({ id, minimumWidth }));
+      expect(api.addPanel).toHaveBeenLastCalledWith(expect.objectContaining({ id }));
+      expect(vi.mocked(api.addPanel).mock.calls.at(-1)?.[0]).not.toHaveProperty('minimumWidth');
     }
   });
 
-  it('repairs minimum widths in restored layouts without resetting their arrangement', () => {
+  it('removes obsolete hard minimums without resetting saved layouts', () => {
     const saved = { panels: {
       preview: { contentComponent: 'preview', minimumWidth: 40 },
       explorer: { contentComponent: 'explorer' },
@@ -128,17 +129,17 @@ describe('StandaloneLayoutController', () => {
     new StandaloneLayoutController(api, storage).initialize();
     expect(api.fromJSON).toHaveBeenCalledWith({ ...saved, panels: {
       ...saved.panels,
-      explorer: { ...saved.panels.explorer, minimumWidth: 220 },
-      preview: { ...saved.panels.preview, minimumWidth: 320 },
+      explorer: { ...saved.panels.explorer },
+      preview: { contentComponent: 'preview' },
     } });
     expect(api.addPanel).not.toHaveBeenCalled();
   });
 
-  it('preserves a stricter saved minimum and leaves missing panels closed', () => {
+  it('removes old minimums and leaves missing panels closed', () => {
     const saved = { panels: { preview: { contentComponent: 'preview', minimumWidth: 480 } } };
     storage = createStorage({ [STANDALONE_LAYOUT_STORAGE_KEY]: JSON.stringify(saved) });
     new StandaloneLayoutController(api, storage).initialize();
-    expect(api.fromJSON).toHaveBeenCalledWith(saved);
+    expect(api.fromJSON).toHaveBeenCalledWith({ panels: { preview: { contentComponent: 'preview' } } });
     expect(api.addPanel).not.toHaveBeenCalled();
   });
   it('creates the explorer, editor, and preview default outer layout', () => {
@@ -216,8 +217,8 @@ describe('StandaloneLayoutController', () => {
         ],
       },
       panels: {
-        preview: { id: 'preview', contentComponent: 'preview', title: 'Preview', minimumWidth: 320 },
-        explorer: { ...saved.panels.explorer, minimumWidth: 220 },
+        preview: { id: 'preview', contentComponent: 'preview', title: 'Preview' },
+        explorer: { ...saved.panels.explorer },
         editor: saved.panels.editor,
         config: saved.panels.config,
         debug: saved.panels.debug,
@@ -237,8 +238,8 @@ describe('StandaloneLayoutController', () => {
     new StandaloneLayoutController(api, storage).initialize();
     expect(api.fromJSON).toHaveBeenCalledWith({ ...saved, panels: {
       ...saved.panels,
-      preview: { ...saved.panels.preview, minimumWidth: 320 },
-      explorer: { ...saved.panels.explorer, minimumWidth: 220 },
+      preview: { contentComponent: 'preview' },
+      explorer: { ...saved.panels.explorer },
     } });
     expect(api.addPanel).not.toHaveBeenCalled();
   });

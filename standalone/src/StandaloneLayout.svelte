@@ -13,6 +13,7 @@
   } from 'dockview-core';
   import 'dockview-core/dist/styles/dockview.css';
   import { StandaloneLayoutController, type StandalonePanelId } from './StandaloneLayoutController';
+  import { StandalonePanelSizing } from './StandalonePanelSizing';
   import { getViewerSession } from '@shader-studio/ui/lib/state/viewerSession.svelte';
   import EditorPane from './EditorPane.svelte';
   import type { WebTransport } from './WebTransport';
@@ -43,6 +44,7 @@
   let previewSource: HTMLElement;
   let controller = $state<StandaloneLayoutController | null>(null);
   let dockviewApi: DockviewApi | null = null;
+  let panelSizing: StandalonePanelSizing | null = null;
   let dropDisposable: DockviewIDisposable | null = null;
   let removeViewportListener: (() => void) | null = null;
   let activeMobileTool = $state<HostedPanelId>('config');
@@ -59,14 +61,17 @@
     }
     if (!mobileViewport) {
       controller.restoreDesktopPanels();
+      panelSizing?.refresh();
       return;
     }
     if (mobilePanel === 'tools') {
       activeMobileTool = hostedPanels.getLastSelectedTool();
       controller.showMobileDockviewPanel(hostedPanels.showLastSelectedTool());
+      panelSizing?.refresh();
       return;
     }
     controller.showMobilePanel(mobilePanel);
+    panelSizing?.refresh();
   });
 
   const sources = new Map<StandalonePanelId, HTMLElement>();
@@ -124,13 +129,17 @@
         : new StableSourceRenderer(options.name as StandalonePanelId),
       theme: { ...themeVisualStudio, name: 'shader-studio-standalone', className: 'shader-studio-standalone-theme' },
       disableFloatingGroups: true,
+      disableAutoResizing: true,
     });
     dropDisposable = dockviewApi.onWillDrop((event: DockviewWillDropEvent) => {
       if (event.getData()?.viewId !== dockviewApi?.id) {
         event.preventDefault();
       }
     });
-    hostedPanels.connect(dockviewApi, () => controller?.resetLayout());
+    hostedPanels.connect(dockviewApi, () => {
+      controller?.resetLayout();
+      panelSizing?.reset();
+    });
     controller = new StandaloneLayoutController(dockviewApi, undefined, (path) => {
       transport?.getShaderExplorerHostApi().postMessage({ type: 'activateShader', path });
     });
@@ -138,6 +147,7 @@
     dockviewApi.layout(dockviewElement.clientWidth, dockviewElement.clientHeight);
     controller.initialize();
     hostedPanels.restoreVisiblePanels();
+    panelSizing = new StandalonePanelSizing(dockviewApi, dockviewElement, isMobileViewport);
 
     const media = window.matchMedia?.('(max-width: 767px)');
     if (!media) {
@@ -153,6 +163,8 @@
   onDestroy(() => {
     removeViewportListener?.();
     removeViewportListener = null;
+    panelSizing?.dispose();
+    panelSizing = null;
     hostedPanels.dispose();
     controller?.dispose();
     controller = null;
@@ -184,6 +196,7 @@
 
   export function resetLayout(): void {
     hostedPanels.resetLayout(() => controller?.resetLayout());
+    panelSizing?.reset();
   }
 
   /** Selects the phone shell destination without altering the desktop layout. */
