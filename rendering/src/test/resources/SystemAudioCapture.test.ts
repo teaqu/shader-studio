@@ -32,6 +32,30 @@ function makeStream({ audio = 1, video = 1 } = {}) {
 }
 
 describe("SystemAudioCapture", () => {
+  it.each([
+    [undefined, undefined, 'secure localhost'],
+    [{}, undefined, 'cannot share'],
+    [{}, 'default', 'cannot access audio input'],
+  ] as const)('explains missing browser capture APIs', async (mediaDevices, device, warning) => {
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: mediaDevices });
+    await expect(capture.start(device)).resolves.toContain(warning);
+  });
+
+  it.each([
+    [undefined, 'SecurityError', 'cancelled or denied'],
+    ['usb-mic', 'NotAllowedError', 'permission was denied'],
+    ['usb-mic', 'SecurityError', 'permission was denied'],
+    ['usb-mic', 'NotFoundError', 'was not found'],
+    [undefined, 'NotReadableError', 'sharing could not start'],
+    ['usb-mic', 'NotReadableError', 'device capture could not start'],
+    [undefined, undefined, 'sharing could not start'],
+  ] as const)('explains capture rejection %s/%s', async (device, name, warning) => {
+    const error = name ? new DOMException('failed', name) : new Error('picker failed');
+    getDisplayMedia.mockRejectedValue(error);
+    getUserMedia.mockRejectedValue(error);
+    await expect(capture.start(device)).resolves.toContain(warning);
+    expect(capture.acquire()).toBeNull();
+  });
   let capture: SystemAudioCapture;
   let getDisplayMedia: ReturnType<typeof vi.fn>;
   let getUserMedia: ReturnType<typeof vi.fn>;

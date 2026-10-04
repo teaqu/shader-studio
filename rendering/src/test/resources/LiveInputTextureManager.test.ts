@@ -39,6 +39,56 @@ function audioContext() {
 }
 
 describe("LiveInputTextureManager", () => {
+  it('rejects capture requests after cleanup without reopening device permissions', async () => {
+    manager.cleanup();
+    await expect(manager.startScreen()).resolves.toContain('no longer available');
+    await expect(manager.startSystemAudio()).resolves.toContain('no longer active');
+    await expect(manager.load('webcam')).resolves.toMatchObject({ texture: null, warning: expect.stringContaining('no longer available') });
+    expect(getUserMedia).not.toHaveBeenCalled();
+  });
+
+  it('preserves screen denial warnings and stops a picker that completes after cleanup', async () => {
+    const capture = new ScreenCapture();
+    const start = vi.spyOn(capture, 'start').mockResolvedValueOnce('Picker denied');
+    const stop = vi.spyOn(capture, 'stop');
+    const screen = new LiveInputTextureManager(textureBackend, new SystemAudioCapture(), capture);
+    await expect(screen.startScreen()).resolves.toBe('Picker denied');
+    let finish!: (value: undefined) => void;
+    start.mockImplementation(() => new Promise<undefined>(resolve => {
+      finish = resolve;
+    }));
+    const pending = screen.startScreen();
+    screen.cleanup();
+    finish(undefined);
+    await expect(pending).resolves.toContain('shader changed');
+    expect(stop).toHaveBeenCalledOnce();
+  });
+
+  it('stops system sharing when its picker completes after the shader is disposed', async () => {
+    const capture = new SystemAudioCapture();
+    let finish!: (value: undefined) => void;
+    vi.spyOn(capture, 'start').mockImplementation(() => new Promise<undefined>(resolve => {
+      finish = resolve;
+    }));
+    const stop = vi.spyOn(capture, 'stop');
+    const audio = new LiveInputTextureManager(textureBackend, capture);
+    const pending = audio.startSystemAudio();
+    audio.cleanup();
+    finish(undefined);
+    await expect(pending).resolves.toContain('shader changed');
+    expect(stop).toHaveBeenCalledOnce();
+  });
+
+  it('stops screen sharing explicitly without reopening the picker', () => {
+    const capture = new ScreenCapture();
+    const stop = vi.spyOn(capture, 'stop');
+    const start = vi.spyOn(capture, 'start');
+    const screen = new LiveInputTextureManager(textureBackend, new SystemAudioCapture(), capture);
+    screen.stopScreen();
+    expect(stop).toHaveBeenCalledOnce();
+    expect(start).not.toHaveBeenCalled();
+    screen.cleanup();
+  });
   let textureBackend: TextureBackend<Texture>;
   let manager: LiveInputTextureManager<Texture>;
   let getUserMedia: ReturnType<typeof vi.fn>;
@@ -331,6 +381,34 @@ describe("LiveInputTextureManager", () => {
     await expect(pending).resolves.toMatchObject({ texture: null, warning: expect.stringContaining("stopped") });
     expect(mockStream.track.stop).toHaveBeenCalledTimes(1);
     expect(listeners.size).toBe(0);
+  });
+
+  it.each(["loadeddata", "error"])("settles a delayed webcam frame on %s and removes its listeners", async (event) => {
+    const listeners = new Map<string, () => void>();
+    const video = {
+      muted: false, playsInline: false, autoplay: false, srcObject: null, videoWidth: 0, videoHeight: 0, style: {}, play: vi.fn().mockResolvedValue(undefined), pause: vi.fn(), remove: vi.fn(),
+      addEventListener: vi.fn((type: string, listener: () => void) => listeners.set(type, listener)), removeEventListener: vi.fn((type: string) => listeners.delete(type)),
+    };
+    vi.spyOn(document, "createElement").mockReturnValue(video as unknown as HTMLVideoElement);
+    vi.spyOn(document.body, "appendChild").mockImplementation(node => node);
+    const pending = manager.load("webcam");
+    await vi.waitFor(() => expect(listeners.has(event)).toBe(true));
+    if (event === "loadeddata") {
+      video.videoWidth = 640;
+      video.videoHeight = 480;
+    }
+    listeners.get(event)!();
+    const result = await pending;
+    expect(listeners.size).toBe(0);
+    if (event === "loadeddata") {
+      expect(result.texture).not.toBeNull();
+      expect(manager.getVideoElement()).toBe(video);
+      expect(mockStream.track.stop).not.toHaveBeenCalled();
+    } else {
+      expect(result).toMatchObject({ texture: null, warning: expect.stringContaining("did not provide a video frame") });
+      expect(mockStream.track.stop).toHaveBeenCalledOnce();
+      expect(video.remove).toHaveBeenCalledOnce();
+    }
   });
 
   it("releases granted webcam capture when autoplay is rejected", async () => {
