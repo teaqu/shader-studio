@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync } from "node:fs";
-import { dirname, extname, join, relative, resolve } from "node:path";
+import { dirname, extname, join, relative as nativeRelative, resolve, sep } from "node:path";
 import process from "node:process";
 import { parse as parseSvelte } from "svelte/compiler";
 import ts from "typescript";
@@ -7,6 +7,10 @@ import ts from "typescript";
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".mjs", ".cjs", ".svelte"]);
 const IGNORED_DIRECTORIES = new Set([".git", "node_modules", "dist", "out", "coverage", ".svelte-kit", "test", "tests", "__tests__"]);
 const PACKAGE_IMPORT = /^(@shader-studio\/[^/]+|shader-studio-ui|shader-explorer-ui|shader-studio)(\/.*)?$/;
+
+function relative(root, path) {
+  return nativeRelative(root, path).split(sep).join("/");
+}
 
 // These are architectural constraints, rather than inferred rules: package
 // manifests are allowed to express every other intentional dependency.
@@ -230,7 +234,7 @@ function resolveLocalImport(sourcePath, specifier, sourcePaths) {
 function packageForPath(path, packages, root) {
   for (const [name, { directory }] of packages) {
     const packageRoot = join(root, directory);
-    if (path === packageRoot || path.startsWith(`${packageRoot}/`)) {
+    if (path === packageRoot || path.startsWith(`${packageRoot}${sep}`)) {
       return name;
     }
   }

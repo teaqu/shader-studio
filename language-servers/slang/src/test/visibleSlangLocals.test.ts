@@ -112,6 +112,27 @@ describe("visibleSlangLocals", () => {
       { name: "gain", typeName: "float", kind: "parameter" },
     ]));
   });
+
+  it("keeps parameters visible in a native stage with a return semantic", () => {
+    const visible = visibleSlangLocals(`float4 render(uint index : SV_VertexID, float2 coord) : SV_Target0
+{
+    return float4(coord.xy, float(index), 1.0);
+}`, { line: 2, character: 18 });
+
+    expect(visible).toEqual(expect.arrayContaining([
+      { name: "index", typeName: "uint", kind: "parameter" },
+      { name: "coord", typeName: "float2", kind: "parameter" },
+    ]));
+  });
+
+  it("keeps Vulkan-location attributed semantic parameters visible for swizzles", () => {
+    const visible = visibleSlangLocals(`
+[shader("fragment")] float4 shade([[vk::location(0)]] float3 position : POSITION) : SV_Target
+{
+  return float4(position.xyz, 1.0);
+}`, { line: 3, character: 20 });
+    expect(visible).toContainEqual({ name: "position", typeName: "float3", kind: "parameter" });
+  });
 });
 
 describe("findSlangLocalAt", () => {

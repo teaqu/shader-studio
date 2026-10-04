@@ -113,6 +113,49 @@ describe('ConfigPanel', () => {
   }
 
   describe('rendering', () => {
+    it.each(['wgsl', 'slang'] as const)('uses the saved %s render-function preference through one Buffer menu item', async (language) => {
+      const config: ShaderConfig = { version: '1.0', webgpu: { defaultRenderAuthoring: 'native' }, passes: { Image: {} } };
+      const { getByRole, queryByLabelText } = render(ConfigPanel, {
+        config, language, transport: mockTransport, shaderPath: `/shader/image.${language}`,
+      });
+
+      await fireEvent.click(getByRole('button', { name: '+ New' }));
+      expect(getByRole('menuitem', { name: 'Buffer' })).toBeInTheDocument();
+      expect(queryByLabelText('New render pass authoring')).not.toBeInTheDocument();
+    });
+
+    it('discovers native Slang stages from the root source for a same-file Buffer', async () => {
+      const source = '[shader("vertex")] float4 bufferVertex(uint id : SV_VertexID) : SV_Position { return float4(0, 0, 0, 1); }\n[shader("fragment")] float4 bufferFragment() : SV_Target0 { return float4(1, 0, 0, 1); }';
+      const { getByLabelText } = render(ConfigPanel, {
+        config: { version: '1.0', passes: { Image: {}, BufferA: { path: '/shader/image.slang', entryPoints: { vertex: 'bufferVertex', fragment: 'bufferFragment' } } } },
+        language: 'slang', transport: mockTransport, shaderPath: '/shader/image.slang', shaderSource: source,
+        bufferPathMap: { BufferA: '/shader/image.slang' }, selectedBuffer: 'BufferA',
+      });
+
+      await tick();
+      expect(getByLabelText('[shader("vertex")] bufferVertex')).toBeChecked();
+      expect(getByLabelText('[shader("fragment")] bufferFragment')).toBeChecked();
+    });
+
+    it('uses the current shared source while a stale Buffer snapshot is pending', async () => {
+      const previous = [
+        '@vertex fn rasterVertex(@builtin(vertex_index) index: u32) -> @builtin(position) vec4f { return vec4f(f32(index)); }',
+        '@fragment fn rasterColor() -> @location(0) vec4f { return vec4f(1.0); }',
+      ].join('\n');
+      const current = `${previous}\n@fragment fn rasterColor2() -> @location(0) vec4f { return vec4f(0.0); }`;
+      const { getByLabelText } = render(ConfigPanel, {
+        config: { version: '1.0', passes: {
+          Image: {},
+          BufferA: { path: '/shader/image.wgsl', entryPoints: { vertex: 'rasterVertex', fragment: 'rasterColor2' } },
+        } },
+        language: 'wgsl', transport: mockTransport, shaderPath: '/shader/image.wgsl', shaderSource: current,
+        bufferPathMap: { BufferA: '/shader/image.wgsl' }, bufferSources: { BufferA: previous }, selectedBuffer: 'BufferA',
+      });
+
+      await tick();
+      expect(getByLabelText('@fragment rasterColor2')).toBeChecked();
+    });
+
     it('should render the Image tab by default', async () => {
       const { getByText } = render(ConfigPanel, {
         config: null,
@@ -931,6 +974,7 @@ describe('ConfigPanel', () => {
       });
       await tick();
 
+      await fireEvent.click(getAllByText('Change…')[0]);
       await fireEvent.click(getAllByText('Create')[0]);
 
       expect(mockManager.generateBufferPath).toHaveBeenCalledWith('ComputeA', 'slang');
@@ -941,6 +985,8 @@ describe('ConfigPanel', () => {
           suggestedPath: 'image.computea.slang',
           fileType: 'slang-compute',
           requestId: expect.any(String),
+          authoringMode: 'native',
+          passName: 'ComputeA',
         },
       });
     });
@@ -973,6 +1019,7 @@ describe('ConfigPanel', () => {
       });
       await tick();
 
+      await fireEvent.click(getAllByText('Change…')[0]);
       await fireEvent.click(getAllByText('Create')[0]);
 
       expect(mockManager.generateBufferPath).toHaveBeenCalledWith('BufferA', 'slang');
@@ -983,6 +1030,8 @@ describe('ConfigPanel', () => {
           suggestedPath: 'image.buffera.slang',
           fileType: 'slang-buffer',
           requestId: expect.any(String),
+          authoringMode: 'hooks',
+          passName: 'BufferA',
         },
       });
     });

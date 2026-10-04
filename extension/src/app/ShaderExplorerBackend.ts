@@ -16,6 +16,8 @@ import { collectSlangDependencies, resolveSlangIncludes, resolveSlangImports } f
 import { shaderLanguageForPath } from "@shader-studio/types";
 import type { ShaderConfig, ShaderLanguageId, SlangSourceModule } from "@shader-studio/types";
 import { definesMainImage } from "./ShaderEntryPoint";
+import { isConfiguredNativeRenderRoot } from "./ShaderProjectRoot";
+import { getConfigPathForShaderPath } from "./ShaderConfigPaths";
 
 interface ShaderExplorerFile {
   name: string;
@@ -731,14 +733,26 @@ export class ShaderExplorerBackend {
     const openDocument = vscode.workspace.textDocuments.find(
       (document) => path.normalize(document.uri.fsPath) === path.normalize(filePath),
     );
-    if (openDocument) {
-      return definesMainImage(openDocument.getText());
-    }
+    let source: string;
     try {
-      return definesMainImage(fs.readFileSync(filePath, "utf-8"));
+      source = openDocument?.getText() ?? fs.readFileSync(filePath, "utf-8");
     } catch {
       return false;
     }
+    if (definesMainImage(source)) {
+      return true;
+    }
+    const configPath = getConfigPathForShaderPath(filePath);
+    const configDocument = vscode.workspace.textDocuments.find((document) => document.uri.fsPath === configPath);
+    const hasSiblingConfig = Boolean(configDocument) || fs.existsSync(configPath);
+    let config: import("@shader-studio/types").ShaderConfig | null = null;
+    try {
+      config = JSON.parse(configDocument?.getText() ?? fs.readFileSync(configPath, "utf-8"));
+    } catch {
+      // Keep the native root visible so the project reports malformed config.
+    }
+    const language = shaderLanguageForPath(filePath);
+    return language !== null && isConfiguredNativeRenderRoot(source, language, config, hasSiblingConfig);
   }
 
   private async findAllShaders(): Promise<ShaderExplorerFile[]> {

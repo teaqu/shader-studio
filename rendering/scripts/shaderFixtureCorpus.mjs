@@ -166,7 +166,7 @@ function buildProject(root, configPath, shaderPath) {
 
   const rootSource = fs.readFileSync(shaderPath, "utf8");
   return {
-    name: path.relative(root, shaderPath),
+    name: path.relative(root, shaderPath).split(path.sep).join('/'),
     path: shaderPath,
     language,
     image: language === "slang" ? inlineSlangDependencies(rootSource, shaderPath) : rootSource,

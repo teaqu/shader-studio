@@ -96,6 +96,76 @@ const storageB: StorageBindingNode = {
 };
 
 describe("SlangPassPipeline", () => {
+  it("allocates a multisample resolve target for every native colour output", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Scene", width: 64, height: 64, output: "texture", outputCount: 2, geometry: "cube", channels: [],
+      entryPoints: { vertex: "vertices", fragment: "scene" },
+      renderState: { clear: [0, 0, 0, 1], blend: "none", depth: { test: true, write: true, compare: "less" }, cull: "none", samples: 4 },
+    });
+    await pass.rebuild('struct Outputs { @location(0) colour: vec4f, @location(1) data: vec4f, }\n@fragment fn scene() -> Outputs { return Outputs(); }');
+    expect(device.createRenderPipeline.mock.calls[0]![0].fragment.targets).toHaveLength(2);
+    expect(device.createTexture.mock.calls.filter(call => call[0].sampleCount === 4 && call[0].format !== "depth24plus")).toHaveLength(2);
+    expect(pass.getMsaaView(0)).not.toBeNull();
+    expect(pass.getMsaaView(1)).not.toBeNull();
+    expect(pass.getMsaaView(2)).toBeNull();
+  });
+  it("allocates and swaps every MRT attachment as one ping-pong set", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Scene", width: 64, height: 64, output: "texture", outputCount: 2,
+      geometry: "fullscreen", storage: [], channels: [],
+      entryPoints: { vertex: "vertices", fragment: "scene" },
+    });
+    const source = `struct Outputs { @location(0) colour: vec4f, @location(1) normals: vec4f, }
+@fragment fn scene() -> Outputs { return Outputs(); }`;
+
+    expect(await pass.rebuild(source)).toEqual([]);
+    expect(device.createTexture).toHaveBeenCalledTimes(4);
+    const current = pass.getCurrentOutputViews();
+    expect(current).toHaveLength(2);
+    expect(current[0]).toBe(pass.getCurrentOutputView(0));
+    expect(current[1]).toBe(pass.getCurrentOutputView(1));
+    pass.swap();
+    expect(pass.getPreviousOutputView(0)).toBe(current[0]);
+    expect(pass.getPreviousOutputView(1)).toBe(current[1]);
+    expect(device.createRenderPipeline.mock.calls[0]?.[0].fragment?.targets).toHaveLength(2);
+  });
+
+  it("rejects MRT beyond attachment limits or non-contiguous native outputs", async () => {
+    const device = fakeDevice();
+    Object.defineProperty(device, "limits", { value: { maxColorAttachments: 2, maxColorAttachmentBytesPerSample: 32 } });
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Scene", width: 64, height: 64, output: "texture", outputCount: 3,
+      geometry: "fullscreen", storage: [], channels: [], entryPoints: { vertex: "vertices", fragment: "scene" },
+    });
+    expect(await pass.rebuild(`@fragment fn scene() -> @location(0) vec4f { return vec4f(); }`))
+      .toEqual(["Scene: MRT requests 3 colour attachments but this device supports 2"]);
+
+    const malformed = new SlangPassPipeline(fakeDevice(), "bgra8unorm", {
+      name: "Scene", width: 64, height: 64, output: "texture", outputCount: 2,
+      geometry: "fullscreen", storage: [], channels: [], entryPoints: { vertex: "vertices", fragment: "scene" },
+    });
+    expect((await malformed.rebuild(`struct Outputs { @location(0) colour: vec4f, @location(2) data: vec4f, }
+@fragment fn scene() -> Outputs { return Outputs(); }`))[0]).toContain("contiguous @location(0..1)");
+  });
+
+  it("creates depth state for a fullscreen native fragment that writes frag_depth", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image", width: 64, height: 64, output: "canvas", geometry: "fullscreen", storage: [], channels: [],
+      entryPoints: { vertex: "vertices", fragment: "scene" },
+    });
+    await pass.rebuild(`struct Output { @location(0) colour: vec4f, @builtin(frag_depth) depth: f32, }
+@fragment fn scene() -> Output { return Output(); }`);
+
+    expect(device.createRenderPipeline.mock.calls[0]?.[0]).toMatchObject({
+      depthStencil: { format: "depth24plus", depthWriteEnabled: true, depthCompare: "always" },
+    });
+    expect(device.createTexture).toHaveBeenCalledTimes(1);
+    expect(pass.getDepthView()).not.toBeNull();
+  });
+
   it("allocates a 17-entry uniform ABI for a sparse slot-16 pass", async () => {
     const device = fakeDevice();
     const pass = createPass(device, {

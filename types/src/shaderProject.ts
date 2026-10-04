@@ -74,6 +74,32 @@ export function resourcesForPass(config: ShaderConfig | null, passName: string):
   return resources;
 }
 
+/** Merges authoring resources for passes that intentionally share one source.
+ * The focused pass retains its real slots; other pass inputs receive unique
+ * synthetic slots so language-service declarations remain valid. */
+export function resourcesForSharedSource(config: ShaderConfig | null, passName: string, sharedPassNames: readonly string[]): AuthoringResource[] {
+  const ordered = [passName, ...sharedPassNames.filter((name) => name !== passName)];
+  const resources: AuthoringResource[] = [];
+  const names = new Set<string>();
+  let nextSlot = -1;
+  for (const name of ordered) {
+    for (const resource of resourcesForPass(config, name)) {
+      if (resource.kind === "storage" || names.has(resource.name)) {
+        if (!names.has(resource.name)) {
+          names.add(resource.name);
+          resources.push(resource);
+        }
+        continue;
+      }
+      names.add(resource.name);
+      const slot = name === passName ? resource.slot : Math.max(nextSlot + 1, ...resources.filter((item) => item.kind !== "storage").map((item) => (item.slot ?? -1) + 1));
+      resources.push({ ...resource, slot });
+      nextSlot = Math.max(nextSlot, slot ?? -1);
+    }
+  }
+  return resources;
+}
+
 /** Path operations the shared configured-path resolver needs from its host.
  * Node hosts use `path`, the standalone virtual workspace uses posix string
  * operations, and the corpus harness uses `path` against fixture roots. */

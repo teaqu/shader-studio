@@ -8,7 +8,7 @@ import { writeWorkspaceTypeDefs } from "../WorkspaceTypeDefs";
 import { Logger } from "../services/Logger";
 import { getConfigPathForShaderPath } from "../ShaderConfigPaths";
 import type { ErrorMessage } from "@shader-studio/types";
-import { GLSL_EXTENSIONS, SCRIPT_EXTENSIONS, TEXTURE_EXTENSIONS, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, CUBEMAP_EXTENSIONS, WGSL_EXTENSIONS } from "@shader-studio/types";
+import { GLSL_EXTENSIONS, SCRIPT_EXTENSIONS, TEXTURE_EXTENSIONS, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, CUBEMAP_EXTENSIONS, WGSL_EXTENSIONS, createShaderInsertion, insertionLanguage, createNativeComputeSource, createNativeFragmentSource, shaderLanguageForPath } from "@shader-studio/types";
 
 type ResponseSender = (message: { type: string; payload: unknown }) => void;
 
@@ -30,6 +30,10 @@ function fileTypeToFilters(fileType: string): { [name: string]: string[] } {
     case 'model': return { 'GLB models': ['glb'] };
     default:         return { 'GLSL files': GLSL_EXTENSIONS };
   }
+}
+
+function nativeOutputCount(value: unknown): number {
+  return typeof value === 'number' && Number.isInteger(value) ? Math.max(1, Math.min(8, value)) : 1;
 }
 
 export class FileDialogHandler {
@@ -62,12 +66,12 @@ export class FileDialogHandler {
         title: 'Select file',
       });
       if (!result || result.length === 0) {
-        return; 
+        return;
       }
       const selectedPath = result[0].fsPath;
       const outputPath = this.resolveOutputPath(selectedPath, shaderDir);
       if (isScript && selectedPath.endsWith('.ts')) {
-        writeWorkspaceTypeDefs(this.extensionPath, true); 
+        writeWorkspaceTypeDefs(this.extensionPath, true);
       }
       respondFn({ type: 'fileSelected', payload: { path: outputPath, requestId: payload.requestId } });
     } catch (error) {
@@ -76,7 +80,7 @@ export class FileDialogHandler {
   }
 
   async handleCreateFile(
-    payload: { shaderPath: string; suggestedPath: string; fileType: string; requestId: string },
+    payload: { shaderPath: string; suggestedPath: string; fileType: string; requestId: string; authoringMode?: 'hooks' | 'native'; passName?: string; outputCount?: number; geometryType?: string; vertexSpace?: string },
     respondFn: ResponseSender,
   ): Promise<void> {
     try {
@@ -103,6 +107,8 @@ export class FileDialogHandler {
       }
       const filePath = result.fsPath;
       const outputPath = this.resolveOutputPath(filePath, shaderDir);
+      let entryPoints: { vertex?: string; fragment?: string; compute?: string } | undefined;
+      let created = false;
       if (!fs.existsSync(filePath)) {
         let template: string;
         if (isScript) {
@@ -117,6 +123,22 @@ export class FileDialogHandler {
           template = `void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {\n}\n`;
         } else if (payload.fileType === 'slang-vertex') {
           template = `void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {\n\n}\n`;
+        } else if (payload.authoringMode === 'native' && payload.fileType === 'slang-compute') {
+          const native = createNativeComputeSource('slang', '', payload.passName ?? 'Compute');
+          template = native.text;
+          entryPoints = native.entryPoints;
+        } else if (payload.authoringMode === 'native' && payload.fileType === 'wgsl-compute') {
+          const native = createNativeComputeSource('wgsl', '', payload.passName ?? 'Compute');
+          template = native.text;
+          entryPoints = native.entryPoints;
+        } else if (payload.authoringMode === 'native' && payload.fileType === 'slang-buffer') {
+          const native = createNativeFragmentSource('slang', '', payload.passName ?? 'Buffer', nativeOutputCount(payload.outputCount));
+          template = native.text.trimStart();
+          entryPoints = native.entryPoints;
+        } else if (payload.authoringMode === 'native' && payload.fileType === 'wgsl-buffer') {
+          const native = createNativeFragmentSource('wgsl', '', payload.passName ?? 'Buffer', nativeOutputCount(payload.outputCount));
+          template = native.text.trimStart();
+          entryPoints = native.entryPoints;
         } else if (payload.fileType === 'slang-compute') {
           template = `[shader("compute")]\n[numthreads(8, 8, 1)]\nvoid compute(uint3 dispatchThreadID : SV_DispatchThreadID) {\n\n}\n`;
         } else if (payload.fileType === 'wgsl-common') {
@@ -133,6 +155,7 @@ export class FileDialogHandler {
           template = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n    vec2 uv = fragCoord / iResolution.xy;\n    fragColor = vec4(uv, 0.0, 1.0);\n}\n`;
         }
         fs.writeFileSync(filePath, template, 'utf-8');
+        created = true;
         this.logger.info(`Created file: ${filePath}`);
       } else {
         this.logger.info(`File already exists: ${filePath}`);
@@ -140,9 +163,61 @@ export class FileDialogHandler {
       if (isScript && filePath.endsWith('.ts')) {
         writeWorkspaceTypeDefs(this.extensionPath, true);
       }
-      respondFn({ type: 'fileSelected', payload: { path: outputPath, requestId: payload.requestId } });
+      respondFn({ type: 'fileSelected', payload: {
+        path: outputPath,
+        requestId: payload.requestId,
+        ...(created && payload.authoringMode === 'native' && { authoringMode: 'native' }),
+        ...(entryPoints && { entryPoints }),
+      } });
     } catch (error) {
       this.logger.error(`Failed to create file: ${error}`);
+    }
+  }
+
+  async handleInsertShaderSource(
+    payload: { shaderPath: string; sourcePath?: string; fileType: string; requestId: string; authoringMode?: 'hooks' | 'native'; passName?: string; outputCount?: number; geometryType?: string },
+    respondFn: ResponseSender,
+  ): Promise<void> {
+    const fail = (error: string) => respondFn({ type: 'fileSelected', payload: { path: '', requestId: payload.requestId, error } });
+    try {
+      const language = insertionLanguage(payload.fileType);
+      const configured = payload.sourcePath || payload.shaderPath;
+      const workspaceRoot = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(payload.shaderPath))?.uri.fsPath;
+      const sourcePath = configured.startsWith('@/') && workspaceRoot
+        ? path.resolve(workspaceRoot, configured.slice(2))
+        : path.isAbsolute(configured) ? configured : path.resolve(path.dirname(payload.shaderPath), configured);
+      if (shaderLanguageForPath(sourcePath) !== language) {
+        fail('Insert source language must match the target source language.');
+        return;
+      }
+      const uri = vscode.Uri.file(sourcePath);
+      let document: vscode.TextDocument | undefined;
+      try {
+        document = await vscode.workspace.openTextDocument(uri);
+      } catch {
+        if (payload.fileType.endsWith('-vertex')) {
+          fail('Create or insert the buffer source before adding a shader stage.');
+          return;
+        }
+      }
+      const source = document?.getText() ?? '';
+      const generated = createShaderInsertion(source, { ...payload, outputCount: nativeOutputCount(payload.outputCount) });
+      if (generated.text) {
+        const edit = new vscode.WorkspaceEdit();
+        if (!document) {
+          edit.createFile(uri, { overwrite: false });
+        }
+        edit.insert(uri, document?.positionAt(source.length) ?? new vscode.Position(0, 0), generated.text);
+        if (!await vscode.workspace.applyEdit(edit)) {
+          fail('Could not insert the shader entry point.');
+          return;
+        }
+      }
+      respondFn({ type: 'fileSelected', payload: { path: sourcePath, requestId: payload.requestId,
+        authoringMode: generated.authoringMode, ...(generated.entryPoints ? { entryPoints: generated.entryPoints } : {}) } });
+    } catch (error) {
+      this.logger.error(`Failed to insert shader source: ${error}`);
+      fail(error instanceof Error ? error.message : String(error));
     }
   }
 

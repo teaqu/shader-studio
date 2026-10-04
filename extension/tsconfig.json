@@ -19,5 +19,5 @@
 	},
 	// e2e fixtures are workspace files a test drives, not extension sources -
 	// a .uniforms.ts there belongs to the fixture shader, not to this build.
-	"exclude": ["src/test", "e2e"]
+	"exclude": ["src/test", "e2e", "vitest.config.ts"]
 }

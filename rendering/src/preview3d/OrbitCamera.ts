@@ -75,6 +75,7 @@ export class OrbitCamera {
     this.distance = clamp(this.distance + delta * 0.01, MIN_DISTANCE, MAX_DISTANCE); 
   }
   reset(): void {
+    this.dragMode = null;
     this.target = [...DEFAULT_TARGET]; this.yaw = DEFAULT_YAW; this.pitch = DEFAULT_PITCH; this.distance = DEFAULT_DISTANCE; 
   }
   setInputEnabled(enabled: boolean): void {

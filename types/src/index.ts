@@ -1,4 +1,8 @@
 export * from './ShaderConfig';
+export * from './ShaderEntryPoints';
+export * from './ShaderOutputs';
+export * from './ShaderSourceTemplates';
+export * from './ShaderStageIsolation';
 export * from './MessageTypes';
 export * from './StorageInspection';
 export * from './assetExtensions';
@@ -22,3 +26,9 @@ export * from './shader-environment/SlangChannels';
 export { wgslStorageElementType } from "./wgslStorage";
 
 export { findSlangAuthoredDeclarations, type SlangAuthoredDeclaration } from "./shader-environment/SlangAuthoredDeclarations";
+
+export * from "./VertexHookInsertion";
+
+export * from "./ShaderInsertion";
+
+export { createNativeFragmentSource } from './ShaderSourceTemplates';

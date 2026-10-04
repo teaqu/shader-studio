@@ -1151,6 +1151,7 @@ describe("ShaderPipeline", () => {
         shaderSrc: buffers.BufferA,
         inputs: {},
         geometry: "fullscreen",
+        useViewerCamera: true,
         path: undefined,
         resolution: undefined,
       });
@@ -1159,6 +1160,7 @@ describe("ShaderPipeline", () => {
         shaderSrc: buffers.BufferB,
         inputs: { iChannel0: { type: "buffer", source: "BufferA" } },
         geometry: "fullscreen",
+        useViewerCamera: true,
         path: undefined,
         resolution: undefined,
       });
@@ -1185,6 +1187,7 @@ describe("ShaderPipeline", () => {
         shaderSrc: shaderCode,
         inputs: {},
         geometry: "fullscreen",
+        useViewerCamera: true,
         path: undefined,
         resolution: undefined,
       });
@@ -1193,6 +1196,7 @@ describe("ShaderPipeline", () => {
         shaderSrc: buffers.BufferA,
         inputs: {},
         geometry: "fullscreen",
+        useViewerCamera: true,
         path: undefined,
         resolution: undefined,
       });
@@ -1407,10 +1411,21 @@ describe("ShaderPipeline", () => {
       );
 
       expect(result).toEqual({ success: true });
-      expect(shaderPipeline.getPasses().map(({ name }) => name)).toEqual(["ComputeSim", "Image"]);
-      expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledTimes(2);
-      expect(mockShaderCompiler.compileShaderAsync.mock.calls[0][0]).toBe("compute source");
-      expect(mockShaderCompiler.compileShaderAsync.mock.calls[1][0]).toBe("image source");
+      expect(shaderPipeline.getPasses().map(({ name }) => name)).toEqual(["Image"]);
+      expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledTimes(1);
+      expect(mockShaderCompiler.compileShaderAsync.mock.calls[0][0]).toBe("image source");
+    });
+
+    it("rejects WebGPU-native entry points instead of ignoring them", async () => {
+      const result = await shaderPipeline.compileShaderPipeline("image source", {
+        version: "1.0",
+        passes: { Image: { entryPoints: { vertex: "mainVertex", fragment: "mainFragment" } } },
+      }, "shader.glsl");
+      expect(result).toEqual({
+        success: false,
+        errors: ["Image: native entryPoints are only supported by WebGPU"],
+      });
+      expect(mockShaderCompiler.compileShaderAsync).not.toHaveBeenCalled();
     });
 
     it("warns once when storage is configured without a Compute pass", async () => {
@@ -1495,13 +1510,10 @@ describe("ShaderPipeline", () => {
       );
 
       expect(result).toEqual({ success: true });
-      expect(shaderPipeline.getPasses().map(({ name }) => name)).toEqual(["Compute", "Flow", "Compute_splat", "Image", "ComputeLater"]);
+      expect(shaderPipeline.getPasses().map(({ name }) => name)).toEqual(["Flow", "Image"]);
       expect(mockShaderCompiler.compileShaderAsync.mock.calls.map(([source]) => source)).toEqual([
-        "compute source",
         "flow source",
-        "splat source",
         "image source",
-        "later source",
       ]);
     });
 

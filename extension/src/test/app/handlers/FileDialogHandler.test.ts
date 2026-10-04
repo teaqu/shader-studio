@@ -275,6 +275,40 @@ suite('FileDialogHandler Test Suite', () => {
   });
 
   suite('handleCreateFile', () => {
+    test('creates a native WGSL render source with selected entry points', async () => {
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(false);
+      const writeStub = sandbox.stub(fs, 'writeFileSync');
+      sandbox.stub(vscode.window, 'showSaveDialog').resolves(vscode.Uri.file('/test/buffer.wgsl'));
+
+      await handler.handleCreateFile(
+        { shaderPath: '/test/shader.wgsl', suggestedPath: 'buffer.wgsl', fileType: 'wgsl-buffer', requestId: 'native', authoringMode: 'native', passName: 'Buffer A' },
+        respondFn,
+      );
+
+      assert.doesNotMatch(writeStub.firstCall.args[1], /@vertex/);
+      assert.match(writeStub.firstCall.args[1], /@fragment\s+fn BufferAFragment/);
+      assert.deepStrictEqual(respondFn.firstCall.args[0], { type: 'fileSelected', payload: {
+        path: './buffer.wgsl', requestId: 'native', authoringMode: 'native',
+        entryPoints: { fragment: 'BufferAFragment' },
+      } });
+    });
+
+    test('creates a native Slang compute source with its selected entry point', async () => {
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(false);
+      const writeStub = sandbox.stub(fs, 'writeFileSync');
+      sandbox.stub(vscode.window, 'showSaveDialog').resolves(vscode.Uri.file('/test/simulation.slang'));
+
+      await handler.handleCreateFile(
+        { shaderPath: '/test/shader.slang', suggestedPath: 'simulation.slang', fileType: 'slang-compute', requestId: 'compute', authoringMode: 'native', passName: 'Simulation' },
+        respondFn,
+      );
+
+      assert.match(writeStub.firstCall.args[1], /void SimulationCompute/);
+      assert.deepStrictEqual(respondFn.firstCall.args[0].payload.entryPoints, { compute: 'SimulationCompute' });
+    });
+
     test('creates a new GLSL file and responds with fileSelected', async () => {
       const fs = require('fs');
       sandbox.stub(fs, 'existsSync').returns(false);
@@ -310,6 +344,20 @@ suite('FileDialogHandler Test Suite', () => {
 
       assert.ok(writeStub.notCalled);
       assert.ok(respondFn.calledOnce);
+    });
+
+    test('does not claim native entry points when the chosen file already exists', async () => {
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(true);
+      sandbox.stub(fs, 'writeFileSync');
+      sandbox.stub(vscode.window, 'showSaveDialog').resolves(vscode.Uri.file('/test/existing.wgsl'));
+
+      await handler.handleCreateFile(
+        { shaderPath: '/test/shader.wgsl', suggestedPath: 'existing.wgsl', fileType: 'wgsl-buffer', requestId: 'existing-native', authoringMode: 'native', passName: 'BufferA' },
+        respondFn,
+      );
+
+      assert.deepStrictEqual(respondFn.firstCall.args[0], { type: 'fileSelected', payload: { path: './existing.wgsl', requestId: 'existing-native' } });
     });
 
     test('does not call respondFn when save dialog is cancelled', async () => {
@@ -928,4 +976,60 @@ suite('FileDialogHandler Test Suite', () => {
       assert.deepStrictEqual(msg.payload.files, []);
     });
   });
+
+
+  suite('handleInsertShaderSource', () => {
+    test('creates the configured file when inserting a native buffer', async () => {
+      const sourcePath = vscode.Uri.file('/test/new-buffer.wgsl').fsPath;
+      sandbox.stub(vscode.workspace, 'openTextDocument').rejects(new Error('File not found'));
+      const apply = sandbox.stub(vscode.workspace, 'applyEdit').resolves(true);
+      await handler.handleInsertShaderSource({ shaderPath: vscode.Uri.file('/test/image.wgsl').fsPath,
+        sourcePath, fileType: 'wgsl-buffer', requestId: 'new-native', authoringMode: 'native', passName: 'BufferA' }, respondFn);
+      assert.ok(apply.calledOnce);
+      assert.ok(apply.firstCall.args[0].entries()[0]![1][0]!.newText.includes('BufferAFragment'));
+      assert.deepStrictEqual(respondFn.firstCall.args[0].payload, { path: sourcePath, requestId: 'new-native',
+        authoringMode: 'native', entryPoints: { fragment: 'BufferAFragment' } });
+    });
+    for (const language of ['glsl', 'slang', 'wgsl']) {
+      test(`inserts a ${language} vertex hook into the source and reuses an existing hook`, async () => {
+        const sourcePath = vscode.Uri.file(`/test/image.${language}`).fsPath;
+        let source = '// fragment source';
+        const position = new vscode.Position(0, source.length);
+        sandbox.stub(vscode.workspace, 'openTextDocument').callsFake(async () => ({
+          getText: () => source, positionAt: () => position,
+        } as unknown as vscode.TextDocument));
+        const apply = sandbox.stub(vscode.workspace, 'applyEdit').callsFake(async edit => {
+          source += edit.entries()[0]![1][0]!.newText;
+          return true;
+        });
+        await handler.handleInsertShaderSource({ shaderPath: sourcePath, fileType: `${language}-vertex`,
+          requestId: 'vertex', authoringMode: 'hooks', geometryType: 'vertices' }, respondFn);
+        assert.ok(source.includes('corners[vertexIndex % 3'));
+        assert.deepStrictEqual(respondFn.firstCall.args[0].payload, { path: sourcePath, requestId: 'vertex', authoringMode: 'hooks' });
+        await handler.handleInsertShaderSource({ shaderPath: sourcePath, fileType: `${language}-vertex`,
+          requestId: 'again', authoringMode: 'hooks' }, respondFn);
+        assert.strictEqual(apply.callCount, 1);
+      });
+    }
+    test('rejects a requested WGSL insertion into a Slang target before opening or editing it', async () => {
+      const openDocument = sandbox.stub(vscode.workspace, 'openTextDocument');
+      const applyEdit = sandbox.stub(vscode.workspace, 'applyEdit');
+      await handler.handleInsertShaderSource({ shaderPath: '/test/image.wgsl', sourcePath: '/test/shared.slang',
+        fileType: 'wgsl-buffer', requestId: 'wrong-language', authoringMode: 'native' }, respondFn);
+      assert.ok(openDocument.notCalled);
+      assert.ok(applyEdit.notCalled);
+      assert.deepStrictEqual(respondFn.firstCall.args[0], { type: 'fileSelected', payload: {
+        path: '', requestId: 'wrong-language', error: 'Insert source language must match the target source language.',
+      } });
+    });
+
+    test('rejects non-pass insert file types before editing the source', async () => {
+      const openDocument = sandbox.stub(vscode.workspace, 'openTextDocument');
+      await handler.handleInsertShaderSource({ shaderPath: '/test/image.wgsl', sourcePath: '/test/image.wgsl',
+        fileType: 'wgsl-common', requestId: 'wrong-kind', authoringMode: 'native' }, respondFn);
+      assert.ok(openDocument.notCalled);
+      assert.strictEqual(respondFn.firstCall.args[0].payload.error, 'Insert supports Buffer, Vertex, and Compute sources only.');
+    });
+  });
+
 });

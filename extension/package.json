@@ -176,6 +176,15 @@
           "default": true,
           "description": "Lock the editor group when opening a shader panel, preventing other editors from opening in it."
         },
+        "shader-studio.webgpu.defaultRenderAuthoring": {
+          "type": "string", "scope": "application", "enum": ["hooks", "native"], "enumDescriptions": ["Built-in mainImage/mainVertex hooks", "Native WGSL/Slang entry points"], "default": "hooks", "description": "Default mode for WGSL/Slang buffers and source insertion."
+        },
+        "shader-studio.webgpu.useViewerCamera": {
+          "type": "boolean",
+          "scope": "application",
+          "default": true,
+          "description": "Use the viewer camera by default for mesh passes."
+        },
         "shader-studio.languageServers.glsl.enabled": {
           "type": "boolean",
           "default": true,
