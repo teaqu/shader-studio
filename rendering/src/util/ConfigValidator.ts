@@ -199,6 +199,7 @@ export function validatePassRenderSettings(pass: unknown, passName: string): str
 
 // Validation accepts malformed author input; each property is narrowed before use.
 interface UnvalidatedPass {
+  useViewerCamera?: unknown;
   path?: unknown;
   outputFormat?: unknown;
   geometry?: unknown;

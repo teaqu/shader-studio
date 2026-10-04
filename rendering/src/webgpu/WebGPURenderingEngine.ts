@@ -244,8 +244,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
     });
     this.capture = new WebGPUCapture({
       renderedCaptureState: this.renderedCaptureState,
-      get meshResources() { return engine.meshResources; },
-      get meshCamera() { return engine.meshCamera; },
+      get meshResources() {
+        return engine.meshResources;
+      },
+      get meshCamera() {
+        return engine.meshCamera;
+      },
       session: this.session,
       geometry: this.geometry,
       channels: this.channels,

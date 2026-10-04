@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import type { MessageEvent as ShaderMessage } from "@shader-studio/types";
   import { applyRenderSource, bufferInsertionTarget } from '../../config/PassSourceAuthoring';
   import VertexSourceControls from './VertexSourceControls.svelte';
   import VerticesControls from './VerticesControls.svelte';
@@ -75,7 +76,7 @@
     isImagePass?: boolean;
     suggestedPath?: string;
     projectConfig?: ShaderConfig | null;
-    postMessage?: (msg: { type: string; [key: string]: unknown }) => void;
+    postMessage?: (msg: ShaderMessage) => void;
     onMessage?: (handler: (event: MessageEvent) => void) => void;
     shaderPath?: string;
     audioVideoController?: AudioVideoController;

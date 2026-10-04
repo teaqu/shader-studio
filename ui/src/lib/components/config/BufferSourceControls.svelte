@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { MessageEvent as ShaderMessage } from "@shader-studio/types";
   import type { ShaderConfig, ShaderLanguageId } from '@shader-studio/types';
   import { configSourcePaths } from '../../config/configSourcePaths';
   import PathInput from './PathInput.svelte';
@@ -8,7 +9,7 @@
     value: string; onPathChange: (path: string) => void; hasError: boolean;
     suggestedPath: string; bufferName: string; language: ShaderLanguageId; fileType: FileDialogFileType;
     shaderPath: string; projectConfig?: ShaderConfig | null;
-    postMessage?: (message: unknown) => void; onMessage?: (handler: (event: MessageEvent) => void) => void;
+    postMessage?: (message: ShaderMessage) => void; onMessage?: (handler: (event: MessageEvent) => void) => void;
     sourcePath: string; builtInSourcePath: string; passType: 'render' | 'compute'; hasNativeTemplate: boolean;
     outputCount: number; passSource: string; onCreated: (result: CreatedSource) => void;
   }
