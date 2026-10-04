@@ -1,6 +1,6 @@
-import { cpSync, existsSync } from 'node:fs';
+import { cpSync, existsSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { resolve } from 'node:path';
+import { dirname, resolve, sep } from 'node:path';
 import { resolveCliArgsFromVSCodeExecutablePath } from '@vscode/test-electron';
 
 function requiredPath(value, name) {
@@ -33,6 +33,18 @@ export function productionVsixInstallArgs({ vsixPath, userDataDir, extensionsDir
   ];
 }
 
+function windowsCliCommand(cli, executable) {
+  // The pinned Windows launcher supplies the versioned cli.js path. Execute
+  // that script with Code.exe rather than spawning .cmd or interpolating a shell.
+  const launcher = readFileSync(cli, 'utf8');
+  const invocation = launcher.match(/"%~dp0([^"\r\n]+Code\.exe)"\s+"%~dp0([^"\r\n]+cli\.js)"/i);
+  const fromLauncher = value => resolve(dirname(cli), value.replaceAll('\\', sep));
+  if (!invocation || fromLauncher(invocation[1]).toLowerCase() !== executable.toLowerCase()) {
+    throw new Error(`Unrecognized Windows VS Code CLI launcher: ${cli}`);
+  }
+  return [executable, fromLauncher(invocation[2])];
+}
+
 export function installProductionVsix({
   vscodeBinary,
   vsixPath,
@@ -47,9 +59,16 @@ export function installProductionVsix({
     throw new Error(`Production VSIX does not exist: ${archive}`);
   }
   const [cli, ...cliArgs] = resolveCliArgs(executable, { reuseMachineInstall: true });
-  const result = runCommand(cli, [...cliArgs, ...productionVsixInstallArgs({ vsixPath: archive, userDataDir, extensionsDir })], {
+  const windowsLauncher = cli.toLowerCase().endsWith('.cmd');
+  const [command, ...prefixArgs] = windowsLauncher ? windowsCliCommand(cli, executable) : [cli];
+  const environment = productionVsixInstallEnv();
+  if (windowsLauncher) {
+    environment.ELECTRON_RUN_AS_NODE = '1';
+    environment.VSCODE_DEV = '';
+  }
+  const result = runCommand(command, [...prefixArgs, ...cliArgs, ...productionVsixInstallArgs({ vsixPath: archive, userDataDir, extensionsDir })], {
     encoding: 'utf8',
-    env: productionVsixInstallEnv(),
+    env: environment,
   });
   if (result.error) {
     throw result.error;

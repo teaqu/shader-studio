@@ -1,11 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { resolve } from 'node:path';
 import { closeNativeEditor, revertFixtureEditors } from './editor-actions.mjs';
+
+const Uri = { file: path => ({ fsPath: resolve(path) }) };
 
 function fakeVscode(documents, { rejectCommand = false } = {}) {
   const shown = [];
   const commands = [];
   const host = {
+    Uri,
     workspace: { textDocuments: documents },
     window: {
       showTextDocument: async (document, options) => {
@@ -29,10 +33,11 @@ function fakeVscode(documents, { rejectCommand = false } = {}) {
 }
 
 test('revertFixtureEditors reverts only dirty fixture editors before cleanup', async () => {
-  const ownedDirty = { isDirty: true, uri: { fsPath: '/fixtures/worker-0/update.wgsl' } };
-  const ownedClean = { isDirty: false, uri: { fsPath: '/fixtures/worker-0/image.wgsl' } };
-  const otherDirty = { isDirty: true, uri: { fsPath: '/fixtures/worker-1/update.wgsl' } };
-  const vscode = fakeVscode([ownedDirty, ownedClean, otherDirty]);
+  const ownedDirty = { isDirty: true, uri: Uri.file('/fixtures/worker-0/update.wgsl') };
+  const ownedClean = { isDirty: false, uri: Uri.file('/fixtures/worker-0/image.wgsl') };
+  const otherDirty = { isDirty: true, uri: Uri.file('/fixtures/worker-1/update.wgsl') };
+  const siblingDirty = { isDirty: true, uri: Uri.file('/fixtures/worker-0-other/update.wgsl') };
+  const vscode = fakeVscode([ownedDirty, ownedClean, otherDirty, siblingDirty]);
 
   await revertFixtureEditors(vscode, '/fixtures/worker-0');
 
@@ -44,7 +49,7 @@ test('revertFixtureEditors reverts only dirty fixture editors before cleanup', a
 });
 
 test('revertFixtureEditors surfaces a failed fixture revert', async () => {
-  const vscode = fakeVscode([{ isDirty: true, uri: { fsPath: '/fixtures/worker-0/update.wgsl' } }], {
+  const vscode = fakeVscode([{ isDirty: true, uri: Uri.file('/fixtures/worker-0/update.wgsl') }], {
     rejectCommand: true,
   });
 
@@ -52,7 +57,7 @@ test('revertFixtureEditors surfaces a failed fixture revert', async () => {
 });
 
 test('closeNativeEditor clicks the named active tab without depending on browser or host-command focus', async () => {
-  let activePath = '/fixtures/inference.wgsl';
+  let activePath = Uri.file('/fixtures/inference.wgsl').fsPath;
   const locators = [];
   const vscode = {
     window: {
@@ -77,6 +82,7 @@ test('closeNativeEditor clicks the named active tab without depending on browser
       },
     },
     evaluateInHost: async (callback, target) => callback({
+      Uri,
       window: { activeTextEditor: activePath ? { document: { uri: { fsPath: activePath } } } : undefined },
       commands: {
         executeCommand: () => assert.fail('host close commands must not be used'),
