@@ -6,7 +6,7 @@ WGSL shaders require WebGPU support in your browser and device.
 
 ## Native entry points and shared files
 
-WGSL and Slang can keep vertex, fragment, and compute entry points in one source file. Choose the **Vertex function** and **Fragment function** independently at the bottom of Image or buffer settings. Either stage can use an annotated function while the other keeps its generated adapter. Compute settings have their own entry-point selector. Discovery reads the stage annotations in the source; saving a selection writes `entryPoints` in `.sha.json`. An omitted vertex selection uses the built-in vertex shader (and any configured `mainVertex` hook); an omitted fragment selection uses `mainImage`. Unselected native functions do not replace those adapters. Discovery does not create passes automatically.
+WGSL and Slang can keep vertex, fragment, and compute entry points in one source file. The config panel lists available functions as separate selectable rows under their stage. Select a fragment in **Fragment shader** and a vertex in **Vertex shader** independently. Compute passes have their own function rows. Either render stage can use an annotated function while the other keeps its generated adapter. Discovery reads the stage annotations in the source; saving a selection writes `entryPoints` in `.sha.json`. An omitted vertex selection uses the built-in vertex shader (and any configured `mainVertex` hook); an omitted fragment selection uses `mainImage`. Unselected native functions do not replace those adapters. Discovery does not create passes automatically.
 
 ```wgsl
 @vertex fn fullscreen(@builtin(vertex_index) index: u32) -> @builtin(position) vec4f {
@@ -45,13 +45,21 @@ fn advance(@builtin(global_invocation_id) id: vec3u) {
 
 Open `shared.wgsl` as the Image source in this example. Each pass compiles its selected stages and reachable helpers using that pass’s configured channels, uniforms, and storage. Functions belonging to other passes are excluded, so they can use resources configured on their own pass. Common code and global initializer helpers are retained.
 
-When adding a buffer or compute pass, **Create** makes a new source file and **Insert** appends uniquely named entry points to the current source. Insert connects the new pass to that source and saves its stage choices. The VS Code source insertion is undoable. Choose native functions or ShaderToy hooks when creating a shader. `webgpu.defaultRenderAuthoring` also controls the project’s templates. The default affects new shaders and passes; existing ShaderToy hooks remain supported.
+For a buffer or compute pass, the **File** row shows its source path. **Change…** offers files already referenced by the config, **Browse workspace…**, and **Create**. Reuse a file containing the functions you need, or create a new one. Image always uses the main shader file and has no file chooser.
+
+Under **Vertex shader**, choose **Built-in**, **Same file**, or **Separate file**. Same file uses the pass's fragment source and hides the duplicate path. Separate file shows an editable path and discovers vertex functions from that file. Built-in uses the generated vertex stage and clears the custom vertex selection; no source file is created for it.
+
+**Add function…** appends code to the file belonging to that stage and saves the generated function selection. It does not switch to an unrelated active editor. For WGSL/Slang render stages, the adjacent **Built-in / Native** chooser selects a `mainImage`/`mainVertex` hook or an annotated entry point. The hook Add button is hidden when that hook already exists; Native can add another uniquely named function. Compute always adds a native entry point and has no mode chooser. In VS Code, source insertion is undoable.
+
+A pure native fragment does not need `mainImage`. Its function list shows the declared native fragments without an absent `mainImage` option. Native shader and buffer templates start with a fragment only, retaining the generated vertex stage until you explicitly choose or add a custom one. The native fragment template includes normalized pixel coordinates and the time-varying color example.
+
+Set **Default shader mode** in standalone Settings, or `shader-studio.webgpu.defaultRenderAuthoring` in VS Code, to choose Built-in hooks or Native entry points for new WGSL/Slang shaders and render-source authoring. `webgpu.defaultRenderAuthoring` can also select the project's render templates. Existing shaders are not converted when the default changes. See [Settings](../help/settings.md).
 
 Native fragments receive WebGPU coordinates with a top-left origin. The `mainImage` hook below receives bottom-left coordinates. Native stages still receive Shader Studio’s built-in globals, configured channel helpers, and storage declarations. Group 0 bindings are reserved for these generated resources; do not redeclare their bindings.
 
 For mesh geometry, native vertex inputs must match the supplied mesh layout: location 0 is `vec3f` position, location 1 is `vec3f` normal, and location 2 is `vec2f` UV. Native shaders own their transforms and vertex-to-fragment interface. The built-in mesh vertex shader outputs UV at location 0, world position at location 1, and normal at location 2. A native fragment paired with that vertex shader must use compatible input locations and types. A native vertex paired with `mainImage` must produce that interface. A separate `vertex` hook file can also be paired with a native fragment.
 
-The built-in mesh vertex shader applies the viewer camera after `mainVertex`, so an empty hook still responds to drag rotation. Native mesh vertices can use `iModelMatrix`, `iViewProjectionMatrix`, and `iNormalMatrix` to follow that same camera:
+With **Use viewer camera** enabled, the built-in mesh vertex shader applies the viewer camera after `mainVertex`, so an empty hook still responds to drag rotation. Native mesh vertices can use `iModelMatrix`, `iViewProjectionMatrix`, and `iNormalMatrix` to follow that same camera:
 
 ```wgsl
 let world = iModelMatrix * vec4f(position, 1.0);
@@ -171,7 +179,7 @@ annotations, matrix ordering, and [compute replay limits](wgsl.md#compute-debugg
 - [Vertex Shaders](vertex-shaders.md) — the `mainVertex` hook
 - [Compute Passes](compute.md) — WGSL compute entry points
 
-For WebGPU mesh geometry, **Use viewer camera** defaults on. Turn it off to use mesh or `mainVertex` positions directly in clip space, without the viewer rotation, view, or perspective transform. Native vertex stages that read `iModelMatrix`, `iViewProjectionMatrix`, and `iNormalMatrix` receive identity matrices when it is off; stages with their own projection continue to control their output. The per-pass setting saves as `useViewerCamera: false` on Image or Buffer. Fullscreen vertex stages already use clip space. GLSL behavior is unchanged.
+For mesh geometry, **Use viewer camera** defaults on in GLSL, WGSL, and Slang. Turn it off to use mesh or `mainVertex` positions directly in clip space, without the viewer rotation, view, or perspective transform. Native vertex stages that read `iModelMatrix`, `iViewProjectionMatrix`, and `iNormalMatrix` receive identity matrices when it is off; stages with their own projection continue to control their output. The per-pass setting saves as `useViewerCamera: false` on Image or Buffer. Fullscreen vertex stages already use clip space. GLSL mesh passes also respect this setting; GLSL does not always apply the viewer camera.
 
 Opening a different shader resets the 3D viewer camera’s orbit, pan, and zoom. Editing or recompiling the current shader preserves the view.
 

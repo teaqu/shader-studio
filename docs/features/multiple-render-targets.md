@@ -16,7 +16,7 @@ struct Outputs {
 
 Slang uses `float4` fields with `SV_Target0`, `SV_Target1`, and so on. Declaration order does not change attachment indices. A depth result (`frag_depth` or `SV_Depth`) is separate from color outputs.
 
-Configure the buffer's outputs and select one in a downstream input:
+Shader Studio infers the attachment count, slots, and default names from the selected fragment's return declaration. Select the fragment function and connect an output in a downstream input; no `outputs` list is required:
 
 ```json
 {
@@ -25,7 +25,6 @@ Configure the buffer's outputs and select one in a downstream input:
     "BufferA": {
       "path": "scene.wgsl",
       "entryPoints": { "fragment": "shade" },
-      "outputs": [{ "name": "Color" }, { "name": "Normal" }],
       "outputFormat": "rgba16float"
     },
     "Image": {
@@ -37,9 +36,57 @@ Configure the buffer's outputs and select one in a downstream input:
 }
 ```
 
-Omitting `outputs` keeps one color texture. Omitting an input's `output` selects attachment zero. Compute outputs continue to use `layer`; render attachments use `output`.
+Omitting an input's `output` selects attachment zero. Compute outputs continue to use `layer`; render attachments use `output`. The consuming channel still needs an explicit choice when you want a nonzero attachment: code discovery cannot decide which texture that channel should sample.
 
-Buffer settings show ordered output rows with optional names. Add outputs or remove the last row; indices of retained outputs stay unchanged. Create and Insert generate matching native fragment outputs, and Insert appends functions to the selected source.
+The buffer's **Output** section shows read-only rows such as **Output 0 · color** and **Output 1 · normal**, alongside the shared **Output format** setting. Add or remove fields in your fragment return type to change the attachments. The UI does not rewrite shader code or add attachments. Older `outputs` arrays remain optional labels by slot; they do not determine the count or create missing attachments.
+
+![Buffer format and inferred output slots](../assets/images/render-outputs.png)
+
+Discovery reads the pass source and Common declarations. WGSL supports direct `@location(0)` returns, return structs, and aliases to those types. Slang supports direct `SV_Target` returns and structs with `SV_TargetN` fields. Slots must be unique and contiguous from zero; color values must be four-component float vectors. Missing functions, incomplete return declarations, and invalid slot layouts produce an error instead of inventing outputs. A Built-in `mainImage` pass has one color output; multiple attachments require a native fragment.
+
+## Choose an Output in a Channel
+
+1. Configure the consuming channel, such as Image's `iChannel0`, and open **Misc**.
+2. Select the source buffer. For multiple attachments, **Buffer output** lists a separate radio row for each slot and its inferred field name.
+3. Select the desired output. This saves the channel's `output` number; changing the field name does not change that slot.
+
+Filter and wrap remain channel settings. For a compute source, Misc offers **Compute output layer** when the source has several layers. If an edited fragment removes the selected attachment, the channel shows that it is unavailable until you choose a valid one.
+
+## Try Two WGSL Outputs
+
+Paste this into a WGSL buffer source, select **@fragment twoOutputs**, and leave its vertex source **Built-in**:
+
+```wgsl
+struct BufferOutputs {
+    @location(0) colour: vec4f,
+    @location(1) inverse: vec4f,
+}
+
+@fragment
+fn twoOutputs(
+    @builtin(position) position: vec4f
+) -> BufferOutputs {
+    let uv = fract(position.xy / 256.0);
+
+    return BufferOutputs(
+        vec4f(uv, 0.0, 1.0),
+        vec4f(1.0 - uv, 1.0, 1.0)
+    );
+}
+```
+
+In Image, bind a channel to that buffer through **Misc**. Switch between **Output 0 · colour** and **Output 1 · inverse** to see two different gradients. The Image shader must sample that channel; for a Built-in WGSL Image hook:
+
+```wgsl
+fn mainImage(coord: vec2f) -> vec4f {
+    let uv = coord / iResolution.xy;
+    return iChannel0Sample(uv);
+}
+```
+
+Select **mainImage** in Image's fragment function rows if it previously used a native fragment. The main Image file and buffer source can be separate files or share one file, with the correct function selected for each pass.
+
+## Limits and Debugging
 
 The available count depends on the device's attachment count and bytes per sample. `rgba16float` uses 8 bytes per attachment and `rgba32float` uses 16. Five `rgba16float` outputs therefore require at least five attachments and 40 bytes per sample. Shader Studio requests supported limits and reports an error when a configuration exceeds them. All attachments swap together for feedback and share resize/reset behavior.
 

@@ -27,9 +27,9 @@ Channels are useful in a few different ways:
 
 ## Adding a Channel
 
-Open the pass you want to configure, then use the channel grid:
+Open the pass you want to configure, then use its **Channels** section:
 
-1. Click **+** on an empty slot to add an input.
+1. Click **+ Add Channel** to add an input, or use the configure button on an existing channel row.
 2. Choose what the channel should read: texture, video, audio, cubemap, buffer, or keyboard.
 3. Set the file, source pass, or options for that input.
 4. Sample it with the matching channel name using the examples below.
@@ -297,7 +297,23 @@ vec4 sky  = texture(iChannel0, dir);  // samplerCube lookup — direction, not U
 
 Read the texture output of a renderable pass. The `source` field accepts arbitrary fragment buffer pass names such as `Flow` and arbitrary names of Slang or WGSL compute passes declared with `"type": "compute"`. To sample a compute pass, write its output with `writeOutput`. `common` is shared code rather than a renderable source, and `Image` cannot be used as a source. Pass names and counts are not limited to `BufferA` through `BufferD`.
 
+In the channel editor, open **Misc** and select the source pass. A native WGSL/Slang buffer with several color attachments shows **Buffer output** rows with the inferred slot and field name, for example **Output 1 · normals**. Choose the row you want this channel to sample. Output names and available slots come from the selected fragment code; the channel connection saves a numeric `output` choice. Omitting it selects slot zero:
+
+```json
+"iChannel0": {
+  "type": "buffer",
+  "source": "GBuffer",
+  "output": 1,
+  "filter": "nearest",
+  "wrap": "clamp"
+}
+```
+
+The buffer's **Output** section lists the inferred attachments and controls their shared format. Edit the fragment return type to add or remove attachments; neither that section nor Misc rewrites the shader. See [Multiple render targets](multiple-render-targets.md) for a two-output WGSL example. A selected attachment that disappears is shown as unavailable.
+
 For a compute pass with `outputLayers` greater than 1, set `layer` to select one texture-array layer. It defaults to 0 and must be less than the source pass's `outputLayers`:
+
+Misc shows this as **Compute output layer**. Compute layers and render attachment slots are separate concepts; use `layer` for compute and `output` for render buffers.
 
 ```json
 "iChannel0": {
@@ -325,7 +341,7 @@ Most shaders can leave **Output format** on **Auto**. For simulations, 32-bit
 storage helps preserve values that later passes read or that feed back into the
 next frame. Choose 16-bit when lower memory use matters more than precision.
 
-Find **Output format** at the bottom of a buffer or compute pass's settings.
+Find **Output format** in the buffer or compute pass's **Output** section.
 Image has no output-format setting: it displays the final result on the canvas,
 while buffers store values for other passes to use.
 

@@ -10,7 +10,8 @@ Standalone has a **Settings** button in its top toolbar for the relevant preview
 
 | Setting | Type | Default | Restart Required | Description |
 |---------|------|---------|-----------------|-------------|
-| `shader-studio.webgpu.useViewerCamera` | boolean | `true` | No | Default viewer camera transform for WebGPU mesh shaders. Shader and pass settings override this preference. |
+| `shader-studio.webgpu.defaultRenderAuthoring` | string | `hooks` | No | Default mode for new WGSL/Slang shaders and render-source authoring: `hooks` (Built-in) or `native`. Existing code is not converted. Compute always uses native entry points. |
+| `shader-studio.webgpu.useViewerCamera` | boolean | `true` | No | Default viewer camera transform for GLSL, WGSL, and Slang mesh passes. Shader and pass settings override this preference. |
 | `shader-studio.webServerPort` | number | `3000` | No | HTTP port for the [web server](../features/web-server.md). Range: 1024–65535. |
 | `shader-studio.enableSnippets` | boolean | `true` | Yes | Enable bundled [GLSL, Slang, and WGSL code snippets](../features/code-snippets.md). |
 | `shader-studio.languageServers.glsl.enabled` | boolean | `true` | No | Enable [GLSL completion, hover, navigation, symbols, diagnostics, and colors](../features/language-servers.md). |
