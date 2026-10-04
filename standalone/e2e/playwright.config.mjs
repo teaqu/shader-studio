@@ -7,8 +7,15 @@ export default defineConfig({
   testDir: '.',
   projects: [
     // Headless Chromium otherwise exposes navigator.gpu but returns no adapter.
-    { name: 'chromium', testMatch: ['web.e2e.mjs', 'compile-errors.e2e.mjs', 'source-navigation.e2e.mjs', 'wgsl-storage.e2e.mjs', 'wgsl-module-globals-inspector.e2e.mjs', 'symbol-rename.e2e.mjs', 'workspace-references.e2e.mjs', 'wgsl-language-service.e2e.mjs', 'canvas-focus.e2e.mjs', 'named-channels.e2e.mjs', 'wgsl-authoring-parity.e2e.mjs', 'swizzle-completion.e2e.mjs', 'reset.e2e.mjs', 'buffer-output-format.e2e.mjs', 'wgsl-compute-sample.e2e.mjs', 'pass-file-editor.e2e.mjs', 'mouse-input.e2e.mjs', 'pwa.e2e.mjs'], use: { browserName: 'chromium', launchOptions: { args: ['--enable-unsafe-webgpu'] } } },
+    { name: 'chromium', testMatch: ['web.e2e.mjs', 'compile-errors.e2e.mjs', 'source-navigation.e2e.mjs', 'wgsl-storage.e2e.mjs', 'wgsl-module-globals-inspector.e2e.mjs', 'wgsl-vertex-editor.e2e.mjs', 'symbol-rename.e2e.mjs', 'workspace-references.e2e.mjs', 'wgsl-language-service.e2e.mjs', 'canvas-focus.e2e.mjs', 'named-channels.e2e.mjs', 'wgsl-authoring-parity.e2e.mjs', 'swizzle-completion.e2e.mjs', 'reset.e2e.mjs', 'buffer-output-format.e2e.mjs', 'wgsl-compute-sample.e2e.mjs', 'pass-file-editor.e2e.mjs', 'mouse-input.e2e.mjs', 'pwa.e2e.mjs'], use: { browserName: 'chromium', launchOptions: { args: ['--enable-unsafe-webgpu'] } } },
+    { name: 'chromium-screen-inputs', testMatch: 'screen-inputs.e2e.mjs', use: { browserName: 'chromium', launchOptions: { args: ['--enable-unsafe-webgpu'] } } },
+    { name: 'firefox-screen-inputs', testMatch: 'screen-inputs.e2e.mjs', grep: /glsl screen/, use: { browserName: 'firefox' } },
+    { name: 'firefox-browser-audio', testMatch: 'browser-audio-firefox.e2e.mjs', use: { browserName: 'firefox' } },
     { name: 'firefox-exports', testMatch: 'web.e2e.mjs', use: { browserName: 'firefox' }, grep: /exports a standalone/ },
+    { name: 'chromium-live-inputs', testMatch: 'live-inputs.e2e.mjs', use: {
+      browserName: 'chromium', permissions: ['camera', 'microphone'],
+      launchOptions: { args: ['--enable-unsafe-webgpu', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] },
+    } },
     {
       name: 'mobile-chromium',
       testMatch: 'mobile.e2e.mjs',

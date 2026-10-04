@@ -80,6 +80,10 @@ export interface RenderingEngine {
   controlAudio(path: string, action: 'play' | 'pause' | 'mute' | 'unmute' | 'reset'): void;
   getAudioState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null;
   seekAudio(path: string, time: number): void;
+  controlAudioInput?(action: "start" | "stop", deviceId?: string): Promise<string | undefined>;
+  controlSystemAudio?(action: "start" | "stop", deviceId?: string): Promise<string | undefined>;
+  controlScreen?(action: "start" | "stop"): Promise<string | undefined>;
+  getLiveInputPreview?(type: import("../resources/LiveInputTextureManager").LiveInputType): import("../resources/LiveInputTextureManager").LiveInputPreview | null;
   getAudioFFTData(type: string, path?: string): Uint8Array | null;
   getCustomUniformInfo(): { name: string; type: string }[];
   getCustomUniformDeclarations(): string;

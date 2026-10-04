@@ -1,3 +1,5 @@
+import { audioPreviewData, livePreviewData, controlSystemAudio, controlAudioInput } from "../resources/MediaPreview";
+import type { LiveInputType, LiveInputPreview } from "../resources/LiveInputTextureManager";
 import { piRenderer } from "../../../vendor/pilibs/src/piRenderer";
 import {
   gpuBackpressureEnabled,
@@ -647,10 +649,23 @@ export class RenderingEngine implements RenderingEngineInterface {
   }
 
   public getAudioFFTData(type: string, path?: string): Uint8Array | null {
-    if (type === 'audio' && path) {
-      return this.resourceManager.getAudioFFTData(path);
-    }
-    return null;
+    return audioPreviewData(this.resourceManager, type, path);
+  }
+
+  controlAudioInput(action: "start" | "stop", deviceId?: string): Promise<string | undefined> {
+    return controlAudioInput(this.resourceManager, action, deviceId);
+  }
+
+  controlSystemAudio(action: "start" | "stop", deviceId?: string): Promise<string | undefined> {
+    return controlSystemAudio(this.resourceManager, action, deviceId);
+  }
+
+  controlScreen(action: "start" | "stop"): Promise<string | undefined> {
+    return this.resourceManager?.controlScreen(action) ?? Promise.resolve("Shader is not ready. Try again after it loads.");
+  }
+
+  public getLiveInputPreview(type: LiveInputType): LiveInputPreview | null {
+    return livePreviewData(this.resourceManager, type);
   }
 
   public getTimeManager(): TimeManager {

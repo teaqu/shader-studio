@@ -11,7 +11,9 @@ export default defineConfig({
     coverage: {
       // V8 precise profiling slows the exhaustive Slang sweep enough to exceed its
       // unchanged timeout. Istanbul limits instrumentation to our source scope.
-      provider: 'istanbul',
+      // Restore Svelte's missing template mount mapping before instrumentation.
+      provider: 'custom',
+      customProviderModule: './.github/scripts/svelte-istanbul-provider.mjs',
       include: [
         'debug/src/**/*.ts', 'rendering/src/**/*.ts', 'ui/src/**/*.{ts,svelte}',
         'language-servers/*/src/**/*.ts', 'types/src/**/*.ts', 'utils/src/**/*.ts',

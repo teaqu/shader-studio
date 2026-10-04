@@ -3,6 +3,48 @@ import { AudioVideoController } from '../lib/AudioVideoController';
 import { audioStore } from '../lib/stores/audioStore';
 
 describe('AudioVideoController', () => {
+  it('routes Audio device commands to the engine and reports missing engines', async () => {
+    const engine = { setGlobalVolume: vi.fn(), controlAudioInput: vi.fn().mockResolvedValue(undefined) };
+    const controller = new AudioVideoController(() => engine as unknown as import("../../../rendering/src/types").RenderingEngine);
+    await controller.controlAudioInput('start', 'loopback');
+    expect(engine.controlAudioInput).toHaveBeenCalledWith('start', 'loopback');
+    const empty = new AudioVideoController(() => undefined);
+    await expect(empty.controlAudioInput('start')).resolves.toContain('not ready');
+  });
+  it('delegates system sharing and returns actionable missing-engine guidance', async () => {
+    const engine = { setGlobalVolume: vi.fn(), controlSystemAudio: vi.fn().mockResolvedValue(undefined) };
+    const controller = new AudioVideoController(() => engine as unknown as import('../../../rendering/src/types').RenderingEngine);
+    await expect(controller.controlSystemAudio('start', 'loopback')).resolves.toBeUndefined();
+    expect(engine.controlSystemAudio).toHaveBeenCalledWith('start', 'loopback');
+    controller.dispose();
+    const empty = new AudioVideoController(() => undefined);
+    await expect(empty.controlSystemAudio('start')).resolves.toContain('not ready');
+    empty.dispose();
+  });
+
+  it('delegates screen sharing and returns actionable missing-engine guidance', async () => {
+    const engine = { setGlobalVolume: vi.fn(), controlScreen: vi.fn().mockResolvedValue(undefined) };
+    const controller = new AudioVideoController(() => engine as unknown as import('../../../rendering/src/types').RenderingEngine);
+    await expect(controller.controlScreen('start')).resolves.toBeUndefined();
+    expect(engine.controlScreen).toHaveBeenCalledWith('start');
+    controller.dispose();
+    const empty = new AudioVideoController(() => undefined);
+    await expect(empty.controlScreen('start')).resolves.toContain('not ready');
+    empty.dispose();
+  });
+
+  it('reads live previews from the active engine and tolerates missing engines', () => {
+    const preview = { frequency: new Uint8Array(512) };
+    const engine = { setGlobalVolume: vi.fn(), getLiveInputPreview: vi.fn(() => preview) };
+    const controller = new AudioVideoController(() => engine as unknown as import('../../../rendering/src/types').RenderingEngine);
+    expect(controller.getLiveInputPreview('microphone')).toBe(preview);
+    expect(engine.getLiveInputPreview).toHaveBeenCalledWith('microphone');
+    controller.dispose();
+    const empty = new AudioVideoController(() => undefined);
+    expect(empty.getLiveInputPreview('webcam')).toBeNull();
+    empty.dispose();
+  });
+
   it('should not crash when constructed with engine getter returning undefined', () => {
     expect(() => {
       const controller = new AudioVideoController(() => undefined);

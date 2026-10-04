@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, tick } from "svelte";
   import type { ConfigInput } from "@shader-studio/types";
+  import LiveAudioInputs from "../LiveAudioInputs.svelte";
   import AssetBrowser from "../AssetBrowser.svelte";
   import PathInput from "../PathInput.svelte";
   import { AUDIO_EXTENSIONS } from "@shader-studio/types";
@@ -334,12 +335,19 @@
   });
 </script>
 
+<h3>Audio file</h3>
 {#if postMessage}
   <AssetBrowser
     extensions={AUDIO_EXTENSIONS}
     {shaderPath}
     {postMessage}
-    onSelect={onAssetSelect}
+    {onMessage}
+    onSelect={(path, resolvedUri) => {
+      if (tempInput?.type !== 'audio') {
+        onUpdateTempInput({ type: 'audio', path: '' });
+      }
+      onAssetSelect(path, resolvedUri);
+    }}
     selectedPath={(tempInput?.type === "audio" && tempInput.path) || ""}
   />
 {/if}
@@ -352,7 +360,12 @@
   {shaderPath}
   {postMessage}
   {onMessage}
-  onPathChange={onUpdatePath}
+  onPathChange={path => {
+    if (tempInput?.type !== 'audio') {
+      onUpdateTempInput({ type: 'audio', path: '' });
+    }
+    onUpdatePath(path);
+  }}
 />
 <div class="input-note">
   Audio provides a 512x2 texture: row 0 = FFT frequency data, row 1 = time-domain waveform.
@@ -449,7 +462,23 @@
   </div>
 {/if}
 
+<LiveAudioInputs
+  input={tempInput}
+  {audioVideoController}
+  {getWebviewUri}
+  onSelect={input => {
+    onUpdateTempInput(input);
+    onAutoSave();
+  }}
+/>
+
 <style>
+  h3 {
+    font-size: 14px;
+    font-weight: 500;
+    margin: 16px 0 8px;
+  }
+
   .input-note {
     font-size: 12px;
     color: var(--vscode-descriptionForeground, #888);

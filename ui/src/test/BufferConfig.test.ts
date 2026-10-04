@@ -583,7 +583,7 @@ describe('BufferConfig', () => {
       const config: BufferPass = {
         path: 'shader.glsl',
         inputs: {
-          iChannel0: { type: 'webcam' } as any
+          iChannel0: { type: 'unsupported-device' } as any
         }
       };
       const bufferConfig = new BufferConfig('BufferA', config);
