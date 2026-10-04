@@ -16,11 +16,29 @@ export function getWgslTraceState(): WgslTraceState {
 export function setWgslTraceState(next: WgslTraceState | Partial<WgslTraceState>): void {
   state = { ...state, ...next };
 }
-export function registerWgslTraceStartHandler(handler: (() => void) | null): void {
+/** A replaced viewer may finish disposal after the new viewer registers. */
+export function registerWgslTraceStartHandler(handler: (() => void) | null): () => void {
   startHandler = handler;
+  return () => {
+    if (startHandler === handler) {
+      startHandler = null;
+    }
+  };
 }
-export function registerWgslTraceControls(handlers: { target: (key: string) => void; invocation: (axis: 0 | 1 | 2, value: number) => void; vertex: (value: number) => void; } | null): void {
+export function registerWgslTraceControls(handlers: { target: (key: string) => void; invocation: (axis: 0 | 1 | 2, value: number) => void; vertex: (value: number) => void; } | null): () => void {
   targetHandler = handlers?.target ?? null; invocationHandler = handlers?.invocation ?? null; vertexHandler = handlers?.vertex ?? null;
+  const target = targetHandler; const invocation = invocationHandler; const vertex = vertexHandler;
+  return () => {
+    if (targetHandler === target) {
+      targetHandler = null;
+    }
+    if (invocationHandler === invocation) {
+      invocationHandler = null;
+    }
+    if (vertexHandler === vertex) {
+      vertexHandler = null;
+    }
+  };
 }
 export function requestWgslTraceStart(): void {
   startHandler?.();

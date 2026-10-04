@@ -94,6 +94,20 @@ describe('WgslTraceLaunchManager', () => {
     expect(capture).toHaveBeenCalledOnce();
   });
 
+  it('keeps replacement trace controls registered when the prior viewer is disposed', async () => {
+    selected(); const previous = create(); const replacement = create();
+    previous.manager.dispose();
+    selectWgslTraceTarget('Update:compute'); setWgslTraceInvocation(0, 6); setWgslTraceVertexIndex(8);
+    expect(getWgslTraceState()).toMatchObject({ selectedTarget: 'Update:compute', invocation: [6, 0, 0], vertexIndex: 8 });
+    requestWgslTraceStart();
+    await vi.waitFor(() => expect(replacement.capture).toHaveBeenCalledOnce());
+    expect(previous.capture).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(replacement.transport.postMessage).toHaveBeenCalledOnce());
+    replacement.manager.dispose();
+    requestWgslTraceStart();
+    expect(replacement.capture).toHaveBeenCalledOnce();
+  });
+
   it('does not hand off a recording completed after disposal', async () => {
     selected(); let resolve!: (recording: WgslTraceRecording) => void;
     const { manager, transport } = create(() => new Promise(done => {

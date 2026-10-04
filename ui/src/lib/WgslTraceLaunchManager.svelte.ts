@@ -24,13 +24,15 @@ export interface WgslTraceViewerSession {
 /** Captures an installed pass on the preview GPU before handing the immutable recording to DAP. */
 export class WgslTraceLaunchManager {
   private readonly stopReactiveRefresh: () => void;
+  private readonly unregisterStart: () => void;
+  private readonly unregisterControls: () => void;
   private controller: AbortController | null = null;
   private disposed = false;
   private refreshing = false;
 
   constructor(private readonly dependencies: Dependencies) {
-    registerWgslTraceStartHandler(() => void this.start());
-    registerWgslTraceControls({ target: key => this.selectTarget(key), invocation: (axis, value) => this.setInvocation(axis, value), vertex: value => this.setVertex(value) });
+    this.unregisterStart = registerWgslTraceStartHandler(() => void this.start());
+    this.unregisterControls = registerWgslTraceControls({ target: key => this.selectTarget(key), invocation: (axis, value) => this.setInvocation(axis, value), vertex: value => this.setVertex(value) });
     this.stopReactiveRefresh = $effect.root(() => {
       $effect(() => this.refresh());
     });
@@ -90,7 +92,7 @@ export class WgslTraceLaunchManager {
 
   public dispose(): void {
     this.disposed = true; this.controller?.abort(); this.stopReactiveRefresh();
-    registerWgslTraceStartHandler(null); registerWgslTraceControls(null);
+    this.unregisterStart(); this.unregisterControls();
   }
 
   private targets(): WgslProjectTraceTarget[] {
