@@ -12,7 +12,7 @@
   interface Props {
     tempInput: ConfigInput | undefined;
     shaderPath: string;
-    postMessage?: (msg: any) => void;
+    postMessage?: (msg: { type: string; [key: string]: unknown }) => void;
     onMessage?: (handler: (event: MessageEvent) => void) => void;
     getWebviewUri: (path: string) => string | undefined;
     lastSelectedResolvedUri: string;
@@ -50,7 +50,7 @@
     if (!tempInput || tempInput.type !== 'audio' || !tempInput.path) {
       return '';
     }
-    return (tempInput as any).resolved_path
+    return tempInput.resolved_path
       || (getWebviewUri ? getWebviewUri(tempInput.path) : null)
       || lastSelectedResolvedUri
       || tempInput.path;
@@ -60,10 +60,10 @@
     if (tempInput && tempInput.type === "audio") {
       const num = parseFloat(value);
       if (value === "" || isNaN(num)) {
-        const { startTime, ...rest } = tempInput as any;
-        onUpdateTempInput({ ...rest } as ConfigInput);
+        const { startTime: _startTime, ...rest } = tempInput;
+        onUpdateTempInput(rest);
       } else {
-        const endTime = (tempInput as any).endTime;
+        const endTime = tempInput.endTime;
         const clamped = endTime !== null && endTime !== undefined ? Math.min(Math.max(0, num), endTime) : Math.max(0, num);
         onUpdateTempInput({ ...tempInput, startTime: clamped });
       }
@@ -78,10 +78,10 @@
     if (tempInput && tempInput.type === "audio") {
       const num = parseFloat(value);
       if (value === "" || isNaN(num)) {
-        const { endTime, ...rest } = tempInput as any;
-        onUpdateTempInput({ ...rest } as ConfigInput);
+        const { endTime: _endTime, ...rest } = tempInput;
+        onUpdateTempInput(rest);
       } else {
-        const startTime = (tempInput as any).startTime ?? 0;
+        const startTime = tempInput.startTime ?? 0;
         const clamped = Math.max(startTime, Math.max(0, num));
         onUpdateTempInput({ ...tempInput, endTime: clamped });
       }
@@ -96,8 +96,8 @@
   function sendLoopRegionUpdate() {
     if (tempInput?.type === 'audio' && tempInput.path && onAudioControl) {
       const path = getEffectiveAudioPath();
-      const start = (tempInput as any).startTime;
-      const end = (tempInput as any).endTime;
+      const start = tempInput.startTime;
+      const end = tempInput.endTime;
       onAudioControl(path, `loopRegion:${start ?? ''},${end ?? ''}`);
     }
   }
@@ -110,7 +110,7 @@
 
   $effect(() => {
     const type = tempInput?.type;
-    const path = tempInput && 'path' in tempInput ? (tempInput as any).path : undefined;
+    const path = tempInput && 'path' in tempInput ? tempInput.path : undefined;
     const gas = getAudioState;
     if (type === "audio" && path && gas) {
       if (path !== lastAudioPath) {
@@ -164,7 +164,7 @@
   let seekDragging = false;
 
   let audioUri = $derived(tempInput?.type === 'audio' && tempInput.path
-    ? (tempInput as any).resolved_path || (getWebviewUri ? getWebviewUri(tempInput.path) : null) || lastSelectedResolvedUri || ''
+    ? tempInput.resolved_path || (getWebviewUri ? getWebviewUri(tempInput.path) : null) || lastSelectedResolvedUri || ''
     : '');
   let hasAudioState = $derived(audioState !== null);
 

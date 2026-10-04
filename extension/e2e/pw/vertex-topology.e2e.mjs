@@ -179,8 +179,7 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
       // Space: world space is the default, so choosing it removes the field;
       // the hexagon at the origin still lands on the centre under the orbit camera.
       await frame.getByLabel('Space').selectOption('world');
-      await expect.poll(image).toMatchObject({ geometry: { type: 'vertices', vertexCount: 6, topology: 'triangle-strip' } });
-      expect(image().geometry).not.toHaveProperty('space');
+      await expect.poll(() => image().geometry).toEqual({ type: 'vertices', vertexCount: 6, topology: 'triangle-strip' });
       await expect(frame.getByLabel('Depth test')).toBeChecked();
       await expectCentre(frame, isWhite, 'world-space hexagon not drawn at the centre');
       await frame.getByLabel('Space').selectOption('clip');

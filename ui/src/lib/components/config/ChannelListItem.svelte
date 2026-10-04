@@ -49,7 +49,7 @@
   // the modal's mute buttons — not the transient engine mute state, which a
   // recompile would silently discard.
   const configMuted = $derived(
-    (channelInput.type === 'video' || channelInput.type === 'audio') && (channelInput as any).muted === true
+    (channelInput.type === 'video' || channelInput.type === 'audio') && channelInput.muted === true
   );
 
   const onVideoControl = $derived(audioVideoController
@@ -70,7 +70,7 @@
 
   $effect(() => {
     const type = channelInput.type;
-    const resolvedPath = (channelInput as any).resolved_path || ('path' in channelInput ? (channelInput as any).path : undefined);
+    const resolvedPath = 'path' in channelInput ? channelInput.resolved_path || channelInput.path : undefined;
     const gvs = getVideoState;
     if (type === 'video' && resolvedPath && gvs) {
       videoState = gvs(resolvedPath);
@@ -85,7 +85,7 @@
 
   $effect(() => {
     const type = channelInput.type;
-    const resolvedPath = (channelInput as any).resolved_path || ('path' in channelInput ? (channelInput as any).path : undefined);
+    const resolvedPath = 'path' in channelInput ? channelInput.resolved_path || channelInput.path : undefined;
     const gas = getAudioState;
     if (type === 'audio' && resolvedPath && gas) {
       audioState = gas(resolvedPath);
@@ -100,10 +100,12 @@
 
   function videoControl(action: string, e: MouseEvent) {
     e.stopPropagation();
-    const path = (channelInput as any).resolved_path || (channelInput as any).path;
-    onVideoControl?.(path, action);
+    const path = channelInput.type === 'video' ? channelInput.resolved_path || channelInput.path : undefined;
+    if (channelInput.type === 'video') {
+      onVideoControl?.(path!, action);
+    }
     setTimeout(() => {
-      if (getVideoState) {
+      if (getVideoState && path) {
         videoState = getVideoState(path);
       }
     }, 100);
@@ -111,10 +113,12 @@
 
   function audioControl(action: string, e: MouseEvent) {
     e.stopPropagation();
-    const path = (channelInput as any).resolved_path || (channelInput as any).path;
-    onAudioControl?.(path, action);
+    const path = channelInput.type === 'audio' ? channelInput.resolved_path || channelInput.path : undefined;
+    if (channelInput.type === 'audio') {
+      onAudioControl?.(path!, action);
+    }
     setTimeout(() => {
-      if (getAudioState) {
+      if (getAudioState && path) {
         audioState = getAudioState(path);
       }
     }, 100);

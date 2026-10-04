@@ -23,7 +23,7 @@ import { ConfigValidator } from "../util/ConfigValidator";
 import type { PiRenderer, RenderingEngine as RenderingEngineInterface } from "../types";
 import type { ShaderConfig, ShaderLanguageId, StorageBufferSnapshot } from "@shader-studio/types";
 import type { ConfigInput } from "@shader-studio/types";
-import type { CompilationResult } from "../models";
+import type { CompilationResult, Pass } from "../models";
 import { CustomUniformManager, type CustomUniform } from "./CustomUniformManager";
 import { VariableCapturer } from "../capture/VariableCapturer";
 import type { CaptureCompileContext, CaptureUniforms } from "../capture/VariableCapturer";
@@ -518,7 +518,7 @@ export class RenderingEngine implements RenderingEngineInterface {
     );
   }
 
-  public getPasses(): any[] {
+  public getPasses(): Pass[] {
     return this.shaderPipeline.getPasses();
   }
 

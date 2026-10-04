@@ -23,9 +23,9 @@ function createMockResCtrl() {
   return {
     menuVM: {
       syncWithConfig: true,
-      targetKind: 'image' as const,
+      targetKind: 'image' as 'image' | 'buffer',
       targetLabel: 'Image',
-      bufferResolutionState: { mode: 'none' as const, width: '', height: '', scale: 1 },
+      bufferResolutionState: { mode: 'none' as 'none' | 'fixed' | 'scale', width: '', height: '', scale: 1 },
     },
     setSyncWithConfig: vi.fn(),
     setAspectRatio: vi.fn(),
@@ -271,6 +271,19 @@ describe('MenuBar', () => {
       resolutionStore.clearCustomResolution();
     });
 
+    it('does not present non-positive persisted dimensions as editable custom sizes', async () => {
+      resolutionStore.setCustomResolution('0', '0');
+      renderMenuBar();
+      await tick();
+
+      await fireEvent.click(screen.getByLabelText('Change resolution settings'));
+      const [width, height] = Array.from(document.querySelectorAll('input.custom-res-input')) as HTMLInputElement[];
+      expect(width.value).toBe('');
+      expect(height.value).toBe('');
+
+      resolutionStore.clearCustomResolution();
+    });
+
     it('should not have an Apply button', async () => {
       renderMenuBar();
       await tick();
@@ -510,6 +523,100 @@ describe('MenuBar', () => {
     expect(screen.getByLabelText('Restore saved layout')).toBeInTheDocument();
     expect(screen.getByText('Save current layout')).toBeInTheDocument();
     expect(screen.getByText('Manage profiles…')).toBeInTheDocument();
+  });
+
+  it('updates buffer resolution controls and keeps local overrides visible', async () => {
+    mockResCtrl.menuVM.targetKind = 'buffer' as const;
+    mockResCtrl.menuVM.targetLabel = 'Buffer A';
+    mockResCtrl.menuVM.syncWithConfig = false;
+    mockResCtrl.menuVM.bufferResolutionState = { mode: 'fixed' as const, width: '640', height: '360', scale: 1 };
+    renderMenuBar();
+    await tick();
+
+    await fireEvent.click(screen.getByLabelText('Change resolution settings'));
+    await tick();
+
+    expect(screen.getByText('Local Override')).toBeInTheDocument();
+    const width = screen.getByPlaceholderText('Width');
+    const height = screen.getByPlaceholderText('Height');
+    await fireEvent.input(width, { target: { value: '800' } });
+    await fireEvent.input(height, { target: { value: '450' } });
+    expect(mockResCtrl.setBufferFixedResolution).toHaveBeenNthCalledWith(1, '800', '360');
+    expect(mockResCtrl.setBufferFixedResolution).toHaveBeenNthCalledWith(2, '640', '450');
+
+  });
+
+  it('uses the selected scale for buffer targets', async () => {
+    mockResCtrl.menuVM.targetKind = 'buffer' as const;
+    mockResCtrl.menuVM.bufferResolutionState = { mode: 'scale' as const, width: '', height: '', scale: 1 };
+    renderMenuBar();
+    await tick();
+
+    await fireEvent.click(screen.getByLabelText('Change resolution settings'));
+    await fireEvent.click(screen.getByText('2x'));
+    expect(mockResCtrl.setBufferScale).toHaveBeenCalledWith(2);
+  });
+
+  it('shows the preview action when hidden and closes the menu after invoking it', async () => {
+    const onShowPreview = vi.fn();
+    renderMenuBar({ ...defaultProps, previewVisible: false, onShowPreview });
+    await tick();
+
+    await fireEvent.click(screen.getByLabelText('Open options menu'));
+    await fireEvent.click(screen.getByLabelText('Show preview'));
+
+    expect(onShowPreview).toHaveBeenCalledOnce();
+    expect(screen.queryByLabelText('Show preview')).not.toBeInTheDocument();
+  });
+
+  it('switches to another layout profile from the layout submenu', async () => {
+    const profiles = await import('../../lib/state/profileStore.svelte');
+    vi.mocked(profiles.getProfileList).mockReturnValue([
+      { id: 'default', name: 'Default' },
+      { id: 'focused', name: 'Focused' },
+    ]);
+    renderMenuBar();
+    await tick();
+
+    await fireEvent.click(screen.getByLabelText('Open options menu'));
+    await fireEvent.click(screen.getByLabelText('Switch layout profile'));
+    await fireEvent.click(screen.getByText('Focused'));
+
+    expect(profiles.switchTo).toHaveBeenCalledWith('focused');
+  });
+
+  it('keeps the locked command available from the compact options menu', async () => {
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(private readonly callback: ResizeObserverCallback) {}
+      observe() {
+        this.callback([{ contentRect: { width: 320 } } as ResizeObserverEntry], this as unknown as ResizeObserver);
+      }
+      unobserve() {}
+      disconnect() {}
+    });
+    try {
+      renderMenuBar({ ...defaultProps, isLocked: true });
+      await tick();
+
+      await fireEvent.click(screen.getByLabelText('Open options menu'));
+      const command = screen.getAllByLabelText('Toggle lock').at(-1)!;
+      expect(command).toHaveTextContent('Unlock');
+      await fireEvent.click(command);
+      expect(defaultProps.onToggleLock).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('opens profile management from the layout menu', async () => {
+    renderMenuBar();
+    await tick();
+
+    await fireEvent.click(screen.getByLabelText('Open options menu'));
+    await fireEvent.click(screen.getByLabelText('Switch layout profile'));
+    await fireEvent.click(screen.getByText('Manage profiles…'));
+
+    expect(screen.getByRole('dialog', { name: 'Manage Profiles' })).toBeInTheDocument();
   });
 
 });

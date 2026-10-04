@@ -161,36 +161,41 @@ export class BufferConfig {
     };
   }
 
-  private validateInput(input: any): boolean {
-    if (!input || typeof input !== 'object' || !input.type) {
+  private validateInput(input: unknown): boolean {
+    if (!input || typeof input !== 'object') {
       return false;
     }
 
-    switch (input.type) {
+    const candidate = input as Record<string, unknown>;
+    if (typeof candidate.type !== 'string') {
+      return false;
+    }
+
+    switch (candidate.type) {
       case 'buffer':
-        return this.validateBufferInput(input);
+        return this.validateBufferInput(candidate);
       case 'texture':
       case 'cubemap':
         // Cubemaps use the same path and sampler options as textures.
-        return this.validateTextureInput(input);
+        return this.validateTextureInput(candidate);
       case 'video':
-        return this.validateVideoInput(input);
+        return this.validateVideoInput(candidate);
       case 'system-audio':
       case 'microphone':
       case 'webcam':
-        return Object.keys(input).every(key => key === 'type');
+        return Object.keys(candidate).every(key => key === 'type');
       case 'screen':
-        return this.validateScreenInput(input);
+        return this.validateScreenInput(candidate);
       case 'keyboard':
-        return this.validateKeyboardInput(input);
+        return this.validateKeyboardInput(candidate);
       case 'audio':
-        return this.validateAudioInput(input);
+        return this.validateAudioInput(candidate);
       default:
         return false;
     }
   }
 
-  private validateScreenInput(input: any): boolean {
+  private validateScreenInput(input: Record<string, unknown>): boolean {
     if (!Object.keys(input).every(key => ['type', 'filter', 'wrap', 'vflip'].includes(key))) {
       return false;
     }
@@ -201,7 +206,7 @@ export class BufferConfig {
 
   private static readonly GLSL_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
-  private validateBufferInput(input: any): boolean {
+  private validateBufferInput(input: Record<string, unknown>): boolean {
     if (typeof input.source !== 'string' ||
         input.source.length === 0 ||
         !BufferConfig.GLSL_IDENTIFIER.test(input.source) ||
@@ -209,22 +214,22 @@ export class BufferConfig {
         input.source === 'common') {
       return false;
     }
-    if (input.filter !== undefined && !['linear', 'nearest'].includes(input.filter)) {
+    if (input.filter !== undefined && (typeof input.filter !== 'string' || !['linear', 'nearest'].includes(input.filter))) {
       return false;
     }
-    return input.wrap === undefined || ['repeat', 'clamp'].includes(input.wrap);
+    return input.wrap === undefined || (typeof input.wrap === 'string' && ['repeat', 'clamp'].includes(input.wrap));
   }
 
-  private validateTextureInput(input: any): boolean {
+  private validateTextureInput(input: Record<string, unknown>): boolean {
     if (!input.path || typeof input.path !== 'string') {
       return false;
     }
 
-    if (input.filter && !['linear', 'nearest', 'mipmap'].includes(input.filter)) {
+    if (input.filter && (typeof input.filter !== 'string' || !['linear', 'nearest', 'mipmap'].includes(input.filter))) {
       return false;
     }
 
-    if (input.wrap && !['repeat', 'clamp'].includes(input.wrap)) {
+    if (input.wrap && (typeof input.wrap !== 'string' || !['repeat', 'clamp'].includes(input.wrap))) {
       return false;
     }
 
@@ -235,16 +240,16 @@ export class BufferConfig {
     return true;
   }
 
-  private validateVideoInput(input: any): boolean {
+  private validateVideoInput(input: Record<string, unknown>): boolean {
     if (!input.path || typeof input.path !== 'string') {
       return false;
     }
 
-    if (input.filter && !['linear', 'nearest', 'mipmap'].includes(input.filter)) {
+    if (input.filter && (typeof input.filter !== 'string' || !['linear', 'nearest', 'mipmap'].includes(input.filter))) {
       return false;
     }
 
-    if (input.wrap && !['repeat', 'clamp'].includes(input.wrap)) {
+    if (input.wrap && (typeof input.wrap !== 'string' || !['repeat', 'clamp'].includes(input.wrap))) {
       return false;
     }
 
@@ -255,11 +260,11 @@ export class BufferConfig {
     return true;
   }
 
-  private validateKeyboardInput(input: any): boolean {
+  private validateKeyboardInput(input: Record<string, unknown>): boolean {
     return input.type === 'keyboard';
   }
 
-  private validateAudioInput(input: any): boolean {
+  private validateAudioInput(input: Record<string, unknown>): boolean {
     return !!input.path && typeof input.path === 'string';
   }
 

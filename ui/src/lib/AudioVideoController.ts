@@ -33,7 +33,9 @@ export class AudioVideoController {
     if (!engine) {
       return;
     }
-    engine.controlVideo(path, action as any);
+    if (isMediaAction(action)) {
+      engine.controlVideo(path, action);
+    }
   }
 
   getVideoState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null {
@@ -65,7 +67,9 @@ export class AudioVideoController {
       return;
     }
 
-    engine.controlAudio(path, action as any);
+    if (isMediaAction(action)) {
+      engine.controlAudio(path, action);
+    }
   }
 
   getAudioState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null {
@@ -125,4 +129,8 @@ export class AudioVideoController {
       this.unsubscribe = null;
     }
   }
+}
+
+function isMediaAction(action: string): action is 'play' | 'pause' | 'mute' | 'unmute' | 'reset' {
+  return ['play', 'pause', 'mute', 'unmute', 'reset'].includes(action);
 }

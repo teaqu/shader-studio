@@ -4,6 +4,15 @@ import { MessageTransport } from "./MessageTransport";
 import { ErrorHandler } from "../ErrorHandler";
 import { publishLoadedShaderProjectSnapshot } from "../../language-services/ShaderAuthoringEnvironmentProvider";
 
+interface WebviewTransportLike extends MessageTransport {
+  getWebview(): vscode.Webview | null;
+}
+
+function hasWebview(transport: MessageTransport): transport is WebviewTransportLike {
+  return "getWebview" in transport
+    && typeof (transport as Partial<WebviewTransportLike>).getWebview === "function";
+}
+
 export class Messenger {
   private messageHandler: MessageHandler;
   private errorHandler: ErrorHandler;
@@ -28,6 +37,7 @@ export class Messenger {
     return this.errorHandler;
   }
 
+  // The transport envelope is intentionally opaque until its `type` is routed.
   public send(message: any): void {
     try {
       // Track shader config for error attribution
@@ -76,11 +86,11 @@ export class Messenger {
     return this.transports.some(transport => transport.hasActiveClients());
   }
 
-  public getWebview(): any | null {
+  public getWebview(): vscode.Webview | null {
     // Get the first webview from WebviewTransport
     for (const transport of this.transports) {
-      if ('getWebview' in transport && typeof (transport as any).getWebview === 'function') {
-        const webview = (transport as any).getWebview();
+      if (hasWebview(transport)) {
+        const webview = transport.getWebview();
         if (webview) {
           return webview;
         }

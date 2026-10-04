@@ -9,7 +9,7 @@ import {
   shaderStudioBuiltinUniformNames,
 } from '@shader-studio/types';
 
-export const glslPredefinedVariables = [
+const glslPredefinedVariables = [
   'gl_Position', 'gl_PointSize', 'gl_ClipDistance', 'gl_CullDistance',
   'gl_FragCoord', 'gl_FrontFacing', 'gl_PointCoord', 'gl_SampleID',
   'gl_SamplePosition', 'gl_SampleMaskIn', 'gl_SampleMask', 'gl_FragDepth',
@@ -41,7 +41,7 @@ export const glslPredefinedVariables = [
   'gl_LocalInvocationIndex',
 ];
 
-export const glslShadertoyUniforms = [...shaderStudioBuiltinUniformNames('glsl')];
+const glslShadertoyUniforms = [...shaderStudioBuiltinUniformNames('glsl')];
 
 // Channels past the four named slots are declared per configured input, so the
 // index is matched rather than enumerated.

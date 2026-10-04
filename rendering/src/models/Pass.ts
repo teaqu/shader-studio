@@ -1,11 +1,11 @@
-import type { BufferOutputFormat, BufferResolution, GeometryType, RenderPassSettings } from "@shader-studio/types";
+import type { BufferOutputFormat, BufferResolution, ConfigInput, GeometryType, RenderPassSettings } from "@shader-studio/types";
 import type { InstanceDrawConfig, VerticesDrawConfig } from "../types/Geometry";
 
 export type Pass = VerticesDrawConfig & InstanceDrawConfig & RenderPassSettings & {
   name: string;
   shaderSrc: string;
   vertexSrc?: string;
-  inputs: Record<string, any>;
+  inputs: Record<string, ConfigInput>;
   geometry: GeometryType;
   modelPath?: string;
   modelMesh?: string;

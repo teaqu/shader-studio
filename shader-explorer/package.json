@@ -10,6 +10,7 @@
     "copy-to-extension": "rimraf ../extension/shader-explorer-dist && cpx \"dist/**/*\" ../extension/shader-explorer-dist",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
+    "typecheck": "npm run check",
     "test": "vitest run",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage"
@@ -18,17 +19,14 @@
     "@sveltejs/vite-plugin-svelte": "^5.0.3",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/svelte": "^5.2.8",
-    "@testing-library/user-event": "^14.5.2",
     "cpx": "^1.5.0",
     "jsdom": "^25.0.1",
     "rimraf": "^6.0.1",
     "svelte": "^5.28.1",
     "svelte-check": "^4.0.8",
-    "tslib": "^2.8.1",
     "typescript": "~5.6.2"
   },
   "dependencies": {
-    "@shader-studio/types": "*",
-    "@shader-studio/rendering": "*"
+    "@shader-studio/types": "*"
   }
 }

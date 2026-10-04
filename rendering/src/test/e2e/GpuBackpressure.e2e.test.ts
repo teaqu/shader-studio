@@ -52,9 +52,12 @@ const heavy: Record<ShaderLanguage, string> = {
 
 /** The private counter each engine paces against — same fields the fake-backed unit tests read. */
 function inFlightCount(engine: object, language: ShaderLanguage): number {
-  return language !== "glsl"
-    ? (engine as { framesInFlight: number }).framesInFlight
-    : (engine as { inFlightFences: unknown[] }).inFlightFences.length;
+  if (language === "glsl") {
+    return (engine as { inFlightFences: unknown[] }).inFlightFences.length;
+  }
+  // Frame timing now owns WebGPU submission tracking. This test deliberately
+  // inspects that owner so it continues to assert the live-loop invariant.
+  return (engine as { timing: { framesInFlight: number } }).timing.framesInFlight;
 }
 
 async function sampleMaxInFlight(language: ShaderLanguage, windowMs: number): Promise<number> {

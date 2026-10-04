@@ -43,11 +43,6 @@ export function toggleEditorOverlay(): void {
   persist();
 }
 
-export function setVimMode(v: boolean): void {
-  vimMode = v;
-  persist();
-}
-
 export function toggleVimMode(): void {
   vimMode = !vimMode;
   persist();

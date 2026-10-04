@@ -8,10 +8,10 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc",
+    "typecheck": "tsc -p tsconfig.test.json",
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
-    "@shader-studio/language-server-core": "*",
     "@shader-studio/types": "*",
     "vscode-languageserver-protocol": "3.18.2"
   },

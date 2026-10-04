@@ -185,7 +185,7 @@ describe("parseSlangStructure", () => {
       scopeId: declaration.scopeId,
       access: declaration.access,
       origin: declaration.origin.kind,
-      writableRange: `${declaration.origin.writableRange.start.line}:${declaration.origin.writableRange.start.character}-${declaration.origin.writableRange.end.line}:${declaration.origin.writableRange.end.character}`,
+      writableRange: declaration.origin.writableRange && `${declaration.origin.writableRange.start.line}:${declaration.origin.writableRange.start.character}-${declaration.origin.writableRange.end.line}:${declaration.origin.writableRange.end.character}`,
       modifiers: declaration.modifiers,
     }))).toEqual([
       { id: "declaration:file:///workspace/full.slang:9:8", name: "field", typeName: "float", range: "9:8-9:13", statementRange: "9:2-9:14", scopeId: "scope:file:///workspace/full.slang:8:32", access: "readwrite", origin: "direct", writableRange: "9:8-9:13", modifiers: [] },

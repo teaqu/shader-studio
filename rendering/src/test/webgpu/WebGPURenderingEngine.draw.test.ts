@@ -140,7 +140,7 @@ describe.each(["slang", "wgsl"] as const)("WebGPURenderingEngine draw calls (%s)
 
     engine.render(1000);
 
-    expect(beginRenderPass.mock.calls[0][0].colorAttachments?.[0]).toMatchObject({
+    expect(Array.from(beginRenderPass.mock.calls[0][0].colorAttachments ?? [])[0]).toMatchObject({
       clearValue: { r: 0.25, g: 0.5, b: 0.75, a: 0.5 },
       loadOp: "clear",
     });
@@ -614,9 +614,10 @@ describe.each(["slang", "wgsl"] as const)("WebGPURenderingEngine draw calls (%s)
     const result = await engine.compileShaderPipeline("// image", bufferConfig, imagePath, { BufferA: "// buffer" });
 
     const warning = "BufferA: renders into rgba16float because rgba32float blending is unavailable on this device";
-    expect(result.success).toBe(true);
-    expect((result.warnings ?? []).includes(warning)).toBe(warns);
-    const targets = pipelineDescriptors(device).map((descriptor) => descriptor.fragment!.targets![0]!.format);
+    expect(result).toBeDefined();
+    expect(result!.success).toBe(true);
+    expect((result!.warnings ?? []).includes(warning)).toBe(warns);
+    const targets = pipelineDescriptors(device).map((descriptor) => Array.from(descriptor.fragment!.targets!)[0]!.format);
     expect(targets).toContain(format);
   });
 
