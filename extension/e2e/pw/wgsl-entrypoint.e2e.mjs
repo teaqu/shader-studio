@@ -2,6 +2,7 @@ import { test, expect, workspacePath } from './fixtures.mjs';
 import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expectCanvasPixels, revertFixtureEditors } from './editor-actions.mjs';
+import { openConfigPanel } from './config-panel.mjs';
 
 const fixtureDir = join(workspacePath, `wgsl-entrypoint-${process.env.TEST_WORKER_INDEX ?? process.pid}`);
 test.use({ vscodeKey: 'wgsl-entrypoint' });
@@ -56,7 +57,7 @@ test('persists per-pass viewer camera overrides and follows VS Code settings thr
     await vscode.evaluateInHost(async vscode => vscode.workspace.getConfiguration('shader-studio').update('webgpu.useViewerCamera', true, vscode.ConfigurationTarget.Global));
     await open();
     let frame = await vscode.shaderFrame();
-    await frame.getByLabel('Toggle config panel', { exact: true }).click();
+    await openConfigPanel(frame);
     const pass = () => frame.getByLabel('Use viewer camera', { exact: true });
     const shaderDefaults = () => frame.getByText('Viewer camera defaults', { exact: true });
     const shaderCamera = () => frame.getByLabel('Shader viewer camera', { exact: true });
@@ -78,7 +79,7 @@ test('persists per-pass viewer camera overrides and follows VS Code settings thr
     await open();
     frame = await vscode.shaderFrame();
     if (!await pass().isVisible()) {
-      await frame.getByLabel('Toggle config panel', { exact: true }).click();
+      await openConfigPanel(frame);
     }
     await expect(pass()).toBeChecked();
     await expect(shaderDefaults()).toHaveCount(0);

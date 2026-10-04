@@ -690,6 +690,11 @@
     "environment": "gpu"
   },
   {
+    "id": "7357a8aa70c3fba65bd7-1888a6108fcdbbbb8dd9:",
+    "title": "wgsl-entrypoint.e2e.mjs › persists per-pass viewer camera overrides and follows VS Code settings through reload @gpu",
+    "environment": "gpu"
+  },
+  {
     "id": "21d8adef35b0c628fede-8f7aac1b9f35358a5395:",
     "title": "wgsl-file-creation.e2e.mjs › GLSL file creation in the VS Code config panel › uses the shader basename for scripts and creates a vertex hook",
     "environment": "non-gpu"
