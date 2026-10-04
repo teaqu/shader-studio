@@ -542,12 +542,8 @@ export class ShaderRecorder {
       format: config.format as "webm" | "mp4",
     });
 
-    // Flush every N frames so encoding runs in parallel with rendering
-    // instead of building up a massive backlog for finish(). Each flush is
-    // awaited, so at most flushInterval frames are ever queued.
-    const flushInterval = Math.max(4, Math.ceil(config.fps / 2));
     // WebGPU drawing buffers are transient. Read back into a stable 2D canvas
-    // before handing pixels to WebCodecs, including across encoder flushes.
+    // before handing pixels to the encoder.
     const gpuFrames = language === "wgsl" || language === "slang";
     const encodingCanvas = gpuFrames ? document.createElement("canvas") : canvas;
     if (gpuFrames) {
@@ -571,14 +567,10 @@ export class ShaderRecorder {
           }
           encodingContext.putImageData(await renderingEngine.captureCurrentFrame(), 0, 0);
         }
-        encoder.addFrame(encodingCanvas, timestampUs);
+        await encoder.addFrame(encodingCanvas, timestampUs);
 
         recordingStore.updateProgress(i + 1, totalFrames);
 
-        // Flush encoder periodically to keep queue short and UI responsive
-        if (i % flushInterval === flushInterval - 1) {
-          await encoder.flush();
-        }
       }
 
       recordingStore.setFinalizing();
@@ -587,7 +579,7 @@ export class ShaderRecorder {
       return await encoder.finish();
     } finally {
       // finish() closes on success; this releases the encoder on cancel/error.
-      encoder.close();
+      await encoder.close();
     }
   }
 }
