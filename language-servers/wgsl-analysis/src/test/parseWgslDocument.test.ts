@@ -299,6 +299,12 @@ describe("parseWgslExpression", () => {
       kind: "call", callee: "bitcast", templateArguments: ["array<vec2u, 2>"],
     });
   });
+
+  it("keeps the recoverable expression from incomplete grouping and calls", () => {
+    expect(parseWgslExpression("(value")).toMatchObject({ kind: "identifier", name: "value" });
+    expect(parseWgslExpression("call(,")).toMatchObject({ kind: "call", name: "call", args: [] });
+    expect(parseWgslExpression("call(value")).toMatchObject({ kind: "call", name: "call", args: [{ kind: "identifier", name: "value" }] });
+  });
 });
 
 describe("parseWgslDocument recovery", () => {

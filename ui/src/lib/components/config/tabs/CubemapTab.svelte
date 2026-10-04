@@ -8,7 +8,7 @@
     tempInput?: ConfigInput;
     channelName: string;
     shaderPath: string;
-    postMessage?: (msg: any) => void;
+    postMessage?: (msg: { type: string; [key: string]: unknown }) => void;
     onMessage?: (handler: (event: MessageEvent) => void) => void;
     onAssetSelect: (path: string, resolvedUri?: string) => void;
     onUpdatePath: (path: string) => void;
@@ -21,7 +21,7 @@
     tempInput = undefined as ConfigInput | undefined,
     channelName,
     shaderPath,
-    postMessage = undefined as ((msg: any) => void) | undefined,
+    postMessage = undefined as ((msg: { type: string; [key: string]: unknown }) => void) | undefined,
     onMessage = undefined as ((handler: (event: MessageEvent) => void) => void) | undefined,
     onAssetSelect,
     onUpdatePath,

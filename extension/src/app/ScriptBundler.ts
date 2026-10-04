@@ -11,6 +11,22 @@ export interface BundleResult {
 
 type EsbuildWasm = typeof import("esbuild-wasm");
 
+function errorMessage(error: unknown): string {
+  if ((typeof error === "object" && error !== null) || typeof error === "function") {
+    const message = (error as { message?: unknown }).message;
+    if (message) {
+      return String(message);
+    }
+  }
+  return String(error);
+}
+
+function isEsbuildWasm(value: unknown): value is EsbuildWasm {
+  return typeof value === "object" && value !== null
+    && typeof (value as { initialize?: unknown }).initialize === "function"
+    && typeof (value as { build?: unknown }).build === "function";
+}
+
 /**
  * The engine is WebAssembly rather than esbuild's native binary because the
  * VSIX ships no node_modules, and one universal package cannot carry a 9MB
@@ -130,10 +146,14 @@ async function loadEngine(): Promise<EsbuildWasm> {
     engine = (async () => {
       // The browser build is CJS behind a wrapper, so Node's ESM interop can
       // only see a default export; a bundled CJS require sees the namespace.
-      const loaded = await import("esbuild-wasm/lib/browser.js") as any;
-      const esbuild = (typeof loaded?.initialize === "function"
+      const loaded: unknown = await import("esbuild-wasm/lib/browser.js");
+      const candidate = isEsbuildWasm(loaded)
         ? loaded
-        : loaded?.default) as EsbuildWasm;
+        : (typeof loaded === "object" && loaded !== null ? (loaded as { default?: unknown }).default : undefined);
+      if (!isEsbuildWasm(candidate)) {
+        throw new Error("esbuild-wasm browser module did not expose build and initialize");
+      }
+      const esbuild = candidate;
       const wasmModule = await WebAssembly.compile(fs.readFileSync(locateWasmBinary()));
 
       // Starting the wasm without a worker reaches for `self`, which Node does
@@ -196,8 +216,8 @@ export class ScriptBundler {
       }
 
       return { success: true, code };
-    } catch (err: any) {
-      const message = err?.message || String(err);
+    } catch (err: unknown) {
+      const message = errorMessage(err);
       this.logger.warn(`Script bundle failed: ${message}`);
       return { success: false, error: message };
     }

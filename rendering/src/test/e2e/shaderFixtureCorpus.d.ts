@@ -1,9 +1,40 @@
 declare module "virtual:shader-fixture-corpus" {
-  import type { ShaderProgram, ShaderLanguage } from "./ShaderCanvasHarness";
+  import type { ShaderLanguage } from "./ShaderCanvasHarness";
 
-  interface ShaderFixtureProject extends ShaderProgram {
+  /** The generated corpus deliberately includes invalid and cross-language
+   * configurations, so its inspection contract is broader than ShaderConfig. */
+  interface CorpusInput {
+    type: string;
+    source?: string;
+    path?: string;
+    [key: string]: unknown;
+  }
+
+  interface CorpusPass {
+    type?: string;
+    path?: string;
+    vertex?: string;
+    geometry?: { type?: string };
+    inputs?: Record<string, CorpusInput>;
+    [key: string]: unknown;
+  }
+
+  interface CorpusConfig {
+    passes?: Record<string, CorpusPass>;
+    storage?: Record<string, unknown>;
+    script?: string;
+  }
+
+  interface ShaderFixtureProject {
     name: string;
     language: ShaderLanguage;
+    path?: string;
+    image: string;
+    buffers?: Record<string, string>;
+    config?: CorpusConfig | null;
+    customUniformDeclarations?: string;
+    customUniformInfo?: { name: string; type: string }[];
+    customUniformValues?: { name: string; type: string; value: number | number[] | boolean }[];
     slangSourcePath?: string;
     slangSourcePaths?: Record<string, string>;
   }

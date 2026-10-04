@@ -1,3 +1,4 @@
+import { engineOwners } from "./engineOwners";
 import { describe, expect, it, vi } from "vitest";
 import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
 import { WebGPUPixelRegionCapturer } from "../../webgpu/WebGPUPixelRegionCapturer";
@@ -62,6 +63,8 @@ function engineWithCanvasPass() {
   };
   Object.assign(engine as unknown as Record<string, unknown>, {
     device, context: { getCurrentTexture: () => canvasTexture }, canvas: { width: 320, height: 180 },
+  });
+  Object.assign(engineOwners(engine).session, {
     passGraph: [{ name: "Image", width: 320, height: 180, output: "canvas", channels: [] }],
     passPipelines: new Map([["Image", pipeline]]),
   });
@@ -96,8 +99,9 @@ describe("WebGPURenderingEngine pixel regions", () => {
   it("leaves a request queued when the frame draws nothing to the canvas", () => {
     const { engine, device } = engineWithCanvasPass();
     const realCapturer = new WebGPUPixelRegionCapturer(device as unknown as GPUDevice, "rgba8unorm");
-    Object.assign(engine as unknown as Record<string, unknown>, { pixelRegionCapturer: realCapturer, passGraph: [] });
+    Object.assign(engine as unknown as Record<string, unknown>, { pixelRegionCapturer: realCapturer });
 
+    engineOwners(engine).session.passGraph = [];
     expect(engine.requestPixelRegion(1, 100, 80)).toBe(true);
     engine.render(1000);
     expect(engine.getPixelRegionRequestStage(1)).toBe("queued");

@@ -57,7 +57,7 @@ describe('glslLanguageDefinition', () => {
 
   it('matches legacy channel metadata accessors beyond slot 3', () => {
     expect(glslLanguageDefinition.tokenizer.root.some((rule) => (
-      rule[0] instanceof RegExp && rule[0].source.includes('iCh\\d+')
+      Array.isArray(rule) && rule[0] instanceof RegExp && rule[0].source.includes('iCh\\d+')
     ))).toBe(true);
   });
 

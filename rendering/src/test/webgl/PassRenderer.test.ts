@@ -180,7 +180,9 @@ describe("PassRenderer", () => {
     date: [2023, 1, 1, 0],
     channelTime: [0, 0, 0, 0],
     sampleRate: 44100,
-    channelLoaded: [0, 0, 0, 0]
+    channelLoaded: [0, 0, 0, 0],
+    cameraPos: [0, 0, 0],
+    cameraDir: [0, 0, -1]
   };
 
   describe("renderPass", () => {
@@ -1318,6 +1320,7 @@ describe("PassRenderer", () => {
   describe("iCh struct uniforms", () => {
     it("should bind iCh0-iCh3 samplers to matching channel units when locations are absent", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
