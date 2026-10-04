@@ -32,6 +32,9 @@ it("offers fragment sampling inside a native fragment-only helper while retainin
   expect((await instance.signatureHelp({ document, position: { line: 0, character: sampleAt + "iChannel0Sample(".length } }))?.signatures[0]?.label).toContain("iChannel0Sample");
   const computePosition = { line: 2, character: text.split("\n")[2]!.indexOf("iChannel0Sample") + 2 };
   expect((await instance.completion({ document, position: computePosition })).some(item => item.label === "iChannel0Sample")).toBe(false);
+  const computeLabels = (await instance.completion({ document, position: computePosition })).map(item => item.label);
+  expect(computeLabels).not.toContain("iChannel0SampleBias");
+  expect(computeLabels).toContain("iChannel0SampleLevel");
   const warnings = (await instance.diagnostics({ document })).filter(item => item.code === "sampling-requires-fragment");
   expect(warnings.map(item => item.range.start.line)).toEqual([2]);
 });

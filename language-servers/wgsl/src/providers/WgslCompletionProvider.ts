@@ -34,7 +34,7 @@ export class WgslCompletionProvider {
         if (included.uri === "shader-studio://generated/channels.wgsl" && (symbol.name.startsWith("_ss") || !included.scopes.some((scope) => scope.id === symbol.scopeId && scope.kind === "global"))) {
           continue;
         }
-        if (analysis.uri === "shader-studio://generated/channels.wgsl" && state.environment.stage !== "fragment"
+        if (included.uri === "shader-studio://generated/channels.wgsl" && state.environment.stage !== "fragment"
           && !isFragmentOnlyNativePosition(state.document.text, params.position)
           && /(?:Sample|SampleBias)$/.test(symbol.name)) {
           continue;
