@@ -199,8 +199,8 @@ export class BufferConfig {
     if (!Object.keys(input).every(key => ['type', 'filter', 'wrap', 'vflip'].includes(key))) {
       return false;
     }
-    return (input.filter === undefined || ['linear', 'nearest', 'mipmap'].includes(input.filter)) &&
-      (input.wrap === undefined || ['repeat', 'clamp'].includes(input.wrap)) &&
+    return (input.filter === undefined || (typeof input.filter === 'string' && ['linear', 'nearest', 'mipmap'].includes(input.filter))) &&
+      (input.wrap === undefined || (typeof input.wrap === 'string' && ['repeat', 'clamp'].includes(input.wrap))) &&
       (input.vflip === undefined || typeof input.vflip === 'boolean');
   }
 
@@ -217,7 +217,7 @@ export class BufferConfig {
     if (input.filter !== undefined && (typeof input.filter !== 'string' || !['linear', 'nearest'].includes(input.filter))) {
       return false;
     }
-    return input.wrap === undefined || (typeof input.wrap === 'string' && ['repeat', 'clamp'].includes(input.wrap));
+    return input.wrap === undefined || (typeof input.wrap === 'string' && (typeof input.wrap === 'string' && ['repeat', 'clamp'].includes(input.wrap)));
   }
 
   private validateTextureInput(input: Record<string, unknown>): boolean {
@@ -225,11 +225,11 @@ export class BufferConfig {
       return false;
     }
 
-    if (input.filter && (typeof input.filter !== 'string' || !['linear', 'nearest', 'mipmap'].includes(input.filter))) {
+    if (input.filter && (typeof input.filter !== 'string' || !(typeof input.filter === 'string' && ['linear', 'nearest', 'mipmap'].includes(input.filter)))) {
       return false;
     }
 
-    if (input.wrap && (typeof input.wrap !== 'string' || !['repeat', 'clamp'].includes(input.wrap))) {
+    if (input.wrap && (typeof input.wrap !== 'string' || !(typeof input.wrap === 'string' && ['repeat', 'clamp'].includes(input.wrap)))) {
       return false;
     }
 
@@ -245,11 +245,11 @@ export class BufferConfig {
       return false;
     }
 
-    if (input.filter && (typeof input.filter !== 'string' || !['linear', 'nearest', 'mipmap'].includes(input.filter))) {
+    if (input.filter && (typeof input.filter !== 'string' || !(typeof input.filter === 'string' && ['linear', 'nearest', 'mipmap'].includes(input.filter)))) {
       return false;
     }
 
-    if (input.wrap && (typeof input.wrap !== 'string' || !['repeat', 'clamp'].includes(input.wrap))) {
+    if (input.wrap && (typeof input.wrap !== 'string' || !(typeof input.wrap === 'string' && ['repeat', 'clamp'].includes(input.wrap)))) {
       return false;
     }
 

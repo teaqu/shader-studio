@@ -379,8 +379,8 @@ export class ConfigValidator {
     if (!Object.keys(input).every(key => ['type', 'filter', 'wrap', 'vflip'].includes(key))) {
       return false;
     }
-    return (input.filter === undefined || ['linear', 'nearest', 'mipmap'].includes(input.filter)) &&
-      (input.wrap === undefined || ['repeat', 'clamp'].includes(input.wrap)) &&
+    return (input.filter === undefined || (typeof input.filter === 'string' && ['linear', 'nearest', 'mipmap'].includes(input.filter))) &&
+      (input.wrap === undefined || (typeof input.wrap === 'string' && ['repeat', 'clamp'].includes(input.wrap))) &&
       (input.vflip === undefined || typeof input.vflip === 'boolean');
   }
 
