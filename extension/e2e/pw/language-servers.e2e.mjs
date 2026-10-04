@@ -1,5 +1,5 @@
 import { test, expect, workspacePath } from './fixtures.mjs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 
 const fixturePath = join(workspacePath, 'language-servers');
 const wgslFixturePath = join(fixturePath, 'wgsl');
@@ -335,7 +335,7 @@ test.describe('Shader language servers in VS Code', () => {
 
     // `twice` is declared in the configured Common pass. Cross-file rename
     // (3c498bfb) edits the declaration there and the call here in one edit.
-    expect(result.includedRename.map((item) => ({ file: item.path.split('/').pop(), edits: item.edits }))
+    expect(result.includedRename.map((item) => ({ file: basename(item.path), edits: item.edits }))
       .sort((left, right) => left.file.localeCompare(right.file))).toEqual([
       { file: 'common.glsl', edits: [{ line: 0, newText: 'doubled' }] },
       { file: 'image.glsl', edits: [{ line: 3, newText: 'doubled' }] },
@@ -429,7 +429,7 @@ test.describe('Shader language servers in VS Code', () => {
     expect(result.rename[0].edits.every((item) => item.newText === 'screenUv')).toBeTruthy();
 
     // `twice` is declared in the configured Common pass.
-    expect(result.includedRename.map((item) => ({ file: item.path.split('/').pop(), edits: item.edits }))
+    expect(result.includedRename.map((item) => ({ file: basename(item.path), edits: item.edits }))
       .sort((left, right) => left.file.localeCompare(right.file))).toEqual([
       { file: 'common.wgsl', edits: [{ line: 0, newText: 'doubled' }] },
       { file: 'image.wgsl', edits: [{ line: 3, newText: 'doubled' }] },

@@ -30,7 +30,7 @@ test('opening the preview does not take keyboard focus from typing in the shader
       await vscode.window.waitForTimeout(60);
     }
     await expect.poll(() => vscode.evaluateInHost((vscode, path) => (
-      vscode.workspace.textDocuments.find((document) => document.uri.fsPath === path)?.getText() ?? ''
+      vscode.workspace.textDocuments.find((document) => document.uri.fsPath === vscode.Uri.file(path).fsPath)?.getText() ?? ''
     ), shaderPath)).toContain(typed.trimStart());
     expect(await vscode.evaluateInHost(vscode => vscode.window.tabGroups.activeTabGroup.viewColumn)).toBe(1);
     await vscode.window.keyboard.press('ControlOrMeta+S');

@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { hostCallbackId, hostCallbackSource } from './host-callback.mjs';
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,8 +23,8 @@ function registerCallbacks(filename, source) {
       if (!callback || (!ts.isArrowFunction(callback) && !ts.isFunctionExpression(callback))) {
         throw new Error(`evaluateInHost requires a literal function: ${filename}`);
       }
-      const text = callback.getText(file);
-      const id = createHash('sha256').update(text).digest('hex');
+      const text = hostCallbackSource(callback.getText(file));
+      const id = hostCallbackId(text);
       functions.set(id, text);
     }
     ts.forEachChild(node, visit);
@@ -44,7 +44,7 @@ function visitDirectory(directory) {
     if (!entry.name.endsWith('.mjs')) {
       continue;
     }
-    const source = readFileSync(filename, 'utf8');
+    const source = hostCallbackSource(readFileSync(filename, 'utf8'));
     registerCallbacks(filename, source);
     // Playwright transpiles spec modules before execution, changing callback
     // formatting. Register those static forms alongside the originals.
@@ -64,7 +64,7 @@ const generated = [
 ].join('\n');
 
 if (process.argv.includes('--check')) {
-  if (readFileSync(output, 'utf8') !== generated) {
+  if (hostCallbackSource(readFileSync(output, 'utf8')) !== generated) {
     throw new Error('host-functions.js is stale; run node extension/e2e/pw/generate-host-functions.mjs');
   }
 } else {
