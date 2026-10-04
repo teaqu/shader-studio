@@ -12,12 +12,57 @@ import {
   LocalStorageWorkspaceJournal,
   MemoryWorkspaceStore,
   VirtualWorkspace,
+  type WorkspaceImportOptions,
+  type WorkspacePersistenceStatus,
 } from './VirtualWorkspace';
 import { WebExtensionHost } from './WebExtensionHost';
 import { syncSettingsAcrossTabs } from './settings/syncSettingsAcrossTabs';
 import { StandaloneSettings } from './settings/StandaloneSettings';
 
 const EXPLORER_STATE_KEY = 'shader-studio-explorer-state';
+
+export interface WorkspaceStorageStatus {
+  /** IndexedDB survives a session; the memory fallback does not. */
+  backend: 'indexeddb' | 'session';
+  /** Browser eviction protection, if the Storage API can report it. */
+  persisted: boolean | null;
+  persistSupported: boolean;
+}
+
+interface WorkspaceSession {
+  workspace: VirtualWorkspace;
+  backend: WorkspaceStorageStatus['backend'];
+}
+
+type StorageManagerLike = Pick<StorageManager, 'persist' | 'persisted'>;
+
+/** Missing or denied browser storage APIs become a status result, not an
+ * exception that can interrupt editing. */
+export async function inspectWorkspaceStorage(
+  backend: WorkspaceStorageStatus['backend'],
+  storage: StorageManagerLike | undefined = navigator.storage,
+  requestPersistence = false,
+): Promise<WorkspaceStorageStatus> {
+  const persistSupported = typeof storage?.persist === 'function';
+  if (backend === 'session') {
+    return { backend, persisted: false, persistSupported };
+  }
+  if (requestPersistence && persistSupported) {
+    try {
+      await storage.persist();
+    } catch {
+      // Query below is the authoritative outcome after a denied request.
+    }
+  }
+  if (typeof storage?.persisted !== 'function') {
+    return { backend, persisted: null, persistSupported };
+  }
+  try {
+    return { backend, persisted: await storage.persisted(), persistSupported };
+  } catch {
+    return { backend, persisted: null, persistSupported };
+  }
+}
 
 function savedExplorerState(fallback: unknown): unknown {
   try {
@@ -28,16 +73,19 @@ function savedExplorerState(fallback: unknown): unknown {
   }
 }
 
-function createWorkspace() {
+function createWorkspace(): Promise<WorkspaceSession> {
   const seeds = createDefaultWorkspaceFiles();
   if (typeof indexedDB === 'undefined') {
-    return VirtualWorkspace.open(new MemoryWorkspaceStore(), seeds);
+    return VirtualWorkspace.open(new MemoryWorkspaceStore(), seeds)
+      .then(workspace => ({ workspace, backend: 'session' as const }));
   }
   // Edits are journalled synchronously: a reload during a queued database
   // write must not take the text back to the last committed snapshot.
   const journal = new LocalStorageWorkspaceJournal();
   return VirtualWorkspace.open(new IndexedDbWorkspaceStore(), seeds, undefined, journal)
-    .catch(() => VirtualWorkspace.open(new MemoryWorkspaceStore(), seeds, undefined, journal));
+    .then(workspace => ({ workspace, backend: 'indexeddb' as const }))
+    .catch(() => VirtualWorkspace.open(new MemoryWorkspaceStore(), seeds, undefined, journal)
+      .then(workspace => ({ workspace, backend: 'session' as const })));
 }
 
 export class WebTransport implements Transport {
@@ -46,11 +94,14 @@ export class WebTransport implements Transport {
   /** Browser-wide standalone preferences shared by the host and app shell. */
   readonly settings = new StandaloneSettings();
   private readonly stopSettingsSync = syncSettingsAcrossTabs(this.settings);
-  private readonly host = createWorkspace().then((workspace) => new WebExtensionHost(workspace, {
+  private readonly session = createWorkspace();
+  private readonly workspace = this.session.then(({ workspace }) => workspace);
+  private readonly host = this.workspace.then((workspace) => new WebExtensionHost(workspace, {
     resolveDefaultAsset: resolveDefaultAssetUrl,
     settings: this.settings,
   }));
   private readonly viewerCleanups = new Set<() => void>();
+  private readonly persistenceCleanups = new Set<() => void>();
 
   postMessage<const TMessage extends BaseMessage>(message: TransportMessage<TMessage>): void {
     if (this.connected) {
@@ -196,12 +247,71 @@ export class WebTransport implements Transport {
     }
     this.viewerCleanups.clear();
     void this.host.then(host => host.dispose());
+    for (const cleanup of this.persistenceCleanups) {
+      cleanup();
+    }
+    this.persistenceCleanups.clear();
   }
 
   async clearWorkspace(): Promise<void> {
     const host = await this.host;
     await host.clearWorkspace();
     clearEditorDocuments();
+  }
+
+  /** Wait until every queued workspace write has either committed or failed. */
+  async flush(): Promise<void> {
+    await (await this.workspace).flush();
+  }
+
+  /** A portable snapshot for user-initiated download; it includes pending edits. */
+  async exportWorkspaceBackup(): Promise<string> {
+    return (await this.workspace).exportBackup();
+  }
+
+  /** Import requires `{ replace: true }` whenever there are existing files. */
+  async importWorkspaceBackup(backup: unknown, options?: WorkspaceImportOptions): Promise<void> {
+    await (await this.workspace).importBackup(backup, options);
+  }
+
+  async getPersistenceStatus(): Promise<WorkspacePersistenceStatus> {
+    return (await this.workspace).persistenceStatus;
+  }
+
+  /** Reports whether saves have an IndexedDB backend and, where supported,
+   * whether the browser has granted eviction protection. Never throws merely
+   * because a privacy mode omits the Storage API. */
+  async getStorageStatus(): Promise<WorkspaceStorageStatus> {
+    const { backend } = await this.session;
+    return inspectWorkspaceStorage(backend);
+  }
+
+  /** Best effort only: a browser may refuse durable quota without this being an
+   * application error. The returned status is the authoritative result. */
+  async requestPersistentStorage(): Promise<WorkspaceStorageStatus> {
+    const { backend } = await this.session;
+    return inspectWorkspaceStorage(backend, undefined, true);
+  }
+
+  onPersistenceStatus(listener: (status: WorkspacePersistenceStatus) => void): () => void {
+    let disposed = false;
+    let unsubscribe: (() => void) | undefined;
+    const cleanup = () => {
+      disposed = true;
+      unsubscribe?.();
+      this.persistenceCleanups.delete(cleanup);
+    };
+    this.persistenceCleanups.add(cleanup);
+    void this.workspace.then((workspace) => {
+      if (!disposed) {
+        unsubscribe = workspace.onPersistenceStatus(status => {
+          if (this.connected && !disposed) {
+            listener(status);
+          }
+        });
+      }
+    });
+    return cleanup;
   }
 
   getType(): 'web' {

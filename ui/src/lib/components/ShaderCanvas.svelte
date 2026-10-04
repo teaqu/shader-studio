@@ -13,7 +13,8 @@
     onCanvasReady?: (canvas: HTMLCanvasElement) => void;
     onCanvasSizeChange?: (data: { width: number; height: number }) => void;
     onCanvasResize?: (data: { width: number; height: number }) => void;
-    onCanvasClick?: (event: MouseEvent) => void;
+    /** `pointerType` is the PointerEvent type that started a tap; absent for keyboard activation. */
+    onCanvasClick?: (event: MouseEvent, pointerType?: string) => void;
     isInspectorActive?: boolean;
   }
 
@@ -102,6 +103,7 @@
   });
 
   let mouseDownPosition: { x: number; y: number } | null = $state(null);
+  let mouseDownPointerType: string | undefined;
   const CLICK_THRESHOLD = 8;
 
   function setupInputHandling() {
@@ -112,6 +114,7 @@
 
   function handleMouseDown(event: MouseEvent) {
     mouseDownPosition = { x: event.clientX, y: event.clientY };
+    mouseDownPointerType = (event as Partial<PointerEvent>).pointerType || 'mouse';
     // A press on the canvas claims keyboard focus so subsequent keys reach
     // the viewer instead of silently editing the Monaco document that still
     // holds focus. Mousedown only: hover must never steal focus.
@@ -125,10 +128,16 @@
       const distance = Math.sqrt(dx * dx + dy * dy);
 
       if (distance <= CLICK_THRESHOLD) {
-        onCanvasClick(event);
+        onCanvasClick(event, mouseDownPointerType);
       }
     }
     mouseDownPosition = null;
+    mouseDownPointerType = undefined;
+  }
+
+  function handlePointerCancel() {
+    mouseDownPosition = null;
+    mouseDownPointerType = undefined;
   }
 
   $effect(() => {
@@ -150,15 +159,21 @@
   role="button"
   tabindex="0"
   bind:this={containerEl}
-  onkeydown={(e) => e.key === 'Enter' && onCanvasClick(e as unknown as MouseEvent)}
+  onkeydown={(e) => e.key === 'Enter' && onCanvasClick(e as unknown as MouseEvent, undefined)}
   onpointerdown={handleMouseDown}
+  onpointercancel={handlePointerCancel}
   onclick={handleClick}
 >
   <canvas
     bind:this={glCanvas}
     style:cursor={isInspectorActive ? 'crosshair' : undefined}
-    onpointerdown={handleMouseDown}
-    onmousedown={handleMouseDown}
+    onmousedown={(event) => {
+      // Legacy browsers and jsdom do not expose PointerEvent. Modern browsers
+      // take the pointerdown path above, avoiding duplicate gesture starts.
+      if (typeof PointerEvent === 'undefined') {
+        handleMouseDown(event);
+      }
+    }}
   ></canvas>
   <PixelCanvasMarker {glCanvas} container={containerEl} />
 </div>
@@ -175,5 +190,6 @@
   canvas {
     image-rendering: pixelated;
     image-rendering: -webkit-optimize-contrast;
+    touch-action: none;
   }
 </style>

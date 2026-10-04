@@ -12,16 +12,16 @@ function createApi(): StandaloneDockviewApi & { emitLayoutChange(): void; activa
   type TestPanel = {
     id: string;
     api: {
-      close: () => void;
+      close(): void;
       group: TestGroup;
-      setActive: () => void;
-      setTitle: (title: string) => void;
-      setSize: (size: { width: number }) => void;
+      setActive(): void;
+      setTitle(title: string): void;
+      setSize(size: { width: number }): void;
     };
   };
   type TestGroup = {
     panels: TestPanel[];
-    api: { isVisible: boolean; setVisible: (visible: boolean) => void };
+    api: { isVisible: boolean; setVisible(visible: boolean): void };
   };
   const panels = new Map<string, TestPanel>();
   const createGroup = (): TestGroup => {
@@ -107,6 +107,41 @@ describe('StandaloneLayoutController', () => {
     storage = createStorage();
   });
 
+  it('allows user widths without hard minimums for new and reopened panels', () => {
+    const controller = new StandaloneLayoutController(api, storage);
+    controller.initialize();
+    for (const id of ['explorer', 'preview'] as const) {
+      expect(api.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id }));
+      api.remove(id);
+      controller.showPanel(id);
+      expect(api.addPanel).toHaveBeenLastCalledWith(expect.objectContaining({ id }));
+      expect(vi.mocked(api.addPanel).mock.calls.at(-1)?.[0]).not.toHaveProperty('minimumWidth');
+    }
+  });
+
+  it('removes obsolete hard minimums without resetting saved layouts', () => {
+    const saved = { panels: {
+      preview: { contentComponent: 'preview', minimumWidth: 40 },
+      explorer: { contentComponent: 'explorer' },
+      editor: { contentComponent: 'editor' },
+    }, grid: { width: 1600 } };
+    storage = createStorage({ [STANDALONE_LAYOUT_STORAGE_KEY]: JSON.stringify(saved) });
+    new StandaloneLayoutController(api, storage).initialize();
+    expect(api.fromJSON).toHaveBeenCalledWith({ ...saved, panels: {
+      ...saved.panels,
+      explorer: { ...saved.panels.explorer },
+      preview: { contentComponent: 'preview' },
+    } });
+    expect(api.addPanel).not.toHaveBeenCalled();
+  });
+
+  it('removes old minimums and leaves missing panels closed', () => {
+    const saved = { panels: { preview: { contentComponent: 'preview', minimumWidth: 480 } } };
+    storage = createStorage({ [STANDALONE_LAYOUT_STORAGE_KEY]: JSON.stringify(saved) });
+    new StandaloneLayoutController(api, storage).initialize();
+    expect(api.fromJSON).toHaveBeenCalledWith({ panels: { preview: { contentComponent: 'preview' } } });
+    expect(api.addPanel).not.toHaveBeenCalled();
+  });
   it('creates the explorer, editor, and preview default outer layout', () => {
     new StandaloneLayoutController(api, storage).initialize();
     expect(api.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'preview', title: 'Preview' }));
@@ -183,7 +218,7 @@ describe('StandaloneLayoutController', () => {
       },
       panels: {
         preview: { id: 'preview', contentComponent: 'preview', title: 'Preview' },
-        explorer: saved.panels.explorer,
+        explorer: { ...saved.panels.explorer },
         editor: saved.panels.editor,
         config: saved.panels.config,
         debug: saved.panels.debug,
@@ -201,7 +236,11 @@ describe('StandaloneLayoutController', () => {
     ) };
     storage = createStorage({ [STANDALONE_LAYOUT_STORAGE_KEY]: JSON.stringify(saved) });
     new StandaloneLayoutController(api, storage).initialize();
-    expect(api.fromJSON).toHaveBeenCalledWith(saved);
+    expect(api.fromJSON).toHaveBeenCalledWith({ ...saved, panels: {
+      ...saved.panels,
+      preview: { contentComponent: 'preview' },
+      explorer: { ...saved.panels.explorer },
+    } });
     expect(api.addPanel).not.toHaveBeenCalled();
   });
 
@@ -241,6 +280,85 @@ describe('StandaloneLayoutController', () => {
     expect(editor?.api.group.api.setVisible).toHaveBeenCalledWith(true);
     expect(editor?.api.setActive).toHaveBeenCalledOnce();
     expect(api.addPanel).toHaveBeenCalledTimes(3);
+  });
+
+  it('switches phone destinations without remounting panels or persisting the temporary visibility', () => {
+    const controller = new StandaloneLayoutController(api, storage);
+    controller.initialize();
+    const preview = api.getPanel('preview');
+    const editor = api.getPanel('editor');
+
+    controller.showMobilePanel('editor');
+    expect(controller.getMobilePanel()).toBe('editor');
+    expect(preview?.api.group.api.setVisible).toHaveBeenCalledWith(false);
+    expect(editor?.api.group.api.setVisible).toHaveBeenCalledWith(true);
+    expect(api.addPanel).toHaveBeenCalledTimes(3);
+    api.emitLayoutChange();
+    expect(storage.setItem).not.toHaveBeenCalled();
+
+    controller.restoreDesktopPanels();
+    expect(controller.getMobilePanel()).toBeNull();
+    expect(preview?.api.group.api.isVisible).toBe(true);
+  });
+
+  it('shows only the requested tool group in phone mode and restores every desktop group', () => {
+    const controller = new StandaloneLayoutController(api, storage);
+    controller.initialize();
+    api.addPanel({ id: 'config' });
+    api.addPanel({ id: 'debug' });
+    const preview = api.getPanel('preview');
+    const config = api.getPanel('config');
+
+    controller.showMobileDockviewPanel('config');
+
+    expect(preview?.api.group.api.isVisible).toBe(false);
+    expect(config?.api.group.api.isVisible).toBe(true);
+    expect(controller.getMobilePanel()).toBe('config');
+    controller.restoreDesktopPanels();
+    expect(preview?.api.group.api.isVisible).toBe(true);
+  });
+
+  it('keeps a tool first opened on mobile visible in the restored desktop layout', () => {
+    const controller = new StandaloneLayoutController(api, storage);
+    controller.initialize();
+    controller.showMobilePanel('preview');
+    api.addPanel({ id: 'config' });
+
+    controller.showMobileDockviewPanel('config');
+    controller.restoreDesktopPanels();
+
+    expect(api.getPanel('config')?.api.group.api.isVisible).toBe(true);
+    expect(api.getPanel('preview')?.api.group.api.isVisible).toBe(true);
+  });
+
+  it('keeps an existing hidden tool group visible after it is opened on mobile', () => {
+    const controller = new StandaloneLayoutController(api, storage);
+    controller.initialize();
+    api.addPanel({ id: 'config' });
+    api.getPanel('config')?.api.group.api.setVisible(false);
+    controller.showMobilePanel('preview');
+
+    controller.showMobileDockviewPanel('config');
+    controller.restoreDesktopPanels();
+
+    expect(api.getPanel('config')?.api.group.api.isVisible).toBe(true);
+    expect(api.getPanel('preview')?.api.group.api.isVisible).toBe(true);
+  });
+
+  it('restores a newly opened mobile tool group once when it contains several tabs', () => {
+    const controller = new StandaloneLayoutController(api, storage);
+    controller.initialize();
+    controller.showMobilePanel('preview');
+    api.addPanel({ id: 'config' });
+    api.addPanel({ id: 'debug', position: { referencePanel: 'config', direction: 'within' } });
+
+    controller.showMobileDockviewPanel('debug');
+    const toolGroup = api.getPanel('config')!.api.group;
+    vi.mocked(toolGroup.api.setVisible).mockClear();
+    controller.restoreDesktopPanels();
+
+    expect(toolGroup.api.isVisible).toBe(true);
+    expect(toolGroup.api.setVisible).toHaveBeenCalledOnce();
   });
 
   it('restores a grouped panel to its previous tab group and index', () => {

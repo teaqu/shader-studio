@@ -2,6 +2,7 @@
 
 <script lang="ts">
   import { getCommonShaderSource } from "../../state/commonSourceState.svelte";
+  import type { MessageEvent as ShaderMessage } from "@shader-studio/types";
   import { applyRenderSource, bufferInsertionTarget } from '../../config/PassSourceAuthoring';
   import VertexSourceControls from './VertexSourceControls.svelte';
   import VerticesControls from './VerticesControls.svelte';
@@ -78,7 +79,7 @@
     isImagePass?: boolean;
     suggestedPath?: string;
     projectConfig?: ShaderConfig | null;
-    postMessage?: (msg: any) => void;
+    postMessage?: (msg: ShaderMessage) => void;
     onMessage?: (handler: (event: MessageEvent) => void) => void;
     shaderPath?: string;
     audioVideoController?: AudioVideoController;

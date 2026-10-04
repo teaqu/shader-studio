@@ -6,6 +6,7 @@ import {
   createShaderCanvasHarness,
   type ShaderCanvasHarness,
   type ShaderLanguage,
+  type ShaderProgram,
 } from "./ShaderCanvasHarness";
 import type { CaptureRequest, IVariableCapturer } from "../../capture/VariableCapturer";
 import { PIXEL_INSPECTOR_REGION_SIZE } from "../../types/PixelRegion";
@@ -421,15 +422,15 @@ describe("slang-multipass-test shader corpus", () => {
       const project = projects.find((candidate) => candidate.name === `${language}/native-entrypoints/shared.${language}`)!;
       const harness = harnesses.get(language)!;
       harness.resize(32, 32);
-      await harness.compile(project);
+      await harness.compile(project as unknown as ShaderProgram);
       // Buffer channels are sampled from the prior completed render, so prime
       // the BufferA target before reading Image's selected fragment.
       await harness.renderAndReadRegion(0);
       const cool = await harness.renderAndReadRegion(0);
 
       const config = structuredClone(project.config!);
-      config.passes.BufferA!.entryPoints = { vertex: "fullscreenVertex", fragment: "bufferWarm" };
-      await harness.compile({ ...project, config });
+      config.passes!.BufferA!.entryPoints = { vertex: "fullscreenVertex", fragment: "bufferWarm" };
+      await harness.compile({ ...project, config } as unknown as ShaderProgram);
       await harness.renderAndReadRegion(0);
       const warm = await harness.renderAndReadRegion(0);
 
@@ -802,7 +803,7 @@ describe("slang-multipass-test shader corpus", () => {
     for (const project of coverageProjects) {
       const harness = harnesses.get(project.language)!;
       harness.resize(32, 32);
-      await harness.compile(project);
+      await harness.compile(project as unknown as ShaderProgram);
       const capturer = harness.engine.createVariableCapturer();
       const wgslEngine = project.language === "wgsl" ? new WgslDebugEngine() : null;
       capturer.setCustomUniforms(
@@ -820,7 +821,7 @@ describe("slang-multipass-test shader corpus", () => {
             harness.engine.getVariableCaptureCompileContext(source, pass, path),
           );
           const passConfig = project.config?.passes?.[pass];
-          capturer.setInputBindings(passConfig && "inputs" in passConfig ? passConfig.inputs ?? {} : {});
+          capturer.setInputBindings((passConfig && "inputs" in passConfig ? passConfig.inputs ?? {} : {}) as unknown as Record<string, import("@shader-studio/types").ConfigInput>);
           const lines = source.split("\n");
           for (let line = 0; line < lines.length; line += 1) {
             if (project.language === "glsl") {
@@ -938,12 +939,12 @@ describe("slang-multipass-test shader corpus", () => {
       harness!.resize(size, size);
       const expectedError = expectedCompileError(project);
       if (expectedError) {
-        await expect(harness!.compile(project)).rejects.toThrow(expectedError);
+        await expect(harness!.compile(project as unknown as ShaderProgram)).rejects.toThrow(expectedError);
         return;
       }
       await paintSentinel(harness!, project.language as ShaderLanguage);
       try {
-        await harness!.compile(project);
+        await harness!.compile(project as unknown as ShaderProgram);
       } catch (error) {
         if (!mayExceedPortableImageLimit(project)) {
           throw error;

@@ -34,6 +34,7 @@
   import { performancePanelStore } from "../stores/performancePanelStore";
   import { recordingPanelStore } from "../stores/recordingPanelStore";
   import RecordingPanel from "./recording/RecordingPanel.svelte";
+  import { isUsableCanvasSize, retainUsableCanvasSize } from "../util/canvasSize";
   import {
     getEditorOverlayVisible,
     getOverlayActiveFile,
@@ -60,6 +61,7 @@
   import type { AspectRatioMode, ShaderConfig, ShaderLanguageId, SlangSourceModule } from "@shader-studio/types";
   import { SHADER_LANGUAGES, isShaderLanguageId } from "@shader-studio/types";
   import { resolutionStore } from "../stores/resolutionStore";
+  import { PageRenderLifecycle } from "../rendering/PageRenderLifecycle";
   import { aspectRatioStore } from "../stores/aspectRatioStore";
   import { createResolutionSessionController } from "../resolution/createResolutionSessionController";
   import { FileProfileAdapter } from "../profiles/FileProfileAdapter";
@@ -182,7 +184,7 @@
     ? (getInjectedLayoutSlot() ?? 'vscode:1')
     : allocateWebLayoutSlot();
   const profileAdapter = new FileProfileAdapter(transport);
-  let timeManager: any = null;
+  let timeManager: ReturnType<IRenderingEngine['getTimeManager']> | null = null;
   let pixelInspectorManager: PixelInspectorManager | undefined;
   let shaderDebugManager = $state<ShaderDebugManager | undefined>(undefined);
   let variableCaptureManager = $state<VariableCaptureManager | undefined>(undefined);
@@ -427,6 +429,8 @@
   onMount(() => {
     setEditorOverlayLayoutSlot(layoutSlot);
 
+    const pageRenderLifecycle = new PageRenderLifecycle(document, () => initialized ? renderingEngine : null);
+
     const unsubConfig = configPanelStore.subscribe((state) => {
       void state;
     });
@@ -434,6 +438,7 @@
       void state;
     });
     return () => {
+      pageRenderLifecycle.dispose();
       unsubConfig();
       unsubPerf();
     };
@@ -608,13 +613,14 @@
   }
 
   function handleCanvasSizeChange(data: { width: number; height: number }) {
-    canvasWidth = Math.round(data.width);
-    canvasHeight = Math.round(data.height);
+    const retained = retainUsableCanvasSize({ width: canvasWidth, height: canvasHeight }, data);
+    canvasWidth = retained.width;
+    canvasHeight = retained.height;
   }
 
   function handleCanvasResize(data: { width: number; height: number }) {
     handleCanvasSizeChange(data);
-    if (!initialized) {
+    if (!initialized || !isUsableCanvasSize(data)) {
       return;
     }
     renderingEngine.handleCanvasResize(data.width, data.height);
@@ -622,7 +628,11 @@
     scriptRuntimeReporter?.sync();
   }
 
-  function handleCanvasClick() {
+  function handleCanvasClick(event: MouseEvent, pointerType?: string) {
+    if (pointerType === 'touch') {
+      pixelInspectorManager?.handleTouchTap(event.clientX, event.clientY);
+      return;
+    }
     pixelInspectorManager?.handleCanvasClick();
   }
 
@@ -878,7 +888,7 @@
     recordingManager.screenshot(config);
   }
 
-  function handleRecord(config: any) {
+  function handleRecord(config: import('../recording/types').RecordingConfig) {
     if (!initialized) {
       return;
     }
@@ -1390,7 +1400,7 @@
       );
 
       pixelInspectorManager = new PixelInspectorManager(setInspectorState);
-      pixelInspectorManager.initialize(renderingEngine, timeManager, glCanvas);
+      pixelInspectorManager.initialize(renderingEngine, timeManager!, glCanvas);
       pixelInspectorManager.setEnabled($debugPanelStore.isPixelInspectorEnabled && debugState.isEnabled);
       registerLockAtHandler((x, y) => pixelInspectorManager?.lockToPosition(x, y));
 
@@ -1472,7 +1482,7 @@
     debugState.isEnabled;
     debugState.isActive;
     debugState.isInlineRenderingEnabled;
-    (debugState as any).activeBufferName;
+    debugState.activeBufferName;
     currentConfig;
     resolutionController.handleDebugStateChanged();
   });

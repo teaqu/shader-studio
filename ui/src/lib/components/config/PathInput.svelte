@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { MessageEvent as ShaderMessage } from "@shader-studio/types";
   import { getDefaultAuthoringMode } from '../../state/authoringModeState.svelte';
   import { onMount, onDestroy, untrack } from 'svelte';
 
@@ -40,7 +41,7 @@
       entryPoint?: string;
       authoringMode?: 'hooks' | 'native';
     }) => void;
-    postMessage?: (msg: any) => void;
+    postMessage?: (msg: ShaderMessage) => void;
     onMessage?: (handler: (event: MessageEvent) => void) => void;
   }
 
@@ -177,7 +178,7 @@ onPathChange?.(event.data.payload.path);
     pendingRequestId = requestId;
     postMessage?.({
       type: 'createFile',
-      payload: { shaderPath, suggestedPath, fileType, requestId, authoringMode: createAuthoringMode ?? authoringMode, passName, outputCount },
+      payload: { shaderPath, suggestedPath, fileType, requestId, authoringMode: createAuthoringMode ?? effectiveMode, passName, outputCount },
     });
   }
 

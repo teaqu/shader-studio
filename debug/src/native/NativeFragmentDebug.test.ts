@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { DebugAnalysisRequest } from "@shader-studio/types";
+import type { DebugAnalysisRequest, DebugWorkspace } from "@shader-studio/types";
 import { WgslDebugEngine } from "../wgsl/WgslDebugEngine";
 import { SlangDebugEngine } from "../slang/SlangDebugEngine";
 import { buildNativeRasterReplay } from "./NativeRasterReplay";

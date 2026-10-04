@@ -39,7 +39,7 @@ export async function compileCapturePipeline(
   }
 }
 
-export function formatCaptureCompileError(errors: string[], debugPlan?: DebugInstrumentationPlan): string {
+function formatCaptureCompileError(errors: string[], debugPlan?: DebugInstrumentationPlan): string {
   const selected = debugPlan?.files.find((file) => file.uri === debugPlan.selectedSourceUri);
   const label = selected?.path ?? debugPlan?.selectedSourceUri;
   return errors.map((error) => label && !error.includes(label) && !error.includes(debugPlan!.selectedSourceUri) ? `${label}: ${error}` : error).join("\n");

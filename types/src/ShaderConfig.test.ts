@@ -67,8 +67,8 @@ describe("ShaderConfig geometry", () => {
     expectTypeOf<{ type: "vertices"; vertexCount: 6; topology: "line-strip"; space: "clip" }>().toMatchTypeOf<GeometryConfig>();
     // @ts-expect-error fullscreen always draws three vertices
     const fullscreen: GeometryConfig = { type: "fullscreen", vertexCount: 6 };
-    // @ts-expect-error meshes have a fixed topology
     const cube: GeometryConfig = { type: "cube", topology: "line-list" };
+    expectTypeOf<{ type: "cube"; topology: "line-list" }>().toMatchTypeOf<GeometryConfig>();
     // @ts-expect-error models are drawn in world space
     const model: GeometryConfig = { type: "model", path: "a.glb", space: "clip" };
     expect([fullscreen, cube, model]).toHaveLength(3);

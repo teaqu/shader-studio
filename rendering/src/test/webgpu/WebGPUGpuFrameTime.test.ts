@@ -1,3 +1,4 @@
+import { engineOwners } from "./engineOwners";
 import { describe, expect, it, vi } from "vitest";
 import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
 
@@ -15,7 +16,7 @@ function engineWithQueue(onSubmittedWorkDone: () => Promise<void>) {
   (engine as any).device = device;
   engine.setGpuTimingEnabled(true);
    
-  return { engine, device, probe: () => (engine as any).probeGpuFrameTime() };
+  return { engine, device, probe: () => (engineOwners(engine).timing as any).probeGpuFrameTime() };
 }
 
 describe("WebGPURenderingEngine GPU frame time", () => {
@@ -85,7 +86,7 @@ describe("WebGPURenderingEngine GPU frame time", () => {
     engine.setGpuTimingEnabled(true);
 
      
-    expect(() => (engine as any).probeGpuFrameTime()).not.toThrow();
+    expect(() => (engineOwners(engine).timing as any).probeGpuFrameTime()).not.toThrow();
     expect(engine.getGpuFrameTimeMs()).toBeNull();
   });
 });

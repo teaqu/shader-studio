@@ -46,6 +46,7 @@ describe("WebGLRenderState", () => {
     clear: [0, 0, 0, 1],
     depth: { test: true, write: true, compare: "less" },
     cull: "none",
+    samples: 1,
     ...overrides,
   });
 

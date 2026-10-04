@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { MessageEvent as ShaderMessage } from "@shader-studio/types";
   import type { ConfigInput } from "@shader-studio/types";
   import AssetBrowser from "../AssetBrowser.svelte";
   import PathInput from "../PathInput.svelte";
@@ -8,7 +9,7 @@
     tempInput?: ConfigInput;
     channelName: string;
     shaderPath: string;
-    postMessage?: (msg: any) => void;
+    postMessage?: (msg: ShaderMessage) => void;
     onMessage?: (handler: (event: MessageEvent) => void) => void;
     onAssetSelect: (path: string, resolvedUri?: string) => void;
     onUpdatePath: (path: string) => void;
@@ -21,7 +22,7 @@
     tempInput = undefined as ConfigInput | undefined,
     channelName,
     shaderPath,
-    postMessage = undefined as ((msg: any) => void) | undefined,
+    postMessage = undefined as ((msg: ShaderMessage) => void) | undefined,
     onMessage = undefined as ((handler: (event: MessageEvent) => void) => void) | undefined,
     onAssetSelect,
     onUpdatePath,

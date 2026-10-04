@@ -8,6 +8,7 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc && tsc -p tsconfig.esm.json",
+    "typecheck": "tsc -p tsconfig.test.json",
     "watch": "tsc --watch",
     "test": "vitest run",
     "test:ui": "vitest --ui"

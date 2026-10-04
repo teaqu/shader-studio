@@ -38,8 +38,3 @@ export function loadSlangModule(scriptUrl: string, wasmUrl: string): Promise<Sla
   }
   return cached;
 }
-
-/** Reset the cached module (tests / teardown). */
-export function resetSlangModuleCache(): void {
-  cached = null;
-}

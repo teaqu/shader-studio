@@ -197,6 +197,16 @@ export function validatePassRenderSettings(pass: unknown, passName: string): str
   return errors;
 }
 
+// Validation accepts malformed author input; each property is narrowed before use.
+interface UnvalidatedPass {
+  useViewerCamera?: unknown;
+  path?: unknown;
+  outputFormat?: unknown;
+  geometry?: unknown;
+  inputs?: unknown;
+  resolution?: unknown;
+}
+
 export interface ValidationResult {
   isValid: boolean;
   errors: string[];
@@ -261,7 +271,7 @@ export class ConfigValidator {
     };
   }
 
-  private static validateImagePass(pass: any, errors: string[]): void {
+  private static validateImagePass(pass: UnvalidatedPass, errors: string[]): void {
     if (pass.outputFormat !== undefined) {
       errors.push("Image pass cannot define outputFormat");
     }
@@ -275,12 +285,12 @@ export class ConfigValidator {
     }
   }
 
-  private static validateBufferPass(pass: any, passName: string, errors: string[]): void {
+  private static validateBufferPass(pass: UnvalidatedPass, passName: string, errors: string[]): void {
     // path can be empty or missing (buffer not yet configured) — just skip validation
     if (pass.path !== undefined && typeof pass.path !== 'string') {
       errors.push(`${passName} pass path must be a string`);
     }
-    if (pass.outputFormat !== undefined && !['auto', 'rgba16float', 'rgba32float'].includes(pass.outputFormat)) {
+    if (pass.outputFormat !== undefined && !['auto', 'rgba16float', 'rgba32float'].some((option) => option === pass.outputFormat)) {
       errors.push(`${passName} pass outputFormat must be auto, rgba16float, or rgba32float`);
     }
 
@@ -294,7 +304,7 @@ export class ConfigValidator {
     }
   }
 
-  private static validateCommonPass(pass: any, errors: string[]): void {
+  private static validateCommonPass(pass: UnvalidatedPass, errors: string[]): void {
     if (pass.path !== undefined && typeof pass.path !== "string") {
       errors.push("common pass path must be a string");
     }
@@ -321,13 +331,14 @@ export class ConfigValidator {
     return ConfigValidator.channelLimit;
   }
 
-  private static validateInputs(inputs: any, passName: string, errors: string[]): void {
+  private static validateInputs(inputs: unknown, passName: string, errors: string[]): void {
     if (typeof inputs !== 'object') {
       errors.push(`${passName} pass inputs must be an object`);
       return;
     }
 
-    const keys = Object.keys(inputs);
+    const records = inputs as Record<string, unknown>;
+    const keys = Object.keys(records);
 
     for (const channel of keys) {
       if (!this.GLSL_IDENTIFIER.test(channel)) {
@@ -335,15 +346,19 @@ export class ConfigValidator {
         continue;
       }
 
-      const input = inputs[channel];
+      const input = records[channel];
       if (!this.validateConfigInput(input)) {
         errors.push(`${passName} pass has invalid input configuration for ${channel}`);
       }
     }
   }
 
-  private static validateConfigInput(input: any): boolean {
-    if (!input || typeof input !== 'object' || !input.type) {
+  private static validateConfigInput(value: unknown): boolean {
+    if (!value || typeof value !== 'object') {
+      return false;
+    }
+    const input = value as Record<string, unknown>;
+    if (!input.type) {
       return false;
     }
 
@@ -365,7 +380,7 @@ export class ConfigValidator {
     }
   }
 
-  private static validateBufferInput(input: any): boolean {
+  private static validateBufferInput(input: Record<string, unknown>): boolean {
     if (typeof input.source !== 'string' ||
         input.source.length === 0 ||
         !this.GLSL_IDENTIFIER.test(input.source) ||
@@ -373,23 +388,23 @@ export class ConfigValidator {
         input.source === 'common') {
       return false;
     }
-    if (input.filter !== undefined && !['linear', 'nearest'].includes(input.filter)) {
+    if (input.filter !== undefined && !['linear', 'nearest'].some((option) => option === input.filter)) {
       return false;
     }
-    return input.wrap === undefined || ['repeat', 'clamp'].includes(input.wrap);
+    return input.wrap === undefined || ['repeat', 'clamp'].some((option) => option === input.wrap);
   }
 
-  private static validateTextureInput(input: any): boolean {
+  private static validateTextureInput(input: Record<string, unknown>): boolean {
     if (!input.path || typeof input.path !== 'string') {
       return false;
     }
 
     // Validate optional properties
-    if (input.filter && !['linear', 'nearest', 'mipmap'].includes(input.filter)) {
+    if (input.filter && !['linear', 'nearest', 'mipmap'].some((option) => option === input.filter)) {
       return false;
     }
 
-    if (input.wrap && !['repeat', 'clamp'].includes(input.wrap)) {
+    if (input.wrap && !['repeat', 'clamp'].some((option) => option === input.wrap)) {
       return false;
     }
 
@@ -400,21 +415,21 @@ export class ConfigValidator {
     return true;
   }
 
-  private static validateKeyboardInput(input: any): boolean {
+  private static validateKeyboardInput(input: Record<string, unknown>): boolean {
     // Keyboard input only needs the type field
     return input.type === 'keyboard';
   }
 
-  private static validateCubemapInput(input: any): boolean {
+  private static validateCubemapInput(input: Record<string, unknown>): boolean {
     if (!input.path || typeof input.path !== 'string') {
       return false;
     }
 
-    if (input.filter && !['linear', 'nearest', 'mipmap'].includes(input.filter)) {
+    if (input.filter && !['linear', 'nearest', 'mipmap'].some((option) => option === input.filter)) {
       return false;
     }
 
-    if (input.wrap && !['repeat', 'clamp'].includes(input.wrap)) {
+    if (input.wrap && !['repeat', 'clamp'].some((option) => option === input.wrap)) {
       return false;
     }
 
@@ -425,21 +440,21 @@ export class ConfigValidator {
     return true;
   }
 
-  private static validateAudioInput(input: any): boolean {
-    return input.path && typeof input.path === 'string';
+  private static validateAudioInput(input: Record<string, unknown>): boolean {
+    return typeof input.path === 'string' && input.path.length > 0;
   }
 
-  private static validateVideoInput(input: any): boolean {
+  private static validateVideoInput(input: Record<string, unknown>): boolean {
     if (!input.path || typeof input.path !== 'string') {
       return false;
     }
 
     // Validate optional properties (same as texture)
-    if (input.filter && !['linear', 'nearest', 'mipmap'].includes(input.filter)) {
+    if (input.filter && !['linear', 'nearest', 'mipmap'].some((option) => option === input.filter)) {
       return false;
     }
 
-    if (input.wrap && !['repeat', 'clamp'].includes(input.wrap)) {
+    if (input.wrap && !['repeat', 'clamp'].some((option) => option === input.wrap)) {
       return false;
     }
 

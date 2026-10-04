@@ -246,6 +246,8 @@ export class PanelManager {
     }
   }
 
+  // Webview messages are an open-ended client protocol; ClientMessageHandler
+  // validates payloads after the panel-only command is handled here.
   private async handleWebviewMessage(message: any, panel: vscode.WebviewPanel): Promise<void> {
     this.logger.debug(`Webview message received: ${message.type}`);
 

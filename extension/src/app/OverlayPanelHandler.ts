@@ -6,6 +6,7 @@ import { getConfigPathForShaderPath } from "./ShaderConfigPaths";
 import { VERTEX_PASS_PREFIX } from "@shader-studio/types";
 
 const VERTEX_SOURCE_PREFIX = VERTEX_PASS_PREFIX;
+type ResponseSender = (message: { type: string; payload: unknown }) => void;
 
 export class OverlayPanelHandler {
   private logger: Logger;
@@ -59,7 +60,7 @@ export class OverlayPanelHandler {
 
   public async handleRequestFileContents(
     payload: { bufferName: string; shaderPath: string },
-    respondFn: (msg: any) => void,
+    respondFn: ResponseSender,
   ): Promise<void> {
     try {
       const { bufferName, shaderPath: mainShaderPath } = payload;

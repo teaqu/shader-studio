@@ -37,3 +37,25 @@ describe('docs nav consistency', () => {
     }
   });
 });
+
+describe('mobile preview instructions', () => {
+  it('provides a one-command production preview behind the configured Tailscale endpoint', () => {
+    const packageJson = JSON.parse(readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8')) as {
+      scripts?: Record<string, string>;
+    };
+    const guide = readFileSync(path.join(DOCS_ROOT, 'mobile-testing.md'), 'utf8');
+
+    expect(packageJson.scripts?.['preview:mobile']).toBe(
+      'npm run build:standalone && npm run preview -w @shader-studio/standalone -- --host 127.0.0.1 --port 4173',
+    );
+    expect(guide).toContain('tailscale serve --https=9443 --bg 4173');
+    expect(guide).not.toContain('teaqu.github.io');
+  });
+
+  it('describes the preview address generically instead of publishing a machine or tailnet name', () => {
+    const guide = readFileSync(path.join(DOCS_ROOT, 'mobile-testing.md'), 'utf8');
+
+    expect(guide).not.toMatch(/[a-z0-9-]+\.[a-z0-9-]+\.ts\.net/i);
+    expect(guide).toContain('https://<machine>.<tailnet>.ts.net:9443/');
+  });
+});

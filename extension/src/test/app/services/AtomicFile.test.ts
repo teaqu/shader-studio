@@ -47,7 +47,9 @@ suite('AtomicFile Test Suite', () => {
 
     assert.ok(writes.getCalls().every((call) => call.args[0] !== target));
     sinon.assert.calledOnce(renames);
-    assert.strictEqual(renames.firstCall.args[1], target);
+    // macOS exposes /var as a symlink to /private/var; AtomicFile resolves an
+    // existing target before its rename so assertions must use its real path.
+    assert.strictEqual(renames.firstCall.args[1], fs.realpathSync(target));
     assert.strictEqual(fs.readFileSync(target, 'utf8'), '{"scriptMaxPollingFps":60}');
     assert.deepStrictEqual(fs.readdirSync(directory), ['shader.sha.json']);
   });
@@ -158,7 +160,8 @@ suite('AtomicFile Test Suite', () => {
     writeFileAtomicSync(target, '2');
 
     assert.strictEqual(new Set(temporaries).size, 2);
-    assert.ok(temporaries.every((temporary) => path.dirname(temporary) === directory));
+    const realDirectory = fs.realpathSync(directory);
+    assert.ok(temporaries.every((temporary) => fs.realpathSync(path.dirname(temporary)) === realDirectory));
     assert.strictEqual(fs.readFileSync(target, 'utf8'), '2');
   });
 });

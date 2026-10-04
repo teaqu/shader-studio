@@ -1,3 +1,5 @@
+import { parseWorkspaceBackup, serializeWorkspaceBackup } from './workspaceBackup';
+
 export interface VirtualWorkspaceFile {
   path: string;
   contents: string;
@@ -9,6 +11,16 @@ export interface VirtualWorkspaceStore {
   load(): Promise<VirtualWorkspaceFile[] | null>;
   save(files: VirtualWorkspaceFile[]): Promise<void>;
   clear(): Promise<void>;
+}
+
+export interface WorkspacePersistenceStatus {
+  state: 'saved' | 'saving' | 'error';
+  error?: Error;
+}
+
+export interface WorkspaceImportOptions {
+  /** Replacing an existing workspace is destructive and must be deliberate. */
+  replace?: boolean;
 }
 
 /** Everything a store write has been asked to persist but has not confirmed:
@@ -294,6 +306,8 @@ export class VirtualWorkspace {
   private queuedSave: { snapshot: VirtualWorkspaceFile[]; sequence: number } | null = null;
   private saveSequence = 0;
   private revision = 0;
+  private status: WorkspacePersistenceStatus = { state: 'saved' };
+  private readonly statusListeners = new Set<(status: WorkspacePersistenceStatus) => void>();
   /** Last logical edit time. Wall clocks can repeat or move backwards, so
    * persisted conflict ordering must not use them directly. */
   private timestamp = 0;
@@ -413,6 +427,55 @@ export class VirtualWorkspace {
     return this.revision;
   }
 
+  /** Current durable-save state. The listener receives an immediate snapshot,
+   * then every later transition, and can be detached by the returned cleanup. */
+  get persistenceStatus(): WorkspacePersistenceStatus {
+    return { ...this.status };
+  }
+
+  onPersistenceStatus(listener: (status: WorkspacePersistenceStatus) => void): () => void {
+    this.statusListeners.add(listener);
+    listener(this.persistenceStatus);
+    return () => this.statusListeners.delete(listener);
+  }
+
+  /** Exports memory, including edits still waiting on IndexedDB, so a user can
+   * recover their work even if the browser reports a persistence failure. */
+  exportBackup(): string {
+    return serializeWorkspaceBackup(this.list());
+  }
+
+  /** Import is a complete, validated replacement. It never merges files or
+   * overwrites a non-empty workspace unless the caller explicitly confirms it. */
+  async importBackup(backup: unknown, options: WorkspaceImportOptions = {}): Promise<void> {
+    const parsed = parseWorkspaceBackup(backup);
+    if (this.files.size > 0 && !options.replace) {
+      throw new Error('Workspace contains files. Confirm replacement before importing a backup.');
+    }
+    await this.flush().catch(() => {});
+    const snapshot = parsed.files.map(file => ({ ...file }));
+    this.setPersistenceStatus({ state: 'saving' });
+    try {
+      await this.store.save(snapshot);
+      const persisted = await this.store.load();
+      if (JSON.stringify(persisted) !== JSON.stringify(snapshot)) {
+        throw new Error('Workspace store did not persist the imported backup.');
+      }
+      this.files.clear();
+      for (const file of snapshot) {
+        this.files.set(file.path, { ...file });
+      }
+      this.timestamp = Math.max(this.timestamp, 0, ...snapshot.flatMap(file => [file.createdAt, file.modifiedAt]));
+      this.revision++;
+      this.onCommitted(snapshot, ++this.saveSequence);
+      this.setPersistenceStatus({ state: 'saved' });
+    } catch (error) {
+      const failure = error instanceof Error ? error : new Error(String(error));
+      this.setPersistenceStatus({ state: 'error', error: failure });
+      throw failure;
+    }
+  }
+
   /** Persist one complete snapshot, then publish all targets together.
    * Validation runs entirely before the single write, so a rejected
    * transaction never mutates and never needs a rollback. The in-memory map
@@ -427,7 +490,8 @@ export class VirtualWorkspace {
      * without an open buffer keep the stored comparison. */
     openTexts?: ReadonlyMap<string, string>,
   ): Promise<void> {
-    const operation = this.pendingSave.then(async () => {
+    this.setPersistenceStatus({ state: 'saving' });
+    const operation = this.pendingSave.catch(() => {}).then(async () => {
       const revision = this.revision;
       const original = this.list();
       const targets = new Map<string, string>();
@@ -461,10 +525,17 @@ export class VirtualWorkspace {
       this.onCommitted(snapshot, ++this.saveSequence);
       onCommit();
       this.notifyChange([...targets.keys()]);
+      this.setPersistenceStatus({ state: 'saved' });
     });
     // A failed transaction must not poison future editor saves.
-    this.pendingSave = operation.catch(() => {});
-    await operation;
+    this.pendingSave = operation;
+    try {
+      await operation;
+    } catch (error) {
+      const failure = error instanceof Error ? error : new Error(String(error));
+      this.setPersistenceStatus({ state: 'error', error: failure });
+      throw failure;
+    }
   }
 
   stat(path: string): VirtualWorkspaceFile {
@@ -513,11 +584,20 @@ export class VirtualWorkspace {
     this.committed.clear();
     this.saveSequence++;
     this.journal.clear();
-    this.pendingSave = this.pendingSave.then(() => this.store.clear());
+    this.setPersistenceStatus({ state: 'saving' });
+    this.pendingSave = this.pendingSave.catch(() => {}).then(() => this.store.clear());
     if (removedPaths.length) {
       this.notifyChange(removedPaths);
     }
-    await this.pendingSave;
+    try {
+      await this.pendingSave;
+      this.setPersistenceStatus({ state: 'saved' });
+    } catch (error) {
+      const failure = error instanceof Error ? error : new Error(String(error));
+      this.setPersistenceStatus({ state: 'error', error: failure });
+      throw failure;
+    }
+
   }
 
   private getFile(path: string): VirtualWorkspaceFile {
@@ -565,6 +645,7 @@ export class VirtualWorkspace {
     // has already happened once the edit returns to the caller.
     this.journal.record(this.pendingAgainstCommitted(snapshot));
     const sequence = ++this.saveSequence;
+    this.setPersistenceStatus({ state: 'saving' });
     const alreadyQueued = this.queuedSave !== null;
     this.queuedSave = { snapshot, sequence };
     if (alreadyQueued) {
@@ -573,7 +654,7 @@ export class VirtualWorkspace {
       // A typing burst then costs one write, not one per keystroke.
       return;
     }
-    this.pendingSave = this.pendingSave.then(async () => {
+    this.pendingSave = this.pendingSave.catch(() => {}).then(async () => {
       const queued = this.queuedSave;
       this.queuedSave = null;
       if (!queued) {
@@ -581,6 +662,13 @@ export class VirtualWorkspace {
       }
       await this.store.save(queued.snapshot);
       this.onCommitted(queued.snapshot, queued.sequence);
+      if (queued.sequence === this.saveSequence) {
+        this.setPersistenceStatus({ state: 'saved' });
+      }
+    });
+    this.pendingSave.catch((error: unknown) => {
+      const failure = error instanceof Error ? error : new Error(String(error));
+      this.setPersistenceStatus({ state: 'error', error: failure });
     });
   }
 
@@ -607,6 +695,13 @@ export class VirtualWorkspace {
     // declare the journal spent.
     if (sequence === this.saveSequence) {
       this.journal.clear();
+    }
+  }
+
+  private setPersistenceStatus(status: WorkspacePersistenceStatus): void {
+    this.status = { ...status };
+    for (const listener of this.statusListeners) {
+      listener(this.persistenceStatus);
     }
   }
 }

@@ -6,7 +6,7 @@ it("captures a paused compute source's previously rendered bank and selected arr
   const current = {} as GPUTexture;
   const previous = {} as GPUTexture;
   const compute = new Map([["Simulation", { getCurrentOutputTexture: () => current, getPreviousOutputTexture: () => previous }]]);
-  const channels: RenderPassChannel[] = [{ kind: "buffer", key: "iChannel0", slot: 0, source: "Simulation", readFrom: "current-frame", layer: 3 }];
+  const channels = [{ kind: "buffer", key: "iChannel0", slot: 0, source: "Simulation", readFrom: "current-frame", layer: 3 }] satisfies RenderPassChannel[];
   expect(renderedBufferInputs(channels, new Map(), compute, new Set()).get(0)).toEqual({ texture: previous, layer: 3 });
   expect(renderedBufferInputs(channels, new Map(), compute, new Set(["Simulation"])).get(0)).toEqual({ texture: current, layer: 3 });
   expect(renderedBufferInputs([{ ...channels[0]!, readFrom: "previous-frame" }], new Map(), compute, new Set(["Simulation"])).get(0)).toEqual({ texture: previous, layer: 3 });

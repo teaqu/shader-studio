@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { MessageEvent as ShaderMessage } from "@shader-studio/types";
   import PathInput from './PathInput.svelte';
 
   interface Props {
@@ -13,7 +14,7 @@
     suggestedPath?: string;
     fileExists?: boolean;
     shaderPath?: string;
-    postMessage?: (msg: any) => void;
+    postMessage?: (msg: ShaderMessage) => void;
     onMessage?: (handler: (event: MessageEvent) => void) => void;
   }
 
