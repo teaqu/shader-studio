@@ -49,8 +49,8 @@ function canvas() {
 it.each(["mp4", "webm"] as const)("encodes %s at explicit quality and releases the track on stop", async format => {
   const capture = await createLiveVideoCapture(canvas(), 60, format, new AbortController().signal);
   expect(mocks.config?.codec).toBe(format === "mp4" ? "avc" : "vp9");
-  expect(mocks.config?.quality).toMatchObject({ options: { quantizer: 0 } });
-  expect(mocks.config?.hardwareAcceleration).toBe("prefer-software");
+  expect(mocks.config?.quality).toMatchObject({ options: { quantizer: format === "webm" ? 12 : 0 } });
+  expect(mocks.config?.hardwareAcceleration).toBe(format === "mp4" ? "prefer-software" : undefined);
   expect(mocks.config?.transform).toEqual({ width: format === "mp4" ? 816 : 815, height: format === "mp4" ? 460 : 459, fit: "fill" });
   capture.stop(); capture.stop();
   expect((await capture.result).type).toBe(`video/${format}`);

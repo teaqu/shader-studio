@@ -11,10 +11,9 @@ export async function createLiveVideoCapture(canvas: HTMLCanvasElement, fps: num
   signal.throwIfAborted();
   const width = canvas.width + (format === "mp4" ? canvas.width % 2 : 0);
   const height = canvas.height + (format === "mp4" ? canvas.height % 2 : 0);
-  // Quality takes priority over compression. RGB -> 8-bit 4:2:0 conversion
-  // can still introduce banding even at the minimum quantization setting.
+  // Keep WebM's previously validated encoder settings while MP4 quality is tuned.
   const bitrate = automaticVideoBitrate({ width, height, fps });
-  const quality = new Quality({ quantizer: 0, bitrate });
+  const quality = new Quality({ quantizer: format === "webm" ? 12 : 0, bitrate });
   const codec = format === "mp4" ? "avc" : await canEncodeVideo("vp9", { width, height, quality, frameRate: fps }) ? "vp9" : "vp8";
   signal.throwIfAborted();
   const stream = canvas.captureStream(fps);
@@ -62,7 +61,7 @@ export async function createLiveVideoCapture(canvas: HTMLCanvasElement, fps: num
       codec,
       quality,
       latencyMode: "quality",
-      hardwareAcceleration: "prefer-software",
+      ...(format === "mp4" ? { hardwareAcceleration: "prefer-software" as const } : {}),
       contentHint: "detail",
       onEncodedPacket: () => {
         packetCount++;
