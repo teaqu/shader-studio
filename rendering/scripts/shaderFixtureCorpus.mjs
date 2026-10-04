@@ -145,6 +145,7 @@ function buildProject(root, configPath, shaderPath) {
         buffers[`${VERTEX_PASS_PREFIX}${passName}`] = language === "slang"
           ? inlineSlangDependencies(vertexSource, vertexPath)
           : vertexSource;
+        sourcePaths[`${VERTEX_PASS_PREFIX}${passName}`] = vertexPath;
       }
     }
     if (pass?.geometry?.type === "model" && pass.geometry.path) {
@@ -172,8 +173,10 @@ function buildProject(root, configPath, shaderPath) {
     image: language === "slang" ? inlineSlangDependencies(rootSource, shaderPath) : rootSource,
     config,
     buffers,
-    slangSourcePath: language === "slang" ? shaderPath : undefined,
-    slangSourcePaths: language === "slang" ? sourcePaths : undefined,
+    // These source identities are also needed by WGSL's project tracer. The
+    // historical Slang names remain for compatibility with the harness API.
+    slangSourcePath: language === "slang" || language === "wgsl" ? shaderPath : undefined,
+    slangSourcePaths: language === "slang" || language === "wgsl" ? sourcePaths : undefined,
     ...customUniforms(config.script),
   };
 }
@@ -192,5 +195,16 @@ export function loadShaderFixtureCorpus(root) {
         .filter((shaderPath) => fs.existsSync(shaderPath) && TEXT_EXTENSIONS.has(path.extname(shaderPath)))
         .map((shaderPath) => buildProject(root, configPath, shaderPath));
     })
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+/** Raw sources, including auxiliary passes without their own project config. */
+export function loadShaderFixtureSources(root, extension) {
+  if (!fs.existsSync(root)) {
+    throw new Error(`Shader fixture corpus not found at ${root}`);
+  }
+  return walk(root)
+    .filter((filePath) => path.extname(filePath) === extension)
+    .map((filePath) => ({ name: path.relative(root, filePath), source: fs.readFileSync(filePath, "utf8") }))
     .sort((left, right) => left.name.localeCompare(right.name));
 }

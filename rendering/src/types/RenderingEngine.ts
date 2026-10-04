@@ -5,6 +5,9 @@ import type { IVariableCapturer, CaptureUniforms, CaptureCustomUniform, CaptureC
 import type { PixelRegionResult } from "./PixelRegion";
 
 export interface RenderingEngine {
+  captureWgslProjectReference?(request: import('@shader-studio/types').WgslProjectTraceRequest, signal?: AbortSignal): Promise<import('@shader-studio/types').WgslTraceRecording>;
+  getWgslTraceTargets?(): import('@shader-studio/types').WgslProjectTraceTarget[];
+  captureWgslProjectTrace?(request: import('@shader-studio/types').WgslProjectTraceRequest, signal?: AbortSignal): Promise<import('@shader-studio/types').WgslTraceRecording>;
   initialize(glCanvas: HTMLCanvasElement, preserveDrawingBuffer?: boolean): void;
   handleCanvasResize(width: number, height: number): void;
   compileShaderPipeline(

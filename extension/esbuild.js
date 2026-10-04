@@ -43,11 +43,19 @@ async function main() {
 			esbuildProblemMatcherPlugin,
 		],
 	});
+	const traceCtx = await esbuild.context({
+		entryPoints: ['../rendering/src/trace/WgslTraceWebview.ts'],
+		bundle: true, platform: 'browser', format: 'iife',
+		outfile: 'dist/wgsl-trace.js', minify: production, sourcemap: !production,
+	});
 	if (watch) {
 		await ctx.watch();
+		await traceCtx.watch();
 	} else {
 		await ctx.rebuild();
 		await ctx.dispose();
+		await traceCtx.rebuild();
+		await traceCtx.dispose();
 		fs.mkdirSync('dist', { recursive: true });
 		fs.rmSync(path.resolve(__dirname, 'dist/slang-wasm.wasm'), { force: true });
 		fs.copyFileSync(path.resolve(__dirname, '../ui/src/slang/slang-wasm.js'), path.resolve(__dirname, 'dist/slang-wasm.mjs'));

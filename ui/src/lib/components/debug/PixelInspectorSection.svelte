@@ -2,6 +2,7 @@
 
 <script lang="ts">
   import { getInspectorState, requestLockAt } from '../../state/pixelInspectorState.svelte';
+  import { getWgslTraceState, requestWgslTraceStart, selectWgslTraceTarget, setWgslTraceInvocation, setWgslTraceVertexIndex } from '../../state/wgslTraceState.svelte';
   import { debugPanelStore } from '../../stores/debugPanelStore';
   import type { PixelInspectorRegion } from '../../types/PixelInspectorState';
 
@@ -44,6 +45,7 @@
   }
 
   const inspector = $derived(getInspectorState());
+  const trace = $derived(getWgslTraceState());
   const region = $derived(inspector.region);
 
   let dragActive = false;
@@ -314,6 +316,34 @@
           <span class="info-val">{(fragCoord.x / canvasWidth).toFixed(3)}, {(fragCoord.y / canvasHeight).toFixed(3)}</span>
         {/if}
       </div>
+      <button
+        class="trace-button"
+        type="button"
+        disabled={!trace.available || trace.busy}
+        title={trace.reason ?? 'Record this pixel for VS Code step debugging'}
+        onclick={requestWgslTraceStart}
+      >{trace.busy ? 'Capturing…' : 'Start Trace'}</button>
+      {#if trace.targets.length > 1}
+        <label class="trace-control">Pass
+          <select value={trace.selectedTarget ?? ''} onchange={event => selectWgslTraceTarget(event.currentTarget.value)}>
+            {#each trace.targets as target}
+              <option value={`${target.passName}:${target.stage}`}>{target.passName} · {target.stage}</option>
+            {/each}
+          </select>
+        </label>
+      {/if}
+      {#if trace.selectedTarget?.endsWith(':compute')}
+        <label class="trace-control">Invocation
+          {#each [0, 1, 2] as axis}
+            <input aria-label={`Trace invocation ${axis}`} type="number" min="0" value={trace.invocation[axis]} onchange={event => setWgslTraceInvocation(axis as 0 | 1 | 2, Number(event.currentTarget.value))} />
+          {/each}
+        </label>
+      {:else if trace.selectedTarget?.endsWith(':vertex')}
+        <label class="trace-control">Vertex <input aria-label="Trace vertex index" type="number" min="0" value={trace.vertexIndex} onchange={event => setWgslTraceVertexIndex(Number(event.currentTarget.value))} /></label>
+      {/if}
+      {#if trace.reason}
+        <span class="trace-reason">{trace.reason}</span>
+      {/if}
     </div>
   {:else}
     <span class="hint-text">Hover over canvas<br>to inspect pixel</span>
@@ -450,6 +480,38 @@
     min-width: 0;
     align-self: center;
   }
+
+  .trace-button {
+    margin-top: 8px;
+    padding: 3px 7px;
+    border: 1px solid var(--vscode-button-border, transparent);
+    border-radius: 3px;
+    color: var(--vscode-button-foreground);
+    background: var(--vscode-button-background);
+    cursor: pointer;
+    font-size: 11px;
+  }
+
+  .trace-button:hover:not(:disabled) {
+    background: var(--vscode-button-hoverBackground);
+  }
+
+  .trace-button:disabled {
+    cursor: default;
+    opacity: 0.55;
+  }
+
+  .trace-reason {
+    display: block;
+    margin-top: 4px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 10px;
+    line-height: 1.3;
+  }
+
+  .trace-control { display: block; margin-top: 5px; font-size: 10px; color: var(--vscode-descriptionForeground); }
+  .trace-control select, .trace-control input { margin-left: 4px; max-width: 110px; font-size: 10px; }
+  .trace-control input { width: 35px; }
 
   .info-grid {
     display: grid;

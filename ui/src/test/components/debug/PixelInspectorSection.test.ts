@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { render, fireEvent } from '@testing-library/svelte';
-import { beforeAll, beforeEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, it, expect, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { tick } from 'svelte';
 import PixelInspectorSection from '../../../lib/components/debug/PixelInspectorSection.svelte';
@@ -10,6 +10,7 @@ import {
 } from '../../../lib/state/pixelInspectorState.svelte';
 import { debugPanelStore } from '../../../lib/stores/debugPanelStore';
 import { get } from 'svelte/store';
+import { registerWgslTraceStartHandler, resetWgslTraceState, setWgslTraceState } from '../../../lib/state/wgslTraceState.svelte';
 import type { PixelInspectorRegion, PixelInspectorState } from '../../../lib/types/PixelInspectorState';
 
 const DEFAULT_STATE: PixelInspectorState = {
@@ -58,7 +59,10 @@ describe('PixelInspectorSection', () => {
 
   beforeEach(() => {
     setInspectorState({ ...DEFAULT_STATE });
+    resetWgslTraceState();
   });
+
+  afterEach(() => resetWgslTraceState());
 
   describe('empty state', () => {
     it('shows hint text when no pixel selected', () => {
@@ -82,6 +86,40 @@ describe('PixelInspectorSection', () => {
   describe('with pixel selected', () => {
     beforeEach(() => {
       setInspectorState({ ...PIXEL_STATE });
+    });
+
+    it('starts a WGSL trace from the inspected pixel when the preview supports it', async () => {
+      const start = vi.fn();
+      registerWgslTraceStartHandler(start);
+      setWgslTraceState({ available: true, reason: null });
+      const view = render(PixelInspectorSection, { canvasWidth: 400, canvasHeight: 300 });
+
+      await fireEvent.click(view.getByRole('button', { name: 'Start Trace' }));
+
+      expect(start).toHaveBeenCalledOnce();
+    });
+
+    it('explains when the current inspected preview cannot be traced', () => {
+      setWgslTraceState({ available: false, reason: 'Trace needs a resource-free Image pass.' });
+      const view = render(PixelInspectorSection, { canvasWidth: 400, canvasHeight: 300 });
+
+      expect(view.getByRole('button', { name: 'Start Trace' })).toBeDisabled();
+      expect(view.getByText('Trace needs a resource-free Image pass.')).toBeVisible();
+    });
+
+    it('offers installed pass targets and compute invocation controls', () => {
+      setWgslTraceState({
+        available: true, reason: null, selectedTarget: 'Update:compute', invocation: [0, 0, 0],
+        targets: [
+          { passName: 'Image', stage: 'fragment', path: '/image.wgsl', source: 'image', width: 64, height: 64 },
+          { passName: 'Update', stage: 'compute', path: '/update.wgsl', source: 'update', width: 32, height: 32 },
+        ],
+      });
+      const view = render(PixelInspectorSection, { canvasWidth: 400, canvasHeight: 300 });
+
+      expect(view.getByRole('option', { name: 'Update · compute' })).toBeVisible();
+      expect(view.getByLabelText('Trace invocation 0')).toHaveValue(0);
+      expect(view.getByLabelText('Trace invocation 2')).toHaveValue(0);
     });
 
     it('does not rerasterize when movement only changes screen-space mouse coordinates', async () => {

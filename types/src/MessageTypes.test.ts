@@ -5,6 +5,7 @@ import type {
   FileSelectedMessage,
   LanguageServiceSettingsMessage,
   SelectFileMessage,
+  StartWgslTraceMessage,
 } from './MessageTypes';
 
 describe('file dialog message types', () => {
@@ -69,5 +70,19 @@ describe('language service settings message types', () => {
     };
 
     expect(message.payload.wgslEnabled).toBe(false);
+  });
+});
+
+describe('WGSL trace messages', () => {
+  it('represents a native project recording launch without legacy frame fields', () => {
+    const message: StartWgslTraceMessage = {
+      type: 'startWgslTrace',
+      payload: {
+        program: '/shader/image.wgsl', source: 'fn mainImage() {}',
+        recording: { path: '/shader/image.wgsl', source: 'fn mainImage() {}', color: [0, 0, 0, 1], overflow: false,
+          sites: [], events: [] },
+      },
+    };
+    expect(message.payload.recording.path).toBe('/shader/image.wgsl');
   });
 });

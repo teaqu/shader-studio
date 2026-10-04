@@ -295,6 +295,10 @@ export class SlangComputePipeline {
     return { width: this.descriptor.width, height: this.descriptor.height };
   }
 
+  getOutputTexture(previous = false): GPUTexture | undefined {
+    return this.textures[previous ? 1 - this.textureIndex : this.textureIndex];
+  }
+
   getCurrentOutputView(): GPUTextureView | null {
     return this.fullOutputViews[this.textureIndex] ?? null;
   }
@@ -397,7 +401,7 @@ export class SlangComputePipeline {
         depthOrArrayLayers: this.descriptor.outputLayers,
       },
       format: this.descriptor.bufferTextureFormat || "rgba16float",
-      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
     });
   }
 

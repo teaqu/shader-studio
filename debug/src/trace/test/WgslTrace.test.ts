@@ -1,0 +1,346 @@
+import { describe, expect, it } from 'vitest';
+import type { WgslTraceLaunch, WgslTracePlan } from '@shader-studio/types';
+import { validateWgslTraceLaunch } from '@shader-studio/types';
+import { emitWgslTracePrelude, planWgslTrace, traceVariable } from '../WgslTracePlanner';
+import { planWgslTraceProgram } from '../WgslTraceProgramPlanner';
+import { decodeWgslTrace } from '../WgslTraceDecoder';
+
+const source = `fn helper(x: f32) -> f32 { return x * 2.0; }
+fn mainImage(p: vec2f) -> vec4f {
+  var total: f32 = 0.25;
+  let large: u32 = 4000000001u;
+  for (var i = 0u; i < 3u; i++) {
+    if (i == 1u) { continue; }
+    total += helper(f32(i));
+  }
+  return vec4f(total);
+}`;
+const launch: WgslTraceLaunch = { source, path: '/image.wgsl', width: 4, height: 4,
+  pixel: [1, 2], time: 0, frame: 0, capacity: 8 };
+
+describe('isolated WGSL trace planner', () => {
+  it('records every callable while preserving the input source', () => {
+    const plan = planWgslTrace(launch);
+    expect(launch.source).toBe(source);
+    expect(plan.source).toMatch(/fn helper\(x: f32\) -> f32 \{\s+_ss_trace_enter\(\);/);
+    expect(plan.sites.some(site => site.functionName === 'helper')).toBe(true);
+    const firstMainImageSite = plan.sites.find(site => site.functionName === 'mainImage'
+      && site.variables.some(value => value.name === 'p'))!;
+    expect(plan.source).toMatch(new RegExp(`_ss_trace_site${firstMainImageSite.id}\\(p\\);\\s+var total`));
+    expect(firstMainImageSite.variables.map(value => value.name)).toEqual(['p']);
+    const body = plan.sites.find(site => site.line === 7)!;
+    expect(body.variables.map(value => value.name)).toContain('i');
+    expect(plan.sites.at(-1)!.variables.map(value => value.name)).not.toContain('i');
+    expect(plan.source).not.toContain('break;');
+    expect(emitWgslTracePrelude(plan)).toContain('bitcast<u32>(_ss_trace_value');
+    expect(emitWgslTracePrelude(plan)).toContain('vec4u(_ss_trace_value');
+  });
+
+  it('supports braced else-if chains without inserting hooks between else and if', () => {
+    const plan = planWgslTrace({ ...launch, source: `fn mainImage(p: vec2f) -> vec4f {
+      var x = 0.0;
+      if (p.x < 1.0) { x = 1.0; }
+      else if (p.x < 2.0) { x = 2.0; }
+      else { x = 3.0; }
+      return vec4f(x);
+    }` });
+    expect(plan.source).toMatch(/else if/);
+    expect(plan.source).not.toMatch(/else\s+_ss_trace_/);
+    expect(plan.sites.map(site => site.line)).toContain(4);
+  });
+
+  it('expands fixed aggregates into value shapes and packed leaves', () => {
+    const plan = planWgslTrace({ ...launch, source: `fn mainImage(p: vec2f) -> vec4f {
+      let samples = array<f32, 2>(1.0, 2.0);
+      let transform = mat2x2f(1.0, 0.0, 0.0, 1.0);
+      let total = samples[0] + samples[1];
+      return vec4f(total);
+    }` });
+    expect(plan.sites.at(-1)!.valueShapes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'samples', type: 'array<f32, 2>' }),
+      expect.objectContaining({ name: 'transform', type: 'mat2x2f' }),
+    ]));
+    expect(plan.sites.at(-1)!.variables.map(value => value.name)).toContain('total');
+    expect(emitWgslTracePrelude(plan)).toContain('_ss_trace_value');
+  });
+
+  it('infers locals from explicit custom uniforms', () => {
+    const plan = planWgslTrace({ ...launch, customUniforms: [{ name: 'gain', type: 'float', value: 0.5 }],
+      source: 'fn mainImage(p: vec2f) -> vec4f { let result = gain * 2.0; return vec4f(result); }' });
+    expect(plan.sites.at(-1)!.variables.find(value => value.name === 'result')?.type).toBe('f32');
+  });
+
+  it.each([
+    'fn gain() -> f32 { return 1.0; }', 'struct gain { value: f32 }', 'var<private> gain: f32;',
+  ])('rejects a custom uniform colliding with an authored global: %s', declaration => {
+    expect(() => planWgslTrace({ ...launch, customUniforms: [{ name: 'gain', type: 'float', value: 1 }],
+      source: `${declaration} fn mainImage(p: vec2f) -> vec4f { return vec4f(p, 0.0, 1.0); }` })).toThrow('conflicts with an authored global');
+  });
+
+  it('allows local shadowing of an explicit custom uniform', () => {
+    const plan = planWgslTrace({ ...launch, customUniforms: [{ name: 'gain', type: 'float', value: 0.5 }],
+      source: 'fn mainImage(p: vec2f) -> vec4f { let gain = 2.0; return vec4f(gain); }' });
+    expect(plan.sites.at(-1)!.variables.find(value => value.name === 'gain')?.type).toBe('f32');
+  });
+
+  it('reserves internal counter names when a local is named index', () => {
+    const plan = planWgslTrace({ ...launch, source: 'fn mainImage(p: vec2f) -> vec4f { let index = 2u; return vec4f(f32(index)); }' });
+    const generated = emitWgslTracePrelude(plan);
+    expect(generated).toContain('_ss_trace_value0:');
+    expect(generated).toContain('let _ss_trace_index = atomicAdd');
+    expect(generated).not.toContain('let index =');
+  });
+
+  it('keeps distinct columns for multiple statements on one line', () => {
+    const plan = planWgslTrace({ ...launch, source: 'fn mainImage(p: vec2f) -> vec4f { var x = 1.0; x += 2.0; return vec4f(x); }' });
+    expect(plan.sites).toHaveLength(3);
+    expect(new Set(plan.sites.map(site => site.column)).size).toBe(3);
+  });
+
+  it('records the outer value before a shadowing declaration and the inner value afterwards', () => {
+    const plan = planWgslTrace({ ...launch, source: `fn mainImage(p: vec2f) -> vec4f {
+      let x = 1.0;
+      { let x = 2u; let y = x; }
+      return vec4f(x);
+    }` });
+    expect(plan.sites.flatMap(site => site.variables).some(value => value.name === 'x' && value.type === 'u32')).toBe(true);
+    expect(plan.sites.at(-1)!.variables.find(value => value.name === 'x')!.type).toBe('f32');
+  });
+
+  it.each(['f16', 'mat2x2f', 'array<f32, 2>', 'ptr<function, f32>'])('declines unsupported recorded type %s', type => {
+    expect(traceVariable('x', type)).toBeUndefined();
+  });
+
+  it.each(['f32', 'i32', 'u32', 'bool', 'vec2f', 'vec3i', 'vec4u', 'vec2<f32>'])('packs supported type %s', type => {
+    expect(traceVariable('x', type)).toBeDefined();
+  });
+
+  it('records more than sixteen visible scalar locals', () => {
+    const declarations = Array.from({ length: 17 }, (_, index) => `let v${index}: f32 = ${index}.0;`).join('\n');
+    const plan = planWgslTrace({ ...launch, source: `fn mainImage(p: vec2f) -> vec4f {\n${declarations}\nreturn vec4f(v16);\n}` });
+    expect(plan.sites.at(-1)!.variables).toHaveLength(18); // p plus v0..v16
+    expect(plan.recordWords).toBe(4 + 18 * 4);
+  });
+
+  it.each([
+    'fn mainImage(p: vec2f) -> vec4f { let _ss_trace_foo = 1.0; return vec4f(1.0); }',
+    '@group(1) @binding(0) var<uniform> x: f32; fn mainImage(p: vec2f) -> vec4f { return vec4f(x); }',
+    'fn mainImage(p: vec3f) -> vec4f { return vec4f(p, 1.0); }',
+    '@compute @workgroup_size(1) fn main() {}',
+    'fn mainImage(p: vec2f) -> vec4f { var x = 0.0; if (p.x > 0.0) x = 1.0; return vec4f(x); }',
+    'fn mainImage(p: vec2f) -> vec4f { var x = 0.0; for (var i = 0u; i < 2u; i++) x += 1.0; return vec4f(x); }',
+  ])('rejects an unsupported source explicitly', source => {
+    expect(() => planWgslTrace({ ...launch, source })).toThrow();
+  });
+
+  it.each([
+    { width: 0 }, { height: 2049 }, { pixel: [4, 0] }, { pixel: [-1, 0] },
+    { pixel: [0.5, 0] }, { capacity: 0 }, { capacity: 16385 }, { time: NaN }, { frame: -1 },
+  ])('validates launch bounds: %j', patch => {
+    expect(() => validateWgslTraceLaunch({ ...launch, ...patch } as WgslTraceLaunch)).toThrow();
+  });
+});
+
+describe('WGSL program trace planner', () => {
+  const program = `
+@group(0) @binding(0) var<uniform> u: vec4f;
+fn helper(x: f32) -> f32 { let twice = x * 2.0; return twice; }
+fn authored(coord: vec2f) -> vec4f { let value = helper(coord.x); return vec4f(value); }
+@fragment fn fragmentMain(@builtin(position) position: vec4f) -> @location(0) vec4f { return authored(position.xy); }
+`;
+
+  it('instruments every authored callable, maps sites, and gates the native fragment entry', () => {
+    const plan = planWgslTraceProgram({ source: program, entryPoint: 'fragmentMain', stage: 'fragment', capacity: 32,
+      sourceRanges: [{ path: '/common.wgsl', startLine: 3, endLine: 3 }, { path: '/image.wgsl', startLine: 4, endLine: 4 }] });
+    expect(plan.bindingGroup).toBe(1);
+    expect(plan.sites.map(site => [site.path, site.functionName, site.line])).toEqual([
+      ['/common.wgsl', 'helper', 1], ['/common.wgsl', 'helper', 1],
+      ['/image.wgsl', 'authored', 1], ['/image.wgsl', 'authored', 1],
+    ]);
+    expect(plan.source).toContain('_ss_trace_enabled = all(floor(position.xy) == _ss_trace_u.pixel)');
+    expect(plan.source).not.toContain('_ss_trace_site0(u)');
+  });
+
+  it('adds missing native builtins for compute and vertex entries', () => {
+    const compute = planWgslTraceProgram({ source: '@compute @workgroup_size(1) fn kernel() { let value = 1u; }', entryPoint: 'kernel',
+      stage: 'compute', capacity: 1, sourceRanges: [{ path: '/compute.wgsl', startLine: 1, endLine: 1 }] });
+    expect(compute.source).toContain('@builtin(global_invocation_id) _ss_trace_gid: vec3u');
+    expect(compute.source).toContain('all(_ss_trace_gid == vec3u(u32(_ss_trace_u.pixel.x), u32(_ss_trace_u.pixel.y), _ss_trace_u._pad.x))');
+    const vertex = planWgslTraceProgram({ source: '@vertex fn vertexMain() -> @builtin(position) vec4f { let value = 1.0; return vec4f(value); }', entryPoint: 'vertexMain',
+      stage: 'vertex', capacity: 1, sourceRanges: [{ path: '/vertex.wgsl', startLine: 1, endLine: 1 }] });
+    expect(vertex.source).toContain('@builtin(vertex_index) _ss_trace_vertex: u32');
+  });
+
+  it('combines a mesh primitive selector with the pixel gate', () => {
+    const source = 'fn image(p: vec2f) -> vec4f { return vec4f(p, 0, 1); }\n@fragment fn fragmentMain(@builtin(position) p: vec4f, @location(3) @interpolate(flat) _ss_trace_primitive: u32) -> @location(0) vec4f { return image(p.xy); }';
+    const plan = planWgslTraceProgram({ source, entryPoint: 'fragmentMain', stage: 'fragment', capacity: 8,
+      sourceRanges: [{ path: '/image.wgsl', startLine: 1, endLine: 1 }],
+      fragmentPredicate: '_ss_trace_primitive == _ss_trace_u._pad.x' });
+    expect(plan.source).toContain('all(floor(p.xy) == _ss_trace_u.pixel) && (_ss_trace_primitive == _ss_trace_u._pad.x)');
+    expect(plan.sites.every(site => site.path === '/image.wgsl' && site.line === 1)).toBe(true);
+  });
+
+  it('only refuses reserved identifiers inside authored ranges', () => {
+    const source = `let _ss_trace_generated = 0u;\nfn image(p: vec2f) -> vec4f { return vec4f(p, 0.0, 1.0); }\n@fragment fn f(@builtin(position) p: vec4f) -> @location(0) vec4f { return image(p.xy); }`;
+    expect(() => planWgslTraceProgram({ source, entryPoint: 'f', stage: 'fragment', capacity: 1,
+      sourceRanges: [{ path: '/image.wgsl', startLine: 2, endLine: 2 }] })).not.toThrow();
+    expect(() => planWgslTraceProgram({ source, entryPoint: 'f', stage: 'fragment', capacity: 1,
+      sourceRanges: [{ path: '/generated.wgsl', startLine: 1, endLine: 1 }, { path: '/image.wgsl', startLine: 2, endLine: 2 }] })).toThrow('conflicts');
+  });
+});
+
+describe('WGSL trace decoding', () => {
+  const plan = planWgslTrace({ ...launch, source: `fn mainImage(p: vec2f) -> vec4f {
+    let signed: i32 = -123;
+    let large: u32 = 4000000001u;
+    let yes = true;
+    return vec4f(0.5);
+  }` });
+  const last = plan.sites.at(-1)!;
+  function buffer() {
+    const data = new ArrayBuffer(16 + plan.capacity * plan.recordWords * 4);
+    const words = new Uint32Array(data);
+    const floats = new Float32Array(data);
+    words[0] = 1;
+    words[4] = last.id;
+    for (const [slot, value] of last.variables.entries()) {
+      const offset = 8 + slot * 4;
+      if (value.name === 'p') {
+        floats[offset] = 1.5;
+        floats[offset + 1] = 2.5;
+      } else {
+        words[offset] = { signed: -123 >>> 0, large: 4000000001, yes: 1 }[value.name]!;
+      }
+    }
+    return data;
+  }
+
+  it('preserves integer bits, bool and vector components', () => {
+    const result = decodeWgslTrace(plan, buffer());
+    expect(result.overflow).toBe(false);
+    expect(Object.fromEntries(result.events[0].values.map(value => [value.name, value.value])))
+      .toEqual({ p: [1.5, 2.5], signed: -123, large: 4000000001, yes: true });
+  });
+
+  it('surfaces unavailable values without allocating GPU record slots for them', () => {
+    const marked = { ...plan, sites: plan.sites.map(site => ({ ...site,
+      unavailableVariables: [{ name: 'weights', type: 'array<f32, 2>' }] })) };
+    const result = decodeWgslTrace(marked, buffer());
+    expect(result.events[0].values.at(-1)).toEqual({ name: 'weights', type: 'array<f32, 2>',
+      value: '<not recorded: unsupported or unresolved type>' });
+    expect(result.events[0].values.find(value => value.name === 'large')?.value).toBe(4000000001);
+  });
+
+  it('preserves program source identity on decoded events', () => {
+    const marked = { ...plan, sites: plan.sites.map(site => ({ ...site, path: '/image.wgsl', functionName: 'mainImage' })) };
+    expect(decodeWgslTrace(marked, buffer()).events[0]).toMatchObject({ path: '/image.wgsl', functionName: 'mainImage' });
+  });
+
+  it('bounds decoding and exposes overflow', () => {
+    const data = buffer();
+    new Uint32Array(data)[0] = plan.capacity + 1;
+    new Uint32Array(data)[1] = 1;
+    expect(decodeWgslTrace(plan, data).events).toHaveLength(plan.capacity);
+    expect(decodeWgslTrace(plan, data).overflow).toBe(true);
+  });
+
+  it('preserves special floats through JSON transport', () => {
+    const floatPlan = planWgslTrace({ ...launch, source: 'fn mainImage(p: vec2f) -> vec4f { let x = vec4f(1.0); return x; }' });
+    const site = floatPlan.sites.at(-1)!;
+    const data = new ArrayBuffer(16 + floatPlan.capacity * floatPlan.recordWords * 4);
+    const words = new Uint32Array(data);
+    words[0] = 1;
+    words[4] = site.id;
+    const slot = site.variables.findIndex(value => value.name === 'x');
+    new Float32Array(data).set([NaN, Infinity, -Infinity, -0], 8 + slot * 4);
+    const transmitted = JSON.parse(JSON.stringify(decodeWgslTrace(floatPlan, data)));
+    expect(transmitted.events[0].values.find((value: { name: string }) => value.name === 'x').value)
+      .toEqual(['NaN', 'Infinity', '-Infinity', '-0']);
+  });
+
+  it('reconstructs nested aggregates and caller frames from packed records', () => {
+    const aggregatePlan: WgslTracePlan = {
+      source: '', capacity: 2, recordWords: 12, stackSize: 4,
+      sites: [
+        {
+          id: 0, path: '/common.wgsl', functionName: 'caller', line: 2, column: 1,
+          variables: [
+            { name: 'payload.inner.count', type: 'u32', component: 'u32', width: 1 },
+            { name: 'payload.inner.mask', type: 'vec2<bool>', component: 'bool', width: 2 },
+          ],
+          valueShapes: [{ name: 'payload', type: 'Payload', children: [{ name: 'inner', type: 'Inner', children: [
+            { name: 'count', type: 'u32', slot: 0 }, { name: 'mask', type: 'vec2<bool>', slot: 1 },
+          ] }] }],
+        },
+        { id: 1, path: '/image.wgsl', functionName: 'callee', line: 6, column: 3, variables: [] },
+      ],
+    };
+    const data = new ArrayBuffer(16 + aggregatePlan.capacity * aggregatePlan.recordWords * 4);
+    const words = new Uint32Array(data);
+    words[0] = 2;
+    words.set([0, 1, 7, 0, 42, 0, 0, 0, 1, 0], 4);
+    words.set([1, 2, 8, 7], 4 + aggregatePlan.recordWords);
+
+    const result = decodeWgslTrace(aggregatePlan, data);
+    expect(result.events[0].values).toEqual([{
+      name: 'payload', type: 'Payload', value: 'Payload (1)', children: [{
+        name: 'inner', type: 'Inner', value: 'Inner (2)', children: [
+          { name: 'count', type: 'u32', value: 42 },
+          { name: 'mask', type: 'vec2<bool>', value: [true, false] },
+        ],
+      }],
+    }]);
+    expect(result.events[1].frames?.map(frame => [frame.id, frame.functionName, frame.path]))
+      .toEqual([[8, 'callee', '/image.wgsl'], [7, 'caller', '/common.wgsl']]);
+  });
+
+  it('rejects invalid frame parent links and stack depths', () => {
+    const framePlan: WgslTracePlan = {
+      source: '', capacity: 2, recordWords: 4, stackSize: 4,
+      sites: [
+        { id: 0, functionName: 'caller', line: 1, column: 1, variables: [] },
+        { id: 1, functionName: 'callee', line: 2, column: 1, variables: [] },
+      ],
+    };
+    const data = new ArrayBuffer(16 + framePlan.capacity * framePlan.recordWords * 4);
+    const words = new Uint32Array(data);
+    words[0] = 2;
+    words.set([0, 1, 7, 0], 4);
+    words.set([1, 2, 8, 99], 8);
+    expect(() => decodeWgslTrace(framePlan, data)).toThrow('caller metadata');
+
+    words[11] = 7;
+    words[9] = 3;
+    expect(() => decodeWgslTrace(framePlan, data)).toThrow('stack depth');
+  });
+
+  it('decodes legacy records without frames and preserves bool vectors', () => {
+    const legacyPlan: WgslTracePlan = {
+      source: '', capacity: 1, recordWords: 8,
+      sites: [{ id: 0, line: 1, column: 1,
+        variables: [{ name: 'mask', type: 'vec2<bool>', component: 'bool', width: 2 }] }],
+    };
+    const data = new ArrayBuffer(16 + legacyPlan.capacity * legacyPlan.recordWords * 4);
+    const words = new Uint32Array(data);
+    words[0] = 1;
+    words.set([0, 0, 0, 0, 1, 0], 4);
+    expect(decodeWgslTrace(legacyPlan, data).events[0]).toEqual({
+      siteId: 0, line: 1, column: 1, values: [{ name: 'mask', type: 'vec2<bool>', value: [true, false] }],
+    });
+  });
+
+  it('rejects malformed sizes and unknown site ids', () => {
+    expect(() => decodeWgslTrace(plan, new ArrayBuffer(0))).toThrow('size');
+    const data = buffer();
+    new Uint32Array(data)[4] = 999;
+    expect(() => decodeWgslTrace(plan, data)).toThrow('site');
+  });
+});
+
+
+describe('program trace capacity', () => {
+  it.each([0, -1, 1.5, 16385, 4294967296])('rejects out-of-range capacity %s', capacity => {
+    expect(() => planWgslTraceProgram({ source: '@compute @workgroup_size(1) fn main() { let x = 1u; }',
+      entryPoint: 'main', stage: 'compute', capacity, sourceRanges: [{ path: '/main.wgsl', startLine: 1, endLine: 1 }] })).toThrow('1 to 16384');
+  });
+});

@@ -32,6 +32,8 @@ export interface SlangPassPipelineDescriptor {
 export interface SlangChannelResource {
   slot: number;
   textureView: GPUTextureView;
+  texture?: GPUTexture;
+  layer?: number;
   /** Channel-specific sampler (texture/keyboard inputs); shared linear when absent (buffer inputs). */
   sampler?: GPUSampler;
   /** Current source texture dimensions, used by dynamic cover-channel compute dispatch. */
@@ -452,6 +454,10 @@ export class SlangPassPipeline {
 
   getOutputSize(): { width: number; height: number } {
     return { width: this.descriptor.width, height: this.descriptor.height };
+  }
+
+  getOutputTexture(previous = false): GPUTexture | undefined {
+    return this.textures[previous ? 1 - this.textureIndex : this.textureIndex];
   }
 
   getCurrentOutputView(): GPUTextureView | null {

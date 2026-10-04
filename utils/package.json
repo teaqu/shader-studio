@@ -23,5 +23,25 @@
     "typescript": "*",
     "vite": "*",
     "vitest": "*"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/index.js"
+    },
+    "./source-edits": {
+      "types": "./dist/source-edits.d.ts",
+      "import": "./dist/esm/source-edits.js",
+      "require": "./dist/source-edits.js"
+    },
+    "./*": "./*"
+  },
+  "typesVersions": {
+    "*": {
+      "source-edits": [
+        "dist/source-edits.d.ts"
+      ]
+    }
   }
 }

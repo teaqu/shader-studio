@@ -53,7 +53,10 @@ import { WebGPUPixelRegionCapturer, type PixelRegionRequestStage } from "./WebGP
 import { WebGPUMeshResources } from "./WebGPUMeshResources";
 import { extractStructSizes } from "./wgslStructSize";
 import { OrbitCamera } from "../preview3d/OrbitCamera";
-import { createModelMatrix, createNormalMatrix3, multiplyMatrices } from "../preview3d/math";
+import { packDefaultMeshUniforms } from "./meshUniforms";
+import { captureInstalledWgslTrace, traceDispatchUniforms, validateProjectTraceRequest, wgslTraceTargets } from "../trace/WgslProjectTraceController";
+import { vertexPassKey } from "@shader-studio/types";
+import type { WgslProjectTraceRequest, WgslTraceRecording } from "@shader-studio/types";
 import {
   gpuBackpressureEnabled,
   MAX_FRAMES_IN_FLIGHT,
@@ -2669,18 +2672,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
       }, this.customUniformManager.getUniformInfo(), frameCustomUniformValues);
       this.device.queue.writeBuffer(pipeline.getUniformBuffer()!, 0, data);
       if (pass.geometry && pass.geometry !== "fullscreen" && pipeline.getMeshUniformBuffer?.()) {
-        const model = createModelMatrix({ position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] });
-        const viewProjection = multiplyMatrices(
-          this.meshCamera.getProjectionMatrix(pass.width / Math.max(pass.height, 1), "webgpu"),
-          this.meshCamera.getViewMatrix(),
-        );
-        const normal = createNormalMatrix3(model);
-        const meshData = new Float32Array(64);
-        meshData.set(model, 0);
-        meshData.set(viewProjection, 16);
-        meshData.set([normal[0], normal[1], normal[2], 0, normal[3], normal[4], normal[5], 0, normal[6], normal[7], normal[8], 0, 0, 0, 0, 1], 32);
-        meshData.set([...this.meshCamera.getPosition(), 1], 48);
-        this.device.queue.writeBuffer(pipeline.getMeshUniformBuffer()!, 0, meshData);
+        this.device.queue.writeBuffer(pipeline.getMeshUniformBuffer()!, 0,
+          packDefaultMeshUniforms(this.meshCamera, pass.width, pass.height));
       }
 
       const targetView = pass.output === "canvas"
@@ -2833,6 +2826,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
         resources.push({
           slot: channel.slot,
           textureView,
+          texture: computeSource
+            ? computeSource.getOutputTexture?.(channel.readFrom === "previous-frame" || !encodedComputePasses.has(channel.source))
+            : renderSource?.getOutputTexture?.(channel.readFrom === "previous-frame"),
+          layer: computeSource ? layer : undefined,
           ...size,
           ...(
             channel.filter === undefined && channel.wrap === undefined && channel.samplerType !== "non-filtering"
@@ -2849,6 +2846,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         resources.push({
           slot: channel.slot,
           textureView: handle.view,
+          texture: handle.texture,
           sampler: this.getChannelSampler(channel),
           width: handle.width,
           height: handle.height,
@@ -2862,6 +2860,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         resources.push({
           slot: channel.slot,
           textureView: handle.view,
+          texture: handle.texture,
           sampler: this.getChannelSampler(channel),
           width: handle.width,
           height: handle.height,
@@ -2874,6 +2873,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         resources.push({
           slot: channel.slot,
           textureView: handle.view,
+          texture: handle.texture,
           sampler: this.getChannelSampler(channel),
           width: handle.width,
           height: handle.height,
@@ -2887,6 +2887,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         resources.push({
           slot: channel.slot,
           textureView: handle.view,
+          texture: handle.texture,
           sampler: this.getChannelSampler(channel),
           width: handle.width,
           height: handle.height,
@@ -2899,6 +2900,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         resources.push({
           slot: channel.slot,
           textureView: handle.view,
+          texture: handle.texture,
           sampler: this.getChannelSampler(channel),
           width: handle.width,
           height: handle.height,
@@ -3607,6 +3609,60 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
   getShaderLanguage(): ShaderLanguageId {
     return this.language;
+  }
+
+  getWgslTraceTargets() {
+    return this.language === "wgsl" ? wgslTraceTargets(this.passGraph, this.installedCompile) : [];
+  }
+
+  captureWgslProjectTrace(request: WgslProjectTraceRequest, signal?: AbortSignal): Promise<WgslTraceRecording> {
+    return this.captureWgslProjectTraceWithMode(request, signal);
+  }
+
+  captureWgslProjectReference(request: WgslProjectTraceRequest, signal?: AbortSignal): Promise<WgslTraceRecording> {
+    return this.captureWgslProjectTraceWithMode(request, signal, true);
+  }
+
+  private async captureWgslProjectTraceWithMode(request: WgslProjectTraceRequest, signal?: AbortSignal, reference = false): Promise<WgslTraceRecording> {
+    const target = validateProjectTraceRequest(request, this.getWgslTraceTargets());
+    if (!this.device || !this.installedCompile) {
+      throw new Error("WGSL preview is not ready.");
+    }
+    const generation = this.compileGeneration;
+    const installedPass = this.passGraph.find(candidate => candidate.name === target.passName)!;
+    const sources = new Map(request.sources?.map(source => [source.path, source.source]) ?? []);
+    const paths = this.installedCompile.slangSourcePaths ?? {};
+    const rootTarget = this.getWgslTraceTargets().find(candidate => candidate.passName === target.passName && candidate.stage !== "vertex")!;
+    const pass = { ...installedPass, source: sources.get(rootTarget.path) ?? installedPass.source,
+      vertexSrc: sources.get(paths[vertexPassKey(installedPass.name)] ?? "") ?? installedPass.vertexSrc };
+    const project = this.installedCompile;
+    const resources = this.getChannelResources(pass, true, new Set(this.computePipelines.keys()));
+    if (!resources) {
+      throw new Error("The pass input resources are not ready.");
+    }
+    const uniformData = packShaderToyUniforms({ channelCount: getShaderToyChannelCount(pass.channels),
+      width: pass.width, height: pass.height, ...this.getUniforms(), ...this.getChannelUniforms(pass),
+    }, this.customUniformManager.getUniformInfo(), this.getCurrentCustomUniforms());
+    const mesh = this.getTraceMesh(pass);
+    return captureInstalledWgslTrace({ device: this.device, pass, storage: [...this.storageLayouts.values()],
+      storageBuffers: this.storageBuffers, channelResources: resources, uniformData,
+      commonCode: sources.get(paths.common ?? "") ?? project.buffers.common ?? "", customUniformInfo: this.customUniformManager.getUniformInfo(),
+      sourcePath: this.getWgslTraceTargets().find(candidate => candidate.passName === pass.name && candidate.stage !== "vertex")!.path,
+      commonPath: paths.common, vertexPath: paths[vertexPassKey(pass.name)], mesh,
+      ...(mesh ? { meshUniformData: packDefaultMeshUniforms(this.meshCamera, pass.width, pass.height).buffer as ArrayBuffer } : {}),
+      dispatchWorkgroups: resolveWorkgroupCounts(pass, this.storageLayouts, resources) ?? undefined,
+      dispatchUniforms: traceDispatchUniforms(pass.dispatchCount),
+    }, { ...target, source: sources.get(target.path) ?? target.source }, request, signal, () => !this.disposed && generation === this.compileGeneration, reference);
+  }
+
+  private getTraceMesh(pass: RenderPassNode) {
+    if (pass.geometry === "fullscreen") {
+      return undefined;
+    }
+    if (pass.modelPath) {
+      return this.meshResources?.getModel(pass.name);
+    }
+    return pass.geometry === "model" ? undefined : this.meshResources?.get(pass.geometry);
   }
 
   getCaptureUniforms(): CaptureUniforms {

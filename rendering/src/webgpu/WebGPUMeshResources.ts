@@ -46,8 +46,8 @@ export class WebGPUMeshResources {
       data.set(mesh.normals.subarray(index * 3, index * 3 + 3), index * 8 + 3);
       data.set(mesh.uvs.subarray(index * 2, index * 2 + 2), index * 8 + 6);
     }
-    const vertexBuffer = this.device.createBuffer({ size: data.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
-    const indexBuffer = this.device.createBuffer({ size: mesh.indices.byteLength, usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST });
+    const vertexBuffer = this.device.createBuffer({ size: data.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST });
+    const indexBuffer = this.device.createBuffer({ size: mesh.indices.byteLength, usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST });
     this.device.queue.writeBuffer(vertexBuffer, 0, data); this.device.queue.writeBuffer(indexBuffer, 0, mesh.indices);
     return { vertexBuffer, indexBuffer, indexCount: mesh.indices.length, indexFormat: mesh.indices instanceof Uint32Array ? "uint32" : "uint16" };
   }

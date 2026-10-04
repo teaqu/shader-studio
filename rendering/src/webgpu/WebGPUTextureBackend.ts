@@ -78,7 +78,7 @@ export class WebGPUTextureBackend implements TextureBackend<WebGPUTextureHandle>
       size: { width: desc.width, height: desc.height },
       format: "rgba8unorm",
       mipLevelCount: mip ? mipLevelCountFor(desc.width, desc.height) : 1,
-      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST |
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST |
         (mip ? GPUTextureUsage.RENDER_ATTACHMENT : 0),
     });
     try {
@@ -150,7 +150,7 @@ export class WebGPUTextureBackend implements TextureBackend<WebGPUTextureHandle>
       size: { width, height },
       format: "rgba8unorm",
       mipLevelCount: mip ? mipLevelCountFor(width, height) : 1,
-      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST |
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST |
         GPUTextureUsage.RENDER_ATTACHMENT,
     });
     const handle: WebGPUTextureHandle = {
@@ -188,7 +188,7 @@ export class WebGPUTextureBackend implements TextureBackend<WebGPUTextureHandle>
       dimension: "2d",
       format: "rgba8unorm",
       mipLevelCount: 1,
-      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST |
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST |
         GPUTextureUsage.RENDER_ATTACHMENT,
     });
     const handle: WebGPUTextureHandle = {
@@ -241,7 +241,7 @@ export class WebGPUTextureBackend implements TextureBackend<WebGPUTextureHandle>
         size: { width, height },
         format: "rgba8unorm",
         mipLevelCount: tex.filter === "mipmap" ? mipLevelCountFor(width, height) : 1,
-        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST |
+        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST |
           GPUTextureUsage.RENDER_ATTACHMENT,
       });
       const replacement: WebGPUTextureHandle = {

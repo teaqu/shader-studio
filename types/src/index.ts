@@ -16,9 +16,14 @@ export * from './shader-environment/ShaderStudioDocumentation';
 export * from './shader-environment/ShaderLanguageReservedTerms';
 export * from './shader-environment/ShaderLanguages';
 export * from './shaderProject';
+export * from './WgslTrace';
 
 export * from './shader-environment/SlangChannels';
 
 export { wgslStorageElementType } from "./wgslStorage";
 
 export { findSlangAuthoredDeclarations, type SlangAuthoredDeclaration } from "./shader-environment/SlangAuthoredDeclarations";
+
+export * from './WgslTraceUniforms';
+
+export * from './WgslTraceRecording';
