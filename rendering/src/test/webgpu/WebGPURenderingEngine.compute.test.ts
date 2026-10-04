@@ -153,6 +153,8 @@ function harness() {
       return texture;
     }),
     createCommandEncoder: vi.fn(() => ({
+      copyBufferToBuffer: vi.fn(() => commandEvents.push({ type: 'copyStorage' })),
+      clearBuffer: vi.fn(() => commandEvents.push({ type: 'clearStorage' })),
       beginComputePass: vi.fn(() => {
         commandEvents.push({ type: "beginComputePass" });
         const passNumber = computePasses.length + 1;
@@ -295,6 +297,34 @@ function enableRendering(testHarness: ReturnType<typeof harness>): void {
   testHarness.device.queue.writeBuffer.mockClear();
   testHarness.device.queue.submit.mockClear();
 }
+
+it('cancels an encoded storage capture if the frame fails before submission', async () => {
+  const h = harness();
+  await h.engine.compileShaderPipeline(IMAGE_SOURCE, computeConfig({ storage: { values: { count: 1, elementType: 'uint' } } }), '/capture.slang', { ComputeSim: COMPUTE_SOURCE });
+  enableRendering(h);
+  const snapshot = h.engine.readStorageBuffer('values', 0, 1, { pass: 'ComputeSim', timing: 'before' });
+  const rejected = expect(snapshot).rejects.toThrow('frame could not be submitted');
+  h.computeFailure.method = 'dispatchWorkgroups';
+  expect(() => h.engine.render(1000)).toThrow();
+  await rejected;
+  expect(h.device.queue.submit).not.toHaveBeenCalled();
+  expect(h.buffers.at(-1)!.destroy).toHaveBeenCalledOnce();
+});
+
+it('clears opted-in storage before compute, but retains it on paused redraws', async () => {
+  const h = harness();
+  await h.engine.compileShaderPipeline(IMAGE_SOURCE, computeConfig({ storage: { values: { count: 1, elementType: 'uint', clearEachFrame: true } } }), '/clear.slang', { ComputeSim: COMPUTE_SOURCE });
+  enableRendering(h);
+  h.engine.render(1000);
+  const clear = h.commandEvents.findIndex(event => event.type === 'clearStorage');
+  const compute = h.commandEvents.findIndex(event => event.type === 'beginComputePass');
+  expect(clear).toBeGreaterThanOrEqual(0);
+  expect(clear).toBeLessThan(compute);
+  h.engine.togglePause();
+  h.commandEvents.length = 0;
+  h.engine.renderForCapture();
+  expect(h.commandEvents.some(event => event.type === 'clearStorage')).toBe(false);
+});
 
 function storageBuffers(buffers: FakeBuffer[]): FakeBuffer[] {
   const usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST;

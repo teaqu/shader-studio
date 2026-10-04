@@ -1,5 +1,7 @@
 
-import type { StorageBufferSnapshot } from "@shader-studio/types";
+import type { StorageBufferSnapshot, StorageCapturePoint } from "@shader-studio/types";
+import { StorageCaptureQueue } from './StorageCaptureQueue';
+import { initializeStorage, clearFrameStorage } from './StorageLifecycle';
 import type { StorageBindingNode } from "../types/PassGraph";
 import type { PendingReset,PreparedStorageBuffers } from "./WebGPUCompilationTypes";
 import * as compileKeys from "./WebGPUCompileKeys";
@@ -19,6 +21,7 @@ interface WebGPUStorageHost {
 
 /** Owns storage state and operations; dependencies stay live across compilation swaps. */
 export class WebGPUStorage {
+  readonly captures = new StorageCaptureQueue();
   constructor(private readonly host: WebGPUStorageHost) {}
 
   storageBuffers = new Map<string, GPUBuffer>();
@@ -55,31 +58,22 @@ export class WebGPUStorage {
     try {
       for (const node of storage) {
         const key = compileKeys.storageCacheKey(node);
-        const existing = this.storageBuffers.get(node.name);
-        const resetBuffer = pendingReset?.storageKeys.get(node.name) === key
-          ? pendingReset.storageBuffers.get(node.name)
-          : undefined;
-        let buffer: GPUBuffer;
-        if (forceFresh && resetBuffer) {
-          buffer = resetBuffer;
-          borrowedResetBuffers.add(buffer);
-        } else if (
-          !forceFresh &&
-          !this.resetStorageOnNextSync &&
-          existing &&
-          this.storageKeys.get(node.name) === key
-        ) {
-          buffer = existing;
+        let buffer = this.reusableBuffer(node, key, forceFresh, pendingReset);
+        if (buffer) {
+          if (forceFresh && pendingReset?.storageBuffers.get(node.name) === buffer) {
+            borrowedResetBuffers.add(buffer);
+          }
         } else {
           buffer = this.host.device.createBuffer({
             size: storageBufferByteSize(node),
             usage: STORAGE | COPY_SRC | COPY_DST,
           });
           stagedBuffers.push(buffer);
+          initializeStorage(this.host.device, buffer, node);
         }
         nextBuffers.set(node.name, buffer);
         nextKeys.set(node.name, key);
-        nextLayouts.set(node.name, { ...node });
+        nextLayouts.set(node.name, { ...node, fields: node.fields ?? (this.storageKeys.get(node.name) === key ? this.storageLayouts.get(node.name)?.fields : undefined) });
       }
     } catch (error) {
       for (const buffer of stagedBuffers) {
@@ -99,6 +93,28 @@ export class WebGPUStorage {
     };
     this.pendingStoragePreparations.add(prepared);
     return prepared;
+  }
+
+  private reusableBuffer(node: StorageBindingNode, key: string, forceFresh: boolean, pendingReset: PendingReset | null): GPUBuffer | undefined {
+    const existing = this.storageKeys.get(node.name) === key ? this.storageBuffers.get(node.name) : undefined;
+    if (forceFresh && pendingReset) {
+      if (node.resetOnRestart === false && existing) {
+        return existing;
+      }
+      if (pendingReset.storageKeys.get(node.name) === key) {
+        return pendingReset.storageBuffers.get(node.name);
+      }
+    }
+    return !forceFresh && !this.resetStorageOnNextSync ? existing : undefined;
+  }
+
+  applyCompiledFields(prepared: PreparedStorageBuffers, nodes: StorageBindingNode[]): void {
+    for (const node of nodes) {
+      const layout = prepared.layouts.get(node.name);
+      if (layout && node.fields) {
+        layout.fields = node.fields;
+      }
+    }
   }
 
   collectRetiredStorageBuffers(
@@ -127,6 +143,7 @@ export class WebGPUStorage {
   }
 
   publishPreparedStorage(prepared: PreparedStorageBuffers): void {
+    this.captures.cancel();
     this.storageBuffers = prepared.buffers;
     this.storageKeys = prepared.keys;
     this.storageLayouts = prepared.layouts;
@@ -182,11 +199,15 @@ export class WebGPUStorage {
     const stagedBuffers: GPUBuffer[] = [];
     try {
       for (const node of this.storageLayouts.values()) {
+        if (node.resetOnRestart === false) {
+          continue;
+        }
         const buffer = this.host.device.createBuffer({
           size: storageBufferByteSize(node),
           usage: STORAGE | COPY_SRC | COPY_DST,
         });
         stagedBuffers.push(buffer);
+        initializeStorage(this.host.device, buffer, node);
         nextBuffers.set(node.name, buffer);
       }
     } catch (error) {
@@ -219,13 +240,38 @@ export class WebGPUStorage {
     }
   }
 
-  async readStorageBuffer(name: string, start: number, count: number): Promise<StorageBufferSnapshot> {
+  async readStorageBuffer(name: string, start: number, count: number, point?: StorageCapturePoint): Promise<StorageBufferSnapshot> {
     const { buffer, layout, offset, size } = this.resolveStorageRange(name, start, count);
+    if (point) {
+      return this.captures.request(name, start, count, point);
+    }
     const alignedOffset = Math.floor(offset / WEBGPU_BUFFER_SIZE_ALIGNMENT) * WEBGPU_BUFFER_SIZE_ALIGNMENT;
     const alignedEnd = Math.ceil((offset + size) / WEBGPU_BUFFER_SIZE_ALIGNMENT) * WEBGPU_BUFFER_SIZE_ALIGNMENT;
     const copied = await this.readStorageBytes(buffer, alignedOffset, alignedEnd - alignedOffset, name);
     const data = copied.slice(offset - alignedOffset, offset - alignedOffset + size);
-    return { name, elementType: layout.elementType, stride: layout.stride, start, count, data };
+    return { name, elementType: layout.elementType, stride: layout.stride, start, count, data, fields: layout.fields };
+  }
+
+  resetStorageBuffer(name: string): void {
+    const buffer = this.storageBuffers.get(name), node = this.storageLayouts.get(name);
+    const device = this.host.device;
+    if (!buffer || !node || !device) {
+      throw new Error(`Storage buffer "${name}" is not available`);
+    }
+    const encoder = device.createCommandEncoder();
+    encoder.clearBuffer(buffer);
+    device.queue.submit([encoder.finish()]);
+    initializeStorage(device, buffer, node);
+  }
+
+  clearFrame(encoder: GPUCommandEncoder): void {
+    clearFrameStorage(encoder, this.storageBuffers, this.storageLayouts);
+  }
+
+  captureAt(encoder: GPUCommandEncoder, pass: string, timing: 'before' | 'after', frame: number): void {
+    if (this.host.device) {
+      this.captures.encode(this.host.device, encoder, this.storageBuffers, this.storageLayouts, { pass, timing }, frame);
+    }
   }
 
   async readStorageBytes(buffer: GPUBuffer, offset: number, size: number, name: string): Promise<ArrayBuffer> {
@@ -282,6 +328,7 @@ export class WebGPUStorage {
   }
 
   disposeBuffers(attempt: (cleanup: () => void) => void): void {
+    this.captures.cancel('Storage capture cancelled because the renderer was disposed');
     if (this.pendingReset) {
       const pendingReset = this.pendingReset;
       attempt(() => this.discardPendingReset(pendingReset));

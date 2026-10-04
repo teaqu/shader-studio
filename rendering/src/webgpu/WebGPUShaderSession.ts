@@ -621,6 +621,7 @@ export class WebGPUShaderSession {
     // Enumerating the retiring map can invoke user-modified iterators and
     // allocate. Finish that work while the installed generation is still
     // untouched; publication below then contains ownership assignments only.
+    this.host.storage.applyCompiledFields(preparedStorage, graph.storage);
     const retiredStorageBuffers = this.host.storage.collectRetiredStorageBuffers(preparedStorage);
 
     // All resolution-sensitive work above was staged in candidate-owned

@@ -469,6 +469,10 @@ export class RenderingEngine implements RenderingEngineInterface {
     throw new Error("Storage inspection requires the Slang/WebGPU renderer");
   }
 
+  public async resetStorageBuffer(_name: string): Promise<void> {
+    throw new Error('Storage buffers require WebGPU');
+  }
+
   public setInputEnabled(enabled: boolean): void {
     this.keyboardManager.setEnabled(enabled);
     this.mouseManager.setEnabled(enabled);

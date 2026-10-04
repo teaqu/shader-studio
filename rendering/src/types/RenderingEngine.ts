@@ -22,7 +22,8 @@ export interface RenderingEngine {
   /** Compile a complete, in-place Slang debug workspace when the backend supports Slang. */
   compileDebugPlan?(plan: DebugInstrumentationPlan, config?: ShaderConfig | null): Promise<CompilationResult | undefined>;
   getCurrentConfig(): ShaderConfig | null;
-  readStorageBuffer(name: string, start: number, count: number): Promise<StorageBufferSnapshot>;
+  readStorageBuffer(name: string, start: number, count: number, point?: import('@shader-studio/types').StorageCapturePoint): Promise<StorageBufferSnapshot>;
+  resetStorageBuffer(name: string): Promise<void>;
   writeStorageBuffer(name: string, start: number, data: ArrayBuffer): Promise<void>;
   setInputEnabled(enabled: boolean): void;
   updateBufferAndRecompile(bufferName: string, bufferContent: string): Promise<CompilationResult | undefined>;

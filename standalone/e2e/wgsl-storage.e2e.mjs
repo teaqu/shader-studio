@@ -21,7 +21,7 @@ async function seedWgslAuditFiles(page, entries) {
   await page.goto('/');
 }
 
-test('inspects and edits WGSL vec3 storage through the standalone config UI', async ({ page }) => {
+test('inspects WGSL vec3 storage read-only through the standalone config UI', async ({ page }) => {
   await seedWgslAuditFiles(page, [
     ['inspector.wgsl', `fn mainImage(coord: vec2f) -> vec4f {
   let value = directions[0];
@@ -29,7 +29,7 @@ test('inspects and edits WGSL vec3 storage through the standalone config UI', as
 }`],
     ['inspector.sha.json', JSON.stringify({
       version: '1.0',
-      storage: { directions: { count: 2, elementType: 'vec3<f32>' } },
+      storage: { directions: { count: 2, elementType: 'vec3<f32>', initialData: Buffer.from(new Float32Array([0.25, 0.75, 0.5, 0, 0, 0, 0, 0]).buffer).toString('base64') } },
       passes: { Image: { inputs: {} } },
     })],
   ]);
@@ -40,13 +40,97 @@ test('inspects and edits WGSL vec3 storage through the standalone config UI', as
   const config = page.locator('.config-panel');
   await expect(config).toBeVisible();
   await config.getByRole('button', { name: 'Storage', exact: true }).click();
-  await config.getByLabel('Inspect directions').click();
+  await config.getByRole('tab', { name: 'Inspect', exact: true }).click();
   const inspector = page.getByLabel('Inspect directions');
-  await expect(inspector.getByLabel('Element 0 component 2')).toHaveValue('0');
-  await inspector.getByLabel('Element 0 component 1').fill('0.75');
-  await expect.poll(async () => (await inspector.getByLabel('Element 0 component 1').inputValue())).toBe('0.75');
-  await inspector.getByRole('button', { name: 'Refresh', exact: true }).click();
-  await expect(inspector.getByLabel('Element 0 component 1')).toHaveValue('0.75');
+  await expect(inspector.getByLabel('Element 0 component 1')).toHaveText('0.75');
+  await expect(inspector.getByLabel('Element 0 component 2')).toHaveText('0.5');
+  await expect(inspector.locator('table input')).toHaveCount(0);
+  await inspector.getByRole('button', { name: 'Capture snapshot', exact: true }).click();
+  await expect(inspector.getByLabel('Element 0 component 1')).toHaveText('0.75');
+  await page.reload();
+  await page.getByTestId('shader-option-inspector-wgsl').click();
+  if (!await config.isVisible()) {
+await preview.getByLabel('Toggle config panel').click();
+}
+  await config.getByRole('button', { name: 'Storage', exact: true }).click();
+  await config.getByRole('tab', { name: 'Inspect', exact: true }).click();
+  await expect(inspector.getByLabel('Element 0 component 1')).toHaveText('0.75');
+});
+
+test('storage workspace saves structured layout and lifecycle changes and uses consistent tabs and controls', async ({ page }) => {
+  await seedWgslAuditFiles(page, [
+    ['storage-design.wgsl', 'fn mainImage(p: vec2f) -> vec4f { return vec4f(0.5); }'],
+    ['storage-design.sha.json', JSON.stringify({ version: '1', storage: { particles: { count: 32, elementType: 'float4' }, counters: { count: 4, elementType: 'u32' } }, passes: { Image: {} } })],
+  ]);
+  await page.getByTestId('shader-option-storage-design-wgsl').click();
+  const preview = page.getByTestId('web-preview'), config = page.locator('.config-panel');
+  await preview.getByLabel('Toggle config panel').click();
+  await config.getByRole('button', { name: 'Storage', exact: true }).click();
+  await config.getByLabel('Data layout').selectOption('struct');
+  await config.getByLabel('Element count').fill('64');
+  await config.getByLabel('Between frames').selectOption('clear');
+  await config.getByLabel('Reset on restart').uncheck();
+  await config.getByRole('button', { name: 'Apply particles changes' }).click();
+  await expect(config.getByRole('button', { name: 'Apply particles changes' })).toHaveCount(0);
+  await page.reload();
+  await page.getByTestId('shader-option-storage-design-wgsl').click();
+  if (!await config.isVisible()) {
+ await preview.getByLabel('Toggle config panel').click();
+}
+  await config.getByRole('button', { name: 'Storage', exact: true }).click();
+  await expect(config.getByLabel('Element count')).toHaveValue('64');
+  await expect(config.getByLabel('Data layout')).toHaveValue('struct');
+  await expect(config.getByLabel('Field 1 name')).toHaveValue('position');
+  await expect(config.getByLabel('Field 2 name')).toHaveValue('velocity');
+  await expect(config.getByLabel('Between frames')).toHaveValue('clear');
+  await expect(config.getByLabel('Reset on restart')).not.toBeChecked();
+  const actionHeights = await config.locator('.storage-panel button:not([role="tab"]):not(nav button)').evaluateAll(items => items.map(item => Math.round(item.getBoundingClientRect().height)));
+  expect(new Set(actionHeights)).toEqual(new Set([32]));
+  const tabStyle = await config.getByRole('tab', { name: 'Settings', exact: true }).evaluate(item => ({ radius: getComputedStyle(item).borderRadius, top: getComputedStyle(item).borderTopWidth }));
+  expect(tabStyle).toEqual({ radius: '0px', top: '0px' });
+  const navRow = config.getByRole('button', { name: 'Select storage particles' });
+  expect(await navRow.evaluate(item => item.scrollHeight <= item.clientHeight)).toBe(true);
+  await config.screenshot({ path: 'test-results/storage-settings.png' });
+  await page.setViewportSize({ width: 1000, height: 900 });
+  expect(await config.locator('.storage-panel').evaluate(item => item.scrollWidth <= item.clientWidth)).toBe(true);
+});
+
+test('storage inspector focuses one struct field and captures scalar values before and after compute', async ({ page }) => {
+  await seedWgslAuditFiles(page, [
+    ['storage-inspect.wgsl', 'fn mainImage(p: vec2f) -> vec4f { return particles[0].position; }'],
+    ['storage-inspect.compute.wgsl', '@compute @workgroup_size(1) fn update() { counters[0] = 42u; }'],
+    ['storage-inspect.sha.json', JSON.stringify({ version: '1', storage: {
+      particles: { count: 2, elementType: 'ParticleData', fields: [{ name: 'position', type: 'float4' }, { name: 'velocity', type: 'float4' }], initialData: Buffer.from(new Float32Array([0.25, 0.5, 0.75, 1, 10, 20, 30, 40]).buffer).toString('base64') },
+      counters: { count: 4, elementType: 'u32', clearEachFrame: true },
+    }, passes: { Image: {}, Simulate: { type: 'compute', path: 'storage-inspect.compute.wgsl', entryPoint: 'update', dispatch: { x: 1, y: 1, z: 1 } } } })],
+  ]);
+  await page.getByTestId('shader-option-storage-inspect-wgsl').click();
+  const config = page.locator('.config-panel');
+  await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
+  await config.getByRole('button', { name: 'Storage', exact: true }).click();
+  await config.getByRole('tab', { name: 'Inspect', exact: true }).click();
+  await expect(config.getByLabel('Element 0 component 0')).toHaveText('0.25');
+  await config.getByLabel('Inspect field').selectOption('velocity');
+  await expect(config.getByLabel('Element 0 component 0')).toHaveText('10');
+  await expect(config.getByRole('columnheader')).toHaveCount(5);
+  await config.getByRole('button', { name: 'Select storage counters' }).click();
+  await expect(config.locator('table')).toHaveCount(0);
+  await expect(config.getByLabel('Inspect field')).toHaveCount(0);
+  await expect(config.getByLabel('Element 0 value')).toHaveText('42');
+  await config.getByLabel('Capture point').selectOption(JSON.stringify({ pass: 'Simulate', timing: 'before' }));
+  await expect(config.getByLabel('Element 0 value')).toHaveText('0');
+  await expect(config.locator('.capture-meta')).toContainText('Before Simulate');
+  await config.getByLabel('Capture point').selectOption(JSON.stringify({ pass: 'Simulate', timing: 'after' }));
+  await expect(config.getByLabel('Element 0 value')).toHaveText('42');
+  await config.getByLabel('Number display').selectOption({ label: 'Hex � integers' });
+  await expect(config.getByLabel('Element 0 value')).toHaveText('0x0000002a');
+  await config.getByRole('button', { name: 'Start live' }).click();
+  await expect(config.getByRole('button', { name: 'Pause live' })).toHaveAttribute('aria-pressed', 'true');
+  await config.getByRole('button', { name: 'Pause live' }).click();
+  await config.getByRole('button', { name: 'Select storage particles' }).click();
+  await expect(config.getByLabel('Inspect field')).toHaveValue('velocity');
+  await expect(config.getByLabel('Element 0 component 0')).toHaveText('10');
+  await config.screenshot({ path: 'test-results/storage-inspect.png' });
 });
 
 for (const language of ['wgsl', 'slang']) {

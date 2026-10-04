@@ -62,6 +62,11 @@ export interface StorageBindingNode {
   containsAtomic?: boolean;
   count: number;
   stride: number;
+  fields?: import('@shader-studio/types').StorageFieldLayout[];
+  structDeclarations?: { wgsl: string; slang: string };
+  initialData?: string;
+  clearEachFrame?: boolean;
+  resetOnRestart?: boolean;
 }
 
 export type DispatchSpec =

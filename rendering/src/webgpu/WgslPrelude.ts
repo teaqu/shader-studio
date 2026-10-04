@@ -391,10 +391,15 @@ export function buildWgslStorageDeclarations(
   passKind: "render" | "compute",
   baseBinding = 1 + channelCount * 2,
 ): { beforeCommon: string; afterCommon: string } {
+  const declaredTypes = new Set<string>();
   const declaration = (node: StorageBindingNode) => {
     const access = passKind === "compute" || node.containsAtomic ? "read_write" : "read";
     const element = wgslStorageElementType(node.elementType, passKind);
-    return `@group(0) @binding(${baseBinding + node.binding}) var<storage, ${access}> ${node.name}: array<${element}>;\n`;
+    const struct = declaredTypes.has(element) ? '' : node.structDeclarations?.wgsl ?? '';
+    if (struct) {
+      declaredTypes.add(element);
+    }
+    return `${struct}@group(0) @binding(${baseBinding + node.binding}) var<storage, ${access}> ${node.name}: array<${element}>;\n`;
   };
   return {
     beforeCommon: storage.filter((node) => node.builtin).map(declaration).join(""),

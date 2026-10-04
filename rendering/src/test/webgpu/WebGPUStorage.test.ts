@@ -7,7 +7,9 @@ const buffer = () => ({ destroy: vi.fn() });
 
 function harness() {
   const createBuffer = vi.fn(() => buffer());
-  let device: GPUDevice | null = { createBuffer } as unknown as GPUDevice;
+  const encoder = { clearBuffer: vi.fn(), finish: vi.fn(() => ({})) };
+  const queue = { writeBuffer: vi.fn(), submit: vi.fn() };
+  let device: GPUDevice | null = { createBuffer, queue, createCommandEncoder: vi.fn(() => encoder) } as unknown as GPUDevice;
   const storage = new WebGPUStorage({
     get device() {
       return device;
@@ -20,12 +22,43 @@ function harness() {
       }
     },
   });
-  return { storage, createBuffer, loseDevice: () => {
+  return { storage, createBuffer, queue, encoder, loseDevice: () => {
     device = null;
   } };
 }
 
 describe("WebGPUStorage boundaries", () => {
+  it('initializes new and reset allocations, but retains opted-out buffers on restart', () => {
+    const { storage, createBuffer, queue, encoder, loseDevice } = harness();
+    const keep = { ...node('keep'), initialData: 'AQIDBA==', resetOnRestart: false };
+    const reset = { ...node('reset'), initialData: 'BQYHCA==', clearEachFrame: true };
+    storage.publishPreparedStorage(storage.prepareStorageBuffers([keep, reset], 1));
+    expect(queue.writeBuffer).toHaveBeenCalledTimes(2);
+    const existing = storage.storageBuffers.get('keep');
+    storage.storageLayouts.get('keep')!.fields = [{ name: 'value', type: 'f32', offset: 0 }];
+    const reused = storage.prepareStorageBuffers([keep, reset], 2);
+    expect(reused.buffers.get('keep')).toBe(existing);
+    expect(reused.layouts.get('keep')!.fields).toHaveLength(1);
+    storage.applyCompiledFields(reused, [keep]);
+    expect(reused.layouts.get('keep')!.fields).toHaveLength(1);
+    storage.applyCompiledFields(reused, [{ ...keep, fields: [{ name: 'updated', type: 'f32', offset: 0 }] }]);
+    expect(reused.layouts.get('keep')!.fields![0]!.name).toBe('updated');
+    expect(createBuffer).toHaveBeenCalledTimes(2);
+    const pending = { generation: 3, storageBuffers: storage.prepareResetStorageBuffers(), storageKeys: new Map(storage.storageKeys) };
+    expect(pending.storageBuffers.has('keep')).toBe(false);
+    const restarted = storage.prepareStorageBuffers([keep, reset], 3, true, pending);
+    expect(restarted.buffers.get('keep')).toBe(existing);
+    expect(restarted.buffers.get('reset')).toBe(pending.storageBuffers.get('reset'));
+    storage.publishPreparedStorage(restarted);
+    storage.resetStorageBuffer('keep');
+    expect(encoder.clearBuffer).toHaveBeenCalledWith(existing);
+    expect(queue.submit).toHaveBeenCalledOnce();
+    expect(queue.writeBuffer).toHaveBeenLastCalledWith(existing, 0, new Uint8Array([1, 2, 3, 4]));
+    storage.clearFrame(encoder as unknown as GPUCommandEncoder);
+    expect(encoder.clearBuffer).toHaveBeenLastCalledWith(restarted.buffers.get('reset'));
+    loseDevice();
+    expect(() => storage.resetStorageBuffer('keep')).toThrow('not available');
+  });
   it("rejects allocation without a device and leaves installed buffers intact", () => {
     const { storage, loseDevice } = harness();
     loseDevice();

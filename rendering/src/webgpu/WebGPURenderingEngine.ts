@@ -556,8 +556,17 @@ export class WebGPURenderingEngine implements RenderingEngine {
   getCurrentConfig(): ShaderConfig | null {
     return this.session.currentConfig;
   }
-  async readStorageBuffer(name: string, start: number, count: number): Promise<StorageBufferSnapshot> {
-    return this.storage.readStorageBuffer(name, start, count);
+  async readStorageBuffer(name: string, start: number, count: number, point?: import('@shader-studio/types').StorageCapturePoint): Promise<StorageBufferSnapshot> {
+    if (point && !this.session.passGraph.some(pass => pass.name === point.pass)) {
+      throw new Error('Capture pass is not available');
+    }
+    const frame = this.timeManager.getFrame();
+    const snapshot = await this.storage.readStorageBuffer(name, start, count, point);
+    return { ...snapshot, frame: snapshot.frame ?? frame };
+  }
+
+  async resetStorageBuffer(name: string): Promise<void> {
+    this.storage.resetStorageBuffer(name);
   }
 
   async writeStorageBuffer(name: string, start: number, data: ArrayBuffer): Promise<void> {

@@ -366,9 +366,16 @@ export function buildStorageDeclarations(
     }
     return elementType;
   };
-  const declaration = (node: StorageBindingNode) => `[[vk::binding(${baseBinding + node.binding}, 0)]]
+  const declaredTypes = new Set<string>();
+  const declaration = (node: StorageBindingNode) => {
+    const struct = declaredTypes.has(node.elementType) ? '' : node.structDeclarations?.slang ?? '';
+    if (struct) {
+      declaredTypes.add(node.elementType);
+    }
+    return `${struct}[[vk::binding(${baseBinding + node.binding}, 0)]]
 ${bufferType}<${renderElementType(node.elementType)}> ${node.name};
 `;
+  };
 
   return {
     beforeCommon: storage.filter((node) => node.builtin).map(declaration).join(""),

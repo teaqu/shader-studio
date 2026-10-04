@@ -232,7 +232,7 @@ describe('ConfigPanel', () => {
       await tick();
       await fireEvent.click(getByRole('button', { name: 'Storage' }));
 
-      expect(getByRole('heading', { name: 'Storage' })).toBeInTheDocument();
+      expect(getByRole('heading', { name: 'GPU storage' })).toBeInTheDocument();
       expect(mockOnFileSelect).not.toHaveBeenCalled();
     });
 
@@ -257,7 +257,7 @@ describe('ConfigPanel', () => {
       await tick();
       await fireEvent.click(getByRole('button', { name: 'Storage' }));
 
-      expect(getByRole('heading', { name: 'Storage' })).toBeInTheDocument();
+      expect(getByRole('heading', { name: 'GPU storage' })).toBeInTheDocument();
       expect(mockOnFileSelect).not.toHaveBeenCalled();
     });
 
