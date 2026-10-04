@@ -90,6 +90,7 @@ describe('ShaderProcessor — buffer debugging', () => {
 
   beforeEach(() => {
     mockDebugManager = {
+      getLanguage: vi.fn().mockReturnValue('glsl'),
       getState: vi.fn().mockReturnValue(makeDebugState()),
       getDebugTarget: vi.fn().mockImplementation((imageCode: string, config: ShaderConfig | null) =>
         makeDebugTarget({ code: imageCode, config }),

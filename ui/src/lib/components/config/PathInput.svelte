@@ -20,6 +20,7 @@
     allowSelect?: boolean;
     selectLabel?: string;
     allowInsert?: boolean;
+    showSelectWhenHidden?: boolean;
     insertLabel?: string;
     hidePath?: boolean;
     onClear?: () => void;
@@ -59,6 +60,7 @@
     allowSelect = true,
     selectLabel = 'Select',
     allowInsert = false,
+    showSelectWhenHidden = false,
     insertLabel = 'Insert',
     hidePath = false,
     onClear = undefined,
@@ -196,6 +198,9 @@ onPathChange?.(event.data.payload.path);
     <input
       id={inputId}
       type="text"
+      autocomplete="off"
+      autocapitalize="off"
+      spellcheck={false}
       value={localPath}
       oninput={handlePathInput}
       onfocus={() => pathInputFocused = true}
@@ -209,15 +214,17 @@ onPathChange?.(event.data.payload.path);
   </div>{/if}
   {#if postMessage}
     <div class="input-actions">
-      {#if !hidePath && allowSelect}<button class="select-file-btn" onclick={handleSelect}>{selectLabel}</button>{/if}
+      {#if (!hidePath || showSelectWhenHidden) && allowSelect}<button class="select-file-btn" onclick={handleSelect}>{selectLabel}</button>{/if}
       {#if showCreate}
         <button class="create-file-btn" onclick={handleCreate}>Create</button>
       {/if}
       {#if allowInsert}
+        {#if supportsNative}
         <select aria-label="Insert mode" value={effectiveMode} onchange={(event) => selectedMode = event.currentTarget.value as 'hooks' | 'native'}>
           <option value="hooks">Built-in</option>
-          {#if supportsNative}<option value="native">Native</option>{/if}
+          <option value="native">Native</option>
         </select>
+        {/if}
         {#if !existingModes.includes(effectiveMode)}<button class="insert-file-btn" onclick={handleInsert}>{insertLabel}</button>{/if}
       {/if}
       {#if onClear}<button class="select-file-btn" onclick={onClear} disabled={!clearEnabled}>Clear</button>{/if}

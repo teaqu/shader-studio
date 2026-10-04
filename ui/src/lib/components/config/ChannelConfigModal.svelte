@@ -50,7 +50,7 @@
   // Capture onSave in a stable ref so it remains callable during child onDestroy
   let onSaveRef = onSave;
   $effect(() => {
-    onSaveRef = onSave; 
+    onSaveRef = onSave;
   });
 
   let editingName = $state(false);
@@ -367,7 +367,7 @@
           <h2 id="modal-title" class="channel-title">
             <span>{channelName}</span>
             <button class="rename-btn" onclick={(e) => {
-              e.stopPropagation(); startRename(); 
+              e.stopPropagation(); startRename();
             }} title="Rename channel" aria-label="Rename channel">
               <i class="codicon codicon-edit"></i>
             </button>
@@ -396,6 +396,7 @@
           <div class="tab-prompt">Select a category above to configure this channel.</div>
         {:else if activeTab === "Misc"}
           <MiscTab
+            {shaderPath}
             {tempInput}
             {getWebviewUri}
             {availableBufferNames}

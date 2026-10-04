@@ -218,7 +218,7 @@ export interface BufferPass extends RenderPassSettings {
   vertex?: string;
   entryPoints?: RenderEntryPoints;
   outputFormat?: BufferOutputFormat;
-  /** Native WebGPU render outputs. Omitted keeps one colour output. */
+  /** Optional legacy labels by colour slot. Native output slots are inferred from the fragment code. */
   outputs?: { name?: string }[];
 }
 

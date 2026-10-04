@@ -1,4 +1,5 @@
 import type { ShaderConfig, ShaderLanguageId } from "@shader-studio/types";
+import { getShaderOutputs } from "@shader-studio/types";
 
 type PassEntry = [string, ShaderConfig["passes"][string]];
 
@@ -7,15 +8,20 @@ export interface RenderOutputConfig {
   outputs?: { name?: string }[];
 }
 
-/** Validates explicit render output lists before graph routing consumes them. */
+/** Discovers render targets before routing. Legacy lists provide labels when source is available. */
 export function resolveRenderOutputs(
   passEntries: readonly PassEntry[],
   language: ShaderLanguageId,
   errors: string[],
+  sources?: Readonly<Record<string, string>>,
 ): ReadonlyMap<string, RenderOutputConfig> {
   const result = new Map<string, RenderOutputConfig>();
   for (const [name, pass] of passEntries) {
-    const candidate = pass as { type?: unknown; outputs?: unknown; entryPoints?: unknown; vertex?: unknown } | undefined;
+    const candidate = pass as { type?: unknown; outputs?: unknown; entryPoints?: { fragment?: string }; vertex?: unknown } | undefined;
+    if (sources && candidate?.type !== 'compute' && name !== 'Image' && name !== 'common' && candidate) {
+      result.set(name, inferOutputConfig(name, candidate, sources[name] ?? '', language, errors));
+      continue;
+    }
     if (candidate?.outputs === undefined) {
       continue;
     }
@@ -48,6 +54,20 @@ export function resolveRenderOutputs(
     });
   }
   return result;
+}
+
+function inferOutputConfig(name: string, candidate: { outputs?: unknown; entryPoints?: { fragment?: string } }, source: string, language: ShaderLanguageId, errors: string[]): RenderOutputConfig {
+  const discovery = getShaderOutputs(source, language, candidate.entryPoints?.fragment);
+  if (discovery.error) {
+    errors.push(`${name}: ${discovery.error}`);
+    return { count: 0 };
+  }
+  const legacy = isValidOutputList(candidate.outputs) ? candidate.outputs : [];
+  const outputs = discovery.outputs.map(output => {
+    const label = legacy[output.slot]?.name ?? output.name;
+    return label ? { name: label } : {};
+  });
+  return { count: outputs.length, ...(outputs.some(output => output.name) ? { outputs } : {}) };
 }
 
 function isValidOutputList(value: unknown): value is { name?: string }[] {

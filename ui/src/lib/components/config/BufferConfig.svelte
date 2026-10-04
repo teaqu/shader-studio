@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { getCommonShaderSource } from "../../state/commonSourceState.svelte";
   import { applyRenderSource, bufferInsertionTarget } from '../../config/PassSourceAuthoring';
   import VertexSourceControls from './VertexSourceControls.svelte';
   import VerticesControls from './VerticesControls.svelte';
@@ -49,6 +50,7 @@
     SHADER_LANGUAGES,
     shaderLanguageForPath,
     vertexPassKey,
+    getShaderOutputs,
   } from "@shader-studio/types";
   import ChannelListItem from "./ChannelListItem.svelte";
   import ChannelConfigModal from "./ChannelConfigModal.svelte";
@@ -58,7 +60,8 @@
   import PathInput from "./PathInput.svelte";
   import BufferSourceControls from "./BufferSourceControls.svelte";
   import OutputFormatControl from "./OutputFormatControl.svelte";
-  import DepthTestingControls from "./DepthTestingControls.svelte";
+  import PassRenderingControls from "./PassRenderingControls.svelte";
+  import RenderOutputControls from "./RenderOutputControls.svelte";
   import { getEditorOverlayVisible, setEditorOverlayVisible, setOverlayActiveFile } from "../../state/editorOverlayState.svelte";
   import { rememberDrawFields, takeDrawField } from "../../state/verticesDrawMemory.svelte";
   import { getCurrentEditorSource } from "../../state/currentEditorSourceState.svelte";
@@ -163,23 +166,9 @@
   const vertexExtension = $derived(SHADER_LANGUAGES[language].extensions[0]);
   const vertexSuggestedPath = $derived(`${shaderPath.replace(/\.[^.]+$/, '')}.${bufferName.toLowerCase()}.vert.${vertexExtension}`);
   const vertexFileType = $derived(`${language}-vertex` as const);
-  const hasNativeEntryPoint = $derived(
-    renderPassConfig?.entryPoints?.vertex !== undefined || renderPassConfig?.entryPoints?.fragment !== undefined,
-  );
   const hasNativeTemplate = $derived(renderPassConfig?.entryPoints !== undefined);
-  const hasNativeFragment = $derived(renderPassConfig?.entryPoints?.fragment !== undefined);
-  // Omitted outputs means the standard one-target render pass. It remains
-  // editable here without serialising an invalid empty output list.
-  const renderOutputs = $derived(bufferPassConfig?.outputs?.length ? bufferPassConfig.outputs : [{}]);
-  const outputFormatBytes = $derived.by(() => {
-    const format = bufferPassConfig?.outputFormat ?? 'auto';
-    return format === 'rgba16float' ? 8 : 16;
-  });
-  const effectiveOutputLimit = $derived(Math.max(1, Math.min(
-    maxColorAttachments,
-    Math.floor(maxColorAttachmentBytesPerSample / outputFormatBytes),
-  )));
-  const isWebGpuLanguage = $derived(SHADER_LANGUAGES[language].engine === 'webgpu');
+  const outputDiscovery = $derived(getShaderOutputs((getCommonShaderSource()?.text ?? '') + '\n' + passSource, language, renderPassConfig?.entryPoints?.fragment));
+  const renderOutputs = $derived(outputDiscovery.outputs);
   const currentEditorSourcePath = $derived(getCurrentEditorSource(shaderPath));
   const insertionSourcePath = $derived(
     currentEditorSourcePath && shaderLanguageForPath(currentEditorSourcePath) === language
@@ -727,35 +716,27 @@ return;
     updateConfig(applyRenderSource(config as BufferPass | ImagePass, result));
   }
 
-  function updateOutputs(outputs: { name?: string }[]) {
-    updateConfig({ ...(config as BufferPass), outputs } as EditableConfig);
-  }
-
-  function addOutput() {
-    if (renderOutputs.length < effectiveOutputLimit) {
-      updateOutputs([...renderOutputs, {}]);
-    }
-  }
-
-  function removeOutput() {
-    if (renderOutputs.length > 1) {
-      updateOutputs(renderOutputs.slice(0, -1));
-    }
-  }
-
-  function renameOutput(index: number, name: string) {
-    updateOutputs(renderOutputs.map((output, current) => current === index ? (name ? { name } : {}) : output));
-  }
 </script>
+
+{#snippet functions(stage: 'vertex' | 'fragment')}
+  {#if passType === 'render' && (stage === 'vertex' || language !== 'glsl')}
+      <RenderSourceControls {stage} pass={config as BufferPass | ImagePass} entryPoints={renderEntryPoints}
+        {vertexSource} {passSource}
+        {language} {fileType} sourcePath={ownedSourcePath} passName={bufferName}
+        authoringMode={hasNativeTemplate ? 'native' : undefined} outputCount={Math.max(1, renderOutputs.length)}
+        {isImagePass} {shaderPath} {postMessage} {onMessage} onCommit={updateConfig} />
+    {/if}
+{/snippet}
 
 <div class="buffer-config">
   <div class="buffer-details">
     {#if !isImagePass}
       <div class="config-item">
+        {#if bufferName !== "common" && passType === "render" && language !== 'glsl'}<h3 class="section-title">Fragment shader</h3>{/if}
         <BufferSourceControls value={currentPath} onPathChange={handlePathChange} hasError={!validation.isValid}
           {suggestedPath} {bufferName} {language} {fileType} {shaderPath} {projectConfig} {postMessage} {onMessage}
           sourcePath={nativeInsertionPath} builtInSourcePath={ownedSourcePath} {passType} {hasNativeTemplate}
-          outputCount={renderOutputs.length} {passSource} onCreated={applyCreatedSource} />
+          outputCount={Math.max(1, renderOutputs.length)} {passSource} onCreated={applyCreatedSource} />
 
         {#if passType === 'compute'}<OutputFormatControl value={bufferPassConfig?.outputFormat ?? 'auto'} onchange={handleOutputFormat} />{/if}
         {#if passType === 'compute' && onComputeCommit}
@@ -775,7 +756,22 @@ return;
             {/each}
           </div>
         {/if}
+        {#if bufferName !== 'common' && passType === 'render'}{@render functions('fragment')}{/if}
       </div>
+    {/if}
+
+    {#if bufferName !== 'common' && passType === 'render'}
+      {#if isImagePass && language !== 'glsl'}<div class="config-item"><h3 class="section-title">Fragment shader</h3>{@render functions('fragment')}</div>{/if}
+      {#if passType === 'render'}
+        <div class="config-item">
+          <h3 class="section-title vertex-shader-title" ondblclick={openVertexShaderInOverlay}>Vertex shader</h3>
+          <VertexSourceControls pass={config as BufferPass | ImagePass} {passSource} {vertexSource} {language} {projectConfig}
+            onPathChange={handleVertexPathChange} onCommit={updateConfig} sourcePath={ownedSourcePath} passName={bufferName}
+            vertexSpace={verticesGeometry?.space ?? DEFAULT_VERTEX_SPACE} geometryType={selectedGeometry}
+            fileType={vertexFileType} suggestedPath={vertexSuggestedPath} {shaderPath} {postMessage} {onMessage} />
+          {#if config.vertex || renderPassConfig?.entryPoints?.vertex}{@render functions('vertex')}{/if}
+        </div>
+      {/if}
     {/if}
 
     {#if bufferName !== "common"}
@@ -810,6 +806,84 @@ return;
           {/if}
         </div>
       </div>
+    {/if}
+
+    {#if bufferName !== 'common' && passType === 'render'}
+      <div class="config-item geometry-section">
+        <PassGeometryControls
+          geometry={selectedGeometry}
+          {showViewerCamera}
+          config={config as BufferPass | ImagePass}
+          onGeometryChange={handleGeometryChange}
+          onUpdate={updateConfig}
+        />
+        {#if modelGeometry}
+          <PathInput
+            label="Model file:"
+            inputId="model-path-input"
+            value={modelGeometry.path}
+            onPathChange={handleModelPathChange}
+            fileType="model"
+            allowCreate={false}
+            {shaderPath}
+            {postMessage}
+            {onMessage}
+          />
+          <label class="mesh-name" for="mesh-name">Mesh</label>
+          <select id="mesh-name" class="config-input" value={modelGeometry.mesh ?? modelMeshNames[0] ?? ''} onchange={handleModelMeshChange} disabled={modelMeshLoading}>
+            {#if modelMeshLoading}
+              <option value="">Loading meshes…</option>
+            {:else if modelMeshNames.length > 0}
+              {#each modelMeshNames as name}
+                <option value={name}>{name}</option>
+              {/each}
+            {:else}
+              <option value={modelGeometry.mesh ?? ''}>{modelGeometry.mesh || 'First mesh'}</option>
+            {/if}
+          </select>
+          {#if modelMeshError}<span class="input-note">{modelMeshError}</span>{/if}
+        {/if}
+        {#if meshGeometry}
+          <div class="resolution-row">
+            <label class="resolution-label" for="mesh-topology-{bufferName}">Topology</label>
+            <select
+              id="mesh-topology-{bufferName}"
+              value={meshGeometry.topology ?? DEFAULT_MESH_TOPOLOGY}
+              onchange={handleMeshTopologyChange}
+            >
+              <option value="triangle-list">Triangles</option>
+              <option value="line-list">Wireframe (line list)</option>
+              <option value="point-list">Points</option>
+            </select>
+          </div>
+        {/if}
+        {#if verticesGeometry}
+          <VerticesControls {bufferName} geometry={verticesGeometry} {vertexCountError}
+            onVertexCountChange={handleVertexCountChange} onTopologyChange={handleTopologyChange} onSpaceChange={handleSpaceChange} />
+        {/if}
+        {#if instancedGeometry}
+          <div class="resolution-row">
+            <label class="resolution-label" for="instance-count-{bufferName}">Instances</label>
+            <input
+              id="instance-count-{bufferName}"
+              class="vertex-count-input"
+              type="number"
+              min="1"
+              max={MAX_INSTANCE_COUNT}
+              step="1"
+              placeholder={String(DEFAULT_INSTANCE_COUNT)}
+              value={instancedGeometry.instanceCount ?? ''}
+              onchange={handleInstanceCountChange}
+            />
+          </div>
+          {#if instanceCountError}<span class="input-note" role="alert">{instanceCountError}</span>{/if}
+        {/if}
+      </div>
+      <PassRenderingControls {bufferName} blend={renderState.blend} clearHex={clearRgbHex} clearAlpha={renderState.clear[3]}
+        depth={renderState.depth} cull={renderState.cull} samples={renderState.samples}
+        onBlend={handleBlendChange} onColor={handleClearColorChange} onAlpha={handleClearAlphaChange}
+        onCull={handleCullChange} onSamples={handleSamplesChange} onDepth={updateDepth} />
+
     {/if}
 
     {#if isImagePass}
@@ -915,154 +989,16 @@ return;
             </div>
           </div>
         {/if}
-        <OutputFormatControl value={bufferPassConfig?.outputFormat ?? 'auto'} onchange={handleOutputFormat} />
+
       </div>
     {/if}
 
-    {#if bufferName !== "common" && passType !== 'compute'}
-      <div class="config-item geometry-section">
-        <PassGeometryControls
-          geometry={selectedGeometry}
-          {showViewerCamera}
-          config={config as BufferPass | ImagePass}
-          onGeometryChange={handleGeometryChange}
-          onUpdate={updateConfig}
-        />
-        {#if modelGeometry}
-          <PathInput
-            label="Model file:"
-            inputId="model-path-input"
-            value={modelGeometry.path}
-            onPathChange={handleModelPathChange}
-            fileType="model"
-            allowCreate={false}
-            {shaderPath}
-            {postMessage}
-            {onMessage}
-          />
-          <label class="mesh-name" for="mesh-name">Mesh</label>
-          <select id="mesh-name" class="config-input" value={modelGeometry.mesh ?? modelMeshNames[0] ?? ''} onchange={handleModelMeshChange} disabled={modelMeshLoading}>
-            {#if modelMeshLoading}
-              <option value="">Loading meshes…</option>
-            {:else if modelMeshNames.length > 0}
-              {#each modelMeshNames as name}
-                <option value={name}>{name}</option>
-              {/each}
-            {:else}
-              <option value={modelGeometry.mesh ?? ''}>{modelGeometry.mesh || 'First mesh'}</option>
-            {/if}
-          </select>
-          {#if modelMeshError}<span class="input-note">{modelMeshError}</span>{/if}
-        {/if}
-        {#if meshGeometry}
-          <div class="resolution-row">
-            <label class="resolution-label" for="mesh-topology-{bufferName}">Topology</label>
-            <select
-              id="mesh-topology-{bufferName}"
-              value={meshGeometry.topology ?? DEFAULT_MESH_TOPOLOGY}
-              onchange={handleMeshTopologyChange}
-            >
-              <option value="triangle-list">Triangles</option>
-              <option value="line-list">Wireframe (line list)</option>
-              <option value="point-list">Points</option>
-            </select>
-          </div>
-        {/if}
-        {#if verticesGeometry}
-          <VerticesControls {bufferName} geometry={verticesGeometry} {vertexCountError}
-            onVertexCountChange={handleVertexCountChange} onTopologyChange={handleTopologyChange} onSpaceChange={handleSpaceChange} />
-        {/if}
-        {#if instancedGeometry}
-          <div class="resolution-row">
-            <label class="resolution-label" for="instance-count-{bufferName}">Instances</label>
-            <input
-              id="instance-count-{bufferName}"
-              class="vertex-count-input"
-              type="number"
-              min="1"
-              max={MAX_INSTANCE_COUNT}
-              step="1"
-              placeholder={String(DEFAULT_INSTANCE_COUNT)}
-              value={instancedGeometry.instanceCount ?? ''}
-              onchange={handleInstanceCountChange}
-            />
-          </div>
-          {#if instanceCountError}<span class="input-note" role="alert">{instanceCountError}</span>{/if}
-        {/if}
-      </div>
-      <div class="config-item render-settings-section">
-        <h3 class="section-title">Rendering</h3>
-        <div class="resolution-row">
-          <label class="resolution-label" for="blend-{bufferName}">Blend</label>
-          <select id="blend-{bufferName}" value={renderState.blend} onchange={handleBlendChange}>
-            <option value="none">None</option>
-            <option value="alpha">Alpha</option>
-            <option value="premultiplied">Premultiplied alpha</option>
-            <option value="additive">Additive</option>
-          </select>
-        </div>
-        <div class="resolution-row">
-          <label class="resolution-label" for="clear-color-{bufferName}">Clear colour</label>
-          <input id="clear-color-{bufferName}" class="clear-color-input" type="color" value={clearRgbHex} onchange={handleClearColorChange} />
-        </div>
-        <div class="resolution-row">
-          <label class="resolution-label" for="clear-alpha-{bufferName}">Clear alpha</label>
-          <input id="clear-alpha-{bufferName}" class="clear-alpha-input" type="number" min="0" max="1" step="0.05" value={renderState.clear[3]} onchange={handleClearAlphaChange} />
-        </div>
-        {#if renderState.depth}
-          <div class="resolution-row">
-            <label class="resolution-label" for="cull-{bufferName}">Cull</label>
-            <select id="cull-{bufferName}" value={renderState.cull} onchange={handleCullChange}>
-              <option value="none">None</option>
-              <option value="back">Back faces</option>
-              <option value="front">Front faces</option>
-            </select>
-          </div>
-          <div class="resolution-row">
-            <label class="resolution-label" for="samples-{bufferName}">Antialiasing</label>
-            <select id="samples-{bufferName}" value={String(renderState.samples)} onchange={handleSamplesChange}>
-              <option value="1">Off</option>
-              <option value="4">4× MSAA</option>
-            </select>
-          </div>
-        {/if}
-      </div>
-      {#if renderState.depth}
-        <DepthTestingControls bufferName={bufferName} depth={renderState.depth} onChange={updateDepth} />
-      {/if}
-      {#if passType === 'render'}
-        <div class="config-item">
-          <h3 class="section-title vertex-shader-title" ondblclick={openVertexShaderInOverlay}>Vertex shader</h3>
-          <VertexSourceControls pass={config as BufferPass | ImagePass} {passSource} {vertexSource} {language} {projectConfig}
-            onPathChange={handleVertexPathChange} onCommit={updateConfig} sourcePath={ownedSourcePath} passName={bufferName}
-            vertexSpace={verticesGeometry?.space ?? DEFAULT_VERTEX_SPACE} geometryType={selectedGeometry}
-            fileType={vertexFileType} suggestedPath={vertexSuggestedPath} {shaderPath} {postMessage} {onMessage} />
-        </div>
-      {/if}
+    {#if !isImagePass && bufferName !== 'common' && passType === 'render'}
+      <RenderOutputControls source={passSource} {language} fragment={renderPassConfig?.entryPoints?.fragment}
+        format={bufferPassConfig?.outputFormat ?? 'auto'} maxAttachments={maxColorAttachments}
+        maxBytes={maxColorAttachmentBytesPerSample} onchange={handleOutputFormat} />
     {/if}
-    {#if !isImagePass && passType === 'render' && isWebGpuLanguage && hasNativeTemplate}
-      <div class="config-item">
-        <h3 class="section-title">Outputs</h3>
-        {#each renderOutputs as output, index}
-          <div class="output-row">
-            <span>Output {index}</span>
-            <input aria-label={`Output ${index} name`} value={output.name ?? ''} placeholder="Optional name" oninput={(event) => renameOutput(index, event.currentTarget.value)} />
-          </div>
-        {/each}
-        <div class="output-actions">
-          <button type="button" onclick={addOutput} disabled={renderOutputs.length >= effectiveOutputLimit}>Add output</button>
-          <button type="button" onclick={removeOutput} disabled={renderOutputs.length <= 1}>Remove last</button>
-        </div>
-        <p class="input-note">This device allows up to {effectiveOutputLimit} outputs with this format.</p>
-      </div>
-    {/if}
-    {#if passType === 'render' && isWebGpuLanguage}
-      <RenderSourceControls pass={config as BufferPass | ImagePass} entryPoints={renderEntryPoints}
-        {vertexSource}
-        {language} {fileType} sourcePath={ownedSourcePath} passName={bufferName}
-        authoringMode={hasNativeTemplate ? 'native' : undefined} outputCount={renderOutputs.length}
-        {isImagePass} {shaderPath} {postMessage} {onMessage} onCommit={updateConfig} />
-    {/if}
+
   </div>
 </div>
 
@@ -1111,8 +1047,6 @@ return;
     flex-direction: column;
     gap: 12px;
   }
-  .output-row, .output-actions { display: flex; align-items: center; gap: 8px; }
-  .output-row input { flex: 1; min-width: 0; }
 
   .channel-list {
     display: flex;
@@ -1222,7 +1156,6 @@ return;
   }
 
   .dim-input,
-  .clear-alpha-input,
   .vertex-count-input {
     width: 80px;
     padding: 3px 6px;
@@ -1240,7 +1173,6 @@ return;
   }
 
   .dim-input:focus,
-  .clear-alpha-input:focus,
   .vertex-count-input:focus {
     border-color: var(--vscode-focusBorder, #007acc);
   }

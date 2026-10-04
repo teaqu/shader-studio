@@ -1,8 +1,10 @@
 <script lang="ts">
   import type { ConfigInput } from "@shader-studio/types";
+  import { getRenderOutputMetadata } from "../../../state/renderOutputMetadata.svelte";
   import ChannelPreview from "../ChannelPreview.svelte";
 
   interface Props {
+    shaderPath?: string;
     tempInput?: ConfigInput;
     getWebviewUri: (path: string) => string | undefined;
     onSelect: (input: ConfigInput) => void;
@@ -14,6 +16,7 @@
   const MIN_BUFFERS = ["BufferA", "BufferB", "BufferC", "BufferD"];
 
   let {
+    shaderPath = '',
     tempInput = undefined as ConfigInput | undefined,
     getWebviewUri,
     onSelect,
@@ -29,7 +32,7 @@
 
   function selectBuffer(source: string) {
     onSelect(tempInput?.type === "buffer"
-      ? { ...tempInput, source }
+      ? { ...tempInput, source, ...(tempInput.source !== source ? { output: undefined, layer: undefined } : {}) }
       : { type: "buffer", source });
   }
 
@@ -49,9 +52,11 @@
     onSelect({ ...tempInput, wrap });
   }
 
-  const selectedRenderOutputCount = $derived(
-    tempInput?.type === "buffer" ? (renderOutputCounts[tempInput.source] ?? 1) : 1,
-  );
+  const selectedOutputs = $derived(tempInput?.type === 'buffer'
+    ? getRenderOutputMetadata(shaderPath)[tempInput.source] ?? { outputs: Array.from({ length: renderOutputCounts[tempInput.source] ?? 1 }, (_, slot) => ({ slot, name: undefined as string | undefined })) }
+    : { outputs: [] });
+  const selectedSlot = $derived(tempInput?.type === 'buffer' ? tempInput.output ?? 0 : 0);
+  const missingOutput = $derived(!selectedOutputs.outputs.some(output => output.slot === selectedSlot));
   const selectedIsCompute = $derived(
     tempInput?.type === "buffer" && computeOutputLayerCounts[tempInput.source] !== undefined,
   );
@@ -59,12 +64,11 @@
     tempInput?.type === "buffer" ? (computeOutputLayerCounts[tempInput.source] ?? 1) : 1,
   );
 
-  function updateBufferOutput(event: Event) {
-    if (tempInput?.type !== "buffer") {
+  function updateBufferOutput(output: number) {
+    if (tempInput?.type !== 'buffer') {
 return;
 }
-    const output = Number((event.currentTarget as HTMLSelectElement).value);
-    onSelect({ ...tempInput, ...(output === 0 ? { output: undefined } : { output }) });
+    onSelect({ ...tempInput, output: output === 0 ? undefined : output });
   }
 
   function updateBufferLayer(event: Event) {
@@ -103,13 +107,13 @@ return;
         <option value="clamp">Clamp</option>
         <option value="repeat">Repeat</option>
       </select>
-      {#if !selectedIsCompute && selectedRenderOutputCount > 1}
-        <label for="buffer-output">Output:</label>
-        <select id="buffer-output" aria-label="Buffer output" value={tempInput.output ?? 0} onchange={updateBufferOutput}>
-          {#each Array(selectedRenderOutputCount) as _, output}
-            <option value={output}>Output {output}</option>
+      {#if !selectedIsCompute && (selectedOutputs.outputs.length > 1 || missingOutput)}
+        <fieldset class="output-options"><legend>Buffer output</legend>
+          {#each selectedOutputs.outputs as output}
+            <label><input type="radio" name="buffer-output" checked={selectedSlot === output.slot} onchange={() => updateBufferOutput(output.slot)} />Output {output.slot}{output.name ? ` · ${output.name}` : ''}</label>
           {/each}
-        </select>
+          {#if missingOutput}<p role="alert">Output {selectedSlot} is unavailable. {selectedOutputs.error ?? 'Choose an available output.'}</p>{/if}
+        </fieldset>
       {/if}
       {#if selectedIsCompute && selectedComputeLayerCount > 1}
         <label for="buffer-layer">Layer:</label>
@@ -136,6 +140,9 @@ return;
 </div>
 
 <style>
+  .output-options { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--vscode-panel-border); padding: 10px; }
+  .output-options label { display: flex; gap: 8px; align-items: center; }
+  .output-options p { color: var(--vscode-errorForeground); }
   .misc-grid {
     display: flex;
     flex-direction: column;

@@ -154,7 +154,8 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
   const allSources = [options.imageCode, commonCode, ...Object.values(options.buffers).filter((v): v is string => typeof v === "string")];
   const parsedStructs = language === "wgsl" ? parseWgslStructs(allSources) : parseSlangStructs(allSources);
   const outputLayersByPass = resolveOutputLayersByPass(passEntries, errors, options.maxOutputLayers ?? 256);
-  const renderOutputsByPass = resolveRenderOutputs(passEntries, language, errors);
+  const renderOutputsByPass = resolveRenderOutputs(passEntries, language, errors,
+    Object.fromEntries(Object.entries(options.buffers).map(([name, source]) => [name, commonCode + '\n' + source])));
   const producerKinds = new Map(
     passEntries
       .filter(([name]) => !SPECIAL_PASS_NAMES.has(name))

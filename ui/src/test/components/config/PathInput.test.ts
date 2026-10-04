@@ -4,6 +4,16 @@ import { describe, expect, it, vi } from 'vitest';
 import PathInput from '../../../lib/components/config/PathInput.svelte';
 
 describe('PathInput', () => {
+  it('hides the redundant mode dropdown for GLSL while keeping Add', () => {
+    const view = render(PathInput, { value: '', fileType: 'glsl-vertex', allowInsert: true, postMessage: vi.fn() });
+    expect(view.queryByRole('combobox', { name: 'Insert mode' })).toBeNull();
+    expect(view.getByRole('button', { name: 'Insert' })).toBeVisible();
+  });
+  it.each(['slang-buffer', 'cubemap', 'video', 'audio', 'texture'] as const)('disables browser path history for %s', fileType => {
+    const view = render(PathInput, { value: '', fileType });
+    expect(view.getByRole('textbox')).toHaveAttribute('autocomplete', 'off');
+    expect(view.getByRole('textbox')).toHaveAttribute('spellcheck', 'false');
+  });
   it('hides Insert for an existing stage while keeping mode selection and Clear', async () => {
     const onClear = vi.fn();
     const view = render(PathInput, { value: 'a.wgsl', fileType: 'wgsl-vertex', allowInsert: true,

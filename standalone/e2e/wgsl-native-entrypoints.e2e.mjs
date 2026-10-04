@@ -60,17 +60,18 @@ test('WGSL native Insert appends one buffer and one compute entry point, then pe
   await page.getByRole('button', { name: '+ New' }).click();
   await page.getByRole('menuitem', { name: 'Buffer' }).click();
   const buffer = page.locator('.tab-content').filter({ has: page.getByLabel('Render entry points') });
-  await expect(buffer.getByLabel('Vertex function')).toHaveValue('');
-  await buffer.getByRole('button', { name: 'Add output' }).click();
-  await expect(buffer.getByLabel('Output 1 name')).toBeVisible();
-  await buffer.locator('.config-item').first().getByRole('button', { name: 'Insert', exact: true }).click();
-  await expect(buffer.getByLabel('Vertex function')).toHaveValue('');
-  await expect(buffer.getByLabel('Fragment function')).toHaveValue('BufferAFragment');
+  await expect(buffer.getByRole('button', { name: 'Built-in', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await buffer.getByRole('button', { name: 'Change…' }).click();
+  await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: `/shaders/${stem}.wgsl`, exact: true }).click();
+  await buffer.getByRole('group', { name: 'Fragment function controls' }).getByRole('button', { name: 'Add function…' }).click();
+  await expect(buffer.getByRole('button', { name: 'Built-in', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(buffer.getByRole('radio', { name: '@fragment BufferAFragment' })).toBeChecked();
 
   await page.getByRole('button', { name: '+ New' }).click();
   await page.getByRole('menuitem', { name: 'Compute' }).click();
-  // A newly added compute pass has no selected entry point yet, so its
-  // selector is not rendered until Insert returns one.
+  // Render authoring preferences apply to render passes. Choose native
+  // compute insertion explicitly to request its named entry point.
+  await page.getByLabel('Insert mode').selectOption('native');
   await page.getByRole('button', { name: 'Insert', exact: true }).click();
 
   await expect.poll(async () => {
@@ -86,14 +87,14 @@ test('WGSL native Insert appends one buffer and one compute entry point, then pe
     };
   }).toMatchObject({
     config: { webgpu: { defaultRenderAuthoring: 'native' } },
-    bufferPass: { entryPoints: { fragment: 'BufferAFragment' }, outputs: [{}, {}] },
+    bufferPass: { entryPoints: { fragment: 'BufferAFragment' } },
     computePass: { type: 'compute', entryPoints: { compute: 'ComputeACompute' } },
   });
 
   const saved = await workspace(page);
   expect(saved[`/shaders/${stem}.wgsl`]).not.toContain('@vertex\nfn BufferAVertex');
   expect(saved[`/shaders/${stem}.wgsl`].match(/@compute @workgroup_size/g)).toHaveLength(1);
-  expect(saved[`/shaders/${stem}.wgsl`]).toContain('@location(1)');
+  expect(saved[`/shaders/${stem}.wgsl`]).not.toContain('@location(1)');
 
   await page.reload();
   await expect.poll(async () => JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`]).passes).toMatchObject({
@@ -112,10 +113,11 @@ test('WGSL native render selector saves a deliberate fragment choice and hook cr
   ].join('\n');
   await openFixture(page, stem, source);
 
-  await page.getByLabel('Vertex function').selectOption('vertexA');
-  await expect(page.getByLabel('Vertex function')).toHaveValue('vertexA');
-  await page.getByLabel('Fragment function').selectOption('fragmentB');
-  await page.getByLabel('Vertex function').selectOption('');
+  await page.getByRole('button', { name: 'Same file' }).click();
+  await page.getByRole('radio', { name: '@vertex vertexA' }).check();
+  await expect(page.getByRole('radio', { name: '@vertex vertexA' })).toBeChecked();
+  await page.getByRole('radio', { name: '@fragment fragmentB' }).check();
+  await page.getByRole('radio', { name: 'Built-in / mainVertex' }).check();
   await page.getByRole('button', { name: '+ New' }).click();
   await page.getByRole('menuitem', { name: 'Buffer' }).click();
 
@@ -129,7 +131,8 @@ test('WGSL native render selector saves a deliberate fragment choice and hook cr
   // Restore just the vertex selection. This proves mixed hook/native stages
   // persist without a single-candidate fallback.
   await page.locator('[data-tab-name="Image"]').click();
-  await page.getByLabel('Vertex function').selectOption('vertexA');
+  await page.getByRole('button', { name: 'Same file' }).click();
+  await page.getByRole('radio', { name: '@vertex vertexA' }).check();
   await expect.poll(async () => JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`]).passes.Image.entryPoints).toEqual({ vertex: 'vertexA', fragment: 'fragmentB' });
   await page.reload();
   await expect.poll(async () => JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`]).passes.Image.entryPoints).toEqual({ vertex: 'vertexA', fragment: 'fragmentB' });
@@ -156,8 +159,8 @@ test('a shared Buffer keeps its selected second fragment after rapid source upda
   const editor = page.getByTestId('web-editor');
   await expect(editor.locator('.monaco-editor')).toBeVisible();
   await page.locator('[data-tab-name="BufferA"]').click();
-  const fragment = page.getByLabel('Fragment function');
-  await expect(fragment).toHaveValue('rasterColor2');
+  const fragment = page.getByRole('group', { name: 'Fragment function controls' });
+  await expect(fragment.getByRole('radio', { name: '@fragment rasterColor2' })).toBeChecked();
 
   // These are whole-source Monaco pastes. The final source is complete again;
   // no stale per-pass source snapshot may leave the selected function missing.
@@ -165,12 +168,12 @@ test('a shared Buffer keeps its selected second fragment after rapid source upda
   await pasteSource(page, editor, [vertex, rasterColor, '@fragment fn rasterColor3() -> @location(0) vec4f { return vec4f(0.0, 0.0, 1.0, 1.0); }'].join('\n'));
   await pasteSource(page, editor, source);
 
-  await expect.poll(async () => Array.from(await fragment.locator('option').allTextContents())).toContain('@fragment rasterColor2');
-  await expect.poll(async () => Array.from(await fragment.locator('option').allTextContents())).not.toContain('rasterColor2 (missing)');
+  await expect(fragment.getByRole('radio', { name: '@fragment rasterColor2' })).toBeChecked();
+  await expect(fragment.getByRole('radio', { name: 'rasterColor2 (missing)' })).toHaveCount(0);
   await expect.poll(async () => JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`]).passes.BufferA.entryPoints).toEqual({ vertex: 'rasterVertex', fragment: 'rasterColor2' });
   await page.reload();
   await page.locator('[data-tab-name="BufferA"]').click();
-  await expect(page.getByLabel('Fragment function')).toHaveValue('rasterColor2');
+  await expect(page.getByRole('radio', { name: '@fragment rasterColor2' })).toBeChecked();
 });
 
 test('a separate native MRT Buffer routes cursor ownership and previews selected outputs', async ({ page }) => {
@@ -257,7 +260,7 @@ test('new native WGSL Image compiles and makes native Buffer the default', async
   await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
   await page.getByRole('button', { name: '+ New' }).click();
   await page.getByRole('menuitem', { name: 'Buffer' }).click();
-  await expect(page.getByLabel('Vertex function')).toHaveValue('');
+  await expect(page.getByRole('button', { name: 'Built-in', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(async () => JSON.parse((await workspace(page))['/shaders/native-image-created.sha.json']).passes.BufferA).toMatchObject({ entryPoints: {} });
 });
 
@@ -283,10 +286,12 @@ test('new native Slang Image compiles, then inserts Buffer and Compute into the 
   await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
   await page.getByRole('button', { name: '+ New' }).click();
   await page.getByRole('menuitem', { name: 'Buffer' }).click();
-  await expect(page.getByLabel('Vertex function')).toHaveValue('');
-  await page.getByRole('button', { name: 'Insert', exact: true }).click();
-  await expect(page.getByLabel('Vertex function')).toHaveValue('');
-  await expect(page.getByLabel('Fragment function')).toHaveValue('BufferAFragment');
+  await expect(page.getByRole('button', { name: 'Built-in', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Change…' }).click();
+  await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: '/shaders/native-slang-created.slang', exact: true }).click();
+  await page.getByRole('group', { name: 'Fragment function controls' }).getByRole('button', { name: 'Add function…' }).click();
+  await expect(page.getByRole('button', { name: 'Built-in', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('radio', { name: '[shader("fragment")] BufferAFragment' })).toBeChecked();
 
   await page.getByRole('button', { name: '+ New' }).click();
   await page.getByRole('menuitem', { name: 'Compute' }).click();

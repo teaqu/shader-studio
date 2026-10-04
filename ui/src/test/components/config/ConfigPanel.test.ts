@@ -133,8 +133,8 @@ describe('ConfigPanel', () => {
       });
 
       await tick();
-      expect(getByLabelText('Vertex function')).toHaveValue('bufferVertex');
-      expect(getByLabelText('Fragment function')).toHaveValue('bufferFragment');
+      expect(getByLabelText('[shader("vertex")] bufferVertex')).toBeChecked();
+      expect(getByLabelText('[shader("fragment")] bufferFragment')).toBeChecked();
     });
 
     it('uses the current shared source while a stale Buffer snapshot is pending', async () => {
@@ -153,9 +153,7 @@ describe('ConfigPanel', () => {
       });
 
       await tick();
-      const fragment = getByLabelText('Fragment function') as HTMLSelectElement;
-      expect(fragment.value).toBe('rasterColor2');
-      expect(Array.from(fragment.options).some((option) => option.text === 'rasterColor2 (missing)')).toBe(false);
+      expect(getByLabelText('@fragment rasterColor2')).toBeChecked();
     });
 
     it('should render the Image tab by default', async () => {
@@ -1020,6 +1018,7 @@ describe('ConfigPanel', () => {
       });
       await tick();
 
+      await fireEvent.click(getAllByText('Change…')[0]);
       await fireEvent.click(getAllByText('Create')[0]);
 
       expect(mockManager.generateBufferPath).toHaveBeenCalledWith('BufferA', 'slang');

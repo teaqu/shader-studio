@@ -30,7 +30,7 @@ describe("native MRT debug canvas projection", () => {
   });
 
   it("keeps single-output and hook plans unchanged", () => {
-    expect(debugPlanDisplaySource(root, plan, null, "wgsl")).toEqual({ source: root.source, config: null });
+    expect(debugPlanDisplaySource({ ...root, source: "@fragment fn shade() -> @location(0) vec4f { return vec4f(1); }" }, plan, null, "wgsl")).toEqual({ source: "@fragment fn shade() -> @location(0) vec4f { return vec4f(1); }", config: null });
     expect(debugPlanDisplaySource(root, { ...plan, nativeRender: undefined }, null, "wgsl")).toEqual({ source: root.source, config: null });
   });
 

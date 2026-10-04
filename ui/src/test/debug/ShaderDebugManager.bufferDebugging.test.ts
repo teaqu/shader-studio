@@ -77,7 +77,8 @@ describe('ShaderDebugManager — buffer debugging', () => {
         BufferA: { path: 'bufferA.wgsl', entryPoints: { fragment: 'draw' }, outputs: [{ name: 'colour' }, { name: 'normal' }] },
       },
     };
-    manager.setShaderContext(config, '/shaders/image.wgsl', { BufferA: '@fragment fn draw() -> @location(0) vec4f { return vec4f(); }' }, [], { BufferA: '/shaders/bufferA.wgsl' });
+    manager.setLanguage('wgsl');
+    manager.setShaderContext(config, '/shaders/image.wgsl', { BufferA: 'struct R { @location(0) colour: vec4f, @location(1) normal: vec4f, } @fragment fn draw() -> R { return R(); }' }, [], { BufferA: '/shaders/bufferA.wgsl' });
     manager.updateDebugLine(0, 'draw', '/shaders/bufferA.wgsl');
     manager.getDebugTarget('', config);
     expect(manager.getState().renderOutputs).toEqual(['Output 0 (colour)', 'Output 1 (normal)']);

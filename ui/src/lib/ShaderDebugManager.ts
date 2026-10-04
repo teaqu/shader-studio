@@ -156,7 +156,7 @@ export class ShaderDebugManager {
       ? imageCode
       : this.bufferCodes[passName] ?? imageCode);
     const passConfig = config?.passes[passName];
-    this.updateRenderOutputs(passConfig);
+    this.updateRenderOutputs(passConfig, (this.bufferCodes.common ?? '') + '\n' + code);
     const nativeEntryPoint = nativeFragmentEntryPoint(code, passConfig, this.language);
     if (this.state.nativeFragmentEntryPoint !== nativeEntryPoint) {
       this.state.nativeFragmentEntryPoint = nativeEntryPoint ?? null;
@@ -825,8 +825,8 @@ export class ShaderDebugManager {
       : this.bufferCodes[activeBufferName] ?? imageCode;
   }
 
-  private updateRenderOutputs(pass: ShaderConfig['passes'][string] | undefined): void {
-    const next = resolveRenderOutputState(pass, this.state.renderOutput);
+  private updateRenderOutputs(pass: ShaderConfig['passes'][string] | undefined, source: string): void {
+    const next = resolveRenderOutputState(pass, this.state.renderOutput, source, this.language);
     if (this.state.renderOutput === next.renderOutput && (this.state.renderOutputs ?? []).join('\u0000') === next.renderOutputs.join('\u0000')) {
       return;
     }

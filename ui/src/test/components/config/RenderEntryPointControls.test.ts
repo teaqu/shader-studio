@@ -13,8 +13,8 @@ describe('RenderEntryPointControls', () => {
       pass: { inputs: {}, entryPoints: {} }, entryPoints: entries, onCommit: vi.fn(),
     });
 
-    expect((getByLabelText('Vertex function') as HTMLSelectElement).value).toBe('');
-    expect((getByLabelText('Fragment function') as HTMLSelectElement).value).toBe('');
+    expect((getByLabelText('Built-in / mainVertex') as HTMLInputElement).checked).toBe(true);
+    expect((getByLabelText('mainImage') as HTMLInputElement).checked).toBe(true);
   });
 
   it('selects only the chosen native vertex stage', async () => {
@@ -23,7 +23,7 @@ describe('RenderEntryPointControls', () => {
       pass: { inputs: {} }, entryPoints: entries, onCommit,
     });
 
-    await fireEvent.change(getByLabelText('Vertex function'), { target: { value: 'fullscreenVertex' } });
+    await fireEvent.click(getByLabelText('@vertex fullscreenVertex'));
 
     expect(onCommit).toHaveBeenCalledWith({ inputs: {}, entryPoints: { vertex: 'fullscreenVertex' } });
   });
@@ -34,7 +34,7 @@ describe('RenderEntryPointControls', () => {
       pass: { inputs: {}, vertex: './camera.wgsl' }, entryPoints: entries, onCommit,
     });
 
-    await fireEvent.change(getByLabelText('Fragment function'), { target: { value: 'renderImage' } });
+    await fireEvent.click(getByLabelText('@fragment renderImage'));
 
     expect(onCommit).toHaveBeenCalledWith({
       inputs: {}, vertex: './camera.wgsl', entryPoints: { fragment: 'renderImage' },
@@ -47,7 +47,7 @@ describe('RenderEntryPointControls', () => {
       pass: { inputs: {}, entryPoints: { vertex: 'fullscreenVertex', fragment: 'renderImage' } }, entryPoints: entries, onCommit,
     });
 
-    await fireEvent.change(getByLabelText('Vertex function'), { target: { value: '' } });
+    await fireEvent.click(getByLabelText('Built-in / mainVertex'));
 
     expect(onCommit).toHaveBeenCalledWith({ inputs: {}, entryPoints: { fragment: 'renderImage' } });
   });
@@ -57,8 +57,6 @@ describe('RenderEntryPointControls', () => {
       pass: { inputs: {}, entryPoints: { fragment: 'gone' } }, entryPoints: entries, onCommit: vi.fn(),
     });
 
-    const fragment = getByLabelText('Fragment function') as HTMLSelectElement;
-    expect(fragment.value).toBe('gone');
-    expect(Array.from(fragment.options).some((option) => option.text === 'gone (missing)')).toBe(true);
+    expect((getByLabelText('gone (missing)') as HTMLInputElement).checked).toBe(true);
   });
 });

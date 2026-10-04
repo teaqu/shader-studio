@@ -1,66 +1,45 @@
 <script lang="ts">
   import type { ShaderConfig, BufferPass, ImagePass, ShaderLanguageId, FileDialogFileType, MessageEvent as ViewerMessage } from '@shader-studio/types';
-  import { applyVertexSource, clearVertexSource, existingShaderModes } from '../../config/PassSourceAuthoring';
-  import { configSourcePaths } from '../../config/configSourcePaths';
-  import PathInput from './PathInput.svelte';
+  import { applyVertexSource, clearVertexSource } from '../../config/PassSourceAuthoring';
+  import ShaderFileControls from './ShaderFileControls.svelte';
 
   interface Props {
-    pass: BufferPass | ImagePass;
-    projectConfig?: ShaderConfig | null;
-    passSource: string;
-    vertexSource: string;
-    language: ShaderLanguageId;
-    sourcePath: string;
-    passName: string;
-    vertexSpace: string;
-    geometryType: string;
-    fileType: FileDialogFileType;
-    suggestedPath: string;
-    shaderPath: string;
-    onPathChange: (path: string) => void;
-    onCommit: (pass: BufferPass | ImagePass) => void;
-    postMessage?: (message: ViewerMessage) => void;
-    onMessage?: (handler: (event: MessageEvent) => void) => void;
+    pass: BufferPass | ImagePass; projectConfig?: ShaderConfig | null; passSource: string; vertexSource: string;
+    language: ShaderLanguageId; sourcePath: string; passName: string; vertexSpace: string; geometryType: string;
+    fileType: FileDialogFileType; suggestedPath: string; shaderPath: string;
+    onPathChange: (path: string) => void; onCommit: (pass: BufferPass | ImagePass) => void;
+    postMessage?: (message: ViewerMessage) => void; onMessage?: (handler: (event: MessageEvent) => void) => void;
   }
-  let { pass, projectConfig, passSource, vertexSource, language, sourcePath, passName, vertexSpace,
-    geometryType, fileType, suggestedPath, shaderPath, onPathChange, onCommit, postMessage, onMessage }: Props = $props();
-  let custom = $state(false);
-  const files = $derived(configSourcePaths(projectConfig, shaderPath, language).filter(path => path !== sourcePath));
-  const mode = $derived(pass.vertex && pass.vertex === sourcePath ? 'same' : pass.vertex && files.includes(pass.vertex) ? pass.vertex : pass.vertex || pass.entryPoints?.vertex || custom ? 'custom' : 'builtin');
+  let { pass, projectConfig, language, sourcePath, passName, fileType, suggestedPath, shaderPath,
+    onPathChange, onCommit, postMessage, onMessage }: Props = $props();
+  let separate = $state(false);
+  const mode = $derived(separate ? 'separate' : pass.vertex && pass.vertex === sourcePath ? 'same'
+    : pass.vertex ? 'separate' : pass.entryPoints?.vertex ? 'same' : 'builtin');
   function selectSource(value: string) {
-    custom = value === 'custom';
+    separate = value === 'separate';
     if (value === 'builtin') {
       onCommit(clearVertexSource(pass));
     } else if (value === 'same') {
       onPathChange(sourcePath);
-    } else if (value !== 'custom') {
-      onPathChange(value);
     }
   }
-  function clearSource() {
-    custom = false;
-    onCommit(clearVertexSource(pass));
-  }
 </script>
-<label class="source-select">Vertex source
-  <select aria-label="Vertex source" value={mode} onchange={(event) => selectSource(event.currentTarget.value)}>
-    <option value="builtin">Built-in</option>
-    <option value="same">Same file</option>
-    <option value="custom">Custom file</option>
-    {#each files as path}<option value={path}>{path}</option>{/each}
-  </select>
-</label>
-{#if mode !== 'builtin'}
 
-<PathInput inputId={`vertex-source-${passName}`} value={pass.vertex ?? ''} {onPathChange} allowInsert={true}
-  hidePath={mode === 'same'} allowCreate={mode !== 'same'}
-  existingModes={existingShaderModes(pass.vertex && pass.vertex !== sourcePath ? vertexSource : passSource + '\n' + vertexSource, language, 'vertex')}
-  clearEnabled={!!pass.vertex || !!pass.entryPoints?.vertex}
-  onClear={clearSource}
-  onCreated={(result) => onCommit(applyVertexSource(pass, result))}
-  sourcePath={pass.vertex || sourcePath} {passName} {vertexSpace} {geometryType} {fileType} {suggestedPath} {shaderPath} {postMessage} {onMessage} />
+<div class="source-options" class:has-file={mode === 'separate'} role="group" aria-label="Vertex source">
+  {#each [{ value: 'builtin', label: 'Built-in' }, { value: 'same', label: 'Same file' }, { value: 'separate', label: 'Separate file' }] as option}
+    <button type="button" aria-pressed={mode === option.value} onclick={() => selectSource(option.value)}>{option.label}</button>
+  {/each}
+</div>
+{#if mode === 'separate'}
+  <ShaderFileControls value={pass.vertex ?? ''} {onPathChange} {projectConfig} {language} {fileType} {suggestedPath} {shaderPath}
+    inputId={"vertex-source-" + passName} {passName} {postMessage} {onMessage}
+    onCreated={(result) => onCommit(applyVertexSource(pass, result))} />
 {/if}
+
 <style>
-  .source-select { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; color: var(--vscode-foreground, #ccc); }
-  select { background: var(--vscode-input-background, #3c3c3c); color: var(--vscode-input-foreground, #ccc); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, #3c3c3c)); padding: 6px; border-radius: 4px; }
+  .source-options { display: flex; }
+  .source-options.has-file { margin-bottom: 12px; }
+  button { padding: 6px 9px; font: inherit; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); cursor: pointer; }
+  .source-options button { flex: 1; } .source-options button[aria-pressed='true'] { background: var(--vscode-list-activeSelectionBackground); border-color: var(--vscode-focusBorder); }
+  .source-options button { display: flex; align-items: center; justify-content: center; gap: 6px; }
 </style>

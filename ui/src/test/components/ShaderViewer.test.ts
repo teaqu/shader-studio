@@ -2230,11 +2230,11 @@ describe('ShaderViewer', () => {
     // scriptRuntimeState is one of them: the host needs the viewer's opening
     // state before a script's first poll, not after it.
     const allowedTypes = new Set([
-      'requestLayout', 'debug', 'refresh', 'setCompileMode', 'languageServiceReady', 'scriptRuntimeState', 'requestViewerCameraSettings',
+      'requestLayout', 'debug', 'refresh', 'setCompileMode', 'languageServiceReady', 'scriptRuntimeState', 'requestViewerCameraSettings', 'requestShaderAuthoringSettings',
     ]);
     const calls = (mockTransport.postMessage as ReturnType<typeof vi.fn>).mock.calls;
     const unexpectedCalls = calls.filter((c: any[]) => !allowedTypes.has(c[0]?.type));
-    expect(unexpectedCalls).toHaveLength(0);
+    expect(unexpectedCalls.map((call: unknown[]) => (call[0] as { type: string }).type)).toEqual([]);
   });
 
   it('should handle initialization without errors', async () => {

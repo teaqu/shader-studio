@@ -1833,7 +1833,7 @@ struct Outputs { @location(0) colour: vec4f, @location(1) normals: vec4f }
   it.each([
     ["hooks", { path: "scene.wgsl", outputs: [{}, {}] }, "require native render entryPoints"],
     ["GLSL", { path: "scene.glsl", entryPoints: {}, outputs: [{}, {}] }, "GLSL MRT is not supported"],
-  ] as const)("rejects %s MRT configuration", (_name, pass, message) => {
+  ] as const)("uses the implicit single output for %s despite legacy output labels", (_name, pass, _message) => {
     const graph = buildSlangPassGraph({
       imageCode,
       language: _name === "GLSL" ? "glsl" : "wgsl",
@@ -1843,7 +1843,8 @@ struct Outputs { @location(0) colour: vec4f, @location(1) normals: vec4f }
       canvasHeight: 64,
     });
 
-    expect(graph.errors.some((error) => error.includes(message))).toBe(true);
+    expect(graph.errors).toEqual([]);
+    expect(graph.passes.find(pass => pass.name === "Scene")?.outputCount ?? 1).toBe(1);
   });
 
   it("rejects render-output selection on compute inputs and dangling render outputs", () => {
@@ -1863,7 +1864,7 @@ struct Outputs { @location(0) colour: vec4f, @location(1) normals: vec4f }
 
     expect(graph.errors).toEqual(expect.arrayContaining([
       expect.stringContaining("output selection is only valid for render buffer"),
-      expect.stringContaining('output 2 is invalid for source "Scene" with 2 output(s)'),
+      expect.stringContaining('output 2 is invalid for source "Scene" with 1 output(s)'),
     ]));
   });
 

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import './configPanel.css';
+  import { discoverRenderOutputs, setRenderOutputMetadata } from "../../state/renderOutputMetadata.svelte";
   import { getDefaultAuthoringMode } from '../../state/authoringModeState.svelte';
   import { onMount, onDestroy, tick, untrack } from "svelte";
   import { ConfigManager, type BufferRenameError } from "../../ConfigManager";
@@ -400,16 +402,11 @@
     return Object.keys(config.passes).filter((k) => k !== "Image" && k !== "common");
   });
 
-  let renderOutputCounts = $derived.by(() => {
-    const result: Record<string, number> = {};
-    for (const [name, pass] of Object.entries(config?.passes ?? {})) {
-      if (name === 'Image' || name === 'common' || (pass as ComputePass).type === 'compute') {
-continue;
-}
-      result[name] = (pass as BufferPass).outputs?.length ?? 1;
-    }
-    return result;
-  });
+  const renderOutputMetadata = $derived(discoverRenderOutputs(config, language, sourceForPass));
+  const renderOutputCounts = $derived(Object.fromEntries(Object.entries(renderOutputMetadata).map(([name, discovery]) => [name, discovery.outputs.length])));
+  $effect(() => {
+ setRenderOutputMetadata(shaderPath, renderOutputMetadata);
+});
 
   let computeOutputLayerCounts = $derived.by(() => Object.fromEntries(
     Object.entries(config?.passes ?? {})

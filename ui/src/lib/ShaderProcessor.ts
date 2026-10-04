@@ -1,3 +1,4 @@
+import { getShaderOutputs } from "@shader-studio/types";
 import { viewerCameraRuntimeConfig } from "./state/viewerCameraState.svelte";
 import { hookConfigForDebugPlan, nativeFragmentEntryPoint } from "./nativeRenderConfig";
 import { projectNativeRasterDisplay } from "@shader-studio/debug";
@@ -431,7 +432,7 @@ export class ShaderProcessor {
     debugState: ReturnType<ShaderDebugManager['getState']>,
   ): { code: string; config: ShaderConfig } | null {
     const image = config?.passes.Image;
-    if (!config || !image || !('outputs' in image) || !Array.isArray(image.outputs) || image.outputs.length < 2) {
+    if (!config || !image || getShaderOutputs(code, this.shaderDebugManager.getLanguage(), 'entryPoints' in image ? image.entryPoints?.fragment : undefined).outputs.length < 2) {
       return null;
     }
     const entryPoint = nativeFragmentEntryPoint(code, image, this.shaderDebugManager.getLanguage());
@@ -442,7 +443,7 @@ export class ShaderProcessor {
     if (!projected) {
       return null;
     }
-    const { outputs: _outputs, ...singleOutputImage } = image;
+    const { outputs: _outputs, ...singleOutputImage } = image as typeof image & { outputs?: { name?: string }[] };
     return { code: projected, config: { ...config, passes: { ...config.passes, Image: singleOutputImage } } };
   }
 

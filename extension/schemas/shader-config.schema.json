@@ -417,7 +417,7 @@
     },
     "RenderOutputs": {
       "type": "array",
-      "description": "Ordered native WebGPU render targets. Omitted means one colour output.",
+      "description": "Optional legacy labels by colour slot. Native output slots and field names are inferred from the selected fragment code.",
       "minItems": 1,
       "maxItems": 8,
       "items": {
