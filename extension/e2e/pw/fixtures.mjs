@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { assertProductionVsixLaunchArgs, cloneProductionVsixSeed, installProductionVsix, productionVsixLaunchArgs } from './vsix-launch.mjs';
 import { findShownAppFrame } from './shader-frame.mjs';
 import { evaluateBridgeCall, readBridgePort } from './bridge-client.mjs';
-import { recordE2ePhase, recordE2eSample, withE2ePhase } from './e2e-timing.mjs';
+import { recordE2ePhase, recordE2eSample } from './e2e-timing.mjs';
 import { monitorProcessTree } from './process-tree.mjs';
 import { attachCleanupFailure, cleanupFixture } from './fixture-cleanup.mjs';
 import { openWindowDisplay } from './private-display.mjs';
@@ -245,9 +245,9 @@ export const test = base.extend({
         { timeout, message: 'no frame hosting the Shader Studio app appeared' },
       );
 
-      await withE2ePhase('test-execution',
-        () => use({ app, window, evaluateInHost, shaderFrame, workspacePath, extensionsDir }),
-        { vscodeKey });
+      const testStartedAt = performance.now();
+      await use({ app, window, evaluateInHost, shaderFrame, workspacePath, extensionsDir });
+      recordE2ePhase('test-execution', testStartedAt, { vscodeKey });
 
     } catch (error) {
       fixtureError = error;
@@ -255,16 +255,16 @@ export const test = base.extend({
     } finally {
       const teardownStartedAt = performance.now();
       try {
-        const result = await withE2ePhase('fixture-teardown', () => cleanupFixture({
+        const result = await cleanupFixture({
           app,
           processTree,
           processPid: app.process().pid,
           userDataDir,
           windowDisplay,
-          phase: phase => recordE2eSample({ vscodeKey, ...phase }),
-        }), { vscodeKey });
+        });
         recordE2ePhase('process-tree-exit', teardownStartedAt, { vscodeKey, ...result });
-        if (result.forced || result.closeError || result.samplingErrors.length || result.measurementErrors.length) {
+        recordE2ePhase('fixture-teardown', teardownStartedAt, { vscodeKey, ...result });
+        if (result.forced || result.closeError || result.samplingErrors.length) {
           console.warn(`E2E teardown recovered ${vscodeKey}: ${JSON.stringify(result)}`);
         }
       } catch (error) {

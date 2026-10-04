@@ -32,16 +32,6 @@ test('removes the profile only after verified owned-tree exit and closes the dis
   assert.deepEqual(value.calls, ['tree.close', 'profile.remove:/tmp/profile', 'display.close']);
 });
 
-test('forwards cleanup phase telemetry to the owned-tree closer', async () => {
-  const phases = [];
-  const value = fixture({ tree: {}, closeTree: async (_close, _tree, options) => {
-    options.phase({ phase: 'graceful-close', durationMs: 12 });
-    return { forced: false, closeError: undefined, samplingErrors: [] };
-  } });
-  await cleanupFixture({ ...value.options, phase: phase => phases.push(phase) });
-  assert.deepEqual(phases, [{ phase: 'graceful-close', durationMs: 12 }]);
-});
-
 test('missing inventory retains profile and still closes app and display', async () => {
   const value = fixture({ tree: null });
   await assert.rejects(cleanupFixture(value.options), /Cannot verify owned Electron process exit \(PID 123\).*profile retained/);
@@ -100,4 +90,28 @@ test('does not repeat graceful close after the verified-tree closer already atte
   } });
   await assert.rejects(cleanupFixture(value.options), /survivors/);
   assert.deepEqual(value.calls, ['app.close', 'display.close']);
+});
+
+test('attaches cleanup failure when the primary error has no cause', () => {
+  for (const cause of [undefined, null]) {
+    const primary = new Error('test failed', { cause });
+    const cleanup = new Error('profile retained');
+    assert.equal(attachCleanupFailure(primary, cleanup), primary);
+    assert.equal(primary.cause, cleanup);
+  }
+});
+
+test('preserves inspection failure when the fallback close also rejects', async () => {
+  const inventoryError = new Error('inventory unavailable');
+  const value = fixture({ closeTree: async () => {
+    throw inventoryError;
+  }, appClose: async () => {
+    throw new Error('window is gone');
+  } });
+  await assert.rejects(cleanupFixture(value.options), error => {
+    assert.equal(error.cause, inventoryError);
+    assert.match(error.message, /inventory unavailable.*subsequent graceful close failed: window is gone/);
+    return true;
+  });
+  assert.deepEqual(value.calls, ['display.close']);
 });

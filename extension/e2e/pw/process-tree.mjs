@@ -72,19 +72,7 @@ export async function monitorProcessTree(rootPid, {
   read = readProcessTable, signal = (pid, name) => process.kill(pid, name),
   intervalMs = 1000, sample = () => {},
 } = {}) {
-  const inventory = { reads: 0, readDurationMs: 0, maxReadDurationMs: 0, skippedPeriodicSamples: 0 };
-  const measuredRead = async () => {
-    const startedAt = performance.now();
-    try {
-      return await read();
-    } finally {
-      const durationMs = performance.now() - startedAt;
-      inventory.reads++;
-      inventory.readDurationMs += durationMs;
-      inventory.maxReadDurationMs = Math.max(inventory.maxReadDurationMs, durationMs);
-    }
-  };
-  const rows = await measuredRead();
+  const rows = await read();
   const root = rows.find(row => row.pid === rootPid);
   if (!root) {
     throw new Error(`Launched Electron PID ${rootPid} was not found in the process inventory`);
@@ -98,7 +86,7 @@ export async function monitorProcessTree(rootPid, {
   let pendingReads = 0;
   let stopped = false;
   const refresh = async () => {
-    latest = updateOwnedProcesses(owned, await measuredRead());
+    latest = updateOwnedProcesses(owned, await read());
     const rssKiB = latest.reduce((total, row) => total + row.rssKiB, 0);
     const roles = {};
     for (const row of latest) {
@@ -114,7 +102,7 @@ export async function monitorProcessTree(rootPid, {
         pid: row.pid, ppid: row.ppid, role: processRole(row, rootPid), rssKiB: row.rssKiB,
       })) });
     } catch (error) {
-      // Telemetry is an observer, not the authoritative process inventory.
+      // Observer failures must not invalidate authoritative cleanup reads.
       if (samplingErrors.length < 10) {
         samplingErrors.push(error.message);
       }
@@ -131,10 +119,8 @@ export async function monitorProcessTree(rootPid, {
   };
   await inspect();
   const timer = setInterval(() => {
-    // Periodic measurements must not accumulate behind a slow inventory.
-    // Explicit cleanup inspections still request a fresh serialized read.
+    // Coalesce observer ticks; explicit cleanup inspections still read afresh.
     if (stopped || pendingReads) {
-      inventory.skippedPeriodicSamples++;
       return;
     }
     inspect().catch(error => {
@@ -146,7 +132,7 @@ export async function monitorProcessTree(rootPid, {
   timer.unref();
   return {
     inspect,
-    summary: () => ({ rootPid, peakRssKiB, peakRoles, samplingErrors, inventory: { ...inventory } }),
+    summary: () => ({ rootPid, peakRssKiB, peakRoles, samplingErrors }),
     stop: async () => {
       stopped = true;
       clearInterval(timer);
@@ -165,7 +151,7 @@ export async function monitorProcessTree(rootPid, {
       };
       // Children first; every signal uses a refreshed exact birth identity.
       for (const row of [...latest].sort((a, b) => depth(b) - depth(a))) {
-        const current = (await measuredRead()).find(candidate => candidate.pid === row.pid);
+        const current = (await read()).find(candidate => candidate.pid === row.pid);
         if (current?.started !== row.started || current.state.startsWith('Z')) {
           continue;
         }
@@ -194,36 +180,14 @@ async function waitForExit(tree, durationMs) {
 
 /** Preserve graceful close, then verify exit or terminate this owned tree. */
 export async function closeOwnedProcessTree(close, tree, {
-  gracefulMs = 15000, terminateMs = 2000, killMs = 2000, phase = () => {},
+  gracefulMs = 15000, terminateMs = 2000, killMs = 2000,
 } = {}) {
-  // Emit phases as they finish, so failed cleanup retains the same evidence.
-  const measurementErrors = [];
-  const emit = details => {
-    try {
-      phase(details);
-    } catch (error) {
-      // Observer failures must never prevent owned-process cleanup.
-      measurementErrors.push(error.message);
-    }
-  };
-  const timed = async (name, operation, details = () => ({})) => {
-    const startedAt = performance.now();
-    const startedAtUtc = new Date().toISOString();
-    try {
-      const value = await operation();
-      emit({ phase: name, startedAt: startedAtUtc, durationMs: performance.now() - startedAt, ...details(value) });
-      return value;
-    } catch (error) {
-      emit({ phase: name, startedAt: startedAtUtc, durationMs: performance.now() - startedAt, error: error.message });
-      throw error;
-    }
-  };
   let timeout;
   let closeError;
   let graceful = false;
   try {
-    await timed('pre-close-inventory', () => tree.inspect());
-    graceful = await timed('graceful-close', () => Promise.race([
+    await tree.inspect();
+    graceful = await Promise.race([
       Promise.resolve().then(close).then(() => true, error => {
         closeError = error.message;
         return false;
@@ -231,30 +195,23 @@ export async function closeOwnedProcessTree(close, tree, {
       new Promise(resolve => {
         timeout = setTimeout(() => resolve(false), gracefulMs);
       }),
-    ]), completed => ({
-      outcome: completed ? 'completed' : closeError ? 'rejected' : 'timed-out',
-      ...(closeError ? { closeError } : {}),
-    }));
+    ]);
     clearTimeout(timeout);
-    let exited = await timed('post-close-verification', () => waitForExit(tree, graceful ? terminateMs : 0), exited => ({ exited }));
+    let exited = await waitForExit(tree, graceful ? terminateMs : 0);
     const forced = !exited;
     if (!exited) {
-      exited = await timed('owned-sigterm', async () => {
-        await tree.terminate('SIGTERM');
-        return waitForExit(tree, terminateMs);
-      }, exited => ({ exited }));
+      await tree.terminate('SIGTERM');
+      exited = await waitForExit(tree, terminateMs);
     }
     if (!exited) {
-      exited = await timed('owned-sigkill', async () => {
-        await tree.terminate('SIGKILL');
-        return waitForExit(tree, killMs);
-      }, exited => ({ exited }));
+      await tree.terminate('SIGKILL');
+      exited = await waitForExit(tree, killMs);
     }
     if (!exited) {
       const survivors = await tree.inspect();
       throw new Error(`Owned process tree did not exit: ${JSON.stringify(survivors)}`);
     }
-    return { graceful, forced, ...(closeError ? { closeError } : {}), ...tree.summary(), measurementErrors };
+    return { graceful, forced, ...(closeError ? { closeError } : {}), ...tree.summary() };
   } finally {
     clearTimeout(timeout);
     await tree.stop();

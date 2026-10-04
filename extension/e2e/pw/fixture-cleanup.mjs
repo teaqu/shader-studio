@@ -36,7 +36,6 @@ export async function cleanupFixture({
   closeTree = closeOwnedProcessTree,
   removeProfile = path => rmSync(path, { recursive: true, force: true }),
   gracefulCloseMs = 15_000,
-  phase = () => {},
 } = {}) {
   let result;
   let failure;
@@ -54,7 +53,7 @@ export async function cleanupFixture({
       result = await closeTree(() => {
         closeAttempted = true;
         return app.close();
-      }, processTree, { phase });
+      }, processTree);
     } catch (error) {
       // A fresh inventory failure before graceful close still needs one close
       // attempt; later failures must not add a second 15-second close window.

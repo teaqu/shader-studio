@@ -290,7 +290,7 @@ jobs:
           # preview collapses controls and splits editor groups by the width it
           # gets. Pin a desktop-sized window so layout is the same every run.
           SHADER_STUDIO_E2E_WINDOW: '1600x1000'
-        run: /usr/bin/time -l -o extension/e2e-resources.txt npm run test:e2e:vsix -w extension
+        run: npm run test:e2e:vsix -w extension
 
       - name: Upload installed-VSIX E2E traces
         if: ${{ failure() && steps.vsix-e2e.outcome == 'failure' }}
@@ -310,7 +310,6 @@ jobs:
           path: |
             extension/e2e-timings.jsonl
             extension/e2e-results.json
-            extension/e2e-resources.txt
             extension/corpus-e2e-results.json
           if-no-files-found: ignore
           retention-days: 14
@@ -356,7 +355,7 @@ jobs:
           SHADER_STUDIO_E2E_GREP_INVERT: '@gpu'
           SHADER_STUDIO_E2E_WINDOW: '1600x1000'
         # The virtual display has to be larger than the window it hosts.
-        run: /usr/bin/time -v -o extension/e2e-resources.txt xvfb-run -a --server-args="-screen 0 1920x1080x24" npm run test:e2e:vsix -w extension
+        run: xvfb-run -a --server-args="-screen 0 1920x1080x24" npm run test:e2e:vsix -w extension
 
       - name: Upload installed-VSIX E2E traces
         if: ${{ failure() && steps.vsix-e2e.outcome == 'failure' }}
@@ -376,61 +375,7 @@ jobs:
           path: |
             extension/e2e-timings.jsonl
             extension/e2e-results.json
-            extension/e2e-resources.txt
           if-no-files-found: ignore
-          retention-days: 14
-
-  # Run deliberate shutdown wedges on separate runners, alongside installed
-  # tests. They must not add their 15-second graceful bound to the GPU lane.
-  cleanup-e2e:
-    name: Controlled Electron cleanup (${{ matrix.os }})
-    needs: package
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-15
-            time-flags: '-l'
-            display: ''
-          - os: ubuntu-latest
-            time-flags: '-v'
-            display: 'xvfb-run -a --server-args="-screen 0 1920x1080x24"'
-    env:
-      SHADER_STUDIO_E2E_TIMINGS_FILE: ${{ github.workspace }}/extension/e2e-timings.jsonl
-      SHADER_STUDIO_E2E_VSIX: ${{ github.workspace }}/${{ needs.package.outputs.vsix_path }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-
-      - name: Install test dependencies
-        run: npm ci
-
-      - name: Download tested extension artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: shader-studio-${{ needs.package.outputs.version }}-vsix
-
-      - name: Validate controlled live Electron cleanup
-        run: /usr/bin/time ${{ matrix.time-flags }} -o extension/cleanup-resources.txt ${{ matrix.display }} npm run test:e2e:vscode:cleanup:live -w extension
-
-      - name: Upload controlled cleanup measurements
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: controlled-cleanup-${{ matrix.os }}-measurements
-          path: |
-            extension/e2e-timings.jsonl
-            extension/cleanup-resources.txt
-          if-no-files-found: error
           retention-days: 14
 
   # One verdict for the run, for branch protection: it fails if any job
@@ -439,7 +384,7 @@ jobs:
   result:
     name: Verification result
     if: ${{ always() }}
-    needs: [select, package, test, rendering-e2e, standalone-e2e, vscode-e2e, vscode-e2e-linux, cleanup-e2e]
+    needs: [select, package, test, rendering-e2e, standalone-e2e, vscode-e2e, vscode-e2e-linux]
     runs-on: ubuntu-latest
     timeout-minutes: 5
 

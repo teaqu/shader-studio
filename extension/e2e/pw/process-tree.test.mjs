@@ -173,53 +173,10 @@ test('slow periodic inventories do not queue stale reads ahead of cleanup', asyn
     await inspection;
     await tree.stop();
     assert.equal(reads, 4);
-    assert.ok(tree.summary().inventory.skippedPeriodicSamples > 0);
   } finally {
     release?.();
     await tree.stop();
   }
-});
-
-test('shutdown records graceful close separately from verification and escalation', async () => {
-  const tree = fakeTree();
-  const phases = [];
-  const result = await closeOwnedProcessTree(async () => tree.exit(), tree, {
-    ...limits, phase: details => phases.push(details),
-  });
-  assert.deepEqual(phases.map(details => details.phase), ['pre-close-inventory', 'graceful-close', 'post-close-verification']);
-  assert.equal(phases[1].outcome, 'completed');
-  assert.equal(phases[2].exited, true);
-  assert.ok(phases.every(details => details.durationMs >= 0));
-  assert.equal(result.graceful, true);
-});
-
-test('failed shutdown retains phase evidence and stops the sampler', async () => {
-  const tree = fakeTree({ survives: true });
-  const phases = [];
-  await assert.rejects(closeOwnedProcessTree(() => {
-    throw new Error('close rejected');
-  }, tree, {
-    ...limits, phase: details => phases.push(details),
-  }), /Owned process tree did not exit/);
-  assert.deepEqual(phases.map(details => details.phase), [
-    'pre-close-inventory', 'graceful-close', 'post-close-verification', 'owned-sigterm', 'owned-sigkill',
-  ]);
-  assert.equal(phases[1].outcome, 'rejected');
-  assert.equal(phases[1].closeError, 'close rejected');
-  assert.equal(phases.at(-1).exited, false);
-  assert.equal(tree.stopped, true);
-});
-
-test('timing observer failure cannot prevent verified owned-tree cleanup', async () => {
-  const tree = fakeTree();
-  const result = await closeOwnedProcessTree(async () => tree.exit(), tree, {
-    ...limits, phase: () => {
-      throw new Error('disk full');
-    },
-  });
-  assert.equal(result.forced, false);
-  assert.equal(tree.stopped, true);
-  assert.deepEqual(result.measurementErrors, ['disk full', 'disk full', 'disk full']);
 });
 
 test('process telemetry failure leaves authoritative inventory and shutdown usable', async () => {
@@ -241,6 +198,21 @@ test('process telemetry failure leaves authoritative inventory and shutdown usab
     }, tree, limits);
     assert.equal(result.forced, false);
     assert.ok(result.samplingErrors.includes('sample sink unavailable'));
+  } finally {
+    await tree.stop();
+  }
+});
+
+test('an observer failure during initial sampling cannot prevent monitoring', async () => {
+  const tree = await monitorProcessTree(1, {
+    read: async () => [row(1, 0)],
+    sample: () => {
+      throw new Error('observer unavailable');
+    },
+  });
+  try {
+    assert.equal((await tree.inspect()).length, 1);
+    assert.deepEqual(tree.summary().samplingErrors, ['observer unavailable', 'observer unavailable']);
   } finally {
     await tree.stop();
   }
