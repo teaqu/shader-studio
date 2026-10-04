@@ -105,8 +105,9 @@ export class ShaderPipeline {
   }
 
   public setCompilationState(compilationState: CompilationStateObserver | null): void {
+    this.compilationState?.setCompiling?.(false, this);
     this.compilationState = compilationState;
-    compilationState?.setCompiling?.(this.activeCompilations > 0);
+    compilationState?.setCompiling?.(this.activeCompilations > 0, this);
     this.bufferUpdater.setCompilationState(compilationState);
   }
 
@@ -508,7 +509,7 @@ export class ShaderPipeline {
 
   private setCompiling(change: 1 | -1): void {
     this.activeCompilations += change;
-    this.compilationState?.setCompiling?.(this.activeCompilations > 0);
+    this.compilationState?.setCompiling?.(this.activeCompilations > 0, this);
   }
 
   public updateCurrentConfig(config: ShaderConfig): void {

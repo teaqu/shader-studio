@@ -906,15 +906,45 @@ describe('ShaderPipeline - concurrent shader messages', () => {
   });
 
   it('synchronizes a replacement observer while a compilation is still pending', async () => {
+    const previous = new ShaderCompilationState();
+    pipeline.setCompilationState(previous);
     const compile = pipeline.handleShaderMessage(makeShaderEvent('void mainImage(out vec4 o,vec2 p){o=vec4(1);}'));
     const state = new ShaderCompilationState();
     pipeline.setCompilationState(state);
+    expect(previous.isCompiling).toBe(false);
     expect(state.isCompiling).toBe(true);
     mocks.resolveCompile();
     await compile;
     expect(state.isCompiling).toBe(false);
     pipeline.setCompilationState(null);
     expect(pipeline.isCompiling()).toBe(false);
+  });
+
+  it('restores trace availability when a replaced pipeline finishes before its replacement', async () => {
+    const state = new ShaderCompilationState();
+    pipeline.setCompilationState(state);
+    const older = pipeline.handleShaderMessage(makeShaderEvent('void mainImage(out vec4 o,vec2 p){o=vec4(1);}'));
+    const nextMocks = makeConcurrentMocks();
+    const replacement = new ShaderPipeline(nextMocks.transport, nextMocks.renderEngine, nextMocks.shaderLocker, nextMocks.shaderDebugManager, state);
+    expect(state.isCompiling).toBe(true);
+    const newer = replacement.handleShaderMessage(makeShaderEvent('void mainImage(out vec4 o,vec2 p){o=vec4(0);}'));
+    setInspectorState({ ...getInspectorState(), canvasPosition: { x: 1, y: 1 } });
+    const manager = new WgslTraceLaunchManager({
+      transport: nextMocks.transport,
+      getEngine: () => ({ getShaderLanguage: () => 'wgsl', getCaptureUniforms: () => ({ res: [16, 16] }),
+        getWgslTraceTargets: () => [{ passName: 'Image', stage: 'fragment', path: '/shader.wgsl', source: 'image', width: 16, height: 16 }],
+        captureWgslProjectTrace: vi.fn() }),
+      getViewerSession: () => ({ isCurrentPreviewSource: !replacement.isCompiling() }),
+    });
+    try {
+      flushSync(); expect(getWgslTraceState().available).toBe(false);
+      mocks.resolveCompile(); await older;
+      flushSync(); expect(getWgslTraceState().available).toBe(false);
+      nextMocks.resolveCompile(); await newer;
+      flushSync(); expect(getWgslTraceState().available).toBe(true);
+    } finally {
+      manager.dispose(); resetWgslTraceState(); setInspectorState({ ...getInspectorState(), canvasPosition: null });
+    }
   });
 
   it('compiles the latest shader after a message arrives while a compile is in flight', async () => {
