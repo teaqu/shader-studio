@@ -98,12 +98,12 @@ return;
   {#if tempInput?.type === "buffer"}
     <div class="buffer-sampling">
       <label for="buffer-filter">Filter:</label>
-      <select id="buffer-filter" value={tempInput.filter ?? "linear"} onchange={updateBufferFilter}>
+      <select class="input-select" id="buffer-filter" value={tempInput.filter ?? "linear"} onchange={updateBufferFilter}>
         <option value="linear">Linear</option>
         <option value="nearest">Nearest</option>
       </select>
       <label for="buffer-wrap">Wrap:</label>
-      <select id="buffer-wrap" value={tempInput.wrap ?? "clamp"} onchange={updateBufferWrap}>
+      <select class="input-select" id="buffer-wrap" value={tempInput.wrap ?? "clamp"} onchange={updateBufferWrap}>
         <option value="clamp">Clamp</option>
         <option value="repeat">Repeat</option>
       </select>
@@ -117,7 +117,7 @@ return;
       {/if}
       {#if selectedIsCompute && selectedComputeLayerCount > 1}
         <label for="buffer-layer">Layer:</label>
-        <select id="buffer-layer" aria-label="Compute output layer" value={tempInput.layer ?? 0} onchange={updateBufferLayer}>
+        <select class="input-select" id="buffer-layer" aria-label="Compute output layer" value={tempInput.layer ?? 0} onchange={updateBufferLayer}>
           {#each Array(selectedComputeLayerCount) as _, layer}
             <option value={layer}>Layer {layer}</option>
           {/each}
@@ -140,6 +140,21 @@ return;
 </div>
 
 <style>
+  .input-select {
+    padding: 8px 12px;
+    border: 1px solid var(--vscode-input-border, #3c3c3c);
+    border-radius: 4px;
+    background: var(--vscode-input-background, #2d2d2d);
+    color: var(--vscode-input-foreground, #cccccc);
+    font-size: 14px;
+  }
+
+  .input-select:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder, #007acc);
+  }
+
+
   .output-options { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--vscode-panel-border); padding: 10px; }
   .output-options label { display: flex; gap: 8px; align-items: center; }
   .output-options p { color: var(--vscode-errorForeground); }

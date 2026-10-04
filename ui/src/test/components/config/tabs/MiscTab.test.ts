@@ -78,6 +78,7 @@ describe('MiscTab', () => {
       expect(document.body.querySelector('#buffer-output')).toBeNull();
       const layer = document.body.querySelector('#buffer-layer') as HTMLSelectElement;
       expect(layer).not.toBeNull();
+      expect(layer).toHaveClass('input-select');
       await fireEvent.change(layer, { target: { value: '2' } });
       expect(props.onSelect).toHaveBeenCalledWith({ type: 'buffer', source: 'BufferCompute', layer: 2 });
     });
@@ -91,6 +92,8 @@ describe('MiscTab', () => {
 
       const filter = document.body.querySelector('#buffer-filter') as HTMLSelectElement;
       const wrap = document.body.querySelector('#buffer-wrap') as HTMLSelectElement;
+      expect(filter).toHaveClass('input-select');
+      expect(wrap).toHaveClass('input-select');
       expect(filter.value).toBe('linear');
       expect(wrap.value).toBe('clamp');
 

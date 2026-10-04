@@ -31,6 +31,24 @@ test('compute file and function rows add native code to their source and expose 
   await page.locator('[data-tab-name="Image"]').click();
   await page.getByRole('button', { name: 'Configure iChannel0', exact: true }).click();
   await page.getByRole('tab', { name: 'Misc', exact: true }).click();
+  for (const label of ['Filter:', 'Wrap:', 'Compute output layer']) {
+    const control = page.getByLabel(label, { exact: true });
+    const styles = await control.evaluate(element => {
+      const actual = getComputedStyle(element);
+      const probe = document.createElement('span');
+      probe.style.backgroundColor = 'var(--vscode-input-background)';
+      probe.style.color = 'var(--vscode-input-foreground)';
+      element.parentElement.append(probe);
+      const expected = getComputedStyle(probe);
+      const result = { background: actual.backgroundColor, color: actual.color,
+        expectedBackground: expected.backgroundColor, expectedColor: expected.color, padding: actual.padding };
+      probe.remove();
+      return result;
+    });
+    expect(styles.background).toBe(styles.expectedBackground);
+    expect(styles.color).toBe(styles.expectedColor);
+    expect(styles.padding).toBe('8px 12px');
+  }
   await page.getByLabel('Compute output layer').selectOption('2');
   await page.reload();
   const config = JSON.parse((await workspace(page))['/shaders/compute-ui.sha.json']);
