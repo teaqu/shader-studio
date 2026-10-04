@@ -10,7 +10,7 @@
 
 {#each parameters as param}
   <div class="native-parameter-row" data-testid="native-raster-parameter">
-    <span>{param.name}: {param.type}</span>
+    <span>{`${param.name}: ${param.type}`}</span>
     <span class="gpu-provided">GPU-provided</span>
   </div>
 {/each}
