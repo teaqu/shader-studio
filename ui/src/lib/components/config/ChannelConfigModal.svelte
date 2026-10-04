@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { MessageEvent as ShaderMessage } from "@shader-studio/types";
   import { onMount, tick, untrack } from "svelte";
   import { portal } from "../../actions/portal";
   import type { ConfigInput } from "@shader-studio/types";
@@ -19,7 +20,7 @@
     onRemove: (channelName: string) => void;
     onRename?: (oldName: string, newName: string) => void;
     existingChannelNames?: string[];
-    postMessage?: (msg: { type: string; [key: string]: unknown }) => void;
+    postMessage?: (msg: ShaderMessage) => void;
     onMessage?: (handler: (event: MessageEvent) => void) => void;
     shaderPath?: string;
     audioVideoController?: AudioVideoController;

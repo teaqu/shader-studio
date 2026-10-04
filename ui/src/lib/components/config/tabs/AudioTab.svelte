@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { MessageEvent as ShaderMessage } from "@shader-studio/types";
   import { onDestroy, tick } from "svelte";
   import type { ConfigInput } from "@shader-studio/types";
   import AssetBrowser from "../AssetBrowser.svelte";
@@ -11,7 +12,7 @@
   interface Props {
     tempInput: ConfigInput | undefined;
     shaderPath: string;
-    postMessage?: (msg: { type: string; [key: string]: unknown }) => void;
+    postMessage?: (msg: ShaderMessage) => void;
     onMessage?: (handler: (event: MessageEvent) => void) => void;
     getWebviewUri: (path: string) => string | undefined;
     lastSelectedResolvedUri: string;
