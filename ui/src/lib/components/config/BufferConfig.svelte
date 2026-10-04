@@ -1,7 +1,8 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { applyRenderSource, applyVertexSource, bufferInsertionTarget, clearVertexSource, existingShaderModes } from '../../config/PassSourceAuthoring';
+  import { applyRenderSource, bufferInsertionTarget, existingShaderModes } from '../../config/PassSourceAuthoring';
+  import VertexSourceControls from './VertexSourceControls.svelte';
   import VerticesControls from './VerticesControls.svelte';
   import { ConfigValidator, resolveRenderState } from "@shader-studio/rendering";
   import { BufferConfig as BufferConfigModel } from "../../BufferConfig";
@@ -51,7 +52,7 @@
   import ChannelListItem from "./ChannelListItem.svelte";
   import ChannelConfigModal from "./ChannelConfigModal.svelte";
   import ComputePassControls from "./ComputePassControls.svelte";
-  import RenderEntryPointControls from "./RenderEntryPointControls.svelte";
+  import RenderSourceControls from "./RenderSourceControls.svelte";
   import PassGeometryControls from "./PassGeometryControls.svelte";
   import PathInput from "./PathInput.svelte";
   import DepthTestingControls from "./DepthTestingControls.svelte";
@@ -1044,24 +1045,10 @@ return;
       {#if passType === 'render'}
         <div class="config-item">
           <h3 class="section-title vertex-shader-title" ondblclick={openVertexShaderInOverlay}>Vertex shader</h3>
-          <PathInput
-            value={config.vertex ?? ""}
-            onPathChange={handleVertexPathChange}
-            allowInsert={true}
-            existingModes={existingShaderModes(passSource + '\n' + vertexSource, language, 'vertex')}
-            clearEnabled={!!config.vertex || !!renderPassConfig?.entryPoints?.vertex}
-            onClear={() => updateConfig(clearVertexSource(config as BufferPass | ImagePass))}
-            sourcePath={ownedSourcePath}
-            passName={bufferName}
-            onCreated={(result) => updateConfig(applyVertexSource(config as BufferPass | ImagePass, result))}
-            vertexSpace={verticesGeometry?.space ?? DEFAULT_VERTEX_SPACE}
-            geometryType={selectedGeometry}
-            fileType={vertexFileType}
-            suggestedPath={vertexSuggestedPath}
-            {shaderPath}
-            {postMessage}
-            {onMessage}
-          />
+          <VertexSourceControls pass={config as BufferPass | ImagePass} {passSource} {vertexSource} {language}
+            onPathChange={handleVertexPathChange} onCommit={updateConfig} sourcePath={ownedSourcePath} passName={bufferName}
+            vertexSpace={verticesGeometry?.space ?? DEFAULT_VERTEX_SPACE} geometryType={selectedGeometry}
+            fileType={vertexFileType} suggestedPath={vertexSuggestedPath} {shaderPath} {postMessage} {onMessage} />
         </div>
       {/if}
     {/if}
@@ -1099,23 +1086,10 @@ return;
       </div>
     {/if}
     {#if passType === 'render' && isWebGpuLanguage}
-      <div class="config-item">
-        <RenderEntryPointControls
-          pass={config as BufferPass | ImagePass}
-          entryPoints={renderEntryPoints}
-          {language}
-          onCommit={(nextPass) => updateConfig(nextPass)}
-        >
-          {#snippet authoringControls()}
-            <PathInput value="" hidePath={true} allowCreate={false} allowInsert={true} insertLabel="Add"
-              sourcePath={ownedSourcePath} {fileType} passName={bufferName}
-              authoringMode={hasNativeTemplate ? 'native' : undefined}
-              outputCount={renderOutputs.length}
-              onCreated={(result) => updateConfig(applyRenderSource(config as BufferPass | ImagePass, { ...result, path: isImagePass ? '' : result.path }))}
-              {shaderPath} {postMessage} {onMessage} />
-          {/snippet}
-        </RenderEntryPointControls>
-      </div>
+      <RenderSourceControls pass={config as BufferPass | ImagePass} entryPoints={renderEntryPoints}
+        {language} {fileType} sourcePath={ownedSourcePath} passName={bufferName}
+        authoringMode={hasNativeTemplate ? 'native' : undefined} outputCount={renderOutputs.length}
+        {isImagePass} {shaderPath} {postMessage} {onMessage} onCommit={updateConfig} />
     {/if}
   </div>
 </div>
