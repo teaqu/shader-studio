@@ -5,6 +5,12 @@ import { expectCanvasPixels, revertFixtureEditors } from './editor-actions.mjs';
 
 test.use({ vscodeKey: 'wgsl-step-trace' });
 
+async function canonicalSourcePaths(vscode, paths) {
+  return vscode.evaluateInHost((vscode, paths) => Object.fromEntries(
+    Object.entries(paths).map(([name, path]) => [name, vscode.Uri.file(path).fsPath]),
+  ), paths);
+}
+
 async function openProjectTrace(vscode, path) {
   await vscode.evaluateInHost(async (vscode, path) => {
     await vscode.extensions.getExtension('teaqu.shader-studio')?.activate();
@@ -80,15 +86,17 @@ test('starts a GPU recording from the inspected pixel and steps it in the shader
   const directory = join(workspacePath, `wgsl-step-trace-${process.pid}`);
   mkdirSync(directory, { recursive: true });
   const path = join(directory, 'image.wgsl');
+  // Exact byte-centred colours avoid backend-dependent rounding of 0.5 * 255.
   writeFileSync(path, `fn mainImage(p: vec2f) -> vec4f {
   var value: f32 = p.x;
   for (var i = 0u; i < 3u; i++) {
     value += 0.125;
   }
-  return vec4f(0.5, 0.25, 0.75, 1.0);
+  return vec4f(128.0 / 255.0, 64.0 / 255.0, 191.0 / 255.0, 1.0);
 }\n`);
   writeFileSync(join(directory, 'image.sha.json'), JSON.stringify({ version: '1', passes: { Image: { inputs: {} } } }));
   try {
+    const expected = await canonicalSourcePaths(vscode, { path });
     await vscode.evaluateInHost(async (vscode, path) => {
       await vscode.extensions.getExtension('teaqu.shader-studio')?.activate();
       const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
@@ -160,12 +168,12 @@ test('starts a GPU recording from the inspected pixel and steps it in the shader
     });
     expect(local.stack.stackFrames[0].line).toBe(3);
     expect(local.stack.stackFrames[0].source.sourceReference).toBe(0);
-    expect(local.stack.stackFrames[0].source.path).toBe(path);
+    expect(local.stack.stackFrames[0].source.path).toBe(expected.path);
     // The inspector exposes a top-left pixel index while fragment coordinates
     // point at that pixel's centre, so WGSL sees x + 0.5.
     expect(local.variables.variables.find(variable => variable.name === 'value')?.value).toBe(String(selectedX + 0.5));
     await expect.poll(() => vscode.evaluateInHost((vscode, path) => vscode.window.activeTextEditor?.document.uri.fsPath, path))
-      .toBe(path);
+      .toBe(expected.path);
     await vscode.evaluateInHost(async vscode => {
       const session = vscode.debug.activeDebugSession;
       await session.customRequest('continue', { threadId: 1 });
@@ -281,6 +289,7 @@ test('traces an installed WGSL Image pass with Common and a named texture @gpu',
     common: { path: 'common.wgsl' }, Image: { inputs: { keys: { type: 'keyboard' } } },
   } }));
   try {
+    const expected = await canonicalSourcePaths(vscode, { image, common });
     const frame = await openProjectTrace(vscode, image);
     await expectCanvasPixels(frame, [64, 0, 0]);
     await frame.getByRole('button', { name: 'Start Trace', exact: true }).click();
@@ -290,27 +299,27 @@ test('traces an installed WGSL Image pass with Common and a named texture @gpu',
     // Image call site, while Step Into enters Common.
     await vscode.window.keyboard.press('F10');
     await expect.poll(() => vscode.evaluateInHost(async vscode =>
-      (await vscode.debug.activeDebugSession.customRequest('stackTrace', { threadId: 1 })).stackFrames[0].source.path)).toBe(image);
+      (await vscode.debug.activeDebugSession.customRequest('stackTrace', { threadId: 1 })).stackFrames[0].source.path)).toBe(expected.image);
     await vscode.window.keyboard.press('F11');
     await expect.poll(() => vscode.evaluateInHost(async vscode =>
-      (await vscode.debug.activeDebugSession.customRequest('stackTrace', { threadId: 1 })).stackFrames[0].source.path)).toBe(common);
+      (await vscode.debug.activeDebugSession.customRequest('stackTrace', { threadId: 1 })).stackFrames[0].source.path)).toBe(expected.common);
     const commonDeclaration = await traceFrameLocals(vscode);
-    expect(commonDeclaration.stack.stackFrames[0].source.path).toBe(common);
+    expect(commonDeclaration.stack.stackFrames[0].source.path).toBe(expected.common);
     expect(commonDeclaration.stack.stackFrames[0].name).toBe('commonGain');
     expect(commonDeclaration.stack.totalFrames).toBeGreaterThanOrEqual(2);
-    expect(commonDeclaration.stack.stackFrames[1].source.path).toBe(image);
+    expect(commonDeclaration.stack.stackFrames[1].source.path).toBe(expected.image);
     expect(commonDeclaration.variables.variables.find(variable => variable.name === 'commonValue')).toBeUndefined();
     await vscode.window.keyboard.press('F10');
     const commonTrace = await traceFrameLocals(vscode);
-    expect(commonTrace.stack.stackFrames[0].source.path).toBe(common);
+    expect(commonTrace.stack.stackFrames[0].source.path).toBe(expected.common);
     expect(commonTrace.variables.variables.find(variable => variable.name === 'commonValue')?.value).toBe('0.25');
     await vscode.evaluateInHost(async vscode => {
       await vscode.debug.activeDebugSession.customRequest('stepOut', { threadId: 1 });
     });
     await expect.poll(() => vscode.evaluateInHost(async vscode =>
-      (await vscode.debug.activeDebugSession.customRequest('stackTrace', { threadId: 1 })).stackFrames[0].source.path)).toBe(image);
+      (await vscode.debug.activeDebugSession.customRequest('stackTrace', { threadId: 1 })).stackFrames[0].source.path)).toBe(expected.image);
     const imageTrace = await traceFrameLocals(vscode);
-    expect(imageTrace.stack.stackFrames[0].source.path).toBe(image);
+    expect(imageTrace.stack.stackFrames[0].source.path).toBe(expected.image);
     expect(imageTrace.variables.variables.find(variable => variable.name === 'shade')?.value).toBe('0.25');
     await vscode.evaluateInHost(async vscode => {
       await vscode.debug.stopDebugging(vscode.debug.activeDebugSession);
@@ -344,6 +353,7 @@ test('selects a WGSL compute target and traces its chosen invocation @gpu', asyn
     Compute: { type: 'compute', path: 'update.wgsl', entryPoint: 'update' },
   } }));
   try {
+    const expected = await canonicalSourcePaths(vscode, { compute });
     const frame = await openProjectTrace(vscode, image);
     await expectCanvasPixels(frame, [0, 255, 0]);
     const pass = frame.locator('.trace-control select');
@@ -360,7 +370,7 @@ test('selects a WGSL compute target and traces its chosen invocation @gpu', asyn
     const invocationTrace = await nextTraceLocals(vscode);
     expect(invocationTrace.variables.variables.find(variable => variable.name === 'invocationX')?.value).toBe('2');
     const trace = await nextTraceLocals(vscode);
-    expect(trace.stack.stackFrames[0].source.path).toBe(compute);
+    expect(trace.stack.stackFrames[0].source.path).toBe(expected.compute);
     expect(trace.variables.variables.find(variable => variable.name === 'traceValue')?.value).toBe('2.25');
   } finally {
     await vscode.evaluateInHost(async vscode => {
@@ -379,13 +389,14 @@ test('selects a WGSL vertex replay target and exposes its recorded local @gpu', 
   const image = join(directory, 'image.wgsl');
   const vertex = join(directory, 'image.vertex.wgsl');
   const config = join(directory, 'image.sha.json');
-  writeFileSync(image, 'fn mainImage(p: vec2f) -> vec4f { return vec4f(0.5, 0.25, 0.75, 1); }\n');
+  writeFileSync(image, 'fn mainImage(p: vec2f) -> vec4f { return vec4f(128.0 / 255.0, 64.0 / 255.0, 191.0 / 255.0, 1); }\n');
   writeFileSync(vertex, `fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {
   let traceVertex = (*position).x;
   *position = *position;
 }\n`);
   writeFileSync(config, JSON.stringify({ version: '1', passes: { Image: { vertex: 'image.vertex.wgsl' } } }));
   try {
+    const expected = await canonicalSourcePaths(vscode, { vertex });
     const frame = await openProjectTrace(vscode, image);
     await expectCanvasPixels(frame, [128, 64, 191]);
     const pass = frame.locator('.trace-control select');
@@ -397,7 +408,7 @@ test('selects a WGSL vertex replay target and exposes its recorded local @gpu', 
     await expect.poll(() => vscode.evaluateInHost(vscode => vscode.debug.activeDebugSession?.type ?? null))
       .toBe('shader-studio-wgsl-trace');
     const trace = await nextTraceLocals(vscode);
-    expect(trace.stack.stackFrames[0].source.path).toBe(vertex);
+    expect(trace.stack.stackFrames[0].source.path).toBe(expected.vertex);
     expect(trace.variables.variables.find(variable => variable.name === 'traceVertex')).toBeDefined();
   } finally {
     await vscode.evaluateInHost(async vscode => {
