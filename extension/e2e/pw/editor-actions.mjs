@@ -6,8 +6,25 @@ export async function replaceSource(vscode, source) {
   const target = await vscode.evaluateInHost(vscode => ({
     path: vscode.window.activeTextEditor?.document.uri.fsPath,
     eol: vscode.window.activeTextEditor?.document.eol,
+    viewColumn: vscode.window.activeTextEditor?.viewColumn,
   }));
   expect(target.path, 'source replacement requires an active native editor').toBeTruthy();
+  await vscode.evaluateInHost(async (vscode, target) => {
+    const document = vscode.workspace.textDocuments.find(document => document.uri.fsPath === target.path);
+    if (!document) {
+      throw new Error('The native editor is no longer open');
+    }
+    const group = vscode.window.tabGroups.all.find(group => group.viewColumn === target.viewColumn);
+    if (!group?.tabs.some(tab => tab.input?.uri?.fsPath === target.path)) {
+      throw new Error('The native editor group is no longer open');
+    }
+    // A webview can become the active workbench group while VS Code retains
+    // activeTextEditor. Restore that exact native document and original group.
+    await vscode.window.showTextDocument(document, { viewColumn: target.viewColumn, preserveFocus: false, preview: false });
+  }, target);
+  await expect.poll(() => vscode.evaluateInHost((vscode, target) =>
+    vscode.window.tabGroups.activeTabGroup.viewColumn === target.viewColumn
+      && vscode.window.tabGroups.activeTabGroup.activeTab?.input?.uri?.fsPath === target.path, target)).toBe(true);
   await vscode.window.locator('.editor-group-container.active .monaco-editor .view-lines').filter({ visible: true }).click();
   await expect.poll(() => vscode.evaluateInHost(vscode => vscode.window.activeTextEditor?.document.uri.fsPath)).toBe(target.path);
   await vscode.window.keyboard.press('ControlOrMeta+A');

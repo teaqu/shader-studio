@@ -364,6 +364,11 @@ module.exports = Object.freeze({
       });
       return true;
     },
+  "1974f2daaffac5c2970028e5112ea2553ee11335ed6ae06b091b12710edda6fd": vscode => ({
+    path: vscode.window.activeTextEditor?.document.uri.fsPath,
+    eol: vscode.window.activeTextEditor?.document.eol,
+    viewColumn: vscode.window.activeTextEditor?.viewColumn
+  }),
   "1ab468682ee61c9e1987cbf7a619d6b2c8472d84832780675b853c18ce89c827": async vscode => {
     const session = vscode.debug.activeDebugSession;
     await session.customRequest('next', { threadId: 1 });
@@ -395,6 +400,11 @@ module.exports = Object.freeze({
         const completions = await vscode.commands.executeCommand('vscode.executeCompletionItemProvider', editor.document.uri, editor.document.positionAt(memberEnd));
         return (completions?.items ?? []).some(item => (typeof item.label === 'string' ? item.label : item.label.label) === 'yx');
       },
+  "1fb6638115d9920d9b81b21cb4aaf02ed508c357a57ff455e7512b2f248051b1": vscode => ({
+    path: vscode.window.activeTextEditor?.document.uri.fsPath,
+    eol: vscode.window.activeTextEditor?.document.eol,
+    viewColumn: vscode.window.activeTextEditor?.viewColumn,
+  }),
   "1ff620a8e238a30645ef2a22aa9e708b77547e44002a2674b86967d664d09888": async (vscode, targetPath) => {
         const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
         await vscode.window.showTextDocument(document, {
@@ -429,6 +439,19 @@ module.exports = Object.freeze({
   "23997a58eead2b1f2350cdbb0da2b962b7e82a7284f3e220bbea707ea8eea64a": async vscode => {
       await vscode.commands.executeCommand('notifications.clearAll');
     },
+  "23ce83670f539a4275eea86e69f268e2454959ac66cdc669c3de7bf3524ee3a3": async (vscode, target) => {
+    const document = vscode.workspace.textDocuments.find(document => document.uri.fsPath === target.path);
+    if (!document) {
+      throw new Error('The native editor is no longer open');
+    }
+    const group = vscode.window.tabGroups.all.find(group => group.viewColumn === target.viewColumn);
+    if (!group?.tabs.some(tab => tab.input?.uri?.fsPath === target.path)) {
+      throw new Error('The native editor group is no longer open');
+    }
+    // A webview can become the active workbench group while VS Code retains
+    // activeTextEditor. Restore that exact native document and original group.
+    await vscode.window.showTextDocument(document, { viewColumn: target.viewColumn, preserveFocus: false, preview: false });
+  },
   "247ab002b3611504e1a4c684730bc6d7a55c109b61de2cc756c52db55021f741": async (vscode, paths) => {
           const shaderUri = vscode.Uri.file(paths[0]);
           const shader = vscode.workspace.textDocuments.find((document) => document.uri.toString() === shaderUri.toString());
@@ -1087,6 +1110,7 @@ module.exports = Object.freeze({
       editor.selection = new vscode.Selection(position, position);
       editor.revealRange(new vscode.Range(position, position));
     },
+  "64ab72e084dc17c21e6b13207cf74e5ac89857b6c03196734c6570cad4f73a48": (vscode, target) => vscode.window.tabGroups.activeTabGroup.viewColumn === target.viewColumn && vscode.window.tabGroups.activeTabGroup.activeTab?.input?.uri?.fsPath === target.path,
   "67ca040e48f6d3bf68c8fd5b872f82d014a55b7a735ca22eb2565f59f80c19b9": async vscode => {
           const editor = vscode.window.activeTextEditor;
           const text = editor.document.getText();
@@ -1126,10 +1150,6 @@ module.exports = Object.freeze({
       const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
       return document.languageId;
     },
-  "69cd2078e2a0bcbe5ac230f2869190332a80241455bf64dfc08abf49f288e3b7": vscode => ({
-    path: vscode.window.activeTextEditor?.document.uri.fsPath,
-    eol: vscode.window.activeTextEditor?.document.eol
-  }),
   "6aeda3fc3df5aea83c3544dcfbf2fda7b75198c210cc9e1adb7e3e87660e022f": () => {
         delete globalThis.__startupRefresh;
         delete globalThis.__releaseStartupRefresh;
@@ -2082,6 +2102,9 @@ module.exports = Object.freeze({
   "ddaef6aa5627eb34d7dae85e083edabeba170f19037784828a3ceb0d2ffddce3": async (vscode) => {
     await vscode.commands.executeCommand('workbench.action.closeAllEditors');
   },
+  "ddd9bbb4c812b9fc83245069f00044b0b808f3de2ddab1266524a1afe6fd968f": (vscode, target) =>
+    vscode.window.tabGroups.activeTabGroup.viewColumn === target.viewColumn
+      && vscode.window.tabGroups.activeTabGroup.activeTab?.input?.uri?.fsPath === target.path,
   "dfab40f69e2f388ad5d1087b61e7e13479b2a596103c5ea2123c241e45ffc07f": async (vscode, directory) => {
       const prefix = vscode.Uri.file(directory).fsPath + (process.platform === 'win32' ? '\\' : '/');
       // Closing a group's last tab can renumber the remaining viewColumns.
@@ -2267,10 +2290,6 @@ module.exports = Object.freeze({
   "f0a1de2219b92cde25574d47615425ed7bde85243e10ee7c5cfc800fbb6bbe21": (vscode, path) => (
       vscode.workspace.textDocuments.find((document) => document.uri.fsPath === vscode.Uri.file(path).fsPath)?.getText() ?? ''
     ),
-  "f23aa877c0bdf5cbc592ab5681fd2281941746748a9d23e70c0b46350bb60502": vscode => ({
-    path: vscode.window.activeTextEditor?.document.uri.fsPath,
-    eol: vscode.window.activeTextEditor?.document.eol,
-  }),
   "f2c9c99a19ebd72c516169e345d52980664c0e13a258c71e7408c5eb03eb03b6": async vscode => {
       await vscode.commands.executeCommand('shader-studio.stopWebServer');
       await vscode.workspace.getConfiguration('shader-studio').update(
@@ -2520,4 +2539,21 @@ module.exports = Object.freeze({
       editor.selection = new vscode.Selection(position, position);
       editor.revealRange(new vscode.Range(position, position));
     },
+  "ffd976c28687cce5a6626757855b94c71517d13d7de2224a8def0b1fcad91469": async (vscode, target) => {
+    const document = vscode.workspace.textDocuments.find(document => document.uri.fsPath === target.path);
+    if (!document) {
+      throw new Error('The native editor is no longer open');
+    }
+    const group = vscode.window.tabGroups.all.find(group => group.viewColumn === target.viewColumn);
+    if (!group?.tabs.some(tab => tab.input?.uri?.fsPath === target.path)) {
+      throw new Error('The native editor group is no longer open');
+    }
+    // A webview can become the active workbench group while VS Code retains
+    // activeTextEditor. Restore that exact native document and original group.
+    await vscode.window.showTextDocument(document, {
+      viewColumn: target.viewColumn,
+      preserveFocus: false,
+      preview: false
+    });
+  },
 });

@@ -174,6 +174,24 @@ test('closeNativeEditor clicks the named active tab without depending on browser
 test('replaceSource edits the active native group while another editor remains visible', async () => {
   const groups = [{ source: 'outside source' }, { source: 'owned source' }];
   let focused = 1;
+  const documents = groups.map((group, index) => ({ uri: { fsPath: `/fixtures/group-${index}/recovery.wgsl` }, eol: 1, getText: () => group.source }));
+  const host = {
+    workspace: { textDocuments: documents },
+    window: {
+      get activeTextEditor() {
+ return { document: documents[focused], viewColumn: focused + 1 }; 
+},
+      showTextDocument: async (_document, options) => {
+ focused = options.viewColumn - 1; 
+},
+      tabGroups: {
+        all: documents.map((document, index) => ({ viewColumn: index + 1, tabs: [{ input: { uri: document.uri } }] })),
+        get activeTabGroup() {
+ return { viewColumn: focused + 1, activeTab: { input: { uri: documents[focused].uri } } }; 
+},
+      },
+    },
+  };
   const locator = candidates => ({
     filter: () => locator(candidates),
     first: () => locator(candidates.slice(0, 1)),
@@ -190,13 +208,82 @@ test('replaceSource edits the active native group while another editor remains v
  groups[focused].source = source; 
 },
     },
-    evaluateInHost: async callback => callback({ window: { activeTextEditor: { document: {
-      uri: { fsPath: `/fixtures/group-${focused}/recovery.wgsl` }, eol: 1, getText: () => groups[focused].source,
-    } } } }),
+    evaluateInHost: async (callback, ...args) => callback(host, ...args),
   };
   await replaceSource(vscode, 'malformed source\n}');
   assert.equal(groups[1].source, 'malformed source\n}');
   assert.equal(groups[0].source, 'outside source');
+});
+
+function retainedNativeEditor({ vanished = false, missingColumn = false } = {}) {
+  let text = 'original source';
+  const document = { uri: Uri.file('/fixtures/group-2/recovery.wgsl'), eol: 2, getText: () => text };
+  const documents = [document];
+  const native = { viewColumn: 2, tabs: [{ input: { uri: document.uri } }] };
+  const preview = { viewColumn: 3, tabs: [{ input: { viewType: 'shader-studio' } }] };
+  let activeGroup = preview;
+  let evaluations = 0;
+  let pastes = 0;
+  const shown = [];
+  const host = {
+    window: {
+      activeTextEditor: { document, viewColumn: 2 },
+      tabGroups: { all: missingColumn ? [preview] : [native, preview], get activeTabGroup() {
+        return { ...activeGroup, activeTab: activeGroup.tabs[0] };
+      } },
+      showTextDocument: async (selected, options) => {
+        assert.equal(selected, document);
+        assert.equal(options.viewColumn, 2);
+        shown.push(options);
+        activeGroup = native;
+      },
+    },
+    workspace: { textDocuments: documents },
+  };
+  const vscode = {
+    evaluateInHost: async (callback, ...args) => {
+      const value = await callback(host, ...args);
+      if (++evaluations === 1 && vanished) {
+        documents.length = 0;
+      }
+      return value;
+    },
+    window: {
+      locator: () => ({ filter: () => ({ click: async () => {
+        assert.equal(activeGroup, native, 'a preview-active group has no native Monaco editor');
+      } }) }),
+      keyboard: { press: async () => {} },
+      evaluate: async (_callback, source) => {
+        pastes++;
+        text = source.replace(/\r?\n/g, '\r\n');
+      },
+    },
+  };
+  return { vscode, shown, get pastes() {
+ return pastes; 
+}, document };
+}
+
+test('replaceSource restores the retained native editor group before one paste from preview focus', async () => {
+  const fixture = retainedNativeEditor();
+  await replaceSource(fixture.vscode, 'updated\nsource');
+  assert.deepEqual(fixture.shown, [{ viewColumn: 2, preserveFocus: false, preview: false }]);
+  assert.equal(fixture.pastes, 1);
+  assert.equal(fixture.document.getText(), 'updated\r\nsource');
+});
+
+test('replaceSource refuses to reopen a native document that closed after its snapshot', async () => {
+  const fixture = retainedNativeEditor({ vanished: true });
+  await assert.rejects(() => replaceSource(fixture.vscode, 'replacement'), /native editor is no longer open/);
+  assert.equal(fixture.pastes, 0);
+  assert.deepEqual(fixture.shown, []);
+});
+
+test('replaceSource refuses a missing original editor group before a paste', async () => {
+  const fixture = retainedNativeEditor({ missingColumn: true });
+  await assert.rejects(() => replaceSource(fixture.vscode, 'replacement'), /native editor group is no longer open/);
+  assert.equal(fixture.pastes, 0);
+  assert.deepEqual(fixture.shown, []);
 });
 
 test('cleanup reverts a dirty fixture once and closes its remaining duplicate tab', async () => {
