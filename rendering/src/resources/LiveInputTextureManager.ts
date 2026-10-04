@@ -1,3 +1,4 @@
+import { createAudioAnalyser } from "./AudioAnalyser";
 import { VideoFrameGate } from "./VideoFrameGate";
 import { ScreenCapture } from "./ScreenCapture";
 import { SystemAudioCapture } from "./SystemAudioCapture";
@@ -349,8 +350,7 @@ export class LiveInputTextureManager<T> {
     try {
       const context = this.ensureAudioContext();
       source = context.createMediaStreamSource(stream);
-      analyser = context.createAnalyser();
-      analyser.fftSize = 1024;
+      analyser = createAudioAnalyser(context);
       gain = context.createGain();
       gain.gain.value = 0;
       source.connect(analyser);
@@ -377,6 +377,7 @@ export class LiveInputTextureManager<T> {
       }
       const input: LiveInput<T> = {
         stream, texture, source, analyser, gain, releaseCapture,
+        // Short analyser arrays deliberately expose the first 512 bins/samples.
         frequency: new Uint8Array(512), waveform: new Uint8Array(512),
       };
       input.onEnded = () => this.release(type, input);

@@ -21,6 +21,8 @@ function mockBackend() {
 const createMockAnalyser = () => ({
   fftSize: 0,
   smoothingTimeConstant: 0,
+  minDecibels: 0,
+  maxDecibels: 0,
   frequencyBinCount: 512,
   connect: vi.fn(),
   disconnect: vi.fn(),
@@ -297,6 +299,14 @@ describe("AudioTextureManager", () => {
   });
 
   describe("loadAudioSource", () => {
+    it("uses Shadertoy analyser settings with only the first 512 bins and samples", async () => {
+      await loadTestAudio("track.mp3");
+      const analyser = mockAudioContext.createAnalyser.mock.results[0].value;
+      expect(analyser).toMatchObject({ fftSize: 2048, smoothingTimeConstant: 0.8, minDecibels: -100, maxDecibels: -30 });
+      manager.updateTextures();
+      const rows = backend.updateTexture.mock.calls.slice(-2);
+      expect(rows.map(call => [call[2], call[3], call[4], call[5].length])).toEqual([[0, 512, 1, 512], [1, 512, 1, 512]]);
+    });
     it("should use fetch to load audio data", async () => {
       await loadTestAudio("track.mp3");
 

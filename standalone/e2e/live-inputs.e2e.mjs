@@ -190,3 +190,44 @@ for (const language of ['glsl', 'wgsl', 'slang']) {
     });
   }
 }
+
+for (const language of ['glsl', 'wgsl', 'slang']) {
+  test(`${language} audio spectrum maps a real 1 kHz tone to Shadertoy bins`, async ({ page }) => {
+    await page.addInitScript(() => {
+      navigator.mediaDevices.getUserMedia = async () => {
+        const context = new AudioContext();
+        const oscillator = context.createOscillator();
+        oscillator.frequency.value = 1000;
+        const gain = context.createGain();
+        gain.gain.value = 0.002;
+        const destination = context.createMediaStreamDestination();
+        oscillator.connect(gain).connect(destination);
+        oscillator.start();
+        void context.resume();
+        document.addEventListener('click', () => {
+ void context.resume();
+}, { once: true });
+        destination.stream.getTracks()[0].addEventListener('ended', () => {
+          oscillator.stop();
+          void context.close();
+        });
+        return destination.stream;
+      };
+    });
+    const code = language === 'glsl'
+      ? 'void mainImage(out vec4 c,in vec2 p){float peak=0.,bin=0.;for(int n=0;n<512;n++){float v=texelFetch(sound.sampler,ivec2(n,0),0).r;if(v>peak){peak=v;bin=float(n);}}bool ok=sound.loaded==1&&peak>.01&&abs(bin*iSampleRate/2048.-1000.)<60.;c=ok?vec4(0,1,0,1):vec4(1,0,0,1);}'
+      : language === 'slang'
+        ? 'float4 mainImage(float2 p){float peak=0,bin=0;for(int n=0;n<512;n++){float v=sample2DLevel(sound.texture,sound.sampler,float2((n+.5)/512.,.25),0).r;if(v>peak){peak=v;bin=n;}}bool ok=sound.loaded&&peak>.01&&abs(bin*iSampleRate/2048.-1000.)<60.;return ok?float4(0,1,0,1):float4(1,0,0,1);}'
+        : 'fn mainImage(p:vec2f)->vec4f{var peak=0.;var bin=0.;for(var n=0;n<512;n++){let v=sample2DLevel(soundTexture,soundSampler,vec2f((f32(n)+.5)/512.,.25),0).r;if(v>peak){peak=v;bin=f32(n);}}if(sound.loaded&&peak>.01&&abs(bin*iSampleRate/2048.-1000.)<60.){return vec4f(0,1,0,1);}return vec4f(1,0,0,1);}';
+    await page.route('**/__fft_fixture__', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html>' }));
+    await page.goto('/__fft_fixture__');
+    await workspace(page, [
+      [`tone.${language}`, code],
+      ['tone.sha.json', JSON.stringify({ version: '1', passes: { Image: { inputs: { sound: { type: 'microphone' } } } } })],
+    ]);
+    await page.goto('/');
+    await page.getByTestId(`shader-option-tone-${language}`).click();
+    await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
+    await expectGreen(page);
+  });
+}

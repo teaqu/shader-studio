@@ -220,7 +220,7 @@ The channel editor includes playback controls — play, pause, next, mute, reset
 
 ## Audio Channels
 
-Bind an audio file. The channel provides a **512×2 texture** containing frequency and waveform data each frame.
+Bind an audio file. The channel provides a **512×2 texture** containing frequency and waveform data each frame. Audio files, Mic and Shared Audio use Shadertoy’s analyser settings: a 2048-point FFT, 0.8 smoothing, and a −100 to −30 dB range. The spectrum row exposes the first 512 bins (approximately 0 to `iSampleRate / 4` Hz); bin `n` corresponds to `n * iSampleRate / 2048` Hz. The waveform row holds the first 512 samples, with silence centered at roughly 0.5. This changes the frequency mapping from earlier builds that used a 1024-point FFT.
 
 ![Choosing an audio channel](../assets/images/select-music.png)
 
@@ -251,7 +251,7 @@ ffmpeg -i input.mp4 -c:v copy -c:a libmp3lame -q:a 2 output.mp4
 
 | Row | y coordinate | Contents |
 |-----|-------------|----------|
-| Row 0 | ≈ 0.25 | FFT frequency spectrum — x goes from low to high frequency, value is amplitude 0–1 |
+| Row 0 | ≈ 0.25 | FFT frequency spectrum — x goes from low to high frequency, value is normalized decibel magnitude 0–1 |
 | Row 1 | ≈ 0.75 | Time-domain waveform — x is sample position across the current audio frame |
 
 ```glsl

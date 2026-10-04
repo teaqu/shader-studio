@@ -30,7 +30,7 @@ function stream() {
 }
 
 function audioContext() {
-  const analyser = { fftSize: 0, getByteFrequencyData: vi.fn(), getByteTimeDomainData: vi.fn(), connect: vi.fn(), disconnect: vi.fn() };
+  const analyser = { fftSize: 0, smoothingTimeConstant: 0, minDecibels: 0, maxDecibels: 0, getByteFrequencyData: vi.fn(), getByteTimeDomainData: vi.fn(), connect: vi.fn(), disconnect: vi.fn() };
   const gain = { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
   const context = { state: "suspended" as AudioContextState, sampleRate: 48000, destination: {}, createAnalyser: vi.fn(() => analyser), createGain: vi.fn(() => gain), createMediaStreamSource: vi.fn(() => ({ connect: vi.fn(), disconnect: vi.fn() })), resume: vi.fn().mockImplementation(async () => {
     context.state = "running";
@@ -100,6 +100,8 @@ describe("LiveInputTextureManager", () => {
     await expect(manager.startSystemAudio("default")).resolves.toBeUndefined();
     manager.updateTextures();
     expect(manager.getTexture("system-audio")).not.toBeNull();
+    expect(mockContext.analyser).toMatchObject({ fftSize: 2048, smoothingTimeConstant: 0.8, minDecibels: -100, maxDecibels: -30 });
+    expect(manager.getPreview("system-audio")?.frequency).toHaveLength(512);
     expect(manager.getAudioState("system-audio")).toMatchObject({ muted: true });
     expect(manager.getPreview("system-audio")?.waveform).toHaveLength(512);
     manager.stopSystemAudio();
@@ -231,6 +233,7 @@ describe("LiveInputTextureManager", () => {
     manager.updateTextures();
 
     expect(result.texture).not.toBeNull();
+    expect(mockContext.analyser).toMatchObject({ fftSize: 2048, smoothingTimeConstant: 0.8, minDecibels: -100, maxDecibels: -30 });
     expect(mockContext.gain.gain.value).toBe(0);
     expect(mockContext.createMediaStreamSource).toHaveBeenCalledWith(mockStream);
     expect(textureBackend.createTexture).toHaveBeenCalledWith(expect.objectContaining({ width: 512, height: 2, format: "r8", filter: "nearest", wrap: "repeat" }));
