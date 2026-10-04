@@ -99,6 +99,7 @@ const mockWebGPUHandleCanvasResize = vi.fn();
 const mockWebGPUCompileShaderPipeline = vi.fn(() => Promise.resolve({ success: true }));
 const mockWebGPUSetCustomUniformValues = vi.fn();
 const mockWebGPURenderForCapture = vi.fn();
+const mockWebGPUCaptureCurrentFrame = vi.fn(async () => new ImageData(new Uint8ClampedArray(64 * 64 * 4).fill(255), 64, 64));
 const mockWebGPUDispose = vi.fn();
 const mockGetSlangAssetUrls = vi.fn(() => ({ scriptUrl: '/mock/slang-wasm.js', wasmUrl: '/mock/slang-wasm.wasm' }));
 
@@ -124,6 +125,7 @@ vi.mock('../../../../rendering/src/webgpu/WebGPURenderingEngine', () => ({
       compileShaderPipeline: mockWebGPUCompileShaderPipeline,
       setCustomUniformValues: mockWebGPUSetCustomUniformValues,
       renderForCapture: mockWebGPURenderForCapture,
+      captureCurrentFrame: mockWebGPUCaptureCurrentFrame,
       dispose: mockWebGPUDispose,
       getTimeManager: mockGetTimeManager,
     });
@@ -572,6 +574,21 @@ describe('ShaderRecorder', () => {
       expect(mockWebGPUDispose).toHaveBeenCalled();
     });
 
+    it.each(['webm', 'gif'] as const)('reads stable GPU pixels for each saved %s frame', async (format) => {
+      const p = recorder.record({ ...baseConfig, format, width: 64, height: 64, duration: 0.1, fps: 30, startTime: 0 }, slangShaderInfo);
+      await vi.runAllTimersAsync();
+      await p;
+      expect(mockWebGPUCaptureCurrentFrame).toHaveBeenCalledTimes(3);
+      if (format === 'gif') {
+        expect(mockGifAddFrame).toHaveBeenCalledWith(expect.objectContaining({ data: expect.any(Uint8ClampedArray) }));
+        expect(mockGifAddFrame.mock.calls[0][0].data[0]).toBe(255);
+      } else {
+        const canvas = mockVideoAddFrame.mock.calls[0][0] as HTMLCanvasElement;
+        const contexts = vi.mocked(canvas.getContext).mock.results.map(result => result.value);
+        expect(contexts.some(context => vi.mocked(context.putImageData).mock.calls.length === 3)).toBe(true);
+      }
+    });
+
     it.each(['webm', 'gif'] as const)(
       'passes the complete Slang snapshot to %s recording',
       async (format) => {
@@ -909,8 +926,7 @@ describe('ShaderRecorder', () => {
     };
 
     it('captures frames through a 2D canvas copy when webgl2 is unavailable', async () => {
-      // A WebGPU (Slang) canvas returns null from getContext("webgl2");
-      // the recorder must fall back to drawing the canvas into a 2D context.
+      // The legacy WebGL path also supports canvases exposed through a 2D copy.
       const drawImage = vi.fn();
       const getImageData = vi.fn(() => ({ data: new Uint8ClampedArray(800 * 600 * 4), width: 800, height: 600 }));
       vi.spyOn(document, 'createElement').mockReturnValue({
@@ -921,13 +937,13 @@ describe('ShaderRecorder', () => {
         getContext: vi.fn((type: string) => (type === '2d' ? { drawImage, getImageData } : null)),
       } as any);
 
-      const p = recorder.record(gifConfig, slangShaderInfo);
+      const p = recorder.record(gifConfig, shaderInfo);
       await vi.runAllTimersAsync();
       await p;
 
       expect(drawImage).toHaveBeenCalled();
       expect(getImageData).toHaveBeenCalledWith(0, 0, 800, 600);
-      expect(mockWebGPURenderForCapture).toHaveBeenCalled();
+      expect(mockRenderForCapture).toHaveBeenCalled();
     });
 
     it('fails with a clear error when neither webgl2 nor 2d contexts are available', async () => {
