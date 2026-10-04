@@ -22,6 +22,33 @@ it.each(["mp4", "webm"] as const)("keeps Aurora gradients smooth in Live %s", as
     }
   }
   ctx.putImageData(reference, 0, 0);
+  const originalEncoder = globalThis.VideoEncoder;
+  const configurations: VideoEncoderConfig[] = [];
+  let sample: { format: string | null; colorSpace: VideoColorSpaceInit; options: VideoEncoderEncodeOptions | undefined } | undefined;
+  let decoder: VideoDecoderConfig | undefined;
+  if (format === "mp4") {
+    globalThis.VideoEncoder = class extends originalEncoder {
+      constructor(init: VideoEncoderInit) {
+        super({ ...init, output: (chunk, metadata) => {
+          if (metadata?.decoderConfig?.codedWidth === canvas.width) {
+            const { codec, codedWidth, codedHeight, colorSpace } = metadata.decoderConfig;
+            decoder = { codec, codedWidth, codedHeight, colorSpace };
+          }
+          init.output(chunk, metadata);
+        } });
+      }
+      configure(config: VideoEncoderConfig) {
+        configurations.push({ ...config });
+        super.configure(config);
+      }
+      encode(frame: VideoFrame, options?: VideoEncoderEncodeOptions) {
+        if (frame.displayWidth === canvas.width) {
+          sample = { format: frame.format, colorSpace: frame.colorSpace.toJSON(), options };
+        }
+        super.encode(frame, options);
+      }
+    };
+  }
   const recorder = new ShaderRecorder();
   const recording = recorder.recordLive(
     { mode: "live", format, width: canvas.width, height: canvas.height, fps: 60, duration: 1, startTime: 0 },
@@ -40,6 +67,24 @@ it.each(["mp4", "webm"] as const)("keeps Aurora gradients smooth in Live %s", as
     const decoded = await decodeVideoFrames(blob, [0.1]);
     if (format === "mp4") {
       expect(decoded.duration).toBeGreaterThanOrEqual(0.8);
+      const channels = [0, 1, 2].map(channel => {
+        let bias = 0;
+        let mse = 0;
+        let maximumError = 0;
+        for (let pixel = channel; pixel < reference.data.length; pixel += 4) {
+          const error = decoded.frames[0].data[pixel] - reference.data[pixel];
+          bias += error;
+          mse += error * error;
+          maximumError = Math.max(maximumError, Math.abs(error));
+        }
+        const count = reference.width * reference.height;
+        return { bias: bias / count, mse: mse / count, maximumError };
+      });
+      console.log("Live MP4 colour diagnostics", JSON.stringify({
+        rgbPsnr: psnr(decoded.frames[0], reference), channels,
+        canvas: ctx.getContextAttributes(), configurations, sample, decoder,
+        decoded: decoded.frameMetadata,
+      }));
     }
     // RGB catches chroma blocks that a luma-only quality test can miss.
     expect(psnr(decoded.frames[0], reference)).toBeGreaterThanOrEqual(42);
@@ -47,6 +92,7 @@ it.each(["mp4", "webm"] as const)("keeps Aurora gradients smooth in Live %s", as
     clearInterval(interval);
     canvas.remove();
     recorder.cancel();
+    globalThis.VideoEncoder = originalEncoder;
   }
 }, 30_000);
 
