@@ -57,6 +57,8 @@ When adding or changing behavior, tests are part of the implementation, not a se
 
 Test structure mirrors `src/lib/`: unit tests in `src/test/`, component tests in `src/test/components/`.
 
+CI requires each newly added or renamed runtime TypeScript/Svelte source file to have measured unit coverage: 90% statements and lines, 80% branches, and 85% functions. Declaration-only/type-only files, tests, and generated code are exempt. Package coverage ratchets also protect the language servers after new files merge. Verify a whole PR locally with `npm test -- --coverage`, then `npm run coverage:new-files -- upstream/main` (use the actual remote main ref if different).
+
 For rendering pipeline bugs, keep WebGL and WebGPU/Slang coverage in sync when applicable. If an issue appears in one pipeline and the equivalent behavior exists in the other, add or verify tests for both paths rather than only testing the pipeline where the bug was first observed.
 
 ## Extension Development Builds

@@ -43,6 +43,7 @@
     "watch:extension": "npm run watch -w extension",
     "postinstall": "node monaco/scripts/patch-word-highlighter.mjs",
     "prepare": "git config core.hooksPath .githooks || true",
+    "coverage:new-files": "node .github/scripts/check-new-file-coverage.mjs",
     "coverage:summary": "node .github/scripts/report-coverage.mjs"
   },
   "devDependencies": {

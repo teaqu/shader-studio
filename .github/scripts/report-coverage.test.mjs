@@ -17,3 +17,13 @@ test("summary weights files by counters and ignores global totals and other pack
   assert.match(formatCoverage(result), /debug \| 50\.00%/);
   assert.match(formatCoverage(result), /ui \| No data/);
 });
+
+test("summary reports the newly measured language services separately from their analysis packages", () => {
+  const result = summarizeCoverage({
+    "/repo/language-servers/wgsl/src/backend.ts": counters(9, 10),
+    "/repo/language-servers/wgsl-analysis/src/parser.ts": counters(8, 10),
+  }, "/repo");
+  assert.deepEqual(result["language-servers/wgsl"].lines, { covered: 9, total: 10 });
+  assert.deepEqual(result["language-servers/wgsl-analysis"].lines, { covered: 8, total: 10 });
+  assert.match(formatCoverage(result), /language-servers\/wgsl \| 90\.00%/);
+});

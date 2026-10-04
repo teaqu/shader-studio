@@ -3,7 +3,7 @@ import { relative, resolve } from "node:path";
 import process from "node:process";
 
 const METRICS = ["statements", "branches", "functions", "lines"];
-const PACKAGES = ["debug", "rendering", "ui"];
+const PACKAGES = ["debug", "rendering", "ui", "language-servers/core", "language-servers/glsl-analysis", "language-servers/glsl", "language-servers/slang", "language-servers/wgsl-analysis", "language-servers/wgsl", "types", "utils", "monaco", "standalone", "shader-explorer"];
 
 export function summarizeCoverage(report, root) {
   const summary = Object.fromEntries(PACKAGES.map((name) => [name,

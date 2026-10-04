@@ -12,7 +12,11 @@ export default defineConfig({
       // V8 precise profiling slows the exhaustive Slang sweep enough to exceed its
       // unchanged timeout. Istanbul limits instrumentation to our source scope.
       provider: 'istanbul',
-      include: ['debug/src/**/*.ts', 'rendering/src/**/*.ts', 'ui/src/**/*.{ts,svelte}'],
+      include: [
+        'debug/src/**/*.ts', 'rendering/src/**/*.ts', 'ui/src/**/*.{ts,svelte}',
+        'language-servers/*/src/**/*.ts', 'types/src/**/*.ts', 'utils/src/**/*.ts',
+        'monaco/src/**/*.ts', 'standalone/src/**/*.{ts,svelte}', 'shader-explorer/src/**/*.{ts,svelte}',
+      ],
       exclude: ['**/*.d.ts', '**/test/**', '**/tests/**', '**/*.test.*', '**/*.spec.*', '**/generated/**', 'ui/src/slang/**'],
       reporter: ['text', 'json-summary', 'json', 'html'],
       reportOnFailure: true,
@@ -21,6 +25,12 @@ export default defineConfig({
         'debug/src/**': { statements: 90, branches: 82.5, functions: 96, lines: 89.5 },
         'rendering/src/**': { statements: 92, branches: 85.5, functions: 93, lines: 92 },
         'ui/src/**': { statements: 90, branches: 79.5, functions: 85.5, lines: 90.5 },
+        'language-servers/core/src/**': { statements: 88, branches: 87.5, functions: 78.5, lines: 88 },
+        'language-servers/glsl-analysis/src/**': { statements: 96, branches: 87, functions: 97, lines: 96 },
+        'language-servers/glsl/src/**': { statements: 95, branches: 87, functions: 98, lines: 94.5 },
+        'language-servers/slang/src/**': { statements: 90, branches: 80, functions: 92, lines: 90 },
+        'language-servers/wgsl-analysis/src/**': { statements: 88.5, branches: 85, functions: 99, lines: 88.5 },
+        'language-servers/wgsl/src/**': { statements: 97.5, branches: 91.5, functions: 98.5, lines: 97.5 },
       },
     },
     projects: [
