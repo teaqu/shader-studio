@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { bt709I420Planes } from "../e2e/bt709I420Diagnostic";
+import { bt709I420Planes, i420ToRgbaDiagnostic } from "../e2e/bt709I420Diagnostic";
 
 function image(width: number, height: number, colors: number[][]): ImageData {
   return { width, height, data: new Uint8ClampedArray(colors.flatMap(color => [...color, 255])) } as ImageData;
@@ -26,4 +26,14 @@ it.each([
   [[0, 0, 255], [41, 41, 41, 41, 240, 110]],
 ])("matches BT601 legal-range primary vectors %j", (color, expected) => {
   expect([...bt709I420Planes(image(2, 2, [color, color, color, color]), "smpte170m")]).toEqual(expected);
+});
+it.each(["bt709", "smpte170m"] as const)("inverts legal-range %s vectors without shifting chroma planes", matrix => {
+  const colors = [[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 255], [0, 0, 0]];
+  for (const color of colors) {
+    const reference = image(2, 2, [color, color, color, color]);
+    const frame = i420ToRgbaDiagnostic(bt709I420Planes(reference, matrix), 2, 2, matrix);
+    for (let offset = 0; offset < frame.data.length; offset++) {
+      expect(Math.abs(frame.data[offset] - reference.data[offset])).toBeLessThanOrEqual(1);
+    }
+  }
 });

@@ -29,6 +29,29 @@ export function bt709I420Planes(image: ImageData, matrix: "bt709" | "smpte170m" 
   return planes;
 }
 
+/** Inverse limited-range matrix with nearest-neighbour 4:2:0 chroma, diagnostic only. */
+export function i420ToRgbaDiagnostic(planes: Uint8Array, width: number, height: number, matrix: "bt709" | "smpte170m"): ImageData {
+  const kr = matrix === "bt709" ? .2126 : .299;
+  const kb = matrix === "bt709" ? .0722 : .114;
+  const kg = 1 - kr - kb;
+  const area = width * height;
+  const rgba = new Uint8ClampedArray(area * 4);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const pixel = y * width + x;
+      const chroma = Math.floor(y / 2) * width / 2 + Math.floor(x / 2);
+      const luma = (planes[pixel] - 16) * 255 / 219;
+      const u = (planes[area + chroma] - 128) * 255 / 224;
+      const v = (planes[area * 5 / 4 + chroma] - 128) * 255 / 224;
+      rgba[pixel * 4] = Math.round(luma + 2 * (1 - kr) * v);
+      rgba[pixel * 4 + 1] = Math.round(luma - 2 * kb * (1 - kb) / kg * u - 2 * kr * (1 - kr) / kg * v);
+      rgba[pixel * 4 + 2] = Math.round(luma + 2 * (1 - kb) * u);
+      rgba[pixel * 4 + 3] = 255;
+    }
+  }
+  return { width, height, data: rgba } as ImageData;
+}
+
 export async function encodeBt709I420Diagnostic(image: ImageData, fps: number): Promise<Blob> {
   const { Output, BufferTarget, Mp4OutputFormat, VideoSample, VideoSampleSource, Quality } = await import("mediabunny");
   const { automaticVideoBitrate } = await import("../../lib/recording/VideoEncoder");

@@ -3,7 +3,7 @@ import type { RenderingEngine } from "../../../../rendering/src/types/RenderingE
 import { ShaderRecorder } from "../../lib/recording/ShaderRecorder";
 import raySpheres from "../../../../tests/fixtures/capture/ray-spheres.glsl?raw";
 import { decodeVideoFrames, glslInfo, lumaPsnr, psnr, renderReference } from "./captureMediaHelpers";
-import { bt709I420Planes, encodeBt709I420Diagnostic } from "./bt709I420Diagnostic";
+import { bt709I420Planes, encodeBt709I420Diagnostic, i420ToRgbaDiagnostic } from "./bt709I420Diagnostic";
 
 it.each(["mp4", "webm"] as const)("keeps Aurora gradients smooth in Live %s", async format => {
   const canvas = document.createElement("canvas");
@@ -28,6 +28,7 @@ it.each(["mp4", "webm"] as const)("keeps Aurora gradients smooth in Live %s", as
   const packets: Array<{ bytes: number; samples: number; keyframes: number }> = [];
   let sample: { format: string | null; colorSpace: VideoColorSpaceInit; options: VideoEncoderEncodeOptions | undefined } | undefined;
   let decoder: VideoDecoderConfig | undefined;
+  let avccHeader: number[] | undefined;
   if (format === "mp4") {
     globalThis.VideoEncoder = class extends originalEncoder {
       constructor(init: VideoEncoderInit) {
@@ -41,6 +42,13 @@ it.each(["mp4", "webm"] as const)("keeps Aurora gradients smooth in Live %s", as
           if (metadata?.decoderConfig?.codedWidth === canvas.width) {
             const { codec, codedWidth, codedHeight, colorSpace } = metadata.decoderConfig;
             decoder = { codec, codedWidth, codedHeight, colorSpace };
+            const description = metadata.decoderConfig.description;
+            if (description) {
+              const bytes = ArrayBuffer.isView(description)
+                ? new Uint8Array(description.buffer, description.byteOffset, description.byteLength)
+                : new Uint8Array(description);
+              avccHeader = Array.from(bytes.slice(0, 24));
+            }
           }
           init.output(chunk, metadata);
         } });
@@ -101,13 +109,18 @@ it.each(["mp4", "webm"] as const)("keeps Aurora gradients smooth in Live %s", as
           return { bias: bias / (end - start), mse: mse / (end - start), maximumError };
         });
       };
+      const measureCpuRgb = (planes: Uint8Array, actual: ImageData) => (["bt709", "smpte170m"] as const).map(matrix => {
+        const frame = i420ToRgbaDiagnostic(planes, reference.width, reference.height, matrix);
+        return { matrix, rgbPsnr: psnr(frame, reference), channels: measureChannels(frame), versusBrowserPsnr: psnr(frame, actual) };
+      });
       console.log("Live MP4 colour diagnostics", JSON.stringify({
         rgbPsnr: psnr(decoded.frames[0], reference), channels: measureChannels(decoded.frames[0]),
         copiedPsnr: psnr(decoded.copiedFrames[0], reference), copiedChannels: measureChannels(decoded.copiedFrames[0]),
         canvas: ctx.getContextAttributes(), configurations, sample, decoder,
         decoded: decoded.frameMetadata,
-        packets, blobBytes: blob.size,
+        packets, blobBytes: blob.size, avccHeader,
         yuvPlanes: decoded.nativePlanes[0] && measurePlanes(decoded.nativePlanes[0], decoded.frameMetadata[0].colorSpace.matrix === "smpte170m" ? "smpte170m" : "bt709"),
+        cpuRgb: decoded.nativePlanes[0] && measureCpuRgb(decoded.nativePlanes[0], decoded.frames[0]),
       }));
       const explicitBlob = await encodeBt709I420Diagnostic(reference, 60);
       const explicit = await decodeVideoFrames(explicitBlob, [.1]);
@@ -115,7 +128,8 @@ it.each(["mp4", "webm"] as const)("keeps Aurora gradients smooth in Live %s", as
         rgbPsnr: psnr(explicit.frames[0], reference), channels: measureChannels(explicit.frames[0]),
         copiedPsnr: psnr(explicit.copiedFrames[0], reference), copiedChannels: measureChannels(explicit.copiedFrames[0]),
         configurations, sample, decoder, decoded: explicit.frameMetadata,
-        packets, blobBytes: explicitBlob.size, yuvPlanes: explicit.nativePlanes[0] && measurePlanes(explicit.nativePlanes[0], "bt709"),
+        packets, blobBytes: explicitBlob.size, avccHeader, yuvPlanes: explicit.nativePlanes[0] && measurePlanes(explicit.nativePlanes[0], "bt709"),
+        cpuRgb: explicit.nativePlanes[0] && measureCpuRgb(explicit.nativePlanes[0], explicit.frames[0]),
       }));
     }
     // RGB catches chroma blocks that a luma-only quality test can miss.
