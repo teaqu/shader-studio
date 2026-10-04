@@ -516,6 +516,6 @@ through your speakers.
 
 ### Live inputs in VS Code
 
-The normal extension panel cannot grant camera or microphone access. Run **Shader Studio: Open Capture Preview** from the command palette or Shader Studio status menu. You can also select Webcam in Misc or a live input in Audio, apply it, and click **Open Capture Preview**. This starts the local web server and opens the synced viewer in VS Code’s Integrated Browser when available; older versions open an external browser. Shader edits continue to update the viewer through the extension’s existing connection.
+Mic, Shared Audio, Webcam and Screen are greyed out in VS Code panels. Hover over an input for guidance on using Shader Studio in a browser. Start the web server from the Shader Studio status menu, then choose **Open in Browser** to use these inputs in your external browser. Shader edits continue to update the viewer through the extension’s existing connection.
 
-Allow camera and microphone access for the localhost page and for VS Code in your operating system when prompted. Shared Audio requires **Start sharing** in the preview. Sharing options depend on the host; choose a routed audio input device or use an external browser if tab/system sharing is unavailable. Device choices, source permissions and sharing sessions are not saved in shader configs.
+Allow camera and microphone access for the localhost page in your browser when prompted. Shared Audio requires **Start sharing**, and Screen requires **Start screen sharing**. Sharing options depend on the browser; choose a routed audio input device if tab/system sharing is unavailable. Device choices, source permissions and sharing sessions are not saved in shader configs.

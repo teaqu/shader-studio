@@ -2,6 +2,7 @@
   import type { ConfigInput } from '@shader-studio/types';
   import type { AudioVideoController } from '../../AudioVideoController';
   import { isVSCodeEnvironment } from '../../transport/TransportFactory';
+  import { tooltip } from '../../actions/tooltip';
   import ChannelPreview from './ChannelPreview.svelte';
   import SystemAudioControls from './SystemAudioControls.svelte';
 
@@ -9,26 +10,29 @@
     input?: ConfigInput;
     audioVideoController?: AudioVideoController;
     getWebviewUri: (path: string) => string | undefined;
-    postMessage?: (message: { type: string; payload: { command: string } }) => void;
     onSelect: (input: ConfigInput) => void;
   }
-  let { input, audioVideoController, getWebviewUri, postMessage, onSelect }: Props = $props();
+  let { input, audioVideoController, getWebviewUri, onSelect }: Props = $props();
+  const captureUnavailable = isVSCodeEnvironment();
 </script>
 
 <div class="live-audio-options">
   {#each [{ type: 'microphone', label: 'Mic' }, { type: 'system-audio', label: 'Shared Audio' }] as option}
-    <button class:selected={input?.type === option.type} aria-label={option.label} onclick={() => onSelect({ type: option.type as 'microphone' | 'system-audio' })}>
+    <button class:selected={input?.type === option.type} aria-label={option.label}
+      aria-disabled={captureUnavailable}
+      use:tooltip={captureUnavailable ? `${option.label} is unavailable in VS Code. Open Shader Studio in a browser to use this input.` : ''}
+      onclick={() => {
+ if (!captureUnavailable) {
+onSelect({ type: option.type as 'microphone' | 'system-audio' });
+} 
+}}>
       <ChannelPreview channelInput={{ type: option.type as 'microphone' | 'system-audio' }} {getWebviewUri} {audioVideoController} />
       <span>{option.label}</span>
     </button>
   {/each}
 </div>
-{#if input?.type === 'microphone' || input?.type === 'system-audio'}
+{#if !captureUnavailable && (input?.type === 'microphone' || input?.type === 'system-audio')}
   <SystemAudioControls type={input.type} {audioVideoController} />
-  {#if isVSCodeEnvironment()}
-    <p>VS Code panels block device capture. Open the synced preview in the Integrated Browser.</p>
-    <button disabled={!postMessage} onclick={() => postMessage?.({ type: 'extensionCommand', payload: { command: 'openCapturePreview' } })}>Open Capture Preview</button>
-  {/if}
 {/if}
 
 <style>
@@ -36,5 +40,5 @@
   .live-audio-options button { display: flex; flex-direction: column; width: 96px; padding: 0; overflow: hidden; border: 1px solid var(--vscode-panel-border, #3c3c3c); border-radius: 6px; background: var(--vscode-editor-background, #1e1e1e); cursor: pointer; }
   .live-audio-options button.selected { border-color: var(--vscode-focusBorder, #007acc); }
   .live-audio-options span { padding: 6px 4px; font-size: 11px; width: 100%; text-align: center; color: var(--vscode-foreground, #ccc); }
-  p { font-size: 12px; color: var(--vscode-descriptionForeground, #888); }
+  .live-audio-options button[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
 </style>

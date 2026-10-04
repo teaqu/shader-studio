@@ -6,6 +6,7 @@ import type { ConfigInput } from '@shader-studio/types';
 describe('AudioTab', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   const defaultProps = () => ({
@@ -24,6 +25,7 @@ describe('AudioTab', () => {
   });
 
   it.each(['microphone', 'system-audio'] as const)('keeps audio-file fields alongside live inputs for %s', async type => {
+    vi.stubGlobal('acquireVsCodeApi', undefined);
     const api = defaultProps();
     const view = render(AudioTab, { ...api, tempInput: { type } });
     expect(view.getByRole('button', { name: 'Mic' })).toBeVisible();

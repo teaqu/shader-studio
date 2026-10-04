@@ -1,18 +1,27 @@
-import { render, fireEvent } from '@testing-library/svelte';
-import { describe, it, expect, vi } from 'vitest';
+import { render, fireEvent, waitFor } from '@testing-library/svelte';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import MiscTab from '../../../../lib/components/config/tabs/MiscTab.svelte';
 import type { AudioVideoController } from '../../../../lib/AudioVideoController';
 import { tick } from 'svelte';
 import type { ConfigInput } from '@shader-studio/types';
 
 describe('MiscTab', () => {
-  it.each(['webcam', 'screen'] as const)('opens the capture preview from a VS Code %s selection', async type => {
+  beforeEach(() => vi.stubGlobal('acquireVsCodeApi', undefined));
+  afterEach(() => vi.unstubAllGlobals());
+  it.each(['webcam', 'screen'] as const)('disables %s in VS Code with browser guidance', async type => {
     vi.stubGlobal('acquireVsCodeApi', vi.fn());
-    const postMessage = vi.fn();
-    const view = render(MiscTab, { ...defaultProps(), tempInput: { type }, postMessage });
+    const props = defaultProps();
+    const view = render(MiscTab, { ...props, tempInput: { type } });
     try {
-      await fireEvent.click(view.getByRole('button', { name: 'Open Capture Preview' }));
-      expect(postMessage).toHaveBeenCalledWith({ type: 'extensionCommand', payload: { command: 'openCapturePreview' } });
+      const option = view.getByRole('button', { name: type === 'webcam' ? 'Webcam' : 'Screen' });
+      expect(option.getAttribute('aria-disabled')).toBe('true');
+      expect(option.getAttribute('data-tooltip')).toContain('Open Shader Studio in a browser');
+      await fireEvent.mouseEnter(option);
+      await waitFor(() => expect(view.getByRole('tooltip').textContent).toContain('Open Shader Studio in a browser'));
+      await fireEvent.click(option);
+      expect(props.onSelect).not.toHaveBeenCalled();
+      expect(view.queryByRole('button', { name: 'Open Capture Preview' })).toBeNull();
+      expect(view.queryByRole('button', { name: 'Start screen sharing' })).toBeNull();
     } finally {
       view.unmount();
       vi.unstubAllGlobals();

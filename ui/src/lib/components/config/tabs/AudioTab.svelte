@@ -466,7 +466,6 @@
   input={tempInput}
   {audioVideoController}
   {getWebviewUri}
-  {postMessage}
   onSelect={input => {
     onUpdateTempInput(input);
     onAutoSave();

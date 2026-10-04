@@ -2,11 +2,11 @@
   import type { ConfigInput } from "@shader-studio/types";
   import type { AudioVideoController } from "../../../AudioVideoController";
   import { isVSCodeEnvironment } from "../../../transport/TransportFactory";
+  import { tooltip } from "../../../actions/tooltip";
   import ChannelPreview from "../ChannelPreview.svelte";
   import ScreenControls from "../ScreenControls.svelte";
 
   interface Props {
-    postMessage?: (message: { type: string; payload: { command: string } }) => void;
     tempInput?: ConfigInput;
     audioVideoController?: AudioVideoController;
     getWebviewUri: (path: string) => string | undefined;
@@ -20,10 +20,10 @@
     tempInput = undefined as ConfigInput | undefined,
     getWebviewUri,
     audioVideoController,
-    postMessage,
     onSelect,
     availableBufferNames = [],
   }: Props = $props();
+  const captureUnavailable = isVSCodeEnvironment();
 
   const bufferList = $derived.by(() => {
     const all = new Set([...MIN_BUFFERS, ...availableBufferNames]);
@@ -114,27 +114,34 @@ return;
       <ChannelPreview channelInput={{ type: "keyboard" }} {getWebviewUri} />
       <div class="misc-card-label">Keyboard</div>
     </button>
-    <button class="misc-card" class:selected={tempInput?.type === "webcam"} aria-label="Webcam" onclick={() => onSelect({ type: "webcam" })}>
+    <button class="misc-card" class:selected={tempInput?.type === "webcam"} aria-label="Webcam"
+      aria-disabled={captureUnavailable}
+      use:tooltip={captureUnavailable ? 'Webcam is unavailable in VS Code. Open Shader Studio in a browser to use this input.' : ''}
+      onclick={() => {
+ if (!captureUnavailable) {
+onSelect({ type: "webcam" });
+} 
+}}>
       <ChannelPreview channelInput={{ type: "webcam" }} {getWebviewUri} {audioVideoController} />
       <div class="misc-card-label">Webcam</div>
     </button>
-    <button class="misc-card" class:selected={tempInput?.type === "screen"} aria-label="Screen" onclick={() => onSelect({ type: "screen" })}>
+    <button class="misc-card" class:selected={tempInput?.type === "screen"} aria-label="Screen"
+      aria-disabled={captureUnavailable}
+      use:tooltip={captureUnavailable ? 'Screen is unavailable in VS Code. Open Shader Studio in a browser to use this input.' : ''}
+      onclick={() => {
+ if (!captureUnavailable) {
+onSelect({ type: "screen" });
+} 
+}}>
       <ChannelPreview channelInput={{ type: "screen" }} {getWebviewUri} {audioVideoController} />
       <div class="misc-card-label">Screen</div>
     </button>
   </div>
-  {#if isVSCodeEnvironment() && (tempInput?.type === "webcam" || tempInput?.type === "screen")}
-    <p>VS Code panels block device capture. Apply your channel, then open the synced preview
-      in VS Code’s Integrated Browser. Older VS Code versions open your external browser.</p>
-    <button disabled={!postMessage} onclick={() => postMessage?.({ type: "extensionCommand", payload: { command: "openCapturePreview" } })}>
-      Open Capture Preview
-    </button>
-  {/if}
-  {#if tempInput?.type === "webcam"}
+  {#if !captureUnavailable && tempInput?.type === "webcam"}
     <p>Uses your default device. Allow access when prompted. If this host blocks capture,
       open Shader Studio in a browser on localhost or HTTPS. </p>
   {/if}
-  {#if tempInput?.type === "screen"}
+  {#if !captureUnavailable && tempInput?.type === "screen"}
     <ScreenControls {audioVideoController} />
     <div class="screen-sampling">
       <label for="screen-filter">Filter:</label>
@@ -222,7 +229,9 @@ return;
     padding: 0;
   }
 
-  .misc-card:hover {
+  .misc-card[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
+
+  .misc-card:not([aria-disabled="true"]):hover {
     border-color: var(--vscode-focusBorder, #007acc);
     transform: translateY(-1px);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);

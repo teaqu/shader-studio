@@ -1,4 +1,3 @@
-import { openCapturePreview, INTEGRATED_BROWSER_COMMAND } from './CapturePreviewLauncher';
 import * as vscode from "vscode";
 import * as fs from "fs";
 import { Logger } from "./services/Logger";
@@ -196,22 +195,6 @@ export class ShaderStudio {
     }
   }
 
-  private async openCapturePreview(): Promise<void> {
-    try {
-      await openCapturePreview({
-        getCommands: () => vscode.commands.getCommands(true),
-        startServer: () => this.webServer.startWebServer(),
-        isServerRunning: () => this.webServer.isRunning(),
-        getServerUrl: () => this.webServer.getHttpUrl(),
-        openIntegratedBrowser: url => vscode.commands.executeCommand(INTEGRATED_BROWSER_COMMAND, url),
-        openExternalBrowser: url => vscode.env.openExternal(vscode.Uri.parse(url)),
-      });
-    } catch (error) {
-      this.logger.error(`Failed to open capture preview: ${error}`);
-      await vscode.window.showErrorMessage(`Failed to open capture preview: ${error}`);
-    }
-  }
-
   private async copyServerUrl(): Promise<void> {
     if (!this.webServer.isRunning()) {
       vscode.window.showWarningMessage(
@@ -234,7 +217,6 @@ export class ShaderStudio {
 
   private registerCommands(): void {
     this.context.subscriptions.push(
-      vscode.commands.registerCommand("shader-studio.openCapturePreview", () => this.openCapturePreview()),
       vscode.commands.registerCommand("shader-studio.view", () => {
         this.logger.info("shader-studio.view command executed");
         this.panelManager.createPanel();
