@@ -182,20 +182,11 @@
       var(--storage-text) 4%,
       var(--storage-bg)
     );
-    --storage-line: color-mix(
-      in srgb,
-      var(--storage-text) 14%,
-      var(--storage-bg)
-    );
-    --storage-accent: color-mix(
-      in srgb,
-      var(--vscode-focusBorder, #a9b6ff) 55%,
-      var(--storage-text)
-    );
-    --storage-selected: color-mix(
-      in srgb,
-      var(--storage-accent) 14%,
-      var(--storage-bg)
+    --storage-line: var(--vscode-panel-border, #3c3c3c);
+    --storage-accent: var(--vscode-focusBorder, #007acc);
+    --storage-selected: var(
+      --vscode-list-activeSelectionBackground,
+      color-mix(in srgb, var(--storage-accent) 14%, var(--storage-bg))
     );
     display: flex;
     flex: 1;
@@ -204,23 +195,29 @@
     overflow: auto;
     color: var(--storage-text);
     background: var(--storage-bg);
-    font: 14px/1.5 var(--vscode-font-family, system-ui, sans-serif);
+    font: 12px/1.5 var(--vscode-font-family, system-ui, sans-serif);
     container-type: inline-size;
   }
   .storage-panel :global(button),
   .storage-panel :global(input),
   .storage-panel :global(select) {
     font: inherit;
-    font-size: 14px;
+    font-size: 12px;
     color: var(--storage-text);
     background: var(--storage-bg);
     border: 1px solid var(--storage-line);
-    border-radius: 6px;
-    padding: 6px 10px;
+    border-radius: 4px;
+    padding: 5px 10px;
     min-height: 32px;
     min-width: 0;
     max-width: 100%;
     box-sizing: border-box;
+  }
+  .storage-panel :global(input),
+  .storage-panel :global(select) {
+    color: var(--vscode-input-foreground, var(--storage-text));
+    background: var(--vscode-input-background, var(--storage-bg));
+    border-color: var(--vscode-input-border, var(--storage-line));
   }
   .storage-panel :global(button) {
     cursor: pointer;
@@ -243,9 +240,12 @@
     cursor: default;
   }
   .storage-panel :global(.primary) {
-    background: var(--storage-selected);
-    color: var(--storage-accent);
+    background: var(--vscode-button-background, #0e639c);
+    color: var(--vscode-button-foreground, #fff);
     border-color: transparent;
+  }
+  .storage-panel :global(button.primary:hover:not(:disabled)) {
+    background: var(--vscode-button-hoverBackground, #1177bb);
   }
   .storage-panel :global(button:focus-visible),
   .storage-panel :global(input:focus-visible),
@@ -257,13 +257,13 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 16px;
+    padding: 12px 16px;
     gap: 12px;
     border-bottom: 1px solid var(--storage-line);
   }
   h2 {
     margin: 0;
-    font-size: 17px;
+    font-size: 14px;
     font-weight: 500;
   }
   p {
@@ -296,21 +296,25 @@
   }
   .storage-panel nav button[aria-pressed="true"] {
     background: var(--storage-selected);
-    color: var(--storage-accent);
+    color: var(--vscode-list-activeSelectionForeground, var(--storage-text));
+  }
+  .storage-panel nav button[aria-pressed="true"] small {
+    color: inherit;
+    opacity: 0.8;
   }
   small {
     font-size: 12px;
     color: var(--storage-muted);
   }
   main {
-    padding: 22px;
+    padding: 16px;
     min-width: 0;
   }
   .tabs {
     display: flex;
-    gap: 24px;
+    gap: 20px;
     border-bottom: 1px solid var(--storage-line);
-    margin-bottom: 20px;
+    margin-bottom: 16px;
   }
   .storage-panel .tabs button {
     height: 36px;

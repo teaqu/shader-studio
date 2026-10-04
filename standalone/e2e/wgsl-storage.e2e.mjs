@@ -103,6 +103,18 @@ test(`storage workspace saves structured layout and lifecycle changes and uses c
   await config.getByRole('tab', { name: 'Settings', exact: true }).click();
   const actionHeights = await config.locator('.storage-panel button:not([role="tab"]):not(nav button)').evaluateAll(items => items.map(item => Math.round(item.getBoundingClientRect().height)));
   expect(new Set(actionHeights)).toEqual(new Set([32]));
+  const inputTheme = await config.getByLabel('Element count').evaluate(item => {
+    const style = getComputedStyle(item);
+    const probe = document.createElement('span');
+    probe.style.backgroundColor = 'var(--vscode-input-background)';
+    item.parentElement.append(probe);
+    const expectedBackground = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return { background: style.backgroundColor, expectedBackground, radius: style.borderRadius, fontSize: style.fontSize };
+  });
+  expect(inputTheme.background).toBe(inputTheme.expectedBackground);
+  expect(inputTheme.radius).toBe('4px');
+  expect(inputTheme.fontSize).toBe('12px');
   const tabStyle = await config.getByRole('tab', { name: 'Settings', exact: true }).evaluate(item => ({ radius: getComputedStyle(item).borderRadius, top: getComputedStyle(item).borderTopWidth }));
   expect(tabStyle).toEqual({ radius: '0px', top: '0px' });
   const navRow = config.getByRole('button', { name: 'Select storage particles' });

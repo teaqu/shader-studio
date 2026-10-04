@@ -405,13 +405,13 @@
 <style>
   .storage-editor {
     display: grid;
-    gap: 20px;
+    gap: 16px;
     min-width: 0;
   }
   section {
     display: grid;
-    gap: 14px;
-    padding-bottom: 20px;
+    gap: 12px;
+    padding-bottom: 16px;
     border-bottom: 1px solid var(--storage-line);
   }
   section:last-of-type {
@@ -432,13 +432,13 @@
     margin: 0;
   }
   h3 {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 500;
   }
   .fields {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 14px;
+    gap: 12px;
   }
   label {
     display: grid;
@@ -451,7 +451,7 @@
     box-sizing: border-box;
     width: 100%;
     min-width: 0;
-    font-size: 14px;
+    font-size: 13px;
   }
   .heading select {
     width: auto;
@@ -470,7 +470,7 @@
   .schema {
     display: grid;
     border: 1px solid var(--storage-line);
-    border-radius: 7px;
+    border-radius: 4px;
     overflow: hidden;
   }
   .schema > div {
@@ -510,7 +510,7 @@
     margin: 12px 0 0;
     padding: 12px;
     background: var(--storage-soft);
-    border-radius: 6px;
+    border-radius: 4px;
     font: 12px/1.7 var(--vscode-editor-font-family, monospace);
     white-space: pre-wrap;
     overflow-wrap: anywhere;

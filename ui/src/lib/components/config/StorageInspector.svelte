@@ -281,7 +281,7 @@
     margin: 0;
   }
   h3 {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 500;
   }
   label {
@@ -293,14 +293,14 @@
   .capture-options {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 14px;
+    gap: 12px;
   }
   select,
   input {
     width: 100%;
     box-sizing: border-box;
     min-width: 0;
-    font-size: 14px;
+    font-size: 13px;
   }
   .capture-actions {
     justify-content: flex-start;
@@ -315,7 +315,7 @@
   .capture-meta {
     padding: 10px 12px;
     background: var(--storage-soft);
-    border-radius: 6px;
+    border-radius: 4px;
   }
   table {
     width: 100%;
@@ -347,7 +347,7 @@
   .scalar-values > div {
     display: grid;
     grid-template-columns: 50px minmax(0, 1fr);
-    gap: 14px;
+    gap: 12px;
     padding: 9px 0;
     border-bottom: 1px solid var(--storage-line);
   }
