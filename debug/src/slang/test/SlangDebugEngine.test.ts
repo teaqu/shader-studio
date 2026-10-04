@@ -21,11 +21,15 @@ describe("SlangDebugEngine", () => {
     const engine = new SlangDebugEngine();
     const analysis = engine.analyze(unsignedRequest);
     expect(analysis.ok).toBe(true);
-    if (!analysis.ok) throw new Error(analysis.diagnostics[0]?.message);
+    if (!analysis.ok) {
+      throw new Error(analysis.diagnostics[0]?.message);
+    }
     const captured = analysis.analysis.visibleValues.find(candidate => candidate.name === 'value');
     expect(captured).toMatchObject({ typeName });
     const preview = engine.planPreview(unsignedRequest, { normalizeMode: 'off', stepEdge: null });
-    if (!preview.ok) throw new Error(preview.diagnostics[0]?.message);
+    if (!preview.ok) {
+      throw new Error(preview.diagnostics[0]?.message);
+    }
     expect(preview).toMatchObject({ ok: true });
     expect(engine.planCapture(unsignedRequest, [captured!.id])).toMatchObject({ ok: true, plan: { captureSlots: [{ hidden: true }, { name: 'value', typeName }] } });
   });
