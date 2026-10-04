@@ -411,9 +411,9 @@ export class ShaderRecorder {
       let blob: Blob;
 
       if (config.format === "gif") {
-        blob = await this.recordGif(canvas, engine, tm, config, totalFrames, width, height, timeline);
+        blob = await this.recordGif(canvas, engine, tm, config, totalFrames, width, height, timeline, snapshot.language);
       } else {
-        blob = await this.recordVideo(canvas, engine, tm, config, totalFrames, width, height, timeline, videoBitrate);
+        blob = await this.recordVideo(canvas, engine, tm, config, totalFrames, width, height, timeline, videoBitrate, snapshot.language);
       }
 
       return blob;
@@ -448,6 +448,7 @@ export class ShaderRecorder {
     width: number,
     height: number,
     timeline: RenderTimeline,
+    language?: ShaderInfo["language"],
   ): Promise<Blob> {
     const encoder = new GifEncoderWrapper({
       width,
@@ -467,7 +468,9 @@ export class ShaderRecorder {
 
       await this.renderStep(renderingEngine, tm, timeline.outputStep(i));
 
-      const imageData = this.captureGifFrame(canvas, width, height);
+      const imageData = language === "wgsl" || language === "slang"
+        ? await renderingEngine.captureCurrentFrame()
+        : this.captureGifFrame(canvas, width, height);
       encoder.addFrame(imageData);
 
       recordingStore.updateProgress(i + 1, totalFrames);
@@ -525,6 +528,7 @@ export class ShaderRecorder {
     height: number,
     timeline: RenderTimeline,
     bitrate?: number,
+    language?: ShaderInfo["language"],
   ): Promise<Blob> {
     const encoder = new VideoEncoderWrapper({
       width,
@@ -538,6 +542,15 @@ export class ShaderRecorder {
     // instead of building up a massive backlog for finish(). Each flush is
     // awaited, so at most flushInterval frames are ever queued.
     const flushInterval = Math.max(4, Math.ceil(config.fps / 2));
+    // WebGPU drawing buffers are transient. Read back into a stable 2D canvas
+    // before handing pixels to WebCodecs, including across encoder flushes.
+    const gpuFrames = language === "wgsl" || language === "slang";
+    const encodingCanvas = gpuFrames ? document.createElement("canvas") : canvas;
+    if (gpuFrames) {
+      encodingCanvas.width = width;
+      encodingCanvas.height = height;
+    }
+    const encodingContext = gpuFrames ? encodingCanvas.getContext("2d") : null;
 
     try {
       for (let i = 0; i < totalFrames; i++) {
@@ -548,7 +561,13 @@ export class ShaderRecorder {
         await this.renderStep(renderingEngine, tm, timeline.outputStep(i));
 
         const timestampUs = Math.round((i / config.fps) * 1_000_000);
-        encoder.addFrame(canvas, timestampUs);
+        if (gpuFrames) {
+          if (!encodingContext) {
+            throw new Error("Failed to create a video frame canvas");
+          }
+          encodingContext.putImageData(await renderingEngine.captureCurrentFrame(), 0, 0);
+        }
+        encoder.addFrame(encodingCanvas, timestampUs);
 
         recordingStore.updateProgress(i + 1, totalFrames);
 
