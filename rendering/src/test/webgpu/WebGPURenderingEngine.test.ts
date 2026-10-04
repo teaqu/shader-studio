@@ -176,7 +176,7 @@ describe("WebGPURenderingEngine", () => {
     expect(result).toEqual({ success: false, errors: ["/helper.slang: unexpected token"] });
   });
 
-  it("compiles a selected common file as common code while retaining Image as the debug root", async () => {
+  it.each(["/common.slang", "\\common.slang"])("compiles a selected common file %s as common code while retaining Image as the debug root", async commonPath => {
     const engine = new WebGPURenderingEngine(assets);
     const compile = vi.spyOn(engineOwners(engine).session, "compileShaderPipeline").mockResolvedValue({ success: true });
     const previous = {
@@ -186,7 +186,7 @@ describe("WebGPURenderingEngine", () => {
       buffers: { common: "float shared(float x) { return x; }" },
       slangModules: [],
       slangSourcePath: "/image.slang",
-      slangSourcePaths: { Image: "/image.slang", common: "/common.slang" },
+      slangSourcePaths: { Image: "/image.slang", common: commonPath },
     };
     (engineOwners(engine).session as unknown as { lastCompile: typeof previous }).lastCompile = previous;
 

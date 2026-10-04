@@ -728,11 +728,11 @@ describe("WebGPUVariableCapturer", () => {
     );
   });
 
-  it("compiles a selected common debug file as common code instead of a module", async () => {
+  it.each(["/shaders/common.slang", "\\shaders\\common.slang"])("compiles a selected common debug file %s as common code instead of a module", async commonPath => {
     const gpu = mockGpu();
     const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {
       commonCode: "",
-      slangSourcePath: "/shaders/common.slang",
+      slangSourcePath: commonPath,
     });
     const plan: DebugInstrumentationPlan = {
       workspaceHash: "common-hash",

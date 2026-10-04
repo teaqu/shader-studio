@@ -529,7 +529,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     captureCounters.pipelineCompiles++;
     const commonPlanSource = debugPlan?.files.find(file => file.uri !== debugPlan.rootUri
       && file.moduleName === ""
-      && (file.path === this.compileContext.slangSourcePath || file.path.toLowerCase().endsWith(".wgsl")));
+      && (file.path.replace(/\\/g, "/") === this.compileContext.slangSourcePath?.replace(/\\/g, "/") || file.path.toLowerCase().endsWith(".wgsl")));
     const compileResult = await this.compiler.compile(captureShader, {
       passName: "capture",
       commonCode: commonPlanSource?.source ?? commonCode,

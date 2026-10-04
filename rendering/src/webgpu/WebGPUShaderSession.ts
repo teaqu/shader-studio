@@ -801,7 +801,7 @@ export class WebGPUShaderSession {
     const previous = this.lastCompile;
     const selectedSource = plan.files.find((file) => file.uri === plan.selectedSourceUri);
     const commonSource = plan.files.find(file => file.uri !== root.uri && (
-      previous?.slangSourcePaths?.common === file.path
+      previous?.slangSourcePaths?.common?.replace(/\\/g, "/") === file.path.replace(/\\/g, "/")
       || (root.path.toLowerCase().endsWith(".wgsl") && file.moduleName === "")
     ));
     const planModules: SlangSourceModule[] = plan.files
