@@ -73,13 +73,131 @@ describe("WgslLanguageService", () => {
   it("documents the mainVertex contract on the vertex stage", async () => {
     const instance = new WgslLanguageService();
     await instance.syncEnvironment({ ...environment(), stage: "vertex" });
-    const text = `fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {
+    const text = `fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {
 }`;
     await instance.openDocument({ uri, languageId: "wgsl", version: 1, text });
 
-    const hover = await instance.hover({ document: revision, position: { line: 0, character: 5 } });
-    expect(JSON.stringify(hover?.contents)).toContain("mainVertex");
-    expect(JSON.stringify(hover?.contents)).toContain("vertex hook");
+    const hoverAt = async (name: string) => JSON.stringify((await instance.hover({
+      document: revision,
+      position: { line: 0, character: text.indexOf(name) + 1 },
+    }))?.contents);
+
+    expect(await hoverAt("mainVertex")).toContain("vertex hook");
+    expect(await hoverAt("mainVertex")).toContain("fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>");
+    expect(await hoverAt("vertexIndex")).toContain("vertexIndex: u32");
+    expect(await hoverAt("vertexIndex")).toContain("vertex_index");
+    expect(await hoverAt("vertexIndex")).toContain("0, 1 and 2");
+    expect(await hoverAt("vertexIndex")).toContain("iVertexCount - 1");
+    expect(await hoverAt("vertexIndex")).toContain("iInstanceIndex says which copy is being drawn");
+    expect(await hoverAt("vertexIndex")).toContain("vertices geometry runs from 0 to iVertexCount - 1");
+    expect(await hoverAt("vertexIndex")).toContain("`vertexCount`");
+    expect(await hoverAt("position")).toContain("vertices geometry in clip space");
+    expect(await hoverAt("position")).toContain("object-space");
+    expect(await hoverAt("uv")).toContain("texture coordinate");
+  });
+
+  it.each(["vertex", "fragment"] as const)("completes and documents iVertexCount on the %s stage", async (stage) => {
+    const instance = new WgslLanguageService();
+    await instance.syncEnvironment({ ...environment(), stage });
+    const text = stage === "vertex"
+      ? "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) { (*position).x = f32(vertexIndex) / f32(iVertexCount); }"
+      : "fn mainImage(coord: vec2f) -> vec4f { return vec4f(f32(iVertexCount)); }";
+    await instance.openDocument({ uri, languageId: "wgsl", version: 1, text });
+
+    const labels = (await instance.completion({ document: revision, position: { line: 0, character: text.indexOf("iVertexCount") } }))
+      .map((item) => item.label);
+    expect(labels).toContain("iVertexCount");
+    const hover = JSON.stringify((await instance.hover({
+      document: revision,
+      position: { line: 0, character: text.indexOf("iVertexCount") + 2 },
+    }))?.contents);
+    expect(hover).toContain("var<private> iVertexCount: u32");
+    expect(hover).toContain("vertexCount");
+    expect(hover).not.toContain("Declared in");
+  });
+
+  it.each([
+    ["vertex", "iInstanceIndex", "Zero-based index of the instance"],
+    ["fragment", "iInstanceIndex", "Zero-based index of the instance"],
+    ["vertex", "iInstanceCount", "configured instanceCount"],
+    ["fragment", "iInstanceCount", "configured instanceCount"],
+  ] as const)("completes and documents %s-stage %s", async (stage, name, description) => {
+    const instance = new WgslLanguageService();
+    await instance.syncEnvironment({ ...environment(), stage });
+    const text = stage === "vertex"
+      ? `fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) { (*position).x += f32(${name}); }`
+      : `fn mainImage(coord: vec2f) -> vec4f { return vec4f(f32(${name})); }`;
+    await instance.openDocument({ uri, languageId: "wgsl", version: 1, text });
+    const labels = (await instance.completion({ document: revision, position: { line: 0, character: text.indexOf(name) } }))
+      .map((item) => item.label);
+    expect(labels).toContain(name);
+    const hover = JSON.stringify((await instance.hover({
+      document: revision,
+      position: { line: 0, character: text.indexOf(name) + 2 },
+    }))?.contents);
+    expect(hover).toContain(`var<private> ${name}: u32`);
+    expect(hover).toContain(description);
+  });
+
+  it.each(["vertex", "fragment"] as const)("completes and documents iViewProjection on the %s stage", async (stage) => {
+    const instance = new WgslLanguageService();
+    await instance.syncEnvironment({ ...environment(), stage });
+    const text = stage === "vertex"
+      ? "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) { let c = iViewProjection * vec4f(*position, 1.0); *position = c.xyz / c.w; }"
+      : "fn mainImage(coord: vec2f) -> vec4f { return iViewProjection[0]; }";
+    await instance.openDocument({ uri, languageId: "wgsl", version: 1, text });
+    const labels = (await instance.completion({ document: revision, position: { line: 0, character: text.indexOf("iViewProjection") } }))
+      .map((item) => item.label);
+    expect(labels).toContain("iViewProjection");
+    const hover = JSON.stringify((await instance.hover({
+      document: revision,
+      position: { line: 0, character: text.indexOf("iViewProjection") + 2 },
+    }))?.contents);
+    expect(hover).toContain("var<private> iViewProjection: mat4x4f");
+    expect(hover).toContain("iProjectionMatrix * iViewMatrix");
+  });
+
+  it("completes and documents fragment-only iVertexUv", async () => {
+    const instance = new WgslLanguageService();
+    await instance.syncEnvironment({ ...environment(), stage: "fragment" });
+    const text = "fn mainImage(coord: vec2f) -> vec4f { return vec4f(iVertexUv, 0.0, 1.0); }";
+    await instance.openDocument({ uri, languageId: "wgsl", version: 1, text });
+    const labels = (await instance.completion({ document: revision, position: { line: 0, character: text.indexOf("iVertexUv") } }))
+      .map((item) => item.label);
+    expect(labels).toContain("iVertexUv");
+    const hover = JSON.stringify((await instance.hover({
+      document: revision,
+      position: { line: 0, character: text.indexOf("iVertexUv") + 2 },
+    }))?.contents);
+    expect(hover).toContain("var<private> iVertexUv: vec2f");
+    expect(hover).toContain("interpolated UV");
+  });
+
+  it("documents renamed WGSL vertex-hook parameters by role", async () => {
+    const instance = new WgslLanguageService();
+    await instance.syncEnvironment({ ...environment(), stage: "vertex" });
+    const text = "fn mainVertex(corner: u32, deformed: ptr<function, vec3f>, n: ptr<function, vec3f>, t: ptr<function, vec2f>) { (*deformed).x += f32(corner); }";
+    await instance.openDocument({ uri, languageId: "wgsl", version: 1, text });
+    const hoverAt = async (name: string) => JSON.stringify((await instance.hover({
+      document: revision,
+      position: { line: 0, character: text.indexOf(name) + 1 },
+    }))?.contents);
+
+    expect(await hoverAt("corner")).toContain("vertex index");
+    expect(await hoverAt("deformed")).toContain("vertex position");
+  });
+
+  it("does not document the pre-vertex-index hook signature as the Shader Studio hook", async () => {
+    const instance = new WgslLanguageService();
+    await instance.syncEnvironment({ ...environment(), stage: "vertex" });
+    const text = "fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {}";
+    await instance.openDocument({ uri, languageId: "wgsl", version: 1, text });
+
+    const hover = JSON.stringify((await instance.hover({
+      document: revision,
+      position: { line: 0, character: text.indexOf("position") + 1 },
+    }))?.contents);
+    expect(hover ?? "").not.toContain("object-space");
   });
 
   it("completes user symbols, intrinsics, builtins, uniforms, and resources", async () => {
@@ -809,7 +927,7 @@ fn unused() { discard; }
       expect.objectContaining({ code: "stage-unavailable-builtin", range: { start: positionOf(compute, "textureSample"), end: positionOf(compute, "textureSample", 13) }, message: "'textureSample' is only available in the fragment stage; use textureSampleLevel with an explicit level." }),
     ]);
 
-    const vertex = `fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {
+    const vertex = `fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {
   if (*uv).x > 2.0 { discard; }
   (*position).y += fwidth((*uv).x);
 }`;
@@ -1079,7 +1197,7 @@ describe("WGSL member typing and hover gaps found by the corpus sweep", () => {
   });
 
   it("completes members through pointer dereferences", async () => {
-    const hook = "fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2<f32>>)";
+    const hook = "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2<f32>>)";
     expect(await membersOf("", "(*uv).", { stage: "vertex" }, hook)).toEqual(expect.arrayContaining(["x", "y", "xy"]));
     expect(await membersOf("  var pos = *position;\n", "pos.", { stage: "vertex" }, hook)).toEqual(expect.arrayContaining(["x", "xyz"]));
     expect(await membersOf("", "(*normal).xy.", { stage: "vertex" }, hook)).toEqual(expect.arrayContaining(["x", "y"]));
@@ -1221,7 +1339,7 @@ fn helper(v: f32) -> f32 { return cycleA(v); }`;
   });
 
   it("reports discard from a vertex hook and compute-only builtins from a fragment entry through Common", async () => {
-    const vertex = "fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) { stop(); }";
+    const vertex = "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) { stop(); }";
     expect((await errorsOf(await open(vertex, withCommon("vertex")))).map((item) => [item.code, item.message])).toEqual([
       ["stage-unavailable-statement", "'discard' is only available in the fragment stage; reached through Common: stop (common.wgsl line 9)."],
     ]);

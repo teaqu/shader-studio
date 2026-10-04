@@ -1030,10 +1030,10 @@ interface SlangVertexHookMatch {
 }
 
 function vertexHookMatches(source: string): SlangVertexHookMatch[] {
-  const pattern = /\bvoid\s+(mainVertex)\s*\(\s*inout\s+float3\s+([A-Za-z_]\w*)\s*,\s*inout\s+float3\s+([A-Za-z_]\w*)\s*,\s*inout\s+float2\s+([A-Za-z_]\w*)\s*\)/g;
+  const pattern = /\bvoid\s+(mainVertex)\s*\(\s*(?:in\s+)?uint\s+([A-Za-z_]\w*)\s*,\s*inout\s+float3\s+([A-Za-z_]\w*)\s*,\s*inout\s+float3\s+([A-Za-z_]\w*)\s*,\s*inout\s+float2\s+([A-Za-z_]\w*)\s*\)/g;
   return [...source.matchAll(pattern)].flatMap((match) => {
     const functionName = match[1];
-    const parameterNames = match.slice(2, 5);
+    const parameterNames = match.slice(2, 6);
     if (!functionName || parameterNames.some((name) => !name)) {
       return [];
     }
@@ -1044,11 +1044,11 @@ function vertexHookMatches(source: string): SlangVertexHookMatch[] {
       return [];
     }
     const bodyEnd = matchingBrace(source, bodyStart);
-    const types = ["float3", "float3", "float2"] as const;
+    const declarations = ["uint", "inout float3", "inout float3", "inout float2"] as const;
     const parameters = parameterNames.map((name, index): SlangVertexHookFeature => ({
       name: name!,
       kind: "parameter",
-      signature: `inout ${types[index]} ${name}`,
+      signature: `${declarations[index]} ${name}`,
       description: SLANG_VERTEX_HOOK_FEATURES[index + 1]!.description,
     }));
     const signature = `void mainVertex(${parameters.map((feature) => feature.signature).join(", ")})`;

@@ -144,6 +144,9 @@ module.exports = Object.freeze({
         );
         await vscode.workspace.applyEdit(edit);
       },
+  "123f8511397d0918c06db7ed3442c7bc33b6e41c73017da27651059c8ef90aab": vscode => {
+        setTimeout(() => vscode.commands.executeCommand('workbench.action.reloadWindow'), 100);
+      },
   "12b712993b306cc00b137da35bce4384068aff4c3268c8f64e63bfec4e47d512": async (vscode, targetPath, expectedLanguage, intrinsicNeedle) => {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
     if (document.languageId !== expectedLanguage) {
@@ -1127,6 +1130,14 @@ module.exports = Object.freeze({
     await vscode.commands.executeCommand('shader-studio.view');
     await vscode.commands.executeCommand('notifications.clearAll');
   },
+  "7df14d11486f2c0f25fa81dc24002c4a3eb7b5e4bf56c478a570f6cfd72dc0b0": async (vscode, path) => {
+    const previews = vscode.window.tabGroups.all.flatMap(group => group.tabs)
+      .filter(tab => tab.input instanceof vscode.TabInputWebview);
+    await vscode.window.tabGroups.close(previews);
+    const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
+    await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.One, preview: false });
+    await vscode.commands.executeCommand('shader-studio.view');
+  },
   "7e2323f420ac1c09a5a23443906d7ae95ba05b24bf3387d9d0e04086023f04e9": async vscode => vscode.commands.executeCommand('editor.action.showHover'),
   "80c7f492b2a06dbf938e087dc44375bf12a9b090b745be69f4c6b2f8f6c48fa7": async (vscode, targetPath) => {
       const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
@@ -1266,6 +1277,16 @@ module.exports = Object.freeze({
   "965e32fc8ceab4808187bfbbb182f6a5adce3281e02ac328661b8c65c72c2a4e": (vscode, path) =>
       vscode.languages.getDiagnostics(vscode.Uri.file(path)).filter(d => d.severity === vscode.DiagnosticSeverity.Error)
         .map(d => ({ line: d.range.start.line, column: d.range.start.character })),
+  "968f816161185b801cfbcccfeda285697168bd61fa55326d12d752579a90ac7e": async (vscode, path) => {
+    const previews = vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab => tab.input instanceof vscode.TabInputWebview);
+    await vscode.window.tabGroups.close(previews);
+    const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
+    await vscode.window.showTextDocument(document, {
+      viewColumn: vscode.ViewColumn.One,
+      preview: false
+    });
+    await vscode.commands.executeCommand('shader-studio.view');
+  },
   "96a8732af5cbd7c325801e90ff0f07356bc143b1a4aef8d86f9852fb6dd5cb9f": async (vscode, port) => {
       await vscode.workspace.getConfiguration('shader-studio').update(
         'webServerPort', port, vscode.ConfigurationTarget.Global,

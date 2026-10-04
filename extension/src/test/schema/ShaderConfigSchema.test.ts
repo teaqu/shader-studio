@@ -2,6 +2,28 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as path from 'path';
 import Ajv = require('ajv');
+import {
+  BLEND_MODES,
+  CULL_MODES,
+  DEFAULT_BLEND_MODE,
+  DEFAULT_CLEAR_COLOR,
+  DEFAULT_CULL_MODE,
+  DEFAULT_DEPTH_COMPARE,
+  DEFAULT_INSTANCE_COUNT,
+  DEFAULT_MESH_TOPOLOGY,
+  DEFAULT_SAMPLE_COUNT,
+  DEFAULT_VERTEX_COUNT,
+  DEFAULT_VERTEX_SPACE,
+  DEFAULT_VERTEX_TOPOLOGY,
+  DEPTH_COMPARE_FUNCTIONS,
+  GEOMETRY_TYPES,
+  MAX_INSTANCE_COUNT,
+  MESH_TOPOLOGIES,
+  SAMPLE_COUNTS,
+  MAX_VERTEX_COUNT,
+  VERTEX_SPACES,
+  VERTEX_TOPOLOGIES,
+} from '@shader-studio/types';
 
 suite('Shader config JSON schema', () => {
   const schemaPath = path.resolve(__dirname, '../../../schemas/shader-config.schema.json');
@@ -24,7 +46,7 @@ suite('Shader config JSON schema', () => {
   }
 
   test('accepts every supported image and buffer geometry type plus omission', () => {
-    for (const type of ['fullscreen', 'plane', 'cube', 'sphere']) {
+    for (const type of ['fullscreen', 'vertices', 'plane', 'cube', 'sphere']) {
       assertValid({
         version: '1.0',
         passes: {
@@ -83,6 +105,257 @@ suite('Shader config JSON schema', () => {
           BufferA: { path: 'buffer-a.glsl', geometry }
         }
       }, expectedMessage);
+    }
+  });
+
+  test('accepts vertexCount, topology and space on vertices geometry', () => {
+    for (const topology of VERTEX_TOPOLOGIES) {
+      for (const space of VERTEX_SPACES) {
+        assertValid({
+          version: '1.0',
+          passes: {
+            Image: { geometry: { type: 'vertices', vertexCount: 6, topology, space } },
+            BufferA: { path: 'buffer-a.glsl', geometry: { type: 'vertices', topology } },
+          },
+        });
+      }
+    }
+    for (const vertexCount of [1, 3, 2147483647]) {
+      assertValid({ version: '1.0', passes: { Image: { geometry: { type: 'vertices', vertexCount } } } });
+    }
+  });
+
+  test('keeps geometry and vertices fields in sync with the shared config types', () => {
+    const branches: Array<{ properties: Record<string, { const?: string; enum?: string[]; default?: unknown; maximum?: number }> }> =
+      schema.definitions.GeometryConfig.oneOf;
+    const types = branches.flatMap((branch) => branch.properties.type.const ?? branch.properties.type.enum ?? []);
+    assert.deepStrictEqual([...types].sort(), [...GEOMETRY_TYPES].sort());
+    const vertices = branches.find((branch) => branch.properties.type.const === 'vertices')!;
+    assert.deepStrictEqual(vertices.properties.topology.enum, [...VERTEX_TOPOLOGIES]);
+    assert.strictEqual(vertices.properties.topology.default, DEFAULT_VERTEX_TOPOLOGY);
+    assert.deepStrictEqual(vertices.properties.space.enum, [...VERTEX_SPACES]);
+    assert.strictEqual(vertices.properties.space.default, DEFAULT_VERTEX_SPACE);
+    assert.strictEqual(vertices.properties.vertexCount.maximum, MAX_VERTEX_COUNT);
+    assert.strictEqual(vertices.properties.vertexCount.default, DEFAULT_VERTEX_COUNT);
+  });
+
+  test('keeps blend, clear, depth and cull values in sync with the shared config types', () => {
+    const { BlendMode, ClearColor, DepthSettings, CullMode } = schema.definitions;
+    assert.deepStrictEqual(BlendMode.enum, [...BLEND_MODES]);
+    assert.strictEqual(BlendMode.default, DEFAULT_BLEND_MODE);
+    assert.deepStrictEqual(ClearColor.default, [...DEFAULT_CLEAR_COLOR]);
+    assert.deepStrictEqual(DepthSettings.properties.compare.enum, [...DEPTH_COMPARE_FUNCTIONS]);
+    assert.strictEqual(DepthSettings.properties.compare.default, DEFAULT_DEPTH_COMPARE);
+    assert.deepStrictEqual(CullMode.enum, [...CULL_MODES]);
+    assert.strictEqual(CullMode.default, DEFAULT_CULL_MODE);
+  });
+
+  test('rejects out-of-range and non-integer vertex counts', () => {
+    const cases: Array<[unknown, string]> = [
+      [0, 'should be >= 1'],
+      [-3, 'should be >= 1'],
+      [2147483648, 'should be <= 2147483647'],
+      [1.5, 'should be integer'],
+      ['6', 'should be integer'],
+    ];
+    for (const [vertexCount, expectedMessage] of cases) {
+      assertInvalid({
+        version: '1.0',
+        passes: { Image: { geometry: { type: 'vertices', vertexCount } } },
+      }, expectedMessage);
+    }
+  });
+
+  test('rejects unknown topologies, including fan and loop, and unknown spaces', () => {
+    for (const topology of ['triangle-fan', 'line-loop', 'points', '']) {
+      assertInvalid({
+        version: '1.0',
+        passes: { Image: { geometry: { type: 'vertices', topology } } },
+      }, 'should be equal to one of the allowed values');
+    }
+    for (const space of ['screen', 'object', '']) {
+      assertInvalid({
+        version: '1.0',
+        passes: { Image: { geometry: { type: 'vertices', space } } },
+      }, 'should be equal to one of the allowed values');
+    }
+  });
+
+  test('rejects vertexCount and space on fullscreen, mesh and model geometry, and topology on fullscreen', () => {
+    assertInvalid({
+      version: '1.0',
+      passes: { Image: { geometry: { type: 'fullscreen', topology: 'triangle-list' } } },
+    }, 'should NOT have additional properties');
+    const others = [{ type: 'fullscreen' }, { type: 'plane' }, { type: 'cube' }, { type: 'sphere' }, { type: 'model', path: './cat.glb' }];
+    for (const geometry of others) {
+      for (const extra of [{ vertexCount: 6 }, { space: 'clip' }]) {
+        assertInvalid({
+          version: '1.0',
+          passes: { Image: {}, BufferA: { path: 'buffer-a.glsl', geometry: { ...geometry, ...extra } } },
+        }, 'should NOT have additional properties');
+      }
+    }
+  });
+
+  test('accepts the mesh topologies on plane, cube, sphere and model geometry', () => {
+    const meshes = [{ type: 'plane' }, { type: 'cube' }, { type: 'sphere' }, { type: 'model', path: './cat.glb' }];
+    for (const geometry of meshes) {
+      for (const topology of MESH_TOPOLOGIES) {
+        assertValid({ version: '1.0', passes: { Image: {}, BufferA: { path: 'buffer-a.glsl', geometry: { ...geometry, topology } } } });
+      }
+    }
+  });
+
+  test('rejects strip and unknown topologies on mesh geometry', () => {
+    for (const topology of ['triangle-strip', 'line-strip', 'triangle-fan', '']) {
+      assertInvalid({
+        version: '1.0',
+        passes: { Image: { geometry: { type: 'sphere', topology } } },
+      }, 'should be equal to one of the allowed values');
+    }
+  });
+
+  test('keeps the mesh topologies in sync with the shared config types', () => {
+    assert.deepStrictEqual(schema.definitions.MeshTopology.enum, [...MESH_TOPOLOGIES]);
+    assert.strictEqual(schema.definitions.MeshTopology.default, DEFAULT_MESH_TOPOLOGY);
+  });
+
+  test('accepts instanceCount on every geometry except fullscreen', () => {
+    const geometries = [
+      { type: 'vertices', vertexCount: 6, topology: 'line-list', space: 'clip' },
+      { type: 'plane' },
+      { type: 'cube' },
+      { type: 'sphere' },
+      { type: 'model', path: './cat.glb', mesh: 'Body' },
+    ];
+    for (const geometry of geometries) {
+      for (const instanceCount of [1, 64, 2147483647]) {
+        assertValid({ version: '1.0', passes: { Image: { geometry: { ...geometry, instanceCount } } } });
+        assertValid({ version: '1.0', passes: { Image: {}, BufferA: { path: 'buffer-a.glsl', geometry: { ...geometry, instanceCount } } } });
+      }
+    }
+  });
+
+  test('rejects instanceCount on fullscreen geometry', () => {
+    assertInvalid({
+      version: '1.0',
+      passes: { Image: { geometry: { type: 'fullscreen', instanceCount: 2 } } },
+    }, 'should NOT have additional properties');
+  });
+
+  test('rejects out-of-range and non-integer instance counts', () => {
+    const cases: Array<[unknown, string]> = [
+      [0, 'should be >= 1'],
+      [2147483648, 'should be <= 2147483647'],
+      [2.5, 'should be integer'],
+      ['4', 'should be integer'],
+    ];
+    for (const [instanceCount, expectedMessage] of cases) {
+      assertInvalid({
+        version: '1.0',
+        passes: { Image: { geometry: { type: 'cube', instanceCount } } },
+      }, expectedMessage);
+    }
+  });
+
+  test('keeps instanceCount in sync with the shared config types', () => {
+    assert.strictEqual(schema.definitions.InstanceCount.maximum, MAX_INSTANCE_COUNT);
+    assert.strictEqual(schema.definitions.InstanceCount.default, DEFAULT_INSTANCE_COUNT);
+  });
+
+  test('accepts every blend mode on Image and buffer passes of any geometry', () => {
+    for (const blend of BLEND_MODES) {
+      for (const type of GEOMETRY_TYPES) {
+        const geometry = type === 'model' ? { type, path: './cat.glb' } : { type };
+        assertValid({
+          version: '1.0',
+          passes: { Image: { geometry, blend }, BufferA: { path: 'a.glsl', geometry, blend } },
+        });
+      }
+    }
+  });
+
+  test('accepts clear colours on Image and buffer passes of any geometry', () => {
+    for (const type of GEOMETRY_TYPES) {
+      const geometry = type === 'model' ? { type, path: './cat.glb' } : { type };
+      assertValid({ version: '1.0', passes: { Image: { geometry, clear: [0, 0.25, 0.5, 1] }, BufferA: { path: 'a.glsl', geometry, clear: [1, 0, 0, 0] } } });
+    }
+  });
+
+  test('rejects malformed and out-of-range clear colours', () => {
+    for (const clear of [false, [0, 0, 0], [0, 0, 0, 1, 1], [-0.1, 0, 0, 1], [0, 0, 0, 1.1], [0, 0, '0', 1]]) {
+      assertInvalid({ version: '1.0', passes: { Image: { clear } } }, 'data.passes.Image.clear');
+    }
+  });
+
+  test('accepts depth and cull on every geometry except fullscreen', () => {
+    for (const type of GEOMETRY_TYPES.filter((candidate) => candidate !== 'fullscreen')) {
+      const geometry = type === 'model' ? { type, path: './cat.glb' } : { type };
+      for (const compare of DEPTH_COMPARE_FUNCTIONS) {
+        assertValid({
+          version: '1.0',
+          passes: {
+            Image: { geometry, depth: { test: false, write: false, compare } },
+            BufferA: { path: 'a.glsl', geometry, depth: {} },
+          },
+        });
+      }
+      for (const cull of CULL_MODES) {
+        assertValid({ version: '1.0', passes: { Image: { geometry, cull }, BufferA: { path: 'a.glsl', geometry, cull } } });
+      }
+      for (const samples of SAMPLE_COUNTS) {
+        assertValid({ version: '1.0', passes: { Image: { geometry, samples }, BufferA: { path: 'a.glsl', geometry, samples } } });
+      }
+    }
+  });
+
+  test('rejects sample counts other than 1 and 4', () => {
+    for (const samples of [0, 2, 8, '4', 4.5]) {
+      assertInvalid({ version: '1.0', passes: { Image: { geometry: { type: 'cube' }, samples } } }, 'should be equal to one of the allowed values');
+    }
+  });
+
+  test('keeps the sample counts in sync with the shared config types', () => {
+    assert.deepStrictEqual(schema.definitions.SampleCount.enum, [...SAMPLE_COUNTS]);
+    assert.strictEqual(schema.definitions.SampleCount.default, DEFAULT_SAMPLE_COUNT);
+  });
+
+  test('rejects depth and cull on fullscreen geometry, including when geometry is omitted', () => {
+    for (const pass of [{ geometry: { type: 'fullscreen' } }, {}]) {
+      for (const setting of [{ depth: { test: true } }, { depth: {} }, { cull: 'back' }, { cull: 'none' }, { samples: 4 }, { samples: 1 }]) {
+        assertInvalid({ version: '1.0', passes: { Image: { ...pass, ...setting } } }, 'should match "then" schema');
+        assertInvalid({ version: '1.0', passes: { Image: {}, BufferA: { path: 'a.glsl', ...pass, ...setting } } }, 'should match "then" schema');
+      }
+    }
+  });
+
+  test('rejects unknown blend, compare and cull values and non-boolean depth flags', () => {
+    const geometry = { type: 'cube' };
+    const cases: unknown[] = [
+      { blend: 'multiply' },
+      { blend: true },
+      { cull: 'both' },
+      { cull: 'cw' },
+      { depth: { compare: 'lequal' } },
+      { depth: { test: 'yes' } },
+      { depth: { write: 1 } },
+    ];
+    for (const setting of cases) {
+      assertInvalid({ version: '1.0', passes: { Image: { geometry, ...(setting as object) } } }, 'data.passes.Image');
+    }
+    assertInvalid({ version: '1.0', passes: { Image: { geometry, depth: { test: true, stencil: true } } } }, 'should NOT have additional properties');
+  });
+
+  test('rejects blend, clear, depth and cull on compute and Common passes', () => {
+    for (const setting of [{ blend: 'additive' }, { clear: [0, 0, 0, 1] }, { depth: { test: false } }, { cull: 'back' }, { samples: 4 }]) {
+      assertInvalid({
+        version: '1.0',
+        passes: { Image: {}, Sim: { type: 'compute', path: 'sim.slang', ...setting } },
+      }, 'should NOT have additional properties');
+      assertInvalid({
+        version: '1.0',
+        passes: { Image: {}, common: { path: 'common.glsl', ...setting } },
+      }, 'data.passes.common should NOT have additional properties');
     }
   });
 

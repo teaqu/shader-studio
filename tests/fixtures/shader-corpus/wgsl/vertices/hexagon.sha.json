@@ -1,0 +1,14 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "vertex": "./hexagon.vert.wgsl",
+      "geometry": {
+        "type": "vertices",
+        "vertexCount": 6,
+        "topology": "triangle-strip",
+        "space": "clip"
+      }
+    }
+  }
+}

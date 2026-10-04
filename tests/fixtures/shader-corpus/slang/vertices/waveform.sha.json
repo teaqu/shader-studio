@@ -1,0 +1,14 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "vertex": "./waveform.vert.slang",
+      "geometry": {
+        "type": "vertices",
+        "vertexCount": 256,
+        "topology": "line-strip",
+        "space": "clip"
+      }
+    }
+  }
+}

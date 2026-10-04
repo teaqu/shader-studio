@@ -206,12 +206,12 @@ describe('WebExtensionHost', () => {
     ['glsl-common', 'glsl', '// Common'],
     ['slang-common', 'slang', '// Common'],
     ['slang-compute', 'slang', '[shader("compute")]'],
-    ['glsl-vertex', 'glsl', 'void mainVertex'],
-    ['slang-vertex', 'slang', 'void mainVertex'],
+    ['glsl-vertex', 'glsl', 'void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv)'],
+    ['slang-vertex', 'slang', 'void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv)'],
     ['wgsl-buffer', 'wgsl', 'fn mainImage'],
     ['wgsl-common', 'wgsl', '// Common'],
     ['wgsl-compute', 'wgsl', '@compute'],
-    ['wgsl-vertex', 'wgsl', 'position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>'],
+    ['wgsl-vertex', 'wgsl', 'fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>)'],
   ])('creates and loads %s files through the config protocol', async (fileType, extension, expected) => {
     const host = await createHost({ prompt: (_message, initial) => initial });
     const receive = vi.fn();

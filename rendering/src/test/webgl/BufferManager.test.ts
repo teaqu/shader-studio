@@ -73,6 +73,7 @@ const createMockRenderer = (): PiRenderer => {
     AttachTextures: vi.fn(),
     GetAttribLocation: vi.fn(() => 0),
     DrawUnitQuad_XY: vi.fn(),
+    DrawFullScreenTriangle_XY: vi.fn(),
     Flush: vi.fn(),
 
     // Helper methods for testing
@@ -148,7 +149,8 @@ describe('BufferManager', () => {
       expect(BufferA?.back?.mTex0?.mFormat).toBe(3);
       expect(BufferB?.front?.mTex0).toMatchObject({ mFormat: 5, mXres: 64, mYres: 48 });
       expect(BufferB?.back?.mTex0?.mFormat).toBe(5);
-      expect(mockRenderer.DrawUnitQuad_XY).toHaveBeenCalledTimes(4);
+      expect(mockRenderer.DrawFullScreenTriangle_XY).toHaveBeenCalledTimes(4);
+      expect(mockRenderer.DrawUnitQuad_XY).not.toHaveBeenCalled();
     });
 
     it('preserves half-float storage and depth when resizing', () => {
@@ -208,7 +210,8 @@ describe('BufferManager', () => {
       expect(mockRenderer.SetRenderTarget).toHaveBeenCalled();
       expect(mockRenderer.AttachShader).toHaveBeenCalled();
       expect(mockRenderer.AttachTextures).toHaveBeenCalled();
-      expect(mockRenderer.DrawUnitQuad_XY).toHaveBeenCalled();
+      expect(mockRenderer.DrawFullScreenTriangle_XY).toHaveBeenCalledWith(0);
+      expect(mockRenderer.DrawUnitQuad_XY).not.toHaveBeenCalled();
     });
 
     it('should keep the overlap anchored to the bottom-left when growing and shrinking', () => {

@@ -1,0 +1,16 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "vertex": "./alpha-discs_glsl.vert.glsl",
+      "geometry": {
+        "type": "vertices",
+        "vertexCount": 18
+      },
+      "blend": "alpha",
+      "depth": {
+        "write": false
+      }
+    }
+  }
+}

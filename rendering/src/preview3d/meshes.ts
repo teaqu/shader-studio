@@ -49,3 +49,34 @@ function assertValidSegmentCount(segmentCount: number, name: string): void {
     throw new RangeError(`${name} must be a finite positive integer`);
   }
 }
+
+/**
+ * Each unique edge of an indexed triangle list once, as a line-list index
+ * buffer of the same index type, in first-seen order. Drawing the triangle
+ * indices as lines would join unrelated vertices across triangles.
+ */
+export function createEdgeIndices(indices: Uint16Array | Uint32Array): Uint16Array | Uint32Array {
+  const seen = new Map<number, Set<number>>();
+  const edges: number[] = [];
+  for (let triangle = 0; triangle + 2 < indices.length; triangle += 3) {
+    for (const [from, to] of [[0, 1], [1, 2], [2, 0]] as const) {
+      const a = indices[triangle + from]!;
+      const b = indices[triangle + to]!;
+      if (a === b) {
+        continue;
+      }
+      const low = Math.min(a, b);
+      const high = Math.max(a, b);
+      let partners = seen.get(low);
+      if (!partners) {
+        partners = new Set();
+        seen.set(low, partners);
+      }
+      if (!partners.has(high)) {
+        partners.add(high);
+        edges.push(a, b);
+      }
+    }
+  }
+  return indices instanceof Uint32Array ? Uint32Array.from(edges) : Uint16Array.from(edges);
+}

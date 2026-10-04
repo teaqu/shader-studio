@@ -61,6 +61,8 @@ export class RenderingEngine implements RenderingEngineInterface {
   private holdVideoResumeForResetCompile = false;
   private pixelRegionCapturer: WebGLPixelRegionCapturer | null = null;
   private meshResources: WebGLMeshResources | null = null;
+  /** Pass the last capture compile context targeted; its iVertexCount feeds capture uniforms. */
+  private capturePassName: string | null = null;
   private gpuTimingEnabled = false;
   private gpuFrameMs: number | null = null;
   private gpuFence: { sync: WebGLSync; startedAt: number } | null = null;
@@ -118,6 +120,7 @@ export class RenderingEngine implements RenderingEngineInterface {
       this.renderLimits,
       () => this.frameRenderer.invalidatePausedUniforms(),
     );
+    this.shaderPipeline.setFloat32Blendable(Boolean(this.gl.getExtension?.("EXT_float_blend")));
 
     this.passRenderer = new PassRenderer(
       glCanvas,
@@ -682,6 +685,7 @@ export class RenderingEngine implements RenderingEngineInterface {
       ? passes.find(pass => pass.name !== "common" && pass.shaderSrc === code)
       : undefined) || passes.find(pass => pass.name === "Image") || passes.find(pass => pass.name !== "common");
 
+    this.capturePassName = targetPass?.name ?? null;
     if (!targetPass) {
       return { commonCode: isCapturingCommonPass ? '' : commonPassCode };
     }
@@ -699,6 +703,7 @@ export class RenderingEngine implements RenderingEngineInterface {
 
   public getCaptureUniforms(): CaptureUniforms {
     const u = this.frameRenderer.getUniforms();
+    const capturePass = this.shaderPipeline.getPass(this.capturePassName ?? "Image");
     return {
       time: u.time,
       timeDelta: u.timeDelta,
@@ -709,6 +714,7 @@ export class RenderingEngine implements RenderingEngineInterface {
       date: u.date as number[],
       cameraPos: u.cameraPos as number[],
       cameraDir: u.cameraDir as number[],
+      ...(capturePass ? { vertexCount: this.passRenderer.getPassVertexCount(capturePass), instanceCount: this.passRenderer.getPassInstanceCount(capturePass), camera: this.passRenderer.getCameraMatrices(u.res as number[]) } : {}),
     };
   }
 

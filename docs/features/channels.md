@@ -354,7 +354,11 @@ honour the setting.
 32-bit linear filtering is unavailable. If the selected format cannot be used as
 a pass output, compilation reports an error instead of silently choosing another
 format. Explicit `rgba16float` remains useful when its smaller storage and reduced
-precision are desired. Declaring an `f32` / `float` variable does not prevent
+precision are desired. Two render settings store a 32-bit buffer pass as
+`rgba16float` instead, with a warning in the preview: `blend` on a GPU that
+cannot blend 32-bit floats, and `samples: 4`, because WebGPU cannot multisample
+32-bit float textures (see [Render Settings](vertex-shaders.md#render-settings)).
+Declaring an `f32` / `float` variable does not prevent
 rounding when a value is written to a 16-bit output texture. A texel-exact read
 cannot recover precision already lost on write.
 

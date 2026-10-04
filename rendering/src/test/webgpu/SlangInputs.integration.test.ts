@@ -59,7 +59,7 @@ void run(uint3 id : SV_DispatchThreadID) { float2 c = float2(id.xy); writeOutput
     { channels, passKind: 'compute', hasOutput: true });
     expect(compute.success, JSON.stringify(compute)).toBe(true);
     const vertex = compiler.compileImagePass('float4 mainImage(float2 c) { return 1; }', {
-      channels, vertexCode: `void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) { float2 c = uv; position.x += iChannel0.${call}.x; }`,
+      channels, vertexCode: `void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) { float2 c = uv; position.x += iChannel0.${call}.x; }`,
     });
     expect(vertex.success, JSON.stringify(vertex)).toBe(true);
   });
