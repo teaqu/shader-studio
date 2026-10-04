@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { tick } from 'svelte';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AppLayoutStub, { layoutStub } from './AppLayoutStub.svelte';
 import AppShaderStudioStub from './AppShaderStudioStub.svelte';
 import AppShaderExplorerStub from './AppShaderExplorerStub.svelte';
@@ -15,6 +15,7 @@ vi.mock('@shader-studio/ui', async () => {
 });
 
 import App from '../App.svelte';
+afterEach(() => vi.unstubAllGlobals());
 import type { WebTransport } from '../WebTransport';
 import type { PwaController, PwaStatus } from '../pwa';
 import {
@@ -353,7 +354,11 @@ describe('standalone App', () => {
   it('exports a portable workspace backup from the Workspace menu', async () => {
     const transport = createTransport();
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:backup'), revokeObjectURL: vi.fn() });
+    vi.stubGlobal('URL', class extends URL {
+      static createObjectURL = vi.fn(() => 'blob:backup');
+      static revokeObjectURL = vi.fn();
+    });
+    expect(new URL('./backup', 'https://example.com/').href).toBe('https://example.com/backup');
     render(App, { props: { transport } });
 
     await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));

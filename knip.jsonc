@@ -239,10 +239,12 @@
     },
     ".": {
       "entry": [
-        "vite.aliases.mjs"
+        "vite.aliases.mjs",
+        ".github/scripts/svelte-istanbul-provider.mjs"
       ],
       "project": [
-        "vite.aliases.mjs"
+        "vite.aliases.mjs",
+        ".github/scripts/svelte-istanbul-provider.mjs"
       ]
     }
   },

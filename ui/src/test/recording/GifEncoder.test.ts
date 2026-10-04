@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest';
 
 // Mock the WASM bytes module
 vi.mock('../../lib/recording/gifskiWasmBytes', () => ({
@@ -28,14 +28,14 @@ class MockWorker {
 }
 
 vi.stubGlobal('Worker', MockWorker);
-vi.stubGlobal('URL', {
-  ...URL,
-  createObjectURL: vi.fn(() => 'blob:mock-worker-url'),
-  revokeObjectURL: vi.fn(),
+vi.stubGlobal('URL', class extends URL {
+  static createObjectURL = vi.fn(() => 'blob:mock-worker-url');
+  static revokeObjectURL = vi.fn();
 });
 vi.stubGlobal('Blob', class MockBlob {
   constructor(public parts: any[], public options?: any) {}
 });
+afterAll(() => vi.unstubAllGlobals());
 
 import { GifEncoderWrapper } from '../../lib/recording/GifEncoder';
 
@@ -59,6 +59,10 @@ function makeImageData(w: number, h: number): ImageData {
 
 describe('GifEncoderWrapper', () => {
   let encoder: GifEncoderWrapper;
+
+  it('preserves URL construction while mocking worker blob URLs', () => {
+    expect(new URL('./worker.js', 'https://example.com/').href).toBe('https://example.com/worker.js');
+  });
 
   beforeEach(() => {
     vi.clearAllMocks();
