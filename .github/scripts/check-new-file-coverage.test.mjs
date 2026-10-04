@@ -68,7 +68,7 @@ test("CLI compares the whole branch against its supplied base and fails on an un
   const root = mkdtempSync(join(tmpdir(), "new-file-coverage-"));
   const git = (...args) => execFileSync("git", args, { cwd: root, stdio: "pipe" });
   const commit = () => {
- git("add", "."); git("-c", "user.name=Coverage", "-c", "user.email=coverage@localhost", "commit", "-m", "fixture"); 
+ git("add", "."); git("-c", "user.name=Coverage", "-c", "user.email=coverage@localhost", "commit", "-m", "fixture");
 };
   try {
     git("init", "-q");

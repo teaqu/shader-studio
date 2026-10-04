@@ -35,7 +35,7 @@ function fixture() {
 }
 
 function list<T>(items: readonly T[]): SlangList<T> {
-  return { size: () => items.length, get: index => items[index] }; 
+  return { size: () => items.length, get: index => items[index] };
 }
 
 describe("SlangLanguageServiceBackend", () => {

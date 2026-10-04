@@ -10,18 +10,18 @@ function harness() {
   let device: GPUDevice | null = { createBuffer } as unknown as GPUDevice;
   const storage = new WebGPUStorage({
     get device() {
-      return device; 
+      return device;
     },
     retireAfterPublication: (_name, retire, warnings) => {
       try {
-        retire(); 
+        retire();
       } catch {
-        warnings.push("retirement failed"); 
-      } 
+        warnings.push("retirement failed");
+      }
     },
   });
   return { storage, createBuffer, loseDevice: () => {
-    device = null; 
+    device = null;
   } };
 }
 
@@ -37,7 +37,7 @@ describe("WebGPUStorage boundaries", () => {
     const { storage, createBuffer } = harness();
     const first = buffer();
     createBuffer.mockReturnValueOnce(first).mockImplementationOnce(() => {
-      throw new Error("allocation failed"); 
+      throw new Error("allocation failed");
     });
     expect(() => storage.prepareStorageBuffers([node(), node("other")], 1)).toThrow("allocation failed");
     expect(first.destroy).toHaveBeenCalledOnce();
@@ -82,7 +82,7 @@ describe("WebGPUStorage boundaries", () => {
     const { storage, createBuffer } = harness();
     const bad = buffer();
     bad.destroy.mockImplementation(() => {
-      throw new Error("driver error"); 
+      throw new Error("driver error");
     });
     const good = buffer();
     createBuffer.mockReturnValueOnce(bad).mockReturnValueOnce(good);

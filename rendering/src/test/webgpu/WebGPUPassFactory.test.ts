@@ -28,7 +28,7 @@ function harness() {
 }
 
 afterEach(() => {
-  sharedSlangWgslCache.clear(); 
+  sharedSlangWgslCache.clear();
 });
 
 describe("WebGPUPassFactory reconciliation boundaries", () => {
@@ -42,7 +42,7 @@ describe("WebGPUPassFactory reconciliation boundaries", () => {
     candidates.render.add(pipeline);
     candidate.resize.mockImplementation(() => {
       // eslint-disable-next-line no-throw-literal -- Exercise a driver rejection with a non-Error value.
-      throw "driver resize error"; 
+      throw "driver resize error";
     });
     expect(await reconcile()).toEqual(["Image: driver resize error"]);
     expect(keys.get("Image")).toBe("old-size");

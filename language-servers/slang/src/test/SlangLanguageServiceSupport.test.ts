@@ -27,7 +27,7 @@ describe("Slang language-service support", () => {
     const released = { value: false };
     expect(consumeList(undefined, value => value)).toEqual([]);
     expect(consumeList({ size: () => 2, get: index => index === 0 ? "value" : undefined, delete: () => {
-      released.value = true; 
+      released.value = true;
     } }, value => value.toUpperCase())).toEqual(["VALUE"]);
     expect(released.value).toBe(true);
     expect(consumeCompilerTargets({ size: () => 1, get: () => ({ name: "wgsl", value: 1 }) })).toEqual([{ name: "wgsl", value: 1 }]);
