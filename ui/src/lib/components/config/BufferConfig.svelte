@@ -15,13 +15,17 @@
     ComputePass,
     ShaderLanguageId,
     BufferOutputFormat,
+    ShaderEntryPoint,
   } from "@shader-studio/types";
-  import { SHADER_LANGUAGES, vertexPassKey } from "@shader-studio/types";
+  import { SHADER_LANGUAGES, shaderLanguageForPath, vertexPassKey } from "@shader-studio/types";
   import ChannelListItem from "./ChannelListItem.svelte";
   import ChannelConfigModal from "./ChannelConfigModal.svelte";
   import ComputePassControls from "./ComputePassControls.svelte";
+  import RenderEntryPointControls from "./RenderEntryPointControls.svelte";
+  import PassGeometryControls from "./PassGeometryControls.svelte";
   import PathInput from "./PathInput.svelte";
   import { getEditorOverlayVisible, setEditorOverlayVisible, setOverlayActiveFile } from "../../state/editorOverlayState.svelte";
+  import { getCurrentEditorSource } from "../../state/currentEditorSourceState.svelte";
   import type { AudioVideoController } from "../../AudioVideoController";
   import { listGlbMeshNames } from "../../../../../rendering/src/preview3d/GltfMeshLoader";
 
@@ -44,6 +48,11 @@
     passType?: 'render' | 'compute';
     storageNames?: string[];
     entryPointNames?: string[];
+    renderEntryPoints?: ShaderEntryPoint[];
+    maxColorAttachments?: number;
+    maxColorAttachmentBytesPerSample?: number;
+    renderOutputCounts?: Record<string, number>;
+    computeOutputLayerCounts?: Record<string, number>;
     onComputeCommit?: (nextConfig: ComputePass) => Record<string, string>;
     onOpenInNewTab?: (name: string, mode: "active" | "beside") => void;
   };
@@ -65,6 +74,11 @@
     passType = 'render',
     storageNames = [],
     entryPointNames = [],
+    renderEntryPoints = [],
+    maxColorAttachments = 8,
+    maxColorAttachmentBytesPerSample = 32,
+    renderOutputCounts = {},
+    computeOutputLayerCounts = {},
     onComputeCommit = undefined,
     onOpenInNewTab = () => {},
   }: BufferConfigProps = $props();
@@ -75,6 +89,7 @@
 
   const imageConfig = $derived(isImagePass ? (config as ImagePass) : undefined);
   const bufferPassConfig = $derived(!isImagePass ? (config as BufferPass) : undefined);
+  const renderPassConfig = $derived(passType === 'render' ? (config as BufferPass | ImagePass) : undefined);
   const configModel = $derived(new BufferConfigModel(bufferName, config, onUpdate));
   const fileType: FileDialogFileType = $derived(
     passType === 'compute'
@@ -106,10 +121,37 @@
   const vertexExtension = $derived(SHADER_LANGUAGES[language].extensions[0]);
   const vertexSuggestedPath = $derived(`${shaderPath.replace(/\.[^.]+$/, '')}.${bufferName.toLowerCase()}.vert.${vertexExtension}`);
   const vertexFileType = $derived(`${language}-vertex` as const);
+  const hasNativeEntryPoint = $derived(
+    renderPassConfig?.entryPoints?.vertex !== undefined || renderPassConfig?.entryPoints?.fragment !== undefined,
+  );
+  const hasNativeTemplate = $derived(renderPassConfig?.entryPoints !== undefined);
+  const hasNativeVertex = $derived(renderPassConfig?.entryPoints?.vertex !== undefined);
+  const hasNativeFragment = $derived(renderPassConfig?.entryPoints?.fragment !== undefined);
+  // Omitted outputs means the standard one-target render pass. It remains
+  // editable here without serialising an invalid empty output list.
+  const renderOutputs = $derived(bufferPassConfig?.outputs?.length ? bufferPassConfig.outputs : [{}]);
+  const outputFormatBytes = $derived.by(() => {
+    const format = bufferPassConfig?.outputFormat ?? 'auto';
+    return format === 'rgba16float' ? 8 : 16;
+  });
+  const effectiveOutputLimit = $derived(Math.max(1, Math.min(
+    maxColorAttachments,
+    Math.floor(maxColorAttachmentBytesPerSample / outputFormatBytes),
+  )));
+  const isWebGpuLanguage = $derived(SHADER_LANGUAGES[language].engine === 'webgpu');
+  const canInsert = $derived(isWebGpuLanguage && hasNativeTemplate);
+  const currentEditorSourcePath = $derived(getCurrentEditorSource(shaderPath));
+  const insertionSourcePath = $derived(
+    currentEditorSourcePath && shaderLanguageForPath(currentEditorSourcePath) === language
+      ? currentEditorSourcePath
+      : ('path' in config && config.path ? config.path : shaderPath),
+  );
   let modelSelectionPending = $state(false);
   const modelGeometry = $derived(config.geometry?.type === 'model'
     ? config.geometry
     : modelSelectionPending ? { type: 'model' as const, path: '' } : undefined);
+  const geometryType = $derived(modelGeometry ? 'model' as const : config.geometry?.type ?? 'fullscreen');
+  const showViewerCamera = $derived(isWebGpuLanguage && geometryType !== 'fullscreen');
   const modelUrl = $derived(modelGeometry?.resolved_path ?? (modelGeometry ? getWebviewUri(modelGeometry.path) : undefined));
 
   let currentPath = $state("path" in config ? config.path : "");
@@ -347,10 +389,14 @@
   }
 
   function handleGeometryChange(type: GeometryType) {
+    if (passType === 'compute') {
+      return;
+    }
+    const renderConfig = config as BufferPass | ImagePass;
     if (type === 'fullscreen') {
       modelSelectionPending = false;
-      const { geometry: _geometry, ...next } = config;
-      updateConfig(next as EditableConfig);
+      const { geometry: _geometry, ...next } = renderConfig;
+      updateConfig(next);
       return;
     }
     if (type === 'model') {
@@ -358,32 +404,44 @@
       return;
     }
     modelSelectionPending = false;
-    updateConfig({ ...config, geometry: { type } });
+    updateConfig({ ...renderConfig, geometry: { type } });
   }
 
   function handleModelPathChange(path: string) {
+    if (passType === 'compute') {
+      return;
+    }
+    const renderConfig = config as BufferPass | ImagePass;
     if (!path) {
       modelSelectionPending = true;
-      const { geometry: _geometry, ...next } = config;
-      updateConfig(next as EditableConfig);
+      const { geometry: _geometry, ...next } = renderConfig;
+      updateConfig(next);
       return;
     }
     modelSelectionPending = false;
-    updateConfig({ ...config, geometry: { type: 'model', path, ...(modelGeometry?.mesh ? { mesh: modelGeometry.mesh } : {}) } });
+    updateConfig({ ...renderConfig, geometry: { type: 'model', path, ...(modelGeometry?.mesh ? { mesh: modelGeometry.mesh } : {}) } });
   }
 
   function handleModelMeshChange(event: Event) {
+    if (passType === 'compute') {
+      return;
+    }
+    const renderConfig = config as BufferPass | ImagePass;
     const mesh = (event.currentTarget as HTMLInputElement).value.trim();
-    updateConfig({ ...config, geometry: { type: 'model', path: modelGeometry?.path ?? '', ...(mesh ? { mesh } : {}) } });
+    updateConfig({ ...renderConfig, geometry: { type: 'model', path: modelGeometry?.path ?? '', ...(mesh ? { mesh } : {}) } });
   }
 
   function handleVertexPathChange(path: string) {
-    if (path.trim() === '') {
-      const { vertex: _vertex, ...next } = config;
-      updateConfig(next as EditableConfig);
+    if (passType === 'compute') {
       return;
     }
-    updateConfig({ ...config, vertex: path });
+    const renderConfig = config as BufferPass | ImagePass;
+    if (path.trim() === '') {
+      const { vertex: _vertex, ...next } = renderConfig;
+      updateConfig(next);
+      return;
+    }
+    updateConfig({ ...renderConfig, vertex: path });
   }
 
   function handleOutputFormat(event: Event) {
@@ -400,6 +458,50 @@
     } else {
       onOpenInNewTab(config.vertex, "active");
     }
+  }
+
+  function applyCreatedSource(result: {
+    path: string;
+    entryPoints?: { vertex?: string; fragment?: string; compute?: string };
+    entryPoint?: string;
+    authoringMode?: 'hooks' | 'native';
+  }) {
+    if (passType === 'compute') {
+      const { entryPoint: _legacyEntryPoint, ...canonicalPass } = config as ComputePass;
+      updateConfig({
+        ...canonicalPass,
+        path: result.path,
+        ...(result.entryPoints?.compute || result.entryPoint
+          ? { entryPoints: { compute: result.entryPoints?.compute ?? result.entryPoint } }
+          : {}),
+      });
+      return;
+    }
+    updateConfig({
+      ...config,
+      ...(result.path ? { path: result.path } : {}),
+      ...(result.authoringMode === 'native' || result.entryPoints ? { entryPoints: result.entryPoints ?? {} } : {}),
+    } as EditableConfig);
+  }
+
+  function updateOutputs(outputs: { name?: string }[]) {
+    updateConfig({ ...(config as BufferPass), outputs } as EditableConfig);
+  }
+
+  function addOutput() {
+    if (renderOutputs.length < effectiveOutputLimit) {
+      updateOutputs([...renderOutputs, {}]);
+    }
+  }
+
+  function removeOutput() {
+    if (renderOutputs.length > 1) {
+      updateOutputs(renderOutputs.slice(0, -1));
+    }
+  }
+
+  function renameOutput(index: number, name: string) {
+    updateOutputs(renderOutputs.map((output, current) => current === index ? (name ? { name } : {}) : output));
   }
 </script>
 
@@ -420,6 +522,12 @@
           {suggestedPath}
           {postMessage}
           {onMessage}
+          sourcePath={insertionSourcePath}
+          authoringMode={passType === 'compute' || hasNativeTemplate ? 'native' : 'hooks'}
+          passName={bufferName}
+          outputCount={passType === 'render' && hasNativeTemplate ? renderOutputs.length : undefined}
+          allowInsert={canInsert || (passType === 'compute' && isWebGpuLanguage)}
+          onCreated={applyCreatedSource}
         />
 
         {#if passType === 'compute' && onComputeCommit}
@@ -584,18 +692,13 @@
 
     {#if bufferName !== "common" && passType !== 'compute'}
       <div class="config-item geometry-section">
-        <h3 class="section-title">Geometry</h3>
-        <select
-          aria-label="Geometry"
-          value={modelGeometry ? "model" : config.geometry?.type ?? "fullscreen"}
-          onchange={(event) => handleGeometryChange((event.currentTarget as HTMLSelectElement).value as GeometryType)}
-        >
-          <option value="fullscreen">Fullscreen</option>
-          <option value="plane">Plane</option>
-          <option value="cube">Cube</option>
-          <option value="sphere">Sphere</option>
-          <option value="model">GLB model</option>
-        </select>
+        <PassGeometryControls
+          geometry={geometryType}
+          {showViewerCamera}
+          config={config as BufferPass | ImagePass}
+          onGeometryChange={handleGeometryChange}
+          onUpdate={updateConfig}
+        />
         {#if modelGeometry}
           <PathInput
             label="Model file:"
@@ -623,18 +726,20 @@
           {#if modelMeshError}<span class="input-note">{modelMeshError}</span>{/if}
         {/if}
       </div>
-      <div class="config-item">
-        <h3 class="section-title vertex-shader-title" ondblclick={openVertexShaderInOverlay}>Vertex shader</h3>
-        <PathInput
-          value={config.vertex ?? ""}
-          onPathChange={handleVertexPathChange}
-          fileType={vertexFileType}
-          suggestedPath={vertexSuggestedPath}
-          {shaderPath}
-          {postMessage}
-          {onMessage}
-        />
-      </div>
+      {#if !(isWebGpuLanguage && hasNativeVertex)}
+        <div class="config-item">
+          <h3 class="section-title vertex-shader-title" ondblclick={openVertexShaderInOverlay}>Vertex shader</h3>
+          <PathInput
+            value={config.vertex ?? ""}
+            onPathChange={handleVertexPathChange}
+            fileType={vertexFileType}
+            suggestedPath={vertexSuggestedPath}
+            {shaderPath}
+            {postMessage}
+            {onMessage}
+          />
+        </div>
+      {/if}
     {/if}
     {#if !isImagePass && bufferName !== "common"}
       <div class="config-item">
@@ -651,6 +756,32 @@
             <option value="rgba32float">RGBA 32-bit float</option>
           </select>
         </div>
+      </div>
+    {/if}
+    {#if !isImagePass && passType === 'render' && isWebGpuLanguage && hasNativeTemplate}
+      <div class="config-item">
+        <h3 class="section-title">Outputs</h3>
+        {#each renderOutputs as output, index}
+          <div class="output-row">
+            <span>Output {index}</span>
+            <input aria-label={`Output ${index} name`} value={output.name ?? ''} placeholder="Optional name" oninput={(event) => renameOutput(index, event.currentTarget.value)} />
+          </div>
+        {/each}
+        <div class="output-actions">
+          <button type="button" onclick={addOutput} disabled={renderOutputs.length >= effectiveOutputLimit}>Add output</button>
+          <button type="button" onclick={removeOutput} disabled={renderOutputs.length <= 1}>Remove last</button>
+        </div>
+        <p class="input-note">This device allows up to {effectiveOutputLimit} outputs with this format.</p>
+      </div>
+    {/if}
+    {#if passType === 'render' && isWebGpuLanguage}
+      <div class="config-item">
+        <RenderEntryPointControls
+          pass={config as BufferPass | ImagePass}
+          entryPoints={renderEntryPoints}
+          {language}
+          onCommit={(nextPass) => updateConfig(nextPass)}
+        />
       </div>
     {/if}
   </div>
@@ -671,6 +802,8 @@
   {shaderPath}
   {audioVideoController}
   {availableBufferNames}
+  {renderOutputCounts}
+  {computeOutputLayerCounts}
 />
 
 <style>
@@ -699,6 +832,8 @@
     flex-direction: column;
     gap: 12px;
   }
+  .output-row, .output-actions { display: flex; align-items: center; gap: 8px; }
+  .output-row input { flex: 1; min-width: 0; }
 
   .channel-list {
     display: flex;

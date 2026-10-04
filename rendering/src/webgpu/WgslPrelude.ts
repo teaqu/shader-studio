@@ -1,4 +1,5 @@
-import { wgslStorageElementType } from "@shader-studio/types";
+import { isolateShaderEntryPoints } from "@shader-studio/types";
+import { getShaderSourceFunctions, wgslStorageElementType } from "@shader-studio/types";
 import { buildSlangBindingPlan } from "./SlangBindingPlan";
 import type { StorageBindingNode } from "../types/PassGraph";
 import { buildChannelSamplingFunctions, describeSlangChannel, type GeometryType } from "@shader-studio/types";
@@ -46,6 +47,8 @@ export interface WgslWrapOptions {
    * fragment entry for one that remaps fragCoord before calling mainImage.
    */
   captureMode?: boolean;
+  /** Authored native render stages selected by the pass configuration. */
+  renderEntryPoints?: { vertex?: string; fragment?: string };
 }
 
 export interface WgslComputeWrapOptions {
@@ -170,6 +173,7 @@ interface WgslGlobalOptions {
   dispatch?: boolean;
   capture?: boolean;
   channels?: SlangChannelBinding[];
+  nativeMesh?: boolean;
 }
 
 /**
@@ -193,6 +197,13 @@ function buildGlobalsPrelude(customUniforms: SlangCustomUniformInfo[] = [], opti
     `var<private> ${MESH_FRAGMENT_CONTEXT.normal}: vec3<f32>;`,
     `var<private> ${MESH_FRAGMENT_CONTEXT.cameraPosition}: vec3<f32>;`,
   ];
+  if (options.nativeMesh) {
+    declarations.push(
+      "var<private> iModelMatrix: mat4x4<f32>;",
+      "var<private> iViewProjectionMatrix: mat4x4<f32>;",
+      "var<private> iNormalMatrix: mat4x4<f32>;",
+    );
+  }
   const initialisers = [
     "  iResolution = _ss_u.resolution.xyz;",
     "  iMouse = _ss_u.mouse;",
@@ -204,6 +215,11 @@ function buildGlobalsPrelude(customUniforms: SlangCustomUniformInfo[] = [], opti
     "  iDate = _ss_u.date;",
     "  iCameraPos = _ss_u.cameraPos.xyz;",
     "  iCameraDir = _ss_u.cameraDir.xyz;",
+    ...(options.nativeMesh ? [
+      "  iModelMatrix = _ss_mesh.model;",
+      "  iViewProjectionMatrix = _ss_mesh.viewProjection;",
+      "  iNormalMatrix = _ss_mesh.normalMatrix;",
+    ] : []),
   ];
   for (const { name, type } of customUniforms) {
     if (!isSlangCustomUniformType(type)) {
@@ -404,9 +420,34 @@ export interface WgslEntryPoints {
   vertexLineCount: number;
 }
 
-function buildMeshEntryPoints(vertexCode: string): WgslEntryPoints {
+function buildGeneratedMeshVertex(vertexCode: string, hasAuthoredHook: boolean): string {
+  const hook = vertexCode.trim() || (hasAuthoredHook ? "" : `${WGSL_VERTEX_HOOK} {}`);
+  return `${hook}
+struct _ss_MixedMeshVertexOut { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f32>, @location(1) worldPosition: vec3<f32>, @location(2) normal: vec3<f32>, }
+@vertex fn ${WGSL_ENTRY_VERTEX}(@location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) uv: vec2<f32>) -> _ss_MixedMeshVertexOut {
+  _ss_initGlobals(); var p = position; var n = normal; var t = uv; mainVertex(&p, &n, &t);
+  let world = _ss_mesh.model * vec4f(p, 1); return _ss_MixedMeshVertexOut(_ss_mesh.viewProjection * world, t, world.xyz, (_ss_mesh.normalMatrix * vec4f(n, 0)).xyz);
+}
+`;
+}
+function buildGeneratedMeshFragment(): string {
+  return `@fragment fn ${WGSL_ENTRY_FRAGMENT}(@location(0) uv: vec2<f32>, @location(1) worldPos: vec3<f32>, @location(2) normal: vec3<f32>) -> @location(0) vec4<f32> { _ss_initGlobals(); ${MESH_FRAGMENT_CONTEXT.worldPosition} = worldPos; ${MESH_FRAGMENT_CONTEXT.normal} = normal; ${MESH_FRAGMENT_CONTEXT.cameraPosition} = _ss_mesh.cameraPosition.xyz; return mainImage(uv * iResolution.xy); }
+`;
+}
+function buildGeneratedFullscreenVertex(vertexCode: string, hasAuthoredHook: boolean): string {
+  const hook = vertexCode.trim() || (hasAuthoredHook ? "" : `${WGSL_VERTEX_HOOK} {}`);
+  return `${hook}
+@vertex fn ${WGSL_ENTRY_VERTEX}(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4<f32> { _ss_initGlobals(); var p = vec3f(array<vec2f, 3>(vec2f(-1,-1),vec2f(3,-1),vec2f(-1,3))[vid], 0); var n = vec3f(0,0,1); var uv = p.xy * .5 + .5; mainVertex(&p, &n, &uv); return vec4f(p,1); }
+`;
+}
+function buildGeneratedFullscreenFragment(): string {
+  return `@fragment fn ${WGSL_ENTRY_FRAGMENT}(@builtin(position) p: vec4f) -> @location(0) vec4<f32> { _ss_initGlobals(); return mainImage(vec2f(p.x, iResolution.y - p.y)); }
+`;
+}
+
+function buildMeshEntryPoints(vertexCode: string, hasAuthoredHook = false): WgslEntryPoints {
   const hook = vertexCode.trim() ? vertexCode : "";
-  const hookSource = hook === "" ? `${WGSL_VERTEX_HOOK} {}` : hook;
+  const hookSource = hook === "" && !hasAuthoredHook ? `${WGSL_VERTEX_HOOK} {}` : hook;
   return {
     source: `${hookSource}
 struct _ss_MeshVertexOut {
@@ -444,9 +485,9 @@ struct _ss_MeshVertexOut {
   };
 }
 
-function buildFullscreenEntryPoints(vertexCode: string): WgslEntryPoints {
+function buildFullscreenEntryPoints(vertexCode: string, hasAuthoredHook = false): WgslEntryPoints {
   const hook = vertexCode.trim() ? vertexCode : "";
-  if (hook !== "") {
+  if (hook !== "" || hasAuthoredHook) {
     return {
       source: `${hook}
 @vertex fn ${WGSL_ENTRY_VERTEX}(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4<f32> {
@@ -465,7 +506,7 @@ function buildFullscreenEntryPoints(vertexCode: string): WgslEntryPoints {
 }
 `,
       vertexStartLine: 1,
-      vertexLineCount: hook.split("\n").length,
+      vertexLineCount: hook === "" ? 0 : hook.split("\n").length,
     };
   }
   return {
@@ -642,6 +683,16 @@ export function injectComputeInit(source: string, entryName: string): string {
   return `${source.slice(0, index + 1)} _ss_initGlobals();${source.slice(index + 1)}`;
 }
 
+/**
+ * Blanks unselected entry-point declarations while retaining every source line.
+ * A WGSL module is parsed as a whole, so a same-file compute entry that calls
+ * `writeOutput` would otherwise make a render compilation fail even though the
+ * render pipeline never selects it (and vice versa for fragment-only helpers).
+ */
+export function isolateWgslEntryPoints(source: string, selected: readonly string[], commonCode = ""): string {
+  return isolateShaderEntryPoints(source, "wgsl", selected, [commonCode]);
+}
+
 function countLines(text: string): number {
   return text.split("\n").length - 1;
 }
@@ -759,12 +810,56 @@ function hoistWgslDirectives(userSource: string, commonCode: string, vertexSourc
     header, enableNames: [...enableNames], directiveRanges };
 }
 
+interface NativeWgslRenderAssemblyContext {
+  options: WgslWrapOptions;
+  prefix: string;
+  commonCode: string;
+  strippedCommonCode: string;
+  strippedUserSource: string;
+  vertexSource: string;
+  hasAuthoredHook: boolean;
+  nextBinding: number;
+  afterCommon: string;
+  requiredFeatures: string[];
+  directiveRanges: WgslDirectiveRange[];
+}
+
+/** Assemble authored native stages with generated stages for any omitted side. */
+function assembleNativeWgslRender(context: NativeWgslRenderAssemblyContext): WgslWrapResult {
+  const { options, prefix, commonCode, strippedCommonCode, strippedUserSource, vertexSource,
+    hasAuthoredHook, nextBinding, afterCommon, requiredFeatures, directiveRanges } = context;
+  const entryPoints = options.renderEntryPoints!;
+  const mesh = isMeshGeometry(options.geometry);
+  const nativeBinding = nextBinding + (options.storage?.length ?? 0);
+  const meshPrelude = mesh ? buildMeshPrelude(nativeBinding) : "";
+  const capturePrelude = options.captureMode ? buildCapturePrelude(nativeBinding + (mesh ? 1 : 0)) : "";
+  const body = `${prefix}${commonCode}${afterCommon}${meshPrelude}${capturePrelude}`;
+  const selected = [entryPoints.vertex, entryPoints.fragment, ...(entryPoints.fragment ? [] : ["mainImage"]), ...(entryPoints.vertex ? [] : ["mainVertex"])]
+    .filter((name): name is string => Boolean(name));
+  let nativeSource = isolateWgslEntryPoints(strippedUserSource, selected, strippedCommonCode);
+  for (const entry of selected) {
+    nativeSource = injectComputeInit(nativeSource, entry);
+  }
+  const vertex = entryPoints.vertex ? "" : mesh
+    ? buildGeneratedMeshVertex(vertexSource, hasAuthoredHook)
+    : buildGeneratedFullscreenVertex(vertexSource, hasAuthoredHook);
+  const fragment = entryPoints.fragment ? "" : mesh
+    ? buildGeneratedMeshFragment() : buildGeneratedFullscreenFragment();
+  return {
+    source: `${body}\n${nativeSource}\n${vertex}${fragment}`,
+    preludeLineCount: countLines(body) + 1,
+    userLineCount: nativeSource.split("\n").length,
+    ...commonRangeOf(prefix, strippedCommonCode), requiredFeatures, directiveRanges,
+  };
+}
+
 /** Wrap a user image-shader source into a full, compilable WGSL module. */
 function assembleWgslImageSource(userSource: string, options: WgslWrapOptions = {}): WgslWrapResult {
   const channels = options.channels ?? [];
   const channelCount = getShaderToyChannelCount(channels);
+  const nativeMesh = options.renderEntryPoints !== undefined && isMeshGeometry(options.geometry);
   const prelude = buildUniformPrelude(channelCount, options.customUniforms)
-    + buildGlobalsPrelude(options.customUniforms, { capture: options.captureMode, channels });
+    + buildGlobalsPrelude(options.customUniforms, { capture: options.captureMode, channels, nativeMesh });
   const hoisted = hoistWgslDirectives(
     userSource,
     options.commonCode ?? "",
@@ -773,6 +868,7 @@ function assembleWgslImageSource(userSource: string, options: WgslWrapOptions = 
   const strippedCommonCode = hoisted.commonCode;
   const commonCode = strippedCommonCode ? `${strippedCommonCode}\n` : "";
   const strippedUserSource = hoisted.userSource;
+  const hasAuthoredHook = getShaderSourceFunctions(`${strippedCommonCode}\n${strippedUserSource}`, "wgsl").some((fn) => fn.name === "mainVertex");
   const channelPrelude = buildChannelPrelude(channels);
   const plan = buildSlangBindingPlan(channels);
   const storageDeclarations = buildWgslStorageDeclarations(
@@ -782,6 +878,14 @@ function assembleWgslImageSource(userSource: string, options: WgslWrapOptions = 
     plan.nextBinding,
   );
   const prefix = `${hoisted.header}${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}`;
+  if (options.renderEntryPoints && (options.renderEntryPoints.vertex || options.renderEntryPoints.fragment)) {
+    return assembleNativeWgslRender({
+      options, prefix, commonCode, strippedCommonCode, strippedUserSource,
+      vertexSource: hoisted.vertexSource, hasAuthoredHook, nextBinding: plan.nextBinding,
+      afterCommon: storageDeclarations.afterCommon,
+      requiredFeatures: hoisted.enableNames, directiveRanges: hoisted.directiveRanges,
+    });
+  }
   if (options.captureMode) {
     // Capture uniforms bind after the channel texture/sampler pairs and storage buffers.
     const captureBinding = plan.nextBinding + (options.storage?.length ?? 0);
@@ -801,7 +905,7 @@ function assembleWgslImageSource(userSource: string, options: WgslWrapOptions = 
     const meshBinding = plan.nextBinding + (options.storage?.length ?? 0);
     const body = `${prefix}${buildMeshPrelude(meshBinding)}${commonCode}`;
     const head = `${body}\n${strippedUserSource}\n${storageDeclarations.afterCommon}`;
-    const entries = buildMeshEntryPoints(vertexCode);
+    const entries = buildMeshEntryPoints(vertexCode, hasAuthoredHook);
     return {
       source: `${head}${entries.source}`,
       preludeLineCount: countLines(body) + 1,
@@ -814,7 +918,7 @@ function assembleWgslImageSource(userSource: string, options: WgslWrapOptions = 
   }
   const body = `${prefix}${commonCode}`;
   const head = `${body}\n${strippedUserSource}\n${storageDeclarations.afterCommon}`;
-  const entries = buildFullscreenEntryPoints(vertexCode);
+  const entries = buildFullscreenEntryPoints(vertexCode, hasAuthoredHook);
   return {
     source: `${head}${entries.source}`,
     preludeLineCount: countLines(body) + 1,
@@ -876,7 +980,7 @@ function assembleWgslComputeSource(userSource: string, options: WgslComputeWrapO
   const dispatchBinding = outputBinding + (options.hasOutput ? 1 : 0);
   const dispatchPrelude = buildDispatchPrelude(dispatchBinding);
   const entries = options.entryPoint ? [options.entryPoint] : getWgslComputeEntryPoints(strippedUserSource).map((entry) => entry.name);
-  let injectedUserSource = strippedUserSource;
+  let injectedUserSource = isolateWgslEntryPoints(strippedUserSource, entries, strippedCommonCode);
   for (const entry of entries) {
     injectedUserSource = injectComputeInit(injectedUserSource, entry);
   }

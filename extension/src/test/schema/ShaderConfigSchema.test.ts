@@ -23,6 +23,52 @@ suite('Shader config JSON schema', () => {
     );
   }
 
+  test('accepts boolean viewer-camera choices on render passes and rejects malformed values', () => {
+    for (const useViewerCamera of [undefined, true, false]) {
+      assertValid({ version: '1.0', passes: { Image: { useViewerCamera }, BufferA: { path: 'a.wgsl', useViewerCamera } } });
+    }
+    for (const useViewerCamera of [null, 0, 'false', {}, []]) {
+      assertInvalid({ version: '1.0', passes: { Image: { useViewerCamera } } }, 'boolean');
+      assertInvalid({ version: '1.0', passes: { BufferA: { path: 'a.wgsl', useViewerCamera } } }, 'boolean');
+    }
+    assertInvalid({ version: '1.0', passes: { ComputeA: { type: 'compute', path: 'a.wgsl', useViewerCamera: false } } }, 'additional properties');
+  });
+
+  test('accepts shader-wide viewer camera defaults and rejects malformed values', () => {
+    for (const useViewerCamera of [undefined, true, false]) {
+      assertValid({ version: '1.0', webgpu: { useViewerCamera }, passes: { Image: {} } });
+    }
+    for (const useViewerCamera of [null, 0, 'false', {}, []]) {
+      assertInvalid({ version: '1.0', webgpu: { useViewerCamera }, passes: { Image: {} } }, 'boolean');
+    }
+  });
+
+  test('accepts native stages and a creation preference without changing compute selections', () => {
+    for (const entryPoints of [{}, { vertex: 'vertices', fragment: 'image' }, { fragment: 'image' }]) {
+      assertValid({ version: '1.0', webgpu: { defaultRenderAuthoring: 'native' }, passes: {
+        Image: { entryPoints }, BufferA: { path: 'scene.wgsl', entryPoints },
+        Simulation: { type: 'compute', path: 'scene.wgsl', entryPoints: { compute: 'simulate' } }
+      } });
+    }
+    assertValid({ version: '1.0', webgpu: { defaultRenderAuthoring: 'hooks' }, passes: { Image: {} } });
+  });
+
+  test('rejects malformed stage selections, conflicting vertex files and unknown authoring settings', () => {
+    const cases: Array<[unknown, string]> = [
+      [{ Image: { entryPoints: null } }, 'should be object'],
+      [{ Image: { entryPoints: { fragment: 'bad name' } } }, 'should match pattern'],
+      [{ Image: { entryPoints: { compute: 'simulate' } } }, 'should NOT have additional properties'],
+      [{ Image: { entryPoints: {}, vertex: 'other.wgsl' } }, 'should NOT be valid'],
+      [{ Image: {}, common: { path: 'common.wgsl', entryPoints: {} } }, 'should NOT have additional properties'],
+      [{ Image: {}, Simulation: { type: 'compute', path: 'scene.wgsl', entryPoints: { fragment: 'image' } } }, 'should NOT have additional properties']
+    ];
+    for (const [passes, message] of cases) {
+      assertInvalid({ version: '1.0', passes }, message);
+    }
+    assertInvalid({ version: '1.0', webgpu: { defaultRenderAuthoring: 'invalid' }, passes: { Image: {} } }, 'should be equal to one of the allowed values');
+    assertInvalid({ version: '1.0', webgpu: { unknown: true }, passes: { Image: {} } }, 'should NOT have additional properties');
+  });
+
   test('accepts every supported image and buffer geometry type plus omission', () => {
     for (const type of ['fullscreen', 'plane', 'cube', 'sphere']) {
       assertValid({
@@ -250,6 +296,26 @@ suite('Shader config JSON schema', () => {
     }
     assertInvalid({ version: '1.0', passes: { Image: { outputFormat: 'rgba32float' } } }, 'should NOT have additional properties');
     assertInvalid({ version: '1.0', passes: { Image: {}, BufferA: { path: 'a.wgsl', outputFormat: 'rgba8unorm' } } }, 'should be equal to one of the allowed values');
+  });
+
+  test('accepts bounded named render outputs and render-output channel selection', () => {
+    assertValid({
+      version: '1.0',
+      passes: {
+        Image: { inputs: { iChannel0: { type: 'buffer', source: 'Scene', output: 1 } } },
+        Scene: { path: 'scene.wgsl', outputs: [{ name: 'Colour' }, { name: 'Normals + depth' }] },
+      },
+    });
+    assertValid({ version: '1.0', passes: { Image: {}, Scene: { path: 'scene.wgsl', outputs: [{}] } } });
+  });
+
+  test('rejects malformed render outputs and output selection outside buffer inputs', () => {
+    const base = { version: '1.0', passes: { Image: {}, Scene: { path: 'scene.wgsl' } } };
+    assertInvalid({ ...base, passes: { ...base.passes, Scene: { path: 'scene.wgsl', outputs: [] } } }, 'should NOT have fewer than 1 items');
+    assertInvalid({ ...base, passes: { ...base.passes, Scene: { path: 'scene.wgsl', outputs: Array.from({ length: 9 }, () => ({})) } } }, 'should NOT have more than 8 items');
+    assertInvalid({ ...base, passes: { ...base.passes, Scene: { path: 'scene.wgsl', outputs: [{ name: '' }] } } }, 'should NOT be shorter than 1 characters');
+    assertInvalid({ version: '1.0', passes: { Image: { outputs: [{}] } } }, 'should NOT have additional properties');
+    assertInvalid({ version: '1.0', passes: { Image: { inputs: { iChannel0: { type: 'texture', path: 'x.png', output: 1 } } } } }, 'should NOT have additional properties');
   });
 
   test('accepts storage without stride', () => {

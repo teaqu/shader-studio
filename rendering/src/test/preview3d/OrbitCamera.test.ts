@@ -3,6 +3,19 @@ import { describe, expect, it } from 'vitest';
 import { OrbitCamera } from '../../preview3d/OrbitCamera';
 
 describe('OrbitCamera', () => {
+  it('cancels an active drag when resetting for a new shader', () => {
+    const canvas = document.createElement('canvas');
+    const camera = new OrbitCamera();
+    camera.attach(canvas);
+    canvas.dispatchEvent(new MouseEvent('pointerdown', { button: 0, clientX: 0, clientY: 0 }));
+    canvas.dispatchEvent(new MouseEvent('pointermove', { button: 0, clientX: 20, clientY: 10 }));
+    camera.reset();
+    const initial = camera.getViewMatrix();
+    canvas.dispatchEvent(new MouseEvent('pointermove', { button: 0, clientX: 40, clientY: 20 }));
+    expect(camera.getViewMatrix()).toEqual(initial);
+    camera.detach();
+  });
+
   it('orbits while clamping pitch away from a singularity', () => {
     const camera = new OrbitCamera();
 

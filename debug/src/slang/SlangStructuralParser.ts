@@ -16,6 +16,7 @@ import type {
   SlangTypeNode,
 } from "./model";
 import type { SlangToken, SlangTokenDocument } from "./tokens";
+import { callableTerminatorIndex } from "./SlangCallableSignature";
 
 interface DelimiterPair {
   kind: SlangDelimiterKind;
@@ -258,7 +259,8 @@ function parseCallables(
     if (pair.kind !== "parenthesis") {
       continue;
     }
-    const terminator = tokens[pair.closeIndex + 1];
+    const terminatorIndex = callableTerminatorIndex(tokens, pair.closeIndex);
+    const terminator = tokens[terminatorIndex];
     if (!terminator || (terminator.text !== "{" && terminator.text !== ";")) {
       continue;
     }
@@ -275,7 +277,7 @@ function parseCallables(
     if (!returnTypeName || ["return", "module", "import"].includes(returnTypeName)) {
       continue;
     }
-    const bodyPair = terminator.text === "{" ? pairsByOpen.get(pair.closeIndex + 1) : undefined;
+    const bodyPair = terminator.text === "{" ? pairsByOpen.get(terminatorIndex) : undefined;
     if (terminator.text === "{" && bodyPair?.kind !== "brace") {
       continue;
     }
@@ -309,7 +311,7 @@ function parseCallables(
       modifiers: prefix.modifiers,
     });
     if (terminator.text === ";") {
-      signatureSemicolons.add(pair.closeIndex + 1);
+      signatureSemicolons.add(terminatorIndex);
     }
   }
   return { callables, declarations, signatureSemicolons };

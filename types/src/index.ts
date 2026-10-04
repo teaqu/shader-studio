@@ -1,4 +1,7 @@
 export * from './ShaderConfig';
+export * from './ShaderEntryPoints';
+export * from './ShaderSourceTemplates';
+export * from './ShaderStageIsolation';
 export * from './MessageTypes';
 export * from './StorageInspection';
 export * from './assetExtensions';

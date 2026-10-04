@@ -1,3 +1,4 @@
+import { viewerCameraRuntimeConfig } from "../state/viewerCameraState.svelte";
 import type { RenderingEngine } from "../../../../rendering/src/types/RenderingEngine";
 import { GifEncoderWrapper } from "./GifEncoder";
 import { VideoEncoderWrapper } from "./VideoEncoder";
@@ -45,7 +46,7 @@ export class ShaderRecorder {
     try {
       const result = await engine.compileShaderPipeline(
         shaderInfo.code,
-        shaderInfo.config,
+        viewerCameraRuntimeConfig(shaderInfo.config),
         shaderInfo.path,
         shaderInfo.buffers,
       );
@@ -99,7 +100,7 @@ export class ShaderRecorder {
     try {
       const result = await engine.compileShaderPipeline(
         shaderInfo.code,
-        shaderInfo.config,
+        viewerCameraRuntimeConfig(shaderInfo.config),
         shaderInfo.path,
         shaderInfo.buffers,
       );

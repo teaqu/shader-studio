@@ -1,20 +1,28 @@
 <svelte:options runes={true} />
 <script lang="ts">
-  import type { ShaderLanguageId } from '@shader-studio/types';
+  import type { ShaderLanguageId, WebGPUAuthoringMode } from '@shader-studio/types';
 
   interface Props {
-    onCreate: (name: string, language: ShaderLanguageId) => void;
+    onCreate: (name: string, language: ShaderLanguageId, authoringMode?: WebGPUAuthoringMode) => void;
     onClose: () => void;
   }
 
   let { onCreate, onClose }: Props = $props();
   let name = $state('untitled');
   let language = $state<ShaderLanguageId>('glsl');
+  let webgpuAuthoring = $state<WebGPUAuthoringMode>('hooks');
+  const nativeFunctionLabel = $derived(
+    language === 'slang' ? '[shader("fragment")] / [shader("vertex")]' : '@fragment / @vertex',
+  );
 
   function submit() {
     const trimmedName = name.trim();
     if (trimmedName) {
-      onCreate(trimmedName, language);
+      if (language !== 'glsl') {
+        onCreate(trimmedName, language, webgpuAuthoring);
+      } else {
+        onCreate(trimmedName, language);
+      }
     }
   }
 
@@ -52,6 +60,15 @@
           <option value="wgsl">WGSL</option>
         </select>
       </label>
+      {#if language !== 'glsl'}
+        <label>
+          Shader functions
+          <select bind:value={webgpuAuthoring} aria-label="Shader functions">
+            <option value="hooks">mainImage / mainVertex</option>
+            <option value="native">{nativeFunctionLabel}</option>
+          </select>
+        </label>
+      {/if}
       <div class="actions">
         <button type="button" onclick={onClose}>Cancel</button>
         <button type="submit">Create Shader</button>

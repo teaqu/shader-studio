@@ -6,11 +6,21 @@ export interface ViewerCapabilities {
   compileOnSave: boolean;
 }
 
+export interface HostEditorPreferences {
+  fontSize: number;
+  tabSize: number;
+  insertSpaces: boolean;
+  wordWrap: 'off' | 'on';
+  minimap: boolean;
+  lineNumbers: 'on' | 'off';
+}
+
 /** Configure services before mounting the shared viewer. Shell UI lives in the host. */
 export interface HostConfig {
   createTransport?: () => Transport;
   defaultAssets?: WorkspaceFileInfo[];
   capabilities?: Partial<ViewerCapabilities>;
+  getEditorPreferences?: () => HostEditorPreferences;
 }
 
 let host = $state<HostConfig>({});
@@ -33,4 +43,9 @@ export function getHostDefaultAssets(): WorkspaceFileInfo[] {
 
 export function getHostCapabilities(): ViewerCapabilities {
   return { compileOnSave: host.capabilities?.compileOnSave ?? true };
+}
+
+/** Optional so VS Code keeps the established editor defaults. */
+export function getHostEditorPreferences(): (() => HostEditorPreferences) | undefined {
+  return host.getEditorPreferences;
 }

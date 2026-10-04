@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDefaultWorkspaceFiles } from '../defaultWorkspace';
 import { WebExtensionHost } from '../WebExtensionHost';
 import { MemoryWorkspaceStore, VirtualWorkspace } from '../VirtualWorkspace';
+import { StandaloneSettings } from '../settings/StandaloneSettings';
 
 async function createHost(options: ConstructorParameters<typeof WebExtensionHost>[1] = {}) {
   const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), [
@@ -34,6 +35,58 @@ async function createHost(options: ConstructorParameters<typeof WebExtensionHost
 }
 
 describe('WebExtensionHost', () => {
+  it('uses shared settings for language services and broadcasts live preference changes', async () => {
+    const values = new Map<string, string>();
+    const settings = new StandaloneSettings({
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => {
+        values.set(key, value);
+      },
+    });
+    const host = await createHost({ settings });
+    const receive = vi.fn();
+    host.onViewerMessage(receive);
+
+    await host.handleViewerMessage({ type: 'languageServiceReady' });
+    expect(receive).toHaveBeenLastCalledWith({
+      type: 'languageServiceSettings',
+      payload: { glslEnabled: true, slangEnabled: true, wgslEnabled: true, colorDecorators: true, trace: 'off' },
+    });
+
+    expect(settings.update('languageServers.wgsl.enabled', false)).toBe(true);
+    expect(receive).toHaveBeenLastCalledWith({
+      type: 'languageServiceSettings',
+      payload: { glslEnabled: true, slangEnabled: true, wgslEnabled: false, colorDecorators: true, trace: 'off' },
+    });
+    expect(settings.update('webgpu.useViewerCamera', false)).toBe(true);
+    expect(receive).toHaveBeenLastCalledWith({
+      type: 'viewerCameraSettings', payload: { useViewerCamera: false },
+    });
+
+    host.dispose();
+    receive.mockClear();
+    settings.update('languageServers.wgsl.enabled', true);
+    expect(receive).not.toHaveBeenCalled();
+  });
+
+  it('broadcasts persisted viewer camera settings to all viewer clients', async () => {
+    const host = await createHost();
+    const first = vi.fn();
+    const second = vi.fn();
+    host.onViewerMessage(first);
+    host.onViewerMessage(second);
+
+    await host.handleViewerMessage({ type: 'updateViewerCameraSettings', payload: { useViewerCamera: false } });
+    expect(first).toHaveBeenCalledWith({ type: 'viewerCameraSettings', payload: { useViewerCamera: false } });
+    expect(second).toHaveBeenCalledWith({ type: 'viewerCameraSettings', payload: { useViewerCamera: false } });
+
+    first.mockClear();
+    await host.handleViewerMessage({ type: 'requestViewerCameraSettings' });
+    expect(first).toHaveBeenCalledWith({ type: 'viewerCameraSettings', payload: { useViewerCamera: false } });
+
+    await host.handleViewerMessage({ type: 'updateViewerCameraSettings', payload: { useViewerCamera: true } });
+  });
+
   it.each(['openShader', 'activateShader'])('persists selection before broadcasting %s', async type => {
     const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), [{
       path: '/shaders/selected.glsl', contents: 'void mainImage() {}', createdAt: 1, modifiedAt: 1,
@@ -237,6 +290,23 @@ describe('WebExtensionHost', () => {
     } }));
   });
 
+  it('creates a native render source with every requested attachment', async () => {
+    const host = await createHost({ prompt: (_message, initial) => initial });
+    const receive = vi.fn();
+    host.onViewerMessage(receive);
+    await host.handleViewerMessage({ type: 'createFile', payload: {
+      shaderPath: '/shaders/aurora.glsl', suggestedPath: 'mrt.wgsl', fileType: 'wgsl-buffer',
+      requestId: 'mrt', authoringMode: 'native', passName: 'BufferA', outputCount: 3,
+    } });
+    expect(receive).toHaveBeenCalledWith(expect.objectContaining({ type: 'fileSelected' }));
+    await host.handleViewerMessage({ type: 'updateConfig', payload: {
+      shaderPath: '/shaders/aurora.glsl', text: JSON.stringify({ version: '1.0', passes: { Image: {}, BufferA: { path: 'mrt.wgsl' } } }),
+    } });
+    expect(receive).toHaveBeenLastCalledWith(expect.objectContaining({ buffers: {
+      BufferA: expect.stringContaining('@location(2)'),
+    } }));
+  });
+
   it('opens, edits and restores buffer sources without changing the active shader', async () => {
     const store = new MemoryWorkspaceStore();
     const workspace = await VirtualWorkspace.open(store, [
@@ -332,6 +402,53 @@ describe('WebExtensionHost', () => {
     } });
     await host.handleViewerMessage({ type: 'createFile', payload: {} });
     expect(receive).not.toHaveBeenCalled();
+  });
+
+  it('inserts uniquely named native WGSL render entry points into an existing source', async () => {
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), [{
+      path: '/shaders/aurora.wgsl', contents: 'fn helper() {}', createdAt: 1, modifiedAt: 1,
+    }]);
+    const host = new WebExtensionHost(workspace);
+    const receive = vi.fn();
+    host.onViewerMessage(receive);
+    await host.handleViewerMessage({ type: 'insertShaderSource', payload: {
+      shaderPath: '/shaders/aurora.glsl', sourcePath: '/shaders/aurora.wgsl', fileType: 'wgsl-buffer',
+      requestId: 'insert', authoringMode: 'native', passName: 'Buffer A',
+    } });
+    await host.handleViewerMessage({ type: 'insertShaderSource', payload: {
+      shaderPath: '/shaders/aurora.glsl', sourcePath: '/shaders/aurora.wgsl', fileType: 'wgsl-buffer',
+      requestId: 'insert-2', authoringMode: 'native', passName: 'Buffer A',
+    } });
+    expect(receive).toHaveBeenLastCalledWith({ type: 'fileSelected', payload: {
+      path: '/shaders/aurora.wgsl', requestId: 'insert-2', authoringMode: 'native',
+      entryPoints: { vertex: 'BufferAVertex2', fragment: 'BufferAFragment2' },
+    } });
+  });
+
+  it('creates a native Slang compute source and returns its entry point', async () => {
+    const host = await createHost({ prompt: (_message, initial) => initial });
+    const receive = vi.fn();
+    host.onViewerMessage(receive);
+    await host.handleViewerMessage({ type: 'createFile', payload: {
+      shaderPath: '/shaders/clouds.slang', suggestedPath: 'simulation.slang', fileType: 'slang-compute',
+      requestId: 'compute', authoringMode: 'native', passName: 'Simulation',
+    } });
+    expect(receive).toHaveBeenLastCalledWith({ type: 'fileSelected', payload: {
+      path: 'simulation.slang', requestId: 'compute', authoringMode: 'native', entryPoints: { compute: 'SimulationCompute' },
+    } });
+  });
+
+  it('does not mutate a source when hook insertion is requested', async () => {
+    const host = await createHost();
+    const receive = vi.fn();
+    host.onViewerMessage(receive);
+    await host.handleViewerMessage({ type: 'insertShaderSource', payload: {
+      shaderPath: '/shaders/aurora.glsl', sourcePath: '/shaders/aurora.glsl', fileType: 'glsl-buffer',
+      requestId: 'hooks', authoringMode: 'hooks', passName: 'BufferA',
+    } });
+    expect(receive).toHaveBeenLastCalledWith({ type: 'fileSelected', payload: {
+      path: '', requestId: 'hooks', error: 'Insert into current source requires an existing native WebGPU source.',
+    } });
   });
 
   it('upgrades the legacy web starter shader that failed thumbnail compilation', async () => {
@@ -543,6 +660,24 @@ describe('WebExtensionHost', () => {
       path: '/shaders/new.wgsl',
       requestId: 14,
       code: expect.stringContaining('fn mainImage(coord: vec2f) -> vec4f'),
+    }));
+  });
+
+  it('creates a native WGSL image with selected stages and a native project default', async () => {
+    const host = await createHost();
+    const receive = vi.fn();
+    host.onExplorerMessage(receive);
+
+    await host.handleViewerMessage({ type: 'createShader', payload: { name: 'native-image', language: 'wgsl', authoringMode: 'native' } });
+    await host.handleExplorerMessage({ type: 'requestShaderCode', path: '/shaders/native-image.wgsl', requestId: 16 });
+
+    expect(receive).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'shaderCode',
+      code: expect.stringContaining('@fragment\nfn ImageFragment'),
+      config: expect.objectContaining({
+        webgpu: { defaultRenderAuthoring: 'native' },
+        passes: { Image: expect.objectContaining({ entryPoints: { vertex: 'ImageVertex', fragment: 'ImageFragment' } }) },
+      }),
     }));
   });
 
@@ -1252,4 +1387,30 @@ describe('standalone layout profiles', () => {
 
     expect(workspace.list('/')).toEqual([]);
   });
+
+
+  it('rejects incompatible or non-pass native insert targets without changing the workspace', async () => {
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), [{
+      path: '/shaders/shared.slang', contents: 'float helper() { return 1.0; }', createdAt: 1, modifiedAt: 1,
+    }]);
+    const host = new WebExtensionHost(workspace);
+    const receive = vi.fn();
+    host.onViewerMessage(receive);
+    await host.handleViewerMessage({ type: 'insertShaderSource', payload: {
+      shaderPath: '/shaders/image.wgsl', sourcePath: '/shaders/shared.slang', fileType: 'wgsl-buffer',
+      requestId: 'wrong-language', authoringMode: 'native',
+    } });
+    await host.handleViewerMessage({ type: 'insertShaderSource', payload: {
+      shaderPath: '/shaders/image.wgsl', sourcePath: '/shaders/shared.slang', fileType: 'slang-common',
+      requestId: 'wrong-kind', authoringMode: 'native',
+    } });
+    expect(receive).toHaveBeenLastCalledWith({ type: 'fileSelected', payload: {
+      path: '', requestId: 'wrong-kind', error: 'Insert supports Buffer and Compute pass sources only.',
+    } });
+    expect(receive).toHaveBeenCalledWith({ type: 'fileSelected', payload: {
+      path: '', requestId: 'wrong-language', error: 'Insert source language must match the target source language.',
+    } });
+    expect(workspace.readText('/shaders/shared.slang')).toBe('float helper() { return 1.0; }');
+  });
+
 });

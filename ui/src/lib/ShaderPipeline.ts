@@ -429,9 +429,6 @@ export class ShaderPipeline {
   }
 
   public handleCursorPositionMessage(message: CursorPositionMessage): void {
-    if (getEditorOverlayVisible()) {
-      return;
-    }
     const { line, lineContent, filePath } = message.payload;
 
     if (!this.isCursorFileAccepted(filePath)) {

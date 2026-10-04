@@ -12,8 +12,11 @@ import { assignInputSlots } from "../util/InputSlotAssigner";
 import { getNativeComputeEntryPoints } from "./SlangPrelude";
 import { getWgslComputeEntryPoints, maskWgslNonCode } from "./WgslPrelude";
 import { resolvePassGeometry } from "../types/Geometry";
+import { createImagePass, resolveMeshSettings } from "./RenderPassGeometry";
 import { parseSlangStructs } from "./slangStructSize";
 import { parseWgslStructs } from "./wgslStructSize";
+import { resolveRenderEntryPoints } from "./RenderEntryPointResolution";
+import { resolveRenderOutputs, type RenderOutputConfig } from "./MrtPassConfig";
 
 export type {
   ChannelReadTiming,
@@ -151,6 +154,12 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
   const allSources = [options.imageCode, commonCode, ...Object.values(options.buffers).filter((v): v is string => typeof v === "string")];
   const parsedStructs = language === "wgsl" ? parseWgslStructs(allSources) : parseSlangStructs(allSources);
   const outputLayersByPass = resolveOutputLayersByPass(passEntries, errors, options.maxOutputLayers ?? 256);
+  const renderOutputsByPass = resolveRenderOutputs(passEntries, language, errors);
+  const producerKinds = new Map(
+    passEntries
+      .filter(([name]) => !SPECIAL_PASS_NAMES.has(name))
+      .map(([name, pass]) => [name, isComputePass(pass) ? "compute" : "render"] as const),
+  );
   const storage = resolveStorage(config.storage, warnings, errors, options.maxStorageBuffers ?? 8, parsedStructs);
   warnOnCustomStorageReferencesInCommon(storage, commonCode, warnings, language);
   const storageNames = new Set(storage.map(({ name }) => name));
@@ -184,6 +193,8 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       inputs,
       configuredBufferNames,
       outputLayersByPass,
+      renderOutputsByPass,
+      producerKinds,
       warnings,
       errors,
     });
@@ -193,7 +204,16 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       const dispatch = resolveDispatch(name, computeConfig.dispatch, storageNames, channels, errors);
       const defaultWorkgroupSize = dispatch.mode === "count" ? COUNT_WORKGROUP_SIZE : TEXEL_WORKGROUP_SIZE;
       const nativeEntries = language === "wgsl" ? getWgslComputeEntryPoints(source) : getNativeComputeEntryPoints(source);
-      const requestedEntryPoint = computeConfig.entryPoint;
+      // `entryPoints.compute` is the canonical stage-selection field. Retain
+      // `entryPoint` only as a compatibility read for existing projects.
+      const configuredCompute = (computeConfig as ComputePass & {
+        entryPoints?: { compute?: string };
+      }).entryPoints?.compute;
+      if (configuredCompute && computeConfig.entryPoint && configuredCompute !== computeConfig.entryPoint) {
+        errors.push(`${name}: entryPoints.compute conflicts with legacy entryPoint`);
+        continue;
+      }
+      const requestedEntryPoint = configuredCompute ?? computeConfig.entryPoint;
       const nativeEntryPoint = requestedEntryPoint
         ? nativeEntries.find(({ name }) => name === requestedEntryPoint)
         : nativeEntries.length === 1 ? nativeEntries[0] : undefined;
@@ -243,17 +263,24 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       continue;
     }
 
+    const entryPoints = resolveRenderEntryPoints(name, passConfig, source, language, errors);
+    if (entryPoints === null) {
+      continue;
+    }
+
     renderPasses.push({
       name,
       source,
       language,
       geometry: resolvePassGeometry(passConfig),
-      ...resolveModelGeometry(passConfig),
+      ...resolveMeshSettings(passConfig, config.webgpu?.useViewerCamera),
       vertexSrc: options.buffers[vertexPassKey(name)],
+      ...(entryPoints ? { entryPoints } : {}),
       path,
       kind: "render",
       output: "texture",
       outputLayers: 1,
+      ...renderOutputNodeFields(renderOutputsByPass.get(name)),
       outputFormat: "outputFormat" in passConfig ? passConfig.outputFormat : undefined,
       dispatchCount: 1,
       dispatchOnce: false,
@@ -270,10 +297,19 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
     inputs: imageConfig?.inputs ?? {},
     configuredBufferNames,
     outputLayersByPass,
+    renderOutputsByPass,
+    producerKinds,
     warnings,
     errors,
   });
-  const imagePass = createImagePass(options.imageCode, canvasWidth, canvasHeight, imageChannels, resolvePassGeometry(imageConfig), options.buffers[vertexPassKey("Image")], resolveModelGeometry(imageConfig), language);
+  const imagePass = createImagePass(options.imageCode, canvasWidth, canvasHeight, imageChannels, resolvePassGeometry(imageConfig), options.buffers[vertexPassKey("Image")], resolveMeshSettings(imageConfig, config.webgpu?.useViewerCamera), language);
+  const imageEntryPoints = resolveRenderEntryPoints("Image", imageConfig, options.imageCode, language, errors);
+  if (imageEntryPoints === null) {
+    return { passes: [...computePasses, ...renderPasses], storage, commonCode, warnings, errors };
+  }
+  if (imageEntryPoints) {
+    imagePass.entryPoints = imageEntryPoints;
+  }
   const passes = [...computePasses, ...renderPasses, imagePass];
   const sampledBufferSources = new Set(passes.flatMap((pass) => pass.channels
     .filter((channel) => channel.kind === "buffer")
@@ -284,42 +320,6 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
   assignChannelReadTiming(passes);
 
   return { passes, storage, commonCode, warnings, errors };
-}
-
-function createImagePass(
-  source: string,
-  width: number,
-  height: number,
-  channels: RenderPassChannel[],
-  geometry: ReturnType<typeof resolvePassGeometry>,
-  vertexSrc?: string,
-  modelGeometry: { modelPath?: string; modelMesh?: string } = {},
-  language: ShaderLanguageId = "slang",
-): RenderPassNode {
-  return {
-    name: "Image",
-    source,
-    language,
-    geometry,
-    ...modelGeometry,
-    vertexSrc,
-    kind: "render",
-    output: "canvas",
-    outputLayers: 1,
-    dispatchCount: 1,
-    dispatchOnce: false,
-    workgroupSize: [...TEXEL_WORKGROUP_SIZE],
-    width,
-    height,
-    channels,
-  };
-}
-
-function resolveModelGeometry(pass: { geometry?: { type: string; path?: string; mesh?: string; resolved_path?: string } } | undefined): { modelPath?: string; modelMesh?: string } {
-  if (pass?.geometry?.type !== "model") {
-    return {};
-  }
-  return { modelPath: pass.geometry.resolved_path ?? pass.geometry.path, modelMesh: pass.geometry.mesh };
 }
 
 function resolveOutputLayersByPass(
@@ -950,6 +950,8 @@ function resolveChannels(options: {
   inputs: Record<string, ConfigInput>;
   configuredBufferNames: Set<string>;
   outputLayersByPass: Map<string, number>;
+  renderOutputsByPass: ReadonlyMap<string, RenderOutputConfig>;
+  producerKinds: ReadonlyMap<string, "compute" | "render">;
   warnings: string[];
   errors: string[];
 }): RenderPassChannel[] {
@@ -1057,13 +1059,33 @@ function resolveChannels(options: {
       continue;
     }
 
-    const sourceLayers = options.outputLayersByPass.get(input.source) ?? 1;
-    const layer = input.layer === undefined ? 0 : input.layer;
-    if (!Number.isInteger(layer) || layer < 0 || layer >= sourceLayers) {
-      options.errors.push(
-        `${options.passName}: ${key} layer ${String(input.layer)} is invalid for source "${input.source}" with ${sourceLayers} layer(s)`,
-      );
-      continue;
+    const sourceKind = options.producerKinds.get(input.source);
+    if (sourceKind === "compute") {
+      if (input.output !== undefined) {
+        options.errors.push(`${options.passName}: ${key} output selection is only valid for render buffer "${input.source}"`);
+        continue;
+      }
+      const sourceLayers = options.outputLayersByPass.get(input.source) ?? 1;
+      const layer = input.layer === undefined ? 0 : input.layer;
+      if (!Number.isInteger(layer) || layer < 0 || layer >= sourceLayers) {
+        options.errors.push(
+          `${options.passName}: ${key} layer ${String(input.layer)} is invalid for source "${input.source}" with ${sourceLayers} layer(s)`,
+        );
+        continue;
+      }
+    } else {
+      if (input.layer !== undefined && input.layer !== 0) {
+        options.errors.push(`${options.passName}: ${key} layer ${String(input.layer)} is invalid for render buffer "${input.source}"; use output instead`);
+        continue;
+      }
+      const outputCount = options.renderOutputsByPass.get(input.source)?.count ?? 1;
+      const output = input.output === undefined ? 0 : input.output;
+      if (!Number.isInteger(output) || output < 0 || output >= outputCount) {
+        options.errors.push(
+          `${options.passName}: ${key} output ${String(input.output)} is invalid for source "${input.source}" with ${outputCount} output(s)`,
+        );
+        continue;
+      }
     }
 
     channels.push({
@@ -1073,12 +1095,23 @@ function resolveChannels(options: {
       source: input.source,
       readFrom: "previous-frame",
       ...(input.layer === undefined ? {} : { layer: input.layer }),
+      ...(input.output === undefined ? {} : { output: input.output }),
       ...(input.filter === undefined ? {} : { filter: input.filter }),
       ...(input.wrap === undefined ? {} : { wrap: input.wrap }),
     });
   }
 
   return channels.sort((a, b) => a.slot - b.slot);
+}
+
+function renderOutputNodeFields(config: RenderOutputConfig | undefined): Pick<RenderPassNode, "outputCount" | "outputs"> {
+  if (!config || config.count === 1) {
+    return {};
+  }
+  return {
+    outputCount: config.count,
+    ...(config.outputs ? { outputs: config.outputs } : {}),
+  };
 }
 
 function isPositiveInteger(value: unknown): value is number {

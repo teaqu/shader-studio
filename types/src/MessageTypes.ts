@@ -4,6 +4,7 @@ import type { ProfileIndex, ProfileData } from './ProfileTypes';
 import type { SlangDependencyDiagnostic, SlangSourceModule } from './SlangSourceModule';
 import type { ShaderAuthoringEnvironment } from './shader-environment/ShaderAuthoringEnvironment';
 import type { ShaderLanguageId } from './shader-environment/ShaderLanguages';
+import type { ShaderEntryPoints, WebGPUAuthoringMode } from './ShaderConfig';
 
 export interface BaseMessage {
   type: string;
@@ -159,6 +160,20 @@ export interface ResetLayoutMessage extends BaseMessage {
   type: "resetLayout";
 }
 
+export interface RequestViewerCameraSettingsMessage extends BaseMessage {
+  type: "requestViewerCameraSettings";
+}
+
+export interface UpdateViewerCameraSettingsMessage extends BaseMessage {
+  type: "updateViewerCameraSettings";
+  payload: { useViewerCamera: boolean };
+}
+
+export interface ViewerCameraSettingsMessage extends BaseMessage {
+  type: "viewerCameraSettings";
+  payload: { useViewerCamera: boolean };
+}
+
 export interface ManualCompileMessage extends BaseMessage {
   type: "manualCompile";
 }
@@ -309,6 +324,24 @@ export interface CreateFileMessage extends BaseMessage {
     suggestedPath: string;
     fileType: FileDialogFileType;
     requestId: string;
+    authoringMode?: WebGPUAuthoringMode;
+    passName?: string;
+    /** Requested native render colour attachments (one when omitted). */
+    outputCount?: number;
+  };
+}
+
+export interface InsertShaderSourceMessage extends BaseMessage {
+  type: 'insertShaderSource';
+  payload: {
+    shaderPath: string;
+    sourcePath?: string;
+    fileType: FileDialogFileType;
+    requestId: string;
+    authoringMode?: WebGPUAuthoringMode;
+    passName?: string;
+    /** Requested native render colour attachments (one when omitted). */
+    outputCount?: number;
   };
 }
 
@@ -317,6 +350,10 @@ export interface FileSelectedMessage extends BaseMessage {
   payload: {
     path: string;
     requestId: string;
+    entryPoints?: ShaderEntryPoints;
+    entryPoint?: string;
+    authoringMode?: WebGPUAuthoringMode;
+    error?: string;
   };
 }
 
@@ -354,4 +391,4 @@ export interface ProfileDeleteProfileMessage extends BaseMessage {
   id: string;
 }
 
-export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | ShaderLockStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage | ResetLayoutMessage | ManualCompileMessage | SetCompileModeMessage | NavigateToBufferMessage | RequestWorkspaceFilesMessage | WorkspaceFilesMessage | ForkShaderMessage | GoToLineMessage | SaveFileMessage | SaveFileResultMessage | SelectFileMessage | CreateFileMessage | FileSelectedMessage | CustomUniformValuesMessage | RequestCustomUniformValuesMessage | ScriptRuntimeStateMessage | LanguageServiceSettingsMessage | ShaderAuthoringEnvironmentMessage | ProfileReadIndexMessage | ProfileIndexDataMessage | ProfileReadProfileMessage | ProfileDataMessage | ProfileWriteProfileMessage | ProfileWriteIndexMessage | ProfileDeleteProfileMessage;
+export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | ShaderLockStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage | ResetLayoutMessage | RequestViewerCameraSettingsMessage | UpdateViewerCameraSettingsMessage | ViewerCameraSettingsMessage | ManualCompileMessage | SetCompileModeMessage | NavigateToBufferMessage | RequestWorkspaceFilesMessage | WorkspaceFilesMessage | ForkShaderMessage | GoToLineMessage | SaveFileMessage | SaveFileResultMessage | SelectFileMessage | CreateFileMessage | InsertShaderSourceMessage | FileSelectedMessage | CustomUniformValuesMessage | RequestCustomUniformValuesMessage | ScriptRuntimeStateMessage | LanguageServiceSettingsMessage | ShaderAuthoringEnvironmentMessage | ProfileReadIndexMessage | ProfileIndexDataMessage | ProfileReadProfileMessage | ProfileDataMessage | ProfileWriteProfileMessage | ProfileWriteIndexMessage | ProfileDeleteProfileMessage;

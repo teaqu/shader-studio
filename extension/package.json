@@ -176,6 +176,12 @@
           "default": true,
           "description": "Lock the editor group when opening a shader panel, preventing other editors from opening in it."
         },
+        "shader-studio.webgpu.useViewerCamera": {
+          "type": "boolean",
+          "scope": "application",
+          "default": true,
+          "description": "Use the viewer camera by default for WebGPU mesh passes."
+        },
         "shader-studio.languageServers.glsl.enabled": {
           "type": "boolean",
           "default": true,

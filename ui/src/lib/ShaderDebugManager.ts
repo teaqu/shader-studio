@@ -1,3 +1,5 @@
+import { imageConfigForActiveRenderPass, nativeFragmentEntryPoint } from "./nativeRenderConfig";
+import { resolveRenderOutputState } from "./debugRenderOutputState";
 import type { DebugFunctionContext, ShaderDebugState, NormalizeMode } from "./types/ShaderDebugState";
 import { ShaderDebugger } from "@shader-studio/debug";
 import type { CapturedVariable } from "./VariableCaptureManager";
@@ -54,6 +56,9 @@ export class ShaderDebugManager {
     isErrorsEnabled: false,
     capturedVariables: [],
     activeBufferName: 'Image',
+    nativeFragmentEntryPoint: null,
+    renderOutput: 0,
+    renderOutputs: ['Output 0'],
   };
 
   private stateCallback: ((state: ShaderDebugState) => void) | null = null;
@@ -151,6 +156,12 @@ export class ShaderDebugManager {
       ? imageCode
       : this.bufferCodes[passName] ?? imageCode);
     const passConfig = config?.passes[passName];
+    this.updateRenderOutputs(passConfig);
+    const nativeEntryPoint = nativeFragmentEntryPoint(code, passConfig, this.language);
+    if (this.state.nativeFragmentEntryPoint !== nativeEntryPoint) {
+      this.state.nativeFragmentEntryPoint = nativeEntryPoint ?? null;
+      this.notifyStateChange();
+    }
     const inputConfig = passConfig && 'inputs' in passConfig ? passConfig.inputs : undefined;
     const debugDependencyOwner = passName === 'common' ? 'Image' : passName;
     const ownerModules = this.slangModules.filter(
@@ -183,20 +194,10 @@ export class ShaderDebugManager {
       return { passName, code, config, inputConfig, ...sourceDetails };
     }
 
-    if (!passConfig || !('inputs' in passConfig)) {
-      return { passName, code, config, inputConfig, ...sourceDetails };
-    }
-
     return {
       passName,
       code,
-      config: {
-        ...config,
-        passes: {
-          ...config.passes,
-          Image: { ...config.passes.Image, inputs: passConfig.inputs },
-        },
-      },
+      config: imageConfigForActiveRenderPass(config, passName),
       inputConfig,
       ...sourceDetails,
     };
@@ -224,6 +225,7 @@ export class ShaderDebugManager {
       functionContext: this.state.functionContext,
       customParameters: this.customParameters,
       loopMaxIterations: this.loopMaxIterations,
+      output: this.state.renderOutput,
     });
     const preview = this.variablePreview;
     const result = preview
@@ -271,6 +273,7 @@ export class ShaderDebugManager {
         functionContext: this.state.functionContext,
         customParameters: this.customParameters,
         loopMaxIterations: this.loopMaxIterations,
+        output: this.state.renderOutput,
       }),
     );
     if (!result.ok) {
@@ -302,6 +305,7 @@ export class ShaderDebugManager {
       bufferCodes: this.bufferCodes,
       slangModules: this.slangModules,
       customUniforms: this.customUniforms,
+      renderOutput: this.state.renderOutput,
       getDebugTarget: (code, targetConfig) => this.getDebugTarget(code, targetConfig),
     };
   }
@@ -625,6 +629,18 @@ export class ShaderDebugManager {
     this.onRecompileNeeded?.();
   }
 
+  public setRenderOutput(output: number): void {
+    const maximum = Math.max(0, (this.state.renderOutputs?.length ?? 1) - 1);
+    const next = Number.isInteger(output) ? Math.max(0, Math.min(maximum, output)) : 0;
+    if (this.state.renderOutput === next) {
+      return;
+    }
+    this.state.renderOutput = next;
+    this.notifyStateChange();
+    this.onCaptureStateChanged?.();
+    this.onRecompileNeeded?.();
+  }
+
   public setDebugError(error: string | null): void {
     const target = this.variablePreview ?? this.state;
     target.debugError = error;
@@ -711,13 +727,16 @@ export class ShaderDebugManager {
    * Applies normalize/step post-processing to the full shader output.
    * Used when no line is selected or inline rendering is off.
    */
-  public applyFullShaderPostProcessing(originalCode: string): string | null {
+  public applyFullShaderPostProcessing(originalCode: string, config?: ShaderConfig | null): string | null {
     const strategy = this.planStrategy();
     if (strategy) {
+      const pass = config?.passes[this.state.activeBufferName] ?? config?.passes.Image;
+      const entryPoint = nativeFragmentEntryPoint(originalCode, pass, this.language);
       return strategy.postProcessFullShader(
         originalCode,
         this.state.normalizeMode,
         this.state.isStepEnabled ? this.state.stepEdge : null,
+        entryPoint,
       );
     }
     if (!this.isLanguageSupported()) {
@@ -804,6 +823,16 @@ export class ShaderDebugManager {
     return activeBufferName === 'Image'
       ? imageCode
       : this.bufferCodes[activeBufferName] ?? imageCode;
+  }
+
+  private updateRenderOutputs(pass: ShaderConfig['passes'][string] | undefined): void {
+    const next = resolveRenderOutputState(pass, this.state.renderOutput);
+    if (this.state.renderOutput === next.renderOutput && (this.state.renderOutputs ?? []).join('\u0000') === next.renderOutputs.join('\u0000')) {
+      return;
+    }
+    this.state.renderOutput = next.renderOutput;
+    this.state.renderOutputs = next.renderOutputs;
+    this.notifyStateChange();
   }
 
   private extractFunctionContext(line: number | null, activeBufferName: string): DebugFunctionContext | null {

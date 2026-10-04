@@ -2,13 +2,16 @@
   import { onMount, onDestroy, tick, untrack } from "svelte";
   import { ConfigManager, type BufferRenameError } from "../../ConfigManager";
   import { getEditorOverlayVisible, setOverlayActiveFile } from "../../state/editorOverlayState.svelte";
+  import { shaderPathsEqual } from "../../editor/sharedSourcePassNames";
   import { portal } from "../../actions/portal";
-  import type { ShaderConfig, BufferPass, ComputePass, ImagePass, StorageBufferConfig, StorageBufferSnapshot } from "@shader-studio/types";
-  import { SHADER_LANGUAGES } from "@shader-studio/types";
+  import type { ShaderConfig, BufferPass, ComputePass, ImagePass, StorageBufferConfig, StorageBufferSnapshot, ShaderEntryPoint } from "@shader-studio/types";
+  import { getShaderEntryPoints, SHADER_LANGUAGES } from "@shader-studio/types";
   import type { Transport } from "../../transport/MessageTransport";
   import BufferConfig from "./BufferConfig.svelte";
   import ScriptInfo from "./ScriptInfo.svelte";
   import StoragePanel from "./StoragePanel.svelte";
+  import { provideViewerCameraDefault } from "../../config/ViewerCameraContext";
+  import { addRenderPass } from "../../config/RenderPassCreation";
   import { persistConfig } from "../../config/ConfigPersistence";
   import type { ConfigFieldErrors } from "../../config/ComputeConfigMutations";
   import type { AudioVideoController } from "../../AudioVideoController";
@@ -22,6 +25,7 @@
     pathMap?: Record<string, string>;
     bufferPathMap?: Record<string, string>;
     bufferSources?: Record<string, string>;
+    shaderSource?: string;
     onReadStorage?: (name: string, start: number, count: number) => Promise<StorageBufferSnapshot>;
     onWriteStorage?: (name: string, start: number, data: ArrayBuffer) => Promise<void>;
     transport: Transport;
@@ -36,6 +40,7 @@
     customUniformValues?: Record<string, number | number[] | boolean>;
     actualPollFps?: number;
     uniformActualFps?: Record<string, number>;
+    renderOutputLimits?: { maxColorAttachments: number; maxColorAttachmentBytesPerSample: number } | null;
     onConfigChange?: (config: ShaderConfig) => void;
     onOpenInNewTab?: (bufferName: string, mode: "active" | "beside") => void;
   }
@@ -46,6 +51,7 @@
     pathMap = {},
     bufferPathMap = {},
     bufferSources = {},
+    shaderSource = '',
     onReadStorage,
     onWriteStorage,
     transport,
@@ -60,9 +66,12 @@
     customUniformValues = {},
     actualPollFps = 0,
     uniformActualFps = {},
+    renderOutputLimits = null,
     onConfigChange = () => {},
     onOpenInNewTab = () => {},
   }: Props = $props();
+
+  provideViewerCameraDefault(() => config);
 
   let configManager = $state<ConfigManager | undefined>(undefined);
   let activeTab: string = $state("Image");
@@ -149,13 +158,11 @@
     }
   }
 
-  function addBuffer() {
-    if (!configManager) {
-      return;
-    }
-    const bufferName = configManager.addBuffer();
+  const defaultRenderAuthoring = $derived(config?.webgpu?.defaultRenderAuthoring ?? 'hooks');
+  function addBuffer(authoringMode: 'hooks' | 'native' = defaultRenderAuthoring) {
+    const bufferName = addRenderPass(configManager, authoringMode);
     if (bufferName) {
-      config = configManager.getConfig();
+      config = configManager?.getConfig() ?? null;
       if (config) {
         onConfigChange(config);
       }
@@ -356,9 +363,29 @@
     return !!pass && 'type' in pass && pass.type === "compute";
   }
 
+  function sourceForPass(passName: string): string {
+    if (passName === 'Image') {
+      return shaderSource;
+    }
+    const pass = config?.passes[passName];
+    const configuredPath = pass && 'path' in pass ? pass.path : undefined;
+    if (
+      (bufferPathMap[passName] && shaderPathsEqual(bufferPathMap[passName], shaderPath))
+      || (configuredPath && shaderPathsEqual(configuredPath, shaderPath))
+    ) {
+      return shaderSource;
+    }
+    return bufferSources[passName] ?? '';
+  }
+
+  function shaderEntryPoints(passName: string): ShaderEntryPoint[] {
+    return getShaderEntryPoints(sourceForPass(passName), language);
+  }
+
   function computeEntryPoints(passName: string): string[] {
-    const source = bufferSources[passName] ?? '';
-    return Array.from(source.matchAll(/\[\s*shader\s*\(\s*["']compute["']\s*\)\s*\]\s*\[\s*numthreads\s*\([^)]*\)\s*\]\s*void\s+([A-Za-z_]\w*)\s*\(/gi), (match) => match[1]!);
+    return shaderEntryPoints(passName)
+      .filter((entry) => entry.stage === 'compute')
+      .map((entry) => entry.name);
   }
 
   function getWebviewUri(path: string): string | undefined {
@@ -371,6 +398,23 @@
     }
     return Object.keys(config.passes).filter((k) => k !== "Image" && k !== "common");
   });
+
+  let renderOutputCounts = $derived.by(() => {
+    const result: Record<string, number> = {};
+    for (const [name, pass] of Object.entries(config?.passes ?? {})) {
+      if (name === 'Image' || name === 'common' || (pass as ComputePass).type === 'compute') {
+continue;
+}
+      result[name] = (pass as BufferPass).outputs?.length ?? 1;
+    }
+    return result;
+  });
+
+  let computeOutputLayerCounts = $derived.by(() => Object.fromEntries(
+    Object.entries(config?.passes ?? {})
+      .filter(([name, pass]) => name !== 'Image' && name !== 'common' && (pass as ComputePass).type === 'compute')
+      .map(([name, pass]) => [name, (pass as ComputePass).outputLayers ?? 1]),
+  ));
 
   // Reactive statement to ensure tabs update when config changes
   let allTabs = $derived.by(() => {
@@ -808,6 +852,11 @@
           {audioVideoController}
           {globalMuted}
           {availableBufferNames}
+          {renderOutputCounts}
+          {computeOutputLayerCounts}
+          maxColorAttachments={renderOutputLimits?.maxColorAttachments}
+          maxColorAttachmentBytesPerSample={renderOutputLimits?.maxColorAttachmentBytesPerSample}
+          renderEntryPoints={shaderEntryPoints('Image')}
           {onOpenInNewTab}
         />
       {:else}
@@ -834,8 +883,13 @@
           {audioVideoController}
           {globalMuted}
           {availableBufferNames}
+          {renderOutputCounts}
+          {computeOutputLayerCounts}
+          maxColorAttachments={renderOutputLimits?.maxColorAttachments}
+          maxColorAttachmentBytesPerSample={renderOutputLimits?.maxColorAttachmentBytesPerSample}
           storageNames={Object.keys(config?.storage ?? {})}
           entryPointNames={computeEntryPoints(getActualBufferName(activeTab))}
+          renderEntryPoints={shaderEntryPoints(getActualBufferName(activeTab))}
           onComputeCommit={(nextConfig) => {
             const result = configManager?.updateComputePass(getActualBufferName(activeTab), nextConfig);
             return result && !result.ok ? result.errors : {};

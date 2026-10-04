@@ -14,6 +14,8 @@ import {
   VirtualWorkspace,
 } from './VirtualWorkspace';
 import { WebExtensionHost } from './WebExtensionHost';
+import { syncSettingsAcrossTabs } from './settings/syncSettingsAcrossTabs';
+import { StandaloneSettings } from './settings/StandaloneSettings';
 
 const EXPLORER_STATE_KEY = 'shader-studio-explorer-state';
 
@@ -41,8 +43,12 @@ function createWorkspace() {
 export class WebTransport implements Transport {
   private connected = true;
   private started = false;
+  /** Browser-wide standalone preferences shared by the host and app shell. */
+  readonly settings = new StandaloneSettings();
+  private readonly stopSettingsSync = syncSettingsAcrossTabs(this.settings);
   private readonly host = createWorkspace().then((workspace) => new WebExtensionHost(workspace, {
     resolveDefaultAsset: resolveDefaultAssetUrl,
+    settings: this.settings,
   }));
   private readonly viewerCleanups = new Set<() => void>();
 
@@ -58,6 +64,9 @@ export class WebTransport implements Transport {
           return;
         }
         if (message.type === 'navigateToBuffer') {
+          if (!this.settings.snapshot.navigateOnBufferSwitch) {
+            return;
+          }
           const payload = 'payload' in message ? message.payload as { bufferPath?: unknown } | null : null;
           const path = payload?.bufferPath;
           if (typeof path === 'string') {
@@ -180,11 +189,13 @@ export class WebTransport implements Transport {
   }
 
   dispose(): void {
+    this.stopSettingsSync();
     this.connected = false;
     for (const cleanup of this.viewerCleanups) {
       cleanup();
     }
     this.viewerCleanups.clear();
+    void this.host.then(host => host.dispose());
   }
 
   async clearWorkspace(): Promise<void> {

@@ -72,6 +72,11 @@ describe('BufferConfig', () => {
 
     it('accepts a model geometry with a path', () => {
       expect(new BufferConfig('Image', { geometry: { type: 'model', path: 'robot.glb', mesh: 'Body' } }).validate()).toEqual({ isValid: true, errors: [] });
+      expect(new BufferConfig('Image', { useViewerCamera: false } as any).validate()).toEqual({ isValid: true, errors: [] });
+      expect(new BufferConfig('Image', { useViewerCamera: 'no' } as any).validate()).toEqual({
+        isValid: false,
+        errors: ['Image pass useViewerCamera must be a boolean'],
+      });
     });
 
     it.each([

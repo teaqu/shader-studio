@@ -1,5 +1,19 @@
 # Change Log
 
+### Unreleased
+
+- Added standalone global settings for camera defaults, language services, color swatches, buffer navigation, and live editor preferences. Preferences persist independently of shader files and workspace resets.
+
+- Add a per-pass Use viewer camera checkbox for WebGPU mesh stages, including built-in and mainVertex hooks.
+
+- WGSL and Slang can share native vertex, fragment, and compute entry points in one source file. Select stages per pass in the config panel, insert new stages into the current file, and choose native or ShaderToy templates for new render passes. Selections are saved under `entryPoints`; existing ShaderToy hooks and legacy compute settings still load.
+
+- Native WGSL and Slang fragment previews and captures now preserve interpolated inputs, mesh geometry, and structured color/depth outputs. Native parameters show their GPU-provided status, and Buffer captures respect the pass resolution.
+
+- Vertex and fragment functions can be mixed independently with ShaderToy hooks. Native mesh stages can use the viewer camera matrices.
+
+- Native WGSL and Slang buffer passes support multiple render targets with named output selectors, Create/Insert templates, and per-output debugging. Capture snapshots feedback, camera and storage state without advancing live simulations. GLSL stays single-output.
+
 ### 1.2.0
 
 - Added WGSL support: write `.wgsl` shaders with completion, hover documentation, snippets, and error checking. Use image, vertex, and compute passes, storage buffers, script uniforms, and visual debugging.

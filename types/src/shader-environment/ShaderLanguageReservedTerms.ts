@@ -106,6 +106,7 @@ const WGSL_PREDECLARED_TYPE_ALIASES = [
 const WGSL_GENERATED_API_NAMES = [
   "iResolution", "iMouse", "iTime", "iTimeDelta", "iFrameRate", "iFrame",
   "iSampleRate", "iDate", "iCameraPos", "iCameraDir", "iDispatch",
+  "iModelMatrix", "iViewProjectionMatrix", "iNormalMatrix",
   "mainImage", "mainVertex", "vertexMain", "fragmentMain", "writeOutput",
 ] as const;
 

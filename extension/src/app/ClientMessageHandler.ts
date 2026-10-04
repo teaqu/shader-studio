@@ -67,6 +67,9 @@ export class ClientMessageHandler {
       case 'createFile':
         await this.files.handleCreateFile(message.payload, respondFn);
         break;
+      case 'insertShaderSource':
+        await this.files.handleInsertShaderSource(message.payload, respondFn);
+        break;
       case 'updateShaderSource':
         await this.overlay.handleUpdateShaderSource(message.payload);
         break;
@@ -125,6 +128,22 @@ export class ClientMessageHandler {
       }
       case 'setCompileMode':
         await vscode.commands.executeCommand('shader-studio.setCompileMode', message.payload?.mode);
+        break;
+      case 'requestViewerCameraSettings':
+        respondFn({ type: 'viewerCameraSettings', payload: {
+          useViewerCamera: vscode.workspace.getConfiguration('shader-studio').get('webgpu.useViewerCamera', true),
+        } });
+        break;
+      case 'updateViewerCameraSettings':
+        if (typeof message.payload?.useViewerCamera === 'boolean') {
+          const configuration = vscode.workspace.getConfiguration('shader-studio');
+          await configuration.update(
+            'webgpu.useViewerCamera', message.payload.useViewerCamera, vscode.ConfigurationTarget.Global,
+          );
+          respondFn({ type: 'viewerCameraSettings', payload: {
+            useViewerCamera: vscode.workspace.getConfiguration('shader-studio').get('webgpu.useViewerCamera', true),
+          } });
+        }
         break;
       default:
         await this.profileHandler.handle(message, respondFn);

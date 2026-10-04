@@ -41,6 +41,37 @@ describe('MiscTab', () => {
   });
 
   describe('Selection', () => {
+    it('selects a colour attachment only when the selected render buffer has multiple outputs', async () => {
+      const props = {
+        ...defaultProps(),
+        tempInput: { type: 'buffer', source: 'BufferA' } as ConfigInput,
+        renderOutputCounts: { BufferA: 2, BufferB: 1 },
+      };
+      render(MiscTab, props);
+
+      const output = document.body.querySelector('#buffer-output') as HTMLSelectElement;
+      expect(output).not.toBeNull();
+      await fireEvent.change(output, { target: { value: '1' } });
+      expect(props.onSelect).toHaveBeenCalledWith({ type: 'buffer', source: 'BufferA', output: 1 });
+    });
+
+    it('keeps compute layers separate from render colour attachments', async () => {
+      const props = {
+        ...defaultProps(),
+        tempInput: { type: 'buffer', source: 'BufferCompute' } as ConfigInput,
+        availableBufferNames: ['BufferCompute'],
+        computeOutputLayerCounts: { BufferCompute: 3 },
+        renderOutputCounts: { BufferCompute: 4 },
+      };
+      render(MiscTab, props);
+
+      expect(document.body.querySelector('#buffer-output')).toBeNull();
+      const layer = document.body.querySelector('#buffer-layer') as HTMLSelectElement;
+      expect(layer).not.toBeNull();
+      await fireEvent.change(layer, { target: { value: '2' } });
+      expect(props.onSelect).toHaveBeenCalledWith({ type: 'buffer', source: 'BufferCompute', layer: 2 });
+    });
+
     it('shows linear/clamp defaults and emits buffer sampling changes', async () => {
       const props = {
         ...defaultProps(),

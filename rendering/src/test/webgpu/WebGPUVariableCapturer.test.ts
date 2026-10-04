@@ -6,6 +6,7 @@ import type { CaptureUniforms } from "../../capture/VariableCapturer";
 import type { StorageBindingNode } from "../../types/PassGraph";
 import { createShaderToyUniformLayout, SHADERTOY_UNIFORM_SIZE, UNIFORM_OFFSETS } from "../../webgpu/SlangPrelude";
 import { allowNonUniformDerivatives } from "../../webgpu/wgslDiagnostics";
+import { captureCounters, resetCaptureCounters } from "../../capture/captureDiagnostics";
 
 const uniforms: CaptureUniforms = {
   time: 1,
@@ -25,6 +26,7 @@ interface MockGpu {
   writeBuffer: ReturnType<typeof vi.fn>;
   submit: ReturnType<typeof vi.fn>;
   copyTextureToBuffer: ReturnType<typeof vi.fn>;
+  copyBufferToBuffer: ReturnType<typeof vi.fn>;
   beginRenderPass: ReturnType<typeof vi.fn>;
   createBindGroup: ReturnType<typeof vi.fn>;
   createBindGroupLayout: ReturnType<typeof vi.fn>;
@@ -36,6 +38,7 @@ function mockGpu(readbackFloats?: (size: number) => Float32Array): MockGpu {
   const writeBuffer = vi.fn();
   const submit = vi.fn();
   const copyTextureToBuffer = vi.fn();
+  const copyBufferToBuffer = vi.fn();
   const createBindGroup = vi.fn(() => ({}));
   const createBindGroupLayout = vi.fn(() => ({}));
   const beginRenderPass = vi.fn(() => ({
@@ -73,6 +76,7 @@ function mockGpu(readbackFloats?: (size: number) => Float32Array): MockGpu {
     createCommandEncoder: vi.fn(() => ({
       beginRenderPass,
       copyTextureToBuffer,
+      copyBufferToBuffer,
       finish: vi.fn(() => ({})),
     })),
     pushErrorScope: vi.fn(),
@@ -90,6 +94,7 @@ function mockGpu(readbackFloats?: (size: number) => Float32Array): MockGpu {
     writeBuffer,
     submit,
     copyTextureToBuffer,
+    copyBufferToBuffer,
     beginRenderPass,
     createBindGroup,
     createBindGroupLayout,
@@ -314,7 +319,7 @@ describe("WebGPUVariableCapturer", () => {
     });
   });
 
-  it("re-resolves channel views after the capture pipeline compile", async () => {
+  it("freezes channel views before the capture pipeline compile", async () => {
     const gpu = mockGpu();
     const staleView = { tag: "stale" } as unknown as GPUTextureView;
     const freshView = { tag: "fresh" } as unknown as GPUTextureView;
@@ -333,17 +338,17 @@ describe("WebGPUVariableCapturer", () => {
 
     const issued = capturer.issueCaptureGrid(captures, uniforms, 8, 4);
     // A pass rebuild replaces its output textures while the capture pipeline
-    // is still compiling; the stale view now points at a destroyed texture.
+    // is compiling. This issue remains bound to the resource it started with.
     currentView = freshView;
     compileGate.resolve();
     await issued;
 
     for (const [descriptor] of gpu.createBindGroup.mock.calls) {
-      expect(descriptor.entries).toContainEqual({ binding: 1, resource: freshView });
+      expect(descriptor.entries).toContainEqual({ binding: 1, resource: staleView });
     }
   });
 
-  it("reports an error and skips the submit when channels stop resolving during the compile", async () => {
+  it("uses the issue-time channel view when channels stop resolving during compile", async () => {
     const gpu = mockGpu();
     let resources: Array<{ slot: number; textureView: GPUTextureView }> | null =
       [{ slot: 0, textureView: {} as GPUTextureView }];
@@ -364,9 +369,9 @@ describe("WebGPUVariableCapturer", () => {
     compileGate.resolve();
     const count = await issued;
 
-    expect(count).toBe(0);
-    expect(gpu.submit).not.toHaveBeenCalled();
-    expect(capturer.getLastError()).toBe("Capture channels are not resolvable yet");
+    expect(count).toBe(captures.length);
+    expect(gpu.submit).toHaveBeenCalledTimes(captures.length);
+    expect(capturer.getLastError()).toBeNull();
   });
 
   it("defers instead of failing when the resolver returns an empty list for slots the plan needs", async () => {
@@ -472,14 +477,19 @@ describe("WebGPUVariableCapturer", () => {
       visibility: GPUShaderStage.FRAGMENT,
       buffer: { type: "uniform" },
     });
-    expect(gpu.createBindGroup.mock.calls[0][0].entries).toEqual([
+    const entries = gpu.createBindGroup.mock.calls[0][0].entries;
+    expect(entries).toEqual([
       { binding: 0, resource: { buffer: expect.anything() } },
       { binding: 1, resource: textureView },
       { binding: 2, resource: sampler },
-      { binding: 3, resource: { buffer: positions } },
-      { binding: 4, resource: { buffer: particles } },
+      { binding: 3, resource: { buffer: expect.anything() } },
+      { binding: 4, resource: { buffer: expect.anything() } },
       { binding: 5, resource: { buffer: expect.anything() } },
     ]);
+    expect(entries[3].resource.buffer).not.toBe(positions);
+    expect(entries[4].resource.buffer).not.toBe(particles);
+    expect(gpu.copyBufferToBuffer).toHaveBeenCalledWith(positions, 0, entries[3].resource.buffer, 0, 64);
+    expect(gpu.copyBufferToBuffer).toHaveBeenCalledWith(particles, 0, entries[4].resource.buffer, 0, 128);
   });
 
   it("uses a writable capture binding for storage structs containing atomics", async () => {
@@ -525,8 +535,67 @@ describe("WebGPUVariableCapturer", () => {
     const recovered = await capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4);
 
     expect(recovered).toBe(1);
-    expect(gpu.createBindGroup.mock.calls.at(-1)![0].entries)
-      .toContainEqual({ binding: 1, resource: { buffer: positions } });
+    expect(gpu.createBindGroup.mock.calls.at(-1)![0].entries.find((entry: GPUBindGroupEntry) => entry.binding === 1)!.resource.buffer)
+      .not.toBe(positions);
+  });
+
+  it("retires every storage clone when a later snapshot allocation fails", async () => {
+    const gpu = mockGpu();
+    let allocations = 0;
+    (gpu.device.createBuffer as ReturnType<typeof vi.fn>).mockImplementation((desc: { size: number }) => {
+      allocations++;
+      if (allocations === 3) {
+        throw new Error("out of capture storage");
+      }
+      const buffer = {
+        size: desc.size,
+        mapAsync: vi.fn(),
+        getMappedRange: vi.fn(),
+        unmap: vi.fn(),
+        destroy: vi.fn(),
+      };
+      gpu.createdBuffers.push(buffer);
+      return buffer;
+    });
+    resetCaptureCounters();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {
+      slangStorage: [storageA, storageB],
+      slangStorageBuffers: new Map([[storageA.name, {} as GPUBuffer], [storageB.name, {} as GPUBuffer]]),
+    });
+
+    expect(await capturer.issueCaptureGrid(captures, uniforms, 8, 4)).toBe(0);
+    for (const buffer of gpu.createdBuffers) {
+      expect(buffer.destroy).toHaveBeenCalledOnce();
+    }
+    expect(captureCounters.gpuBuffersCreated).toBe(2);
+    expect(captureCounters.gpuBuffersDestroyed).toBe(2);
+  });
+
+  it("releases channel, mesh, and storage snapshots when target allocation throws", async () => {
+    const gpu = mockGpu();
+    const destroyChannels = vi.fn();
+    resetCaptureCounters();
+    (gpu.device.createTexture as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      throw new Error("capture target allocation failed");
+    });
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {
+      slangStorage: [storageA],
+      slangStorageBuffers: new Map([[storageA.name, {} as GPUBuffer]]),
+      captureChannelSnapshot: () => ({ resources: [], textureCount: 2, destroy: destroyChannels }),
+      nativeRender: {
+        vertexEntryPoint: "sceneVertex", fragmentEntryPoint: "sceneFragment", geometry: "model",
+        width: 8, height: 4, draw: vi.fn(), meshUniformData: () => new Float32Array(64),
+      },
+    });
+
+    await expect(capturer.issueCaptureGrid([{ ...captures[0], debugPlan: { nativeRender: { output: 0 } } }], uniforms, 8, 4)).resolves.toBe(0);
+    expect(destroyChannels).toHaveBeenCalledOnce();
+    expect(gpu.createdBuffers[0].destroy).toHaveBeenCalledOnce();
+    expect(gpu.createdBuffers[1].destroy).toHaveBeenCalledOnce();
+    expect(captureCounters.gpuBuffersCreated).toBe(4);
+    expect(captureCounters.gpuBuffersDestroyed).toBe(2);
+    expect(captureCounters.gpuTexturesCreated).toBe(2);
+    expect(captureCounters.gpuTexturesDestroyed).toBe(2);
   });
 
   it("reuses capture layout for replacement buffers and invalidates it for storage declarations", async () => {
@@ -547,8 +616,8 @@ describe("WebGPUVariableCapturer", () => {
 
     expect(gpu.compiler.compile).toHaveBeenCalledTimes(1);
     expect(gpu.createBindGroupLayout).toHaveBeenCalledTimes(1);
-    expect(gpu.createBindGroup.mock.calls.at(-1)![0].entries)
-      .toContainEqual({ binding: 1, resource: { buffer: replacement } });
+    expect(gpu.createBindGroup.mock.calls.at(-1)![0].entries.find((entry: GPUBindGroupEntry) => entry.binding === 1)!.resource.buffer)
+      .not.toBe(replacement);
 
     const particles = { tag: "particles" } as unknown as GPUBuffer;
     capturer.setCompileContext({
@@ -610,6 +679,179 @@ describe("WebGPUVariableCapturer", () => {
 
     expect(issued).toBe(0);
     expect(capturer.getLastError()).toBe("/shaders/helper.slang: unexpected token");
+  });
+
+  it("forwards native stages and uses the original mesh raster pipeline for capture", async () => {
+    const gpu = mockGpu();
+    const draw = vi.fn();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {
+      nativeRender: {
+        vertexEntryPoint: "sceneVertex", fragmentEntryPoint: "sceneFragment", geometry: "model",
+        width: 640, height: 360, draw, meshUniformData: () => new Float32Array(64),
+      },
+    });
+    const plan: DebugInstrumentationPlan = {
+      workspaceHash: "native-raster", rootUri: "/shaders/image.wgsl", selectedSourceUri: "/shaders/image.wgsl",
+      executionMarkerSlot: 0, captureSlots: [], nativeRender: { fragmentEntryPoint: "debugFragment" },
+      files: [{ uri: "/shaders/image.wgsl", path: "/shaders/image.wgsl", source: "instrumented native root", version: 1, moduleName: "", ownerPass: "Image" }],
+    };
+
+    await capturer.issueCaptureGrid([{ ...captures[0], captureShader: "instrumented native root", debugPlan: plan }], uniforms, 3, 2);
+
+    expect(gpu.compiler.compile).toHaveBeenCalledWith("instrumented native root", expect.objectContaining({
+      captureMode: true, renderEntryPoints: { vertex: "sceneVertex", fragment: "debugFragment" },
+    }));
+    const pipeline = (gpu.device.createRenderPipeline as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+    expect(pipeline.vertex).toMatchObject({ entryPoint: "sceneVertex", buffers: [{ arrayStride: 32 }] });
+    expect(pipeline.fragment).toMatchObject({ entryPoint: "debugFragment" });
+    expect(pipeline.depthStencil).toMatchObject({ format: "depth24plus", depthWriteEnabled: true, depthCompare: "less" });
+    const layoutEntries = (gpu.device.createBindGroupLayout as ReturnType<typeof vi.fn>).mock.calls[0]![0].entries;
+    expect(layoutEntries.map((entry: GPUBindGroupLayoutEntry) => entry.binding)).toEqual([0, 1, 2]);
+    const bindEntries = gpu.createBindGroup.mock.calls[0]![0].entries;
+    expect(bindEntries.map((entry: GPUBindGroupEntry) => entry.binding)).toEqual([0, 1, 2]);
+    expect((bindEntries[1]!.resource as { buffer: unknown }).buffer).not.toBe((bindEntries[2]!.resource as { buffer: unknown }).buffer);
+    expect(draw).toHaveBeenCalledOnce();
+    const pass = gpu.beginRenderPass.mock.results[0]!.value;
+    expect(pass.draw).not.toHaveBeenCalled();
+    expect(pass.setBindGroup).toHaveBeenCalledOnce();
+    expect(gpu.copyTextureToBuffer).toHaveBeenCalledTimes(6);
+  });
+
+  it("copies native pixel captures at the original top-left integer canvas coordinate", async () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {
+      nativeRender: { vertexEntryPoint: "sceneVertex", fragmentEntryPoint: "sceneFragment", geometry: "fullscreen", width: 320, height: 180, draw: vi.fn() },
+    });
+    const plan: DebugInstrumentationPlan = {
+      workspaceHash: "native-pixel", rootUri: "/shaders/image.wgsl", selectedSourceUri: "/shaders/image.wgsl",
+      executionMarkerSlot: 0, captureSlots: [], nativeRender: { fragmentEntryPoint: "debugFragment" },
+      files: [{ uri: "/shaders/image.wgsl", path: "/shaders/image.wgsl", source: "instrumented", version: 1, moduleName: "", ownerPass: "Image" }],
+    };
+    await capturer.issueCaptureAtPixel([{ ...captures[0], debugPlan: plan }], 10, 20, 320, 180, uniforms);
+    expect(gpu.copyTextureToBuffer.mock.calls[0]![0]).toMatchObject({ origin: { x: 10, y: 20 } });
+  });
+
+  it("diagnoses a native debug plan when no matching native raster context is installed", async () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler);
+    const plan: DebugInstrumentationPlan = {
+      workspaceHash: "orphan-native", rootUri: "/shaders/image.wgsl", selectedSourceUri: "/shaders/image.wgsl",
+      executionMarkerSlot: 0, captureSlots: [], nativeRender: { fragmentEntryPoint: "debugFragment" },
+      files: [{ uri: "/shaders/image.wgsl", path: "/shaders/image.wgsl", source: "instrumented", version: 1, moduleName: "", ownerPass: "Image" }],
+    };
+    expect(await capturer.issueCaptureGrid([{ ...captures[0], debugPlan: plan }], uniforms, 1, 1)).toBe(0);
+    expect(capturer.getLastError()).toContain("native raster context");
+    expect(gpu.compiler.compile).not.toHaveBeenCalled();
+  });
+
+  it("rejects mixed native and hook capture requests before allocating a shared target", async () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {
+      nativeRender: { vertexEntryPoint: "sceneVertex", fragmentEntryPoint: "sceneFragment", geometry: "fullscreen", width: 100, height: 50, draw: vi.fn() },
+    });
+    const plan: DebugInstrumentationPlan = { workspaceHash: "mixed", rootUri: "/image.wgsl", selectedSourceUri: "/image.wgsl", executionMarkerSlot: 0, captureSlots: [], nativeRender: { fragmentEntryPoint: "debugFragment" }, files: [] };
+    expect(await capturer.issueCaptureGrid([{ ...captures[0], debugPlan: plan }, captures[1]!], uniforms, 1, 1)).toBe(0);
+    expect(capturer.getLastError()).toContain("separate batches");
+    expect(gpu.compiler.compile).not.toHaveBeenCalled();
+  });
+
+  it("invalidates the native pipeline cache when vertex stage or geometry changes", async () => {
+    const gpu = mockGpu();
+    const plan: DebugInstrumentationPlan = { workspaceHash: "native-cache", rootUri: "/image.wgsl", selectedSourceUri: "/image.wgsl", executionMarkerSlot: 0, captureSlots: [], nativeRender: { fragmentEntryPoint: "debugFragment" }, files: [] };
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {
+      nativeRender: { vertexEntryPoint: "firstVertex", fragmentEntryPoint: "fragment", geometry: "fullscreen", width: 100, height: 50, draw: vi.fn() },
+    });
+    await capturer.issueCaptureGrid([{ ...captures[0], debugPlan: plan }], uniforms, 1, 1);
+    capturer.setCompileContext({ nativeRender: { vertexEntryPoint: "secondVertex", fragmentEntryPoint: "fragment", geometry: "plane", width: 100, height: 50, draw: vi.fn(), meshUniformData: () => new Float32Array(64) } });
+    await capturer.issueCaptureGrid([{ ...captures[0], debugPlan: plan }], uniforms, 1, 1);
+    expect(gpu.compiler.compile).toHaveBeenCalledTimes(2);
+    expect((gpu.device.createRenderPipeline as ReturnType<typeof vi.fn>).mock.calls[1]![0].vertex).toMatchObject({ entryPoint: "secondVertex", buffers: [{ arrayStride: 32 }] });
+  });
+
+  it("does not reuse a native capture pipeline across MRT output selections or attachment counts", async () => {
+    const gpu = mockGpu();
+    const request = { ...captures[0], debugPlan: {
+      workspaceHash: "native-mrt-cache", rootUri: "/image.wgsl", selectedSourceUri: "/image.wgsl",
+      executionMarkerSlot: 0, captureSlots: [], files: [], nativeRender: { fragmentEntryPoint: "debugFragment", output: 0 },
+    } as DebugInstrumentationPlan };
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {
+      nativeRender: { vertexEntryPoint: "sceneVertex", fragmentEntryPoint: "sceneFragment", geometry: "fullscreen", width: 100, height: 50, outputCount: 2, draw: vi.fn() },
+    });
+
+    await capturer.issueCaptureGrid([request], uniforms, 1, 1);
+    await capturer.issueCaptureGrid([{ ...request, debugPlan: { ...request.debugPlan!, nativeRender: { fragmentEntryPoint: "debugFragment", output: 1 } } }], uniforms, 1, 1);
+    capturer.setCompileContext({ nativeRender: { vertexEntryPoint: "sceneVertex", fragmentEntryPoint: "sceneFragment", geometry: "fullscreen", width: 100, height: 50, outputCount: 3, draw: vi.fn() } });
+    await capturer.issueCaptureGrid([request], uniforms, 1, 1);
+
+    expect(gpu.compiler.compile).toHaveBeenCalledTimes(3);
+    const descriptors = (gpu.device.createRenderPipeline as ReturnType<typeof vi.fn>).mock.calls.map(call => call[0].fragment.targets);
+    expect(descriptors).toEqual([
+      [{ format: "rgba32float" }, null],
+      [null, { format: "rgba32float" }],
+      [{ format: "rgba32float" }, null, null],
+    ]);
+  });
+
+  it("destroys deferred native color and depth targets exactly once on dispose", async () => {
+    resetCaptureCounters();
+    const gpu = mockGpu();
+    let complete!: () => void;
+    (gpu.device.queue as any).onSubmittedWorkDone = vi.fn(() => new Promise<void>((resolve) => {
+      complete = resolve;
+    }));
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {
+      nativeRender: { vertexEntryPoint: "sceneVertex", fragmentEntryPoint: "sceneFragment", geometry: "model", width: 100, height: 50, draw: vi.fn(), meshUniformData: () => new Float32Array(64) },
+    });
+    const plan: DebugInstrumentationPlan = { workspaceHash: "native-dispose", rootUri: "/image.wgsl", selectedSourceUri: "/image.wgsl", executionMarkerSlot: 0, captureSlots: [], nativeRender: { fragmentEntryPoint: "debugFragment" }, files: [] };
+    await capturer.issueCaptureGrid([{ ...captures[0], debugPlan: plan }], uniforms, 1, 1);
+    const textures = (gpu.device.createTexture as ReturnType<typeof vi.fn>).mock.results.map(result => result.value);
+    capturer.dispose();
+    capturer.dispose();
+    expect(textures[0].destroy).toHaveBeenCalledOnce();
+    expect(textures[1].destroy).toHaveBeenCalledOnce();
+    expect(captureCounters.gpuTexturesCreated).toBe(2);
+    expect(captureCounters.gpuTexturesDestroyed).toBe(2);
+    complete();
+    await Promise.resolve();
+    expect(textures[0].destroy).toHaveBeenCalledOnce();
+    expect(textures[1].destroy).toHaveBeenCalledOnce();
+  });
+
+  it("scales native pixel captures to pass resolution and packs that resolution into uniforms", async () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {
+      nativeRender: { vertexEntryPoint: "sceneVertex", fragmentEntryPoint: "sceneFragment", geometry: "fullscreen", width: 100, height: 50, draw: vi.fn() },
+    });
+    const plan: DebugInstrumentationPlan = { workspaceHash: "native-resolution", rootUri: "/image.wgsl", selectedSourceUri: "/image.wgsl", executionMarkerSlot: 0, captureSlots: [], nativeRender: { fragmentEntryPoint: "debugFragment" }, files: [] };
+    await capturer.issueCaptureAtPixel([{ ...captures[0], debugPlan: plan }], 100, 50, 200, 100, uniforms);
+    expect(gpu.copyTextureToBuffer.mock.calls[0]![0]).toMatchObject({ origin: { x: 50, y: 25 } });
+    const shaderToyWrite = gpu.writeBuffer.mock.calls.find(call => (call[2] as ArrayBuffer).byteLength > 32)!;
+    const values = new Float32Array(shaderToyWrite[2] as ArrayBuffer);
+    expect(values[0]).toBe(100);
+    expect(values[1]).toBe(50);
+  });
+
+  it("reports a native draw failure and releases transient readback, color, and depth resources", async () => {
+    const gpu = mockGpu();
+    const draw = vi.fn(() => {
+      throw new Error("Native raster geometry for 'BufferA' is unavailable.");
+    });
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {
+      nativeRender: { vertexEntryPoint: "sceneVertex", fragmentEntryPoint: "sceneFragment", geometry: "model", width: 100, height: 50, draw, meshUniformData: () => new Float32Array(64) },
+    });
+    const plan: DebugInstrumentationPlan = { workspaceHash: "native-draw-failure", rootUri: "/image.wgsl", selectedSourceUri: "/image.wgsl", executionMarkerSlot: 0, captureSlots: [], nativeRender: { fragmentEntryPoint: "debugFragment" }, files: [] };
+
+    await expect(capturer.issueCaptureGrid([{ ...captures[0], debugPlan: plan }], uniforms, 1, 1)).resolves.toBe(0);
+
+    expect(capturer.getLastError()).toContain("Native raster geometry for 'BufferA' is unavailable.");
+    expect(capturer.getCaptureErrors()).toEqual([expect.objectContaining({ varName: "uv", message: expect.stringContaining("Native raster geometry") })]);
+    expect(gpu.submit).not.toHaveBeenCalled();
+    const textures = (gpu.device.createTexture as ReturnType<typeof vi.fn>).mock.results.map(result => result.value);
+    expect(textures[0].destroy).toHaveBeenCalledOnce();
+    expect(textures[1].destroy).toHaveBeenCalledOnce();
+    const readback = gpu.createdBuffers[gpu.createdBuffers.length - 1]!;
+    expect(readback.mapAsync).not.toHaveBeenCalled();
+    expect(readback.destroy).toHaveBeenCalledOnce();
   });
 
   it("compiles a single-file WGSL debug plan through the plan source in captureMode", async () => {
@@ -886,8 +1128,8 @@ describe("WebGPUVariableCapturer", () => {
       channels: [{ slot: 1, key: "iChannel1" }],
       storage: [newStorage],
     }));
-    expect(gpu.createBindGroup.mock.calls.at(-1)![0].entries)
-      .toContainEqual({ binding: 3, resource: { buffer: newBuffer } });
+    expect(gpu.createBindGroup.mock.calls.at(-1)![0].entries.find((entry: GPUBindGroupEntry) => entry.binding === 3)!.resource.buffer)
+      .not.toBe(newBuffer);
   });
 
   it("abandons a deferred pipeline when its declaration context becomes stale", async () => {
@@ -941,8 +1183,8 @@ describe("WebGPUVariableCapturer", () => {
       channels: [{ slot: 1, key: "iChannel1" }],
       storage: [newStorage],
     }));
-    expect(gpu.createBindGroup.mock.calls.at(-1)![0].entries)
-      .toContainEqual({ binding: 3, resource: { buffer: newBuffer } });
+    expect(gpu.createBindGroup.mock.calls.at(-1)![0].entries.find((entry: GPUBindGroupEntry) => entry.binding === 3)!.resource.buffer)
+      .not.toBe(newBuffer);
   });
 
   it("does not publish a deferred pipeline after disposal", async () => {
@@ -1093,15 +1335,15 @@ float4 mainImage(float2 fragCoord) {
     const capturer = engine.createVariableCapturer();
 
     await capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4);
-    expect(gpu.createBindGroup.mock.calls.at(-1)![0].entries)
-      .toContainEqual({ binding: 1, resource: { buffer: firstBuffer } });
+    expect(gpu.createBindGroup.mock.calls.at(-1)![0].entries.find((entry: GPUBindGroupEntry) => entry.binding === 1)!.resource.buffer)
+      .not.toBe(firstBuffer);
 
     engine.resetTime();
     const resetBuffer = (engine as any).pendingReset.storageBuffers.get(storageA.name) as GPUBuffer;
     await capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4);
 
-    expect(gpu.createBindGroup.mock.calls.at(-1)![0].entries)
-      .toContainEqual({ binding: 1, resource: { buffer: firstBuffer } });
+    expect(gpu.createBindGroup.mock.calls.at(-1)![0].entries.find((entry: GPUBindGroupEntry) => entry.binding === 1)!.resource.buffer)
+      .not.toBe(firstBuffer);
     expect((firstBuffer as unknown as { destroy: ReturnType<typeof vi.fn> }).destroy)
       .not.toHaveBeenCalled();
 
@@ -1113,9 +1355,7 @@ float4 mainImage(float2 fragCoord) {
     expect((firstBuffer as unknown as { destroy: ReturnType<typeof vi.fn> }).destroy)
       .toHaveBeenCalledTimes(1);
     expect(gpu.compiler.compile).toHaveBeenCalledTimes(1);
-    expect(gpu.createBindGroup.mock.calls.at(-1)![0].entries)
-      .toContainEqual({ binding: 1, resource: { buffer: resetBuffer } });
-    expect(gpu.createBindGroup.mock.calls.at(-1)![0].entries)
-      .not.toContainEqual({ binding: 1, resource: { buffer: firstBuffer } });
+    expect(gpu.createBindGroup.mock.calls.at(-1)![0].entries.find((entry: GPUBindGroupEntry) => entry.binding === 1)!.resource.buffer)
+      .not.toBe(resetBuffer);
   });
 });

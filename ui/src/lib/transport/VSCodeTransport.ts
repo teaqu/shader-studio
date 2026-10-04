@@ -3,7 +3,7 @@ import type { Transport, TransportMessage } from './MessageTransport';
 
 export class VSCodeTransport implements Transport {
   private vscode: any;
-  private messageHandler?: (event: MessageEvent) => void;
+  private readonly messageHandlers = new Set<(event: MessageEvent) => void>();
 
   constructor() {
     this.vscode = acquireVsCodeApi();
@@ -14,15 +14,18 @@ export class VSCodeTransport implements Transport {
   }
 
   onMessage(handler: (event: MessageEvent) => void): void {
-    this.messageHandler = handler;
-    window.addEventListener('message', this.messageHandler);
+    if (this.messageHandlers.has(handler)) {
+      return;
+    }
+    this.messageHandlers.add(handler);
+    window.addEventListener('message', handler);
   }
 
   dispose(): void {
-    if (this.messageHandler) {
-      window.removeEventListener('message', this.messageHandler);
-      this.messageHandler = undefined;
+    for (const handler of this.messageHandlers) {
+      window.removeEventListener('message', handler);
     }
+    this.messageHandlers.clear();
   }
 
   getType(): 'vscode' {

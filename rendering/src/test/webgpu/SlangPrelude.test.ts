@@ -1,10 +1,42 @@
 import { describe, expect, it } from 'vitest';
 import { SHADER_STUDIO_BUILTIN_UNIFORMS } from '@shader-studio/types';
-import { findSlangChannelDeclarationCollisions, SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX, wrapSlangImageSource } from '../../webgpu/SlangPrelude';
+import { findSlangChannelDeclarationCollisions, isolateSlangEntryPoints, SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX, wrapSlangImageSource } from '../../webgpu/SlangPrelude';
 
 const image = 'float4 mainImage(float2 fragCoord) { return float4(1); }';
 
 describe('wrapSlangImageSource', () => {
+  it('uses selected native render stages without generated ShaderToy adapters', () => {
+    const source = '[shader("vertex")] float4 full(uint id : SV_VertexID) : SV_Position { return 0; }\n[shader("fragment")] float4 paint() : SV_Target { return 1; }';
+    const wrapped = wrapSlangImageSource(source, { renderEntryPoints: { vertex: 'full', fragment: 'paint' } });
+    expect(wrapped).toContain(source);
+    expect(wrapped).not.toContain(`float4 ${SLANG_ENTRY_VERTEX}`);
+  });
+
+  it('blanks inactive stage functions without shifting lines', () => {
+    const source = '[shader("compute")] [numthreads(1, 1, 1)] void update(uint3 id : SV_DispatchThreadID) { writeOutput(0, 0); }\n[shader("fragment")] float4 paint() : SV_Target { return 1; }';
+    const isolated = isolateSlangEntryPoints(source, ['paint']);
+    expect(isolated.split('\n')).toHaveLength(source.split('\n').length);
+    expect(isolated).not.toContain('writeOutput');
+    expect(isolated).toContain('paint');
+  });
+
+  it('supplies the default vertex hook for mesh geometry without an authored hook', () => {
+    const wrapped = wrapSlangImageSource('float4 mainImage(float2 coord) { return 1; }', { geometry: 'sphere' });
+    expect(wrapped.match(/void mainVertex\s*\(/g)).toHaveLength(1);
+    expect(wrapped).toContain('mainVertex(position, normal, uv);');
+  });
+
+  it('uses an authored same-file mainVertex hook without adding a duplicate stub', () => {
+    const source = 'void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {}\nfloat4 mainImage(float2 coord) { return 1; }';
+    const wrapped = wrapSlangImageSource(source);
+    expect(wrapped.match(/void mainVertex\s*\(/g)).toHaveLength(1);
+  });
+
+  it('uses a Common-defined mainVertex hook without adding a duplicate stub', () => {
+    const common = 'void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {}';
+    const wrapped = wrapSlangImageSource('float4 mainImage(float2 coord) { return 1; }', { commonCode: common });
+    expect(wrapped.match(/void mainVertex\s*\(/g)).toHaveLength(1);
+  });
   it('reports direct channel collisions in complete top-level declarations', () => {
     const collisions = findSlangChannelDeclarationCollisions([{ slot: 0, key: 'albedo' }], [
       { label: 'Image', source: 'float x; float albedo;\nfloat4\nalbedo(float2 uv) { return 0; }\n#define albedo 1' },
@@ -88,5 +120,32 @@ float4 inputs(float2 uv) { return 1; }`,
     expect(source).toContain(vertex);
     expect(source).toContain('mainVertex(position, normal, uv);');
     expect(source).not.toMatch(/sampleIChannel\d+Vertex|#define sample/);
+  });
+});
+
+describe("native mesh matrix builtins", () => {
+  it("maps public matrix builtins onto the existing mesh uniform for selected native stages", () => {
+    const source = `[shader("vertex")] float4 vertex([[vk::location(0)]] float3 p : POSITION) : SV_Position { return mul(iViewProjectionMatrix, mul(iModelMatrix, float4(p, 1))); }
+[shader("fragment")] float4 fragment() : SV_Target { return float4(iNormalMatrix[0].xyz, 1); }`;
+    const wrapped = wrapSlangImageSource(source, {
+      geometry: "cube",
+      renderEntryPoints: { vertex: "vertex", fragment: "fragment" },
+    });
+    expect(wrapped).toContain("#define iModelMatrix _mesh.model");
+    expect(wrapped).toContain("#define iViewProjectionMatrix _mesh.viewProjection");
+    expect(wrapped).toContain("#define iNormalMatrix _mesh.normalMatrix");
+    expect(wrapped).toContain("[[vk::binding(1, 0)]]\nConstantBuffer<MeshUniforms> _mesh;");
+  });
+});
+
+describe("mixed native and hook render stages", () => {
+  it("generates the omitted mesh stage while retaining the explicit native fragment", () => {
+    const source = `struct Input { float2 uv : TEXCOORD0; float3 worldPosition : TEXCOORD1; float3 normal : TEXCOORD2; };
+[shader("fragment")] float4 paint(Input input) : SV_Target { return float4(input.uv, 0, 1); }`;
+    const wrapped = wrapSlangImageSource(source, { geometry: "cube", renderEntryPoints: { fragment: "paint" } });
+    expect(wrapped).toContain('[shader("vertex")] MixedMeshVertexOut vertexMain');
+    expect(wrapped).toContain('[shader("fragment")] float4 paint');
+    expect(wrapped).not.toContain('[shader("fragment")] float4 fragmentMain');
+    expect(wrapped).toContain("float3 worldPosition : TEXCOORD1; float3 normal : TEXCOORD2;");
   });
 });

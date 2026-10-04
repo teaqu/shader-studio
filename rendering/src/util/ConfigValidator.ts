@@ -32,6 +32,10 @@ export class ConfigValidator {
 
     const errors: string[] = [];
 
+    if (config.webgpu?.useViewerCamera !== undefined && typeof config.webgpu.useViewerCamera !== "boolean") {
+      errors.push("webgpu.useViewerCamera must be a boolean");
+    }
+
     // Validate version
     if (!config.version || typeof config.version !== 'string') {
       errors.push('Config must have a valid version string');
@@ -83,6 +87,9 @@ export class ConfigValidator {
     if (pass.outputFormat !== undefined) {
       errors.push("Image pass cannot define outputFormat");
     }
+    if (pass.useViewerCamera !== undefined && typeof pass.useViewerCamera !== "boolean") {
+      errors.push("useViewerCamera must be a boolean");
+    }
     if (!isValidGeometry(pass.geometry)) {
       errors.push(`Image pass geometry type must be one of: ${GEOMETRY_TYPES.join(", ")}`);
     }
@@ -101,6 +108,9 @@ export class ConfigValidator {
       errors.push(`${passName} pass outputFormat must be auto, rgba16float, or rgba32float`);
     }
 
+    if (pass.useViewerCamera !== undefined && typeof pass.useViewerCamera !== "boolean") {
+      errors.push("useViewerCamera must be a boolean");
+    }
     if (!isValidGeometry(pass.geometry)) {
       errors.push(`${passName} pass geometry type must be one of: ${GEOMETRY_TYPES.join(", ")}`);
     }

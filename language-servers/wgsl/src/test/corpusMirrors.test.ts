@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join, dirname, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { buildWgslChannelAuthoringSource, stageForPass } from "@shader-studio/types";
+import { buildWgslChannelAuthoringSource, stageForPass, resourcesForSharedSource } from "@shader-studio/types";
 import { parseWgslDocument, tokenizeWgsl, type WgslToken } from "@shader-studio/wgsl-analysis";
 import { WgslLanguageService } from "../WgslLanguageService";
 
@@ -29,6 +29,7 @@ interface ShaPass {
   path?: string;
   vertex?: string;
   entryPoint?: string;
+  entryPoints?: { vertex?: string; fragment?: string; compute?: string };
   inputs?: Record<string, ShaInput>;
 }
 interface ShaConfig {
@@ -215,13 +216,16 @@ const collectDocs = (): MirrorDoc[] => {
         continue;
       }
       const text = readFileSync(join(CORPUS, fileRel), "utf8");
+      const sharedPassNames = Object.entries(passes).filter(([name, peer]) => name !== "common"
+        && (peer.path ? normalize(join(dir, peer.path)) : join(dir, `${stem}.wgsl`)) === fileRel).map(([name]) => name);
+      const sharedResources = resourcesForSharedSource(cfg as never, passName, sharedPassNames);
       const stage = stageForPass(cfg as never, passName, fileRel);
       const entry = stage === "compute"
-        ? pass.entryPoint ?? firstComputeEntry(text) ?? firstFn(text) ?? "main"
-        : firstFn(text) ?? "mainImage";
+        ? pass.entryPoints?.compute ?? pass.entryPoint ?? firstComputeEntry(text) ?? firstFn(text) ?? "main"
+        : pass.entryPoints?.fragment ?? firstFn(text) ?? "mainImage";
       docs.push({
         configRel, pass: passName, fileRel, text, stage, entry,
-        resources: resourcesFor(pass), customUniforms: uniforms, commonFile,
+        resources: sharedResources, customUniforms: uniforms, commonFile,
         commonHelper: commonFile ? referencedHelper(text, commonFile.text) : undefined,
       });
       if (typeof pass.vertex === "string") {
