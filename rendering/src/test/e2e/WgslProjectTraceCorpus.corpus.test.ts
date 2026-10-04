@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import type {
-  ShaderProgram,
   WgslProjectTraceRequest,
   WgslProjectTraceTarget,
   WgslTraceRecording,
@@ -10,6 +9,7 @@ import rawSources from "virtual:wgsl-source-corpus";
 import {
   createShaderCanvasHarness,
   type ShaderCanvasHarness,
+  type ShaderProgram,
 } from "./ShaderCanvasHarness";
 
 interface WgslProjectTraceEngine {
@@ -386,7 +386,7 @@ describe("WGSL project trace: configured corpus", () => {
         const harness = createShaderCanvasHarness("wgsl");
         try {
           harness.resize(64, 64);
-          await harness.compile(project!);
+          await harness.compile(project! as ShaderProgram);
           const region = await harness.renderAndReadRegion(
             renderTime(project!),
           );
