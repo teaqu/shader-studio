@@ -138,7 +138,7 @@ describe("WebGPURenderingEngine", () => {
       canvas: { width: 2, height: 2 },
       format: "bgra8unorm",
     });
-    const internals = engine as unknown as {
+    const internals = engineOwners(engine).frameRenderer as unknown as {
       renderFrame: (
         time: number,
         capture: boolean,
@@ -193,7 +193,7 @@ describe("WebGPURenderingEngine", () => {
       format: "rgba8unorm",
       running: true,
     });
-    const internals = engine as unknown as {
+    const internals = engineOwners(engine).frameRenderer as unknown as {
       renderFrame: ReturnType<typeof vi.fn>;
       pendingScreenshotCopies: Array<(encoder: GPUCommandEncoder, texture: GPUTexture) => void>;
     };
