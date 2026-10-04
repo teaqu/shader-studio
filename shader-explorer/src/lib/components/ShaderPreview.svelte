@@ -39,11 +39,16 @@
   import { onMount, onDestroy } from 'svelte';
   import type { ShaderFile } from '../types/ShaderFile';
   import type { RenderingEngine } from '../../../../rendering/src/types/RenderingEngine';
-  import type { SlangSourceModule } from '@shader-studio/types';
+  import type { ShaderConfig, SlangSourceModule } from '@shader-studio/types';
   import { hoverRenderQueue, thumbnailRenderQueue } from '../stores/shaderStore';
-  import { requestShaderCode, type ShaderLanguage } from '../shaderCodeRequest';
+  import { requestShaderCode, type ShaderCodeRequestApi, type ShaderLanguage } from '../shaderCodeRequest';
   import { observeNearViewport } from '../shaderPreviewVisibility';
   import { createEngineForLanguage } from '../engineFactory';
+
+  /** Debounce for re-rendering after file changes, so typing does not render every keystroke. */
+  const VERSION_REFRESH_DELAY_MS = 1000;
+  /** How long a shader may stay broken mid-edit before its last good thumbnail gives way to the failure. */
+  const EDIT_ERROR_GRACE_MS = 60_000;
 
   interface RendererOwnership {
     engine: RenderingEngine;
@@ -56,7 +61,7 @@
     shader: ShaderFile;
     width?: number;
     height?: number;
-    vscodeApi: any;
+    vscodeApi: ShaderCodeRequestApi | null;
     refreshAll?: boolean;
     forceFresh?: boolean;
     compact?: boolean;
@@ -76,7 +81,7 @@
     : Math.round(width * 0.13));
   let shaderCode: string = '';
   let previewPath: string = shader.path;
-  let shaderConfig: any = null;
+  let shaderConfig: ShaderConfig | null = null;
   let shaderBuffers: Record<string, string> = {};
   let shaderLanguage: ShaderLanguage = 'glsl';
   let customUniformDeclarations: string | undefined;
@@ -149,6 +154,119 @@
     };
   });
 
+  // The shader, its config or a pass source changed on disk. Re-render from
+  // fresh source once edits settle, keeping the current image on screen until
+  // the replacement is ready. A real compile error still replaces it.
+  let knownThumbnailVersion: number | undefined;
+  let thumbnailVersionInitialized = false;
+  let versionRefreshTimeout: number | null = null;
+  let versionGeneration = 0;
+  // Outcome of the latest thumbnail attempt; null until it settles.
+  let lastThumbnailRenderSucceeded: boolean | null = null;
+  // While a shader is mid-edit and broken, its last good image stays up for a grace period.
+  let failingSince: number | null = null;
+  let editErrorGraceTimeout: number | null = null;
+
+  function clearEditErrorGrace() {
+    failingSince = null;
+    if (editErrorGraceTimeout !== null) {
+      window.clearTimeout(editErrorGraceTimeout);
+      editErrorGraceTimeout = null;
+    }
+  }
+
+  function startEditErrorGrace() {
+    if (failingSince !== null) {
+      return;
+    }
+    failingSince = Date.now();
+    editErrorGraceTimeout = window.setTimeout(() => {
+      editErrorGraceTimeout = null;
+      failingSince = null;
+      if (destroyed) {
+        return;
+      }
+      capturedImage = '';
+      compilationFailed = true;
+      onCompilationFailed?.();
+    }, EDIT_ERROR_GRACE_MS);
+  }
+
+  $effect(() => {
+    const version = shader.thumbnailVersion;
+    const cachedThumbnail = shader.cachedThumbnail;
+
+    if (!thumbnailVersionInitialized) {
+      thumbnailVersionInitialized = true;
+      knownThumbnailVersion = version;
+      return;
+    }
+    if (version === knownThumbnailVersion) {
+      return;
+    }
+
+    knownThumbnailVersion = version;
+    refreshForNewVersion(cachedThumbnail);
+  });
+
+  function refreshForNewVersion(cachedThumbnail: string | undefined) {
+    const generation = ++versionGeneration;
+    // Drop the stale source so this render and the next hover refetch it.
+    shaderCode = '';
+    thumbnailGeneration++;
+    if (versionRefreshTimeout !== null) {
+      window.clearTimeout(versionRefreshTimeout);
+      versionRefreshTimeout = null;
+    }
+
+    if (cachedThumbnail) {
+      // Another explorer already rendered this version.
+      clearEditErrorGrace();
+      capturedImage = cachedThumbnail;
+      compilationFailed = false;
+      return;
+    }
+
+    versionRefreshTimeout = window.setTimeout(() => {
+      versionRefreshTimeout = null;
+      if (destroyed || generation !== versionGeneration) {
+        return;
+      }
+
+      const isCurrent = () => !destroyed && generation === versionGeneration;
+      const render = () => {
+        void thumbnailRenderQueue.enqueue(queueId, async () => {
+          // Errors are expected while typing: keep the last good image until
+          // the shader has stayed broken for the whole grace period.
+          const keepPreviousImage = Boolean(capturedImage) && !compilationFailed;
+          lastThumbnailRenderSucceeded = null;
+          await fetchShaderCode(isCurrent, { keepPreviousImage });
+          if (!isCurrent()) {
+            return;
+          }
+          if (shaderCode) {
+            await initializeRendering({ isCurrent, keepPreviousImage });
+            if (!isCurrent()) {
+              return;
+            }
+          }
+          if (lastThumbnailRenderSucceeded === true) {
+            clearEditErrorGrace();
+          } else if (lastThumbnailRenderSucceeded === false && keepPreviousImage) {
+            startEditErrorGrace();
+          }
+        });
+      };
+
+      // Only spend a render on cards near the viewport.
+      stopVisibilityObserver?.();
+      hasStartedLoading = true;
+      stopVisibilityObserver = previewContainer
+        ? observeNearViewport(previewContainer, render)
+        : (render(), null);
+    }, VERSION_REFRESH_DELAY_MS);
+  }
+
   // Hover rendering state
   let isHovering: boolean = $state(false);
   let hoverVisible: boolean = $state(false); // only true after first render frame
@@ -214,7 +332,10 @@
     await fetchShaderCode(isCurrent);
   }
 
-  async function fetchShaderCode(isCurrent: () => boolean = () => !destroyed) {
+  async function fetchShaderCode(
+    isCurrent: () => boolean = () => !destroyed,
+    { keepPreviousImage = false }: { keepPreviousImage?: boolean } = {},
+  ) {
     if (!vscodeApi || shaderCode || !isCurrent()) {
       return;
     }
@@ -239,7 +360,9 @@
 
       shaderCode = response.code;
       previewPath = response.previewPath ?? shader.path;
-      shaderConfig = response.config || null;
+      // Config is author-controlled. RenderingEngine validates it and reports
+      // diagnostics, so retain malformed input at this UI boundary.
+      shaderConfig = response.config === null ? null : response.config as ShaderConfig;
       shaderBuffers = response.buffers;
       shaderLanguage = response.language;
       customUniformDeclarations = response.customUniformDeclarations;
@@ -248,6 +371,10 @@
     } catch (err) {
       if (isCurrent()) {
         console.error('Failed to load shader code:', err);
+        lastThumbnailRenderSucceeded = false;
+        if (keepPreviousImage) {
+          return;
+        }
         capturedImage = '';
         compilationFailed = true;
         onCompilationFailed?.();
@@ -445,6 +572,7 @@
           engine.renderForCapture();
           capturedImage = targetCanvas.toDataURL('image/png');
           compilationFailed = false;
+          lastThumbnailRenderSucceeded = true;
           
           // Save thumbnail to cache on extension side
           if (vscodeApi && capturedImage) {
@@ -452,11 +580,12 @@
               type: 'saveThumbnail',
               path: shader.path,
               thumbnail: capturedImage,
-              modifiedTime: shader.modifiedTime
+              thumbnailVersion: shader.thumbnailVersion,
             });
           }
         } catch (err) {
           console.error('Failed to capture image for shader:', shader.name, err);
+          lastThumbnailRenderSucceeded = false;
           if (!keepPreviousImage) {
             capturedImage = '';
             compilationFailed = true;
@@ -473,6 +602,7 @@
         // Keep shader code and buffers for hover rendering - don't clear them
       } else {
         console.error('Failed to compile shader:', shader.name, result?.errors);
+        lastThumbnailRenderSucceeded = false;
         if (!keepPreviousImage) {
           capturedImage = '';
           compilationFailed = true;
@@ -494,6 +624,7 @@
       }
 
       console.error('Failed to initialize rendering:', err);
+      lastThumbnailRenderSucceeded = false;
       if (!keepPreviousImage) {
         capturedImage = '';
         compilationFailed = true;
@@ -658,9 +789,14 @@
     destroyed = true;
     thumbnailGeneration++;
     resizeGeneration++;
+    versionGeneration++;
     if (resizeTimeout !== null) {
       window.clearTimeout(resizeTimeout);
     }
+    if (versionRefreshTimeout !== null) {
+      window.clearTimeout(versionRefreshTimeout);
+    }
+    clearEditErrorGrace();
     for (const controller of pendingShaderRequests) {
       controller.abort();
     }

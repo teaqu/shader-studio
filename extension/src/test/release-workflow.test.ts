@@ -43,7 +43,7 @@ suite('Packaged extension CI gates', () => {
     assert.strictEqual(commands.filter(command => command.includes('test:e2e:vscode:corpus')).length, 1);
     assert.strictEqual(commands.filter(command => command.includes('test:e2e:vsix')).length, 2);
     assert.strictEqual(commands.filter(command => command.includes('vsce package')).length, 1);
-    assert.ok(commands.includes('npm test'));
+    assert.ok(commands.includes('npm test -- --coverage'));
     assert.ok(commands.includes('npm run test:e2e -w rendering'));
     assert.ok(commands.includes('npm run test:e2e -w ui'));
     assert.ok(commands.includes('npm run test:e2e -w @shader-studio/standalone'));

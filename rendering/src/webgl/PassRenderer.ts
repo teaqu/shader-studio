@@ -7,10 +7,32 @@ import type { CustomUniform } from "./CustomUniformManager";
 import { assignInputSlots, type SlotAssignment } from "../util/InputSlotAssigner";
 import { bindTextures } from "../util/TextureBinder";
 import { resolveBufferSamplerSettings, resolveTextureBindings } from "../util/TextureBindingResolver";
-import type { WebGLMeshResources } from "./WebGLMeshResources";
-import { OrbitCamera } from "../preview3d/OrbitCamera";
+import type { WebGLMeshDraw, WebGLMeshResources } from "./WebGLMeshResources";
+import { OrbitCamera, type CameraMatrices } from "../preview3d/OrbitCamera";
 import { createModelMatrix, createNormalMatrix3 } from "../preview3d/math";
 import { WebGLSamplerCache } from "./WebGLSamplerCache";
+import { WebGLMultisampleTargets } from "./WebGLMultisample";
+import {
+  depthClearValue,
+  geometryInstanceCount,
+  isClipSpaceVertices,
+  meshTopology,
+  resolveRenderState,
+  verticesTopology,
+  verticesVertexCount,
+  type ResolvedRenderState,
+} from "../types/Geometry";
+import { FULLSCREEN_VERTEX_COUNT, type MeshTopology, type VertexTopology } from "@shader-studio/types";
+import { applyWebGLRenderState } from "./WebGLRenderState";
+
+/** piRenderer primitive for each portable vertices topology. */
+const WEBGL_PRIMITIVES = {
+  "triangle-list": "TRIANGLES",
+  "triangle-strip": "TRIANGLE_STRIP",
+  "line-list": "LINES",
+  "line-strip": "LINE_STRIP",
+  "point-list": "POINTS",
+} as const satisfies Record<VertexTopology, keyof PiRenderer["PRIMTYPE"]>;
 
 export class PassRenderer {
   private canvas: HTMLCanvasElement;
@@ -19,6 +41,7 @@ export class PassRenderer {
   private renderer: PiRenderer;
   private keyboardManager: KeyboardManager;
   private gl: WebGL2RenderingContext | null = null;
+  private multisample: WebGLMultisampleTargets | null = null;
   private samplerCache: WebGLSamplerCache | null = null;
   private readonly meshCamera = new OrbitCamera();
 
@@ -36,7 +59,61 @@ export class PassRenderer {
     this.renderer = renderer;
     this.keyboardManager = keyboardManager;
     this.gl = canvas.getContext("webgl2");
+    this.multisample = this.gl ? new WebGLMultisampleTargets(this.gl) : null;
     this.samplerCache = this.gl ? new WebGLSamplerCache(this.gl) : null;
+  }
+
+  private drawFullscreen(passConfig: Pass, state: ResolvedRenderState): void {
+    // A vertex hook may leave pixels uncovered, and blending reads the
+    // target; clear to the same configured colour as WebGPU's render pass.
+    if (passConfig.vertexSrc?.trim() || state.blend !== "none" || passConfig.clear !== undefined) {
+      this.renderer.Clear(this.renderer.CLEAR.Color, [...state.clear], 1, 0);
+    }
+    // The vertex stage derives the oversized triangle from gl_VertexID.
+    this.renderer.DrawPrimitive(this.renderer.PRIMTYPE.TRIANGLES, 3, false, 1);
+  }
+
+  /** Non-indexed draw with no vertex buffers; mainVertex places every vertex. */
+  private drawVertices(passConfig: Pass): void {
+    const primitive = this.renderer.PRIMTYPE[WEBGL_PRIMITIVES[verticesTopology(passConfig)]];
+    this.renderer.DrawPrimitive(primitive, verticesVertexCount(passConfig), false, geometryInstanceCount(passConfig));
+  }
+
+  /** Without WebGL2 mesh support every mesh pass falls back to the fullscreen draw. */
+  private drawsFullscreen(passConfig: Pass): boolean {
+    return passConfig.geometry === "fullscreen" ||
+      (passConfig.geometry !== "vertices" && (!this.gl || !this.meshResources));
+  }
+
+  /** The loaded mesh a pass draws; undefined for fullscreen, vertices, or a model still loading. */
+  private resolveMesh(passConfig: Pass) {
+    const meshResources = this.gl ? this.meshResources : null;
+    if (passConfig.geometry === "fullscreen" || passConfig.geometry === "vertices" || !meshResources) {
+      return undefined;
+    }
+    return passConfig.modelPath
+      ? meshResources.getModel(passConfig.name)
+      : passConfig.geometry === "model" ? undefined : meshResources.get(passConfig.geometry);
+  }
+
+  /** iVertexCount: the vertices the pass draws, matching the range of gl_VertexID. */
+  public getPassVertexCount(passConfig: Pass): number {
+    if (passConfig.geometry === "vertices") {
+      return verticesVertexCount(passConfig);
+    }
+    return this.drawsFullscreen(passConfig)
+      ? FULLSCREEN_VERTEX_COUNT
+      : this.resolveMesh(passConfig)?.vertexCount ?? 0;
+  }
+
+  /** iViewMatrix, iProjectionMatrix and iViewProjection: the orbit camera at the pass's aspect ratio. */
+  public getCameraMatrices(res: ArrayLike<number>): CameraMatrices {
+    return this.meshCamera.getMatrices(Math.max(res[0] / Math.max(res[1], 1), 0.01));
+  }
+
+  /** iInstanceCount: a mesh pass that falls back to fullscreen draws once. */
+  public getPassInstanceCount(passConfig: Pass): number {
+    return this.drawsFullscreen(passConfig) ? 1 : geometryInstanceCount(passConfig);
   }
 
   public clearCanvas(): void {
@@ -51,6 +128,7 @@ export class PassRenderer {
 
   public dispose(): void {
     this.meshCamera.detach();
+    this.multisample?.dispose();
     this.samplerCache?.dispose();
     this.samplerCache = null;
   }
@@ -76,7 +154,49 @@ export class PassRenderer {
       this.renderer.SetViewport([0, 0, this.canvas.width, this.canvas.height]);
     }
 
-    this.renderer.SetRenderTarget(target);
+    const resolveMultisample = this.beginMultisample(passConfig, target);
+    if (!resolveMultisample) {
+      this.renderer.SetRenderTarget(target);
+    }
+    try {
+      this.drawPass(passConfig, shader, uniforms, slotAssignments, textureBindings, customUniforms);
+    } finally {
+      resolveMultisample?.();
+    }
+  }
+
+  /**
+   * Binds a multisampled framebuffer for a pass with `samples` above 1 and
+   * returns its resolve, or null to draw straight into the target. Buffer
+   * passes are rgba16float with MSAA (see resolveRenderedBufferFormat).
+   */
+  private beginMultisample(passConfig: Pass, target: PiRenderTarget | null): (() => void) | null {
+    const samples = resolveRenderState(passConfig).samples;
+    if (samples < 2 || !this.gl || !this.multisample || this.drawsFullscreen(passConfig)) {
+      return null;
+    }
+    const gl = this.gl;
+    const [width, height] = target?.mTex0
+      ? [target.mTex0.mXres, target.mTex0.mYres]
+      : [this.canvas.width, this.canvas.height];
+    const internalFormat = !target
+      ? gl.RGBA8
+      : passConfig.outputFormat === "rgba32float" ? gl.RGBA32F : gl.RGBA16F;
+    return this.multisample.begin(passConfig.name, {
+      framebuffer: (target?.mObjectID as WebGLFramebuffer | undefined) ?? null,
+      width,
+      height,
+    }, samples, internalFormat);
+  }
+
+  private drawPass(
+    passConfig: Pass,
+    shader: PiShader,
+    uniforms: PassUniforms,
+    slotAssignments: SlotAssignment[],
+    textureBindings: (PiTexture | null)[],
+    customUniforms?: CustomUniform[],
+  ): void {
     this.renderer.AttachShader(shader);
 
     this.renderer.SetShaderConstant3FV("iResolution", uniforms.res);
@@ -90,6 +210,15 @@ export class PassRenderer {
     this.renderer.SetShaderConstant1F("iSampleRate", uniforms.sampleRate);
     this.renderer.SetShaderConstant3FV("iCameraPos", uniforms.cameraPos);
     this.renderer.SetShaderConstant3FV("iCameraDir", uniforms.cameraDir);
+
+    const fullscreen = this.drawsFullscreen(passConfig);
+    const mesh = this.resolveMesh(passConfig);
+    this.renderer.SetShaderConstant1I("iVertexCount", this.getPassVertexCount(passConfig));
+    this.renderer.SetShaderConstant1I("iInstanceCount", this.getPassInstanceCount(passConfig));
+    const camera = this.getCameraMatrices(uniforms.res);
+    this.renderer.SetShaderConstantMat4F("iViewMatrix", Array.from(camera.view), true);
+    this.renderer.SetShaderConstantMat4F("iProjectionMatrix", Array.from(camera.projection), true);
+    this.renderer.SetShaderConstantMat4F("iViewProjection", Array.from(camera.viewProjection), true);
 
     const channelResolutions = this.getChannelResolutions(passConfig, textureBindings);
     this.renderer.SetShaderConstant3FV("iChannelResolution[0]", channelResolutions);
@@ -158,44 +287,63 @@ export class PassRenderer {
       }
     }
 
-    if (passConfig.geometry === "fullscreen" || !this.gl || !this.meshResources) {
-      const posLoc = this.renderer.GetAttribLocation(shader, "position");
-      this.renderer.DrawUnitQuad_XY(posLoc);
+    const state = resolveRenderState(passConfig);
+    if (fullscreen) {
+      this.withRenderState(state, () => this.drawFullscreen(passConfig, state));
       return;
     }
+    if (passConfig.geometry === "vertices") {
+      if (!isClipSpaceVertices(passConfig)) {
+        this.setCameraUniforms(shader, camera);
+      }
+      this.clearColorAndDepth(state);
+      this.withRenderState(state, () => this.drawVertices(passConfig));
+      return;
+    }
+    if (!mesh || !this.gl) {
+      return;
+    }
+    this.setCameraUniforms(shader, camera);
+    this.clearColorAndDepth(state);
+    const gl = this.gl;
+    this.withRenderState(state, () => {
+      try {
+        drawMesh(gl, mesh, meshTopology(passConfig), geometryInstanceCount(passConfig));
+      } finally {
+        gl.bindVertexArray(null);
+      }
+    });
+  }
 
-    const mesh = passConfig.modelPath
-      ? this.meshResources.getModel(passConfig.name)
-      : passConfig.geometry === "model" ? undefined : this.meshResources.get(passConfig.geometry);
-    if (!mesh) {
-      return;
-    }
-    const aspect = Math.max(uniforms.res[0] / Math.max(uniforms.res[1], 1), 0.01);
+  /** Orbit-camera matrices for meshes and world-space vertices. */
+  private setCameraUniforms(shader: PiShader, camera: CameraMatrices): void {
     const model = createModelMatrix({ position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] });
-    const view = this.meshCamera.getViewMatrix();
     this.renderer.SetShaderConstantMat4F("_meshModel", Array.from(model), true);
-    this.renderer.SetShaderConstantMat4F("_meshView", Array.from(view), true);
-    const projection = this.meshCamera.getProjectionMatrix(aspect);
-    this.renderer.SetShaderConstantMat4F("_meshProjection", Array.from(projection), true);
-    const normalLocation = shader.mProgram && this.gl.getUniformLocation(shader.mProgram, "_meshNormalMatrix");
+    this.renderer.SetShaderConstantMat4F("_meshView", Array.from(camera.view), true);
+    this.renderer.SetShaderConstantMat4F("_meshProjection", Array.from(camera.projection), true);
+    const normalLocation = this.gl && shader.mProgram && this.gl.getUniformLocation(shader.mProgram, "_meshNormalMatrix");
     if (normalLocation) {
-      this.gl.uniformMatrix3fv(normalLocation, false, createNormalMatrix3(model));
+      this.gl!.uniformMatrix3fv(normalLocation, false, createNormalMatrix3(model));
     }
     this.renderer.SetShaderConstant3FV("iCameraPosition", this.meshCamera.getPosition());
-    this.gl.enable(this.gl.DEPTH_TEST);
-    this.gl.depthFunc(this.gl.LEQUAL);
+  }
+
+  private clearColorAndDepth(state: ResolvedRenderState): void {
     this.renderer.Clear(
       this.renderer.CLEAR.Color | this.renderer.CLEAR.Zbuffer,
-      [0, 0, 0, 1],
-      1,
+      [...state.clear],
+      depthClearValue(state),
       0,
     );
+  }
+
+  /** Blend/depth/cull for one draw, restored to the GL defaults afterwards. */
+  private withRenderState(state: ResolvedRenderState, draw: () => void): void {
+    const restore = this.gl ? applyWebGLRenderState(this.gl, state) : null;
     try {
-      this.gl.bindVertexArray(mesh.vao);
-      this.gl.drawElements(this.gl.TRIANGLES, mesh.indexCount, mesh.indexType ?? this.gl.UNSIGNED_SHORT, 0);
+      draw();
     } finally {
-      this.gl.bindVertexArray(null);
-      this.gl.disable(this.gl.DEPTH_TEST);
+      restore?.();
     }
   }
 
@@ -244,5 +392,30 @@ export class PassRenderer {
         toggled: this.keyboardManager.getKeyToggled(),
       },
     });
+  }
+}
+
+/**
+ * Draws a mesh as triangles, its unique edges as lines, or its unique
+ * vertices as points, instanced when more than one copy is drawn.
+ */
+function drawMesh(gl: WebGL2RenderingContext, mesh: WebGLMeshDraw, topology: MeshTopology, instances: number): void {
+  if (topology === "point-list") {
+    gl.bindVertexArray(mesh.vao);
+    if (instances > 1) {
+      gl.drawArraysInstanced(gl.POINTS, 0, mesh.vertexCount, instances);
+    } else {
+      gl.drawArrays(gl.POINTS, 0, mesh.vertexCount);
+    }
+    return;
+  }
+  const [vao, mode, count] = topology === "line-list"
+    ? [mesh.edgeVao, gl.LINES, mesh.edgeIndexCount]
+    : [mesh.vao, gl.TRIANGLES, mesh.indexCount];
+  gl.bindVertexArray(vao);
+  if (instances > 1) {
+    gl.drawElementsInstanced(mode, count, mesh.indexType ?? gl.UNSIGNED_SHORT, 0, instances);
+  } else {
+    gl.drawElements(mode, count, mesh.indexType ?? gl.UNSIGNED_SHORT, 0);
   }
 }

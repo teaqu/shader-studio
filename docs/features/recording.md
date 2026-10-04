@@ -41,11 +41,17 @@ clip at a chosen time, duration, and resolution.
 | **FPS** | Screen, 24, 30, 60, or custom. In Render mode, Screen rounds to 24, 30, 60 or 120 fps |
 | **Resolution** | Current, 720p, 1080p, 4K, or custom in Render mode |
 
-Live recording uses the browser's MediaRecorder, so the formats offered depend
+Live recording uses WebCodecs when available, with explicit per-frame quality
+to preserve smooth shader gradients. MP4 dimensions are rounded up to even
+pixels to avoid encoder edge artifacts. WebM prefers VP9, with a VP8 fallback.
+Hosts without WebCodecs use MediaRecorder, so the formats offered depend
 on the host: a format it can't record is disabled, and a saved choice it can't
 record falls back to one it can, with a note in the panel. MP4 needs even
 dimensions; an odd custom size is rounded up and the panel tells you the saved
-size. Video quality is automatic. The encoder uses variable bitrate with a
+size. Video quality is automatic. Live recordings request minimum quantization
+and prefer software encoding for fidelity over hardware speed or compression;
+complex shaders can therefore produce larger files. Render and bitrate fallback
+encoders use variable bitrate with a
 high ceiling (5 bits per pixel), so detailed, fast-changing shaders keep their
 detail while simple shaders stay small, because the encoder only spends what the
 content needs. Video stores colour at half resolution (4:2:0), so single-pixel

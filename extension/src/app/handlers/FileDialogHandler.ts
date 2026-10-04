@@ -10,6 +10,8 @@ import { getConfigPathForShaderPath } from "../ShaderConfigPaths";
 import type { ErrorMessage } from "@shader-studio/types";
 import { GLSL_EXTENSIONS, SCRIPT_EXTENSIONS, TEXTURE_EXTENSIONS, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, CUBEMAP_EXTENSIONS, WGSL_EXTENSIONS } from "@shader-studio/types";
 
+type ResponseSender = (message: { type: string; payload: unknown }) => void;
+
 function fileTypeToFilters(fileType: string): { [name: string]: string[] } {
   switch (fileType) {
     case 'script':   return { 'Script files': SCRIPT_EXTENSIONS };
@@ -42,7 +44,7 @@ export class FileDialogHandler {
 
   async handleSelectFile(
     payload: { shaderPath: string; fileType: string; requestId: string },
-    respondFn: (msg: any) => void,
+    respondFn: ResponseSender,
   ): Promise<void> {
     try {
       const shaderDir = payload.shaderPath
@@ -75,7 +77,7 @@ export class FileDialogHandler {
 
   async handleCreateFile(
     payload: { shaderPath: string; suggestedPath: string; fileType: string; requestId: string },
-    respondFn: (msg: any) => void,
+    respondFn: ResponseSender,
   ): Promise<void> {
     try {
       const shaderDir = payload.shaderPath
@@ -112,15 +114,15 @@ export class FileDialogHandler {
         } else if (payload.fileType === 'slang-common') {
           template = `// Common functions shared across all passes\n`;
         } else if (payload.fileType === 'glsl-vertex') {
-          template = `void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) {\n}\n`;
+          template = `void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {\n}\n`;
         } else if (payload.fileType === 'slang-vertex') {
-          template = `void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {\n\n}\n`;
+          template = `void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {\n\n}\n`;
         } else if (payload.fileType === 'slang-compute') {
           template = `[shader("compute")]\n[numthreads(8, 8, 1)]\nvoid compute(uint3 dispatchThreadID : SV_DispatchThreadID) {\n\n}\n`;
         } else if (payload.fileType === 'wgsl-common') {
           template = `// Common functions shared across all passes\n`;
         } else if (payload.fileType === 'wgsl-vertex') {
-          template = `fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {\n\n}\n`;
+          template = `fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {\n\n}\n`;
         } else if (payload.fileType === 'wgsl-compute') {
           template = `@compute @workgroup_size(8, 8, 1)\nfn compute(@builtin(global_invocation_id) dispatchThreadID: vec3u) {\n\n}\n`;
         } else if (payload.fileType === 'wgsl-buffer') {
@@ -146,7 +148,7 @@ export class FileDialogHandler {
 
   async handleSaveFile(
     payload: { data: string; defaultName: string; filters: Record<string, string[]>; requestId?: string },
-    respondFn: (msg: any) => void,
+    respondFn: ResponseSender,
   ): Promise<void> {
     const requestId = payload.requestId;
     try {
@@ -231,7 +233,7 @@ export class FileDialogHandler {
 
   async handleRequestWorkspaceFiles(
     payload: { extensions: string[]; shaderPath: string },
-    respondFn: (msg: any) => void,
+    respondFn: ResponseSender,
     pathConverter: (absPath: string) => string,
   ): Promise<void> {
     try {

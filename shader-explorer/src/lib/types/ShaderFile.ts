@@ -8,6 +8,8 @@ export interface ShaderFile {
     cachedThumbnail?: string; // Cached thumbnail from disk
     modifiedTime?: number;
     createdTime?: number;
+    /** Changes whenever the shader, its config or a pass source changes; keys the thumbnail cache. */
+    thumbnailVersion?: number;
 }
 
 export interface WorkspaceShaders {

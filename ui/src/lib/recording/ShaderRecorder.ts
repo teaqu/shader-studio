@@ -13,6 +13,7 @@ import {
 import { createRenderTimeline, type RenderFrameStep, type RenderTimeline } from "./renderTimeline";
 import { liveVideoMimeType } from "./liveVideoFormats";
 import { finalizeLiveMp4 } from "./finalizeLiveMp4";
+import { createLiveVideoCapture, type LiveVideoCapture } from "./LiveVideoCapture";
 import { describeRenderInputLimitations, renderInputLimitations } from "./captureSnapshot";
 
 export type { ScreenshotConfig, RecordingConfig, ShaderInfo };
@@ -25,6 +26,9 @@ export class ShaderRecorder {
   private activeMediaRecorder: MediaRecorder | null = null;
   private liveStream: MediaStream | null = null;
   private liveFinalization: AbortController | null = null;
+  private activeLiveVideo: LiveVideoCapture | null = null;
+  private startingLiveVideo = false;
+  private stopLiveVideoRequested = false;
   private rejectLiveRecording: ((reason?: unknown) => void) | null = null;
   private outputNotice: string | null = null;
 
@@ -113,6 +117,10 @@ export class ShaderRecorder {
       return Promise.reject(new Error(`${config.format.toUpperCase()} Live recording is not supported by this host`));
     }
 
+    if (typeof globalThis.VideoEncoder !== "undefined") {
+      return this.recordQualityLiveVideo(canvas, config.fps, config.format);
+    }
+
     this.cancelled = false;
     const stream = canvas.captureStream(config.fps);
     let mediaRecorder: MediaRecorder;
@@ -181,9 +189,43 @@ export class ShaderRecorder {
   }
 
   stopLiveRecording(): void {
+    if (this.startingLiveVideo) {
+      this.stopLiveVideoRequested = true;
+      recordingStore.setFinalizing();
+      return;
+    }
+    if (this.activeLiveVideo) {
+      recordingStore.setFinalizing();
+      this.activeLiveVideo.stop();
+      return;
+    }
     if (this.activeMediaRecorder?.state === "recording") {
       recordingStore.setFinalizing();
       this.activeMediaRecorder.stop();
+    }
+  }
+
+  private async recordQualityLiveVideo(canvas: HTMLCanvasElement, fps: number, format: "mp4" | "webm"): Promise<Blob> {
+    this.cancelled = false;
+    const controller = new AbortController();
+    this.liveFinalization = controller;
+    this.startingLiveVideo = true;
+    this.stopLiveVideoRequested = false;
+    recordingStore.startLiveRecording(format);
+    try {
+      this.activeLiveVideo = await createLiveVideoCapture(canvas, fps, format, controller.signal);
+      this.startingLiveVideo = false;
+      if (format === "mp4" && (canvas.width % 2 || canvas.height % 2)) {
+        this.outputNotice = "MP4 dimensions were rounded up to even pixels for video encoding.";
+      }
+      if (this.stopLiveVideoRequested) {
+        this.activeLiveVideo.stop();
+      }
+      return await this.activeLiveVideo.result;
+    } finally {
+      this.activeLiveVideo = null;
+      this.startingLiveVideo = false;
+      this.liveFinalization = null;
     }
   }
 

@@ -36,6 +36,7 @@ const WGSL_SCALAR_LAYOUT: Record<string, { align: number; size: number }> = {
   "vec2<u32>": { align: 8, size: 8 },
   "vec3<u32>": { align: 16, size: 12 },
   "vec4<u32>": { align: 16, size: 16 },
+  "mat4x4<f32>": { align: 16, size: 64 },
 };
 
 function alignTo(value: number, alignment: number): number {
@@ -106,7 +107,7 @@ describe("wrapWgslImageSource uniform block", () => {
     }).source;
     const vertex = wrapWgslImageSource("fn mainImage(coord: vec2f) -> vec4f { return vec4f(0.0); }", {
       channels: [channel("state", 0)],
-      vertexCode: "fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) { let cell = stateLoad(vec2i(0)); }",
+      vertexCode: "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) { let cell = stateLoad(vec2i(0)); }",
     }).source;
     const cubemap = wrapWgslImageSource("fn mainImage(coord: vec2f) -> vec4f { return vec4f(0.0); }", {
       channels: [channel("sky", 0, "cubemap")],
@@ -257,20 +258,184 @@ describe("wrapWgslImageSource entry points", () => {
   it("generates a no-op pointer vertex hook when the user supplies no vertex code", () => {
     const { source } = wrapWgslImageSource(IMAGE);
     expect(source).toContain(
-      "fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}",
+      "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}",
     );
   });
 
   it("calls a user vertex hook with mutable locals", () => {
     const { source } = wrapWgslImageSource(IMAGE, {
-      vertexCode: "fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) { *uv = *uv * 2.0; }",
+      vertexCode: "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) { *uv = *uv * 2.0; }",
     });
-    expect(source).toContain("mainVertex(&position, &normal, &uv)");
+    expect(source).toContain("mainVertex(vid, &position, &normal, &uv)");
+  });
+
+  describe("fullscreen stays as in #275", () => {
+    const hook = "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}";
+    const vertexEntry = (source: string) => source.slice(source.indexOf("@vertex fn vertexMain"), source.indexOf("@fragment"));
+    const DEFAULT_HOOK_ENTRY = `@vertex fn vertexMain(@builtin(vertex_index) vid: u32) -> _ss_VertexUvOut {
+  _ss_initGlobals();
+  var verts = array<vec2<f32>, 3>(vec2f(-1, -1), vec2f(3, -1), vec2f(-1, 3));
+  var position = vec3<f32>(verts[vid], 0.0);
+  var normal = vec3<f32>(0.0, 0.0, 1.0);
+  var uv = verts[vid] * 0.5 + 0.5;
+  mainVertex(vid, &position, &normal, &uv);
+  var output: _ss_VertexUvOut;
+  output.position = vec4<f32>(position, 1.0);
+  output.uv = uv;
+  return output;
+}
+
+`;
+
+    it("keeps the source byte-for-byte and ignores vertexSpace", () => {
+      for (const vertexCode of [undefined, hook]) {
+        const fullscreen = wrapWgslImageSource(IMAGE, { vertexCode });
+        expect(wrapWgslImageSource(IMAGE, { vertexCode, geometry: "fullscreen", vertexSpace: "clip" })).toEqual(fullscreen);
+        expect(fullscreen.source).not.toContain("% 3u");
+        expect(fullscreen.source).not.toContain("_ss_mesh");
+      }
+      expect(vertexEntry(wrapWgslImageSource(IMAGE, { vertexCode: hook }).source)).toBe(DEFAULT_HOOK_ENTRY);
+    });
+
+    it("initialises iVertexCount as u32 from the uniform block in both stages", () => {
+      const { source } = wrapWgslImageSource(IMAGE, { vertexCode: hook });
+      expect(source).toContain("  cameraDir: vec4<f32>,\n  vertexCount: vec4<u32>,\n");
+      expect(source).toContain("var<private> iVertexCount: u32;");
+      expect(source).toContain("  iVertexCount = _ss_u.vertexCount.x;");
+      expect(source).toContain("var<private> iVertexUv: vec2<f32>;");
+      expect(source).toContain("var<private> iFrontFacing: bool;");
+    });
+  });
+
+  describe("camera matrices", () => {
+    it("declares the matrices after vertexCount and copies them into private globals", () => {
+      const { source } = wrapWgslImageSource(IMAGE);
+      expect(source).toContain("  vertexCount: vec4<u32>,\n  viewMatrix: mat4x4<f32>,\n  projectionMatrix: mat4x4<f32>,\n  viewProjection: mat4x4<f32>,\n");
+      for (const [name, field] of [["iViewMatrix", "viewMatrix"], ["iProjectionMatrix", "projectionMatrix"], ["iViewProjection", "viewProjection"]]) {
+        expect(source).toContain(`var<private> ${name}: mat4x4<f32>;`);
+        expect(source).toContain(`  ${name} = _ss_u.${field};`);
+      }
+    });
+  });
+
+  describe("instancing", () => {
+    const hook = "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}";
+
+    it("declares iInstanceCount from the y lane of the vertexCount slot and a private iInstanceIndex", () => {
+      const { source } = wrapWgslImageSource(IMAGE);
+      expect(source).toContain("var<private> iInstanceCount: u32;");
+      expect(source).toContain("  iInstanceCount = _ss_u.vertexCount.y;");
+      expect(source).toContain("var<private> iInstanceIndex: u32;");
+    });
+
+    it("leaves iInstanceIndex at its zero initial value for fullscreen and capture entries", () => {
+      for (const options of [{}, { vertexCode: hook }, { captureMode: true }]) {
+        const { source } = wrapWgslImageSource(IMAGE, options);
+        expect(source).not.toContain("instance_index");
+        expect(source).not.toContain("iInstanceIndex =");
+        expect(source).not.toContain("@interpolate(flat)");
+      }
+    });
+  });
+
+  describe("vertices geometry", () => {
+    const hook = "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {\n  (*position).x = f32(vertexIndex);\n}";
+    const SEED = `  var position = vec3<f32>(0.0, 0.0, 0.0);
+  var normal = vec3<f32>(0.0, 0.0, 1.0);
+  var uv = vec2<f32>(0.0, 0.0);
+  mainVertex(vid, &position, &normal, &uv);`;
+
+    it.each([undefined, "world"] as const)("projects world-space output through the camera with no vertex inputs (vertexSpace %s)", (vertexSpace) => {
+      const result = wrapWgslImageSource(IMAGE, { geometry: "vertices", vertexCode: hook, ...(vertexSpace ? { vertexSpace } : {}) });
+
+      expect(result.source).toContain("var<uniform> _ss_mesh: _ss_MeshUniforms;");
+      expect(result.source).toContain(`@vertex fn vertexMain(@builtin(vertex_index) vid: u32, @builtin(instance_index) iid: u32) -> _ss_MeshVertexOut {\n  _ss_initGlobals();\n  iInstanceIndex = iid;\n${SEED}\n  let worldPosition = _ss_mesh.model * vec4<f32>(position, 1.0);`);
+      expect(result.source).toContain("output.position = _ss_mesh.viewProjection * worldPosition;");
+      expect(result.source).toContain("  output.instanceIndex = iid;");
+      expect(result.source).toContain("@location(3) @interpolate(flat) instanceIndex: u32,\n}");
+      expect(result.source).toContain("  iInstanceIndex = instanceIndex;");
+      expect(result.source).toContain("return mainImage(uv * _ss_u.resolution.xy);");
+      expect(result.source).not.toContain("@location(0) position");
+      expect(result.source).not.toContain("verts[");
+      const lines = result.source.split("\n");
+      expect(lines[result.vertexRange!.startLine - 1]).toBe(hook.split("\n")[0]);
+      expect(result.vertexRange!.lineCount).toBe(3);
+    });
+
+    it("writes clip-space output straight to the position builtin and shades with the pixel coordinate", () => {
+      const result = wrapWgslImageSource(IMAGE, { geometry: "vertices", vertexSpace: "clip", vertexCode: hook });
+
+      expect(result.source).toContain(`@vertex fn vertexMain(@builtin(vertex_index) vid: u32, @builtin(instance_index) iid: u32) -> _ss_VertexUvOut {\n  _ss_initGlobals();\n  iInstanceIndex = iid;\n${SEED}\n  var output: _ss_VertexUvOut;\n  output.position = vec4<f32>(position, 1.0);\n  output.uv = uv;\n  output.instanceIndex = iid;\n  return output;\n}`);
+      expect(result.source).toContain("@location(1) @interpolate(flat) instanceIndex: u32,\n}");
+      expect(result.source).toContain("@location(0) uv: vec2<f32>, @location(1) @interpolate(flat) instanceIndex: u32, @builtin(front_facing) frontFacing: bool)");
+      expect(result.source).toContain("  _ss_initGlobals();\n  iInstanceIndex = instanceIndex;");
+      expect(result.source).toContain("return mainImage(vec2<f32>(fragCoord.x, _ss_u.resolution.y - fragCoord.y));");
+      expect(result.source).toContain("iVertexUv = uv;");
+      expect(result.source).toContain("iFrontFacing = frontFacing;");
+      expect(result.source).not.toContain("_ss_mesh");
+      expect(result.source).not.toContain("verts[");
+      const lines = result.source.split("\n");
+      expect(lines[result.vertexRange!.startLine - 1]).toBe(hook.split("\n")[0]);
+    });
+
+    it.each(["world", "clip"] as const)("declares a no-op hook in %s space when none is configured", (vertexSpace) => {
+      const result = wrapWgslImageSource(IMAGE, { geometry: "vertices", vertexSpace });
+
+      expect(result.source).toContain("fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}");
+      expect(result.source).toContain(SEED);
+      expect(result.vertexRange).toBeUndefined();
+    });
+
+    it("keeps common code attribution past the world-space mesh prelude", () => {
+      const common = "fn helper() -> f32 { return 1.0; }";
+      const result = wrapWgslImageSource(IMAGE, { geometry: "vertices", vertexCode: hook, commonCode: common });
+      const lines = result.source.split("\n");
+
+      expect(lines[result.commonRange!.startLine - 1]).toBe(common);
+    });
+
+    it("ignores vertexSpace for mesh geometry and capture mode", () => {
+      expect(wrapWgslImageSource(IMAGE, { geometry: "plane", vertexCode: hook, vertexSpace: "clip" }))
+        .toEqual(wrapWgslImageSource(IMAGE, { geometry: "plane", vertexCode: hook }));
+      expect(wrapWgslImageSource(IMAGE, { captureMode: true, geometry: "vertices", vertexSpace: "clip" }))
+        .toEqual(wrapWgslImageSource(IMAGE, { captureMode: true }));
+    });
+  });
+
+  it("runs a fullscreen hook with the triangle vertex index", () => {
+    const { source } = wrapWgslImageSource(IMAGE, {
+      vertexCode: "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}",
+    });
+    const vertex = source.slice(source.indexOf("@vertex fn vertexMain"), source.indexOf("@fragment"));
+    expect(vertex).toContain("@builtin(vertex_index) vid: u32");
+    expect(vertex).toContain("var verts = array<vec2<f32>, 3>(vec2f(-1, -1), vec2f(3, -1), vec2f(-1, 3));");
+    expect(vertex).toContain("var normal = vec3<f32>(0.0, 0.0, 1.0);");
+    expect(vertex).toContain("mainVertex(vid, &position, &normal, &uv);");
+  });
+
+  it.each(["plane", "cube", "sphere", "model"] as const)("passes the %s mesh vertex index to the hook", (geometry) => {
+    const { source } = wrapWgslImageSource(IMAGE, {
+      geometry,
+      vertexCode: "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}",
+    });
+    expect(source).toContain("@location(2) uv: vec2<f32>, @builtin(vertex_index) vid: u32, @builtin(instance_index) iid: u32) -> _ss_MeshVertexOut {\n  _ss_initGlobals();\n  iInstanceIndex = iid;\n  var p = position;");
+    expect(source).toContain("mainVertex(vid, &p, &n, &t);");
+    expect(source).toContain("  output.instanceIndex = iid;");
+    expect(source).toContain("@location(3) @interpolate(flat) instanceIndex: u32, @builtin(front_facing) frontFacing: bool)");
+  });
+
+  it("declares a vertex-index stub hook for meshes without vertex code", () => {
+    const { source, vertexRange } = wrapWgslImageSource(IMAGE, { geometry: "cube" });
+    expect(source).toContain(
+      "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}",
+    );
+    expect(source).toContain("mainVertex(vid, &p, &n, &t);");
+    expect(vertexRange).toBeUndefined();
   });
 
   it("reports the hook range where the hook text actually sits in the module", () => {
     const hook = [
-      "fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {",
+      "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {",
       "  *uv = *uv * 2.0;",
       "}",
     ].join("\n");
@@ -286,12 +451,12 @@ describe("wrapWgslImageSource entry points", () => {
 
   it("omits the hook range when the generated stub stands in", () => {
     const { source, vertexRange } = wrapWgslImageSource(IMAGE);
-    expect(source).toContain("fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}");
+    expect(source).toContain("fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}");
     expect(vertexRange).toBeUndefined();
   });
 
   it("reports the hook range for mesh geometry", () => {
-    const hook = "fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}";
+    const hook = "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}";
     const { source, vertexRange } = wrapWgslImageSource(IMAGE, { geometry: "sphere", vertexCode: hook });
     expect(vertexRange?.lineCount).toBe(1);
     const lines = source.split("\n");
@@ -303,7 +468,7 @@ describe("wrapWgslImageSource entry points", () => {
   it("ports the mesh prelude with column-major matrices and location attributes", () => {
     const { source } = wrapWgslImageSource(IMAGE, {
       geometry: "sphere",
-      vertexCode: "fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}",
+      vertexCode: "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}",
     });
     expect(source).toContain("model: mat4x4<f32>");
     expect(source).toContain("@location(0) position: vec3<f32>");
@@ -577,6 +742,10 @@ describe("wrapWgslImageSource golden module", () => {
         channelResolution: array<vec4<f32>, 4>,
         cameraPos: vec4<f32>,
         cameraDir: vec4<f32>,
+        vertexCount: vec4<u32>,
+        viewMatrix: mat4x4<f32>,
+        projectionMatrix: mat4x4<f32>,
+        viewProjection: mat4x4<f32>,
         custom_myGain: vec4<f32>,
         custom_myFlag: i32,
       }
@@ -592,9 +761,17 @@ describe("wrapWgslImageSource golden module", () => {
       var<private> iDate: vec4<f32>;
       var<private> iCameraPos: vec3<f32>;
       var<private> iCameraDir: vec3<f32>;
+      var<private> iVertexCount: u32;
+      var<private> iInstanceCount: u32;
+      var<private> iViewMatrix: mat4x4<f32>;
+      var<private> iProjectionMatrix: mat4x4<f32>;
+      var<private> iViewProjection: mat4x4<f32>;
+      var<private> iInstanceIndex: u32;
+      var<private> iVertexUv: vec2<f32>;
       var<private> iWorldPosition: vec3<f32>;
       var<private> iNormal: vec3<f32>;
       var<private> iCameraPosition: vec3<f32>;
+      var<private> iFrontFacing: bool;
       var<private> myGain: vec4<f32>;
       var<private> myFlag: bool;
 
@@ -609,6 +786,11 @@ describe("wrapWgslImageSource golden module", () => {
         iDate = _ss_u.date;
         iCameraPos = _ss_u.cameraPos.xyz;
         iCameraDir = _ss_u.cameraDir.xyz;
+        iVertexCount = _ss_u.vertexCount.x;
+        iInstanceCount = _ss_u.vertexCount.y;
+        iViewMatrix = _ss_u.viewMatrix;
+        iProjectionMatrix = _ss_u.projectionMatrix;
+        iViewProjection = _ss_u.viewProjection;
         myGain = _ss_u.custom_myGain;
         myFlag = _ss_u.custom_myFlag != 0;
         _ss_initChannels();
@@ -729,15 +911,25 @@ describe("wrapWgslImageSource golden module", () => {
         return c * myGain;
       }
       @group(0) @binding(10) var<storage, read> custom: array<MyData>;
-      fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}
+      fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}
 
-      @vertex fn vertexMain(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4<f32> {
-        var verts = array<vec2<f32>, 3>(vec2f(-1, -1), vec2f(3, -1), vec2f(-1, 3));
-        return vec4<f32>(verts[vid], 0.0, 1.0);
+      struct _ss_VertexUvOut {
+        @builtin(position) position: vec4<f32>,
+        @location(0) uv: vec2<f32>,
       }
 
-      @fragment fn fragmentMain(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
+      @vertex fn vertexMain(@builtin(vertex_index) vid: u32) -> _ss_VertexUvOut {
+        var verts = array<vec2<f32>, 3>(vec2f(-1, -1), vec2f(3, -1), vec2f(-1, 3));
+        var output: _ss_VertexUvOut;
+        output.position = vec4<f32>(verts[vid], 0.0, 1.0);
+        output.uv = verts[vid] * 0.5 + 0.5;
+        return output;
+      }
+
+      @fragment fn fragmentMain(@builtin(position) fragCoord: vec4<f32>, @location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
         _ss_initGlobals();
+        iVertexUv = uv;
+        iFrontFacing = true;
         // Flip Y so fragCoord origin is bottom-left, matching ShaderToy.
         return mainImage(vec2<f32>(fragCoord.x, _ss_u.resolution.y - fragCoord.y));
       }

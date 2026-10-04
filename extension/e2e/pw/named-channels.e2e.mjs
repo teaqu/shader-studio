@@ -221,7 +221,7 @@ for (const owner of ['Image', 'Common', 'vertex']) {
     const config = join(fixtureDir(), 'directive.sha.json');
     const imageSource = 'fn mainImage(p: vec2f) -> vec4f { return vec4f(0,1,0,1); }';
     const commonSource = 'fn helper() -> f32 { return 1; }';
-    const vertexSource = 'fn mainVertex(p: ptr<function, vec3f>, n: ptr<function, vec3f>, uv: ptr<function, vec2f>) {}';
+    const vertexSource = 'fn mainVertex(vertexIndex: u32, p: ptr<function, vec3f>, n: ptr<function, vec3f>, uv: ptr<function, vec2f>) {}';
     const target = owner === 'Image' ? path : owner === 'Common' ? common : vertex;
     const original = owner === 'Image' ? imageSource : owner === 'Common' ? commonSource : vertexSource;
     writeFileSync(path, imageSource); writeFileSync(common, commonSource); writeFileSync(vertex, vertexSource);

@@ -1,0 +1,13 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "vertex": "./instanced-cubes_glsl.vert.glsl",
+      "geometry": {
+        "type": "cube",
+        "instanceCount": 100
+      },
+      "cull": "back"
+    }
+  }
+}

@@ -280,8 +280,11 @@ function migrateWorkspaceDatabase(request: IDBOpenDBRequest, oldVersion: number)
   };
 }
 
+export type VirtualWorkspaceChangeListener = (paths: string[]) => void;
+
 export class VirtualWorkspace {
   private readonly files = new Map<string, VirtualWorkspaceFile>();
+  private readonly changeListeners = new Set<VirtualWorkspaceChangeListener>();
   /** The snapshot the store has confirmed. The journal carries the difference
    * between it and the files in memory. */
   private committed = new Map<string, VirtualWorkspaceFile>();
@@ -376,6 +379,12 @@ export class VirtualWorkspace {
     return applied;
   }
 
+  /** Listen for created, changed, renamed or deleted files. Returns an unsubscribe function. */
+  onDidChange(listener: VirtualWorkspaceChangeListener): () => void {
+    this.changeListeners.add(listener);
+    return () => this.changeListeners.delete(listener);
+  }
+
   exists(path: string): boolean {
     return this.files.has(this.normalizePath(path));
   }
@@ -395,6 +404,7 @@ export class VirtualWorkspace {
       modifiedAt: timestamp,
     });
     this.queueSave();
+    this.notifyChange([normalizedPath]);
   }
 
   /** Monotonic commit counter. Advances exactly once per committed
@@ -450,6 +460,7 @@ export class VirtualWorkspace {
       // journal was still holding for an earlier write.
       this.onCommitted(snapshot, ++this.saveSequence);
       onCommit();
+      this.notifyChange([...targets.keys()]);
     });
     // A failed transaction must not poison future editor saves.
     this.pendingSave = operation.catch(() => {});
@@ -479,6 +490,7 @@ export class VirtualWorkspace {
     this.files.delete(source);
     this.files.set(destination, { ...file, path: destination });
     this.queueSave();
+    this.notifyChange([source, destination]);
   }
 
   delete(path: string): void {
@@ -487,6 +499,7 @@ export class VirtualWorkspace {
       throw new Error(`File not found: ${normalizedPath}`);
     }
     this.queueSave();
+    this.notifyChange([normalizedPath]);
   }
 
   async flush(): Promise<void> {
@@ -495,11 +508,15 @@ export class VirtualWorkspace {
 
   async clear(): Promise<void> {
     this.revision++;
+    const removedPaths = [...this.files.keys()];
     this.files.clear();
     this.committed.clear();
     this.saveSequence++;
     this.journal.clear();
     this.pendingSave = this.pendingSave.then(() => this.store.clear());
+    if (removedPaths.length) {
+      this.notifyChange(removedPaths);
+    }
     await this.pendingSave;
   }
 
@@ -533,6 +550,12 @@ export class VirtualWorkspace {
   private nextTimestamp(): number {
     this.timestamp = Math.max(this.now(), this.timestamp + 1);
     return this.timestamp;
+  }
+
+  private notifyChange(paths: string[]): void {
+    for (const listener of [...this.changeListeners]) {
+      listener(paths);
+    }
   }
 
   private queueSave(): void {

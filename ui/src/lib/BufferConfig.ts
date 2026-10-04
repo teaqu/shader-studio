@@ -1,30 +1,10 @@
-import {
-  GEOMETRY_TYPES,
-  type BufferPass,
-  type ComputePass,
-  type ConfigInput,
-  type GeometryConfig,
-  type ImagePass
+import { validatePassRenderSettings } from '@shader-studio/rendering';
+import type {
+  BufferPass,
+  ComputePass,
+  ConfigInput,
+  ImagePass
 } from '@shader-studio/types';
-
-function isValidGeometry(geometry: unknown): geometry is GeometryConfig | undefined {
-  if (geometry === undefined) {
-    return true;
-  }
-  if (!geometry || typeof geometry !== 'object' || Array.isArray(geometry)) {
-    return false;
-  }
-
-  const type = (geometry as { type?: unknown }).type;
-  if (type === 'model') {
-    const { path, mesh, resolved_path, ...rest } = geometry as { path?: unknown; mesh?: unknown; resolved_path?: unknown; type?: unknown };
-    return Object.keys(rest).length === 1 && typeof path === 'string' && path.length > 0 &&
-      (mesh === undefined || typeof mesh === 'string') && (resolved_path === undefined || typeof resolved_path === 'string');
-  }
-  const properties = Object.keys(geometry);
-  return properties.length === 1 && properties[0] === 'type' &&
-    typeof type === 'string' && GEOMETRY_TYPES.includes(type as GeometryConfig['type']);
-}
 
 export class BufferConfig {
   private bufferName: string;
@@ -154,14 +134,13 @@ export class BufferConfig {
       if ('outputFormat' in this.config && this.config.outputFormat !== undefined) {
         errors.push('common pass cannot define outputFormat');
       }
+      errors.push(...validatePassRenderSettings(this.config, 'common'));
     } else {
       if ('outputFormat' in this.config && this.config.outputFormat !== undefined &&
           !['auto', 'rgba16float', 'rgba32float'].includes(this.config.outputFormat)) {
         errors.push(`${this.bufferName} pass outputFormat must be auto, rgba16float, or rgba32float`);
       }
-      if (!isValidGeometry(this.config.geometry)) {
-        errors.push(`${this.bufferName} pass geometry type must be one of: ${GEOMETRY_TYPES.join(', ')}`);
-      }
+      errors.push(...validatePassRenderSettings(this.config, this.bufferName));
       if (this.config.vertex !== undefined && (typeof this.config.vertex !== 'string' || this.config.vertex.trim() === '')) {
         errors.push(`${this.bufferName} pass vertex path must be a non-empty string`);
       }
@@ -182,24 +161,29 @@ export class BufferConfig {
     };
   }
 
-  private validateInput(input: any): boolean {
-    if (!input || typeof input !== 'object' || !input.type) {
+  private validateInput(input: unknown): boolean {
+    if (!input || typeof input !== 'object') {
       return false;
     }
 
-    switch (input.type) {
+    const candidate = input as Record<string, unknown>;
+    if (typeof candidate.type !== 'string') {
+      return false;
+    }
+
+    switch (candidate.type) {
       case 'buffer':
-        return this.validateBufferInput(input);
+        return this.validateBufferInput(candidate);
       case 'texture':
       case 'cubemap':
         // Cubemaps use the same path and sampler options as textures.
-        return this.validateTextureInput(input);
+        return this.validateTextureInput(candidate);
       case 'video':
-        return this.validateVideoInput(input);
+        return this.validateVideoInput(candidate);
       case 'keyboard':
-        return this.validateKeyboardInput(input);
+        return this.validateKeyboardInput(candidate);
       case 'audio':
-        return this.validateAudioInput(input);
+        return this.validateAudioInput(candidate);
       default:
         return false;
     }
@@ -207,7 +191,7 @@ export class BufferConfig {
 
   private static readonly GLSL_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
-  private validateBufferInput(input: any): boolean {
+  private validateBufferInput(input: Record<string, unknown>): boolean {
     if (typeof input.source !== 'string' ||
         input.source.length === 0 ||
         !BufferConfig.GLSL_IDENTIFIER.test(input.source) ||
@@ -215,22 +199,22 @@ export class BufferConfig {
         input.source === 'common') {
       return false;
     }
-    if (input.filter !== undefined && !['linear', 'nearest'].includes(input.filter)) {
+    if (input.filter !== undefined && (typeof input.filter !== 'string' || !['linear', 'nearest'].includes(input.filter))) {
       return false;
     }
-    return input.wrap === undefined || ['repeat', 'clamp'].includes(input.wrap);
+    return input.wrap === undefined || (typeof input.wrap === 'string' && ['repeat', 'clamp'].includes(input.wrap));
   }
 
-  private validateTextureInput(input: any): boolean {
+  private validateTextureInput(input: Record<string, unknown>): boolean {
     if (!input.path || typeof input.path !== 'string') {
       return false;
     }
 
-    if (input.filter && !['linear', 'nearest', 'mipmap'].includes(input.filter)) {
+    if (input.filter && (typeof input.filter !== 'string' || !['linear', 'nearest', 'mipmap'].includes(input.filter))) {
       return false;
     }
 
-    if (input.wrap && !['repeat', 'clamp'].includes(input.wrap)) {
+    if (input.wrap && (typeof input.wrap !== 'string' || !['repeat', 'clamp'].includes(input.wrap))) {
       return false;
     }
 
@@ -241,16 +225,16 @@ export class BufferConfig {
     return true;
   }
 
-  private validateVideoInput(input: any): boolean {
+  private validateVideoInput(input: Record<string, unknown>): boolean {
     if (!input.path || typeof input.path !== 'string') {
       return false;
     }
 
-    if (input.filter && !['linear', 'nearest', 'mipmap'].includes(input.filter)) {
+    if (input.filter && (typeof input.filter !== 'string' || !['linear', 'nearest', 'mipmap'].includes(input.filter))) {
       return false;
     }
 
-    if (input.wrap && !['repeat', 'clamp'].includes(input.wrap)) {
+    if (input.wrap && (typeof input.wrap !== 'string' || !['repeat', 'clamp'].includes(input.wrap))) {
       return false;
     }
 
@@ -261,11 +245,11 @@ export class BufferConfig {
     return true;
   }
 
-  private validateKeyboardInput(input: any): boolean {
+  private validateKeyboardInput(input: Record<string, unknown>): boolean {
     return input.type === 'keyboard';
   }
 
-  private validateAudioInput(input: any): boolean {
+  private validateAudioInput(input: Record<string, unknown>): boolean {
     return !!input.path && typeof input.path === 'string';
   }
 

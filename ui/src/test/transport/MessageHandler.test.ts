@@ -95,7 +95,7 @@ describe("MessageHandler", () => {
           code: "void mainImage() { gl_FragColor = vec4(1.0); }",
           config: null,
           buffers: {},
-        } as ShaderSourceMessage,
+        } as unknown as ShaderSourceMessage,
       } as MessageEvent;
 
       await messageHandler.handleShaderMessage(shaderEvent);
@@ -115,7 +115,7 @@ describe("MessageHandler", () => {
           config: null,
           buffers: {},
           reload: true,
-        } as ShaderSourceMessage,
+        } as unknown as ShaderSourceMessage,
       } as MessageEvent;
 
       await messageHandler.handleShaderMessage(shaderEvent);
@@ -135,7 +135,7 @@ describe("MessageHandler", () => {
           config: null,
           buffers: {},
           reload: false,
-        } as ShaderSourceMessage,
+        } as unknown as ShaderSourceMessage,
       } as MessageEvent;
 
       await messageHandler.handleShaderMessage(shaderEvent);
@@ -154,7 +154,7 @@ describe("MessageHandler", () => {
           code: "void mainImage() { gl_FragColor = vec4(1.0); }",
           config: null,
           buffers: {},
-        } as ShaderSourceMessage,
+        } as unknown as ShaderSourceMessage,
       } as MessageEvent;
 
       await messageHandler.handleShaderMessage(shaderEvent);
@@ -227,7 +227,7 @@ describe("MessageHandler", () => {
           code: "void mainImage() { gl_FragColor = vec4(1.0); }",
           config: null,
           buffers: {},
-        } as ShaderSourceMessage,
+        } as unknown as ShaderSourceMessage,
       } as MessageEvent;
 
       mockRenderingEngine.compileShaderPipeline.mockResolvedValue({
@@ -389,7 +389,7 @@ describe("MessageHandler", () => {
             Image: 'c:\\path\\to\\main.glsl',
             BufferA: 'c:\\path\\to\\gol-buffer.glsl',
           },
-        } as ShaderSourceMessage,
+        } as unknown as ShaderSourceMessage,
       } as MessageEvent;
     });
 
@@ -842,7 +842,7 @@ describe("MessageHandler", () => {
           config: null,
           path: 'shader.glsl',
           buffers: {},
-        } as ShaderSourceMessage,
+        } as unknown as ShaderSourceMessage,
       } as MessageEvent;
 
       await messageHandler.handleShaderMessage(initialEvent);
@@ -1009,7 +1009,7 @@ describe("MessageHandler", () => {
           code: '',
           config: null,
           buffers: {},
-        } as ShaderSourceMessage,
+        } as unknown as ShaderSourceMessage,
       } as MessageEvent;
 
       const result = await messageHandler.handleShaderMessage(shaderEvent);
@@ -1029,7 +1029,7 @@ describe("MessageHandler", () => {
           code: '',
           config: null,
           buffers: {},
-        } as ShaderSourceMessage,
+        } as unknown as ShaderSourceMessage,
       } as MessageEvent;
 
       const result = await messageHandler.handleShaderMessage(shaderEvent);
@@ -1064,7 +1064,7 @@ describe("MessageHandler", () => {
           config: null,
           buffers: {},
           reload: true,
-        } as ShaderSourceMessage,
+        } as unknown as ShaderSourceMessage,
       } as MessageEvent;
 
       const result = await messageHandler.handleShaderMessage(shaderEvent);
@@ -1094,7 +1094,7 @@ describe("MessageHandler", () => {
           buffers: {
             common: 'float helper() { return 1.0; }',
           },
-        } as ShaderSourceMessage,
+        } as unknown as ShaderSourceMessage,
       } as MessageEvent;
 
       await messageHandler.handleShaderMessage(mainShaderEvent);
@@ -1111,7 +1111,7 @@ describe("MessageHandler", () => {
           config: null,
           buffers: {},
           reload: true,
-        } as ShaderSourceMessage,
+        } as unknown as ShaderSourceMessage,
       } as MessageEvent;
 
       const result = await messageHandler.handleShaderMessage(commonShaderEvent);
@@ -1140,7 +1140,7 @@ describe("MessageHandler", () => {
             },
           },
           buffers: {},
-        } as ShaderSourceMessage,
+        } as unknown as ShaderSourceMessage,
       } as MessageEvent;
 
       const result = await messageHandler.handleShaderMessage(shaderEvent);
@@ -1170,7 +1170,7 @@ describe("MessageHandler", () => {
             },
           },
           buffers: {},
-        } as ShaderSourceMessage,
+        } as unknown as ShaderSourceMessage,
       } as MessageEvent;
 
       const result = await messageHandler.handleShaderMessage(shaderEvent);
@@ -1206,7 +1206,7 @@ describe("MessageHandler", () => {
               Image: lockedPath,
               common: commonPath,
             },
-          } as ShaderSourceMessage,
+          } as unknown as ShaderSourceMessage,
         } as MessageEvent;
 
         const shaderEvent = {
@@ -1216,7 +1216,7 @@ describe("MessageHandler", () => {
             code: 'float helper() { return 1.0; }',
             config: null,
             buffers: {},
-          } as ShaderSourceMessage,
+          } as unknown as ShaderSourceMessage,
         } as MessageEvent;
 
         const result = await messageHandler.handleShaderMessage(shaderEvent);
@@ -1265,7 +1265,7 @@ describe("MessageHandler", () => {
           code: 'void mainImage() {}',
           config: null,
           buffers: {},
-        } as ShaderSourceMessage,
+        } as unknown as ShaderSourceMessage,
       } as MessageEvent;
 
       const result = await messageHandler.handleShaderMessage(shaderEvent);
@@ -1287,7 +1287,7 @@ describe("MessageHandler", () => {
           code: 'void mainImage() {}',
           config: null,
           buffers: {},
-        } as ShaderSourceMessage,
+        } as unknown as ShaderSourceMessage,
       } as MessageEvent;
       await messageHandler.handleShaderMessage(shaderEvent);
 

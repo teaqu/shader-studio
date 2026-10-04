@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
 const { mockFinalizeLiveMp4 } = vi.hoisted(() => ({ mockFinalizeLiveMp4: vi.fn() }));
 vi.mock('../../lib/recording/finalizeLiveMp4', () => ({ finalizeLiveMp4: mockFinalizeLiveMp4 }));
+const { mockCreateLiveVideoCapture } = vi.hoisted(() => ({ mockCreateLiveVideoCapture: vi.fn() }));
+vi.mock('../../lib/recording/LiveVideoCapture', () => ({ createLiveVideoCapture: mockCreateLiveVideoCapture }));
 
 // Polyfill ImageData for jsdom (used by GIF recording path)
 if (typeof globalThis.ImageData === 'undefined') {
@@ -721,6 +723,49 @@ describe('ShaderRecorder', () => {
   });
 
   describe('Live video', () => {
+    afterEach(() => vi.unstubAllGlobals());
+    it.each(['mp4', 'webm'])('uses quality-controlled Live %s when WebCodecs is available', async format => {
+      const { stream, MockMediaRecorder } = installMediaRecorder();
+      MockMediaRecorder.isTypeSupported.mockReturnValue(true);
+      vi.stubGlobal('VideoEncoder', class {});
+      const blob = new Blob(['quality'], { type: `video/${format}` });
+      let finish!: (blob: Blob) => void;
+      const stop = vi.fn(() => finish(blob));
+      mockCreateLiveVideoCapture.mockResolvedValueOnce({ result: new Promise<Blob>(resolve => {
+        finish = resolve;
+      }), stop });
+      const canvas = { width: 815, height: 459, captureStream: () => stream };
+      const recording = (recorder as any).recordLive({ mode: 'live', format, duration: 5, startTime: 0, fps: 60, width: 815, height: 459 }, { getCanvas: () => canvas });
+      await Promise.resolve();
+      (recorder as any).stopLiveRecording();
+      expect(await recording).toBe(blob);
+      expect(mockCreateLiveVideoCapture).toHaveBeenCalledWith(canvas, 60, format, expect.any(AbortSignal));
+      expect(mockStartLiveRecording).toHaveBeenCalledWith(format);
+      expect(stop).toHaveBeenCalledOnce();
+      expect(recorder.consumeOutputNotice()).toBe(format === 'mp4' ? 'MP4 dimensions were rounded up to even pixels for video encoding.' : null);
+    });
+
+    it('honours Stop while the quality encoder is still initializing', async () => {
+      const { MockMediaRecorder } = installMediaRecorder();
+      MockMediaRecorder.isTypeSupported.mockReturnValue(true);
+      vi.stubGlobal('VideoEncoder', class {});
+      let ready!: (capture: { result: Promise<Blob>; stop: ReturnType<typeof vi.fn> }) => void;
+      mockCreateLiveVideoCapture.mockImplementationOnce(() => new Promise(resolve => {
+        ready = resolve;
+      }));
+      const blob = new Blob(['quality']);
+      let finish!: (blob: Blob) => void;
+      const result = new Promise<Blob>(resolve => {
+        finish = resolve;
+      });
+      const stop = vi.fn(() => finish(blob));
+      const recording = (recorder as any).recordLive({ mode: 'live', format: 'mp4', duration: 1, startTime: 0, fps: 30, width: 800, height: 600 },
+        { getCanvas: () => ({ width: 800, height: 600, captureStream: vi.fn() }) });
+      (recorder as any).stopLiveRecording();
+      ready({ result, stop });
+      expect(await recording).toBe(blob);
+      expect(stop).toHaveBeenCalledOnce();
+    });
     it('finalizes MP4 before saving and prevents a second recording during finalization', async () => {
       const { stream, MockMediaRecorder } = installMediaRecorder();
       MockMediaRecorder.isTypeSupported.mockReturnValue(true);

@@ -851,8 +851,8 @@ suite("VS Code language-service revisions", () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-vertex-hover-"));
     const glslPath = path.join(directory, "mesh.glsl");
     const slangPath = path.join(directory, "mesh.slang");
-    const glslSource = "void mainVertex(inout vec3 deformed, inout vec3 surfaceNormal, inout vec2 textureUv) { deformed += surfaceNormal * textureUv.x; }";
-    const slangSource = "void mainVertex(inout float3 deformed, inout float3 surfaceNormal, inout float2 textureUv) { deformed += surfaceNormal * textureUv.x; }";
+    const glslSource = "void mainVertex(int vertexIndex, inout vec3 deformed, inout vec3 surfaceNormal, inout vec2 textureUv) { deformed += surfaceNormal * textureUv.x; }";
+    const slangSource = "void mainVertex(uint vertexIndex, inout float3 deformed, inout float3 surfaceNormal, inout float2 textureUv) { deformed += surfaceNormal * textureUv.x; }";
     try {
       fs.writeFileSync(glslPath, glslSource);
       fs.writeFileSync(slangPath, slangSource);

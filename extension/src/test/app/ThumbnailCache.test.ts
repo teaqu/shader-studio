@@ -56,10 +56,32 @@ suite('ThumbnailCache Test Suite', () => {
     cache.saveThumbnail('/nonexistent/shader.glsl', dataUri, 12345);
 
     // Prune with only the real shader file as current
-    await cache.pruneCache([shaderFile]);
+    await cache.pruneCache([{ path: shaderFile, thumbnailVersion: stats.mtimeMs }]);
 
-    // The valid thumbnail should still exist
+    // The valid thumbnail should still exist; the other is gone
     assert.ok(cache.getThumbnail(shaderFile, stats.mtimeMs) !== null);
+    assert.strictEqual(cache.getThumbnail('/nonexistent/shader.glsl', 12345), null);
+  });
+
+  test('pruneCache keeps thumbnails keyed by a version other than the file mtime', async () => {
+    const dataUri = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==';
+    const shaderPath = '/some/committed/shader.glsl';
+
+    cache.saveThumbnail(shaderPath, dataUri, 42);
+    cache.saveThumbnail(shaderPath, dataUri, 41);
+    await cache.pruneCache([{ path: shaderPath, thumbnailVersion: 42 }]);
+
+    assert.ok(cache.getThumbnail(shaderPath, 42) !== null);
+    assert.strictEqual(cache.getThumbnail(shaderPath, 41), null);
+  });
+
+  test('pruneCache handles shaders without a version', async () => {
+    const dataUri = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==';
+    cache.saveThumbnail('/some/unversioned.glsl', dataUri);
+
+    await cache.pruneCache([{ path: '/some/unversioned.glsl' }]);
+
+    assert.ok(cache.getThumbnail('/some/unversioned.glsl') !== null);
   });
 
   test('pruneCache keeps valid thumbnails', async () => {
@@ -71,7 +93,7 @@ suite('ThumbnailCache Test Suite', () => {
 
     cache.saveThumbnail(shaderFile, dataUri, stats.mtimeMs);
 
-    await cache.pruneCache([shaderFile]);
+    await cache.pruneCache([{ path: shaderFile, thumbnailVersion: stats.mtimeMs }]);
 
     const result = cache.getThumbnail(shaderFile, stats.mtimeMs);
     assert.ok(result);

@@ -1,0 +1,13 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "vertex": "./tetrahedron.vert.slang",
+      "geometry": {
+        "type": "vertices",
+        "vertexCount": 12
+      },
+      "cull": "back"
+    }
+  }
+}

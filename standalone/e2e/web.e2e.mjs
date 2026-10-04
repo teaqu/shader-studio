@@ -1186,7 +1186,7 @@ test('Live MP4 saves an indexed file with a duration for desktop players', async
   await page.getByRole('button', { name: 'MP4', exact: true }).click();
   await page.getByRole('button', { name: 'Start recording', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Stop & save', exact: true })).toBeVisible();
-  await page.waitForTimeout(1500);
+  await expect(page.locator(".recording-panel")).toContainText("2s elapsed");
   const downloading = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Stop & save', exact: true }).click();
   const download = await downloading;
@@ -1229,7 +1229,7 @@ test('records the live preview to WebM and remembers capture settings after relo
 
   await page.getByRole('button', { name: 'Start recording', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Stop & save', exact: true })).toBeVisible();
-  await page.waitForTimeout(500);
+  await expect(page.locator(".recording-panel")).toContainText("1s elapsed");
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Stop & save', exact: true }).click();
   const download = await downloadPromise;
@@ -1284,7 +1284,7 @@ test('Live capture of a preview that lost its WebGL context fails visibly instea
   await page.getByRole('button', { name: 'Live', exact: true }).click();
   await page.getByRole('button', { name: 'WebM', exact: true }).click();
   await page.getByRole('button', { name: 'Start recording', exact: true }).click();
-  await page.waitForTimeout(1000);
+  await expect(page.getByRole("button", { name: "Stop & save", exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Stop & save', exact: true }).click();
   await expect(panelError).toContainText('Live recording captured no frames');
   expect(downloads).toBe(0);
@@ -1306,7 +1306,7 @@ test('keeps a Live recording at a fixed size through a preview resize and saves 
   const recordingSize = await pixelSize();
 
   await page.setViewportSize({ width: 1000, height: 700 });
-  await page.waitForTimeout(500);
+  await expectStableFor(page, async () => expect(await pixelSize()).toEqual(recordingSize), 500);
   // The recording keeps going at its original output size.
   await expect(stopAndSave).toBeVisible();
   expect(await pixelSize()).toEqual(recordingSize);

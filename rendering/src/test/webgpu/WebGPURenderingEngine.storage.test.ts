@@ -1,3 +1,4 @@
+import { engineOwners } from "./engineOwners";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ShaderConfig, StorageBufferConfig } from "@shader-studio/types";
 import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
@@ -23,7 +24,7 @@ function storageConfig(storage: Record<string, StorageBufferConfig>): ShaderConf
 function numberedStorage(count: number): Record<string, StorageBufferConfig> {
   return Object.fromEntries(Array.from({ length: count }, (_, index) => [
     `buffer${index}`,
-    { count: 1, stride: 4, elementType: "uint" },
+    { count: 1, elementType: "uint" },
   ]));
 }
 
@@ -35,7 +36,9 @@ function engineHarness(limits: Partial<GPUSupportedLimits> = {}, language: "slan
       getCompilationInfo: vi.fn(async () => ({ messages: [] })),
     })),
     createRenderPipeline: vi.fn(() => ({ getBindGroupLayout: vi.fn(() => ({})) })),
-    createBindGroupLayout: vi.fn(() => ({})),
+    createBindGroupLayout: vi.fn<(descriptor: GPUBindGroupLayoutDescriptor) => GPUBindGroupLayout>(
+      () => ({}) as GPUBindGroupLayout,
+    ),
     createPipelineLayout: vi.fn(() => ({})),
     createBuffer: vi.fn((descriptor: GPUBufferDescriptor): FakeBuffer => ({
       id: bufferId++,
@@ -43,7 +46,9 @@ function engineHarness(limits: Partial<GPUSupportedLimits> = {}, language: "slan
       destroy: vi.fn(),
     })),
     createSampler: vi.fn(() => ({})),
-    createBindGroup: vi.fn(() => ({})),
+    createBindGroup: vi.fn<(descriptor: GPUBindGroupDescriptor) => GPUBindGroup>(
+      () => ({}) as GPUBindGroup,
+    ),
     createTexture: vi.fn(() => ({
       createView: vi.fn(() => ({})),
       destroy: vi.fn(),
@@ -89,7 +94,7 @@ function createdStorageBuffers(device: ReturnType<typeof engineHarness>["device"
 }
 
 function installedStorageBuffers(engine: WebGPURenderingEngine): Map<string, GPUBuffer> {
-  return (engine as unknown as { storageBuffers: Map<string, GPUBuffer> }).storageBuffers;
+  return (engineOwners(engine).storage as unknown as { storageBuffers: Map<string, GPUBuffer> }).storageBuffers;
 }
 
 function enableRendering(
@@ -126,7 +131,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
 
     const result = await engine.compileShaderPipeline(
       IMAGE_SOURCE,
-      storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } }),
+      storageConfig({ a: { count: 4, elementType: "float4" } }),
       "/image.slang",
     );
 
@@ -145,7 +150,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
     const renderPass = enableRendering(engine, device);
     await engine.compileShaderPipeline(
       IMAGE_SOURCE,
-      storageConfig({ positions: { count: 4, stride: 16, elementType: "float4" } }),
+      storageConfig({ positions: { count: 4, elementType: "float4" } }),
       "/image.slang",
     );
     const positions = installedStorageBuffers(engine).get("positions")!;
@@ -181,12 +186,12 @@ describe("WebGPURenderingEngine storage buffers", () => {
     const renderPass = enableRendering(engine, device);
     await engine.compileShaderPipeline(
       IMAGE_SOURCE,
-      storageConfig({ positions: { count: 4, stride: 16, elementType: "float4" } }),
+      storageConfig({ positions: { count: 4, elementType: "float4" } }),
       "/image.slang",
     );
     const buffers = installedStorageBuffers(engine);
     const firstBuffer = buffers.get("positions")!;
-    const pipeline = (engine as unknown as {
+    const pipeline = (engineOwners(engine).session as unknown as {
       passPipelines: Map<string, { getBindGroup(): GPUBindGroup | null }>;
     }).passPipelines.get("Image")!;
 
@@ -214,7 +219,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
 
   it("reuses the exact storage buffer for an identical recompile", async () => {
     const { engine, device } = engineHarness();
-    const config = storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } });
+    const config = storageConfig({ a: { count: 4, elementType: "float4" } });
 
     await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/image.slang");
     const firstBuffer = createdStorageBuffers(device)[0];
@@ -226,37 +231,37 @@ describe("WebGPURenderingEngine storage buffers", () => {
 
   it("reuses an identical fragment pipeline but rebuilds it when storage layout changes", async () => {
     const { engine, device } = engineHarness();
-    const config = storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } });
+    const config = storageConfig({ a: { count: 4, elementType: "float4" } });
     await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/image.slang");
-    const firstPipeline = (engine as unknown as {
+    const firstPipeline = (engineOwners(engine).session as unknown as {
       passPipelines: Map<string, unknown>;
     }).passPipelines.get("Image");
 
     await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/image.slang");
-    expect((engine as unknown as { passPipelines: Map<string, unknown> }).passPipelines.get("Image"))
+    expect((engineOwners(engine).session as unknown as { passPipelines: Map<string, unknown> }).passPipelines.get("Image"))
       .toBe(firstPipeline);
     expect(device.createBindGroupLayout).toHaveBeenCalledTimes(1);
 
     await engine.compileShaderPipeline(
       IMAGE_SOURCE,
-      storageConfig({ a: { count: 8, stride: 16, elementType: "float4" } }),
+      storageConfig({ a: { count: 8, elementType: "float4" } }),
       "/image.slang",
     );
 
-    expect((engine as unknown as { passPipelines: Map<string, unknown> }).passPipelines.get("Image"))
+    expect((engineOwners(engine).session as unknown as { passPipelines: Map<string, unknown> }).passPipelines.get("Image"))
       .not.toBe(firstPipeline);
     expect(device.createBindGroupLayout).toHaveBeenCalledTimes(2);
   });
 
   it.each([
-    ["count", { count: 8, stride: 16, elementType: "float4" }],
-    ["element type at the same byte size", { count: 4, stride: 16, elementType: "uint4" }],
+    ["count", { count: 8, elementType: "float4" }],
+    ["element type at the same byte size", { count: 4, elementType: "uint4" }],
   ] as const)("recreates storage when its %s changes", async (_change, declaration) => {
     const { engine, device } = engineHarness();
 
     await engine.compileShaderPipeline(
       IMAGE_SOURCE,
-      storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } }),
+      storageConfig({ a: { count: 4, elementType: "float4" } }),
       "/image.slang",
     );
     const firstBuffer = createdStorageBuffers(device)[0];
@@ -276,7 +281,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
 
     await engine.compileShaderPipeline(
       IMAGE_SOURCE,
-      storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } }),
+      storageConfig({ a: { count: 4, elementType: "float4" } }),
       "/image.slang",
     );
     const firstBuffer = createdStorageBuffers(device)[0];
@@ -284,7 +289,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
 
     expect(createdStorageBuffers(device)).toEqual([firstBuffer]);
     expect(firstBuffer.destroy).toHaveBeenCalledTimes(1);
-    expect((engine as unknown as { storageBuffers: Map<string, GPUBuffer> }).storageBuffers.size).toBe(0);
+    expect((engineOwners(engine).storage as unknown as { storageBuffers: Map<string, GPUBuffer> }).storageBuffers.size).toBe(0);
   });
 
   it("creates and records multiple buffers in configuration declaration order", async () => {
@@ -293,16 +298,16 @@ describe("WebGPURenderingEngine storage buffers", () => {
     await engine.compileShaderPipeline(
       IMAGE_SOURCE,
       storageConfig({
-        positions: { count: 4, stride: 16, elementType: "float4" },
-        counters: { count: 3, stride: 4, elementType: "uint" },
-        particles: { count: 2, stride: 32, elementType: "uint4" },
+        positions: { count: 4, elementType: "float4" },
+        counters: { count: 3, elementType: "uint" },
+        particles: { count: 2, elementType: "uint4" },
       }),
       "/image.slang",
     );
 
     expect(storageCreateCalls(device).map(({ size }) => size)).toEqual([64, 12, 32]);
     expect([
-      ...(engine as unknown as { storageKeys: Map<string, string> }).storageKeys.keys(),
+      ...(engineOwners(engine).storage as unknown as { storageKeys: Map<string, string> }).storageKeys.keys(),
     ]).toEqual(["positions", "counters", "particles"]);
   });
 
@@ -324,7 +329,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
     expect(result?.errors?.join("\n")).toMatch(/pack.*struct/i);
     expect(compiler.compile).not.toHaveBeenCalled();
     expect(storageCreateCalls(device)).toEqual([]);
-    expect((engine as unknown as { storageBuffers: Map<string, GPUBuffer> }).storageBuffers.size).toBe(0);
+    expect((engineOwners(engine).storage as unknown as { storageBuffers: Map<string, GPUBuffer> }).storageBuffers.size).toBe(0);
   });
 
   it("keeps the graph baseline warning non-fatal when the device grants more buffers", async () => {
@@ -362,7 +367,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
 
     const result = await engine.compileShaderPipeline(
       IMAGE_SOURCE,
-      storageConfig({ boundary: { count: 1, stride: 4, elementType: "uint" } }),
+      storageConfig({ boundary: { count: 1, elementType: "uint" } }),
       "/image.slang",
     );
 
@@ -382,7 +387,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
 
     const result = await engine.compileShaderPipeline(
       IMAGE_SOURCE,
-      storageConfig({ particles: { count: 5, stride: 16, elementType: "float4" } }),
+      storageConfig({ particles: { count: 5, elementType: "float4" } }),
       "/image.slang",
     );
 
@@ -402,7 +407,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
 
     const result = await engine.compileShaderPipeline(
       IMAGE_SOURCE,
-      storageConfig({ particles: { count: 4, stride: 16, elementType: "float4" } }),
+      storageConfig({ particles: { count: 4, elementType: "float4" } }),
       "/image.slang",
     );
 
@@ -416,7 +421,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
 
     const result = await engine.compileShaderPipeline(
       IMAGE_SOURCE,
-      storageConfig({ huge: { count: requiredBytes / 4, stride: requiredBytes, elementType: "uint" } }),
+      storageConfig({ huge: { count: requiredBytes / 4, elementType: "uint" } }),
       "/image.slang",
     );
 
@@ -430,7 +435,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
     const { engine, device } = engineHarness({}, "wgsl");
     const result = await engine.compileShaderPipeline(
       "enable f16;\nfn mainImage(coord: vec2f) -> vec4f { return vec4f(0.0); }",
-      storageConfig({ halfValues: { count: 1, stride: 2, elementType: "f16" } }),
+      storageConfig({ halfValues: { count: 1, elementType: "f16" } }),
       "/image.wgsl",
     );
 
@@ -445,7 +450,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
     });
     await engine.compileShaderPipeline(
       IMAGE_SOURCE,
-      storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } }),
+      storageConfig({ a: { count: 4, elementType: "float4" } }),
       "/image.slang",
     );
     const firstBuffer = createdStorageBuffers(device)[0];
@@ -460,7 +465,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
     expect(createdStorageBuffers(device)).toEqual([firstBuffer]);
     expect(firstBuffer.destroy).not.toHaveBeenCalled();
     expect([
-      ...(engine as unknown as { storageBuffers: Map<string, GPUBuffer> }).storageBuffers.keys(),
+      ...(engineOwners(engine).storage as unknown as { storageBuffers: Map<string, GPUBuffer> }).storageBuffers.keys(),
     ]).toEqual(["a"]);
   });
 
@@ -471,14 +476,14 @@ describe("WebGPURenderingEngine storage buffers", () => {
     });
     await engine.compileShaderPipeline(
       IMAGE_SOURCE,
-      storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } }),
+      storageConfig({ a: { count: 4, elementType: "float4" } }),
       "/image.slang",
     );
     const firstBuffer = createdStorageBuffers(device)[0];
 
     const result = await engine.compileShaderPipeline(
       IMAGE_SOURCE,
-      storageConfig({ a: { count: 5, stride: 16, elementType: "float4" } }),
+      storageConfig({ a: { count: 5, elementType: "float4" } }),
       "/image.slang",
     );
 
@@ -489,7 +494,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
 
   it("re-zeroes storage on reset by recreating the same GPU descriptors", async () => {
     const { engine, device } = engineHarness();
-    const config = storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } });
+    const config = storageConfig({ a: { count: 4, elementType: "float4" } });
     await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/image.slang");
     const firstBuffer = createdStorageBuffers(device)[0];
 
@@ -515,7 +520,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
 
   it("replaces an older pending reset without publishing either candidate early", async () => {
     const { engine, device } = engineHarness();
-    const config = storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } });
+    const config = storageConfig({ a: { count: 4, elementType: "float4" } });
     await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/image.slang");
     const installed = createdStorageBuffers(device)[0];
 
@@ -538,7 +543,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
 
   it("retains prepared reset storage across a failed compilation", async () => {
     const { engine, device, compiler } = engineHarness();
-    const config = storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } });
+    const config = storageConfig({ a: { count: 4, elementType: "float4" } });
     await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/image.slang");
     const installed = createdStorageBuffers(device)[0];
     engine.resetTime();
@@ -570,8 +575,8 @@ describe("WebGPURenderingEngine storage buffers", () => {
     await engine.compileShaderPipeline(
       IMAGE_SOURCE,
       storageConfig({
-        a: { count: 4, stride: 16, elementType: "float4" },
-        b: { count: 8, stride: 4, elementType: "uint" },
+        a: { count: 4, elementType: "float4" },
+        b: { count: 8, elementType: "uint" },
       }),
       "/image.slang",
     );
@@ -580,10 +585,10 @@ describe("WebGPURenderingEngine storage buffers", () => {
     const installedBuffers = installedStorageBuffers(engine);
     const installedA = installedBuffers.get("a") as unknown as FakeBuffer;
     const installedB = installedBuffers.get("b") as unknown as FakeBuffer;
-    const installedKeys = (engine as unknown as {
+    const installedKeys = (engineOwners(engine).storage as unknown as {
       storageKeys: Map<string, string>;
     }).storageKeys;
-    const installedLayouts = (engine as unknown as {
+    const installedLayouts = (engineOwners(engine).storage as unknown as {
       storageLayouts: Map<string, unknown>;
     }).storageLayouts;
     const resetState = engine as unknown as {
@@ -591,8 +596,8 @@ describe("WebGPURenderingEngine storage buffers", () => {
       dispatchOnceRan: Set<string>;
       hasSubmittedFrameForInstalledGeneration: boolean;
     };
-    resetState.dispatchOnceRan.add("ComputeOnce");
-    const generationBeforeReset = resetState.compileGeneration;
+    (engineOwners(resetState).session as unknown as typeof resetState).dispatchOnceRan.add("ComputeOnce");
+    const generationBeforeReset = (engineOwners(resetState).session as unknown as typeof resetState).compileGeneration;
     const frameBeforeReset = engine.getTimeManager().getFrame();
     const stagedA: FakeBuffer = {
       id: 100,
@@ -615,13 +620,13 @@ describe("WebGPURenderingEngine storage buffers", () => {
     expect(installedA.destroy).not.toHaveBeenCalled();
     expect(installedB.destroy).not.toHaveBeenCalled();
     expect(installedStorageBuffers(engine)).toBe(installedBuffers);
-    expect((engine as unknown as { storageKeys: Map<string, string> }).storageKeys)
+    expect((engineOwners(engine).storage as unknown as { storageKeys: Map<string, string> }).storageKeys)
       .toBe(installedKeys);
-    expect((engine as unknown as { storageLayouts: Map<string, unknown> }).storageLayouts)
+    expect((engineOwners(engine).storage as unknown as { storageLayouts: Map<string, unknown> }).storageLayouts)
       .toBe(installedLayouts);
-    expect(resetState.compileGeneration).toBe(generationBeforeReset);
-    expect(resetState.dispatchOnceRan).toEqual(new Set(["ComputeOnce"]));
-    expect(resetState.hasSubmittedFrameForInstalledGeneration).toBe(true);
+    expect((engineOwners(resetState).session as unknown as typeof resetState).compileGeneration).toBe(generationBeforeReset);
+    expect((engineOwners(resetState).session as unknown as typeof resetState).dispatchOnceRan).toEqual(new Set(["ComputeOnce"]));
+    expect((engineOwners(resetState).session as unknown as typeof resetState).hasSubmittedFrameForInstalledGeneration).toBe(true);
     expect(engine.getTimeManager().getFrame()).toBe(frameBeforeReset);
   });
 
@@ -630,9 +635,9 @@ describe("WebGPURenderingEngine storage buffers", () => {
     await engine.compileShaderPipeline(
       IMAGE_SOURCE,
       storageConfig({
-        a: { count: 1, stride: 4, elementType: "uint" },
-        b: { count: 1, stride: 4, elementType: "uint" },
-        c: { count: 1, stride: 4, elementType: "uint" },
+        a: { count: 1, elementType: "uint" },
+        b: { count: 1, elementType: "uint" },
+        c: { count: 1, elementType: "uint" },
       }),
       "/image.slang",
     );
@@ -680,8 +685,8 @@ describe("WebGPURenderingEngine storage buffers", () => {
     await engine.compileShaderPipeline(
       IMAGE_SOURCE,
       storageConfig({
-        a: { count: 4, stride: 16, elementType: "float4" },
-        b: { count: 8, stride: 4, elementType: "uint" },
+        a: { count: 4, elementType: "float4" },
+        b: { count: 8, elementType: "uint" },
       }),
       "/image.slang",
     );
@@ -692,7 +697,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
       dispatchOnceRan: Set<string>;
       hasSubmittedFrameForInstalledGeneration: boolean;
     };
-    resetState.dispatchOnceRan.add("ComputeOnce");
+    (engineOwners(resetState).session as unknown as typeof resetState).dispatchOnceRan.add("ComputeOnce");
     installedA.destroy.mockImplementationOnce(() => {
       throw new Error("old buffer destroy failed");
     });
@@ -706,11 +711,11 @@ describe("WebGPURenderingEngine storage buffers", () => {
     ]));
     expect(installedA.destroy).not.toHaveBeenCalled();
     expect(installedB.destroy).not.toHaveBeenCalled();
-    expect(resetState.dispatchOnceRan).toEqual(new Set(["ComputeOnce"]));
+    expect((engineOwners(resetState).session as unknown as typeof resetState).dispatchOnceRan).toEqual(new Set(["ComputeOnce"]));
 
     await engine.compileShaderPipeline(IMAGE_SOURCE, storageConfig({
-      a: { count: 4, stride: 16, elementType: "float4" },
-      b: { count: 8, stride: 4, elementType: "uint" },
+      a: { count: 4, elementType: "float4" },
+      b: { count: 8, elementType: "uint" },
     }), "/image.slang");
 
     expect(installedStorageBuffers(engine)).toEqual(new Map([
@@ -719,8 +724,8 @@ describe("WebGPURenderingEngine storage buffers", () => {
     ]));
     expect(installedA.destroy).toHaveBeenCalledTimes(1);
     expect(installedB.destroy).toHaveBeenCalledTimes(1);
-    expect(resetState.dispatchOnceRan).toEqual(new Set());
-    expect(resetState.hasSubmittedFrameForInstalledGeneration).toBe(false);
+    expect((engineOwners(resetState).session as unknown as typeof resetState).dispatchOnceRan).toEqual(new Set());
+    expect((engineOwners(resetState).session as unknown as typeof resetState).hasSubmittedFrameForInstalledGeneration).toBe(false);
     expect(engine.getTimeManager().getFrame()).toBe(0);
   });
 
@@ -729,7 +734,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
     enableRendering(engine, device);
     await engine.compileShaderPipeline(
       IMAGE_SOURCE,
-      storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } }),
+      storageConfig({ a: { count: 4, elementType: "float4" } }),
       "/image.slang",
     );
     const firstBuffer = installedStorageBuffers(engine).get("a")!;
@@ -746,7 +751,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
 
     await engine.compileShaderPipeline(
       IMAGE_SOURCE,
-      storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } }),
+      storageConfig({ a: { count: 4, elementType: "float4" } }),
       "/image.slang",
     );
     engine.render(1032);
@@ -760,7 +765,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
 
   it("re-zeroes retained storage layout after a valid shader file switch", async () => {
     const { engine, device } = engineHarness();
-    const config = storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } });
+    const config = storageConfig({ a: { count: 4, elementType: "float4" } });
     await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/first.slang");
     const firstBuffer = createdStorageBuffers(device)[0];
 
@@ -778,7 +783,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
 
   it("supersedes an identical-layout compile pending during reset and keeps the reset buffer", async () => {
     const { engine, device, compiler } = engineHarness();
-    const config = storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } });
+    const config = storageConfig({ a: { count: 4, elementType: "float4" } });
     await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/image.slang");
     const installedA = createdStorageBuffers(device)[0];
     let resolvePending!: (result: { success: true; wgsl: string }) => void;
@@ -825,12 +830,12 @@ describe("WebGPURenderingEngine storage buffers", () => {
   it("reset discards owned staging while a partially reused compile awaits pipeline diagnostics", async () => {
     const { engine, device } = engineHarness();
     const configA = storageConfig({
-      shared: { count: 4, stride: 16, elementType: "float4" },
-      changed: { count: 4, stride: 16, elementType: "float4" },
+      shared: { count: 4, elementType: "float4" },
+      changed: { count: 4, elementType: "float4" },
     });
     const configB = storageConfig({
-      shared: { count: 4, stride: 16, elementType: "float4" },
-      changed: { count: 8, stride: 16, elementType: "float4" },
+      shared: { count: 4, elementType: "float4" },
+      changed: { count: 8, elementType: "float4" },
     });
     await engine.compileShaderPipeline(IMAGE_SOURCE, configA, "/image.slang");
     const [installedShared, installedChanged] = createdStorageBuffers(device);
@@ -887,7 +892,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
     const { engine, device, compiler } = engineHarness();
     await engine.compileShaderPipeline(
       IMAGE_SOURCE,
-      storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } }),
+      storageConfig({ a: { count: 4, elementType: "float4" } }),
       "/image.slang",
     );
     const firstBuffer = createdStorageBuffers(device)[0];
@@ -897,7 +902,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
       IMAGE_SOURCE,
       {
         version: "1",
-        storage: { b: { count: 2, stride: 4, elementType: "uint" } },
+        storage: { b: { count: 2, elementType: "uint" } },
         passes: {
           Image: { inputs: { iChannel0: { type: "buffer", source: "MissingPass" } } },
         },
@@ -912,7 +917,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
     expect(firstBuffer.destroy).not.toHaveBeenCalled();
     expect(compiler.compile).not.toHaveBeenCalled();
     expect([
-      ...(engine as unknown as { storageBuffers: Map<string, GPUBuffer> }).storageBuffers.keys(),
+      ...(engineOwners(engine).storage as unknown as { storageBuffers: Map<string, GPUBuffer> }).storageBuffers.keys(),
     ]).toEqual(["a"]);
   });
 
@@ -921,7 +926,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
     compiler.compile
       .mockResolvedValueOnce({ success: false, errors: ["bad shader"] })
       .mockResolvedValueOnce({ success: true, wgsl: "// wgsl" });
-    const config = storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } });
+    const config = storageConfig({ a: { count: 4, elementType: "float4" } });
 
     const failed = await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/image.slang");
     const failedBuffer = createdStorageBuffers(device)[0];
@@ -940,7 +945,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
     device.createRenderPipeline.mockImplementationOnce(() => {
       throw new Error("pipeline failed");
     });
-    const config = storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } });
+    const config = storageConfig({ a: { count: 4, elementType: "float4" } });
 
     const failed = await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/image.slang");
     const failedBuffer = createdStorageBuffers(device)[0];
@@ -955,8 +960,8 @@ describe("WebGPURenderingEngine storage buffers", () => {
 
   it("keeps changed storage staged until its compile installs successfully", async () => {
     const { engine, device, compiler } = engineHarness();
-    const configA = storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } });
-    const configB = storageConfig({ a: { count: 8, stride: 16, elementType: "float4" } });
+    const configA = storageConfig({ a: { count: 4, elementType: "float4" } });
+    const configB = storageConfig({ a: { count: 8, elementType: "float4" } });
     await engine.compileShaderPipeline(IMAGE_SOURCE, configA, "/image.slang");
     const bufferA = createdStorageBuffers(device)[0];
     let resolveB!: (result: { success: true; wgsl: string }) => void;
@@ -987,8 +992,8 @@ describe("WebGPURenderingEngine storage buffers", () => {
 
   it("preserves installed storage and discards a changed stage on compiler failure", async () => {
     const { engine, device, compiler } = engineHarness();
-    const configA = storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } });
-    const configB = storageConfig({ a: { count: 8, stride: 16, elementType: "float4" } });
+    const configA = storageConfig({ a: { count: 4, elementType: "float4" } });
+    const configB = storageConfig({ a: { count: 8, elementType: "float4" } });
     await engine.compileShaderPipeline(IMAGE_SOURCE, configA, "/image.slang");
     const bufferA = createdStorageBuffers(device)[0];
     compiler.compile.mockResolvedValueOnce({ success: false, errors: ["bad B"] });
@@ -1019,8 +1024,8 @@ describe("WebGPURenderingEngine storage buffers", () => {
 
   it("preserves installed storage and discards a changed stage on pipeline failure", async () => {
     const { engine, device } = engineHarness();
-    const configA = storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } });
-    const configB = storageConfig({ a: { count: 8, stride: 16, elementType: "float4" } });
+    const configA = storageConfig({ a: { count: 4, elementType: "float4" } });
+    const configB = storageConfig({ a: { count: 8, elementType: "float4" } });
     await engine.compileShaderPipeline(IMAGE_SOURCE, configA, "/image.slang");
     const bufferA = createdStorageBuffers(device)[0];
     device.createRenderPipeline.mockImplementationOnce(() => {
@@ -1053,10 +1058,10 @@ describe("WebGPURenderingEngine storage buffers", () => {
 
   it("discards changed staged storage when resource loading throws", async () => {
     const { engine, device } = engineHarness();
-    const configA = storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } });
+    const configA = storageConfig({ a: { count: 4, elementType: "float4" } });
     await engine.compileShaderPipeline(IMAGE_SOURCE, configA, "/image.slang");
     const bufferA = createdStorageBuffers(device)[0];
-    (engine as unknown as { resourceManager: unknown }).resourceManager = {
+    (engineOwners(engine).session as unknown as { resourceManager: unknown }).resourceManager = {
       loadImageTexture: vi.fn(async () => {
         throw new Error("texture load failed");
       }),
@@ -1066,7 +1071,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
       "float4 mainImage(float2 c) { return float4(1); }",
       {
         version: "1",
-        storage: { a: { count: 8, stride: 16, elementType: "float4" } },
+        storage: { a: { count: 8, elementType: "float4" } },
         passes: {
           Image: { inputs: { iChannel0: { type: "texture", path: "missing.png" } } },
         },
@@ -1085,8 +1090,8 @@ describe("WebGPURenderingEngine storage buffers", () => {
 
   it("promptly discards pending changed storage when a newer graph failure is issued", async () => {
     const { engine, device, compiler } = engineHarness();
-    const configA = storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } });
-    const configB = storageConfig({ a: { count: 8, stride: 16, elementType: "float4" } });
+    const configA = storageConfig({ a: { count: 4, elementType: "float4" } });
+    const configB = storageConfig({ a: { count: 8, elementType: "float4" } });
     await engine.compileShaderPipeline(IMAGE_SOURCE, configA, "/image.slang");
     const bufferA = createdStorageBuffers(device)[0];
     let resolveB!: (result: { success: true; wgsl: string }) => void;
@@ -1106,7 +1111,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
       IMAGE_SOURCE,
       {
         version: "1",
-        storage: { a: { count: 2, stride: 4, elementType: "uint" } },
+        storage: { a: { count: 2, elementType: "uint" } },
         passes: {
           Image: { inputs: { iChannel0: { type: "buffer", source: "MissingPass" } } },
         },
@@ -1147,7 +1152,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
 
     const pendingB = engine.compileShaderPipeline(
       IMAGE_SOURCE,
-      storageConfig({ stagedTooLate: { count: 4, stride: 16, elementType: "float4" } }),
+      storageConfig({ stagedTooLate: { count: 4, elementType: "float4" } }),
       "/image.slang",
     );
     const pendingC = engine.compileShaderPipeline(
@@ -1177,8 +1182,8 @@ describe("WebGPURenderingEngine storage buffers", () => {
 
   it("cleans installed and staged storage when disposed during a pending compile", async () => {
     const { engine, device, compiler } = engineHarness();
-    const configA = storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } });
-    const configB = storageConfig({ a: { count: 8, stride: 16, elementType: "float4" } });
+    const configA = storageConfig({ a: { count: 4, elementType: "float4" } });
+    const configB = storageConfig({ a: { count: 8, elementType: "float4" } });
     await engine.compileShaderPipeline(IMAGE_SOURCE, configA, "/image.slang");
     const bufferA = createdStorageBuffers(device)[0];
     let resolveB!: (result: { success: true; wgsl: string }) => void;
@@ -1217,12 +1222,12 @@ describe("WebGPURenderingEngine storage buffers", () => {
   it("publishes coherent storage and pipelines when predecessor buffer retirement throws", async () => {
     const { engine, device } = engineHarness();
     const installedConfig = storageConfig({
-      a: { count: 4, stride: 16, elementType: "float4" },
-      b: { count: 2, stride: 4, elementType: "uint" },
+      a: { count: 4, elementType: "float4" },
+      b: { count: 2, elementType: "uint" },
     });
     await engine.compileShaderPipeline(IMAGE_SOURCE, installedConfig, "/image.slang");
     const [bufferA, bufferB] = createdStorageBuffers(device);
-    const predecessor = (engine as unknown as {
+    const predecessor = (engineOwners(engine).session as unknown as {
       passPipelines: Map<string, { getPipeline(): GPURenderPipeline | null }>;
     }).passPipelines.get("Image")!;
     bufferA.destroy.mockImplementationOnce(() => {
@@ -1235,7 +1240,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
       nextConfig,
       "/image.slang",
     );
-    const installed = (engine as unknown as {
+    const installed = (engineOwners(engine).session as unknown as {
       passPipelines: Map<string, { getPipeline(): GPURenderPipeline | null }>;
     }).passPipelines.get("Image")!;
 
@@ -1252,12 +1257,12 @@ describe("WebGPURenderingEngine storage buffers", () => {
   it("leaves the installed generation untouched when retirement enumeration throws precommit", async () => {
     const { engine, device } = engineHarness();
     const installedConfig = storageConfig({
-      a: { count: 4, stride: 16, elementType: "float4" },
+      a: { count: 4, elementType: "float4" },
     });
     await engine.compileShaderPipeline(IMAGE_SOURCE, installedConfig, "/image.slang");
     const installedStorage = installedStorageBuffers(engine);
     const installedBuffer = createdStorageBuffers(device)[0];
-    const installedPipelines = (engine as unknown as {
+    const installedPipelines = (engineOwners(engine).session as unknown as {
       passPipelines: Map<string, unknown>;
     }).passPipelines;
     Object.defineProperty(installedStorage, Symbol.iterator, {
@@ -1267,7 +1272,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
       },
     });
     const nextConfig = storageConfig({
-      a: { count: 8, stride: 16, elementType: "float4" },
+      a: { count: 8, elementType: "float4" },
     });
 
     const result = await engine.compileShaderPipeline(
@@ -1283,7 +1288,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
     });
     expect(installedStorageBuffers(engine)).toBe(installedStorage);
     expect(installedStorageBuffers(engine).get("a")).toBe(installedBuffer);
-    expect((engine as unknown as { passPipelines: Map<string, unknown> }).passPipelines)
+    expect((engineOwners(engine).session as unknown as { passPipelines: Map<string, unknown> }).passPipelines)
       .toBe(installedPipelines);
     expect(installedBuffer.destroy).not.toHaveBeenCalled();
     expect(stagedBuffer.destroy).toHaveBeenCalledTimes(1);
@@ -1295,8 +1300,8 @@ describe("WebGPURenderingEngine storage buffers", () => {
     await engine.compileShaderPipeline(
       IMAGE_SOURCE,
       storageConfig({
-        a: { count: 4, stride: 16, elementType: "float4" },
-        b: { count: 2, stride: 4, elementType: "uint" },
+        a: { count: 4, elementType: "float4" },
+        b: { count: 2, elementType: "uint" },
       }),
       "/image.slang",
     );
@@ -1308,8 +1313,8 @@ describe("WebGPURenderingEngine storage buffers", () => {
     for (const buffer of buffers) {
       expect(buffer.destroy).toHaveBeenCalledTimes(1);
     }
-    expect((engine as unknown as { storageBuffers: Map<string, GPUBuffer> }).storageBuffers.size).toBe(0);
-    expect((engine as unknown as { storageKeys: Map<string, string> }).storageKeys.size).toBe(0);
-    expect((engine as unknown as { storageLayouts: Map<string, unknown> }).storageLayouts.size).toBe(0);
+    expect((engineOwners(engine).storage as unknown as { storageBuffers: Map<string, GPUBuffer> }).storageBuffers.size).toBe(0);
+    expect((engineOwners(engine).storage as unknown as { storageKeys: Map<string, string> }).storageKeys.size).toBe(0);
+    expect((engineOwners(engine).storage as unknown as { storageLayouts: Map<string, unknown> }).storageLayouts.size).toBe(0);
   });
 });

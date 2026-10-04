@@ -20,7 +20,7 @@ export class BufferPathResolver {
     }
 
     const passes = this.renderEngine.getPasses();
-    return passes.some((pass: any) => {
+    return passes.some((pass) => {
       if (pass.name === "Image") {
         return false;
       }

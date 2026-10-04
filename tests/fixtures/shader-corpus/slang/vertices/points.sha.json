@@ -1,0 +1,14 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "vertex": "./points.vert.slang",
+      "geometry": {
+        "type": "vertices",
+        "vertexCount": 1024,
+        "topology": "point-list",
+        "space": "clip"
+      }
+    }
+  }
+}

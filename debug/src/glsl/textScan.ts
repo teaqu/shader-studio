@@ -20,15 +20,3 @@ export function parenthesizedContents(text: string): string | null {
   }
   return null;
 }
-
-export function leadingWhitespace(text: string): string {
-  let index = 0;
-  while (index < text.length && isWhitespace(text[index]!)) {
-    index++;
-  }
-  return text.slice(0, index);
-}
-
-export function isWhitespace(character: string): boolean {
-  return character === " " || character === "\t" || character === "\r" || character === "\n";
-}
