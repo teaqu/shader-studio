@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { WgslTraceLaunch } from '@shader-studio/types';
+import type { WgslTraceLaunch, WgslTracePlan } from '@shader-studio/types';
 import { validateWgslTraceLaunch } from '@shader-studio/types';
 import { emitWgslTracePrelude, planWgslTrace, traceVariable } from '../WgslTracePlanner';
 import { planWgslTraceProgram } from '../WgslTraceProgramPlanner';
@@ -19,19 +19,21 @@ const launch: WgslTraceLaunch = { source, path: '/image.wgsl', width: 4, height:
   pixel: [1, 2], time: 0, frame: 0, capacity: 8 };
 
 describe('isolated WGSL trace planner', () => {
-  it('records mainImage before statements without modifying helpers or the input', () => {
+  it('records every callable while preserving the input source', () => {
     const plan = planWgslTrace(launch);
     expect(launch.source).toBe(source);
-    expect(plan.source).toContain('fn helper(x: f32) -> f32 { return x * 2.0; }');
-    expect(plan.sites.map(site => site.line)).toEqual([3, 4, 5, 6, 6, 7, 9]);
-    expect(plan.source).toMatch(/_ss_trace_site0\(p\);\s+var total/);
-    expect(plan.sites[0].variables.map(value => value.name)).toEqual(['p']);
+    expect(plan.source).toMatch(/fn helper\(x: f32\) -> f32 \{\s+_ss_trace_enter\(\);/);
+    expect(plan.sites.some(site => site.functionName === 'helper')).toBe(true);
+    const firstMainImageSite = plan.sites.find(site => site.functionName === 'mainImage'
+      && site.variables.some(value => value.name === 'p'))!;
+    expect(plan.source).toMatch(new RegExp(`_ss_trace_site${firstMainImageSite.id}\\(p\\);\\s+var total`));
+    expect(firstMainImageSite.variables.map(value => value.name)).toEqual(['p']);
     const body = plan.sites.find(site => site.line === 7)!;
     expect(body.variables.map(value => value.name)).toContain('i');
     expect(plan.sites.at(-1)!.variables.map(value => value.name)).not.toContain('i');
     expect(plan.source).not.toContain('break;');
-    expect(emitWgslTracePrelude(plan)).toContain('bitcast<u32>(total)');
-    expect(emitWgslTracePrelude(plan)).toContain('vec4u(large, 0u, 0u, 0u)');
+    expect(emitWgslTracePrelude(plan)).toContain('bitcast<u32>(_ss_trace_value');
+    expect(emitWgslTracePrelude(plan)).toContain('vec4u(_ss_trace_value');
   });
 
   it('supports braced else-if chains without inserting hooks between else and if', () => {
@@ -47,18 +49,19 @@ describe('isolated WGSL trace planner', () => {
     expect(plan.sites.map(site => site.line)).toContain(4);
   });
 
-  it('keeps stepping with explicitly unavailable aggregate locals', () => {
+  it('expands fixed aggregates into value shapes and packed leaves', () => {
     const plan = planWgslTrace({ ...launch, source: `fn mainImage(p: vec2f) -> vec4f {
       let samples = array<f32, 2>(1.0, 2.0);
       let transform = mat2x2f(1.0, 0.0, 0.0, 1.0);
       let total = samples[0] + samples[1];
       return vec4f(total);
     }` });
-    expect(plan.sites.at(-1)!.unavailableVariables).toEqual(expect.arrayContaining([
-      { name: 'samples', type: 'array<f32, 2>' }, { name: 'transform', type: 'mat2x2f' },
+    expect(plan.sites.at(-1)!.valueShapes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'samples', type: 'array<f32, 2>' }),
+      expect.objectContaining({ name: 'transform', type: 'mat2x2f' }),
     ]));
     expect(plan.sites.at(-1)!.variables.map(value => value.name)).toContain('total');
-    expect(emitWgslTracePrelude(plan)).not.toContain('samples:');
+    expect(emitWgslTracePrelude(plan)).toContain('_ss_trace_value');
   });
 
   it('infers locals from explicit custom uniforms', () => {
@@ -83,7 +86,7 @@ describe('isolated WGSL trace planner', () => {
   it('reserves internal counter names when a local is named index', () => {
     const plan = planWgslTrace({ ...launch, source: 'fn mainImage(p: vec2f) -> vec4f { let index = 2u; return vec4f(f32(index)); }' });
     const generated = emitWgslTracePrelude(plan);
-    expect(generated).toContain('index: u32');
+    expect(generated).toContain('_ss_trace_value0:');
     expect(generated).toContain('let _ss_trace_index = atomicAdd');
     expect(generated).not.toContain('let index =');
   });
@@ -255,10 +258,89 @@ describe('WGSL trace decoding', () => {
       .toEqual(['NaN', 'Infinity', '-Infinity', '-0']);
   });
 
+  it('reconstructs nested aggregates and caller frames from packed records', () => {
+    const aggregatePlan: WgslTracePlan = {
+      source: '', capacity: 2, recordWords: 12, stackSize: 4,
+      sites: [
+        {
+          id: 0, path: '/common.wgsl', functionName: 'caller', line: 2, column: 1,
+          variables: [
+            { name: 'payload.inner.count', type: 'u32', component: 'u32', width: 1 },
+            { name: 'payload.inner.mask', type: 'vec2<bool>', component: 'bool', width: 2 },
+          ],
+          valueShapes: [{ name: 'payload', type: 'Payload', children: [{ name: 'inner', type: 'Inner', children: [
+            { name: 'count', type: 'u32', slot: 0 }, { name: 'mask', type: 'vec2<bool>', slot: 1 },
+          ] }] }],
+        },
+        { id: 1, path: '/image.wgsl', functionName: 'callee', line: 6, column: 3, variables: [] },
+      ],
+    };
+    const data = new ArrayBuffer(16 + aggregatePlan.capacity * aggregatePlan.recordWords * 4);
+    const words = new Uint32Array(data);
+    words[0] = 2;
+    words.set([0, 1, 7, 0, 42, 0, 0, 0, 1, 0], 4);
+    words.set([1, 2, 8, 7], 4 + aggregatePlan.recordWords);
+
+    const result = decodeWgslTrace(aggregatePlan, data);
+    expect(result.events[0].values).toEqual([{
+      name: 'payload', type: 'Payload', value: 'Payload (1)', children: [{
+        name: 'inner', type: 'Inner', value: 'Inner (2)', children: [
+          { name: 'count', type: 'u32', value: 42 },
+          { name: 'mask', type: 'vec2<bool>', value: [true, false] },
+        ],
+      }],
+    }]);
+    expect(result.events[1].frames?.map(frame => [frame.id, frame.functionName, frame.path]))
+      .toEqual([[8, 'callee', '/image.wgsl'], [7, 'caller', '/common.wgsl']]);
+  });
+
+  it('rejects invalid frame parent links and stack depths', () => {
+    const framePlan: WgslTracePlan = {
+      source: '', capacity: 2, recordWords: 4, stackSize: 4,
+      sites: [
+        { id: 0, functionName: 'caller', line: 1, column: 1, variables: [] },
+        { id: 1, functionName: 'callee', line: 2, column: 1, variables: [] },
+      ],
+    };
+    const data = new ArrayBuffer(16 + framePlan.capacity * framePlan.recordWords * 4);
+    const words = new Uint32Array(data);
+    words[0] = 2;
+    words.set([0, 1, 7, 0], 4);
+    words.set([1, 2, 8, 99], 8);
+    expect(() => decodeWgslTrace(framePlan, data)).toThrow('caller metadata');
+
+    words[11] = 7;
+    words[9] = 3;
+    expect(() => decodeWgslTrace(framePlan, data)).toThrow('stack depth');
+  });
+
+  it('decodes legacy records without frames and preserves bool vectors', () => {
+    const legacyPlan: WgslTracePlan = {
+      source: '', capacity: 1, recordWords: 8,
+      sites: [{ id: 0, line: 1, column: 1,
+        variables: [{ name: 'mask', type: 'vec2<bool>', component: 'bool', width: 2 }] }],
+    };
+    const data = new ArrayBuffer(16 + legacyPlan.capacity * legacyPlan.recordWords * 4);
+    const words = new Uint32Array(data);
+    words[0] = 1;
+    words.set([0, 0, 0, 0, 1, 0], 4);
+    expect(decodeWgslTrace(legacyPlan, data).events[0]).toEqual({
+      siteId: 0, line: 1, column: 1, values: [{ name: 'mask', type: 'vec2<bool>', value: [true, false] }],
+    });
+  });
+
   it('rejects malformed sizes and unknown site ids', () => {
     expect(() => decodeWgslTrace(plan, new ArrayBuffer(0))).toThrow('size');
     const data = buffer();
     new Uint32Array(data)[4] = 999;
     expect(() => decodeWgslTrace(plan, data)).toThrow('site');
+  });
+});
+
+
+describe('program trace capacity', () => {
+  it.each([0, -1, 1.5, 16385, 4294967296])('rejects out-of-range capacity %s', capacity => {
+    expect(() => planWgslTraceProgram({ source: '@compute @workgroup_size(1) fn main() { let x = 1u; }',
+      entryPoint: 'main', stage: 'compute', capacity, sourceRanges: [{ path: '/main.wgsl', startLine: 1, endLine: 1 }] })).toThrow('1 to 16384');
   });
 });

@@ -1,6 +1,9 @@
 import type { WgslTraceRecording } from './WgslTrace';
 
 type RecordData = Record<string, unknown>;
+const MAX_VALUE_DEPTH = 16;
+const MAX_VALUES_PER_LIST = 1024;
+const MAX_FRAMES_PER_EVENT = 256;
 
 /** Validate the serialized GPU recording before feeding it to a debug adapter. */
 export function validateWgslTraceRecording(value: unknown): asserts value is WgslTraceRecording {
@@ -76,7 +79,8 @@ function validateEvents(record: RecordData, sites: ReadonlyMap<number, RecordDat
     if (!sameSourceLocation(event, site) || !Array.isArray(event.values)) {
       throw new Error('Invalid WGSL trace event source location.');
     }
-    validateValues(event.values);
+    validateValues(event.values, 0);
+    validateFrames(event, sites);
   }
 }
 
@@ -85,11 +89,41 @@ function sameSourceLocation(event: RecordData, site: RecordData | undefined): bo
     && event.path === site.path && event.functionName === site.functionName;
 }
 
-function validateValues(values: unknown[]): void {
+function validateFrames(event: RecordData, sites: ReadonlyMap<number, RecordData>): void {
+  if (event.frames === undefined) {
+    return;
+  }
+  if (!Array.isArray(event.frames) || event.frames.length > MAX_FRAMES_PER_EVENT) {
+    throw new Error('Invalid WGSL trace event frames.');
+  }
+  const ids = new Set<number>();
+  for (const item of event.frames) {
+    const frame = object(item);
+    if (!integer(frame.id, 0) || typeof frame.functionName !== 'string' || !Array.isArray(frame.values)
+      || ids.has(frame.id) || !hasSiteLocation(frame, sites)) {
+      throw new Error('Invalid WGSL trace event frame.');
+    }
+    ids.add(frame.id);
+    validateValues(frame.values, 0);
+  }
+}
+
+function hasSiteLocation(frame: RecordData, sites: ReadonlyMap<number, RecordData>): boolean {
+  return [...sites.values()].some(site => sameSourceLocation(frame, site));
+}
+
+function validateValues(values: unknown[], depth: number): void {
+  if (depth > MAX_VALUE_DEPTH || values.length > MAX_VALUES_PER_LIST) {
+    throw new Error('Invalid WGSL recorded local tree.');
+  }
   for (const item of values) {
     const local = object(item);
-    if (typeof local.name !== 'string' || typeof local.type !== 'string' || !validValue(local.value)) {
+    if (typeof local.name !== 'string' || typeof local.type !== 'string' || !validValue(local.value)
+      || (local.children !== undefined && !Array.isArray(local.children))) {
       throw new Error('Invalid WGSL recorded local.');
+    }
+    if (local.children !== undefined) {
+      validateValues(local.children, depth + 1);
     }
   }
 }
@@ -107,7 +141,7 @@ function integer(value: unknown, minimum: number): value is number {
 
 function validValue(value: unknown): boolean {
   return typeof value === 'string' || typeof value === 'boolean'
-    || (typeof value === 'number' && Number.isFinite(value))
-    || (Array.isArray(value) && value.every(component => typeof component === 'string'
+  || (typeof value === 'number' && Number.isFinite(value))
+    || (Array.isArray(value) && value.length <= MAX_VALUES_PER_LIST && value.every(component => typeof component === 'boolean' || typeof component === 'string'
       || (typeof component === 'number' && Number.isFinite(component))));
 }

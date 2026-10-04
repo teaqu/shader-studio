@@ -4,6 +4,9 @@ import type { WgslTraceLaunch, WgslTracePlan, WgslTraceSite, WgslTraceVariable }
 import { validateWgslTraceLaunch, WGSL_TRACE_UNIFORM_TYPES } from '@shader-studio/types';
 import { containsPosition, containsRange, offsetAt } from '../wgsl/model';
 
+import { planWgslTraceValues } from './WgslTraceAggregate';
+import { planWgslTraceCalls } from './WgslTraceCalls';
+
 const PREFIX = '_ss_trace_';
 const CONTROL = new Set(['if', 'for', 'while', 'switch', 'loop']);
 
@@ -106,12 +109,12 @@ function analyseTraceEntry(launch: WgslTraceLaunch) {
 /** A new planner: never calls or alters the snapshot instrumentation engine. */
 export function planWgslTrace(launch: WgslTraceLaunch): WgslTracePlan {
   validateWgslTraceLaunch(launch);
-  const { tokens, document, entry, coordinate, body } = analyseTraceEntry(launch);
+  const { tokens, document, coordinate, body } = analyseTraceEntry(launch);
   const sites: WgslTraceSite[] = [];
   const edits = [{ start: body.offset + 1, end: body.offset + 1,
     text: `\n  ${PREFIX}enabled = all(${coordinate.name} == ${PREFIX}u.pixel);\n` }];
   for (const statement of document.statements) {
-    if (!containsRange(entry.range, statement.range) || ['block', 'const_assert'].includes(statement.kind)) {
+    if (!document.scopes.some(scope => scope.kind === 'function' && containsRange(scope.range, statement.range)) || ['block', 'const_assert'].includes(statement.kind)) {
       continue;
     }
     const start = offsetAt(launch.source, statement.range.start);
@@ -123,32 +126,32 @@ export function planWgslTrace(launch: WgslTraceLaunch): WgslTracePlan {
       continue;
     }
     const locals = localsBefore(document, statement);
-    const variables = locals.map(value => traceVariable(value.name, value.typeName ?? ''))
-      .filter((value): value is WgslTraceVariable => value !== undefined);
-    const unavailableVariables = locals.filter(value => !traceVariable(value.name, value.typeName ?? ''))
-      .map(value => ({ name: value.name, type: value.typeName ?? 'unresolved' }));
-    const site: WgslTraceSite = { id: sites.length, line: statement.range.start.line + 1,
-      column: statement.range.start.character + 1, variables, ...(unavailableVariables.length ? { unavailableVariables } : {}) };
+    const { variables, valueShapes, unavailableVariables } = planWgslTraceValues(document, locals);
+    const functionName = document.scopes.find(scope => scope.kind === 'function' && containsRange(scope.range, statement.range))?.name;
+    const site: WgslTraceSite = { id: sites.length, functionName, line: statement.range.start.line + 1,
+      column: statement.range.start.character + 1, variables, valueShapes, ...(unavailableVariables.length ? { unavailableVariables } : {}) };
     sites.push(site);
     edits.push({ start, end: start, text: `\n  ${PREFIX}site${site.id}(${site.variables.map(value => value.name).join(', ')});\n  ` });
   }
   if (sites.length === 0) {
     throw new Error('mainImage contains no traceable statements.');
   }
+  const calls = planWgslTraceCalls(document, () => true);
+  edits.push(...calls.edits);
   const applied = applySourceEdits(launch.source, edits);
   if (!applied.ok) {
     throw new Error('WGSL trace instrumentation overlaps.');
   }
-  return { source: applied.source, sites, capacity: launch.capacity,
+  return { source: applied.source, sites, stackSize: calls.stackSize, capacity: launch.capacity,
     recordWords: 4 + Math.max(1, ...sites.map(site => site.variables.length)) * 4 };
 }
 
-function packedVariable(variable: WgslTraceVariable): string {
+function packedVariable(variable: WgslTraceVariable, name: string): string {
   const lanes = Array.from({ length: 4 }, (_, index) => {
     if (index >= variable.width) {
       return '0u';
     }
-    const expression = variable.width === 1 ? variable.name : `${variable.name}[${index}]`;
+    const expression = variable.width === 1 ? name : `${name}[${index}]`;
     if (variable.component === 'bool') {
       return `select(0u, 1u, ${expression})`;
     }
@@ -171,8 +174,21 @@ struct ${PREFIX}Buffer { count: atomic<u32>, overflow: atomic<u32>, _pad: vec2u,
 @group(${bindingGroup}) @binding(1) var<storage, read_write> ${PREFIX}buffer: ${PREFIX}Buffer;
 var<private> ${PREFIX}enabled: bool;
 var<private> ${PREFIX}full: bool;
+var<private> ${PREFIX}depth: u32;
+var<private> ${PREFIX}nextFrame: u32;
+var<private> ${PREFIX}frames: array<u32, ${plan.stackSize ?? 1}>;
+fn ${PREFIX}enter() {
+  if (!${PREFIX}enabled) { return; }
+  ${PREFIX}nextFrame++;
+  ${PREFIX}frames[${PREFIX}depth] = ${PREFIX}nextFrame;
+  ${PREFIX}depth++;
+}
+fn ${PREFIX}exit() {
+  if (!${PREFIX}enabled) { return; }
+  ${PREFIX}depth--;
+}
 ${plan.sites.map(site => `
-fn ${PREFIX}site${site.id}(${site.variables.map(value => `${value.name}: ${value.type}`).join(', ')}) {
+fn ${PREFIX}site${site.id}(${site.variables.map((value, index) => `${PREFIX}value${index}: ${value.type}`).join(', ')}) {
   if (!${PREFIX}enabled || ${PREFIX}full) { return; }
   let ${PREFIX}index = atomicAdd(&${PREFIX}buffer.count, 1u);
   if (${PREFIX}index >= ${plan.capacity}u) {
@@ -180,7 +196,11 @@ fn ${PREFIX}site${site.id}(${site.variables.map(value => `${value.name}: ${value
     ${PREFIX}full = true;
     return;
   }
-  ${PREFIX}buffer.records[${PREFIX}index].site = vec4u(${site.id}u, 0u, 0u, 0u);
-${site.variables.map((value, index) => `  ${PREFIX}buffer.records[${PREFIX}index].values[${index}] = ${packedVariable(value)};`).join('\n')}
+  var ${PREFIX}frame = 0u;
+  var ${PREFIX}parent = 0u;
+  if (${PREFIX}depth > 0u) { ${PREFIX}frame = ${PREFIX}frames[${PREFIX}depth - 1u]; }
+  if (${PREFIX}depth > 1u) { ${PREFIX}parent = ${PREFIX}frames[${PREFIX}depth - 2u]; }
+  ${PREFIX}buffer.records[${PREFIX}index].site = vec4u(${site.id}u, ${PREFIX}depth, ${PREFIX}frame, ${PREFIX}parent);
+${site.variables.map((value, index) => `  ${PREFIX}buffer.records[${PREFIX}index].values[${index}] = ${packedVariable(value, `${PREFIX}value${index}`)};`).join('\n')}
 }`).join('\n')}`;
 }

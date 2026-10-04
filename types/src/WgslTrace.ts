@@ -32,6 +32,14 @@ export interface WgslTraceVariable {
   width: number;
 }
 
+/** Expandable value tree; leaf slots index the site's packed variables. */
+export interface WgslTraceValueShape {
+  name: string;
+  type: string;
+  slot?: number;
+  children?: WgslTraceValueShape[];
+}
+
 export interface WgslTraceSite {
   id: number;
   path?: string;
@@ -40,6 +48,7 @@ export interface WgslTraceSite {
   line: number;
   column: number;
   variables: WgslTraceVariable[];
+  valueShapes?: WgslTraceValueShape[];
   /** Visible locals whose values cannot be recorded by this PoC. */
   unavailableVariables?: Array<{ name: string; type: string }>;
 }
@@ -47,6 +56,7 @@ export interface WgslTraceSite {
 export interface WgslTracePlan {
   source: string;
   bindingGroup?: number;
+  stackSize?: number;
   sites: WgslTraceSite[];
   recordWords: number;
   capacity: number;
@@ -56,7 +66,17 @@ export interface WgslTraceValue {
   name: string;
   type: string;
   /** Special floats are strings so JSON webview messaging preserves them. */
-  value: number | boolean | string | (number | string)[];
+  value: number | boolean | string | (number | boolean | string)[];
+  children?: WgslTraceValue[];
+}
+
+export interface WgslTraceFrame {
+  id: number;
+  functionName: string;
+  path?: string;
+  line: number;
+  column: number;
+  values: WgslTraceValue[];
 }
 
 export interface WgslTraceEvent {
@@ -66,6 +86,8 @@ export interface WgslTraceEvent {
   line: number;
   column: number;
   values: WgslTraceValue[];
+  /** Current frame first; caller locals are frozen at their call sites. */
+  frames?: WgslTraceFrame[];
 }
 
 export interface WgslTraceRecording {

@@ -112,7 +112,7 @@ describe('WGSL trace coverage gaps', () => {
     }
   });
 
-  it('marks aggregate locals unavailable and still captures scalar results', async () => {
+  it('decodes nested struct, array and matrix aggregate leaves without changing shader output', async () => {
     const recording = await captureWgslTrace({ ...launch, source: `struct Sample { value: f32 }
     fn mainImage(p: vec2f) -> vec4f {
       let weights = array<f32, 2>(0.25, 0.5);
@@ -121,10 +121,89 @@ describe('WGSL trace coverage gaps', () => {
       let total = weights[0] + weights[1] + sample.value;
       return vec4f(total);
     }` });
-    const locals = Object.fromEntries(recording.events.at(-1)!.values.map(local => [local.name, local.value]));
-    expect(locals).toMatchObject({ weights: '<not recorded: unsupported or unresolved type>',
-      basis: '<not recorded: unsupported or unresolved type>', sample: '<not recorded: unsupported or unresolved type>', total: 0.875 });
+    const locals = Object.fromEntries(recording.events.at(-1)!.values.map(local => [local.name, local]));
+    expect(locals.total.value).toBe(0.875);
+    for (const name of ['weights', 'basis', 'sample']) {
+      expect(locals[name].value).toEqual(expect.any(String));
+      expect(locals[name].children).toBeDefined();
+    }
+    expect(locals.weights.children).toMatchObject([
+      { name: '[0]', type: 'f32', value: 0.25 }, { name: '[1]', type: 'f32', value: 0.5 },
+    ]);
+    expect(locals.basis.children).toMatchObject([
+      { name: '[0]', type: 'vec2f', value: [1, 0] }, { name: '[1]', type: 'vec2f', value: [0, 1] },
+    ]);
+    expect(locals.sample.children).toMatchObject([{ name: 'value', type: 'f32', value: 0.125 }]);
     expect(recording.color).toEqual([0.875, 0.875, 0.875, 0.875]);
+  });
+
+  it('reconstructs caller locals across nested repeated helper calls', async () => {
+    const recording = await captureWgslTrace({ ...launch, source: `struct Payload {
+      weights: array<f32, 2>,
+      basis: mat2x2f,
+    }
+    fn leaf(payload: Payload) -> f32 {
+      let total = payload.weights[0] + payload.weights[1] + payload.basis[1][1];
+      return total;
+    }
+    fn helper(payload: Payload) -> f32 {
+      return leaf(payload);
+    }
+    fn mainImage(p: vec2f) -> vec4f {
+      let payload = Payload(array<f32, 2>(0.25, 0.5), mat2x2f(1.0, 0.0, 0.0, 1.0));
+      let first = helper(payload);
+      let second = helper(payload);
+      return vec4f(first + second);
+    }` });
+    const helperEvents = recording.events.filter(event => event.frames?.[0]?.functionName === 'helper');
+    expect(helperEvents).toHaveLength(2);
+    expect(new Set(helperEvents.map(event => event.frames![0]!.id)).size).toBe(2);
+    const helper = helperEvents.find(event => event.frames!.length >= 2)!;
+    const leaf = recording.events.find(event => event.frames?.[0]?.functionName === 'leaf')!;
+    expect(leaf.frames).toHaveLength(3);
+    const payload = leaf.frames![0]!.values.find(value => value.name === 'payload')!;
+    expect(payload.children).toMatchObject([
+      { name: 'weights', children: [{ name: '[0]', value: 0.25 }, { name: '[1]', value: 0.5 }] },
+      { name: 'basis', children: [{ name: '[0]', value: [1, 0] }, { name: '[1]', value: [0, 1] }] },
+    ]);
+    const callerPayload = leaf.frames![1]!.values.find(value => value.name === 'payload');
+    expect(callerPayload?.children).toMatchObject([{ name: 'weights' }, { name: 'basis' }]);
+    expect(recording.color).toEqual([3.5, 3.5, 3.5, 3.5]);
+  });
+
+  it('preserves contextual abstract-int conversion through a typed unsigned helper return', async () => {
+    const recording = await captureWgslTrace({ ...launch, source: `fn unsigned() -> u32 {
+      return 1;
+    }
+    fn mainImage(p: vec2f) -> vec4f {
+      let value = f32(unsigned());
+      return vec4f(value);
+    }` });
+    expect(recording.events.some(event => event.frames?.[0]?.functionName === 'unsigned')).toBe(true);
+    expect(recording.color).toEqual([1, 1, 1, 1]);
+  });
+
+  it('restores the caller frame after void fallthrough and conditional early-return helpers', async () => {
+    const recording = await captureWgslTrace({ ...launch, source: `fn guard(value: f32) {
+      if (value < 0.0) { return; }
+      let observed = value;
+    }
+    fn mainImage(p: vec2f) -> vec4f {
+      guard(p.x);
+      guard(-1.0);
+      let color = vec4f(0.5);
+      return color;
+    }` });
+    const helperIndexes = recording.events.map((event, index) => [event, index] as const)
+      .filter(([event]) => event.frames?.[0]?.functionName === 'guard');
+    expect(new Set(helperIndexes.map(([event]) => event.frames![0]!.id)).size).toBe(2);
+    expect(helperIndexes.every(([event]) => event.frames?.length === 2)).toBe(true);
+    for (const [event, index] of helperIndexes) {
+      const restored = recording.events.slice(index + 1).find(candidate => candidate.frames?.[0]?.functionName === 'mainImage');
+      expect(restored?.frames).toHaveLength(1);
+      expect(restored?.frames?.some(frame => frame.id === event.frames![0]!.id)).toBe(false);
+    }
+    expect(recording.color).toEqual([0.5, 0.5, 0.5, 0.5]);
   });
 
   it('packs explicit custom float/vector/bool uniforms and infers their locals', async () => {

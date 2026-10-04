@@ -1,8 +1,9 @@
 import { parseWgslDocument, tokenizeWgsl, type WgslAnalysisDocument, type WgslStatement } from '@shader-studio/wgsl-analysis';
 import { applySourceEdits } from '@shader-studio/utils/source-edits';
-import type { WgslTracePlan, WgslTraceSite, WgslTraceVariable } from '@shader-studio/types';
+import type { WgslTracePlan, WgslTraceSite } from '@shader-studio/types';
 import { containsPosition, offsetAt } from '../wgsl/model';
-import { traceVariable } from './WgslTracePlanner';
+import { planWgslTraceValues } from './WgslTraceAggregate';
+import { planWgslTraceCalls } from './WgslTraceCalls';
 
 const PREFIX = '_ss_trace_';
 const CONTROL = new Set(['if', 'for', 'while', 'switch', 'loop']);
@@ -168,8 +169,8 @@ function entryGate(source: string, tokens: ReturnType<typeof tokenizeWgsl>, requ
  * This intentionally shares no code path with snapshot instrumentation.
  */
 export function planWgslTraceProgram(request: WgslTraceProgramRequest): WgslTraceProgramPlan {
-  if (!Number.isInteger(request.capacity) || request.capacity < 1) {
-    throw new Error('WGSL trace capacity must be a positive integer.');
+  if (!Number.isInteger(request.capacity) || request.capacity < 1 || request.capacity > 16384) {
+    throw new Error('WGSL trace capacity must be an integer from 1 to 16384.');
   }
   if (request.sourceRanges.some(range => !range.path || range.startLine < 1 || range.endLine < range.startLine)) {
     throw new Error('WGSL trace source ranges must be non-empty one-based line ranges.');
@@ -207,10 +208,7 @@ export function planWgslTraceProgram(request: WgslTraceProgramRequest): WgslTrac
       continue;
     }
     const locals = localValuesBefore(document, statement);
-    const variables = locals.map(value => traceVariable(value.name, value.typeName ?? ''))
-      .filter((value): value is WgslTraceVariable => value !== undefined);
-    const unavailableVariables = locals.filter(value => !traceVariable(value.name, value.typeName ?? ''))
-      .map(value => ({ name: value.name, type: value.typeName ?? 'unresolved' }));
+    const { variables, valueShapes, unavailableVariables } = planWgslTraceValues(document, locals);
     const site: WgslTraceProgramSite = {
       id: sites.length,
       path: range.path,
@@ -218,6 +216,7 @@ export function planWgslTraceProgram(request: WgslTraceProgramRequest): WgslTrac
       line: assembledLine - range.startLine + 1,
       column: statement.range.start.character + 1,
       variables,
+      valueShapes,
       ...(unavailableVariables.length ? { unavailableVariables } : {}),
     };
     sites.push(site);
@@ -226,12 +225,15 @@ export function planWgslTraceProgram(request: WgslTraceProgramRequest): WgslTrac
   if (sites.length === 0) {
     throw new Error('WGSL trace contains no statements in authored source ranges.');
   }
+  const calls = planWgslTraceCalls(document, line => sourceRangeAt(request.sourceRanges, line) !== undefined);
+  edits.push(...calls.edits);
   const applied = applySourceEdits(request.source, edits);
   if (!applied.ok) {
     throw new Error('WGSL trace instrumentation overlaps.');
   }
   return {
     source: applied.source,
+    stackSize: calls.stackSize,
     sites,
     capacity: request.capacity,
     recordWords: 4 + Math.max(1, ...sites.map(site => site.variables.length)) * 4,

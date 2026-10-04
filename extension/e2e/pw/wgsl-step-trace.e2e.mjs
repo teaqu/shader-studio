@@ -56,9 +56,24 @@ async function nextTraceLocals(vscode) {
     const session = vscode.debug.activeDebugSession;
     await session.customRequest('next', { threadId: 1 });
     const stack = await session.customRequest('stackTrace', { threadId: 1 });
-    const variables = await session.customRequest('variables', { variablesReference: 1 });
+    const scopes = await session.customRequest('scopes', { frameId: stack.stackFrames[0].id });
+    const variables = await session.customRequest('variables', { variablesReference: scopes.scopes[0].variablesReference });
     return { stack, variables };
   });
+}
+
+async function traceFrameLocals(vscode, command) {
+  return vscode.evaluateInHost(async (vscode, command) => {
+    const session = vscode.debug.activeDebugSession;
+    if (command) {
+      await session.customRequest(command, { threadId: 1 });
+    }
+    const stack = await session.customRequest('stackTrace', { threadId: 1 });
+    const frameId = stack.stackFrames[0].id;
+    const scopes = await session.customRequest('scopes', { frameId });
+    const variables = await session.customRequest('variables', { variablesReference: scopes.scopes[0].variablesReference });
+    return { stack, scopes, variables };
+  }, command);
 }
 
 test('starts a GPU recording from the inspected pixel and steps it in the shader editor @gpu', async ({ vscode }) => {
@@ -139,7 +154,8 @@ test('starts a GPU recording from the inspected pixel and steps it in the shader
     const local = await vscode.evaluateInHost(async vscode => {
       const session = vscode.debug.activeDebugSession;
       const stack = await session.customRequest('stackTrace', { threadId: 1 });
-      const variables = await session.customRequest('variables', { variablesReference: 1 });
+      const scopes = await session.customRequest('scopes', { frameId: stack.stackFrames[0].id });
+    const variables = await session.customRequest('variables', { variablesReference: scopes.scopes[0].variablesReference });
       return { stack, variables };
     });
     expect(local.stack.stackFrames[0].line).toBe(3);
@@ -156,16 +172,20 @@ test('starts a GPU recording from the inspected pixel and steps it in the shader
     });
     const final = await vscode.evaluateInHost(async vscode => {
       const session = vscode.debug.activeDebugSession;
-      return { stack: await session.customRequest('stackTrace', { threadId: 1 }),
-        variables: await session.customRequest('variables', { variablesReference: 1 }) };
+      const stack = await session.customRequest('stackTrace', { threadId: 1 });
+      const scopes = await session.customRequest('scopes', { frameId: stack.stackFrames[0].id });
+      const variables = await session.customRequest('variables', { variablesReference: scopes.scopes[0].variablesReference });
+      return { stack, variables };
     });
     expect(final.stack.stackFrames[0].line).toBe(6);
     expect(final.variables.variables.find(variable => variable.name === 'value')?.value).toBe(String(selectedX + 0.875));
     const previous = await vscode.evaluateInHost(async vscode => {
       const session = vscode.debug.activeDebugSession;
       await session.customRequest('stepBack', { threadId: 1 });
-      return { stack: await session.customRequest('stackTrace', { threadId: 1 }),
-        variables: await session.customRequest('variables', { variablesReference: 1 }) };
+      const stack = await session.customRequest('stackTrace', { threadId: 1 });
+      const scopes = await session.customRequest('scopes', { frameId: stack.stackFrames[0].id });
+      const variables = await session.customRequest('variables', { variablesReference: scopes.scopes[0].variablesReference });
+      return { stack, variables };
     });
     expect(previous.stack.stackFrames[0].line).toBe(4);
     expect(previous.variables.variables.find(variable => variable.name === 'value')?.value).toBe(String(selectedX + 0.75));
@@ -185,7 +205,7 @@ test('starts a GPU recording from the inspected pixel and steps it in the shader
   }
 });
 
-test('launches explicit uniforms and steps else-if with unavailable aggregate values @gpu', async ({ vscode }) => {
+test('launches explicit uniforms and expands aggregate trace locals in VS Code @gpu', async ({ vscode }) => {
   const directory = join(workspacePath, `wgsl-trace-gaps-${process.pid}`);
   mkdirSync(directory, { recursive: true });
   const path = join(directory, 'image.wgsl');
@@ -217,13 +237,20 @@ test('launches explicit uniforms and steps else-if with unavailable aggregate va
     const result = await vscode.evaluateInHost(async vscode => {
       const session = vscode.debug.activeDebugSession;
       await session.customRequest('continue', { threadId: 1 });
-      return { stack: await session.customRequest('stackTrace', { threadId: 1 }),
-        variables: await session.customRequest('variables', { variablesReference: 1 }) };
+      const stack = await session.customRequest('stackTrace', { threadId: 1 });
+      const scopes = await session.customRequest('scopes', { frameId: stack.stackFrames[0].id });
+      const variables = await session.customRequest('variables', { variablesReference: scopes.scopes[0].variablesReference });
+      const weights = variables.variables.find(variable => variable.name === 'weights');
+      const elements = await session.customRequest('variables', { variablesReference: weights.variablesReference, filter: 'indexed' });
+      return { stack, variables, elements };
     });
     expect(result.stack.stackFrames[0].line).toBe(8);
     expect(result.variables.variables.find(variable => variable.name === 'value')?.value).toBe('0.5');
     expect(result.variables.variables.find(variable => variable.name === 'color')?.value).toBe('[0.5, 0.5, 0.5, 0.5]');
-    expect(result.variables.variables.find(variable => variable.name === 'weights')?.value).toBe('<not recorded: unsupported or unresolved type>');
+    expect(result.variables.variables.find(variable => variable.name === 'weights')?.value).toEqual(expect.any(String));
+    expect(result.elements.variables).toMatchObject([
+      { name: '[0]', type: 'f32', value: '0.125' }, { name: '[1]', type: 'f32', value: '0.25' },
+    ]);
   } finally {
     await vscode.evaluateInHost(async vscode => {
       if (vscode.debug.activeDebugSession?.type === 'shader-studio-wgsl-trace') {
@@ -259,16 +286,36 @@ test('traces an installed WGSL Image pass with Common and a named texture @gpu',
     await frame.getByRole('button', { name: 'Start Trace', exact: true }).click();
     await expect.poll(() => vscode.evaluateInHost(vscode => vscode.debug.activeDebugSession?.type ?? null))
       .toBe('shader-studio-wgsl-trace');
-    await nextTraceLocals(vscode);
-    const commonDeclaration = await nextTraceLocals(vscode);
+    // Exercise the actual debug toolbar keybindings: Step Over stays at the
+    // Image call site, while Step Into enters Common.
+    await vscode.window.keyboard.press('F10');
+    await expect.poll(() => vscode.evaluateInHost(async vscode =>
+      (await vscode.debug.activeDebugSession.customRequest('stackTrace', { threadId: 1 })).stackFrames[0].source.path)).toBe(image);
+    await vscode.window.keyboard.press('F11');
+    await expect.poll(() => vscode.evaluateInHost(async vscode =>
+      (await vscode.debug.activeDebugSession.customRequest('stackTrace', { threadId: 1 })).stackFrames[0].source.path)).toBe(common);
+    const commonDeclaration = await traceFrameLocals(vscode);
     expect(commonDeclaration.stack.stackFrames[0].source.path).toBe(common);
     expect(commonDeclaration.stack.stackFrames[0].name).toBe('commonGain');
-    const commonTrace = await nextTraceLocals(vscode);
+    expect(commonDeclaration.stack.totalFrames).toBeGreaterThanOrEqual(2);
+    expect(commonDeclaration.stack.stackFrames[1].source.path).toBe(image);
+    expect(commonDeclaration.variables.variables.find(variable => variable.name === 'commonValue')).toBeUndefined();
+    await vscode.window.keyboard.press('F10');
+    const commonTrace = await traceFrameLocals(vscode);
     expect(commonTrace.stack.stackFrames[0].source.path).toBe(common);
     expect(commonTrace.variables.variables.find(variable => variable.name === 'commonValue')?.value).toBe('0.25');
-    const imageTrace = await nextTraceLocals(vscode);
+    await vscode.evaluateInHost(async vscode => {
+      await vscode.debug.activeDebugSession.customRequest('stepOut', { threadId: 1 });
+    });
+    await expect.poll(() => vscode.evaluateInHost(async vscode =>
+      (await vscode.debug.activeDebugSession.customRequest('stackTrace', { threadId: 1 })).stackFrames[0].source.path)).toBe(image);
+    const imageTrace = await traceFrameLocals(vscode);
     expect(imageTrace.stack.stackFrames[0].source.path).toBe(image);
     expect(imageTrace.variables.variables.find(variable => variable.name === 'shade')?.value).toBe('0.25');
+    await vscode.evaluateInHost(async vscode => {
+      await vscode.debug.stopDebugging(vscode.debug.activeDebugSession);
+    });
+    await expectCanvasPixels(frame, [64, 0, 0]);
   } finally {
     await vscode.evaluateInHost(async vscode => {
       if (vscode.debug.activeDebugSession?.type === 'shader-studio-wgsl-trace') {

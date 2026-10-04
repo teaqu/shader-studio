@@ -27,11 +27,33 @@ describe('WGSL project trace recording validation', () => {
     expect(() => validateWgslTraceRecording(recording)).not.toThrow();
   });
 
+  it('accepts recursive aggregate values, boolean vectors, and site-backed frames', () => {
+    const value = {
+      name: 'scene', type: 'Scene', value: '<aggregate>', children: [
+        { name: 'visible', type: 'bool', value: [true, false, true] },
+        { name: 'particle', type: 'Particle', value: '<aggregate>', children: [
+          { name: 'position', type: 'vec4f', value: [0.25, 0.5, 0.75, 1] },
+        ] },
+      ],
+    };
+    expect(() => validateWgslTraceRecording({ ...recording, events: [{ ...recording.events[0], values: [value], frames: [
+      { id: 10, path: '/project/common.wgsl', functionName: 'helper', line: 2, column: 3, values: [value] },
+      { id: 20, path: '/project/image.wgsl', functionName: 'mainImage', line: 5, column: 1, values: [] },
+    ] }] })).not.toThrow();
+  });
+
   it.each([
     ['unknown event site', { ...recording, events: [{ ...recording.events[0], siteId: 99 }] }],
     ['event path mismatch', { ...recording, events: [{ ...recording.events[0], path: '/project/image.wgsl' }] }],
     ['event function mismatch', { ...recording, events: [{ ...recording.events[0], functionName: 'mainImage' }] }],
     ['event line mismatch', { ...recording, events: [{ ...recording.events[0], line: 3 }] }],
+    ['duplicate frame id', { ...recording, events: [{ ...recording.events[0], frames: [
+      { id: 1, path: '/project/common.wgsl', functionName: 'helper', line: 2, column: 3, values: [] },
+      { id: 1, path: '/project/image.wgsl', functionName: 'mainImage', line: 5, column: 1, values: [] },
+    ] }] }],
+    ['frame location absent from sites', { ...recording, events: [{ ...recording.events[0], frames: [
+      { id: 1, path: '/project/common.wgsl', functionName: 'helper', line: 99, column: 3, values: [] },
+    ] }] }],
     ['site path absent from snapshots', { ...recording, sites: [{ ...recording.sites[0], path: '/other.wgsl' }] }],
     ['conflicting source snapshot', { ...recording, sources: [...recording.sources, { path: '/project/image.wgsl', source: 'different' }] }],
   ])('rejects %s', (_name, value) => {
@@ -52,7 +74,16 @@ describe('WGSL project trace recording validation', () => {
     ['invalid event value', { ...recording, events: [{ ...recording.events[0], values: [{ name: 'x', type: 'f32', value: Infinity }] }] }],
     ['non-array source list', { ...recording, sources: {} }],
     ['non-array site variables', { ...recording, sites: [{ ...recording.sites[0], variables: {} }] }],
+    ['non-array aggregate children', { ...recording, events: [{ ...recording.events[0], values: [{ name: 'x', type: 'S', value: '<aggregate>', children: {} }] }] }],
   ])('rejects invalid payload data: %s', (_name, value) => {
     expect(() => validateWgslTraceRecording(value)).toThrow();
+  });
+
+  it('bounds aggregate recursion', () => {
+    let value: Record<string, unknown> = { name: 'leaf', type: 'f32', value: 1 };
+    for (let index = 0; index <= 16; index += 1) {
+      value = { name: `node${index}`, type: 'Node', value: '<aggregate>', children: [value] };
+    }
+    expect(() => validateWgslTraceRecording({ ...recording, events: [{ ...recording.events[0], values: [value] }] })).toThrow();
   });
 });

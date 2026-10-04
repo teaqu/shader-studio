@@ -92,7 +92,7 @@ suite('WGSL trace DAP session', () => {
     await test.send('evaluate', { expression: 'x + 1' });
     assert.strictEqual(test.messages.at(-1)!.success, false);
     await test.send('stepOut');
-    assert.strictEqual(test.messages.at(-1)!.success, false);
+    assert.strictEqual(test.messages.at(-1)!.event, 'terminated');
   });
 
   test('does not treat a breakpoint in a different file as a match', async () => {
@@ -135,6 +135,95 @@ suite('WGSL trace DAP session', () => {
     assert.strictEqual(stack.stackFrames[0].name, 'mainImage');
     assert.strictEqual(stack.stackFrames[0].source.path, '/image.wgsl');
     assert.strictEqual(stack.stackFrames[0].line, 7);
+  });
+
+  test('pages recorded frames and expands aggregate locals in the requested frame', async () => {
+    const framed: WgslTraceRecording = { ...recording, events: [{
+      siteId: 0, line: 3, column: 2, values: [], frames: [
+        { id: 20, functionName: 'helper', path: '/common.wgsl', line: 3, column: 2, values: [{
+          name: 'state', type: 'State', value: 'State', children: [{
+            name: 'weights', type: 'array<f32, 2>', value: '[0.25, 0.5]', children: [
+              { name: '0', type: 'f32', value: 0.25 }, { name: '1', type: 'f32', value: 0.5 },
+            ],
+          }],
+        }] },
+        { id: 10, functionName: 'mainImage', path: '/image.wgsl', line: 9, column: 1, values: [{ name: 'pixel', type: 'vec2<u32>', value: [4, 8] }] },
+      ],
+    }] };
+    const test = rig(async () => framed);
+    await test.send('launch');
+    await test.send('stackTrace', { startFrame: 1, levels: 1 });
+    assert.deepStrictEqual(test.messages.at(-1)!.body, { stackFrames: [{ id: 10, name: 'mainImage', line: 9, column: 1,
+      source: { name: 'image.wgsl', path: '/image.wgsl', sourceReference: 0 } }], totalFrames: 2 });
+    await test.send('scopes', { frameId: 20 });
+    const reference = ((test.messages.at(-1)!.body as { scopes: { variablesReference: number }[] }).scopes[0]!).variablesReference;
+    await test.send('variables', { variablesReference: reference });
+    const state = ((test.messages.at(-1)!.body as { variables: { name: string; variablesReference: number }[] }).variables[0]!);
+    await test.send('variables', { variablesReference: state.variablesReference, filter: 'named', start: 0, count: 1 });
+    const weights = ((test.messages.at(-1)!.body as { variables: { name: string; variablesReference: number }[] }).variables[0]!);
+    await test.send('variables', { variablesReference: weights.variablesReference, filter: 'indexed', start: 1, count: 1 });
+    assert.deepStrictEqual((test.messages.at(-1)!.body as { variables: unknown[] }).variables, [{ name: '1', type: 'f32', value: '0.5', variablesReference: 0 }]);
+    await test.send('evaluate', { frameId: 20, expression: 'state.weights[1]' });
+    assert.deepStrictEqual(test.messages.at(-1)!.body, { result: '0.5', type: 'f32', variablesReference: 0 });
+    await test.send('scopes', { frameId: 999 });
+    assert.strictEqual(test.messages.at(-1)!.success, false);
+    await test.send('evaluate', { frameId: 999, expression: 'state.weights[1]' });
+    assert.strictEqual(test.messages.at(-1)!.success, false);
+  });
+
+  test('steps over nested and repeated calls, stops at a callee breakpoint, and rejects stale locals', async () => {
+    const values = (name: string, value: number) => [{ name, type: 'u32', value }];
+    const frame = (id: number, functionName: string, path: string, line: number, name: string, value: number) =>
+      ({ id, functionName, path, line, column: 1, values: values(name, value) });
+    const framed: WgslTraceRecording = { ...recording, sites: [
+      { id: 0, path: '/image.wgsl', functionName: 'mainImage', line: 10, column: 1, variables: [] },
+      { id: 1, path: '/common.wgsl', functionName: 'helper', line: 3, column: 1, variables: [] },
+      { id: 2, path: '/common.wgsl', functionName: 'helper', line: 4, column: 1, variables: [] },
+      { id: 3, path: '/image.wgsl', functionName: 'mainImage', line: 11, column: 1, variables: [] },
+      { id: 4, path: '/image.wgsl', functionName: 'mainImage', line: 12, column: 1, variables: [] },
+    ], events: [
+      { siteId: 0, line: 10, column: 1, values: [], frames: [frame(10, 'mainImage', '/image.wgsl', 10, 'caller', 0)] },
+      { siteId: 1, line: 3, column: 1, values: [], frames: [frame(20, 'helper', '/common.wgsl', 3, 'call', 1), frame(10, 'mainImage', '/image.wgsl', 10, 'caller', 0)] },
+      { siteId: 2, line: 4, column: 1, values: [], frames: [frame(20, 'helper', '/common.wgsl', 4, 'call', 2), frame(10, 'mainImage', '/image.wgsl', 10, 'caller', 0)] },
+      { siteId: 3, line: 11, column: 1, values: [], frames: [frame(10, 'mainImage', '/image.wgsl', 11, 'caller', 1)] },
+      { siteId: 1, line: 3, column: 1, values: [], frames: [frame(21, 'helper', '/common.wgsl', 3, 'call', 3), frame(10, 'mainImage', '/image.wgsl', 11, 'caller', 1)] },
+      { siteId: 4, line: 12, column: 1, values: [], frames: [frame(10, 'mainImage', '/image.wgsl', 12, 'caller', 2)] },
+    ] };
+    const test = rig(async () => framed);
+    await test.send('launch');
+    await test.send('stepIn');
+    await test.send('scopes', { frameId: 20 });
+    const staleReference = ((test.messages.at(-1)!.body as { scopes: { variablesReference: number }[] }).scopes[0]!).variablesReference;
+    await test.send('next');
+    await test.send('stackTrace');
+    assert.strictEqual((test.messages.at(-1)!.body as { stackFrames: { id: number; line: number }[] }).stackFrames[0]!.id, 20);
+    await test.send('stepOut');
+    await test.send('variables', { variablesReference: staleReference });
+    assert.strictEqual(test.messages.at(-1)!.success, false);
+    await test.send('setBreakpoints', { source: { path: '/common.wgsl' }, breakpoints: [{ line: 3 }] });
+    await test.send('next');
+    assert.strictEqual((test.messages.at(-1)!.body as { reason: string }).reason, 'breakpoint');
+    await test.send('stackTrace');
+    assert.strictEqual((test.messages.at(-1)!.body as { stackFrames: { id: number }[] }).stackFrames[0]!.id, 21);
+    await test.send('stepOut');
+    await test.send('stackTrace');
+    assert.strictEqual((test.messages.at(-1)!.body as { stackFrames: { line: number }[] }).stackFrames[0]!.line, 12);
+  });
+
+  test('keeps a partial stack available when an overflowing trace ends in an active helper', async () => {
+    const partial: WgslTraceRecording = { ...recording, overflow: true, events: [{
+      siteId: 0, line: 3, column: 1, values: [], frames: [
+        { id: 2, functionName: 'helper', path: '/common.wgsl', line: 3, column: 1, values: [] },
+        { id: 1, functionName: 'mainImage', path: '/image.wgsl', line: 8, column: 1, values: [] },
+      ],
+    }] };
+    const test = rig(async () => partial);
+    await test.send('launch');
+    await test.send('stackTrace');
+    assert.strictEqual((test.messages.at(-1)!.body as { totalFrames: number }).totalFrames, 2);
+    await test.send('stepOut');
+    assert.ok(JSON.stringify(test.messages).includes('End of incomplete trace recording'));
+    assert.strictEqual(test.messages.at(-1)!.event, 'terminated');
   });
 
   test('verifies initial breakpoints after capture and retains them when another file is configured', async () => {
