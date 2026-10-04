@@ -56,3 +56,36 @@ it('closes on dialog cancellation and releases its settings subscription', async
   unmount();
   expect(HTMLDialogElement.prototype.close).toHaveBeenCalledOnce();
 });
+
+it('closes only for clicks beyond each edge of the dialog backdrop', async () => {
+  const settings = new StandaloneSettings({ getItem: () => null, setItem: vi.fn() });
+  const onClose = vi.fn();
+  render(SettingsPanel, { settings, onClose });
+  const dialog = screen.getByRole('dialog');
+  vi.spyOn(dialog, 'getBoundingClientRect').mockReturnValue({
+    left: 10, right: 110, top: 20, bottom: 120,
+    width: 100, height: 100, x: 10, y: 20, toJSON: () => ({}),
+  });
+  await fireEvent.click(screen.getByRole('searchbox'), { clientX: 0, clientY: 0 });
+  await fireEvent.click(dialog, { clientX: 50, clientY: 50 });
+  await fireEvent.keyDown(dialog, { key: 'Enter' });
+  expect(onClose).not.toHaveBeenCalled();
+  for (const [clientX, clientY] of [[9, 50], [111, 50], [50, 19], [50, 121]]) {
+    await fireEvent.click(dialog, { clientX, clientY });
+  }
+  expect(onClose).toHaveBeenCalledTimes(4);
+});
+
+it('restores the launching control focus and applies fallback editor choices', async () => {
+  const launcher = document.createElement('button');
+  document.body.append(launcher);
+  launcher.focus();
+  const settings = new StandaloneSettings({ getItem: () => null, setItem: vi.fn() });
+  const { unmount } = render(SettingsPanel, { settings, onClose: vi.fn() });
+  expect(document.activeElement).toBe(screen.getByRole('searchbox'));
+  await fireEvent.change(screen.getByRole('combobox', { name: 'Word wrap' }), { target: { value: 'off' } });
+  expect(settings.snapshot['editor.wordWrap']).toBe('off');
+  unmount();
+  expect(document.activeElement).toBe(launcher);
+  launcher.remove();
+});
