@@ -885,6 +885,7 @@ describe("slang-multipass-test shader corpus", () => {
     it(project.name, { timeout: 30_000 }, async () => {
       const harness = harnesses.get(project.language);
       expect(harness).toBeDefined();
+      harness!.setTimingLabel(project.name);
       const size = canvasSize(project);
       harness!.resize(size, size);
       const expectedError = expectedCompileError(project);
@@ -906,6 +907,7 @@ describe("slang-multipass-test shader corpus", () => {
       for (const time of sampleTimes(project)) {
         region = await harness!.renderAndReadRegion(time);
       }
+      harness!.watchQueueDrain();
       // The project drew something: a pass that rasterises nothing leaves the
       // sentinel behind instead of failing.
       expect(isUntouched(region)).toBe(false);

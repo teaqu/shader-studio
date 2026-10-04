@@ -7,6 +7,7 @@ import {
   type ShaderCanvasHarness,
   type ShaderLanguage,
 } from "../../../../rendering/src/test/e2e/ShaderCanvasHarness";
+import { compileTimingLine } from "../../../../rendering/src/test/e2e/gpuTiming";
 import { ShaderPipeline } from "../../lib/ShaderPipeline";
 import type { CompilationResult } from "../../lib/ShaderProcessor";
 import { ShaderLocker } from "../../lib/ShaderLocker";
@@ -327,8 +328,20 @@ async function compileThroughPipeline(
   harness: ShaderCanvasHarness,
   message: unknown,
 ): Promise<CompilationResult | undefined> {
+  const startedAt = performance.now();
   const result = await pipeline.handleShaderMessage(new MessageEvent("message", { data: message }));
   harness.holdFrames();
+  harness.watchQueueDrain();
+  const path = (message as { path?: string }).path ?? "(no path)";
+  const line = compileTimingLine({
+    label: path.replace(/^\//, ""),
+    language: (message as { language?: string }).language ?? "glsl",
+    phase: "pipeline",
+    compileMs: performance.now() - startedAt,
+  });
+  if (line) {
+    console.warn(line);
+  }
   return result;
 }
 
@@ -405,8 +418,20 @@ describe("shader corpus through the UI transport layer", () => {
       }
       const size = canvasSize(project);
       rig.harness.resize(size, size);
+      rig.harness.setTimingLabel(project.name);
       await paintSentinel(rig, project.language as ShaderLanguage);
+      const openStartedAt = performance.now();
       const result = await rig.open(`/${project.name}`);
+      // The pipeline compiles here, outside the harness, so time it here too.
+      const compileLine = compileTimingLine({
+        label: project.name,
+        language: project.language,
+        phase: "open",
+        compileMs: performance.now() - openStartedAt,
+      });
+      if (compileLine) {
+        console.warn(compileLine);
+      }
       if (!result) {
         failures.push(`${project.name}: pipeline produced no compilation result`);
         continue;
@@ -433,6 +458,7 @@ describe("shader corpus through the UI transport layer", () => {
       for (const time of sampleTimes(project)) {
         region = await rig.harness.renderAndReadRegion(time);
       }
+      rig.harness.watchQueueDrain();
       const lit = nonBlackPixelCount(region);
       if (isUntouched(region)) {
         drewNothing.push(project.name);
