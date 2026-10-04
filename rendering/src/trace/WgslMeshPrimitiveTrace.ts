@@ -7,19 +7,23 @@ export function patchWgslMeshPrimitiveTrace(source: string) {
   if (!source.includes(structNeedle) || !source.includes(vertexNeedle) || !source.includes(fragmentNeedle)) {
     throw new Error('WGSL mesh trace could not locate generated mesh entry points.');
   }
-  let patched = source.replace(structNeedle, `${structNeedle} @location(3) @interpolate(flat) _ss_trace_primitive: u32,`);
+  // Generated mesh outputs reserve locations 0–3 for UV, position, normal,
+  // and the instance ID. Keep primitive selection separate from instance IDs.
+  let patched = source.replace(structNeedle, `${structNeedle} @location(4) @interpolate(flat) _ss_trace_primitive: u32,`);
   const vertexStart = patched.indexOf(vertexNeedle);
   const vertexClose = parameterClose(patched, vertexStart);
-  patched = `${patched.slice(0, vertexClose)}${patched.slice(vertexStart, vertexClose).includes('@builtin(vertex_index)') ? '' : ', @builtin(vertex_index) _ss_trace_vertexIndex: u32'}${patched.slice(vertexClose)}`;
+  const existingVertexIndex = patched.slice(vertexStart, vertexClose).match(/@builtin\(vertex_index\)\s+([A-Za-z_]\w*)/);
+  const vertexIndex = existingVertexIndex?.[1] ?? '_ss_trace_vertexIndex';
+  patched = `${patched.slice(0, vertexClose)}${existingVertexIndex ? '' : ', @builtin(vertex_index) _ss_trace_vertexIndex: u32'}${patched.slice(vertexClose)}`;
   const vertexEnd = patched.indexOf('\n}\n\n@fragment fn fragmentMain', vertexStart);
   const outputReturn = patched.lastIndexOf('return output;', vertexEnd);
   if (outputReturn < vertexStart) {
     throw new Error('WGSL mesh trace could not locate the generated vertex return.');
   }
-  patched = `${patched.slice(0, outputReturn)}output._ss_trace_primitive = _ss_trace_vertexIndex / 3u + 1u; ${patched.slice(outputReturn)}`;
+  patched = `${patched.slice(0, outputReturn)}output._ss_trace_primitive = ${vertexIndex} / 3u + 1u; ${patched.slice(outputReturn)}`;
   const fragmentStart = patched.indexOf(fragmentNeedle);
   const fragmentClose = parameterClose(patched, fragmentStart);
-  patched = `${patched.slice(0, fragmentClose)}, @location(3) @interpolate(flat) _ss_trace_primitive: u32${patched.slice(fragmentClose)}`;
+  patched = `${patched.slice(0, fragmentClose)}, @location(4) @interpolate(flat) _ss_trace_primitive: u32${patched.slice(fragmentClose)}`;
   return patched;
 }
 
