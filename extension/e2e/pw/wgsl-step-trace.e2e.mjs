@@ -8,7 +8,7 @@ test.use({ vscodeKey: 'wgsl-step-trace' });
 test.afterEach(async ({ vscode }, testInfo) => {
   if (testInfo.status !== testInfo.expectedStatus) {
     const frame = await vscode.shaderFrame();
-    console.log('WGSL trace launch failure:', await frame.evaluate(() => ({ current: [...document.querySelectorAll('.trace-reason')].map(element => element.textContent), history: window.__traceReasons ?? [] }))); 
+    console.log('WGSL trace launch failure:', await frame.locator('.trace-reason').allTextContents());
   }
 });
 
