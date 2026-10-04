@@ -1,28 +1,41 @@
 import { test, expect } from '@playwright/test';
 
-// Use Chromium's real software WebGPU adapter on headless machines.
-test.use({ launchOptions: { args: ['--enable-unsafe-webgpu', '--use-webgpu-adapter=swiftshader', '--enable-dawn-features=allow_unsafe_apis'] } });
-
 for (const shader of ['aurora-glsl', 'aurora-wgsl-wgsl']) {
   for (const format of ['MP4', 'WebM']) {
-    test(`${shader} Live ${format} preserves smooth colour gradients`, async ({ page }) => {
+    test(`${shader} Live ${format} preserves smooth colour gradients`, async ({ page }, testInfo) => {
+      await page.addInitScript(() => {
+        globalThis.captureEncoderConfigs = [];
+        const configure = VideoEncoder.prototype.configure;
+        VideoEncoder.prototype.configure = function(config) {
+          globalThis.captureEncoderConfigs.push(config);
+          return configure.call(this, config);
+        };
+      });
       await page.goto('/');
       await page.getByTestId(`shader-option-${shader}`).click();
       await expect(page.getByTestId(`shader-option-${shader}`)).not.toContainText('Failed');
+      await page.getByLabel('Change resolution settings').click();
+      await page.getByPlaceholder('W', { exact: true }).fill('816');
+      await page.getByPlaceholder('H', { exact: true }).fill('458');
+      await page.getByLabel('Change resolution settings').click();
       const preview = page.getByTestId('web-preview').locator('canvas').first();
-      await expect.poll(() => preview.evaluate(element => {
+      // WebGPU discards the presented canvas texture after each frame. Read
+      // during the animation callback while the rendered texture is available.
+      await expect.poll(() => preview.evaluate(element => new Promise(resolve => requestAnimationFrame(() => {
         const copy = new OffscreenCanvas(element.width, element.height);
         const context = copy.getContext('2d');
         context.drawImage(element, 0, 0);
         const pixels = context.getImageData(0, 0, copy.width, copy.height).data;
-        return pixels.some((value, index) => index % 4 !== 3 && value > 32);
-      })).toBe(true);
+        resolve(pixels.some((value, index) => index % 4 !== 3 && value > 32));
+      })))).toBe(true);
       await page.getByLabel('Toggle export panel').click();
       await page.getByRole('button', { name: 'Video', exact: true }).click();
       await page.getByRole('button', { name: format, exact: true }).click();
+      await page.getByRole('button', { name: '60', exact: true }).click();
       await page.getByRole('button', { name: 'Start recording', exact: true }).click();
       await expect(page.getByRole('button', { name: 'Stop & save', exact: true })).toBeVisible();
-      await page.waitForTimeout(1800);
+      // Cover a full shader colour cycle rather than one favourable short phase.
+      await page.waitForTimeout(8000);
       const downloading = page.waitForEvent('download');
       await page.getByRole('button', { name: 'Stop & save', exact: true }).click();
       const download = await downloading;
@@ -43,7 +56,8 @@ for (const shader of ['aurora-glsl', 'aurora-wgsl-wgsl']) {
         canvas.height = video.videoHeight;
         const ctx = canvas.getContext('2d');
         const scores = [];
-        for (const time of [duration * 0.25, duration * 0.75]) {
+        for (const fraction of [0.05, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 0.95]) {
+          const time = duration * fraction;
           video.currentTime = time;
           await new Promise(resolve => {
  video.onseeked = resolve;
@@ -80,7 +94,11 @@ for (const shader of ['aurora-glsl', 'aurora-wgsl-wgsl']) {
         video.removeAttribute('src'); video.load();
         return { duration, scores, width: canvas.width, height: canvas.height };
       }, { base64: Buffer.concat(chunks).toString('base64'), format });
-      expect(quality.duration).toBeGreaterThan(1);
+      await testInfo.attach('decoded-quality.json', {
+        body: JSON.stringify({ ...quality, encoderConfigs: await page.evaluate(() => globalThis.captureEncoderConfigs) }, null, 2),
+        contentType: 'application/json',
+      });
+      expect(quality.duration).toBeGreaterThan(6.3);
       for (const score of quality.scores) {
         expect(score).toBeGreaterThanOrEqual(40);
       }
