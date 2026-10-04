@@ -32,10 +32,33 @@ describe("WebGLMeshResources", () => {
     const mesh = resources.get("plane");
 
     expect(mesh.indexCount).toBe(6);
+    // Distinct vertices back iVertexCount, the range of gl_VertexID.
+    expect(mesh.vertexCount).toBe(4);
     expect(gl.vertexAttribPointer).toHaveBeenNthCalledWith(1, 0, 3, gl.FLOAT, false, 32, 0);
     expect(gl.vertexAttribPointer).toHaveBeenNthCalledWith(2, 1, 3, gl.FLOAT, false, 32, 12);
     expect(gl.vertexAttribPointer).toHaveBeenNthCalledWith(3, 2, 2, gl.FLOAT, false, 32, 24);
     expect(resources.get("plane")).toBe(mesh);
+  });
+
+  it("records the unique edges in a second vertex array over the same vertex buffer", () => {
+    const resources = new WebGLMeshResources(gl as unknown as WebGL2RenderingContext);
+    const mesh = resources.get("plane");
+
+    expect(mesh.edgeIndexCount).toBe(10);
+    expect(mesh.edgeVao).not.toBe(mesh.vao);
+    const elementUploads = gl.bufferData.mock.calls.filter(([target]) => target === gl.ELEMENT_ARRAY_BUFFER).map(([, data]) => Array.from(data as Uint16Array));
+    expect(elementUploads).toEqual([[0, 2, 1, 0, 3, 2], [0, 2, 2, 1, 1, 0, 0, 3, 3, 2]]);
+    // Each vertex array records all three attributes.
+    expect(gl.vertexAttribPointer).toHaveBeenCalledTimes(6);
+  });
+
+  it("deletes everything it allocated when an allocation fails", () => {
+    gl.createBuffer.mockReturnValueOnce({}).mockReturnValueOnce({}).mockReturnValueOnce(null as never);
+    const resources = new WebGLMeshResources(gl as unknown as WebGL2RenderingContext);
+
+    expect(() => resources.get("plane")).toThrow("Unable to allocate WebGL mesh geometry");
+    expect(gl.deleteVertexArray).toHaveBeenCalledTimes(2);
+    expect(gl.deleteBuffer).toHaveBeenCalledTimes(2);
   });
 
   it("deletes each cached mesh resource once", () => {
@@ -46,8 +69,9 @@ describe("WebGLMeshResources", () => {
     resources.dispose();
     resources.dispose();
 
-    expect(gl.deleteVertexArray).toHaveBeenCalledTimes(2);
-    expect(gl.deleteBuffer).toHaveBeenCalledTimes(4);
+    // Per mesh: the triangle and edge vertex arrays, and the vertex, index and edge index buffers.
+    expect(gl.deleteVertexArray).toHaveBeenCalledTimes(4);
+    expect(gl.deleteBuffer).toHaveBeenCalledTimes(6);
   });
 
   it('loads a named GLB mesh and preserves its 32-bit index format', async () => {
@@ -64,6 +88,6 @@ describe("WebGLMeshResources", () => {
 
     await resources.loadModel('Image', 'cat.glb', 'CatBody');
 
-    expect(resources.getModel('Image')).toMatchObject({ indexCount: 3, indexType: gl.UNSIGNED_INT });
+    expect(resources.getModel('Image')).toMatchObject({ indexCount: 3, indexType: gl.UNSIGNED_INT, vertexCount: 3 });
   });
 });

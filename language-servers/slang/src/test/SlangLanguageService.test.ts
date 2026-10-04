@@ -4,7 +4,7 @@ import type { ShaderAuthoringEnvironment } from "@shader-studio/types";
 import { isShaderEntryPointName } from "@shader-studio/types";
 import { SlangLanguageService } from "../SlangLanguageService";
 import { SLANG_INTRINSICS } from "../intrinsics";
-import type { SlangLanguageServerModule, SlangList } from "../slangLanguageServerTypes";
+import type { SlangLanguageServer, SlangLanguageServerModule, SlangList } from "../slangLanguageServerTypes";
 
 function list<T>(items: T[]): SlangList<T> {
   return { size: () => items.length, get: (index) => items[index], delete: vi.fn() };
@@ -12,21 +12,21 @@ function list<T>(items: T[]): SlangList<T> {
 
 function fixture() {
   const server = {
-    didOpenTextDocument: vi.fn(),
-    didCloseTextDocument: vi.fn(),
-    didChangeTextDocument: vi.fn(),
-    completion: vi.fn(() => list([{
+    didOpenTextDocument: vi.fn<SlangLanguageServer["didOpenTextDocument"]>(),
+    didCloseTextDocument: vi.fn<SlangLanguageServer["didCloseTextDocument"]>(),
+    didChangeTextDocument: vi.fn<SlangLanguageServer["didChangeTextDocument"]>(),
+    completion: vi.fn<SlangLanguageServer["completion"]>(() => list([{
       label: "normalize",
       kind: 3,
       detail: "float3 normalize(float3)",
       data: "",
       textEdit: { range: { start: { line: 3, character: 0 }, end: { line: 3, character: 9 } }, text: "normalize" },
     }])),
-    hover: vi.fn(() => ({ contents: { kind: "markdown", value: "normalizes a vector" }, range: { start: { line: 3, character: 0 }, end: { line: 3, character: 9 } } })),
-    gotoDefinition: vi.fn(() => list([{ uri: "file:///image.slang", range: { start: { line: 3, character: 0 }, end: { line: 3, character: 4 } } }])),
-    signatureHelp: vi.fn(() => undefined),
-    documentSymbol: vi.fn(() => list([{ name: "mainImage", detail: "", kind: 12, range: { start: { line: 100, character: 0 }, end: { line: 100, character: 10 } }, selectionRange: { start: { line: 100, character: 0 }, end: { line: 100, character: 9 } }, children: list([]) }])),
-    getDiagnostics: vi.fn(() => list([])),
+    hover: vi.fn<SlangLanguageServer["hover"]>(() => ({ contents: { kind: "markdown", value: "normalizes a vector" }, range: { start: { line: 3, character: 0 }, end: { line: 3, character: 9 } } })),
+    gotoDefinition: vi.fn<SlangLanguageServer["gotoDefinition"]>(() => list([{ uri: "file:///image.slang", range: { start: { line: 3, character: 0 }, end: { line: 3, character: 4 } } }])),
+    signatureHelp: vi.fn<SlangLanguageServer["signatureHelp"]>(() => undefined),
+    documentSymbol: vi.fn<SlangLanguageServer["documentSymbol"]>(() => list([{ name: "mainImage", detail: "", kind: 12, range: { start: { line: 100, character: 0 }, end: { line: 100, character: 10 } }, selectionRange: { start: { line: 100, character: 0 }, end: { line: 100, character: 9 } }, children: list([]) }])),
+    getDiagnostics: vi.fn<SlangLanguageServer["getDiagnostics"]>(() => list([])),
     delete: vi.fn(),
   };
   const module = { createLanguageServer: vi.fn(() => server) } as unknown as SlangLanguageServerModule;
@@ -662,8 +662,12 @@ float4 mainImage(float2 p)
     server.hover.mockReturnValue(undefined);
     const service = new SlangLanguageService(module);
     await service.syncEnvironment({ ...environment, stage: "vertex" });
-    const text = "void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) { position += normal; }";
+    const text = "void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) { position += normal; }";
     await service.openDocument({ uri, languageId: "slang", version: 1, text });
+    const hoverAt = async (name: string) => JSON.stringify((await service.hover({
+      document: revision,
+      position: { line: 0, character: text.indexOf(name) + 1 },
+    }))?.contents);
 
     // The hook name is offered while it is being declared; its parameters belong
     // to the body, where they can actually be used.
@@ -676,12 +680,124 @@ float4 mainImage(float2 p)
     expect(completions.filter((item) => item.label === "position")).toHaveLength(1);
     expect(completions.find((item) => item.label === "position")?.documentation)
       .toEqual(expect.objectContaining({ value: expect.stringContaining("position") }));
-    expect(JSON.stringify((await service.hover({ document: revision, position: { line: 0, character: 7 } }))?.contents))
-      .toContain("vertex hook");
-    expect(JSON.stringify((await service.hover({ document: revision, position: { line: 0, character: 31 } }))?.contents))
-      .toContain("object-space");
-    expect(JSON.stringify((await service.hover({ document: revision, position: { line: 0, character: 74 } }))?.contents))
-      .toContain("texture coordinate");
+    expect(completions.find((item) => item.label === "vertexIndex")?.documentation)
+      .toEqual(expect.objectContaining({ value: expect.stringContaining("SV_VertexID") }));
+    expect(await hoverAt("mainVertex")).toContain("vertex hook");
+    expect(await hoverAt("vertexIndex")).toContain("uint vertexIndex");
+    expect(await hoverAt("vertexIndex")).toContain("0, 1 and 2");
+    expect(await hoverAt("vertexIndex")).toContain("iVertexCount - 1");
+    expect(await hoverAt("vertexIndex")).toContain("vertices geometry runs from 0 to iVertexCount - 1");
+    expect(await hoverAt("vertexIndex")).toContain("`vertexCount`");
+    expect(await hoverAt("vertexIndex")).toContain("iInstanceIndex says which copy is being drawn");
+    expect(await hoverAt("position")).toContain("vertices geometry in clip space");
+    expect(await hoverAt("position")).toContain("object-space");
+    expect(await hoverAt("uv")).toContain("texture coordinate");
+  });
+
+  it.each(["vertex", "fragment"] as const)("completes and documents iVertexCount on the %s stage", async (stage) => {
+    const { module, server } = fixture();
+    server.hover.mockReturnValue(undefined);
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment({ ...environment, stage });
+    const text = stage === "vertex"
+      ? "void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) { position.x = float(vertexIndex) / float(iVertexCount); }"
+      : "float4 mainImage(float2 coord) { return float4(float(iVertexCount)); }";
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+
+    const completions = await service.completion({ document: revision, position: { line: 0, character: text.indexOf("iVertexCount") } });
+    expect(completions.filter((item) => item.label === "iVertexCount")).toHaveLength(1);
+    const hover = JSON.stringify((await service.hover({
+      document: revision,
+      position: { line: 0, character: text.indexOf("iVertexCount") + 2 },
+    }))?.contents);
+    expect(hover).toContain("uint iVertexCount");
+    expect(hover).toContain("vertexCount");
+  });
+
+  it.each([
+    ["vertex", "iInstanceIndex", "Zero-based index of the instance"],
+    ["fragment", "iInstanceIndex", "Zero-based index of the instance"],
+    ["vertex", "iInstanceCount", "configured instanceCount"],
+    ["fragment", "iInstanceCount", "configured instanceCount"],
+  ] as const)("completes and documents %s-stage %s", async (stage, name, description) => {
+    const { module, server } = fixture();
+    server.hover.mockReturnValue(undefined);
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment({ ...environment, stage });
+    const text = stage === "vertex"
+      ? `void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) { position.x += float(${name}); }`
+      : `float4 mainImage(float2 coord) { return float4(float(${name})); }`;
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+    const completions = await service.completion({ document: revision, position: { line: 0, character: text.indexOf(name) } });
+    expect(completions.filter((item) => item.label === name)).toHaveLength(1);
+    const hover = JSON.stringify((await service.hover({
+      document: revision,
+      position: { line: 0, character: text.indexOf(name) + 2 },
+    }))?.contents);
+    expect(hover).toContain(`uint ${name}`);
+    expect(hover).toContain(description);
+  });
+
+  it.each(["vertex", "fragment"] as const)("completes and documents iViewProjection on the %s stage", async (stage) => {
+    const { module, server } = fixture();
+    server.hover.mockReturnValue(undefined);
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment({ ...environment, stage });
+    const text = stage === "vertex"
+      ? "void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) { float4 c = mul(iViewProjection, float4(position, 1)); position = c.xyz / c.w; }"
+      : "float4 mainImage(float2 coord) { return iViewProjection[0]; }";
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+    const completions = await service.completion({ document: revision, position: { line: 0, character: text.indexOf("iViewProjection") } });
+    expect(completions.filter((item) => item.label === "iViewProjection")).toHaveLength(1);
+    const hover = JSON.stringify((await service.hover({
+      document: revision,
+      position: { line: 0, character: text.indexOf("iViewProjection") + 2 },
+    }))?.contents);
+    expect(hover).toContain("float4x4 iViewProjection");
+    expect(hover).toContain("iProjectionMatrix * iViewMatrix");
+  });
+
+  it("completes and documents fragment-only iVertexUv", async () => {
+    const { module, server } = fixture();
+    server.hover.mockReturnValue(undefined);
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment({ ...environment, stage: "fragment" });
+    const text = "float4 mainImage(float2 coord) { return float4(iVertexUv, 0, 1); }";
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+    const completions = await service.completion({ document: revision, position: { line: 0, character: text.indexOf("iVertexUv") } });
+    expect(completions.filter((item) => item.label === "iVertexUv")).toHaveLength(1);
+    const hover = JSON.stringify((await service.hover({
+      document: revision,
+      position: { line: 0, character: text.indexOf("iVertexUv") + 2 },
+    }))?.contents);
+    expect(hover).toContain("float2 iVertexUv");
+    expect(hover).toContain("interpolated UV");
+  });
+
+  it("does not offer iVertexCount to compute authoring", async () => {
+    const { module } = fixture();
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment({ ...environment, stage: "compute" });
+    const text = "[shader(\"compute\")]\n[numthreads(1, 1, 1)]\nvoid computeMain() { int x = i; }";
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+
+    const completions = await service.completion({ document: revision, position: { line: 2, character: text.split("\n")[2].indexOf("i;") + 1 } });
+    expect(completions.map((item) => item.label)).not.toContain("iVertexCount");
+  });
+
+  it("does not document the pre-vertex-index hook signature as the Shader Studio hook", async () => {
+    const { module, server } = fixture();
+    server.hover.mockReturnValue(undefined);
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment({ ...environment, stage: "vertex" });
+    const text = "void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) { position += normal; }";
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+
+    const hover = JSON.stringify((await service.hover({
+      document: revision,
+      position: { line: 0, character: text.indexOf("position") + 1 },
+    }))?.contents);
+    expect(hover ?? "").not.toContain("object-space");
   });
 
   it("documents and completes renamed Slang vertex-hook parameters by role", async () => {
@@ -690,7 +806,7 @@ float4 mainImage(float2 p)
     server.hover.mockReturnValue(undefined);
     const service = new SlangLanguageService(module);
     await service.syncEnvironment({ ...environment, stage: "vertex" });
-    const text = "void mainVertex(inout float3 deformed, inout float3 surfaceNormal, inout float2 textureUv) { deformed += surfaceNormal * textureUv.x; }";
+    const text = "void mainVertex(uint corner, inout float3 deformed, inout float3 surfaceNormal, inout float2 textureUv) { deformed += surfaceNormal * textureUv.x * float(corner); }";
     await service.openDocument({ uri, languageId: "slang", version: 1, text });
 
     const hoverAt = (name: string, occurrence = 0) => {
@@ -700,6 +816,8 @@ float4 mainImage(float2 p)
       }
       return service.hover({ document: revision, position: { line: 0, character: offset + 1 } });
     };
+    expect(JSON.stringify((await hoverAt("corner"))?.contents))
+      .toContain("vertex index");
     expect(JSON.stringify((await hoverAt("deformed"))?.contents))
       .toContain("vertex position");
     expect(JSON.stringify((await hoverAt("surfaceNormal"))?.contents))
@@ -710,7 +828,9 @@ float4 mainImage(float2 p)
       .toContain("vertex position");
     const completions = await service.completion({ document: revision, position: { line: 0, character: text.length } });
     expect(completions.find((item) => item.label === "mainVertex")?.detail)
-      .toBe("void mainVertex(inout float3 deformed, inout float3 surfaceNormal, inout float2 textureUv)");
+      .toBe("void mainVertex(uint corner, inout float3 deformed, inout float3 surfaceNormal, inout float2 textureUv)");
+    expect(completions.find((item) => item.label === "corner")?.documentation)
+      .toEqual(expect.objectContaining({ value: expect.stringContaining("vertex index") }));
     expect(completions.find((item) => item.label === "deformed")?.documentation)
       .toEqual(expect.objectContaining({ value: expect.stringContaining("vertex position") }));
     expect(completions.find((item) => item.label === "surfaceNormal")?.documentation)
@@ -802,8 +922,10 @@ float4 mainImage(float2 p)
     expect(result.filter((item) => item.label === "normalize")).toHaveLength(1);
     expect(result.map((item) => item.label)).not.toContain("mainVertex");
     expect(JSON.stringify(result.find((item) => item.label === "normalize")?.documentation)).toContain("unit length");
-    expect(server.completion.mock.calls[0]?.[1].line).toBeGreaterThan(0);
-    expect(server.completion.mock.results[0]?.value.delete).toHaveBeenCalledOnce();
+    const completionCall = server.completion.mock.calls[0];
+    const completionResult = server.completion.mock.results[0]?.value;
+    expect(completionCall?.[1].line).toBeGreaterThan(0);
+    expect(completionResult?.delete).toHaveBeenCalledOnce();
     expect(await service.documentSymbols({ document: revision })).toEqual([]);
   });
 

@@ -95,8 +95,9 @@ describe("WebGLPixelRegionCapturer", () => {
 
   it("converts bottom-up GL rows to top-down result rows", () => {
     vi.mocked(gl.getBufferSubData).mockImplementation((_target, _offset, bytes) => {
+      const data = bytes as Uint8Array;
       for (let row = 0; row < 60; row += 1) {
-        bytes.fill(row, row * 60 * 4, (row + 1) * 60 * 4);
+        data.fill(row, row * 60 * 4, (row + 1) * 60 * 4);
       }
     });
     vi.mocked(gl.getSyncParameter).mockReturnValue(gl.SIGNALED);
@@ -111,9 +112,10 @@ describe("WebGLPixelRegionCapturer", () => {
 
   it("publishes the canonical inspector region from bottom-up GL bytes", () => {
     vi.mocked(gl.getBufferSubData).mockImplementation((_target, _offset, bytes) => {
+      const data = bytes as Uint8Array;
       // GL's PBO starts at the bottom source row.  Output row 30 is input row 29.
-      bytes.set([3, 240, 2, 255], (29 * 60 + 30) * 4);
-      bytes.set([17, 34, 51, 68], (52 * 60 + 5) * 4);
+      data.set([3, 240, 2, 255], (29 * 60 + 30) * 4);
+      data.set([17, 34, 51, 68], (52 * 60 + 5) * 4);
     });
     vi.mocked(gl.getSyncParameter).mockReturnValue(gl.SIGNALED);
 
@@ -124,7 +126,7 @@ describe("WebGLPixelRegionCapturer", () => {
   });
 
   it("clips and transparently pads every edge while retaining the selected pixel at 30,30", () => {
-    vi.mocked(gl.getBufferSubData).mockImplementation((_target, _offset, bytes) => bytes.fill(9));
+    vi.mocked(gl.getBufferSubData).mockImplementation((_target, _offset, bytes) => (bytes as Uint8Array).fill(9));
     vi.mocked(gl.getSyncParameter).mockReturnValue(gl.SIGNALED);
 
     capturer.queue(request(5, 2, 3));
@@ -145,7 +147,7 @@ describe("WebGLPixelRegionCapturer", () => {
     ["top", request(13, 50, 2), [20, 68, 60, 32], [0, 30], [0, 0]],
     ["bottom", request(14, 50, 98), [20, 0, 60, 32], [0, 30], [0, 59]],
   ])("pads the %s edge", (_edge, regionRequest, readback, selected, padded) => {
-    vi.mocked(gl.getBufferSubData).mockImplementation((_target, _offset, bytes) => bytes.fill(9));
+    vi.mocked(gl.getBufferSubData).mockImplementation((_target, _offset, bytes) => (bytes as Uint8Array).fill(9));
     vi.mocked(gl.getSyncParameter).mockReturnValue(gl.SIGNALED);
 
     capturer.queue(regionRequest);
@@ -210,7 +212,7 @@ describe("WebGLPixelRegionCapturer", () => {
   });
 
   it("restores framebuffer and pack-buffer bindings after failed buffer creation", () => {
-    vi.mocked(gl.createBuffer).mockReturnValue(null);
+    vi.mocked(gl.createBuffer).mockReturnValue(null as unknown as WebGLBuffer);
     capturer.queue(request(1));
     capturer.captureAfterRender(100, 100);
 

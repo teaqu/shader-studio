@@ -32,13 +32,16 @@ describe('Slang installer script entrypoint', () => {
 /** Stand in for the release archive: curl writes it, unzip unpacks the binary. */
 function fakeRelease(archive: string, wasm: string) {
   const commands: string[] = [];
-  const runCommand = (command: string, args: readonly string[]) => {
+  const runCommand = (command: string, args: readonly string[], options: ExecFileSyncOptions) => {
     commands.push(command);
     if (command === 'curl') {
       writeFileSync(args[args.indexOf('-o') + 1]!, archive);
     }
     if (command === 'unzip') {
       writeFileSync(join(args[args.indexOf('-d') + 1]!, 'slang-wasm.wasm'), wasm);
+    }
+    if (command === 'powershell.exe') {
+      writeFileSync(join(options.env!.SLANG_EXTRACTION_ROOT!, 'slang-wasm.wasm'), wasm);
     }
     return Buffer.alloc(0);
   };
@@ -64,6 +67,57 @@ afterEach(() => {
 });
 
 describe('ensureSlangWasm', () => {
+  it('extracts missing assets with native PowerShell on Windows without unzip', () => {
+    const root = createTemporaryRoot();
+    const commands: string[] = [];
+    const runCommand = (command: string, args: readonly string[], options: ExecFileSyncOptions) => {
+      commands.push(command);
+      if (command === 'curl') {
+        writeFileSync(args[args.indexOf('-o') + 1]!, 'archive bytes');
+      } else if (command === 'powershell.exe') {
+        expect(options.env?.SLANG_ARCHIVE_PATH).toBeTruthy();
+        expect(options.windowsHide).toBe(true);
+        expect(args).toContain('-NonInteractive');
+        expect(args.at(-1)).toContain('Expand-Archive -LiteralPath');
+        writeFileSync(join(options.env!.SLANG_EXTRACTION_ROOT!, 'slang-wasm.wasm'), 'downloaded wasm');
+      } else {
+        throw new Error(`Unavailable Windows command: ${command}`);
+      }
+      return Buffer.alloc(0);
+    };
+
+    const result = ensureSlangWasm(root, runCommand, {
+      archive: digestOf('archive bytes'), wasm: digestOf('downloaded wasm'),
+    }, 'win32');
+
+    expect(commands).toEqual(['curl', 'powershell.exe']);
+    expect(readFileSync(result.wasmPath, 'utf8')).toBe('downloaded wasm');
+  });
+
+  it('rejects a corrupt binary extracted by PowerShell', () => {
+    const root = createTemporaryRoot();
+    const release = fakeRelease('archive bytes', 'corrupt wasm');
+    expect(() => ensureSlangWasm(root, release.runCommand, {
+      ...release.expected, wasm: digestOf('valid wasm'),
+    }, 'win32')).toThrow(/WASM binary does not match its pinned digest/);
+    expect(existsSync(getSlangWasmPath(root))).toBe(false);
+  });
+
+  it('reports native Windows extraction failures without keeping an asset', () => {
+    const root = createTemporaryRoot();
+    const runCommand = (command: string, args: readonly string[]) => {
+      if (command === 'curl') {
+        writeFileSync(args[args.indexOf('-o') + 1]!, 'archive bytes');
+        return Buffer.alloc(0);
+      }
+      throw new Error('invalid zip');
+    };
+    expect(() => ensureSlangWasm(root, runCommand, {
+      archive: digestOf('archive bytes'), wasm: digestOf('valid wasm'),
+    }, 'win32')).toThrow('Install curl and PowerShell');
+    expect(existsSync(getSlangWasmPath(root))).toBe(false);
+  });
+
   it('uses the pinned Slang release', () => {
     expect(SLANG_ARCHIVE_URL).toContain(`v${SLANG_VERSION}/slang-${SLANG_VERSION}-wasm.zip`);
   });
@@ -82,7 +136,7 @@ describe('ensureSlangWasm', () => {
     const root = createTemporaryRoot();
     const release = fakeRelease('archive bytes', 'downloaded wasm');
 
-    const result = ensureSlangWasm(root, release.runCommand, release.expected);
+    const result = ensureSlangWasm(root, release.runCommand, release.expected, 'linux');
 
     expect(result).toEqual({ downloaded: true, wasmPath: getSlangWasmPath(root) });
     expect(release.commands).toEqual(['curl', 'unzip']);
@@ -152,7 +206,7 @@ describe('ensureSlangWasm', () => {
 
     expect(() => ensureSlangWasm(root, () => {
       throw new Error('network unavailable');
-    })).toThrow('Unable to prepare Slang WASM. Install curl and unzip');
+    }, undefined, 'linux')).toThrow('Unable to prepare Slang WASM. Install curl and unzip');
     expect(existsSync(getSlangWasmPath(root))).toBe(false);
   });
 });

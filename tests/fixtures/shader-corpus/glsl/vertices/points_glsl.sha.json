@@ -1,0 +1,14 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "vertex": "./points_glsl.vert.glsl",
+      "geometry": {
+        "type": "vertices",
+        "vertexCount": 1024,
+        "topology": "point-list",
+        "space": "clip"
+      }
+    }
+  }
+}

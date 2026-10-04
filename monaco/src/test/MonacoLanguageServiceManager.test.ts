@@ -2,6 +2,17 @@ import { describe, expect, it, vi } from "vitest";
 import type { LanguageService, ShaderLanguage } from "@shader-studio/language-server-core";
 import { MonacoLanguageServiceManager } from "../language-services/MonacoLanguageServiceManager";
 
+type CompletionProvider = { provideCompletionItems(...args: unknown[]): Promise<{ suggestions: { label: string; sortText?: string }[]; incomplete?: boolean }> };
+type HoverProvider = { provideHover(...args: unknown[]): Promise<{ contents: unknown } | null> };
+type DefinitionProvider = { provideDefinition(...args: unknown[]): Promise<unknown[]> };
+type SignatureProvider = { provideSignatureHelp(...args: unknown[]): Promise<{ value: { signatures: { label: string; parameters: unknown[] }[] } } | null> };
+type SymbolsProvider = { provideDocumentSymbols(...args: unknown[]): Promise<unknown[]> };
+type ReferencesProvider = { provideReferences(...args: unknown[]): Promise<unknown[]> };
+type HighlightsProvider = { provideDocumentHighlights(...args: unknown[]): Promise<unknown[]> };
+type RenameProvider = { provideRenameEdits(...args: unknown[]): Promise<{ edits: unknown[]; rejectReason?: string }> };
+type ColorsProvider = { provideDocumentColors(...args: unknown[]): Promise<unknown[]>; provideColorPresentations?(...args: unknown[]): Promise<unknown[]> };
+type Registration<P> = (language: ShaderLanguage, provider: P) => { dispose(): void };
+
 function monacoFixture(languageId: ShaderLanguage = "glsl") {
   const disposables: { dispose: ReturnType<typeof vi.fn> }[] = [];
   const disposable = () => {
@@ -23,18 +34,19 @@ function monacoFixture(languageId: ShaderLanguage = "glsl") {
     isAttachedToEditor: () => state.attached,
     getWordUntilPosition: () => ({ startColumn: 1, endColumn: 1 }),
     getLineContent: () => state.line,
+    setValue: vi.fn(),
     onDidChangeContent: vi.fn(() => disposable()),
   };
   const languages = {
-    registerCompletionItemProvider: vi.fn(() => disposable()),
-    registerHoverProvider: vi.fn(() => disposable()),
-    registerDefinitionProvider: vi.fn(() => disposable()),
-    registerSignatureHelpProvider: vi.fn(() => disposable()),
-    registerDocumentSymbolProvider: vi.fn(() => disposable()),
-    registerReferenceProvider: vi.fn(() => disposable()),
-    registerDocumentHighlightProvider: vi.fn(() => disposable()),
-    registerRenameProvider: vi.fn(() => disposable()),
-    registerColorProvider: vi.fn(() => disposable()),
+    registerCompletionItemProvider: vi.fn<Registration<CompletionProvider>>(() => disposable()),
+    registerHoverProvider: vi.fn<Registration<HoverProvider>>(() => disposable()),
+    registerDefinitionProvider: vi.fn<Registration<DefinitionProvider>>(() => disposable()),
+    registerSignatureHelpProvider: vi.fn<Registration<SignatureProvider>>(() => disposable()),
+    registerDocumentSymbolProvider: vi.fn<Registration<SymbolsProvider>>(() => disposable()),
+    registerReferenceProvider: vi.fn<Registration<ReferencesProvider>>(() => disposable()),
+    registerDocumentHighlightProvider: vi.fn<Registration<HighlightsProvider>>(() => disposable()),
+    registerRenameProvider: vi.fn<Registration<RenameProvider>>(() => disposable()),
+    registerColorProvider: vi.fn<Registration<ColorsProvider>>(() => disposable()),
   };
   const models = [model];
   const monaco = {
@@ -57,8 +69,8 @@ function monacoFixture(languageId: ShaderLanguage = "glsl") {
         models.push(virtual as never);
         return virtual;
       }),
-      onDidCreateModel: vi.fn(() => disposable()),
-      onWillDisposeModel: vi.fn(() => disposable()),
+      onDidCreateModel: vi.fn<(listener: (created: typeof model) => void) => { dispose(): void }>(() => disposable()),
+      onWillDisposeModel: vi.fn<(listener: (disposed: typeof model) => void) => { dispose(): void }>(() => disposable()),
       setModelMarkers: vi.fn(),
     },
     Uri: { parse: (uri: string) => ({ toString: () => uri }) },
@@ -81,6 +93,9 @@ function serviceFixture(): LanguageService {
     definition: vi.fn().mockResolvedValue([]),
     signatureHelp: vi.fn().mockResolvedValue(null),
     documentSymbols: vi.fn().mockResolvedValue([]),
+    references: vi.fn().mockResolvedValue([]),
+    documentHighlights: vi.fn().mockResolvedValue([]),
+    rename: vi.fn().mockResolvedValue(null),
     diagnostics: vi.fn().mockResolvedValue([]),
     documentColors: vi.fn().mockResolvedValue([]),
     colorPresentations: vi.fn().mockResolvedValue([]),
@@ -365,7 +380,7 @@ describe("MonacoLanguageServiceManager", () => {
 
   it("creates navigable Monaco models for virtual dependency files", async () => {
     const { monaco } = monacoFixture();
-    const manager = new MonacoLanguageServiceManager(monaco as never, { glsl: async () => serviceFixture(), slang: async () => serviceFixture() });
+    const manager = new MonacoLanguageServiceManager(monaco as never, { glsl: async () => serviceFixture(), slang: async () => serviceFixture(), wgsl: async () => serviceFixture() });
     const environment = { documentUri: "file:///image.glsl", languageId: "glsl" as const, generation: 1, passName: "Image", stage: "fragment" as const, customUniforms: [], resources: [] };
 
     await manager.syncEnvironment({ ...environment, virtualFiles: [{ uri: "file:///lib/palette.glsl", text: "vec3 palette();", version: 1 }] });
@@ -596,7 +611,7 @@ describe("MonacoLanguageServiceManager", () => {
     const uri = fixture.model.uri.toString();
     let storedVersion = 1;
     let reply!: (value: Awaited<ReturnType<LanguageService['signatureHelp']>>) => void;
-    service.signatureHelp = vi.fn(() => new Promise(resolve => {
+    service.signatureHelp = vi.fn(() => new Promise<Awaited<ReturnType<LanguageService['signatureHelp']>>>(resolve => {
       reply = resolve;
     }));
     const manager = new MonacoLanguageServiceManager(fixture.monaco as never, {
@@ -624,7 +639,7 @@ describe("MonacoLanguageServiceManager", () => {
       let dependencyVersion = 1;
       let stage: 'fragment' | 'vertex' = 'fragment';
       let reply!: (value: Awaited<ReturnType<LanguageService['signatureHelp']>>) => void;
-      service.signatureHelp = vi.fn(() => new Promise(resolve => {
+      service.signatureHelp = vi.fn(() => new Promise<Awaited<ReturnType<LanguageService['signatureHelp']>>>(resolve => {
         reply = resolve;
       }));
       const manager = new MonacoLanguageServiceManager(fixture.monaco as never, {
@@ -790,7 +805,7 @@ describe("MonacoLanguageServiceManager", () => {
     const fixture = monacoFixture(language);
     const service = serviceFixture();
     let ready!: () => void;
-    service.initialize = vi.fn(() => new Promise(resolve => {
+    service.initialize = vi.fn(() => new Promise<Awaited<ReturnType<LanguageService['initialize']>>>(resolve => {
       ready = () => resolve({} as never);
     }));
     const range = { start: { line: 0, character: 0 }, end: { line: 0, character: 4 } };
@@ -831,7 +846,7 @@ describe("MonacoLanguageServiceManager", () => {
     const fixture = monacoFixture();
     const service = serviceFixture();
     let finish!: (value: null) => void;
-    service.rename = vi.fn(() => new Promise(resolve => {
+    service.rename = vi.fn(() => new Promise<Awaited<ReturnType<LanguageService['rename']>>>(resolve => {
       finish = resolve;
     }));
     const onRenameFeedback = vi.fn();

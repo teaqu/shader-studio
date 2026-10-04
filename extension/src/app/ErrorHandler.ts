@@ -3,8 +3,12 @@ import { CompileReportMarker, ErrorMessage, WarningMessage } from "@shader-studi
 import type { DiagnosticSink } from "./DiagnosticArbiter";
 import { isShaderDocument } from "./GlslFileTracker";
 
+type ShaderConfigPathIndex = {
+  passes?: Record<string, { type?: string; path?: string; vertex?: string } | undefined>;
+};
+
 export class ErrorHandler {
-  private currentShaderConfig: { config: any; shaderPath: string; bufferPathMap?: Record<string, string> } | null = null;
+  private currentShaderConfig: { config: ShaderConfigPathIndex | null; shaderPath: string; bufferPathMap?: Record<string, string> } | null = null;
   private recentErrors = new Map<string, number>();
   private readonly DEBOUNCE_MS = 500; // 0.5 second debounce
   private persistentErrors = new Map<string, { diagnostic: vscode.Diagnostic; uri: vscode.Uri; lastSeen: number }>(); // Track persistent errors until editor change
@@ -31,7 +35,7 @@ export class ErrorHandler {
     }
   }
 
-  public setShaderConfig(config: { config: any; shaderPath: string; bufferPathMap?: Record<string, string>; compileSequence?: number } | null): void {
+  public setShaderConfig(config: { config: ShaderConfigPathIndex | null; shaderPath: string; bufferPathMap?: Record<string, string>; compileSequence?: number } | null): void {
     this.currentShaderConfig = config;
     // Remember the newest send per path so reports from an older send — a
     // slow client answering after a fast one already did — are dropped
@@ -356,7 +360,7 @@ export class ErrorHandler {
     return errorText;
   }
 
-  private getUriForPass(passName: string, shaderConfig: { config: any; shaderPath: string; bufferPathMap?: Record<string, string> }): vscode.Uri | null {
+  private getUriForPass(passName: string, shaderConfig: { config: ShaderConfigPathIndex | null; shaderPath: string; bufferPathMap?: Record<string, string> }): vscode.Uri | null {
     try {
       if (passName === "Common") {
         passName = "common";
@@ -376,9 +380,9 @@ export class ErrorHandler {
       }
 
       // For other passes, look up the buffer file path from config
-      if (shaderConfig.config.passes && shaderConfig.config.passes[passName]) {
+      if (shaderConfig.config?.passes && shaderConfig.config.passes[passName]) {
         const passConfig = shaderConfig.config.passes[passName];
-        if (passConfig.path) {
+        if (passConfig?.path) {
           // Convert relative path to absolute path
           const shaderDir = shaderConfig.shaderPath.substring(0, shaderConfig.shaderPath.lastIndexOf('/'));
           const fullPath = vscode.Uri.joinPath(vscode.Uri.file(shaderDir), passConfig.path);

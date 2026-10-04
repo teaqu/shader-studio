@@ -420,7 +420,7 @@ suite('FileDialogHandler Test Suite', () => {
       const content = writeStub.firstCall.args[1] as string;
       assert.strictEqual(
         content,
-        'void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {\n\n}\n',
+        'void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {\n\n}\n',
       );
       assert.ok(content.includes('inout float3 position'));
       assert.ok(!content.includes('Deform position, normal, or UV'));
@@ -440,7 +440,7 @@ suite('FileDialogHandler Test Suite', () => {
       const content = writeStub.firstCall.args[1] as string;
       assert.strictEqual(
         content,
-        'fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {\n\n}\n',
+        'fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {\n\n}\n',
       );
     });
 

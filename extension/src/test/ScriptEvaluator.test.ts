@@ -48,6 +48,12 @@ suite('ScriptEvaluator', () => {
       assert.ok(result.error?.includes('uniforms(ctx)'));
     });
 
+    test('reports the message from an error created in the script VM', () => {
+      const result = evaluator.loadScript('throw new Error("cross-realm diagnostic");');
+
+      assert.strictEqual(result.error, 'Script evaluation error: cross-realm diagnostic');
+    });
+
     test('should detect built-in collisions', () => {
       const result = evaluator.loadScript(makeBundle('return { iTime: 1.0 };'));
       assert.ok(result.error?.includes('conflict with built-ins'));
@@ -200,6 +206,21 @@ suite('ScriptEvaluator', () => {
       assert.strictEqual(second.length, 1);
       assert.strictEqual(second[0].name, 'uVec');
       assert.ok(Array.isArray(second[0].value));
+    });
+
+    test('keeps accepting legacy vectors by arity after their values change', () => {
+      evaluator.loadScript(makeBundle(
+        'return { uLegacy: ctx.iTime === 0 ? [1, 2] : ["legacy", "vector"] };',
+      ));
+      const callback = sinon.stub();
+
+      evaluator.startPolling(callback, 100);
+      clock.tick(100);
+
+      const [value] = callback.secondCall.args[0];
+      assert.strictEqual(value.name, 'uLegacy');
+      assert.strictEqual(value.type, 'vec2');
+      assert.deepStrictEqual(Array.from(value.value as string[]), ['legacy', 'vector']);
     });
   });
 

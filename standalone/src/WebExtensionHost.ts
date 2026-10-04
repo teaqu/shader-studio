@@ -109,11 +109,17 @@ function relativePath(path: string): string {
   return path.replace(/^\//, '');
 }
 
+/** Workspace files whose changes can alter the explorer list or a thumbnail. */
+function affectsShaderExplorer(path: string): boolean {
+  return !path.startsWith('/.shader-studio/') && /\.(glsl|frag|vert|slang|wgsl)$|\.sha\.json$/i.test(path);
+}
+
 export class WebExtensionHost {
   private readonly viewerHandlers = new Set<MessageHandler>();
   private readonly explorerHandlers = new Set<MessageHandler>();
   private activeShaderPath: string | null = null;
   private compileMode: 'hot' | 'manual' = 'hot';
+  private shaderListQueued = false;
   private readonly resolveDefaultAsset: (path: string) => string | null;
   private readonly prompt: (message: string, initialValue: string) => string | null;
   private readonly confirm: (message: string) => boolean;
@@ -134,6 +140,23 @@ export class WebExtensionHost {
         ? DEFAULT_SHADER_PATH
         : this.shaderFiles()[0]?.path ?? null;
     this.migrateLegacyStarterShaders();
+    this.workspace.onDidChange((paths) => {
+      if (paths.some(affectsShaderExplorer)) {
+        this.queueShaderList();
+      }
+    });
+  }
+
+  /** Coalesce the writes of one operation (shader + config + state) into one list update. */
+  private queueShaderList(): void {
+    if (this.shaderListQueued) {
+      return;
+    }
+    this.shaderListQueued = true;
+    queueMicrotask(() => {
+      this.shaderListQueued = false;
+      this.sendShaderList();
+    });
   }
 
   async clearWorkspace(): Promise<void> {
@@ -218,7 +241,6 @@ export class WebExtensionHost {
           this.workspace.writeText(configPathForShader(destination), this.workspace.readText(sourceConfig));
         }
         this.setActiveShader(destination);
-        this.sendShaderList();
         this.emitViewer(this.shaderSourceMessage(destination));
         return;
       }
@@ -265,7 +287,6 @@ export class WebExtensionHost {
         this.workspace.writeText(path, source);
         this.workspace.writeText(configPathForShader(path), DEFAULT_CONFIG_TEXT);
         this.setActiveShader(path);
-        this.sendShaderList();
         this.emitViewer(this.shaderSourceMessage(path));
         return;
       }
@@ -283,10 +304,10 @@ export class WebExtensionHost {
           'glsl-common': '// Common functions shared across all passes\n',
           'slang-common': '// Common functions shared across all passes\n',
           'wgsl-common': '// Common functions shared across all passes\n',
-          'glsl-vertex': 'void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) {\n}\n',
+          'glsl-vertex': 'void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {\n}\n',
           'glsl-compute': GLSL_STARTER_SHADER,
-          'slang-vertex': 'void mainVertex(inout float3 position, inout float3 normal, inout vec2 uv) {\n}\n',
-          'wgsl-vertex': 'fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {\n}\n',
+          'slang-vertex': 'void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {\n}\n',
+          'wgsl-vertex': 'fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {\n}\n',
           'slang-compute': '[shader("compute")]\n[numthreads(8, 8, 1)]\nvoid compute(uint3 dispatchThreadID : SV_DispatchThreadID) {\n}\n',
           'wgsl-compute': '@compute @workgroup_size(8, 8, 1)\nfn compute(@builtin(global_invocation_id) dispatchThreadID: vec3u) {\n}\n',
         };
@@ -309,7 +330,6 @@ export class WebExtensionHost {
           this.workspace.writeText(path, template);
         }
         this.emitViewer({ type: 'fileSelected', payload: { path: requested, requestId: payload.requestId } });
-        this.sendShaderList();
         return;
       }
       case 'requestFileContents': {
@@ -346,7 +366,6 @@ export class WebExtensionHost {
           if (owner && (isConfig || (this.compileMode !== 'manual' && (path === owner || isBuffer)))) {
             this.emitViewer(this.shaderSourceMessage(owner));
           }
-          this.sendShaderList();
         }
         return;
       }
@@ -357,7 +376,6 @@ export class WebExtensionHost {
           const configPath = configPathForShader(shaderPath);
           this.workspace.writeText(configPath, payload.text);
           this.emitViewer(this.shaderSourceMessage(shaderPath));
-          this.sendShaderList();
         }
         return;
       }
@@ -375,7 +393,6 @@ export class WebExtensionHost {
         this.emitViewer({ type: 'openEditorFile', payload: { path: configPath } });
         if (generated) {
           this.emitViewer(this.shaderSourceMessage(shaderPath));
-          this.sendShaderList();
         }
         return;
       }
@@ -475,7 +492,6 @@ export class WebExtensionHost {
     if (this.activeShaderPath) {
       this.emitViewer(this.shaderSourceMessage(this.activeShaderPath));
     }
-    this.sendShaderList();
   }
 
   readEditorFile(path: string): string | null {
@@ -502,7 +518,7 @@ export class WebExtensionHost {
         if (typeof message.path === 'string' && typeof message.thumbnail === 'string' && this.workspace.exists(message.path)) {
           this.workspace.writeText(this.thumbnailPath(message.path), JSON.stringify({
             thumbnail: message.thumbnail,
-            modifiedTime: message.modifiedTime,
+            thumbnailVersion: message.thumbnailVersion,
           }));
         }
         return;
@@ -552,7 +568,6 @@ export class WebExtensionHost {
               this.workspace.delete(ACTIVE_SHADER_PATH);
             }
           }
-          this.sendShaderList();
         }
         return;
       case 'newShader': {
@@ -581,7 +596,6 @@ export class WebExtensionHost {
           this.setActiveShader(destination);
           this.emitViewer(this.shaderSourceMessage(destination));
         }
-        this.sendShaderList();
         return;
       }
       default:
@@ -602,15 +616,17 @@ export class WebExtensionHost {
       type: 'shadersUpdate',
       shaders: this.shaderFiles().map((file) => {
         const configPath = configPathForShader(file.path);
+        const thumbnailVersion = this.thumbnailVersion(file.path, file.modifiedAt);
         return {
           name: fileName(file.path),
           path: file.path,
           relativePath: relativePath(file.path),
           configPath: this.workspace.exists(configPath) ? configPath : undefined,
           hasConfig: this.workspace.exists(configPath),
-          cachedThumbnail: this.cachedThumbnail(file.path, file.modifiedAt),
+          cachedThumbnail: this.cachedThumbnail(file.path, thumbnailVersion),
           createdTime: file.createdAt,
           modifiedTime: file.modifiedAt,
+          thumbnailVersion,
         };
       }),
       savedState: this.readExplorerState(),
@@ -673,14 +689,25 @@ export class WebExtensionHost {
     return `/.shader-studio/thumbnails/${encodeURIComponent(shaderPath)}.json`;
   }
 
-  private cachedThumbnail(shaderPath: string, modifiedTime: number): string | undefined {
+  /** Newest change among the shader, its config and its pass sources. */
+  private thumbnailVersion(shaderPath: string, shaderModifiedAt: number): number {
+    let version = shaderModifiedAt;
+    for (const path of [configPathForShader(shaderPath), ...Object.values(this.sourcePaths(shaderPath))]) {
+      if (this.workspace.exists(path)) {
+        version = Math.max(version, this.workspace.stat(path).modifiedAt);
+      }
+    }
+    return version;
+  }
+
+  private cachedThumbnail(shaderPath: string, thumbnailVersion: number): string | undefined {
     const path = this.thumbnailPath(shaderPath);
     if (!this.workspace.exists(path)) {
       return undefined;
     }
     try {
-      const stored = JSON.parse(this.workspace.readText(path)) as { thumbnail?: unknown; modifiedTime?: unknown };
-      return typeof stored.thumbnail === 'string' && stored.modifiedTime === modifiedTime
+      const stored = JSON.parse(this.workspace.readText(path)) as { thumbnail?: unknown; thumbnailVersion?: unknown };
+      return typeof stored.thumbnail === 'string' && stored.thumbnailVersion === thumbnailVersion
         ? stored.thumbnail
         : undefined;
     } catch {

@@ -6,6 +6,7 @@ import {
   createShaderCanvasHarness,
   type ShaderCanvasHarness,
   type ShaderLanguage,
+  type ShaderProgram,
 } from "./ShaderCanvasHarness";
 import type { CaptureRequest, IVariableCapturer } from "../../capture/VariableCapturer";
 
@@ -187,7 +188,10 @@ const coverageFloors: Record<ShaderLanguage, {
   capture: number;
   unanalysedRatio: number;
 }> = {
-  glsl: { lines: 960, inline: 818, capture: 828, unanalysedRatio: 0.16 },
+  // The new geometry examples add ten executable lines (all previewable),
+  // four explanatory comments and three trailing empty lines. The ratio counts
+  // those seven non-code lines; pin all 929 previewable lines as well.
+  glsl: { lines: 1_110, inline: 929, capture: 828, unanalysedRatio: 0.164 },
   slang: { lines: 2_180, inline: 840, capture: 1_138, unanalysedRatio: 0.39 },
   wgsl: { lines: 2_200, inline: 791, capture: 1_095, unanalysedRatio: 0.42 },
 };
@@ -390,7 +394,7 @@ describe("slang-multipass-test shader corpus", () => {
   });
 
   it("discovers every configured root shader", () => {
-    expect(projects).toHaveLength(123);
+    expect(projects).toHaveLength(165);
   });
 
   it("provides a GLSL counterpart for every portable Slang project", () => {
@@ -753,7 +757,7 @@ describe("slang-multipass-test shader corpus", () => {
     for (const project of coverageProjects) {
       const harness = harnesses.get(project.language)!;
       harness.resize(32, 32);
-      await harness.compile(project);
+      await harness.compile(project as unknown as ShaderProgram);
       const capturer = harness.engine.createVariableCapturer();
       const wgslEngine = project.language === "wgsl" ? new WgslDebugEngine() : null;
       capturer.setCustomUniforms(
@@ -771,7 +775,7 @@ describe("slang-multipass-test shader corpus", () => {
             harness.engine.getVariableCaptureCompileContext(source, pass, path),
           );
           const passConfig = project.config?.passes?.[pass];
-          capturer.setInputBindings(passConfig && "inputs" in passConfig ? passConfig.inputs ?? {} : {});
+          capturer.setInputBindings((passConfig && "inputs" in passConfig ? passConfig.inputs ?? {} : {}) as unknown as Record<string, import("@shader-studio/types").ConfigInput>);
           const lines = source.split("\n");
           for (let line = 0; line < lines.length; line += 1) {
             if (project.language === "glsl") {
@@ -889,12 +893,12 @@ describe("slang-multipass-test shader corpus", () => {
       harness!.resize(size, size);
       const expectedError = expectedCompileError(project);
       if (expectedError) {
-        await expect(harness!.compile(project)).rejects.toThrow(expectedError);
+        await expect(harness!.compile(project as unknown as ShaderProgram)).rejects.toThrow(expectedError);
         return;
       }
       await paintSentinel(harness!, project.language as ShaderLanguage);
       try {
-        await harness!.compile(project);
+        await harness!.compile(project as unknown as ShaderProgram);
       } catch (error) {
         if (!mayExceedPortableImageLimit(project)) {
           throw error;

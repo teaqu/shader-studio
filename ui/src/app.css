@@ -13,7 +13,35 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* VS Code supplies these classes independently of the standalone theme. */
+body.vscode-light,
+body.vscode-high-contrast-light {
+  color-scheme: light;
+}
+
+body.vscode-dark,
+body.vscode-high-contrast {
+  color-scheme: dark;
+}
+
+.clear-color-input {
+  box-sizing: border-box;
+  width: 60px;
+  height: 24px;
+  padding: 2px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+  border-radius: 4px;
+  outline: none;
+}
+
+.clear-color-input:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
 :root[data-theme="light"] {
+  color-scheme: light;
   --vscode-foreground: #1f1f1f;
   --vscode-descriptionForeground: #616161;
   --vscode-editor-background: #ffffff;
@@ -67,6 +95,7 @@
 }
 
 :root[data-theme="dark"] {
+  color-scheme: dark;
   --vscode-foreground: #cccccc;
   --vscode-descriptionForeground: #ccccccb3;
   --vscode-editor-background: #1e1e1e;

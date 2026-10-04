@@ -89,7 +89,7 @@ describe.runIf(hasBundledSlangWasm)("SlangCompiler atomic storage with bundled s
         passName: "Image",
         passKind: "render",
         storage: [coverageItems],
-        vertexCode: "void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) { position.xy += coverageItems[0].xx; }",
+        vertexCode: "void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) { position.xy += coverageItems[0].xx; }",
       },
     );
 

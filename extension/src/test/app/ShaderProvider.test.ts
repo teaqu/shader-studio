@@ -71,7 +71,7 @@ suite('ShaderProvider Test Suite', () => {
     test('sends a configured Image vertex file as its own source', async () => {
       const shaderPath = '/path/to/main.glsl';
       const vertexPath = '/path/to/main.vert.glsl';
-      const vertexSource = 'void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) {}';
+      const vertexSource = 'void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {}';
       const config = { version: '1.0', passes: { Image: { vertex: 'main.vert.glsl' } } };
       loadAndProcessConfigStub.returns(config as any);
       (provider as any).activeShaders.add(shaderPath);
@@ -250,7 +250,7 @@ suite('ShaderProvider Test Suite', () => {
 
     test('keeps a configured Slang vertex cursor on its own source', async () => {
       const vertexPath = '/path/to/main.image.vert.slang';
-      const vertexSource = 'void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {}';
+      const vertexSource = 'void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {}';
       const config = { version: '1.0', passes: { Image: { vertex: 'main.image.vert.slang' } } };
       const debugProvider = new ShaderProvider(mockMessenger, () => true, new ConfigChangeClassifier());
       loadAndProcessConfigStub.callsFake((_path: string, buffers: Record<string, string>) => {

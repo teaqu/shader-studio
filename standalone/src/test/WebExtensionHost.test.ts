@@ -206,12 +206,12 @@ describe('WebExtensionHost', () => {
     ['glsl-common', 'glsl', '// Common'],
     ['slang-common', 'slang', '// Common'],
     ['slang-compute', 'slang', '[shader("compute")]'],
-    ['glsl-vertex', 'glsl', 'void mainVertex'],
-    ['slang-vertex', 'slang', 'void mainVertex'],
+    ['glsl-vertex', 'glsl', 'void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv)'],
+    ['slang-vertex', 'slang', 'void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv)'],
     ['wgsl-buffer', 'wgsl', 'fn mainImage'],
     ['wgsl-common', 'wgsl', '// Common'],
     ['wgsl-compute', 'wgsl', '@compute'],
-    ['wgsl-vertex', 'wgsl', 'position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>'],
+    ['wgsl-vertex', 'wgsl', 'fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>)'],
   ])('creates and loads %s files through the config protocol', async (fileType, extension, expected) => {
     const host = await createHost({ prompt: (_message, initial) => initial });
     const receive = vi.fn();
@@ -642,7 +642,7 @@ describe('WebExtensionHost', () => {
       type: 'saveThumbnail',
       path: '/shaders/aurora.glsl',
       thumbnail: 'data:image/png;base64,cached',
-      modifiedTime: 10,
+      thumbnailVersion: 10,
     });
     const receive = vi.fn();
     host.onExplorerMessage(receive);
@@ -666,7 +666,7 @@ describe('WebExtensionHost', () => {
       type: 'saveThumbnail',
       path: '/shaders/aurora.glsl',
       thumbnail: 'data:image/png;base64,stale',
-      modifiedTime: 10,
+      thumbnailVersion: 10,
     });
     await host.handleViewerMessage({
       type: 'updateShaderSource',
@@ -1251,5 +1251,130 @@ describe('standalone layout profiles', () => {
     await host.handleViewerMessage({ type: 'profile:writeIndex' });
 
     expect(workspace.list('/')).toEqual([]);
+  });
+
+  describe('shader explorer file watching', () => {
+    async function createWatchedHost() {
+      let clock = 100;
+      const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), [
+        { path: '/shaders/main.glsl', contents: 'void mainImage(out vec4 c, vec2 p) {}', createdAt: 100, modifiedAt: 100 },
+        { path: '/shaders/main.sha.json', contents: JSON.stringify({ version: '1.0', passes: {
+          Image: { vertex: 'main.vert' },
+          BufferA: { path: 'buffer-a.glsl' },
+        } }), createdAt: 100, modifiedAt: 100 },
+        { path: '/shaders/buffer-a.glsl', contents: 'buffer', createdAt: 100, modifiedAt: 100 },
+        { path: '/shaders/main.vert', contents: 'vertex', createdAt: 100, modifiedAt: 100 },
+      ], () => ++clock);
+      const host = new WebExtensionHost(workspace, { confirm: () => true, prompt: () => 'renamed.glsl' });
+      const updates: Array<{ shaders: Array<{ path: string; thumbnailVersion: number; modifiedTime: number; cachedThumbnail?: string }> }> = [];
+      host.onExplorerMessage((message) => {
+        if (message.type === 'shadersUpdate') {
+          updates.push(message as unknown as (typeof updates)[number]);
+        }
+      });
+      const settle = () => new Promise<void>((resolve) => queueMicrotask(resolve));
+      const shader = (path: string) => updates.at(-1)?.shaders.find((entry) => entry.path === path);
+      return { workspace, host, updates, settle, shader };
+    }
+
+    it('pushes the shader list when a shader is created outside the explorer', async () => {
+      const { workspace, updates, settle, shader } = await createWatchedHost();
+
+      workspace.writeText('/shaders/new.glsl', 'void mainImage(out vec4 c, vec2 p) {}');
+      await settle();
+
+      expect(updates).toHaveLength(1);
+      expect(shader('/shaders/new.glsl')).toEqual(expect.objectContaining({ name: 'new.glsl', hasConfig: false }));
+    });
+
+    it('pushes one list update for an operation that writes several files', async () => {
+      const { host, updates, shader } = await createWatchedHost();
+
+      await host.handleViewerMessage({ type: 'createShader', payload: { name: 'fresh', language: 'glsl' } });
+
+      expect(updates).toHaveLength(1);
+      expect(shader('/shaders/fresh.glsl')).toEqual(expect.objectContaining({ hasConfig: true }));
+    });
+
+    it.each([
+      ['a deleted shader', (workspace: VirtualWorkspace) => workspace.delete('/shaders/main.glsl')],
+      ['a renamed shader', (workspace: VirtualWorkspace) => workspace.rename('/shaders/main.glsl', '/shaders/moved.glsl')],
+      ['a new config', (workspace: VirtualWorkspace) => workspace.writeText('/shaders/other.sha.json', '{}')],
+      ['a vertex source', (workspace: VirtualWorkspace) => workspace.writeText('/shaders/main.vert', 'changed')],
+      ['a WGSL shader', (workspace: VirtualWorkspace) => workspace.writeText('/shaders/new.wgsl', '@fragment fn mainImage() {}')],
+    ])('pushes the shader list after %s', async (_label, change) => {
+      const { workspace, updates, settle } = await createWatchedHost();
+
+      change(workspace);
+      await settle();
+
+      expect(updates).toHaveLength(1);
+    });
+
+    it.each([
+      ['explorer state', { type: 'saveState', state: { layoutMode: 'row' } }],
+      ['a thumbnail', { type: 'saveThumbnail', path: '/shaders/main.glsl', thumbnail: 'data:image/png;base64,x', thumbnailVersion: 1 }],
+    ])('does not push the shader list for internal %s writes', async (_label, message) => {
+      const { host, updates, settle } = await createWatchedHost();
+
+      await host.handleExplorerMessage(message);
+      await settle();
+
+      expect(updates).toHaveLength(0);
+    });
+
+    it('ignores files that cannot affect the explorer', async () => {
+      const { workspace, updates, settle } = await createWatchedHost();
+
+      workspace.writeText('/textures/notes.txt', 'notes');
+      workspace.writeText('/shaders/data.json', '{}');
+      await settle();
+
+      expect(updates).toHaveLength(0);
+    });
+
+    it('versions thumbnails by the newest of the shader, its config and its pass sources', async () => {
+      const { host, updates, workspace, settle, shader } = await createWatchedHost();
+      await host.handleExplorerMessage({ type: 'requestShaders' });
+      expect(shader('/shaders/main.glsl')).toEqual(expect.objectContaining({ modifiedTime: 100, thumbnailVersion: 100 }));
+
+      workspace.writeText('/shaders/buffer-a.glsl', 'changed buffer');
+      await settle();
+      const afterBuffer = shader('/shaders/main.glsl')!;
+      expect(afterBuffer.modifiedTime).toBe(100);
+      expect(afterBuffer.thumbnailVersion).toBeGreaterThan(100);
+
+      workspace.writeText('/shaders/main.sha.json', workspace.readText('/shaders/main.sha.json'));
+      await settle();
+      expect(shader('/shaders/main.glsl')!.thumbnailVersion).toBeGreaterThan(afterBuffer.thumbnailVersion);
+      expect(updates).toHaveLength(3);
+    });
+
+    it('serves a cached thumbnail only for the version it was rendered from', async () => {
+      const { host, workspace, settle, shader } = await createWatchedHost();
+      await host.handleExplorerMessage({ type: 'requestShaders' });
+      const { thumbnailVersion } = shader('/shaders/main.glsl')!;
+      await host.handleExplorerMessage({
+        type: 'saveThumbnail', path: '/shaders/main.glsl', thumbnail: 'data:image/png;base64,v1', thumbnailVersion,
+      });
+      await host.handleExplorerMessage({ type: 'requestShaders' });
+      expect(shader('/shaders/main.glsl')!.cachedThumbnail).toBe('data:image/png;base64,v1');
+
+      workspace.writeText('/shaders/buffer-a.glsl', 'changed buffer');
+      await settle();
+
+      expect(shader('/shaders/main.glsl')!.cachedThumbnail).toBeUndefined();
+    });
+
+    it('ignores thumbnails stored under the legacy modified-time key', async () => {
+      const { host, shader } = await createWatchedHost();
+      await host.handleExplorerMessage({
+        type: 'saveThumbnail', path: '/shaders/main.glsl', thumbnail: 'data:image/png;base64,old', modifiedTime: 100,
+      });
+
+      await host.handleExplorerMessage({ type: 'requestShaders' });
+
+      expect(shader('/shaders/main.glsl')!.cachedThumbnail).toBeUndefined();
+    });
   });
 });

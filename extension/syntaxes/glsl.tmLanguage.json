@@ -344,7 +344,7 @@
         {
           "comment": "Shader Studio built-in uniforms; indexed channel accessors cover every configured slot",
           "name": "variable.language.uniform.glsl",
-          "match": "\\b(?:iChannelResolution|iCameraPosition|iWorldPosition|iChannelTime|iResolution|iSampleRate|iCameraDir|iCameraPos|iFrameRate|iTimeDelta|iNormal|iFrame|iMouse|iDate|iTime|iChannel\\d+|iCh\\d+)\\b"
+          "match": "\\b(?:iChannelResolution|iCameraPosition|iWorldPosition|iChannelTime|iProjectionMatrix|iViewProjection|iInstanceCount|iInstanceIndex|iViewMatrix|iVertexCount|iVertexUv|iFrontFacing|iResolution|iSampleRate|iCameraDir|iCameraPos|iFrameRate|iTimeDelta|iNormal|iFrame|iMouse|iDate|iTime|iChannel\\d+|iCh\\d+)\\b"
         },
         {
           "comment": "GLSL built-in outputs",

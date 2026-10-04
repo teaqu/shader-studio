@@ -1,4 +1,4 @@
-import type { ComputePass, ConfigInput, ShaderConfig, ShaderLanguageId } from "@shader-studio/types";
+import type { ComputePass, ConfigInput, RenderPassSettings, ShaderConfig, ShaderLanguageId } from "@shader-studio/types";
 import { vertexPassKey } from "@shader-studio/types";
 import type {
   DispatchSpec,
@@ -11,7 +11,7 @@ import type {
 import { assignInputSlots } from "../util/InputSlotAssigner";
 import { getNativeComputeEntryPoints } from "./SlangPrelude";
 import { getWgslComputeEntryPoints, maskWgslNonCode } from "./WgslPrelude";
-import { resolvePassGeometry } from "../types/Geometry";
+import { resolveInstanceDraw, resolveMeshTopology, resolvePassGeometry, resolvePassRenderSettings, resolveVerticesDraw, type InstanceDrawConfig, type VerticesDrawConfig } from "../types/Geometry";
 import { parseSlangStructs } from "./slangStructSize";
 import { parseWgslStructs } from "./wgslStructSize";
 
@@ -55,7 +55,7 @@ export const BUILTIN_STORAGE_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /** WGSL spellings of the same built-in storage element types. */
-export const BUILTIN_STORAGE_TYPES_WGSL: ReadonlySet<string> = new Set([
+const BUILTIN_STORAGE_TYPES_WGSL: ReadonlySet<string> = new Set([
   "f16", "f32", "vec2<f16>", "vec3<f16>", "vec4<f16>", "vec2<f32>", "vec3<f32>", "vec4<f32>",
   "i32", "vec2<i32>", "vec3<i32>", "vec4<i32>",
   "u32", "vec2<u32>", "vec3<u32>", "vec4<u32>",
@@ -70,7 +70,7 @@ export const BUILTIN_STORAGE_TYPES_WGSL: ReadonlySet<string> = new Set([
 ]);
 
 /** WGSL storage sizes for built-in element types. Used to auto-fill stride. */
-export const BUILTIN_STORAGE_SIZES: ReadonlyMap<string, number> = new Map([
+const BUILTIN_STORAGE_SIZES: ReadonlyMap<string, number> = new Map([
   ["float", 4], ["float2", 8], ["float3", 16], ["float4", 16],
   ["int", 4], ["int2", 8], ["int3", 16], ["int4", 16],
   ["uint", 4], ["uint2", 8], ["uint3", 16], ["uint4", 16],
@@ -79,7 +79,7 @@ export const BUILTIN_STORAGE_SIZES: ReadonlyMap<string, number> = new Map([
 ]);
 
 /** WGSL storage sizes for built-in element types. Used to auto-fill stride. */
-export const BUILTIN_STORAGE_SIZES_WGSL: ReadonlyMap<string, number> = new Map([
+const BUILTIN_STORAGE_SIZES_WGSL: ReadonlyMap<string, number> = new Map([
   ["f16", 2],
   ["f32", 4], ["vec2<f32>", 8], ["vec3<f32>", 16], ["vec4<f32>", 16],
   ["vec2<f16>", 4], ["vec3<f16>", 8], ["vec4<f16>", 8],
@@ -249,6 +249,10 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       language,
       geometry: resolvePassGeometry(passConfig),
       ...resolveModelGeometry(passConfig),
+      ...resolveVerticesDraw(passConfig),
+      ...resolveInstanceDraw(passConfig),
+      ...resolveMeshTopology(passConfig),
+      ...resolvePassRenderSettings(passConfig),
       vertexSrc: options.buffers[vertexPassKey(name)],
       path,
       kind: "render",
@@ -273,7 +277,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
     warnings,
     errors,
   });
-  const imagePass = createImagePass(options.imageCode, canvasWidth, canvasHeight, imageChannels, resolvePassGeometry(imageConfig), options.buffers[vertexPassKey("Image")], resolveModelGeometry(imageConfig), language);
+  const imagePass = createImagePass(options.imageCode, canvasWidth, canvasHeight, imageChannels, resolvePassGeometry(imageConfig), options.buffers[vertexPassKey("Image")], resolveModelGeometry(imageConfig), language, { ...resolveVerticesDraw(imageConfig), ...resolveInstanceDraw(imageConfig), ...resolveMeshTopology(imageConfig), ...resolvePassRenderSettings(imageConfig) });
   const passes = [...computePasses, ...renderPasses, imagePass];
   const sampledBufferSources = new Set(passes.flatMap((pass) => pass.channels
     .filter((channel) => channel.kind === "buffer")
@@ -295,6 +299,7 @@ function createImagePass(
   vertexSrc?: string,
   modelGeometry: { modelPath?: string; modelMesh?: string } = {},
   language: ShaderLanguageId = "slang",
+  drawSettings: VerticesDrawConfig & InstanceDrawConfig & RenderPassSettings = {},
 ): RenderPassNode {
   return {
     name: "Image",
@@ -302,6 +307,7 @@ function createImagePass(
     language,
     geometry,
     ...modelGeometry,
+    ...drawSettings,
     vertexSrc,
     kind: "render",
     output: "canvas",
@@ -448,7 +454,7 @@ function collectLikelyStorageAccesses(source: string): Set<string> {
  * preprocessor, so Slang's tokenizer cannot be reused; the declaration
  * heuristics in findLikelyStorageAccesses are language-agnostic.
  */
-export function collectWgslStorageAccesses(source: string): Set<string> {
+function collectWgslStorageAccesses(source: string): Set<string> {
   return findLikelyStorageAccesses(collectWgslTokens(source));
 }
 

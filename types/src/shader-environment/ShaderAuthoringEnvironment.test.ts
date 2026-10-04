@@ -65,6 +65,8 @@ describe("ShaderAuthoringEnvironment", () => {
       ["iWorldPosition", "vec3", "float3"],
       ["iNormal", "vec3", "float3"],
       ["iCameraPosition", "vec3", "float3"],
+      ["iVertexUv", "vec2", "float2"],
+      ["iFrontFacing", "bool", "bool"],
     ] as const;
 
     for (const [name, glslType, slangType] of expected) {
@@ -77,7 +79,7 @@ describe("ShaderAuthoringEnvironment", () => {
         stages: ["fragment"],
       });
       expect(glsl).toContain(`${glslType} ${name};`);
-      expect(slang).toContain(`${slangType} ${name};`);
+      expect(slang).toContain(name === "iFrontFacing" ? "#define iFrontFacing true" : `${slangType} ${name};`);
       expect(SHADER_STUDIO_SYMBOL_DOCS.find((entry) => entry.name === name)).toMatchObject({
         name,
         glslType,
@@ -102,6 +104,10 @@ describe("ShaderAuthoringEnvironment", () => {
       expect(glslVertex).not.toContain(`vec3 ${name};`);
       expect(slangCompute).not.toContain(`float3 ${name};`);
     }
+    expect(glslVertex).not.toContain("vec2 iVertexUv;");
+    expect(slangCompute).not.toContain("float2 iVertexUv;");
+    expect(glslVertex).not.toContain("bool iFrontFacing;");
+    expect(slangCompute).not.toContain("#define iFrontFacing true");
   });
 
   it("describes custom uniforms and resources in both languages", () => {
@@ -260,7 +266,7 @@ describe("ShaderAuthoringEnvironment", () => {
     const environment = {
       ...baseEnvironment("slang"),
       resources: [{ name: "particles", kind: "storage", elementType: "Particle" }],
-    };
+    } satisfies ShaderAuthoringEnvironment;
 
     expect(buildSlangAuthoringModule(environment).text).toContain("StructuredBuffer<Particle> particles;");
   });
@@ -269,7 +275,7 @@ describe("ShaderAuthoringEnvironment", () => {
     const environment = {
       ...baseEnvironment("slang"),
       resources: [{ name: "values", kind: "storage" as const, elementType }],
-    };
+    } satisfies ShaderAuthoringEnvironment;
 
     expect(validateShaderAuthoringEnvironment(environment)).toEqual([]);
   });
@@ -365,6 +371,58 @@ describe("ShaderAuthoringEnvironment", () => {
     expect(single).not.toContain("void writeOutput(uint2 coord, uint layer, float4 color)");
     expect(layered).toContain("void writeOutput(uint2 coord, uint layer, float4 color)");
     expect(layered).not.toContain("void writeOutput(uint2 coord, float4 color)");
+  });
+
+  it("declares iVertexCount for fragment and vertex authoring but not compute", () => {
+    const slang = (stage: "fragment" | "vertex" | "compute") =>
+      buildSlangAuthoringModule({ ...baseEnvironment("slang"), stage }).text;
+    expect(slang("fragment")).toContain("uint32_t iVertexCount;");
+    expect(slang("vertex")).toContain("uint32_t iVertexCount;");
+    expect(slang("compute")).not.toContain("iVertexCount");
+    expect(buildGlslAuthoringPreamble(baseEnvironment("glsl")).text).toContain("uniform int iVertexCount;");
+    expect(buildGlslAuthoringPreamble({ ...baseEnvironment("glsl"), stage: "vertex" }).text).toContain("uniform int iVertexCount;");
+  });
+
+  it("declares the camera matrices for fragment and vertex authoring but not compute", () => {
+    for (const stage of ["fragment", "vertex"] as const) {
+      const slang = buildSlangAuthoringModule({ ...baseEnvironment("slang"), stage }).text;
+      const glsl = buildGlslAuthoringPreamble({ ...baseEnvironment("glsl"), stage }).text;
+      for (const name of ["iViewMatrix", "iProjectionMatrix", "iViewProjection"]) {
+        expect(slang).toContain(`float4x4 ${name};`);
+        expect(glsl).toContain(`uniform mat4 ${name};`);
+      }
+    }
+    expect(buildSlangAuthoringModule({ ...baseEnvironment("slang"), stage: "compute" }).text).not.toContain("iViewMatrix");
+    const runtime = buildSlangRuntimePrelude();
+    expect(runtime).toContain("#define iViewMatrix (_st.viewMatrix)");
+    expect(runtime).toContain("#define iProjectionMatrix (_st.projectionMatrix)");
+    expect(runtime).toContain("#define iViewProjection (_st.viewProjection)");
+  });
+
+  it("declares iInstanceCount and iInstanceIndex for fragment and vertex authoring but not compute", () => {
+    const slang = (stage: "fragment" | "vertex" | "compute") =>
+      buildSlangAuthoringModule({ ...baseEnvironment("slang"), stage }).text;
+    const glsl = (stage: "fragment" | "vertex") =>
+      buildGlslAuthoringPreamble({ ...baseEnvironment("glsl"), stage }).text;
+    for (const stage of ["fragment", "vertex"] as const) {
+      expect(slang(stage)).toContain("uint32_t iInstanceCount;");
+      expect(slang(stage)).toContain("uint32_t iInstanceIndex;");
+      expect(glsl(stage)).toContain("uniform int iInstanceCount;");
+      expect(glsl(stage)).toContain("int iInstanceIndex;");
+    }
+    expect(slang("compute")).not.toContain("iInstance");
+  });
+
+  it("reads iInstanceCount from the y lane of the vertexCount slot and declares a runtime iInstanceIndex", () => {
+    const runtime = buildSlangRuntimePrelude();
+    expect(runtime).toContain("#define iInstanceCount (_st.vertexCount.y)");
+    expect(runtime).toContain("static uint iInstanceIndex;");
+  });
+
+  it("puts iVertexCount in its own 16-byte runtime slot before custom uniforms", () => {
+    const runtime = buildSlangRuntimePrelude([{ name: "gain", type: "float" }]);
+    expect(runtime).toContain("    float4 cameraDir;\n    uint4 vertexCount;\n    column_major float4x4 viewMatrix;\n    column_major float4x4 projectionMatrix;\n    column_major float4x4 viewProjection;\n    float custom_gain;");
+    expect(runtime).toContain("#define iVertexCount (_st.vertexCount.x)");
   });
 
   it("exposes the renderer compute repetition index only to compute authoring", () => {
@@ -510,7 +568,7 @@ describe("ShaderAuthoringEnvironment", () => {
         { name: "repeat", kind: "texture-2d" },
         { name: "3d", kind: "texture-3d" },
       ],
-    };
+    } satisfies ShaderAuthoringEnvironment;
 
     expect(() => validateShaderAuthoringEnvironment(environment)).not.toThrow();
     expect(validateShaderAuthoringEnvironment(environment)).toEqual([
@@ -593,6 +651,8 @@ describe("ShaderAuthoringEnvironment", () => {
     ["iChannel0", "a renderer channel symbol"],
     ["iCh3", "a renderer channel metadata symbol"],
     ["iWorldPosition", "a renderer mesh context symbol"],
+    ["iVertexUv", "a renderer vertex context symbol"],
+    ["iFrontFacing", "a renderer primitive-facing symbol"],
   ])("rejects %s because it is %s", (name) => {
     const environment = {
       ...baseEnvironment("glsl"),
@@ -671,6 +731,14 @@ describe("ShaderAuthoringEnvironment", () => {
     ["glsl", "iCh0"],
     ["slang", "iTime"],
     ["slang", "iWorldPosition"],
+    ["slang", "iVertexUv"],
+    ["slang", "iFrontFacing"],
+    ["glsl", "iInstanceCount"],
+    ["glsl", "iInstanceIndex"],
+    ["slang", "iInstanceCount"],
+    ["slang", "iInstanceIndex"],
+    ["glsl", "iViewProjection"],
+    ["slang", "iViewMatrix"],
   ] as const)("rejects %s concrete renderer-owned identifier %s", (languageId, name) => {
     const environment = {
       ...baseEnvironment(languageId),
@@ -865,9 +933,10 @@ describe("ShaderAuthoringEnvironment", () => {
   it("documents every renderer-visible built-in and channel symbol with a type and runtime meaning", () => {
     const rendererSymbols = [
       "iResolution", "iTime", "iTimeDelta", "iFrameRate", "iMouse", "iFrame", "iDate",
-      "iChannelTime", "iChannelResolution", "iSampleRate", "iCameraPos", "iCameraDir",
+      "iChannelTime", "iChannelResolution", "iSampleRate", "iCameraPos", "iCameraDir", "iVertexCount",
       "iChannelN", "iChannel0", "iChannel1", "iChannel2", "iChannel3", "iCh0", "iCh1", "iCh2", "iCh3",
-      "iWorldPosition", "iNormal", "iCameraPosition",
+      "iWorldPosition", "iNormal", "iCameraPosition", "iVertexUv", "iFrontFacing", "iInstanceCount", "iInstanceIndex",
+      "iViewMatrix", "iProjectionMatrix", "iViewProjection",
     ];
     for (const name of rendererSymbols) {
       const documentation = SHADER_STUDIO_SYMBOL_DOCS.find((entry) => entry.name === name);

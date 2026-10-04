@@ -123,24 +123,3 @@ export function mapProcessedLine(
 
   return processedLine;
 }
-
-export function mapOriginalLine(
-  originalToProcessed: readonly number[],
-  originalLine: number,
-  floorLine = 0,
-): number {
-  if (originalLine >= 0 && originalLine < originalToProcessed.length) {
-    const direct = originalToProcessed[originalLine];
-    if (direct !== -1) {
-      return direct;
-    }
-  }
-
-  for (let line = Math.min(originalLine, originalToProcessed.length - 1); line >= floorLine; line--) {
-    if (originalToProcessed[line] !== -1) {
-      return originalToProcessed[line];
-    }
-  }
-
-  return Math.max(0, originalLine);
-}

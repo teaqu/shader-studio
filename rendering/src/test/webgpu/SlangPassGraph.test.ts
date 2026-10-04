@@ -49,8 +49,8 @@ describe("buildSlangPassGraph", () => {
       },
       buffers: {
         BufferA: imageCode,
-        "__shader_studio_vertex__:Image": "void mainVertex(inout float3 p, inout float3 n, inout float2 uv) {}",
-        "__shader_studio_vertex__:BufferA": "void mainVertex(inout float3 p, inout float3 n, inout float2 uv) {}",
+        "__shader_studio_vertex__:Image": "void mainVertex(uint vertexIndex, inout float3 p, inout float3 n, inout float2 uv) {}",
+        "__shader_studio_vertex__:BufferA": "void mainVertex(uint vertexIndex, inout float3 p, inout float3 n, inout float2 uv) {}",
       },
       canvasWidth: 800,
       canvasHeight: 600,
@@ -129,6 +129,96 @@ describe("buildSlangPassGraph", () => {
     ]);
   });
 
+  it.each(["slang", "wgsl"] as const)("propagates vertices fields and blend/depth/cull in %s graphs", (language) => {
+    const source = language === "wgsl"
+      ? "fn mainImage(coord: vec2f) -> vec4f { return vec4f(1.0); }"
+      : "float4 mainImage(float2 c) { return float4(1.0); }";
+    const graph = buildSlangPassGraph({
+      language,
+      imageCode: source,
+      config: {
+        version: "1",
+        passes: {
+          Image: {
+            geometry: { type: "vertices", vertexCount: 6, topology: "triangle-strip", space: "clip", instanceCount: 5 },
+            blend: "alpha",
+            depth: { test: true, compare: "greater" },
+            cull: "back",
+          },
+          BufferA: { path: `a.${language}`, geometry: { type: "vertices", vertexCount: 2_147_483_647, instanceCount: 2_147_483_647 }, blend: "additive", depth: { write: false } },
+          BufferB: { path: `b.${language}`, geometry: { type: "vertices", topology: "point-list" } },
+          BufferC: { path: `c.${language}`, geometry: { type: "fullscreen" }, blend: "premultiplied" },
+          BufferD: { path: `d.${language}`, geometry: { type: "plane", topology: "line-list", instanceCount: 4 }, cull: "front", samples: 4 },
+          BufferE: { path: `e.${language}` },
+        },
+      },
+      buffers: { BufferA: source, BufferB: source, BufferC: source, BufferD: source, BufferE: source },
+      canvasWidth: 64,
+      canvasHeight: 64,
+    });
+
+    expect(graph.errors).toEqual([]);
+    const fields = ["geometry", "vertexCount", "topology", "space", "instanceCount", "blend", "depth", "cull", "samples"] as const;
+    const draw = Object.fromEntries(graph.passes.map((pass) => [
+      pass.name,
+      Object.fromEntries(fields.filter((field) => field in pass).map((field) => [field, pass[field]])),
+    ]));
+    expect(draw).toEqual({
+      Image: {
+        geometry: "vertices",
+        vertexCount: 6,
+        topology: "triangle-strip",
+        space: "clip",
+        instanceCount: 5,
+        blend: "alpha",
+        depth: { test: true, compare: "greater" },
+        cull: "back",
+      },
+      BufferA: { geometry: "vertices", vertexCount: 2_147_483_647, instanceCount: 2_147_483_647, blend: "additive", depth: { write: false } },
+      BufferB: { geometry: "vertices", topology: "point-list" },
+      BufferC: { geometry: "fullscreen", blend: "premultiplied" },
+      BufferD: { geometry: "plane", topology: "line-list", instanceCount: 4, cull: "front", samples: 4 },
+      BufferE: { geometry: "fullscreen" },
+    });
+  });
+
+  it("carries a mesh topology on the Image pass", () => {
+    const graph = buildSlangPassGraph({
+      imageCode,
+      config: { version: "1", passes: { Image: { geometry: { type: "sphere", topology: "point-list" } } } },
+      buffers: {},
+      canvasWidth: 8,
+      canvasHeight: 8,
+    });
+
+    expect(graph.passes.at(-1)).toMatchObject({ name: "Image", geometry: "sphere", topology: "point-list" });
+  });
+
+  it("omits draw and render-state fields from an unconfigured image-only graph", () => {
+    const graph = buildSlangPassGraph({ imageCode, config: null, buffers: {}, canvasWidth: 8, canvasHeight: 8 });
+
+    for (const field of ["vertexCount", "topology", "space", "instanceCount", "blend", "depth", "cull", "samples"]) {
+      expect(graph.passes[0]).not.toHaveProperty(field);
+    }
+  });
+
+  it("ignores blend, depth and cull on compute passes", () => {
+    const graph = buildSlangPassGraph({
+      imageCode,
+      config: {
+        version: "1",
+        passes: { Image: {}, Sim: { type: "compute", path: "sim.slang", dispatch: { count: 1 }, blend: "additive" } as never },
+      },
+      buffers: { Sim: "[shader(\"compute\")] [numthreads(1,1,1)] void main(uint3 id : SV_DispatchThreadID) {}" },
+      canvasWidth: 8,
+      canvasHeight: 8,
+    });
+
+    const sim = graph.passes.find((pass) => pass.name === "Sim");
+    expect(sim?.kind).toBe("compute");
+    expect(sim).not.toHaveProperty("blend");
+  });
+
   it("carries a model's resolved GLB URL and selected mesh to the Slang pass", () => {
     const graph = buildSlangPassGraph({
       imageCode,
@@ -174,10 +264,7 @@ describe("buildSlangPassGraph", () => {
           inputs: {},
           resolution: { scale: 0.5 },
         },
-        common: {
-          path: "common.slang",
-          inputs: {},
-        },
+        common: { path: "common.slang" },
       },
     };
 
@@ -364,12 +451,12 @@ describe("buildSlangPassGraph", () => {
           inputs: {
             // "common" is a configured pass but not renderable, and "Image"
             // is renderable but not a buffer: neither can feed a channel.
-            iChannel0: { type: "buffer", source: "common" },
-            iChannel1: { type: "buffer", source: "Image" },
+            iChannel0: { type: "buffer", source: "common" } as unknown as import("@shader-studio/types").ConfigInput,
+            iChannel1: { type: "buffer", source: "Image" } as unknown as import("@shader-studio/types").ConfigInput,
           },
         },
         BufferA: { path: "buffer-a.slang", inputs: {} },
-        common: { path: "common.slang", inputs: {} },
+        common: { path: "common.slang" },
       },
     };
 
@@ -419,7 +506,8 @@ describe("buildSlangPassGraph", () => {
         BufferA: {
           path: "buffer-a.slang",
           inputs: {},
-          resolution: { width: 200, height: 100, scale: 0.5 },
+          // Deliberately invalid configuration: the graph reports the conflict.
+          resolution: { width: 200, height: 100, scale: 0.5 } as unknown as import("@shader-studio/types").BufferResolution,
         },
       },
     };

@@ -46,11 +46,13 @@ export function getSlangWasmPath(uiRoot = resolve(scriptDirectory, '..')) {
  * @param {string} [uiRoot]
  * @param {RunCommand} [runCommand]
  * @param {ExpectedDigests} [expected]
+ * @param {NodeJS.Platform} [platform]
  */
 export function ensureSlangWasm(
   uiRoot = resolve(scriptDirectory, '..'),
   runCommand = execFileSync,
   expected = { archive: SLANG_ARCHIVE_SHA256, wasm: SLANG_WASM_SHA256 },
+  platform = process.platform,
 ) {
   const wasmPath = getSlangWasmPath(uiRoot);
   if (existsSync(wasmPath)) {
@@ -71,9 +73,25 @@ export function ensureSlangWasm(
       stdio: 'inherit',
     });
     verifyDigest(archivePath, expected.archive, 'archive');
-    runCommand('unzip', ['-j', archivePath, '*slang-wasm.wasm', '-d', extractionRoot], {
-      stdio: 'inherit',
-    });
+    if (platform === 'win32') {
+      // Pass paths through the environment so spaces and PowerShell metacharacters
+      // in the user's temporary directory are treated as literal filenames.
+      runCommand('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+        "$ErrorActionPreference = 'Stop'; " +
+        "Expand-Archive -LiteralPath $env:SLANG_ARCHIVE_PATH -DestinationPath ($env:SLANG_EXTRACTION_ROOT + '/archive'); " +
+        "$assets = @(Get-ChildItem -LiteralPath ($env:SLANG_EXTRACTION_ROOT + '/archive') -Recurse -File -Filter 'slang-wasm.wasm'); " +
+        "if ($assets.Count -ne 1) { throw 'Expected exactly one slang-wasm.wasm in the archive.' }; " +
+        "Copy-Item -LiteralPath $assets[0].FullName -Destination ($env:SLANG_EXTRACTION_ROOT + '/slang-wasm.wasm')",
+      ], {
+        stdio: 'inherit',
+        env: { ...process.env, SLANG_ARCHIVE_PATH: archivePath, SLANG_EXTRACTION_ROOT: extractionRoot },
+        windowsHide: true,
+      });
+    } else {
+      runCommand('unzip', ['-j', archivePath, '*slang-wasm.wasm', '-d', extractionRoot], {
+        stdio: 'inherit',
+      });
+    }
 
     const extractedPath = join(extractionRoot, 'slang-wasm.wasm');
     if (!existsSync(extractedPath)) {
@@ -86,7 +104,7 @@ export function ensureSlangWasm(
     return { downloaded: true, wasmPath };
   } catch (error) {
     throw new Error(
-      `Unable to prepare Slang WASM. Install curl and unzip, then see ui/src/slang/.gitignore for manual setup. ${error instanceof Error ? error.message : error}`,
+      `Unable to prepare Slang WASM. Install curl and ${platform === 'win32' ? 'PowerShell' : 'unzip'}, then see ui/src/slang/.gitignore for manual setup. ${error instanceof Error ? error.message : error}`,
     );
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
