@@ -5,6 +5,14 @@
 !!! warning "Alpha"
     Standalone mode is in alpha and has bugs and missing features compared with the VS Code extension. Your workspace is saved only in this browser. Clearing browser data deletes it.
 
+## Install and Offline Use
+
+On supported browsers, use the browser's **Install** or **Add to Home Screen** command to add Shader Studio to your device. The first online launch caches the GLSL application shell and bundled examples. To make the larger Slang/WGSL compiler assets available offline, open **Workspace → Prepare Offline Compilers** and wait until the header says **Ready offline**. A first-ever offline visit cannot install the app.
+
+Your workspace saves automatically in this browser; it is not synced between devices. **Saved** means the latest write committed to IndexedDB. **Session-only** means browser storage is unavailable and the current work will not survive closing the app. The app requests browser storage protection automatically once when supported and not already granted, remembering the attempt so a declined request is not repeated on later launches. If that preference cannot be saved, requests stay manual. If the browser declines, saving still works; **Workspace → Request storage protection** lets you retry. A small warning icon beside the cloud and save status indicates unprotected or session-only storage. Hover for the explanation, or click the icon to open the Workspace menu and its backup actions. The Workspace menu always explains the current protection status. Protection reduces automatic removal when storage space runs low; clearing site data still removes local work. Use **Workspace → Export Workspace Backup** regularly and **Import Workspace Backup…** to restore a validated backup. Import always asks before replacing the current workspace.
+
+When **Update ready** appears, Shader Studio has downloaded a complete compatible build. Accepting it first flushes pending workspace edits and only then activates and reloads. Use **Workspace → Check for Updates** to check manually. Cache updates never delete the IndexedDB workspace.
+
 ## Get Started
 
 1. Open the standalone app and select an example in **Shader Explorer**.
@@ -21,6 +29,8 @@ See the [Quick Start](quick-start.md#step-3-write-your-shader) for example shade
 The workspace contains Shader Explorer, Editor, and Preview panels. Drag tabs to rearrange or split them, and drag the dividers to resize them. Use the top **View** menu to show or hide each panel.
 
 The preview has its own controls for configuration, debugging, performance, and recording. Use **Workspace → Reset workspace layout** to restore the outer workspace arrangement. Use the preview's **Layout** menu to reset the viewer layout separately.
+
+On phones, the bottom navigation shows one main destination at a time: **Explorer**, **Editor**, **Preview**, or **Tools**. Tools includes **Config**, **Debug**, **Frame Times**, and **Export** and remembers the last selection. The Preview editor overlay remains available from its Editor Overlay menu. Rotating the device or returning to a larger viewport does not replace the saved desktop Dockview layout.
 
 ## Saving and Browser Storage
 
@@ -54,6 +64,15 @@ npm run preview -w @shader-studio/standalone
 ```
 
 The build output is in `standalone/dist/`. Serve it over HTTP locally or HTTPS when hosting it; opening the HTML file directly is not the supported workflow.
+
+Run the phone and offline browser regressions with:
+
+```bash
+npm run test:e2e -w @shader-studio/standalone -- --project=mobile-chromium
+npm run test:e2e -w @shader-studio/standalone -- --project=chromium pwa.e2e.mjs
+```
+
+Browser emulation does not validate installation, software-keyboard behavior, selection handles, safe areas, background eviction, or GPU capability on a real phone. Follow the [mobile device acceptance checklist](mobile-testing.md) before promoting the mobile branch.
 
 ## Not yet supported
 

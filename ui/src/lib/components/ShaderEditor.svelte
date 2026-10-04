@@ -30,6 +30,11 @@
   import { currentTheme, type Theme } from "../stores/themeStore";
   import { getRenameFeedback } from "../state/renameFeedback.svelte";
   import {
+    createEditorSelectionSource,
+    getEditorSelection,
+    setEditorSelection,
+  } from "../state/editorSelectionState.svelte";
+  import {
     releaseOverlayTokenColors,
     retainOverlayTokenColors,
     syncOverlayTokenColors,
@@ -103,6 +108,8 @@
   const activePassName = $derived(
     parseVertexPassKey(activeBufferName) ?? activeBufferName,
   );
+  const selectionSource = createEditorSelectionSource();
+  const sharedSelection = $derived(shaderPath ? getEditorSelection(shaderPath) : null);
   // Names the Monarch grammar cannot know: script-declared custom uniforms plus
   // the configured input and storage resources the renderer declares for them.
   const dynamicUniformNames = $derived([
@@ -130,6 +137,8 @@
   let pendingSource: { path: string; code: string } | null = null;
   let lastSentCode: string | null = null;
   let cursorChangeDisposable: monaco.IDisposable | null = null;
+  let selectionChangeDisposable: monaco.IDisposable | null = null;
+  let applyingSharedSelection = false;
   let cursorChangeTimer: ReturnType<typeof setTimeout> | null = null;
   let uniformDecorationIds: string[] = [];
   let lastShaderPath: string = "";
@@ -712,6 +721,11 @@
       }
       cursorChangeTimer = setTimeout(() => onCursorChange(line, content, buffer), 150);
     });
+    selectionChangeDisposable = editor.onDidChangeCursorSelection?.((event) => {
+      if (!applyingSharedSelection && shaderPath) {
+        setEditorSelection(shaderPath, selectionSource, event.selection);
+      }
+    }) ?? null;
 
     editor.focus();
     requestAnimationFrame(() => focusMonacoTextInput());
@@ -754,6 +768,8 @@
       cursorChangeDisposable.dispose();
       cursorChangeDisposable = null;
     }
+    selectionChangeDisposable?.dispose();
+    selectionChangeDisposable = null;
     disableVim();
     languageServiceController?.dispose();
     languageServiceController = null;
@@ -782,6 +798,36 @@
     languageServiceStatus = "pending";
     lastSentCode = null;
   }
+
+  $effect(() => {
+    const state = sharedSelection;
+    const currentEditor = editorReady ? editor : null;
+    // shaderPath changes before the model swaps; wait for the matching model
+    // rather than moving the previous document's cursor.
+    const showingShader = Boolean(shaderPath) && editorModelUri === monaco.Uri.file(shaderPath).toString();
+    if (!state || state.source === selectionSource || !currentEditor || !showingShader) {
+      return;
+    }
+    const current = currentEditor.getSelection();
+    const next = state.selection;
+    if (current?.startLineNumber === next.startLineNumber
+      && current.startColumn === next.startColumn
+      && current.endLineNumber === next.endLineNumber
+      && current.endColumn === next.endColumn) {
+      return;
+    }
+    applyingSharedSelection = true;
+    currentEditor.setSelection(next);
+    // A hidden editor (an inactive tab or phone panel) keeps a stale, tiny
+    // layout, so revealing would scroll its top away before it is shown.
+    if ((currentEditor.getContainerDomNode?.().clientHeight ?? 0) > 0) {
+      currentEditor.revealPositionInCenterIfOutsideViewport?.({
+        lineNumber: next.endLineNumber,
+        column: next.endColumn,
+      });
+    }
+    applyingSharedSelection = false;
+  });
 
   $effect(() => {
     if (isVisible && containerEl && !editor) {
