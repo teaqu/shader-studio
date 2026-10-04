@@ -10,7 +10,7 @@ describe("WGSL documentation line endings", () => {
     ["@must_use\n", "Declared here."],
     ["//\n", "Declared here."],
   ])("keeps provenance when there is no attached comment: %j", (prefix, expected) => {
-    const analysis = parseWgslDocument("image.wgsl", `${prefix}fn shade() -> f32 { return 1; }`);
+    const analysis = parseWgslDocument("image.wgsl", `${prefix}fn shade() -> f32 { return 1; }`, "fragment");
     const symbol = analysis.symbols.find(symbol => symbol.name === "shade")!;
     expect(declarationDocumentation(analysis, symbol, "Declared here.")).toBe(expected);
   });

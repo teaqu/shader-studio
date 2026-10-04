@@ -34,7 +34,19 @@ Old components not yet migrated still use Svelte 4 style (`export let`, `$:`, st
 
 Framework: Vitest + `@testing-library/svelte`.
 
-Run tests:
+Run the monorepo quality gates after a cross-package refactor:
+```sh
+npm run typecheck             # strict source and test checks for every workspace
+npm test                      # all workspace unit tests
+npm test -- --coverage        # package coverage ratchets during the same unit run
+npm run coverage:summary      # debug/rendering/ui totals, also written to CI summary
+npm run knip                  # unused files, exports and dependencies
+npm run boundaries            # public imports, layering and runtime cycles
+```
+
+Coverage uses Istanbul because V8 precise profiling substantially slows the exhaustive Slang scope sweep. Keep its assertions and timeouts intact. Package thresholds live in the root Vitest config; update them upward when coverage improves, never lower them to accommodate a regression. Generated assets and tests are excluded from coverage.
+
+Run UI tests:
 ```sh
 cd ui && npx vitest run
 ```
@@ -106,13 +118,13 @@ Always prefer Svelte 5 conventions over Svelte 4. For example: runes over stores
 
 ## Code Structure
 
-Large files grow one reasonable change at a time. Keep them from getting there:
+Use size and complexity as signals to review cohesion and ownership:
 
 - Keep each module focused on one responsibility. Engines, managers and components orchestrate; the work lives in small, separately testable units they call.
-- **Before adding to a file over ~800 lines, extract a cohesive module instead of appending to it.** Prefer a new file next to the old one over another section in a long file.
-- ESLint's `max-lines` rule fails at 1,200 lines (blank lines and comments excluded). Never raise the limit, disable it inline, or add a file to `oversizedFileBaseline` in `eslint.config.mjs`. That list holds files that were already too large and may only shrink: remove an entry when its file is split below the limit.
-- If a change would push a file over the limit, first do the extraction as a separate, behaviour-preserving commit, then make the change.
-- Keep functions under ~150 lines and cyclomatic complexity under ~20 (both reported as lint warnings). Extract named helpers rather than nesting further.
+- **Treat ~800 lines as a review trigger, not a hard quality rule.** Check for distinct responsibilities, repeated logic, and sections that can be tested independently. Extract cohesive modules when those boundaries improve the design; keep a large cohesive parser intact when a split would only add indirection. Tests and generated files are exempt from this review trigger. Pay particular attention to Svelte components combining UI, resource loading, and rendering orchestration.
+- ESLint warns at 1,200 lines per file (blank lines and comments excluded), 150 lines per function, and cyclomatic complexity above 20. These are review triggers, not hard limits; tests and generated files are exempt. `npm run lint:all` shows the warnings, while CI lint fails on errors.
+- Review long or complex functions for mixed responsibilities, repeated logic, hidden state changes, and difficult testing. Extract named steps when there is a meaningful boundary. A cohesive parser switch or sequential workflow can remain large; do not introduce helpers solely to reduce a metric.
+- When extraction improves the design, keep it behaviour-preserving and reviewable separately from functional changes.
 - Don't copy a block of logic into a second place; extract a shared helper, or explain in the PR why the copies need to stay separate.
 
 ## Experimental Flags

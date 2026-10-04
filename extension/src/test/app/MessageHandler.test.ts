@@ -212,7 +212,7 @@ suite('MessageHandler Test Suite', () => {
     const shaderSourceEvent: ShaderSourceMessage = {
       type: 'shaderSource',
       code: 'test code',
-      config: { passes: { BufferA: { path: './buffer.glsl' } } },
+      config: { version: '1', passes: { Image: {}, BufferA: { path: './buffer.glsl' } } },
       path: '/test/shader.glsl',
       buffers: {}
     };
@@ -234,7 +234,7 @@ suite('MessageHandler Test Suite', () => {
     const shaderSourceEvent: ShaderSourceMessage = {
       type: 'shaderSource',
       code: 'test code',
-      config: { passes: { BufferA: { path: './buffer.glsl' } } },
+      config: { version: '1', passes: { Image: {}, BufferA: { path: './buffer.glsl' } } },
       path: '/test/shader.glsl',
       buffers: {}
     };
@@ -269,7 +269,7 @@ suite('MessageHandler Test Suite', () => {
     const shaderSourceEvent: ShaderSourceMessage = {
       type: 'shaderSource',
       code: 'test code',
-      config: { passes: {} },
+      config: { version: '1', passes: { Image: {} } },
       path: '/test/shader.glsl',
       buffers: {}
     };
@@ -374,7 +374,7 @@ suite('MessageHandler Test Suite', () => {
     const shaderSourceEvent: ShaderSourceMessage = {
       type: 'shaderSource',
       code: 'test code',
-      config: { passes: {} },
+      config: { version: '1', passes: { Image: {} } },
       path: '/test/shader.glsl',
       buffers: {}
     };

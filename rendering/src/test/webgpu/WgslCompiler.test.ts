@@ -83,7 +83,7 @@ describe("WgslCompiler", () => {
     const compiler = new WgslCompiler();
     const result = await compiler.compile(IMAGE, {
       passKind: "render",
-      channels: [{ slot: 0, key: "iChannel0", kind: "texture", textureIdentity: "t", samplerIdentity: "s" }],
+      channels: [{ slot: 0, key: "iChannel0", kind: "texture" }],
       storage: [{ name: "buf", binding: 0, elementType: "float4", builtin: true, count: 8, stride: 16 }],
       customUniforms: [{ name: "gain", type: "float" }],
     });

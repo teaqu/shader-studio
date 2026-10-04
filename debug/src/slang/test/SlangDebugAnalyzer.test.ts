@@ -50,18 +50,27 @@ describe("analyzeSlangSite", () => {
   it("reports variables at unbraced if header", () => {
     const s = "float4 fn(float2 uv) {\n  float a = uv.x;\n  if (a > 0.0)\n    a = a * 2.0;\n  return float4(a, 0.0, 0.0, 1.0);\n}\n";
     const ws = createSlangWorkspace({ rootUri: "/x.slang", rootPath: "/x.slang", passName: "Image", contentHash: "h", files: [{ uri: "/x.slang", path: "/x.slang", source: s, version: 1, moduleName: "", ownerPass: "Image" }] });
-    const r = analyzeSlangSite(ws.workspace!.filesByUri.get(ws.workspace!.rootUri)!, { line: 2, character: 6 });
+    if (!ws.ok) {
+      throw new Error(ws.diagnostics[0]?.message ?? "workspace creation failed");
+    }
+    const r = analyzeSlangSite(ws.workspace.filesByUri.get(ws.workspace.rootUri)!, { line: 2, character: 6 });
     expect(r).toMatchObject({ ok: true, analysis: { visibleValues: [{ name: "uv", typeName: "float2" }, { name: "a", typeName: "float" }], controlFlow: expect.arrayContaining([expect.objectContaining({ kind: "if" })]) } });
   });
   it("reports variables at for header", () => {
     const s = "float4 fn(float2 uv) {\n  float a = 0.0;\n  for (int i = 0; i < 10; i++)\n    a += float(i);\n  return float4(a, 0.0, 0.0, 1.0);\n}\n";
     const ws = createSlangWorkspace({ rootUri: "/x.slang", rootPath: "/x.slang", passName: "Image", contentHash: "h", files: [{ uri: "/x.slang", path: "/x.slang", source: s, version: 1, moduleName: "", ownerPass: "Image" }] });
-    expect(analyzeSlangSite(ws.workspace!.filesByUri.get(ws.workspace!.rootUri)!, { line: 2, character: 6 })).toMatchObject({ ok: true, analysis: { controlFlow: expect.arrayContaining([expect.objectContaining({ kind: "for" })]) } });
+    if (!ws.ok) {
+      throw new Error(ws.diagnostics[0]?.message ?? "workspace creation failed");
+    }
+    expect(analyzeSlangSite(ws.workspace.filesByUri.get(ws.workspace.rootUri)!, { line: 2, character: 6 })).toMatchObject({ ok: true, analysis: { controlFlow: expect.arrayContaining([expect.objectContaining({ kind: "for" })]) } });
   });
   it("reports variables at while header", () => {
     const s = "float4 fn(float2 uv) {\n  float a = 5.0;\n  while (a > 0.0)\n    a -= 1.0;\n  return float4(a, 0.0, 0.0, 1.0);\n}\n";
     const ws = createSlangWorkspace({ rootUri: "/x.slang", rootPath: "/x.slang", passName: "Image", contentHash: "h", files: [{ uri: "/x.slang", path: "/x.slang", source: s, version: 1, moduleName: "", ownerPass: "Image" }] });
-    expect(analyzeSlangSite(ws.workspace!.filesByUri.get(ws.workspace!.rootUri)!, { line: 2, character: 6 })).toMatchObject({ ok: true, analysis: { controlFlow: expect.arrayContaining([expect.objectContaining({ kind: "while" })]) } });
+    if (!ws.ok) {
+      throw new Error(ws.diagnostics[0]?.message ?? "workspace creation failed");
+    }
+    expect(analyzeSlangSite(ws.workspace.filesByUri.get(ws.workspace.rootUri)!, { line: 2, character: 6 })).toMatchObject({ ok: true, analysis: { controlFlow: expect.arrayContaining([expect.objectContaining({ kind: "while" })]) } });
   });
 });
 
@@ -115,8 +124,8 @@ describe("foundation.slang line coverage", () => {
       if(exp.ok&&exp.vars&&r.ok){
         expect(r.analysis.visibleValues.map(v=>v.name)).toEqual(exp.vars);
       }
-      if(!exp.ok){
-        expect(r.diagnostics?.[0]?.message).toMatch(/Select a line|Not an executable/);
+      if(!exp.ok && !r.ok){
+        expect(r.diagnostics[0]?.message).toMatch(/Select a line|Not an executable/);
       }
     });
   });
@@ -197,8 +206,8 @@ describe("video_audio.slang line coverage", () => {
       if(exp.ok&&exp.vars&&r.ok){
         expect(r.analysis.visibleValues.map(v=>v.name)).toEqual(exp.vars);
       }
-      if(!exp.ok){
-        expect(r.diagnostics?.[0]?.message).toMatch(/Select a line|Not an executable/);
+      if(!exp.ok && !r.ok){
+        expect(r.diagnostics[0]?.message).toMatch(/Select a line|Not an executable/);
       }
     });
   });

@@ -36,7 +36,7 @@ describe("wgsl prelude name collision guarding", () => {
 
   it("prefixes the mesh uniforms variable with _ss_", () => {
     const { source } = wrapWgslImageSource(IMAGE, {
-      geometry: "mesh",
+      geometry: "cube",
       vertexCode: "fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}",
     });
 

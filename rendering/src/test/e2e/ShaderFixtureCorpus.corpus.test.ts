@@ -6,6 +6,7 @@ import {
   createShaderCanvasHarness,
   type ShaderCanvasHarness,
   type ShaderLanguage,
+  type ShaderProgram,
 } from "./ShaderCanvasHarness";
 import type { CaptureRequest, IVariableCapturer } from "../../capture/VariableCapturer";
 
@@ -753,7 +754,7 @@ describe("slang-multipass-test shader corpus", () => {
     for (const project of coverageProjects) {
       const harness = harnesses.get(project.language)!;
       harness.resize(32, 32);
-      await harness.compile(project);
+      await harness.compile(project as unknown as ShaderProgram);
       const capturer = harness.engine.createVariableCapturer();
       const wgslEngine = project.language === "wgsl" ? new WgslDebugEngine() : null;
       capturer.setCustomUniforms(
@@ -771,7 +772,7 @@ describe("slang-multipass-test shader corpus", () => {
             harness.engine.getVariableCaptureCompileContext(source, pass, path),
           );
           const passConfig = project.config?.passes?.[pass];
-          capturer.setInputBindings(passConfig && "inputs" in passConfig ? passConfig.inputs ?? {} : {});
+          capturer.setInputBindings((passConfig && "inputs" in passConfig ? passConfig.inputs ?? {} : {}) as unknown as Record<string, import("@shader-studio/types").ConfigInput>);
           const lines = source.split("\n");
           for (let line = 0; line < lines.length; line += 1) {
             if (project.language === "glsl") {
@@ -889,12 +890,12 @@ describe("slang-multipass-test shader corpus", () => {
       harness!.resize(size, size);
       const expectedError = expectedCompileError(project);
       if (expectedError) {
-        await expect(harness!.compile(project)).rejects.toThrow(expectedError);
+        await expect(harness!.compile(project as unknown as ShaderProgram)).rejects.toThrow(expectedError);
         return;
       }
       await paintSentinel(harness!, project.language as ShaderLanguage);
       try {
-        await harness!.compile(project);
+        await harness!.compile(project as unknown as ShaderProgram);
       } catch (error) {
         if (!mayExceedPortableImageLimit(project)) {
           throw error;
