@@ -1,3 +1,4 @@
+import { audioLoadWarning } from "../util/LiveInputConfig";
 import type { DebugInstrumentationPlan,ShaderConfig,ShaderLanguageId,SlangSourceModule } from "@shader-studio/types";
 import { CameraManager } from "../input/CameraManager";
 import type { CompilationResult } from "../models";
@@ -604,8 +605,8 @@ export class WebGPUShaderSession {
               channel.startTime,
               channel.endTime,
             );
-          } catch {
-            warnings.push(`Audio loading failed: ${channel.path}`);
+          } catch (error) {
+            warnings.push(audioLoadWarning(channel.path, error));
           }
         }
         if (generation !== this.compileGeneration || this.host.disposed) {

@@ -1,3 +1,5 @@
+import { audioPreviewData, livePreviewData, controlSystemAudio, controlAudioInput } from "../resources/MediaPreview";
+import type { LiveInputType, LiveInputPreview } from "../resources/LiveInputTextureManager";
 import type { DebugInstrumentationPlan,ShaderConfig,ShaderLanguageId,SlangSourceModule,StorageBufferSnapshot } from "@shader-studio/types";
 import type {
   CaptureCompileContext,
@@ -810,11 +812,21 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.session.resourceManager?.seekAudio(path, time);
   }
   getAudioFFTData(type: string, path?: string): Uint8Array | null {
-    return type === "audio" && path
-      ? this.session.resourceManager?.getAudioFFTData(path) ?? null
-      : null;
+    return audioPreviewData(this.session.resourceManager, type, path);
   }
 
+  controlAudioInput(action: "start" | "stop", deviceId?: string): Promise<string | undefined> {
+    return controlAudioInput(this.session.resourceManager, action, deviceId);
+  }
+  controlSystemAudio(action: "start" | "stop", deviceId?: string): Promise<string | undefined> {
+    return controlSystemAudio(this.session.resourceManager, action, deviceId);
+  }
+  controlScreen(action: "start" | "stop"): Promise<string | undefined> {
+    return this.session.resourceManager?.controlScreen(action) ?? Promise.resolve("Shader is not ready. Try again after it loads.");
+  }
+  getLiveInputPreview(type: LiveInputType): LiveInputPreview | null {
+    return livePreviewData(this.session.resourceManager, type);
+  }
   // ---- Custom uniforms ----
 
   getMouse(): [number, number, number, number] {

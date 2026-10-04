@@ -180,6 +180,12 @@ export class BufferConfig {
         return this.validateTextureInput(candidate);
       case 'video':
         return this.validateVideoInput(candidate);
+      case 'system-audio':
+      case 'microphone':
+      case 'webcam':
+        return Object.keys(candidate).every(key => key === 'type');
+      case 'screen':
+        return this.validateScreenInput(candidate);
       case 'keyboard':
         return this.validateKeyboardInput(candidate);
       case 'audio':
@@ -187,6 +193,15 @@ export class BufferConfig {
       default:
         return false;
     }
+  }
+
+  private validateScreenInput(input: Record<string, unknown>): boolean {
+    if (!Object.keys(input).every(key => ['type', 'filter', 'wrap', 'vflip'].includes(key))) {
+      return false;
+    }
+    return (input.filter === undefined || (typeof input.filter === 'string' && ['linear', 'nearest', 'mipmap'].includes(input.filter))) &&
+      (input.wrap === undefined || (typeof input.wrap === 'string' && ['repeat', 'clamp'].includes(input.wrap))) &&
+      (input.vflip === undefined || typeof input.vflip === 'boolean');
   }
 
   private static readonly GLSL_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -202,7 +217,7 @@ export class BufferConfig {
     if (input.filter !== undefined && (typeof input.filter !== 'string' || !['linear', 'nearest'].includes(input.filter))) {
       return false;
     }
-    return input.wrap === undefined || (typeof input.wrap === 'string' && ['repeat', 'clamp'].includes(input.wrap));
+    return input.wrap === undefined || (typeof input.wrap === 'string' && (typeof input.wrap === 'string' && ['repeat', 'clamp'].includes(input.wrap)));
   }
 
   private validateTextureInput(input: Record<string, unknown>): boolean {
@@ -210,11 +225,11 @@ export class BufferConfig {
       return false;
     }
 
-    if (input.filter && (typeof input.filter !== 'string' || !['linear', 'nearest', 'mipmap'].includes(input.filter))) {
+    if (input.filter && (typeof input.filter !== 'string' || !(typeof input.filter === 'string' && ['linear', 'nearest', 'mipmap'].includes(input.filter)))) {
       return false;
     }
 
-    if (input.wrap && (typeof input.wrap !== 'string' || !['repeat', 'clamp'].includes(input.wrap))) {
+    if (input.wrap && (typeof input.wrap !== 'string' || !(typeof input.wrap === 'string' && ['repeat', 'clamp'].includes(input.wrap)))) {
       return false;
     }
 
@@ -230,11 +245,11 @@ export class BufferConfig {
       return false;
     }
 
-    if (input.filter && (typeof input.filter !== 'string' || !['linear', 'nearest', 'mipmap'].includes(input.filter))) {
+    if (input.filter && (typeof input.filter !== 'string' || !(typeof input.filter === 'string' && ['linear', 'nearest', 'mipmap'].includes(input.filter)))) {
       return false;
     }
 
-    if (input.wrap && (typeof input.wrap !== 'string' || !['repeat', 'clamp'].includes(input.wrap))) {
+    if (input.wrap && (typeof input.wrap !== 'string' || !(typeof input.wrap === 'string' && ['repeat', 'clamp'].includes(input.wrap)))) {
       return false;
     }
 

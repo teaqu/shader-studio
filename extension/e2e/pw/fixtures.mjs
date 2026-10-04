@@ -87,13 +87,14 @@ export const test = base.extend({
    * panel state the specs leave behind are not safe to share.
    */
   vscodeKey: ['default', { scope: 'worker', option: true }],
+  fakeMediaDevices: [false, { scope: 'worker', option: true }],
   productionVsixPath: [process.env.SHADER_STUDIO_E2E_PRODUCTION_VSIX ?? process.env.SHADER_STUDIO_E2E_VSIX ?? null, { scope: 'worker', option: true }],
 
   // Worker-scoped: one VS Code window per worker, shared by every test in a
   // file. The specs build up state across tests (debug mode on, lock engaged)
   // exactly as they did under the previous runner, and a fresh window per test
   // would both break that and make the suite far slower.
-  vscode: [async ({ vscodeKey, productionVsixPath }, use) => {
+  vscode: [async ({ vscodeKey, productionVsixPath, fakeMediaDevices }, use) => {
     const fixtureStartedAt = performance.now();
     const profileStartedAt = performance.now();
     const userDataDir = mkdtempSync(join(tmpdir(), `ss-pw-${vscodeKey}-`));
@@ -149,6 +150,9 @@ export const test = base.extend({
         '--disable-background-timer-throttling',
         workspacePath,
       ];
+    }
+    if (fakeMediaDevices) {
+      args.push('--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream');
     }
     recordE2ePhase('profile-setup', profileStartedAt, { vscodeKey });
     // Parallel windows on one X display take input focus from each other,
