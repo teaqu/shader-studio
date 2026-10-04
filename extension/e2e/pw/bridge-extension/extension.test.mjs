@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { hostCallbackId } from '../host-callback.mjs';
 import { createRequire } from 'node:module';
 import { mkdtempSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 import bridge from './extension.js';
 import hostFunctions from './host-functions.js';
@@ -114,12 +115,12 @@ test('bridge invokes a registered callback id with its arguments', async () => {
 });
 
 test('static callback registry matches the browser specs and Node function source', () => {
-  execFileSync(process.execPath, [new URL('../generate-host-functions.mjs', import.meta.url).pathname, '--check']);
+  execFileSync(process.execPath, [fileURLToPath(new URL('../generate-host-functions.mjs', import.meta.url)), '--check']);
   const callback = async (vscode) => vscode.workspace.name ?? null;
-  const id = createHash('sha256').update(callback.toString()).digest('hex');
+  const id = hostCallbackId(callback.toString());
   assert.equal(typeof hostFunctions[id], 'function');
   for (const [registeredId, registeredCallback] of Object.entries(hostFunctions)) {
-    assert.equal(createHash('sha256').update(registeredCallback.toString()).digest('hex'), registeredId);
+    assert.equal(hostCallbackId(registeredCallback.toString()), registeredId);
   }
 });
 
@@ -127,7 +128,7 @@ test('registry includes callbacks after Playwright transforms browser specs', ()
   const require = createRequire(import.meta.url);
   const playwrightRoot = join(require.resolve('playwright/package.json'), '..');
   const { babelTransform } = require(join(playwrightRoot, 'lib', 'transform', 'babelBundle.js'));
-  const filename = new URL('../common-storage-debug.e2e.mjs', import.meta.url).pathname;
+  const filename = fileURLToPath(new URL('../common-storage-debug.e2e.mjs', import.meta.url));
   const transformed = babelTransform(readFileSync(filename, 'utf8'), filename, false, [], []).code;
   const file = ts.createSourceFile(filename, transformed, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
   let callback;
@@ -141,7 +142,7 @@ test('registry includes callbacks after Playwright transforms browser specs', ()
   }
   visit(file);
   assert.ok(callback);
-  const id = createHash('sha256').update(callback).digest('hex');
+  const id = hostCallbackId(callback);
   assert.equal(typeof hostFunctions[id], 'function');
 });
 

@@ -1,3 +1,4 @@
+import { declarationDocumentation } from "../documentation.js";
 import type { DocumentPositionParams } from "@shader-studio/language-server-core";
 import { isPositionInComment } from "@shader-studio/language-server-core";
 import { SHADER_STUDIO_SYMBOL_DOCS } from "@shader-studio/types";
@@ -5,7 +6,7 @@ import { symbolAtPosition, visibleSymbolsAtPosition } from "@shader-studio/wgsl-
 import type { Hover } from "vscode-languageserver-protocol";
 import { findWgslAttribute, findWgslIntrinsics } from "../intrinsics.js";
 import type { WgslProviderContext } from "../WgslLanguageServiceBackend.js";
-import { authoringValueWgslType, declarationDocumentation, declarationLabel, generatedWgslFunctions, identifierSite, isAttributeName, mainImageFeature, markdownHover, memberHover, signatureInformation, typedName, vertexHookFeature, wgslStage, wordAt } from "../WgslLanguageServiceSupport.js";
+import { authoringValueWgslType, declarationLabel, generatedWgslFunctions, identifierSite, isAttributeName, mainImageFeature, markdownHover, memberHover, signatureInformation, typedName, vertexHookFeature, wgslStage, wordAt } from "../WgslLanguageServiceSupport.js";
 
 export class WgslHoverProvider {
   constructor(private readonly context: WgslProviderContext) {}

@@ -1,5 +1,6 @@
 import { expect } from './fixtures.mjs';
 import { PNG } from 'pngjs';
+import { sourceForDocument } from './platform.mjs';
 
 export async function replaceSource(vscode, source) {
   await vscode.window.locator('.monaco-editor .view-lines').filter({ visible: true }).first().click();
@@ -11,7 +12,9 @@ export async function replaceSource(vscode, source) {
     clipboardData.setData('text/plain', text);
     document.activeElement.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
   }, source);
-  await expect.poll(() => vscode.evaluateInHost(vscode => vscode.window.activeTextEditor?.document.getText())).toBe(source);
+  const eol = await vscode.evaluateInHost(vscode => vscode.window.activeTextEditor?.document.eol);
+  await expect.poll(() => vscode.evaluateInHost(vscode => vscode.window.activeTextEditor?.document.getText()))
+    .toBe(sourceForDocument(source, eol));
 }
 
 export async function expectCanvasPixels(frame, rgb) {
@@ -63,7 +66,8 @@ export async function revertFixtureEditors(vscode, directory) {
     // The webview may own focus. Revert each dirty fixture's text editor
     // explicitly before deleting it, so the next test cannot open a save prompt.
     for (const document of vscode.workspace.textDocuments) {
-      if (!document.isDirty || !document.uri.fsPath.startsWith(directory + '/')) {
+      const prefix = vscode.Uri.file(directory).fsPath + (process.platform === 'win32' ? '\\' : '/');
+      if (!document.isDirty || !document.uri.fsPath.startsWith(prefix)) {
         continue;
       }
       await vscode.window.showTextDocument(document, { preserveFocus: false, preview: false });
@@ -122,6 +126,6 @@ export async function closeNativeEditor(vscode, path) {
   const name = path.split(/[\\/]/).at(-1);
   await vscode.window.locator('.tab.active').filter({ hasText: name }).locator('.codicon-close').click();
   await expect.poll(() => vscode.evaluateInHost((vscode, target) =>
-    vscode.window.activeTextEditor?.document.uri.fsPath !== target, path),
+    vscode.window.activeTextEditor?.document.uri.fsPath !== vscode.Uri.file(target).fsPath, path),
   { message: `native editor did not close: ${path}` }).toBe(true);
 }
