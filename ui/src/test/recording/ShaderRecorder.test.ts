@@ -749,6 +749,20 @@ describe('ShaderRecorder', () => {
 
   describe('Live video', () => {
     afterEach(() => vi.unstubAllGlobals());
+    it('uses completed frame readback for direct MP4 samples from WebGL', async () => {
+      const { stream, MockMediaRecorder } = installMediaRecorder();
+      MockMediaRecorder.isTypeSupported.mockReturnValue(true);
+      vi.stubGlobal('VideoEncoder', class {});
+      const blob = new Blob(['quality']);
+      mockCreateLiveVideoCapture.mockResolvedValueOnce({ result: Promise.resolve(blob), stop: vi.fn() });
+      const canvas = { width: 816, height: 458, captureStream: () => stream, getContext: vi.fn(() => null) };
+      const engine = { getCanvas: () => canvas, captureCurrentFrame: vi.fn(async () => new ImageData(816, 458)) };
+      await expect((recorder as any).recordLive({ mode: 'live', format: 'mp4', duration: 5, startTime: 0, fps: 60, width: 816, height: 458 }, engine)).resolves.toBe(blob);
+      const argumentsUsed = mockCreateLiveVideoCapture.mock.calls.at(-1)!;
+      expect(argumentsUsed).toHaveLength(5);
+      await argumentsUsed[4]();
+      expect(engine.captureCurrentFrame).toHaveBeenCalledOnce();
+    });
     it.each([true, false])('uses stable frame capture only for a WebGPU canvas (%s)', async webgpu => {
       const { stream, MockMediaRecorder } = installMediaRecorder();
       MockMediaRecorder.isTypeSupported.mockReturnValue(true);

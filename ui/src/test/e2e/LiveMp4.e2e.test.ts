@@ -38,6 +38,9 @@ it.each(["mp4", "webm"] as const)("keeps Aurora gradients smooth in Live %s", as
     recorder.stopLiveRecording();
     const blob = await recording;
     const decoded = await decodeVideoFrames(blob, [0.1]);
+    if (format === "mp4") {
+      expect(decoded.duration).toBeGreaterThanOrEqual(0.8);
+    }
     // RGB catches chroma blocks that a luma-only quality test can miss.
     expect(psnr(decoded.frames[0], reference)).toBeGreaterThanOrEqual(42);
   } finally {
@@ -77,6 +80,7 @@ it("preserves fine detail in Live MP4 and seeks backwards through the saved file
     const decoded = await decodeVideoFrames(blob, [duration * 0.8, duration * 0.1]);
     expect([decoded.width, decoded.height]).toEqual([1920, 1080]);
     expect(decoded.duration).toBeGreaterThan(0);
+    expect(duration).toBeGreaterThanOrEqual(0.8);
     for (const frame of decoded.frames) {
       expect(lumaPsnr(frame, reference)).toBeGreaterThanOrEqual(28);
     }
