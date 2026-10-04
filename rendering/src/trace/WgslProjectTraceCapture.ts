@@ -8,7 +8,7 @@ import { DISPATCH_UNIFORM_SIZE, SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX } from 
 import { wrapWgslComputeSource, wrapWgslImageSource } from '../webgpu/WgslPrelude';
 import { allowNonUniformDerivatives } from '../webgpu/wgslDiagnostics';
 import type { RenderPassNode, StorageBindingNode } from '../types/PassGraph';
-import { decodeWgslTrace, emitWgslTracePrelude, planWgslTraceProgram } from '@shader-studio/debug/trace';
+import { decodeWgslTrace, emitWgslTracePrelude, planWgslTraceProgram } from '@shader-studio/debug';
 import { captureWgslVertexTraceReplay } from './WgslVertexTraceReplay';
 import { patchWgslMeshPrimitiveTrace, prepareWgslMeshPrimitiveSelection } from './WgslMeshPrimitiveTrace';
 import { cloneWgslTraceChannels, cloneWgslTraceStorage } from './WgslTraceSnapshotResources';

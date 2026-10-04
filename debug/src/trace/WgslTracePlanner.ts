@@ -1,5 +1,5 @@
 import { parseWgslDocument, tokenizeWgsl, type WgslAnalysisDocument, type WgslStatement } from '@shader-studio/wgsl-analysis';
-import { applySourceEdits } from '@shader-studio/utils/source-edits';
+import { applySourceEdits } from '@shader-studio/utils';
 import type { WgslTraceLaunch, WgslTracePlan, WgslTraceSite, WgslTraceVariable } from '@shader-studio/types';
 import { validateWgslTraceLaunch, WGSL_TRACE_UNIFORM_TYPES } from '@shader-studio/types';
 import { containsPosition, containsRange, offsetAt } from '../wgsl/model';

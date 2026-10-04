@@ -5,9 +5,9 @@ import { getSlangChannels, buildSlangBindingPlan } from '../webgpu/SlangBindingP
 import { slangChannelLayoutEntries, slangChannelResourceEntries } from '../webgpu/SlangBindingResources';
 import { wrapWgslImageSource, WGSL_ENTRY_VERTEX } from '../webgpu/WgslPrelude';
 import { allowNonUniformDerivatives } from '../webgpu/wgslDiagnostics';
-import { emitWgslTracePrelude } from '@shader-studio/debug/trace';
-import { planWgslTraceProgram } from '@shader-studio/debug/trace';
-import { decodeWgslTrace } from '@shader-studio/debug/trace';
+import { emitWgslTracePrelude } from '@shader-studio/debug';
+import { planWgslTraceProgram } from '@shader-studio/debug';
+import { decodeWgslTrace } from '@shader-studio/debug';
 import { cloneWgslTraceChannels, cloneWgslTraceStorage } from './WgslTraceSnapshotResources';
 
 const U = globalThis.GPUBufferUsage ?? { MAP_READ: 1, COPY_SRC: 4, COPY_DST: 8, UNIFORM: 64, STORAGE: 128 } as typeof GPUBufferUsage;
