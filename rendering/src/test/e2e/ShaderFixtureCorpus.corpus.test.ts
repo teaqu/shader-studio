@@ -422,15 +422,15 @@ describe("slang-multipass-test shader corpus", () => {
       const project = projects.find((candidate) => candidate.name === `${language}/native-entrypoints/shared.${language}`)!;
       const harness = harnesses.get(language)!;
       harness.resize(32, 32);
-      await harness.compile(project);
+      await harness.compile(project as unknown as ShaderProgram);
       // Buffer channels are sampled from the prior completed render, so prime
       // the BufferA target before reading Image's selected fragment.
       await harness.renderAndReadRegion(0);
       const cool = await harness.renderAndReadRegion(0);
 
       const config = structuredClone(project.config!);
-      config.passes.BufferA!.entryPoints = { vertex: "fullscreenVertex", fragment: "bufferWarm" };
-      await harness.compile({ ...project, config });
+      config.passes!.BufferA!.entryPoints = { vertex: "fullscreenVertex", fragment: "bufferWarm" };
+      await harness.compile({ ...project, config } as unknown as ShaderProgram);
       await harness.renderAndReadRegion(0);
       const warm = await harness.renderAndReadRegion(0);
 

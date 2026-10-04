@@ -8,7 +8,13 @@ import type { CaptureUniforms } from "../../capture/VariableCapturer";
 import type { StorageBindingNode } from "../../types/PassGraph";
 import { createShaderToyUniformLayout, SHADERTOY_UNIFORM_SIZE, UNIFORM_OFFSETS } from "../../webgpu/SlangPrelude";
 import { allowNonUniformDerivatives } from "../../webgpu/wgslDiagnostics";
-import { captureCounters, resetCaptureCounters } from "../../capture/captureDiagnostics";
+import { captureCounters } from "../../capture/captureDiagnostics";
+
+function resetCaptureCounters(): void {
+  for (const key of Object.keys(captureCounters) as Array<keyof typeof captureCounters>) {
+    captureCounters[key] = 0;
+  }
+}
 
 const uniforms: CaptureUniforms = {
   time: 1,
@@ -635,7 +641,7 @@ describe("WebGPUVariableCapturer", () => {
       },
     });
 
-    await expect(capturer.issueCaptureGrid([{ ...captures[0], debugPlan: { nativeRender: { output: 0 } } }], uniforms, 8, 4)).resolves.toBe(0);
+    await expect(capturer.issueCaptureGrid([{ ...captures[0], debugPlan: { nativeRender: { fragmentEntryPoint: "sceneFragment", output: 0 } } }], uniforms, 8, 4)).resolves.toBe(0);
     expect(destroyChannels).toHaveBeenCalledOnce();
     expect(gpu.createdBuffers[0].destroy).toHaveBeenCalledOnce();
     expect(gpu.createdBuffers[1].destroy).toHaveBeenCalledOnce();

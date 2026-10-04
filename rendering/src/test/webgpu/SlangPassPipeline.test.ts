@@ -101,7 +101,7 @@ describe("SlangPassPipeline", () => {
     const pass = new SlangPassPipeline(device, "bgra8unorm", {
       name: "Scene", width: 64, height: 64, output: "texture", outputCount: 2, geometry: "cube", channels: [],
       entryPoints: { vertex: "vertices", fragment: "scene" },
-      renderState: { clear: [0, 0, 0, 1], blend: "opaque", depth: { test: true, write: true, compare: "less" }, cull: "none", samples: 4 },
+      renderState: { clear: [0, 0, 0, 1], blend: "none", depth: { test: true, write: true, compare: "less" }, cull: "none", samples: 4 },
     });
     await pass.rebuild('struct Outputs { @location(0) colour: vec4f, @location(1) data: vec4f, }\n@fragment fn scene() -> Outputs { return Outputs(); }');
     expect(device.createRenderPipeline.mock.calls[0]![0].fragment.targets).toHaveLength(2);

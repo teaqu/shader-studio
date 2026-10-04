@@ -19,7 +19,7 @@ it("preserves distinct MRT values in both feedback banks across resize and clear
   expect(adapter).not.toBeNull();
   const device = await adapter!.requestDevice();
   const pass = new SlangPassPipeline(device, "rgba8unorm", {
-    name: "Scene", width: 2, height: 2, output: "texture", outputCount: 2,
+    name: "Scene", width: 2, height: 2, output: "texture", outputCount: 2, geometry: "fullscreen",
     entryPoints: { vertex: "vertex", fragment: "fragment" }, channels: [], storage: [],
   }, "rgba32float");
   const source = `struct Outputs { @location(0) a: vec4f, @location(1) b: vec4f, }

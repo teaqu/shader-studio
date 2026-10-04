@@ -114,7 +114,7 @@ let generation = 0;
 async function openMirror(rel: string, text: string, opts: {
   stage: "fragment" | "vertex" | "compute";
   passName: string;
-  resources: { name: string; kind: "texture-2d" | "texture-cube" | "storage"; elementType?: string }[];
+  resources: { name: string; kind: "texture-2d" | "texture-cube" | "texture-3d" | "storage"; elementType?: string }[];
   customUniforms: { name: string; type: "float" | "vec2" | "vec3" | "vec4" | "bool" }[];
   commonFile?: { uri: string; text: string; version: number };
 }) {
@@ -152,7 +152,7 @@ interface MirrorDoc {
   text: string;
   stage: "fragment" | "vertex" | "compute";
   entry: string;
-  resources: { name: string; kind: "texture-2d" | "texture-cube" | "storage"; elementType?: string }[];
+  resources: { name: string; kind: "texture-2d" | "texture-cube" | "texture-3d" | "storage"; elementType?: string }[];
   customUniforms: { name: string; type: "float" | "vec2" | "vec3" | "vec4" | "bool" }[];
   commonFile?: { uri: string; text: string; version: number };
   commonHelper?: string;

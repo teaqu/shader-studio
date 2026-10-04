@@ -158,7 +158,7 @@ interface MirrorDoc {
   stage: "fragment" | "vertex" | "compute";
   storageWritable?: boolean;
   entry: string;
-  resources: { name: string; kind: "texture-2d" | "texture-cube" | "storage"; slot?: number; elementType?: string }[];
+  resources: { name: string; kind: "texture-2d" | "texture-cube" | "texture-3d" | "storage"; slot?: number; elementType?: string }[];
   customUniforms: { name: string; type: "float" | "vec2" | "vec3" | "vec4" | "bool" }[];
   outputLayers?: number;
   commonFile?: { rel: string; text: string };
