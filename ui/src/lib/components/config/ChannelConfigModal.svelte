@@ -71,6 +71,8 @@
   function typeToTab(type: string | undefined): TabName | null {
     switch (type) {
       case "buffer":
+      case "webcam":
+      case "screen":
       case "keyboard":
         return "Misc";
       case "texture":
@@ -79,6 +81,8 @@
         return "Cubemaps";
       case "video":
         return "Videos";
+      case "microphone":
+      case "system-audio":
       case "audio":
         return "Audio";
       default:
@@ -396,6 +400,7 @@
         {:else if activeTab === "Misc"}
           <MiscTab
             {shaderPath}
+            {audioVideoController}
             {tempInput}
             {getWebviewUri}
             {availableBufferNames}

@@ -91,6 +91,18 @@ suite('Shader config JSON schema', () => {
     assertInvalid({ version: '1.0', webgpu: { unknown: true }, passes: { Image: {} } }, 'should NOT have additional properties');
   });
 
+  test('accepts pathless live capture inputs but rejects file fields', () => {
+    for (const type of ['webcam', 'microphone', 'system-audio']) {
+      assertValid({ version: '1.0', passes: { Image: { inputs: { live: { type } } } } });
+      assertInvalid({ version: '1.0', passes: { Image: { inputs: { live: { type, path: 'file' } } } } }, 'additional properties');
+    }
+  });
+
+  test('accepts screen capture sampling settings', () => {
+    assertValid({ version: '1.0', passes: { Image: { inputs: { screen: { type: 'screen', filter: 'mipmap', wrap: 'repeat', vflip: false } } } } });
+    assertInvalid({ version: '1.0', passes: { Image: { inputs: { screen: { type: 'screen', path: 'file' } } } } }, 'additional properties');
+  });
+
   test('accepts every supported image and buffer geometry type plus omission', () => {
     for (const type of ['fullscreen', 'vertices', 'plane', 'cube', 'sphere']) {
       assertValid({

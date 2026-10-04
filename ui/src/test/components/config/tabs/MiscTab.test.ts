@@ -1,14 +1,64 @@
-import { render, fireEvent } from '@testing-library/svelte';
-import { describe, it, expect, vi } from 'vitest';
+import { render, fireEvent, waitFor } from '@testing-library/svelte';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import MiscTab from '../../../../lib/components/config/tabs/MiscTab.svelte';
+import type { AudioVideoController } from '../../../../lib/AudioVideoController';
+import { tick } from 'svelte';
 import type { ConfigInput } from '@shader-studio/types';
 import { setRenderOutputMetadata } from '../../../../lib/state/renderOutputMetadata.svelte';
 
 describe('MiscTab', () => {
+  beforeEach(() => vi.stubGlobal('acquireVsCodeApi', undefined));
+  afterEach(() => vi.unstubAllGlobals());
+  it.each(['webcam', 'screen'] as const)('disables %s in VS Code with browser guidance', async type => {
+    vi.stubGlobal('acquireVsCodeApi', vi.fn());
+    const props = defaultProps();
+    const view = render(MiscTab, { ...props, tempInput: { type } });
+    try {
+      const option = view.getByRole('button', { name: type === 'webcam' ? 'Webcam' : 'Screen' });
+      expect(option.getAttribute('aria-disabled')).toBe('true');
+      expect(option.getAttribute('data-tooltip')).toContain('Open Shader Studio in a browser');
+      await fireEvent.mouseEnter(option);
+      await waitFor(() => expect(view.getByRole('tooltip').textContent).toContain('Open Shader Studio in a browser'));
+      await fireEvent.click(option);
+      expect(props.onSelect).not.toHaveBeenCalled();
+      expect(view.queryByRole('button', { name: 'Open Capture Preview' })).toBeNull();
+      expect(view.queryByRole('button', { name: 'Start screen sharing' })).toBeNull();
+    } finally {
+      view.unmount();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('does not show the VS Code command in browser hosts', () => {
+    vi.stubGlobal('acquireVsCodeApi', undefined);
+    const view = render(MiscTab, { ...defaultProps(), tempInput: { type: 'webcam' } });
+    expect(view.queryByRole('button', { name: 'Open Capture Preview' })).toBeNull();
+    view.unmount();
+    vi.unstubAllGlobals();
+  });
   const defaultProps = () => ({
     tempInput: undefined as ConfigInput | undefined,
     getWebviewUri: vi.fn((path: string) => `webview://path/${path}`),
     onSelect: vi.fn(),
+  });
+
+  it.each(['webcam', 'screen'] as const)('selects a pathless %s input', async type => {
+    const props = defaultProps();
+    const { getByRole } = render(MiscTab, props);
+    await fireEvent.click(getByRole('button', { name: type === 'webcam' ? 'Webcam' : 'Screen' }));
+    expect(props.onSelect).toHaveBeenCalledWith({ type });
+  });
+
+  it('supplies the active capture controller to webcam and screen picker previews', async () => {
+    const canvasContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation((() => ({ canvas: { width: 160, height: 120 }, clearRect: vi.fn() })) as unknown as typeof HTMLCanvasElement.prototype.getContext);
+    const getLiveInputPreview = vi.fn(() => null);
+    const controller = { getLiveInputPreview } as unknown as AudioVideoController;
+    const { unmount } = render(MiscTab, { ...defaultProps(), audioVideoController: controller });
+    await tick();
+    expect(getLiveInputPreview).toHaveBeenCalledWith('webcam');
+    expect(getLiveInputPreview).toHaveBeenCalledWith('screen');
+    unmount();
+    canvasContext.mockRestore();
   });
 
   describe('Rendering', () => {
@@ -81,6 +131,20 @@ describe('MiscTab', () => {
       expect(layer).toHaveClass('input-select');
       await fireEvent.change(layer, { target: { value: '2' } });
       expect(props.onSelect).toHaveBeenCalledWith({ type: 'buffer', source: 'BufferCompute', layer: 2 });
+  });
+
+    it('emits screen sampling changes', async () => {
+      const props = { ...defaultProps(), tempInput: { type: 'screen' } as ConfigInput };
+      render(MiscTab, props);
+      const filter = document.body.querySelector('#screen-filter') as HTMLSelectElement;
+      const wrap = document.body.querySelector('#screen-wrap') as HTMLSelectElement;
+      const vflip = document.body.querySelector('#screen-vflip') as HTMLInputElement;
+      await fireEvent.change(filter, { target: { value: 'nearest' } });
+      await fireEvent.change(wrap, { target: { value: 'repeat' } });
+      await fireEvent.click(vflip);
+      expect(props.onSelect).toHaveBeenNthCalledWith(1, { type: 'screen', filter: 'nearest' });
+      expect(props.onSelect).toHaveBeenNthCalledWith(2, { type: 'screen', wrap: 'repeat' });
+      expect(props.onSelect).toHaveBeenNthCalledWith(3, { type: 'screen', vflip: false });
     });
 
     it('shows linear/clamp defaults and emits buffer sampling changes', async () => {

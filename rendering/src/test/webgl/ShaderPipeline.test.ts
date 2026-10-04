@@ -512,6 +512,22 @@ describe("ShaderPipeline", () => {
       expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
     });
 
+    it("preserves a configured screen capture through a structural reload without browser audio", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        version: "1",
+        passes: { Image: { inputs: { iChannel0: { type: "screen" } } } },
+      } as const;
+
+      await shaderPipeline.compileShaderPipeline(shaderCode, config, "shader.glsl", {});
+      mockResourceManager.cleanup.mockClear();
+
+      shaderPipeline.flagReloadOnNextApply();
+      await shaderPipeline.compileShaderPipeline(shaderCode, config, "shader.glsl", {});
+
+      expect(mockResourceManager.cleanup).toHaveBeenCalledWith(false, true);
+    });
+
     it("should not force cleanup on second compile if neither resetTime nor flagReloadOnNextApply was called", async () => {
       const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
       const shaderPath = "shader.glsl";
@@ -1895,6 +1911,20 @@ describe("ShaderPipeline", () => {
   });
 
   describe("video input handling", () => {
+    it("loads a screen capture through the live video binding", async () => {
+      await shaderPipeline.compileShaderPipeline(
+        "void mainImage() { gl_FragColor = vec4(1.0); }",
+        { passes: { Image: { inputs: { iChannel0: { type: "screen" } } } } } as any,
+        "shader.glsl",
+        {},
+      );
+
+      expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
+        "shader-studio-live://screen",
+        { filter: undefined, wrap: undefined, vflip: undefined, muted: true },
+      );
+    });
+
     it("should load video texture when pass has video input", async () => {
       const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
       const config = {
