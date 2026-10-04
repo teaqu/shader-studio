@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { PNG } from 'pngjs';
-import { createServer } from 'node:http';
+import { startTwoBuildServer } from './two-build-server.mjs';
 import { readWorkspaceFiles } from './workspace-store.mjs';
 
 test.use({ serviceWorkers: 'allow' });
@@ -169,35 +169,6 @@ test('a first install does not offer an update', async ({ page }) => {
 
   await expect(page.getByRole('button', { name: 'Update ready' })).toHaveCount(0);
 });
-
-/** Serves the preview through one origin and swaps in a second build's worker
- * and identity on demand. Playwright cannot intercept worker script fetches,
- * so the swap has to happen at the server. */
-async function startTwoBuildServer(upstream) {
-  let nextBuild = false;
-  const server = createServer(async (request, response) => {
-    const url = new URL(request.url, upstream);
-    const upstreamResponse = await fetch(url, { headers: { accept: request.headers.accept ?? '*/*' } });
-    let body = Buffer.from(await upstreamResponse.arrayBuffer());
-    const headers = Object.fromEntries([...upstreamResponse.headers].filter(([name]) => !['content-encoding', 'content-length', 'transfer-encoding'].includes(name)));
-    if (nextBuild && url.pathname.endsWith('/sw.js')) {
-      body = Buffer.from(body.toString().replace(/(const CACHE = "shader-studio-[^"]+)"/, '$1-next"'));
-    }
-    if (nextBuild && url.pathname.endsWith('/app-build.json')) {
-      body = Buffer.from(JSON.stringify({ buildId: 'next-build', channel: 'production' }));
-    }
-    response.writeHead(upstreamResponse.status, { ...headers, 'cache-control': 'no-store' });
-    response.end(body);
-  });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  return {
-    origin: `http://127.0.0.1:${server.address().port}`,
-    publishNextBuild: () => {
-      nextBuild = true;
-    },
-    close: () => new Promise((resolve) => server.close(resolve)),
-  };
-}
 
 test('accepting a newer build keeps an edit made just before the update', async ({ page, baseURL }) => {
   const builds = await startTwoBuildServer(baseURL);
