@@ -13,9 +13,31 @@ export interface NativeComputeTemplate {
 /** Leave vertex generation to the viewer unless the user explicitly inserts that stage. */
 export function createNativeFragmentSource(language: 'wgsl' | 'slang', source: string, passName: string, outputCount = 1) {
   const generated = createNativeRenderSource(language, source, passName, outputCount);
+  const entryPoints = { fragment: generated.entryPoints.fragment };
+  if (outputCount <= 1) {
+    const body = animatedFragmentBody(language);
+    const text = language === 'wgsl'
+      ? `\n@fragment\nfn ${entryPoints.fragment}(@builtin(position) fragCoord: vec4f) -> @location(0) vec4f {\n${body}\n}\n`
+      : `\n[shader("fragment")]\nfloat4 ${entryPoints.fragment}(float4 fragCoord : SV_Position) : SV_Target0 {\n${body}\n}\n`;
+    return { text, entryPoints };
+  }
   const vertex = getShaderSourceFunctions(generated.text, language).find(fn => fn.stage === 'vertex')!;
   return { text: generated.text.slice(0, vertex.start) + generated.text.slice(vertex.end),
-    entryPoints: { fragment: generated.entryPoints.fragment } };
+    entryPoints };
+}
+
+function animatedFragmentBody(language: 'wgsl' | 'slang'): string {
+  const wgsl = language === 'wgsl';
+  return `    ${wgsl ? 'let' : 'float2'} coord = fragCoord.xy;
+
+    // Normalized pixel coordinates (from 0 to 1)
+    ${wgsl ? 'let' : 'float2'} uv = coord / iResolution.xy;
+
+    // Time varying pixel color
+    ${wgsl ? 'let' : 'float3'} col = 0.5 + 0.5 * cos(iTime + uv.xyx + ${wgsl ? 'vec3f' : 'float3'}(0.0, 2.0, 4.0));
+
+    // Output to screen
+    return ${wgsl ? 'vec4f' : 'float4'}(col, 1.0);`;
 }
 
 function sourceIdentifiers(source: string): Set<string> {

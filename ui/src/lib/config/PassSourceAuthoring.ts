@@ -36,3 +36,9 @@ export function applyRenderSource(pass: BufferPass | ImagePass, result: CreatedS
     ...(result.authoringMode === 'hooks' ? {} : { ...(entryPoints ? { entryPoints } : {}), ...(outputs ? { outputs } : {}) }),
     ...(result.authoringMode === 'native' || result.entryPoints ? { entryPoints: { ...entryPoints, ...result.entryPoints } } : {}) };
 }
+
+export function applyFragmentSource(pass: BufferPass | ImagePass, result: CreatedSource): BufferPass | ImagePass {
+  const next = applyRenderSource(pass, result);
+  const vertex = pass.entryPoints?.vertex;
+  return result.authoringMode === 'hooks' && vertex ? { ...next, entryPoints: { vertex } } : next;
+}

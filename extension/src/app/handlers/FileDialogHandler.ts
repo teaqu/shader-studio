@@ -193,7 +193,7 @@ export class FileDialogHandler {
       try {
         document = await vscode.workspace.openTextDocument(uri);
       } catch {
-        if (payload.authoringMode === 'native' || payload.fileType.endsWith('-vertex')) {
+        if (payload.fileType.endsWith('-vertex')) {
           fail('Create or insert the buffer source before adding a shader stage.');
           return;
         }

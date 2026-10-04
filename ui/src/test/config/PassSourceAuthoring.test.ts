@@ -1,5 +1,10 @@
 import { expect, it } from 'vitest';
-import { applyRenderSource, applyVertexSource, bufferInsertionTarget, clearVertexSource, existingShaderModes } from '../../lib/config/PassSourceAuthoring';
+import { applyFragmentSource, applyRenderSource, applyVertexSource, bufferInsertionTarget, clearVertexSource, existingShaderModes } from '../../lib/config/PassSourceAuthoring';
+it('adds only the requested fragment while preserving a selected vertex and clearing incompatible MRT outputs for hooks', () => {
+  const pass = { path: 'a.wgsl', vertex: 'v.wgsl', entryPoints: { vertex: 'custom', fragment: 'old' }, outputs: [{}, {}] };
+  expect(applyFragmentSource(pass, { path: 'a.wgsl', authoringMode: 'native', entryPoints: { fragment: 'new' } })).toMatchObject({ entryPoints: { vertex: 'custom', fragment: 'new' }, vertex: 'v.wgsl' });
+  expect(applyFragmentSource(pass, { path: 'a.wgsl', authoringMode: 'hooks' })).toEqual({ path: 'a.wgsl', vertex: 'v.wgsl', entryPoints: { vertex: 'custom' } });
+});
 it('clears vertex associations while preserving fragment code selection and other pass settings', () => {
   const pass = { path: 'a.wgsl', vertex: 'a.vert.wgsl', entryPoints: { vertex: 'custom', fragment: 'paint' } };
   expect(clearVertexSource(pass)).toEqual({ path: 'a.wgsl', entryPoints: { fragment: 'paint' } });

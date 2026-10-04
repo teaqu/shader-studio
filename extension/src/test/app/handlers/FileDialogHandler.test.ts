@@ -979,6 +979,17 @@ suite('FileDialogHandler Test Suite', () => {
 
 
   suite('handleInsertShaderSource', () => {
+    test('creates the configured file when inserting a native buffer', async () => {
+      const sourcePath = vscode.Uri.file('/test/new-buffer.wgsl').fsPath;
+      sandbox.stub(vscode.workspace, 'openTextDocument').rejects(new Error('File not found'));
+      const apply = sandbox.stub(vscode.workspace, 'applyEdit').resolves(true);
+      await handler.handleInsertShaderSource({ shaderPath: vscode.Uri.file('/test/image.wgsl').fsPath,
+        sourcePath, fileType: 'wgsl-buffer', requestId: 'new-native', authoringMode: 'native', passName: 'BufferA' }, respondFn);
+      assert.ok(apply.calledOnce);
+      assert.ok(apply.firstCall.args[0].entries()[0]![1][0]!.newText.includes('BufferAFragment'));
+      assert.deepStrictEqual(respondFn.firstCall.args[0].payload, { path: sourcePath, requestId: 'new-native',
+        authoringMode: 'native', entryPoints: { fragment: 'BufferAFragment' } });
+    });
     for (const language of ['glsl', 'slang', 'wgsl']) {
       test(`inserts a ${language} vertex hook into the source and reuses an existing hook`, async () => {
         const sourcePath = vscode.Uri.file(`/test/image.${language}`).fsPath;

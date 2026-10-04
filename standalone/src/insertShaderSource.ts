@@ -29,7 +29,7 @@ export function insertShaderSource(workspace: VirtualWorkspace, activeShaderPath
     }
     const exists = workspace.exists(sourcePath);
     const mode = payload.authoringMode === 'native' ? 'native' : 'hooks';
-    if (!exists && (mode === 'native' || fileType.endsWith('-vertex'))) {
+    if (!exists && fileType.endsWith('-vertex')) {
       throw new Error('Create or insert the buffer source before adding a shader stage.');
     }
     const source = exists ? workspace.readText(sourcePath) : '';

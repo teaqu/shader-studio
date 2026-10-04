@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { BufferPass, ImagePass, ShaderEntryPoint, ShaderLanguageId, FileDialogFileType, MessageEvent as ViewerMessage } from '@shader-studio/types';
-  import { applyRenderSource } from '../../config/PassSourceAuthoring';
+  import { applyFragmentSource, applyVertexSource } from '../../config/PassSourceAuthoring';
   import RenderEntryPointControls from './RenderEntryPointControls.svelte';
   import PathInput from './PathInput.svelte';
 
@@ -25,10 +25,14 @@
 
 <div class="config-item">
   <RenderEntryPointControls {pass} {entryPoints} {language} {onCommit}>
-    {#snippet authoringControls()}
+    {#snippet authoringControls(stage)}
       <PathInput value="" hidePath={true} allowCreate={false} allowInsert={true} insertLabel="Add"
-        {sourcePath} {fileType} {passName} {authoringMode} {outputCount} {shaderPath} {postMessage} {onMessage}
-        onCreated={(result) => onCommit(applyRenderSource(pass, { ...result, path: isImagePass ? '' : result.path }))} />
+        {sourcePath} fileType={stage === 'vertex' ? `${language}-vertex` : fileType}
+        geometryType={pass.geometry?.type ?? 'fullscreen'}
+        vertexSpace={pass.geometry?.type === 'vertices' ? pass.geometry.space ?? 'world' : 'world'}
+        {passName} {authoringMode} {outputCount} {shaderPath} {postMessage} {onMessage}
+        onCreated={(result) => onCommit(stage === 'vertex' ? applyVertexSource(pass, result)
+          : applyFragmentSource(pass, { ...result, path: isImagePass ? '' : result.path }))} />
     {/snippet}
   </RenderEntryPointControls>
 </div>
