@@ -101,7 +101,7 @@ function prepareVertexReplay(snapshot: WgslProjectTraceSnapshot, request: WgslPr
   const demoted = demoteVertexEntry(wrapped.source);
   const dataBinding = bindings.nextBinding + snapshot.storage.length + (pass.geometry === 'fullscreen' ? 0 : 1);
   const resultBinding = dataBinding + 1;
-  const replay = `${demoted}\n@group(0) @binding(${dataBinding}) var<storage, read> _ss_trace_vertexData: array<f32>;\n@group(0) @binding(${resultBinding}) var<storage, read_write> _ss_trace_vertexResult: array<vec4f>;\n${replayEntry(pass.geometry === 'fullscreen', request.vertexIndex ?? 0)}`;
+  const replay = `${demoted}\n@group(0) @binding(${dataBinding}) var<storage, read> _ss_trace_vertexData: array<f32>;\n@group(0) @binding(${resultBinding}) var<storage, read_write> _ss_trace_vertexResult: array<vec4f>;\n${vertexReplayEntry(pass.geometry === 'fullscreen', request.vertexIndex ?? 0)}`;
   const ranges = [
     ...(snapshot.vertexPath && wrapped.vertexRange ? [{ path: snapshot.vertexPath, startLine: wrapped.vertexRange.startLine, endLine: wrapped.vertexRange.startLine + wrapped.vertexRange.lineCount - 1 }] : []),
     ...(snapshot.commonPath && wrapped.commonRange ? [{ path: snapshot.commonPath, startLine: wrapped.commonRange.startLine, endLine: wrapped.commonRange.startLine + wrapped.commonRange.lineCount - 1 }] : []),
@@ -139,8 +139,8 @@ function demoteVertexEntry(source: string) {
     throw new Error('WGSL vertex entry was not generated.');
   } const end = source.indexOf('{', start); return `${source.slice(0, start)}${source.slice(start, end).replace('@vertex ', '').replace(/@(?:builtin|location)\([^)]*\)\s*/g, '')}${source.slice(end)}`;
 }
-function replayEntry(fullscreen: boolean, vertexIndex: number) {
-  return fullscreen ? `@compute @workgroup_size(1) fn _ss_vertexTraceReplay() { _ss_trace_vertexResult[0] = ${WGSL_ENTRY_VERTEX}(u32(${vertexIndex})); }` : `@compute @workgroup_size(1) fn _ss_vertexTraceReplay() { var p=vec3f(_ss_trace_vertexData[0],_ss_trace_vertexData[1],_ss_trace_vertexData[2]); var n=vec3f(_ss_trace_vertexData[3],_ss_trace_vertexData[4],_ss_trace_vertexData[5]); var uv=vec2f(_ss_trace_vertexData[6],_ss_trace_vertexData[7]); _ss_trace_vertexResult[0] = ${WGSL_ENTRY_VERTEX}(p,n,uv).position; }`;
+export function vertexReplayEntry(fullscreen: boolean, vertexIndex: number) {
+  return fullscreen ? `@compute @workgroup_size(1) fn _ss_vertexTraceReplay() { _ss_trace_vertexResult[0] = ${WGSL_ENTRY_VERTEX}(u32(${vertexIndex})).position; }` : `@compute @workgroup_size(1) fn _ss_vertexTraceReplay() { var p=vec3f(_ss_trace_vertexData[0],_ss_trace_vertexData[1],_ss_trace_vertexData[2]); var n=vec3f(_ss_trace_vertexData[3],_ss_trace_vertexData[4],_ss_trace_vertexData[5]); var uv=vec2f(_ss_trace_vertexData[6],_ss_trace_vertexData[7]); _ss_trace_vertexResult[0] = ${WGSL_ENTRY_VERTEX}(p,n,uv,u32(${vertexIndex}),0u).position; }`;
 }
 function layoutEntries(snapshot: WgslProjectTraceSnapshot, plan: ReturnType<typeof buildSlangBindingPlan>, data: number, result: number): GPUBindGroupLayoutEntry[] {
   const entries: GPUBindGroupLayoutEntry[] = [{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } }, ...slangChannelLayoutEntries(plan, GPUShaderStage.COMPUTE)]; for (const node of snapshot.storage) {
