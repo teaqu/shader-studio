@@ -489,8 +489,38 @@ describe('generated service worker', () => {
     expect(source).toContain("cache.match(asset, { ignoreVary: true })");
     expect(source).toContain("event.data?.type !== 'PREPARE_OFFLINE'");
     expect(source).toContain("event.data?.type === 'CANCEL_PREPARE_OFFLINE'");
-    expect(source).toContain("caches.match(event.request, { ignoreVary: true })");
-    expect(source).toContain("event.request.mode === 'navigate' ? caches.match('./', { ignoreVary: true })");
+    expect(source).toContain("cache.match(event.request, { ignoreVary: true })");
+    expect(source).toContain("event.request.mode === 'navigate' ? cache.match('./', { ignoreVary: true })");
+  });
+
+  it.each(['default', 'no-store'])('serves only the current build cache and respects %s requests', async (cacheMode) => {
+    let fetchListener!: (event: { request: Request; respondWith: (response: Promise<Response>) => void }) => void;
+    const currentCache = { match: vi.fn().mockResolvedValue(new Response('current build')) };
+    const caches = {
+      open: vi.fn().mockResolvedValue(currentCache),
+      match: vi.fn().mockResolvedValue(new Response('stale build from another channel')),
+    };
+    const fetch = vi.fn().mockResolvedValue(new Response('fresh network'));
+    const self = {
+      location: { origin: 'https://example.test' },
+      registration: { scope: 'https://example.test/' },
+      addEventListener: (type: string, listener: typeof fetchListener) => {
+        if (type === 'fetch') {
+          fetchListener = listener;
+        }
+      },
+    };
+    const source = serviceWorkerSource(['./'], [], { channel: 'preview', buildId: 'current' });
+    new Function('self', 'caches', 'fetch', source)(self, caches, fetch);
+    let response!: Promise<Response>;
+    fetchListener({ request: new Request('https://example.test/', { cache: cacheMode as RequestCache }), respondWith: (value) => {
+      response = value;
+    } });
+    expect(await (await response).text()).toBe(cacheMode === 'no-store' ? 'fresh network' : 'current build');
+    expect(caches.match).not.toHaveBeenCalled();
+    if (cacheMode === 'no-store') {
+      expect(currentCache.match).not.toHaveBeenCalled();
+    }
   });
 
   it('declares installable standalone metadata with the shipped icon', () => {

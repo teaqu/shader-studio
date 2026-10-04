@@ -93,10 +93,14 @@ self.addEventListener('message', (event) => {
 });
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET' || new URL(event.request.url).origin !== self.location.origin) return;
-  event.respondWith(caches.match(event.request, { ignoreVary: true }).then((cached) => cached || fetch(event.request).then((response) => {
+  if (event.request.cache === 'no-store') {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+  event.respondWith(caches.open(CACHE).then((cache) => cache.match(event.request, { ignoreVary: true }).then((cached) => cached || fetch(event.request).then((response) => {
     if (response.ok && new URL(event.request.url).pathname.startsWith(self.registration.scope.replace(self.location.origin, ''))) caches.open(CACHE).then((cache) => cache.put(event.request, response.clone()));
     return response;
-  }).catch(() => event.request.mode === 'navigate' ? caches.match('./', { ignoreVary: true }) : undefined)));
+  }).catch(() => event.request.mode === 'navigate' ? cache.match('./', { ignoreVary: true }) : undefined))));
 });`;
 }
 

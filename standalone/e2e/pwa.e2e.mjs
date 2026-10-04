@@ -5,6 +5,19 @@ import { readWorkspaceFiles } from './workspace-store.mjs';
 
 test.use({ serviceWorkers: 'allow' });
 
+test('a stale cache from another channel cannot replace the current shell on reload', async ({ page }) => {
+  await page.goto('/shader-studio-icon.svg');
+  await page.evaluate(async () => {
+    const cache = await caches.open('shader-studio-unrelated-stale-build');
+    await cache.put('/', new Response('<html><body>Stale shell from another channel</body></html>', { headers: { 'content-type': 'text/html' } }));
+  });
+  await page.goto('/');
+  await controlledByWorker(page);
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toBeVisible();
+  await expect(page.getByText('Stale shell from another channel')).toHaveCount(0);
+});
+
 test('installs the cached standalone shell and reloads it offline', async ({ page, context }) => {
   await page.goto('/');
   await expect(page.locator('#app')).toBeVisible();
