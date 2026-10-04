@@ -66,6 +66,7 @@ nav:
       - Overview: index.md
       - Quick Start: quick-start.md
       - Standalone Mode: standalone.md
+      - Mobile Device Acceptance: mobile-testing.md
   - Features:
       - Configure Buffers And Inputs: features/config-buffers.md
       - Compute Passes: features/compute.md

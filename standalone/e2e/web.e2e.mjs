@@ -1083,6 +1083,75 @@ test('explorer can resize beyond 260 pixels and retains its width after reload',
 });
 
 
+test('desktop pane sizes recover after the window is compressed and expanded', async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.goto('/');
+  const explorer = page.getByTestId('web-shader-explorer');
+  const editor = page.getByTestId('web-editor');
+  const preview = page.getByTestId('web-preview');
+  await expect(explorer).toBeVisible();
+
+  const initialExplorer = await explorer.boundingBox();
+  const explorerBoundary = initialExplorer.x + initialExplorer.width;
+  const sashes = page.locator('.standalone-dockview .dv-sash');
+  let explorerSash;
+  let explorerSashDistance = Infinity;
+  for (let index = 0; index < await sashes.count(); index += 1) {
+    const candidate = await sashes.nth(index).boundingBox();
+    const distance = candidate ? Math.abs(candidate.x + candidate.width / 2 - explorerBoundary) : Infinity;
+    if (candidate && candidate.height > candidate.width && distance < explorerSashDistance) {
+      explorerSash = candidate;
+      explorerSashDistance = distance;
+    }
+  }
+  expect(explorerSash).toBeTruthy();
+  await page.mouse.move(explorerSash.x + explorerSash.width / 2, explorerSash.y + explorerSash.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(explorerSash.x + explorerSash.width / 2 + 170, explorerSash.y + explorerSash.height / 2, { steps: 20 });
+  await page.mouse.up();
+  await expect.poll(async () => (await explorer.boundingBox()).width).toBeGreaterThan(400);
+
+  await preview.getByLabel('Toggle config panel').click();
+  const config = page.locator('.config-panel');
+  await expect(config).toBeVisible();
+  const initialConfig = await config.boundingBox();
+  const toolGroup = page.locator('.standalone-dockview .dv-groupview').filter({
+    has: page.locator('.dv-default-tab-content', { hasText: /^Config$/ }),
+  });
+  const initialToolGroup = await toolGroup.boundingBox();
+  const toolBoundary = initialToolGroup.y;
+  let toolSash;
+  let toolSashDistance = Infinity;
+  for (let index = 0; index < await sashes.count(); index += 1) {
+    const candidate = await sashes.nth(index).boundingBox();
+    const distance = candidate ? Math.abs(candidate.y + candidate.height / 2 - toolBoundary) : Infinity;
+    if (candidate && candidate.width > candidate.height && distance < toolSashDistance) {
+      toolSash = candidate;
+      toolSashDistance = distance;
+    }
+  }
+  expect(toolSash).toBeTruthy();
+  await page.mouse.move(toolSash.x + toolSash.width / 2, toolSash.y + toolSash.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(toolSash.x + toolSash.width / 2, toolSash.y + toolSash.height / 2 - 120, { steps: 20 });
+  await page.mouse.up();
+  await expect.poll(async () => (await config.boundingBox()).height).toBeGreaterThan(initialConfig.height);
+
+  const panes = [explorer, editor, preview, config];
+  const preferred = await Promise.all(panes.map((pane) => pane.boundingBox()));
+  await page.setViewportSize({ width: 800, height: 500 });
+  await expect.poll(async () => (await explorer.boundingBox()).width).toBeLessThan(preferred[0].width);
+  await page.setViewportSize({ width: 1400, height: 900 });
+
+  for (const [pane, expected] of panes.map((pane, index) => [pane, preferred[index]])) {
+    await expect.poll(async () => Math.abs((await pane.boundingBox()).width - expected.width)).toBeLessThan(3);
+    await expect.poll(async () => Math.abs((await pane.boundingBox()).height - expected.height)).toBeLessThan(3);
+    await expect.poll(async () => (await pane.boundingBox()).width).toBeGreaterThan(100);
+    await expect.poll(async () => (await pane.boundingBox()).height).toBeGreaterThan(100);
+  }
+});
+
+
 test('replacing the active editor preserves tab order after reload', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('shader-option-glow-trails-glsl').click();

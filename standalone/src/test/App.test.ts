@@ -16,6 +16,7 @@ vi.mock('@shader-studio/ui', async () => {
 
 import App from '../App.svelte';
 import type { WebTransport } from '../WebTransport';
+import type { PwaController, PwaStatus } from '../pwa';
 import {
   selectEditor, getSelectedEditor, requestEditor, getRequestedEditor, getNewShaderVisible,
   getRequestedPanel,
@@ -29,6 +30,12 @@ type TestTransport = WebTransport & {
   postMessage: ReturnType<typeof vi.fn>;
   getShaderExplorerHostApi: ReturnType<typeof vi.fn>;
   clearWorkspace: ReturnType<typeof vi.fn>;
+  flush: ReturnType<typeof vi.fn>;
+  exportWorkspaceBackup: ReturnType<typeof vi.fn>;
+  importWorkspaceBackup: ReturnType<typeof vi.fn>;
+  onPersistenceStatus: ReturnType<typeof vi.fn>;
+  getStorageStatus: ReturnType<typeof vi.fn>;
+  requestPersistentStorage: ReturnType<typeof vi.fn>;
 };
 
 function createTransport(): TestTransport {
@@ -36,7 +43,32 @@ function createTransport(): TestTransport {
     postMessage: vi.fn(),
     getShaderExplorerHostApi: vi.fn(() => ({ getShaders: vi.fn() })),
     clearWorkspace: vi.fn().mockResolvedValue(undefined),
+    flush: vi.fn().mockResolvedValue(undefined),
+    exportWorkspaceBackup: vi.fn().mockResolvedValue('{"workspace":true}'),
+    importWorkspaceBackup: vi.fn().mockResolvedValue(undefined),
+    onPersistenceStatus: vi.fn((listener) => {
+      listener({ state: 'saved' });
+      return vi.fn();
+    }),
+    getStorageStatus: vi.fn().mockResolvedValue({ backend: 'indexeddb', persisted: false, persistSupported: true }),
+    requestPersistentStorage: vi.fn().mockResolvedValue({ backend: 'indexeddb', persisted: true, persistSupported: true }),
   } as unknown as TestTransport;
+}
+
+function createPwa(status: Partial<PwaStatus> = {}): PwaController & { applyUpdate: ReturnType<typeof vi.fn> } {
+  return {
+    start: vi.fn().mockResolvedValue(undefined),
+    subscribe: vi.fn((listener: (value: PwaStatus) => void) => {
+      listener({ supported: true, online: true, updateAvailable: false, buildId: 'abc123', offlinePreparation: { state: 'idle' }, ...status });
+      return vi.fn();
+    }),
+    applyUpdate: vi.fn().mockResolvedValue(undefined),
+    checkForUpdate: vi.fn().mockResolvedValue(undefined),
+    prepareOffline: vi.fn().mockResolvedValue(undefined),
+    retryOfflinePreparation: vi.fn().mockResolvedValue(undefined),
+    cancelOfflinePreparation: vi.fn(),
+    dispose: vi.fn(),
+  };
 }
 
 function createStorage(): Storage {
@@ -56,11 +88,14 @@ function createStorage(): Storage {
 describe('standalone App', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    layoutStub.selectEditor.mockReset();
     layoutStub.openEditor.mockReset();
     layoutStub.showPanel.mockReset();
     layoutStub.togglePanel.mockReset();
     layoutStub.isPanelVisible.mockReset().mockReturnValue(true);
     layoutStub.resetLayout.mockReset();
+    layoutStub.isMobileLayout.mockReset().mockReturnValue(false);
+    layoutStub.selectMobilePanel.mockReset();
     resetShellState();
     setViewerSession(null);
     vi.stubGlobal('localStorage', createStorage());
@@ -97,11 +132,48 @@ describe('standalone App', () => {
     expect(github.getAttribute('href')).toBe('https://github.com/teaqu/shader-studio');
     expect(github.getAttribute('target')).toBe('_blank');
     expect(github.getAttribute('rel')).toBe('noopener noreferrer');
+    const status = await screen.findByRole('status', { name: 'Online · Saved' });
+    expect(status.textContent?.trim()).toBe('');
+    expect(status.querySelector('.codicon-cloud')).toBeTruthy();
+    expect(status.querySelector('.codicon-check')).toBeTruthy();
 
     await fireEvent.click(screen.getByRole('button', { name: 'View' }));
     expect(screen.getByRole('menuitemcheckbox', { name: 'Shader Explorer' }).getAttribute('aria-checked')).toBe('true');
     expect(screen.getByRole('menuitemcheckbox', { name: 'Editor' }).getAttribute('aria-checked')).toBe('true');
     expect(screen.getByRole('menuitemcheckbox', { name: 'Preview' }).getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('dismisses the alpha notice and remembers that preference', async () => {
+    const first = render(App, { transport: createTransport() });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Dismiss alpha notice' }));
+    expect(screen.queryByTestId('web-alpha-warning')).toBeNull();
+    expect(localStorage.getItem('shader-studio.alpha-notice-dismissed')).toBe('true');
+
+    first.unmount();
+    render(App, { transport: createTransport() });
+    expect(screen.queryByTestId('web-alpha-warning')).toBeNull();
+  });
+
+  it('starts with the alpha notice hidden when it was previously dismissed', () => {
+    localStorage.setItem('shader-studio.alpha-notice-dismissed', 'true');
+    render(App, { transport: createTransport() });
+    expect(screen.queryByTestId('web-alpha-warning')).toBeNull();
+  });
+
+  it('allows an in-memory alpha notice dismissal when browser storage is blocked', async () => {
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => {
+        throw new Error('blocked');
+      }),
+      setItem: vi.fn(() => {
+        throw new Error('blocked');
+      }),
+    });
+    render(App, { transport: createTransport() });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Dismiss alpha notice' }));
+    expect(screen.queryByTestId('web-alpha-warning')).toBeNull();
   });
 
   it('toggles panels from View and groups workspace actions separately', async () => {
@@ -123,6 +195,191 @@ describe('standalone App', () => {
     expect(layoutStub.resetLayout).toHaveBeenCalledOnce();
   });
 
+  it('surfaces durable save, connectivity, build, and update state', async () => {
+    const transport = createTransport();
+    transport.onPersistenceStatus.mockImplementation((listener) => {
+      listener({ state: 'error', error: new Error('quota') });
+      return vi.fn();
+    });
+    const pwa = createPwa({ online: false, updateAvailable: true, buildId: 'mobile-42' });
+    render(App, { props: { transport, pwa } });
+
+    const status = screen.getByRole('status', { name: 'Offline · Save failed' });
+    expect(status.getAttribute('title')).toBe('Offline · Save failed · Build mobile-42');
+    expect(status.querySelector('.codicon-debug-disconnect')).toBeTruthy();
+    expect(status.querySelector('.codicon-error')).toBeTruthy();
+    await fireEvent.click(screen.getByRole('button', { name: 'Update ready' }));
+    expect(transport.flush).toHaveBeenCalledOnce();
+    expect(pwa.applyUpdate).toHaveBeenCalledOnce();
+  });
+
+  it('reports session-only storage and exposes explicit offline preparation', async () => {
+    const transport = createTransport();
+    transport.getStorageStatus.mockResolvedValue({ backend: 'session', persisted: false, persistSupported: false });
+    const pwa = createPwa();
+    render(App, { props: { transport, pwa } });
+
+    const status = await waitFor(() => screen.getByRole('status', { name: 'Online · Session-only' }));
+    expect(status.querySelector('.codicon-cloud')).toBeTruthy();
+    expect(status.querySelector('.codicon-warning')).toBeTruthy();
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Download compilers for offline use' }));
+    expect(pwa.prepareOffline).toHaveBeenCalledOnce();
+    await fireEvent.click(screen.getByRole('button', { name: 'Check for Updates' }));
+    expect(pwa.checkForUpdate).toHaveBeenCalledOnce();
+  });
+
+  it.each(['declined', 'failed', 'unknown'])('remembers an automatic request across app launches: %s', async (result) => {
+    const transport = createTransport();
+    if (result === 'failed') {
+      transport.requestPersistentStorage.mockRejectedValue(new Error('denied'));
+    } else {
+      transport.requestPersistentStorage.mockResolvedValue({ backend: 'indexeddb', persisted: result === 'unknown' ? null : false, persistSupported: true });
+    }
+    const first = render(App, { props: { transport } });
+    await waitFor(() => expect(transport.requestPersistentStorage).toHaveBeenCalledOnce());
+    first.unmount();
+    render(App, { props: { transport } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+    await tick();
+    expect(transport.requestPersistentStorage).toHaveBeenCalledOnce();
+  });
+
+  it('keeps requests manual when a decision cannot be remembered', async () => {
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {
+      throw new Error('blocked');
+    } });
+    const transport = createTransport();
+    render(App, { props: { transport } });
+    expect(await screen.findByRole('button', { name: 'Storage warning' })).toBeTruthy();
+    expect(transport.requestPersistentStorage).not.toHaveBeenCalled();
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Request storage protection' }));
+    await waitFor(() => expect(transport.requestPersistentStorage).toHaveBeenCalledOnce());
+  });
+
+  it('shows only a warning icon beside the cloud and tick, with details on hover and click', async () => {
+    const transport = createTransport();
+    transport.requestPersistentStorage.mockResolvedValue({ backend: 'indexeddb', persisted: false, persistSupported: true });
+    render(App, { props: { transport } });
+    const warning = await screen.findByRole('button', { name: 'Storage warning' });
+    expect(warning.closest('.build-status')).toBeTruthy();
+    expect(warning.getAttribute('title')).toContain('space runs low');
+    expect(warning.textContent?.trim()).toBe('');
+    expect(screen.queryByTestId('storage-warning')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Dismiss storage warning' })).toBeNull();
+    await fireEvent.click(warning);
+    expect(await screen.findByText(/Storage protection has not been granted/)).toBeTruthy();
+    expect(transport.requestPersistentStorage).toHaveBeenCalledOnce();
+  });
+  it('automatically requests storage protection when it has not been granted', async () => {
+    const transport = createTransport();
+    render(App, { props: { transport } });
+    await waitFor(() => expect(transport.requestPersistentStorage).toHaveBeenCalledOnce());
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+    expect(await screen.findByText(/Storage protection is enabled/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Request storage protection' })).toBeNull();
+    expect(screen.queryByTestId('storage-warning')).toBeNull();
+  });
+
+  it('explains automatic saving and allows retry when protection is declined', async () => {
+    const transport = createTransport();
+    transport.requestPersistentStorage.mockResolvedValueOnce({ backend: 'indexeddb', persisted: false, persistSupported: true });
+    render(App, { props: { transport } });
+    await waitFor(() => expect(transport.requestPersistentStorage).toHaveBeenCalledOnce());
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+    expect(await screen.findByText(/Work saves automatically\.\s+Storage protection has not been granted/)).toBeTruthy();
+    await fireEvent.click(screen.getByRole('button', { name: 'Request storage protection' }));
+    await waitFor(() => expect(transport.requestPersistentStorage).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText(/Storage protection is enabled/)).toBeTruthy();
+  });
+
+  it.each([
+    { backend: 'indexeddb', persisted: true, persistSupported: true },
+    { backend: 'indexeddb', persisted: null, persistSupported: false },
+    { backend: 'session', persisted: false, persistSupported: true },
+  ])('does not request protection for an already protected or unsupported workspace: %j', async (status) => {
+    const transport = createTransport();
+    transport.getStorageStatus.mockResolvedValue(status);
+    render(App, { props: { transport } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+    await tick();
+    expect(transport.requestPersistentStorage).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Request storage protection' })).toBeNull();
+    if (status.backend === 'session') {
+      expect(screen.getByRole('button', { name: 'Storage warning' }).getAttribute('title')).toContain('closing the app');
+      expect(screen.queryByRole('button', { name: 'Dismiss storage warning' })).toBeNull();
+    } else if (!status.persisted) {
+      expect(screen.getByRole('button', { name: 'Storage warning' })).toBeTruthy();
+    } else {
+      expect(screen.queryByTestId('storage-warning')).toBeNull();
+    }
+  });
+
+  it('keeps saving feedback and a retry available when the protection request fails', async () => {
+    const transport = createTransport();
+    transport.requestPersistentStorage.mockRejectedValue(new Error('denied'));
+    render(App, { props: { transport } });
+    await waitFor(() => expect(transport.requestPersistentStorage).toHaveBeenCalledOnce());
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+    expect(await screen.findByRole('button', { name: 'Request storage protection' })).toBeTruthy();
+    expect(screen.getByRole('status', { name: 'Online · Saved' })).toBeTruthy();
+  });
+
+  it('reports unknown protection without claiming a request was declined', async () => {
+    const transport = createTransport();
+    transport.requestPersistentStorage.mockResolvedValue({ backend: 'indexeddb', persisted: null, persistSupported: true });
+    render(App, { props: { transport } });
+    await waitFor(() => expect(transport.requestPersistentStorage).toHaveBeenCalledOnce());
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+    expect(await screen.findByText(/Storage protection could not be confirmed/)).toBeTruthy();
+  });
+
+  it('disables manual requests while the automatic request is pending', async () => {
+    const transport = createTransport();
+    let finish!: (status: { backend: string; persisted: boolean; persistSupported: boolean }) => void;
+    transport.requestPersistentStorage.mockReturnValue(new Promise((resolve) => {
+      finish = resolve;
+    }));
+    render(App, { props: { transport } });
+    await waitFor(() => expect(transport.requestPersistentStorage).toHaveBeenCalledOnce());
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+    expect(screen.getByRole('button', { name: 'Request storage protection' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByText(/Requesting storage protection/)).toBeTruthy();
+    finish({ backend: 'indexeddb', persisted: true, persistSupported: true });
+    expect(await screen.findByText(/Storage protection is enabled/)).toBeTruthy();
+  });
+
+  it('exports a portable workspace backup from the Workspace menu', async () => {
+    const transport = createTransport();
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:backup'), revokeObjectURL: vi.fn() });
+    render(App, { props: { transport } });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Export Workspace Backup' }));
+
+    expect(transport.exportWorkspaceBackup).toHaveBeenCalledOnce();
+    expect(click).toHaveBeenCalledOnce();
+  });
+
+  it('validates a selected backup through the transport and reports import failure without reloading', async () => {
+    const transport = createTransport();
+    transport.importWorkspaceBackup.mockRejectedValueOnce(new Error('Backup format or version is not supported.'));
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const { container } = render(App, { props: { transport } });
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    Object.defineProperty(input, 'files', {
+      configurable: true,
+      value: [{ text: vi.fn().mockResolvedValue('{"format":"wrong"}') }],
+    });
+
+    await fireEvent.change(input);
+
+    await waitFor(() => expect(transport.importWorkspaceBackup).toHaveBeenCalledWith('{"format":"wrong"}', { replace: true }));
+    expect(screen.getByRole('alert').textContent).toContain('Backup format or version is not supported.');
+  });
+
   it('reacts to a requested panel command and consumes it', async () => {
     render(App, { props: { transport: createTransport() } });
 
@@ -133,6 +390,160 @@ describe('standalone App', () => {
     layoutStub.showPanel.mockClear();
     await tick();
     expect(layoutStub.showPanel).not.toHaveBeenCalled();
+  });
+
+  it('routes host navigation through the one-panel mobile shell', async () => {
+    layoutStub.isMobileLayout.mockReturnValue(true);
+    render(App, { props: { transport: createTransport() } });
+
+    requestPanel('explorer');
+    await tick();
+    expect(layoutStub.selectMobilePanel).toHaveBeenCalledWith('explorer');
+    expect(layoutStub.showPanel).not.toHaveBeenCalled();
+
+    requestEditor('/shaders/mobile.glsl');
+    await tick();
+    expect(layoutStub.openEditor).toHaveBeenCalledWith('/shaders/mobile.glsl');
+    expect(layoutStub.selectMobilePanel).toHaveBeenLastCalledWith('editor');
+  });
+
+  it('switches to the Editor panel when a shader is selected on a phone', async () => {
+    layoutStub.isMobileLayout.mockReturnValue(true);
+    render(App, { props: { transport: createTransport() } });
+
+    selectEditor('/shaders/picked.glsl');
+    await tick();
+
+    expect(layoutStub.selectEditor).toHaveBeenCalledWith('/shaders/picked.glsl');
+    expect(layoutStub.selectMobilePanel).toHaveBeenLastCalledWith('editor');
+    expect(getSelectedEditor()).toBeNull();
+  });
+
+  it('keeps the desktop layout when a shader is selected on a wide screen', async () => {
+    render(App, { props: { transport: createTransport() } });
+
+    selectEditor('/shaders/picked.glsl');
+    await tick();
+
+    expect(layoutStub.selectEditor).toHaveBeenCalledWith('/shaders/picked.glsl');
+    expect(layoutStub.selectMobilePanel).not.toHaveBeenCalled();
+  });
+
+  it('reports a failed export without downloading anything', async () => {
+    const transport = createTransport();
+    transport.exportWorkspaceBackup.mockRejectedValueOnce(new Error('read failed'));
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    render(App, { props: { transport } });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Export Workspace Backup' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('Could not export the workspace. Your current work was not changed.');
+    expect(click).not.toHaveBeenCalled();
+  });
+
+  function chooseBackup(container: HTMLElement, files: { text(): Promise<string> }[]) {
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    Object.defineProperty(input, 'files', { configurable: true, value: files });
+    return fireEvent.change(input);
+  }
+
+  it('does not import when the replacement is not confirmed', async () => {
+    const transport = createTransport();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const { container } = render(App, { props: { transport } });
+
+    await chooseBackup(container, [{ text: vi.fn().mockResolvedValue('{}') }]);
+
+    expect(confirm).toHaveBeenCalledWith('Replace this browser workspace with the selected backup?');
+    expect(transport.importWorkspaceBackup).not.toHaveBeenCalled();
+  });
+
+  it('does not ask for confirmation when no backup file was chosen', async () => {
+    const transport = createTransport();
+    const confirm = vi.spyOn(window, 'confirm');
+    const { container } = render(App, { props: { transport } });
+
+    await chooseBackup(container, []);
+
+    expect(confirm).not.toHaveBeenCalled();
+    expect(transport.importWorkspaceBackup).not.toHaveBeenCalled();
+  });
+
+  it('shows a general message when an import fails without an error message', async () => {
+    const transport = createTransport();
+    transport.importWorkspaceBackup.mockRejectedValueOnce('nope');
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const { container } = render(App, { props: { transport } });
+
+    await chooseBackup(container, [{ text: vi.fn().mockResolvedValue('{}') }]);
+
+    expect((await screen.findByRole('alert')).textContent).toContain('Could not import the workspace. Your current work was not changed.');
+  });
+
+  it('does not apply an update when pending work cannot be saved first', async () => {
+    const transport = createTransport();
+    transport.flush.mockRejectedValueOnce(new Error('quota'));
+    const pwa = createPwa({ updateAvailable: true });
+    render(App, { props: { transport, pwa } });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Update ready' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('Could not save pending work, so the update was not applied.');
+    expect(pwa.applyUpdate).not.toHaveBeenCalled();
+  });
+
+  it('shows download progress with a cancel action while compilers are downloading', async () => {
+    const pwa = createPwa({ offlinePreparation: { state: 'preparing', completed: 1, total: 3 } });
+    render(App, { props: { transport: createTransport(), pwa } });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Cancel Offline Preparation (1/3)' }));
+
+    expect(pwa.cancelOfflinePreparation).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['a failed', { state: 'error', message: 'Could not cache assets/slang.wasm' }],
+    ['a cancelled', { state: 'cancelled' }],
+  ] as const)('offers a retry after %s compiler download', async (_label, offlinePreparation) => {
+    const pwa = createPwa({ offlinePreparation });
+    render(App, { props: { transport: createTransport(), pwa } });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Retry offline compiler download' }));
+
+    expect(pwa.retryOfflinePreparation).toHaveBeenCalledOnce();
+    expect(pwa.prepareOffline).not.toHaveBeenCalled();
+  });
+
+  it('hides the compiler download once compilers are ready offline', async () => {
+    render(App, { props: { transport: createTransport(), pwa: createPwa({ offlinePreparation: { state: 'ready' } }) } });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+
+    expect(screen.queryByRole('button', { name: /offline/i })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Check for Updates' })).toBeTruthy();
+  });
+
+  it('hides update and offline actions where service workers are unavailable', async () => {
+    render(App, { props: { transport: createTransport(), pwa: createPwa({ supported: false }) } });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+
+    expect(screen.queryByRole('button', { name: 'Check for Updates' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /offline/i })).toBeNull();
+  });
+
+  it('closes open menus on Escape but not on other keys', async () => {
+    render(App, { props: { transport: createTransport() } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+
+    await fireEvent.keyDown(window, { key: 'Enter' });
+    expect(screen.getByRole('menu', { name: 'Workspace' })).toBeTruthy();
+    await fireEvent.keyDown(window, { key: 'Escape' });
+
+    expect(screen.queryByRole('menu', { name: 'Workspace' })).toBeNull();
   });
 
   it('creates a shader when requested by the explorer and closes it after submission or cancellation', async () => {

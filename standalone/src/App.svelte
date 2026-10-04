@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { onDestroy, setContext } from 'svelte';
+  import { onDestroy, onMount, setContext } from 'svelte';
   import { PANEL_HOST_CONTEXT } from '@shader-studio/ui/lib/layout/PanelHost';
   import { HostedPanels } from './HostedPanels';
   import { ShaderStudioApp, getViewerSession } from '@shader-studio/ui';
@@ -9,30 +9,98 @@
   import StandaloneLayout from './StandaloneLayout.svelte';
   import EditorPane from './EditorPane.svelte';
   import NewShaderModal from './NewShaderModal.svelte';
-  import type { WebTransport } from './WebTransport';
+  import type { WebTransport, WorkspaceStorageStatus } from './WebTransport';
   import {
     getSelectedEditor, selectEditor, getRequestedEditor, requestEditor, getNewShaderVisible, getRequestedPanel, requestPanel,
     resetShellState, setNewShaderVisible,
   } from './state/shellState.svelte';
   import { clearStandaloneWorkspace } from './clearWorkspace';
   import type { ShaderLanguageId } from '@shader-studio/types';
+  import type { PwaController, PwaStatus } from './pwa';
+  import type { WorkspacePersistenceStatus } from './VirtualWorkspace';
 
-  interface Props { transport: WebTransport; }
-  let { transport }: Props = $props();
+  interface Props { transport: WebTransport; pwa?: PwaController; }
+  const ALPHA_NOTICE_DISMISSED_KEY = 'shader-studio.alpha-notice-dismissed';
+  const STORAGE_PROTECTION_ATTEMPTED_KEY = 'shader-studio.storage-protection-attempted';
+
+  function claimAutomaticStorageRequest(): boolean {
+    try {
+      if (localStorage.getItem(STORAGE_PROTECTION_ATTEMPTED_KEY) === 'true') {
+        return false;
+      }
+      localStorage.setItem(STORAGE_PROTECTION_ATTEMPTED_KEY, 'true');
+      return true;
+    } catch {
+      // Without a remembered decision, keep requests manual to avoid repeated prompts.
+      return false;
+    }
+  }
+
+
+  function shouldShowAlphaNotice(): boolean {
+    try {
+      return localStorage.getItem(ALPHA_NOTICE_DISMISSED_KEY) !== 'true';
+    } catch {
+      return true;
+    }
+  }
+
+  let { transport, pwa }: Props = $props();
   const hostedPanels = new HostedPanels();
   setContext(PANEL_HOST_CONTEXT, hostedPanels);
   let layout = $state<StandaloneLayout>();
   let workspaceError = $state('');
+  let alphaNoticeVisible = $state(shouldShowAlphaNotice());
   let viewMenuOpen = $state(false);
   let workspaceMenuOpen = $state(false);
   let panelVisibility = $state({ explorer: true, editor: true, preview: true });
+  let persistenceStatus = $state<WorkspacePersistenceStatus>({ state: 'saving' });
+  let pwaStatus = $state<PwaStatus>({
+    supported: false,
+    online: navigator.onLine,
+    updateAvailable: false,
+    buildId: null,
+    offlinePreparation: { state: 'idle' },
+  });
+  let storageStatus = $state<WorkspaceStorageStatus | null>(null);
+  let storageProtectionPending = $state(false);
+  const storageWarning = $derived(storageStatus && !storageStatus.persisted && !storageProtectionPending
+    ? storageStatus.backend === 'session'
+      ? 'Session-only: closing the app will lose your work. Export a workspace backup to keep it.'
+      : `Work saves automatically. ${storageStatus.persisted === null ? 'Storage protection could not be confirmed.' : 'Storage protection is not enabled.'} The browser may remove local work if space runs low. Export workspace backups to keep a separate copy.`
+    : '');
+  let workspaceFileInput: HTMLInputElement;
   const session = $derived(getViewerSession());
   const explorerApi = transport.getShaderExplorerHostApi();
+
+  onMount(() => {
+    void transport.getStorageStatus?.().then(async (status) => {
+      storageStatus = status;
+      if (status.backend === 'indexeddb' && status.persistSupported && !status.persisted && claimAutomaticStorageRequest()) {
+        await requestPersistentStorage();
+      }
+    }).catch(() => { /* Storage inspection must not interrupt editing. */ });
+    const stopPersistence = transport.onPersistenceStatus?.((status) => {
+      persistenceStatus = status;
+    }) ?? (() => {});
+    const stopPwa = pwa?.subscribe((status) => {
+      pwaStatus = status;
+    }) ?? (() => {});
+    return () => {
+      stopPersistence();
+      stopPwa();
+      pwa?.dispose();
+    };
+  });
 
   $effect(() => {
     const panel = getRequestedPanel();
     if (panel && layout) {
-      layout.showPanel(panel);
+      if (layout.isMobileLayout()) {
+        layout.selectMobilePanel(panel);
+      } else {
+        layout.showPanel(panel);
+      }
       requestPanel(null);
     }
   });
@@ -40,7 +108,11 @@
   $effect(() => {
     const path = getRequestedEditor();
     if (path && layout) {
-      layout.openEditor(path); requestEditor(null);
+      layout.openEditor(path);
+      if (layout.isMobileLayout()) {
+        layout.selectMobilePanel('editor');
+      }
+      requestEditor(null);
     }
   });
 
@@ -48,6 +120,9 @@
     const path = getSelectedEditor();
     if (path && layout) {
       layout.selectEditor(path);
+      if (layout.isMobileLayout()) {
+        layout.selectMobilePanel('editor');
+      }
       selectEditor(null);
     }
   });
@@ -65,6 +140,95 @@
     } catch {
       workspaceError = 'Could not clear the workspace. Please try again.';
     }
+  }
+
+  async function exportWorkspace() {
+    workspaceMenuOpen = false;
+    workspaceError = '';
+    try {
+      const contents = await transport.exportWorkspaceBackup();
+      const url = URL.createObjectURL(new Blob([contents], { type: 'application/json' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'shader-studio-workspace.json';
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      workspaceError = 'Could not export the workspace. Your current work was not changed.';
+    }
+  }
+
+  async function importWorkspace(event: Event) {
+    workspaceMenuOpen = false;
+    workspaceError = '';
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file || !window.confirm('Replace this browser workspace with the selected backup?')) {
+      return;
+    }
+    try {
+      await transport.importWorkspaceBackup(await file.text(), { replace: true });
+      window.location.reload();
+    } catch (error) {
+      workspaceError = error instanceof Error
+        ? `Could not import workspace: ${error.message}`
+        : 'Could not import the workspace. Your current work was not changed.';
+    }
+  }
+
+  async function applyUpdate() {
+    workspaceError = '';
+    try {
+      await transport.flush();
+      await pwa?.applyUpdate();
+    } catch {
+      workspaceError = 'Could not save pending work, so the update was not applied.';
+    }
+  }
+
+  async function requestPersistentStorage() {
+    if (storageProtectionPending) {
+      return;
+    }
+    storageProtectionPending = true;
+    try {
+      storageStatus = await transport.requestPersistentStorage();
+    } catch { /* Keep the current status and allow a manual retry. */ } finally {
+      storageProtectionPending = false;
+    }
+  }
+
+  async function prepareOffline() {
+    if (pwaStatus.offlinePreparation.state === 'error' || pwaStatus.offlinePreparation.state === 'cancelled') {
+      await pwa?.retryOfflinePreparation();
+    } else {
+      await pwa?.prepareOffline();
+    }
+  }
+
+  function saveStatusLabel(): string {
+    if (storageStatus?.backend === 'session') {
+      return 'Session-only';
+    }
+    if (persistenceStatus.state === 'error') {
+      return 'Save failed';
+    }
+    return persistenceStatus.state === 'saving' ? 'Saving…' : 'Saved';
+  }
+
+  function saveStatusIcon(): string {
+    if (storageStatus?.backend === 'session') {
+      return 'codicon-warning';
+    }
+    if (persistenceStatus.state === 'error') {
+      return 'codicon-error';
+    }
+    return persistenceStatus.state === 'saving' ? 'codicon-sync' : 'codicon-check';
+  }
+
+  function workspaceStatusLabel(): string {
+    return `${pwaStatus.online ? 'Online' : 'Offline'} · ${saveStatusLabel()}${pwaStatus.offlinePreparation.state === 'ready' ? ' · Ready offline' : ''}`;
   }
 
   function toggleViewMenu() {
@@ -95,8 +259,17 @@
     workspaceMenuOpen = false;
   }
 
+  function dismissAlphaNotice() {
+    alphaNoticeVisible = false;
+    try {
+      localStorage.setItem(ALPHA_NOTICE_DISMISSED_KEY, 'true');
+    } catch {
+      // The notice can still be dismissed for this session when storage is blocked.
+    }
+  }
+
   function closeMenusOnOutsideClick(event: MouseEvent) {
-    if (!(event.target as Element).closest('.toolbar-menu')) {
+    if (!(event.target as Element).closest('.toolbar-menu, .storage-warning-icon')) {
       viewMenuOpen = false;
       workspaceMenuOpen = false;
     }
@@ -141,18 +314,83 @@
       {#if workspaceMenuOpen}
         <div class="dropdown-menu" role="menu" aria-label="Workspace">
           <button onclick={resetLayout}>Reset workspace layout</button>
+          <button onclick={exportWorkspace}>Export Workspace Backup</button>
+          <button onclick={() => workspaceFileInput.click()}>Import Workspace Backup…</button>
+          {#if storageStatus?.backend === 'indexeddb' && storageStatus.persistSupported && !storageStatus.persisted}
+            <button onclick={requestPersistentStorage} disabled={storageProtectionPending}>Request storage protection</button>
+          {/if}
+          {#if storageStatus}
+            <p class="storage-notice" aria-live="polite">
+              {#if storageStatus.backend === 'session'}
+                Session-only: work will not survive closing the app. Export a workspace backup to keep it.
+              {:else if storageProtectionPending}
+                Work saves automatically. Requesting storage protection…
+              {:else if storageStatus.persisted}
+                Work saves automatically. Storage protection is enabled. Clearing site data still deletes your work; export backups to keep a separate copy.
+              {:else}
+                Work saves automatically.
+                {storageStatus.persisted === null && storageStatus.persistSupported
+                  ? 'Storage protection could not be confirmed.'
+                  : storageStatus.persistSupported ? 'Storage protection has not been granted.' : 'Your browser does not support storage protection.'}
+                The browser may remove local work if space runs low. Export workspace backups to keep a separate copy.
+              {/if}
+            </p>
+          {/if}
+          {#if pwaStatus.supported}
+            <button onclick={() => pwa?.checkForUpdate()}>Check for Updates</button>
+            {#if pwaStatus.offlinePreparation.state === 'preparing'}
+              <button onclick={() => pwa?.cancelOfflinePreparation()}>
+                Cancel Offline Preparation ({pwaStatus.offlinePreparation.completed}/{pwaStatus.offlinePreparation.total})
+              </button>
+            {:else if pwaStatus.offlinePreparation.state !== 'ready'}
+              <button onclick={prepareOffline}>
+                {pwaStatus.offlinePreparation.state === 'idle'
+                  ? 'Download compilers for offline use'
+                  : 'Retry offline compiler download'}
+              </button>
+            {/if}
+          {/if}
           <button class="danger-action" onclick={clearWorkspace}>Clear Workspace</button>
         </div>
       {/if}
     </div>
     <a class="toolbar-right" href="https://teaqu.github.io/shader-studio/docs/" target="_blank" rel="noopener noreferrer">Documentation</a>
     <a href="https://github.com/teaqu/shader-studio" target="_blank" rel="noopener noreferrer">GitHub</a>
+    <span
+      class="build-status"
+      role="status"
+      aria-label={workspaceStatusLabel()}
+      title={`${workspaceStatusLabel()} · ${pwaStatus.buildId ? `Build ${pwaStatus.buildId}` : 'Development build'}`}
+    >
+      <i class="codicon {pwaStatus.online ? 'codicon-cloud' : 'codicon-debug-disconnect'}" aria-hidden="true"></i>
+      {#if storageStatus?.backend !== 'session'}
+        <i class="codicon {saveStatusIcon()}" class:spinning={persistenceStatus.state === 'saving'} aria-hidden="true"></i>
+      {/if}
+      {#if storageWarning}
+        <button class="storage-warning-icon" aria-label="Storage warning" aria-haspopup="menu" aria-expanded={workspaceMenuOpen} title={storageWarning} onclick={toggleWorkspaceMenu}>
+          <i class="codicon codicon-warning" aria-hidden="true"></i>
+        </button>
+      {/if}
+      {#if pwaStatus.offlinePreparation.state === 'ready'}
+        <i class="codicon codicon-package" aria-hidden="true"></i>
+      {/if}
+    </span>
+    {#if pwaStatus.updateAvailable}<button class="update-action" onclick={applyUpdate}>Update ready</button>{/if}
   </header>
-  <aside class="alpha-notice" data-testid="web-alpha-warning" role="note">
-    Standalone mode is in <strong>alpha</strong> and is buggy and missing features compared to the VS Code extension.
-    Changes are saved only in this browser. Clearing browser data will delete them.
-  </aside>
+  <input class="visually-hidden" bind:this={workspaceFileInput} type="file" accept="application/json,.json" onchange={importWorkspace} />
+  {#if alphaNoticeVisible}
+    <aside class="alpha-notice" data-testid="web-alpha-warning" role="note">
+      <span>
+        Standalone mode is in <strong>alpha</strong> and is buggy and missing features compared to the VS Code extension.
+        Changes are saved only in this browser. Clearing browser data will delete them.
+      </span>
+      <button class="dismiss-alpha-notice" aria-label="Dismiss alpha notice" title="Dismiss" onclick={dismissAlphaNotice}>×</button>
+    </aside>
+  {/if}
   {#if workspaceError}<p role="alert">{workspaceError}</p>{/if}
+  {#if pwaStatus.offlinePreparation.state === 'error'}
+    <p class="shell-status-error" role="alert">Offline preparation failed: {pwaStatus.offlinePreparation.message}</p>
+  {/if}
   <StandaloneLayout bind:this={layout} {hostedPanels} {transport}>
     {#snippet explorer()}
       <ShaderExplorer hostApi={explorerApi} compact={true} selectedShaderPath={session?.selectedShaderPath ?? ''} />
@@ -184,6 +422,27 @@
   .dropdown-menu button { display: grid; grid-template-columns: 16px 1fr; gap: 4px; width: 100%; border: 0; text-align: left; white-space: nowrap; }
   .dropdown-menu button:not([role="menuitemcheckbox"]) { display: block; }
   .dropdown-menu .danger-action { color: var(--vscode-errorForeground, #f48771); }
-  .alpha-notice { padding: 3px 10px; font-size: 11px; text-align: center; color: var(--vscode-descriptionForeground); border-bottom: 1px solid var(--vscode-panel-border); }
+  .storage-notice { max-width: 280px; margin: 4px 0; padding: 8px 12px; font-size: 12px; line-height: 1.5; white-space: normal; color: var(--vscode-descriptionForeground); border-top: 1px solid var(--vscode-panel-border); }
+  .build-status .storage-warning-icon { display: flex; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent; color: var(--vscode-editorWarning-foreground, #cca700); cursor: pointer; }
+  .alpha-notice { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 3px 10px; font-size: 11px; text-align: center; color: var(--vscode-descriptionForeground); border-bottom: 1px solid var(--vscode-panel-border); }
+  .dismiss-alpha-notice { flex: 0 0 auto; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; color: inherit; background: transparent; font: inherit; font-size: 18px; line-height: 1; cursor: pointer; }
+  .dismiss-alpha-notice:hover { background: var(--vscode-list-hoverBackground); }
   .panel-content { height: 100%; width: 100%; min-height: 0; min-width: 0; }
+  .build-status { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; color: var(--vscode-descriptionForeground); font-size: 16px; }
+  .build-status .spinning { animation: status-spin 1s linear infinite; }
+  @keyframes status-spin { to { transform: rotate(360deg); } }
+  .standalone-toolbar .update-action { border: 1px solid var(--vscode-focusBorder); }
+  .visually-hidden { position: fixed; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+  @media (max-width: 767px) {
+    .standalone-app { height: 100dvh; }
+    .standalone-toolbar { min-height: 44px; padding: max(4px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) 4px max(8px, env(safe-area-inset-left)); }
+    .standalone-toolbar > strong { flex: 1; }
+    .standalone-toolbar > a { display: none; }
+    .standalone-toolbar button { min-height: 44px; }
+    .workspace-menu { padding-left: 0; border-left: 0; }
+    .dropdown-menu { position: fixed; top: max(54px, calc(env(safe-area-inset-top) + 50px)); right: 8px; left: 8px; max-height: calc(100dvh - 120px); overflow: auto; }
+    .alpha-notice { padding-inline: max(8px, env(safe-area-inset-left)) max(8px, env(safe-area-inset-right)); }
+    :global(.standalone-app .menu-bar .collapse-config, .standalone-app .menu-bar .collapse-debug, .standalone-app .menu-bar .collapse-record) { display: none; }
+  }
 </style>

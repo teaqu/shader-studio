@@ -217,6 +217,12 @@
     overflow: hidden;
   }
 
+  .tab-navigation {
+    height: auto;
+    min-height: 35px;
+    overflow-x: auto;
+  }
+
   .recording-tab-content {
     flex: 1;
     min-height: 0;
