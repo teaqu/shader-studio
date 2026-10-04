@@ -59,7 +59,6 @@ vi.mock('../../lib/recording/GifEncoder', () => ({
 
 // Mock VideoEncoder
 const mockVideoAddFrame = vi.fn();
-const mockVideoFlush = vi.fn(() => Promise.resolve());
 const mockVideoFinish = vi.fn(() => Promise.resolve(new Blob(['video'], { type: 'video/webm' })));
 
 const { mockVideoSupportedBitrate, mockVideoClose } = vi.hoisted(() => ({
@@ -72,7 +71,6 @@ vi.mock('../../lib/recording/VideoEncoder', () => ({
   VideoEncoderWrapper: Object.assign(vi.fn(function () {
     return ({
       addFrame: mockVideoAddFrame,
-      flush: mockVideoFlush,
       finish: mockVideoFinish,
       close: mockVideoClose,
     });
@@ -709,12 +707,22 @@ describe('ShaderRecorder', () => {
       expect(mockSetFinalizing).toHaveBeenCalled();
     });
 
-    it('should flush video encoder periodically', async () => {
-      // With fps=30, flushInterval = max(4, ceil(30/2)) = 15
-      // For 30 frames (1s), flush at frame 14, 29
-      await rec({ ...baseConfig, duration: 1, fps: 30 });
-
-      expect(mockVideoFlush).toHaveBeenCalled();
+    it('waits for frame backpressure before rendering the next frame', async () => {
+      vi.useRealTimers();
+      let ready!: () => void;
+      mockVideoAddFrame.mockImplementationOnce(() => new Promise<void>(resolve => {
+        ready = resolve;
+      }));
+      const pending = recorder.record({ ...baseConfig, duration: 1, fps: 30 }, shaderInfo);
+      await vi.waitFor(() => expect(mockVideoAddFrame).toHaveBeenCalledOnce());
+      const rendered = mockRenderForCapture.mock.calls.length;
+      await new Promise(resolve => setTimeout(resolve, 0));
+      expect(mockRenderForCapture).toHaveBeenCalledTimes(rendered);
+      expect(mockUpdateProgress).not.toHaveBeenCalled();
+      ready();
+      await pending;
+      expect(mockVideoAddFrame).toHaveBeenCalledTimes(30);
+      expect(mockUpdateProgress).toHaveBeenCalledTimes(30);
     });
 
     it('should dispose offscreen engine after recording', async () => {

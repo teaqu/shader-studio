@@ -1208,6 +1208,7 @@ for (const format of ['PNG', 'JPEG', 'WebM', 'MP4', 'GIF']) {
         codec: 'avc1.42001f', width: 640, height: 360, bitrate: 2_000_000, framerate: 30,
       })).supported === true);
       if (!encodesAvc) {
+        test.info().annotations.push({ type: 'MP4 coverage', description: 'Host cannot encode AVC; verified visible unsupported error' });
         await action.click();
         const panelError = page.locator('.recording-panel [role="alert"]');
         await expect(panelError).toContainText(hasWebCodecs ? 'MP4 export at' : 'WebCodecs unavailable');
@@ -1244,6 +1245,48 @@ for (const format of ['PNG', 'JPEG', 'WebM', 'MP4', 'GIF']) {
     }
     if (format === 'GIF') {
       expect(bytes.subarray(0, 6).toString()).toMatch(/^GIF8[79]a$/);
+    }
+    if (format === 'WebM' || format === 'MP4') {
+      // A container signature alone cannot prove the migrated encoder produced playable pixels.
+      const decoded = await page.evaluate(async ({ base64, mimeType }) => {
+        const data = Uint8Array.from(atob(base64), char => char.charCodeAt(0));
+        const url = URL.createObjectURL(new Blob([data], { type: mimeType }));
+        const video = document.createElement('video');
+        try {
+          const loaded = new Promise((resolve, reject) => {
+            video.onloadeddata = resolve;
+            video.onerror = () => reject(new Error('Saved export could not be decoded'));
+          });
+          video.src = url;
+          await loaded;
+          const duration = video.duration;
+          const seeked = new Promise(resolve => {
+ video.onseeked = resolve;
+});
+          video.currentTime = 0.2;
+          await seeked;
+          const canvas = document.createElement('canvas');
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          const context = canvas.getContext('2d');
+          context.drawImage(video, 0, 0);
+          const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+          let brightest = 0;
+          for (let i = 0; i < pixels.length; i += 4) {
+            brightest = Math.max(brightest, pixels[i], pixels[i + 1], pixels[i + 2]);
+          }
+          return { duration, width: canvas.width, height: canvas.height, brightest };
+        } finally {
+          video.removeAttribute('src');
+          video.load();
+          URL.revokeObjectURL(url);
+        }
+      }, { base64: bytes.toString('base64'), mimeType: `video/${format.toLowerCase()}` });
+      test.info().annotations.push({ type: 'Decoded export', description: `${format}: ${decoded.width}×${decoded.height}, ${decoded.duration}s` });
+      expect(decoded.duration).toBeCloseTo(0.5, 1);
+      expect(decoded.width).toBeGreaterThan(0);
+      expect(decoded.height).toBeGreaterThan(0);
+      expect(decoded.brightest).toBeGreaterThan(20);
     }
     expect(pageErrors).toEqual([]);
   });
