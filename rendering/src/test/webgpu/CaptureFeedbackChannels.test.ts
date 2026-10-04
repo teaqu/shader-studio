@@ -1,5 +1,6 @@
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { captureFeedbackChannels } from "../../webgpu/CaptureFeedbackChannels";
+import type { SlangPassPipeline } from "../../webgpu/SlangPassPipeline";
 
 function fixture(throwOnCreate = false) {
   const copyTextureToTexture = vi.fn();
@@ -21,6 +22,41 @@ function fixture(throwOnCreate = false) {
   const resources = [{ slot: 0, textureView: {} as GPUTextureView }, { slot: 1, textureView: {} as GPUTextureView }];
   return { device, source, pass, resources, copyTextureToTexture, created };
 }
+
+afterEach(() => vi.unstubAllGlobals());
+
+it('handles no resources, non-buffer resources and missing pipelines without GPU copies', () => {
+  const { device, pass, resources } = fixture();
+  expect(captureFeedbackChannels(device, pass, new Map(), null)).toBeNull();
+  pass.channels = [{ slot: 0, kind: 'texture' }];
+  const result = captureFeedbackChannels(device, pass, new Map(), resources)!;
+  expect(result.resources).toEqual(resources);
+  expect(result.textureCount).toBe(0);
+  result.destroy();
+  expect(device.queue.submit).not.toHaveBeenCalled();
+});
+
+it('copies the previous and current rendered banks when no drawn snapshot is supplied', () => {
+  const { device, pass, resources, source, copyTextureToTexture } = fixture();
+  pass.channels[0].readFrom = 'previous-frame';
+  const current = { ...source } as GPUTexture;
+  const previous = source;
+  const pipeline = { getCurrentOutputTexture: vi.fn(() => current), getPreviousOutputTexture: vi.fn(() => previous) };
+  vi.stubGlobal('GPUTextureUsage', undefined);
+  const result = captureFeedbackChannels(device, pass, new Map([['Compute', pipeline as unknown as SlangPassPipeline]]), resources)!;
+  expect(copyTextureToTexture.mock.calls.map(([from]) => from.texture)).toEqual([previous, current]);
+  expect(device.createTexture).toHaveBeenCalledWith(expect.objectContaining({ usage: 6 }));
+  expect(result.textureCount).toBe(2);
+  result.destroy();
+});
+
+it('retains a buffer resource when its output texture is unavailable', () => {
+  const { device, pass, resources } = fixture();
+  const result = captureFeedbackChannels(device, pass, new Map(), resources)!;
+  expect(result.resources).toEqual(resources);
+  expect(result.textureCount).toBe(0);
+  expect(device.queue.submit).not.toHaveBeenCalled();
+});
 
 it("copies distinct compute layers from the recorded source and deduplicates repeated layers", () => {
   const { device, source, pass, resources, copyTextureToTexture, created } = fixture();

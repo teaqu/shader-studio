@@ -22,3 +22,14 @@ it("freezes mutable frame data while retaining GPU resource identities", () => {
   state.clear();
   expect(state.get("BufferA")).toBeUndefined();
 });
+
+it('records a fullscreen pass without mesh or channel resources', () => {
+  const state = new RenderedCaptureState();
+  state.record('Image', {
+    time: 0, timeDelta: 0, frameRate: 0, frame: 0, res: [4, 3, 1], mouse: [0, 0, 0, 0], date: [2026, 1, 2, 3], cameraPos: [0, 0, 0], cameraDir: [0, 0, -1],
+  });
+  expect(state.get('Image')).toMatchObject({ uniforms: { frame: 0 } });
+  expect(state.get('Image')).not.toHaveProperty('meshData');
+  expect(state.get('Image')).not.toHaveProperty('channelResources');
+  expect(state.get('Image')).not.toHaveProperty('bufferInputs');
+});
