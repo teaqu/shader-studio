@@ -1186,13 +1186,14 @@ for (const format of ['PNG', 'JPEG', 'WebM', 'MP4', 'GIF']) {
     await page.getByLabel('Toggle export panel').click();
     const screenshot = format === 'PNG' || format === 'JPEG';
     await page.getByRole('button', { name: screenshot ? 'Screenshot' : format === 'GIF' ? 'GIF' : 'Video', exact: true }).click();
+    if (!screenshot && format !== 'GIF') {
+      // Live formats can be disabled independently of Render encoder support.
+      await page.getByRole('button', { name: 'Render', exact: true }).click();
+    }
     if (format !== 'GIF') {
       await page.getByRole('button', { name: format, exact: true }).click();
     }
     if (!screenshot) {
-      if (format !== 'GIF') {
-        await page.getByRole('button', { name: 'Render', exact: true }).click();
-      }
       await page.locator('input[min="0.5"][step="0.5"]').fill('0.5');
     }
     const action = page.getByRole('button', {
@@ -1202,13 +1203,14 @@ for (const format of ['PNG', 'JPEG', 'WebM', 'MP4', 'GIF']) {
     if (format === 'MP4') {
       // Open-source Chromium builds ship no H.264 encoder. Render MP4 must then
       // refuse visibly before rendering instead of saving a broken file.
-      const encodesAvc = await page.evaluate(async () => (await VideoEncoder.isConfigSupported({
+      const hasWebCodecs = await page.evaluate(() => typeof globalThis.VideoEncoder !== 'undefined');
+      const encodesAvc = hasWebCodecs && await page.evaluate(async () => (await VideoEncoder.isConfigSupported({
         codec: 'avc1.42001f', width: 640, height: 360, bitrate: 2_000_000, framerate: 30,
       })).supported === true);
       if (!encodesAvc) {
         await action.click();
         const panelError = page.locator('.recording-panel [role="alert"]');
-        await expect(panelError).toContainText('MP4 export at');
+        await expect(panelError).toContainText(hasWebCodecs ? 'MP4 export at' : 'WebCodecs unavailable');
         await expect(panelError).toContainText('is not supported by this host');
         expect(pageErrors).toEqual([]);
         return;
