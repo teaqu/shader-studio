@@ -10,6 +10,7 @@
   import EditorPane from './EditorPane.svelte';
   import SettingsPanel from './settings/SettingsPanel.svelte';
   import { connectSettings, getDefaultShaderMode } from './settings/settingsState.svelte';
+  import WorkspaceFilePicker from './WorkspaceFilePicker.svelte';
   import NewShaderModal from './NewShaderModal.svelte';
   import type { WebTransport } from './WebTransport';
   import {
@@ -116,6 +117,7 @@
 
   onDestroy(resetShellState);
 </script>
+<WorkspaceFilePicker />
 
 <svelte:window onclick={closeMenusOnOutsideClick} onkeydown={closeMenusOnEscape} />
 <div class="standalone-app">

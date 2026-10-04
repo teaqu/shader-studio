@@ -1,12 +1,13 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { applyRenderSource, bufferInsertionTarget, existingShaderModes } from '../../config/PassSourceAuthoring';
+  import { applyRenderSource, bufferInsertionTarget } from '../../config/PassSourceAuthoring';
   import VertexSourceControls from './VertexSourceControls.svelte';
   import VerticesControls from './VerticesControls.svelte';
   import { ConfigValidator, resolveRenderState } from "@shader-studio/rendering";
   import { BufferConfig as BufferConfigModel } from "../../BufferConfig";
   import type {
+    ShaderConfig,
     BufferPass,
     ImagePass,
     ConfigInput,
@@ -55,6 +56,8 @@
   import RenderSourceControls from "./RenderSourceControls.svelte";
   import PassGeometryControls from "./PassGeometryControls.svelte";
   import PathInput from "./PathInput.svelte";
+  import BufferSourceControls from "./BufferSourceControls.svelte";
+  import OutputFormatControl from "./OutputFormatControl.svelte";
   import DepthTestingControls from "./DepthTestingControls.svelte";
   import { getEditorOverlayVisible, setEditorOverlayVisible, setOverlayActiveFile } from "../../state/editorOverlayState.svelte";
   import { rememberDrawFields, takeDrawField } from "../../state/verticesDrawMemory.svelte";
@@ -71,6 +74,7 @@
     getWebviewUri: (path: string) => string | undefined;
     isImagePass?: boolean;
     suggestedPath?: string;
+    projectConfig?: ShaderConfig | null;
     postMessage?: (msg: any) => void;
     onMessage?: (handler: (event: MessageEvent) => void) => void;
     shaderPath?: string;
@@ -101,6 +105,7 @@
     vertexSource = '',
     isImagePass = false,
     suggestedPath = "",
+    projectConfig = null,
     postMessage = undefined,
     onMessage = undefined,
     shaderPath = "",
@@ -747,30 +752,12 @@ return;
   <div class="buffer-details">
     {#if !isImagePass}
       <div class="config-item">
-        <PathInput
-          value={currentPath}
-          onPathChange={handlePathChange}
-          hasError={!validation.isValid}
-          note="Relative, absolute, or @ for workspace root"
-          placeholder={suggestedPath || (bufferName === 'common'
-            ? `e.g., ./common.${SHADER_LANGUAGES[language].extensions[0]}`
-            : `e.g., ./buffer.${SHADER_LANGUAGES[language].extensions[0]}`)}
-          {fileType}
-          {shaderPath}
-          {suggestedPath}
-          {postMessage}
-          {onMessage}
-          sourcePath={nativeInsertionPath}
-          builtInSourcePath={ownedSourcePath}
-          authoringMode={hasNativeTemplate ? 'native' : undefined}
-          createAuthoringMode={passType === 'compute' || hasNativeTemplate ? 'native' : 'hooks'}
-          passName={bufferName}
-          outputCount={passType === 'render' && hasNativeTemplate ? renderOutputs.length : undefined}
-          allowInsert={bufferName !== 'common' && (passType === 'render' || isWebGpuLanguage)}
-          existingModes={existingShaderModes(passSource, language, passType === 'compute' ? 'compute' : 'fragment')}
-          onCreated={applyCreatedSource}
-        />
+        <BufferSourceControls value={currentPath} onPathChange={handlePathChange} hasError={!validation.isValid}
+          {suggestedPath} {bufferName} {language} {fileType} {shaderPath} {projectConfig} {postMessage} {onMessage}
+          sourcePath={nativeInsertionPath} builtInSourcePath={ownedSourcePath} {passType} {hasNativeTemplate}
+          outputCount={renderOutputs.length} {passSource} onCreated={applyCreatedSource} />
 
+        {#if passType === 'compute'}<OutputFormatControl value={bufferPassConfig?.outputFormat ?? 'auto'} onchange={handleOutputFormat} />{/if}
         {#if passType === 'compute' && onComputeCommit}
           <ComputePassControls
             pass={config as ComputePass}
@@ -928,6 +915,7 @@ return;
             </div>
           </div>
         {/if}
+        <OutputFormatControl value={bufferPassConfig?.outputFormat ?? 'auto'} onchange={handleOutputFormat} />
       </div>
     {/if}
 
@@ -1045,29 +1033,12 @@ return;
       {#if passType === 'render'}
         <div class="config-item">
           <h3 class="section-title vertex-shader-title" ondblclick={openVertexShaderInOverlay}>Vertex shader</h3>
-          <VertexSourceControls pass={config as BufferPass | ImagePass} {passSource} {vertexSource} {language}
+          <VertexSourceControls pass={config as BufferPass | ImagePass} {passSource} {vertexSource} {language} {projectConfig}
             onPathChange={handleVertexPathChange} onCommit={updateConfig} sourcePath={ownedSourcePath} passName={bufferName}
             vertexSpace={verticesGeometry?.space ?? DEFAULT_VERTEX_SPACE} geometryType={selectedGeometry}
             fileType={vertexFileType} suggestedPath={vertexSuggestedPath} {shaderPath} {postMessage} {onMessage} />
         </div>
       {/if}
-    {/if}
-    {#if !isImagePass && bufferName !== "common"}
-      <div class="config-item">
-        <div class="resolution-row">
-          <label class="resolution-label" for="output-format-{bufferName}">Output format</label>
-          <select
-            id="output-format-{bufferName}"
-            aria-label="Output format"
-            value={'outputFormat' in config ? config.outputFormat ?? 'auto' : 'auto'}
-            onchange={handleOutputFormat}
-          >
-            <option value="auto">Auto (32-bit preferred)</option>
-            <option value="rgba16float">RGBA 16-bit float</option>
-            <option value="rgba32float">RGBA 32-bit float</option>
-          </select>
-        </div>
-      </div>
     {/if}
     {#if !isImagePass && passType === 'render' && isWebGpuLanguage && hasNativeTemplate}
       <div class="config-item">

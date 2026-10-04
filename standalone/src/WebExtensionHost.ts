@@ -1,3 +1,5 @@
+import { selectWorkspaceFile } from './selectWorkspaceFile';
+import { requestFileSelection } from './state/fileSelectionState.svelte';
 import { insertShaderSource } from './insertShaderSource';
 import { configPathForShader, createNativeComputeSource, createNativeFragmentSource, parseVertexPassKey, resolveConfiguredPath, shaderLanguageForPath, stageForPass, vertexPassKey } from '@shader-studio/types';
 import type { ConfiguredPathHost, ProfileData, ProfileIndex, ShaderConfig, ShaderLanguageId } from '@shader-studio/types';
@@ -87,6 +89,7 @@ const LEGACY_SLANG_STARTER_SHADER = 'float4 mainImage(float2 fragCoord) { return
 const LEGACY_WGSL_STARTER_SHADER = 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(0.0, 0.0, 0.0, 1.0); }\n';
 
 interface WebExtensionHostOptions {
+  selectFile?: (paths: string[]) => Promise<string | null>;
   resolveDefaultAsset?: (path: string) => string | null;
   prompt?: (message: string, initialValue: string) => string | null;
   confirm?: (message: string) => boolean;
@@ -132,12 +135,14 @@ export class WebExtensionHost {
   private readonly resolveDefaultAsset: (path: string) => string | null;
   private readonly prompt: (message: string, initialValue: string) => string | null;
   private readonly confirm: (message: string) => boolean;
+  private readonly selectFile: (paths: string[]) => Promise<string | null>;
   private readonly settingsController: HostSettingsController;
 
   constructor(
     private readonly workspace: VirtualWorkspace,
     options: WebExtensionHostOptions = {},
   ) {
+    this.selectFile = options.selectFile ?? requestFileSelection;
     this.resolveDefaultAsset = options.resolveDefaultAsset ?? (() => null);
     this.prompt = options.prompt ?? ((message, initialValue) => window.prompt(message, initialValue));
     this.confirm = options.confirm ?? ((message) => window.confirm(message));
@@ -324,6 +329,9 @@ export class WebExtensionHost {
         this.emitViewer(this.shaderSourceMessage(path));
         return;
       }
+      case 'selectFile':
+        await selectWorkspaceFile(this.workspace, payload, this.selectFile, message => this.emitViewer(message));
+        return;
       case 'createFile': {
         const shaderPath = typeof payload.shaderPath === 'string' ? payload.shaderPath : this.activeShaderPath;
         if (!shaderPath || typeof payload.suggestedPath !== 'string' || typeof payload.fileType !== 'string') {

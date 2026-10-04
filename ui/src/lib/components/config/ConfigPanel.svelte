@@ -841,6 +841,7 @@ continue;
         <BufferConfig
           bufferName={activeTab}
           config={activeTabConfig}
+          projectConfig={config}
           {language}
           onUpdate={(_passName, updatedConfig) => {
             configManager?.updateImagePass(updatedConfig as ImagePass);
@@ -866,6 +867,7 @@ continue;
         <BufferConfig
           bufferName={getActualBufferName(activeTab)}
           config={activeTabConfig}
+          projectConfig={config}
           {language}
           passType={isComputeTab(activeTab) ? 'compute' : 'render'}
           onUpdate={(bufferName, updatedConfig) => {

@@ -27,12 +27,13 @@ function getMainPathConfig(container: HTMLElement): HTMLElement {
 }
 
 describe('BufferConfig', () => {
-  it('offers Insert and mode selection on a new hook-style WGSL buffer', () => {
+  it('offers file creation without insertion on a new WGSL buffer', () => {
     const view = render(BufferConfig, { bufferName: 'BufferA', language: 'wgsl', shaderPath: '/shaders/image.wgsl',
       config: { path: '' }, onUpdate: vi.fn(), getWebviewUri: () => undefined, postMessage: vi.fn() });
     const main = getMainPathConfig(view.container);
-    expect(main.querySelector('.insert-file-btn')).not.toBeNull();
-    expect(main.querySelector('select[aria-label="Insert mode"]')).not.toBeNull();
+    expect(main.querySelector('.insert-file-btn')).toBeNull();
+    expect(main.querySelector('.create-file-btn')).not.toBeNull();
+    expect(main.querySelector('select[aria-label="Insert mode"]')).toBeNull();
   });
 
   it('inserts the vertex into its owning buffer even when another source is active', async () => {
@@ -41,6 +42,7 @@ describe('BufferConfig', () => {
     const view = render(BufferConfig, { bufferName: 'BufferA', language: 'wgsl', shaderPath: '/shaders/image.wgsl',
       config: { path: 'buffer.wgsl' }, onUpdate: vi.fn(), getWebviewUri: () => undefined, postMessage });
     const vertex = Array.from(view.container.querySelectorAll('.config-item')).find(item => item.querySelector('.vertex-shader-title'))!;
+    await fireEvent.change(view.getByLabelText('Vertex source'), { target: { value: 'custom' } });
     await fireEvent.click(vertex.querySelector('button.insert-file-btn')!);
     expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'insertShaderSource',
       payload: expect.objectContaining({ sourcePath: 'buffer.wgsl' }) }));
@@ -51,6 +53,7 @@ describe('BufferConfig', () => {
     const view = render(BufferConfig, { bufferName: 'Image', isImagePass: true, language,
       shaderPath: `/shaders/shared.${language}`, config: { geometry: { type: 'vertices' } },
       onUpdate: vi.fn(), getWebviewUri: () => undefined, postMessage });
+    await fireEvent.change(view.getByLabelText('Vertex source'), { target: { value: 'custom' } });
     await fireEvent.click(view.getByRole('button', { name: /^Insert$/ }));
     expect(postMessage).toHaveBeenCalledWith({ type: 'insertShaderSource', payload: expect.objectContaining({
       sourcePath: `/shaders/shared.${language}`, fileType: `${language}-vertex`, authoringMode: 'hooks', geometryType: 'vertices',
@@ -139,7 +142,7 @@ describe('BufferConfig', () => {
     expect(container.querySelector('.buffer-details > :last-child [aria-label="Vertex function"]')).not.toBeNull();
   });
 
-  it.each(['render', 'compute'] as const)('places output format last in %s pass settings', (passType) => {
+  it.each(['render', 'compute'] as const)('places output format with resolution or compute source settings', (passType) => {
     const { container } = render(BufferConfig, {
       bufferName: 'Simulation',
       passType,
@@ -147,7 +150,7 @@ describe('BufferConfig', () => {
       onUpdate: vi.fn(),
       getWebviewUri: () => undefined,
     });
-    expect(container.querySelector('.buffer-details > :last-child select[aria-label="Output format"]')).not.toBeNull();
+    expect(container.querySelector(passType === 'compute' ? '.buffer-details > :first-child select[aria-label="Output format"]' : '.resolution-section select[aria-label="Output format"]')).not.toBeNull();
   });
 
   it('loads and updates producer output precision without showing it for Image', async () => {
@@ -174,7 +177,7 @@ describe('BufferConfig', () => {
     setOverlayActiveFile('Image');
 
     const onOpenInNewTab = vi.fn();
-    const { getByText } = render(BufferConfig, {
+    const { getByText, getByLabelText } = render(BufferConfig, {
       bufferName: 'Image',
       config: { inputs: {}, geometry: { type: 'cube' }, vertex: './warp.vert.glsl' },
       onUpdate: vi.fn(),
@@ -215,6 +218,7 @@ describe('BufferConfig', () => {
       bufferName: 'Image', config: { inputs: {}, geometry: { type: 'cube' } }, onUpdate, getWebviewUri: () => undefined, isImagePass: true,
     });
 
+    await fireEvent.change(getByLabelText('Vertex source'), { target: { value: 'custom' } });
     await fireEvent.input(getByLabelText('Path:'), { target: { value: './warp.vert.glsl' } });
 
     expect(onUpdate).toHaveBeenCalledWith('Image', expect.objectContaining({ vertex: './warp.vert.glsl' }));
@@ -257,11 +261,12 @@ describe('BufferConfig', () => {
 
   it('creates a Slang vertex file for a Slang shader', async () => {
     const postMessage = vi.fn();
-    const { getByText } = render(BufferConfig, {
+    const { getByText, getByLabelText } = render(BufferConfig, {
       bufferName: 'Image', config: { inputs: {}, geometry: { type: 'cube' } }, onUpdate: vi.fn(), getWebviewUri: () => undefined, isImagePass: true,
       shaderPath: '/shaders/rays.slang', language: 'slang', postMessage,
     });
 
+    await fireEvent.change(getByLabelText('Vertex source'), { target: { value: 'custom' } });
     await fireEvent.click(getByText('Create'));
     expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
       type: 'createFile',
@@ -270,11 +275,12 @@ describe('BufferConfig', () => {
   });
   it('creates a WGSL vertex file for a WGSL shader', async () => {
     const postMessage = vi.fn();
-    const { getByText } = render(BufferConfig, {
+    const { getByText, getByLabelText } = render(BufferConfig, {
       bufferName: 'Image', config: { inputs: {}, geometry: { type: 'cube' } }, onUpdate: vi.fn(), getWebviewUri: () => undefined, isImagePass: true,
       shaderPath: '/shaders/rays.wgsl', language: 'wgsl', postMessage,
     });
 
+    await fireEvent.change(getByLabelText('Vertex source'), { target: { value: 'custom' } });
     await fireEvent.click(getByText('Create'));
     expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
       type: 'createFile',
@@ -362,12 +368,12 @@ describe('BufferConfig', () => {
         language: 'wgsl', shaderPath: '/shaders/image.wgsl', postMessage: mockPostMessage,
       });
 
-      await fireEvent.click(getMainPathConfig(container).querySelector('.insert-file-btn')!);
+      await fireEvent.click(container.querySelector('[aria-label="Fragment function controls"] .insert-file-btn')!);
 
       expect(mockPostMessage).toHaveBeenCalledWith(expect.objectContaining({
         type: 'insertShaderSource',
         payload: expect.objectContaining({
-          shaderPath: '/shaders/image.wgsl', sourcePath: '/shaders/image.wgsl',
+          shaderPath: '/shaders/image.wgsl', sourcePath: '/shaders/image.buffera.wgsl',
           fileType: 'wgsl-buffer', authoringMode: 'native', passName: 'BufferA',
         }),
       }));
@@ -380,7 +386,7 @@ describe('BufferConfig', () => {
         language: 'slang', shaderPath: '/shaders/image.slang', postMessage: mockPostMessage,
       });
 
-      await fireEvent.click(getMainPathConfig(container).querySelector('.insert-file-btn')!);
+      await fireEvent.click(container.querySelector('[aria-label="Fragment function controls"] .insert-file-btn')!);
       expect(mockPostMessage).toHaveBeenCalledWith(expect.objectContaining({
         type: 'insertShaderSource',
         payload: expect.objectContaining({ fileType: 'slang-buffer', authoringMode: 'native' }),
@@ -393,7 +399,7 @@ describe('BufferConfig', () => {
         getWebviewUri: mockGetWebviewUri, language: 'wgsl', shaderPath: '/shaders/image.wgsl', postMessage: mockPostMessage,
       });
 
-      expect(getMainPathConfig(container).querySelector('.insert-file-btn')).not.toBeNull();
+      expect(getMainPathConfig(container).querySelector('.insert-file-btn')).toBeNull();
     });
 
     it('should show create file button when path is empty and postMessage provided', () => {

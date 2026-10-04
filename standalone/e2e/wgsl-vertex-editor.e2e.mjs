@@ -15,7 +15,7 @@ for (const language of ['wgsl', 'slang']) {
     await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
     await page.getByRole('button', { name: 'BufferA Remove BufferA', exact: true }).click();
     const main = page.locator('.tab-content .buffer-details > .config-item').first();
-    await main.getByRole('button', { name: 'Insert', exact: true }).click();
+    await page.getByRole('group', { name: 'Fragment function controls' }).getByRole('button', { name: 'Add', exact: true }).click();
     const path = `/shaders/owned-new.${language}`;
     await expect.poll(async () => (await workspace(page))[path]).toContain('BufferAFragment');
     await expect(page.getByLabel('Fragment function', { exact: true })).toHaveValue('BufferAFragment');
@@ -47,7 +47,8 @@ for (const language of ['wgsl', 'slang']) {
     await page.getByRole('button', { name: '+ New', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Buffer', exact: true }).click();
     const main = page.locator('.tab-content .buffer-details > .config-item').first();
-    await main.getByRole('button', { name: 'Insert', exact: true }).click();
+    await main.getByLabel('Use file from config').selectOption(sourcePath);
+    await page.getByRole('group', { name: 'Fragment function controls' }).getByRole('button', { name: 'Add', exact: true }).click();
     await expect(page.getByLabel('Fragment function', { exact: true })).toHaveValue('BufferAFragment');
     await expect(page.getByLabel('Vertex function', { exact: true })).toHaveValue('');
     await expect.poll(async () => (await workspace(page))[sourcePath]).toContain('BufferAFragment');
@@ -63,7 +64,8 @@ for (const language of ['wgsl', 'slang']) {
     await expect.poll(async () => (await workspace(page))[sourcePath]).toContain('BufferAVertex3');
     await expect(vertex.getByRole('button', { name: 'Insert', exact: true })).toHaveCount(0);
     await vertex.getByRole('button', { name: 'Clear', exact: true }).click();
-    await expect(vertex.locator('.config-input')).toHaveValue('');
+    await expect(vertex.getByLabel('Vertex source')).toHaveValue('builtin');
+    await expect(vertex.locator('.config-input')).toHaveCount(0);
     await expect(page.getByLabel('Vertex function', { exact: true })).toHaveValue('');
     await expect.poll(async () => JSON.parse((await workspace(page))[configPath]).passes.BufferA.entryPoints).toEqual({ fragment: 'BufferAFragment2' });
     await page.reload();
@@ -85,13 +87,13 @@ for (const language of ['wgsl', 'slang']) {
     await page.getByRole('button', { name: '+ New', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Buffer', exact: true }).click();
     const main = page.locator('.tab-content .buffer-details > .config-item').first();
-    await expect(main.getByLabel('Insert mode')).toHaveValue('native');
-    await main.getByLabel('Insert mode').selectOption('hooks');
-    await main.getByRole('button', { name: 'Insert', exact: true }).click();
+    page.once('dialog', dialog => dialog.accept(`owned.${language}`));
+    await main.getByRole('button', { name: 'Create', exact: true }).click();
     await expect(main.locator('.config-input')).toHaveValue(new RegExp(`\\.${language}$`));
     const configured = await main.locator('.config-input').inputValue();
     const path = configured.startsWith('/') ? configured : `/shaders/${configured.replace(/^\.\//, '')}`;
     const vertex = page.locator('.config-item').filter({ has: page.getByRole('heading', { name: 'Vertex shader', exact: true }) });
+    await vertex.getByLabel('Vertex source').selectOption('custom');
     await expect(vertex.getByLabel('Insert mode')).toHaveValue('native');
     await vertex.getByLabel('Insert mode').selectOption('hooks');
     await vertex.getByRole('button', { name: 'Insert', exact: true }).click();
@@ -99,8 +101,8 @@ for (const language of ['wgsl', 'slang']) {
     expect((await workspace(page))[`/shaders/${stem}.${language}`]).toBe(source);
     await vertex.getByLabel('Insert mode').selectOption('native');
     await vertex.getByRole('button', { name: 'Insert', exact: true }).click();
-    await expect(page.getByLabel('Vertex function', { exact: true })).toHaveValue('BufferAVertex');
-    await expect.poll(async () => JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`]).passes.BufferA.entryPoints.vertex).toBe('BufferAVertex');
+    await expect(page.getByLabel('Vertex function', { exact: true })).toHaveValue('BufferAVertex2');
+    await expect.poll(async () => JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`]).passes.BufferA.entryPoints.vertex).toBe('BufferAVertex2');
     expect((await workspace(page))[`/shaders/${stem}.${language}`]).toBe(source);
     await page.reload();
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
@@ -124,6 +126,7 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
     await page.getByTestId(`shader-option-${stem}-${language}`).click();
     await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
     const vertex = page.locator('.config-item').filter({ has: page.getByRole('heading', { name: 'Vertex shader', exact: true }) });
+    await vertex.getByLabel('Vertex source').selectOption('custom');
     await vertex.getByRole('button', { name: 'Insert', exact: true }).click();
     await expect(vertex.locator('input')).toHaveValue(new RegExp(`${stem}\\.${language}$`));
     const canvas = page.getByTestId('web-preview').locator('.canvas-container canvas').first();
