@@ -22,7 +22,7 @@ export async function renderReference(info: ShaderInfo, width: number, height: n
 }
 
 /** Decode frames of a saved video at the given presentation times (seconds). */
-export async function decodeVideoFrames(blob: Blob, times: number[]): Promise<{ frames: ImageData[]; width: number; height: number; duration: number; frameMetadata: Array<{ format: string | null; colorSpace: VideoColorSpaceInit }> }> {
+export async function decodeVideoFrames(blob: Blob, times: number[]): Promise<{ frames: ImageData[]; copiedFrames: ImageData[]; width: number; height: number; duration: number; frameMetadata: Array<{ format: string | null; colorSpace: VideoColorSpaceInit }> }> {
   const url = URL.createObjectURL(blob);
   const video = document.createElement("video");
   video.muted = true;
@@ -36,6 +36,7 @@ export async function decodeVideoFrames(blob: Blob, times: number[]): Promise<{ 
     const canvas = new OffscreenCanvas(video.videoWidth, video.videoHeight);
     const context = canvas.getContext("2d", { willReadFrequently: true })!;
     const frames: ImageData[] = [];
+    const copiedFrames: ImageData[] = [];
     const frameMetadata: Array<{ format: string | null; colorSpace: VideoColorSpaceInit }> = [];
     for (const time of times) {
       await new Promise<void>((resolve) => {
@@ -46,11 +47,17 @@ export async function decodeVideoFrames(blob: Blob, times: number[]): Promise<{ 
       frames.push(context.getImageData(0, 0, canvas.width, canvas.height));
       if (typeof VideoFrame !== "undefined") {
         const frame = new VideoFrame(video, { timestamp: Math.round(time * 1e6) });
-        frameMetadata.push({ format: frame.format, colorSpace: frame.colorSpace.toJSON() });
-        frame.close();
+        try {
+          frameMetadata.push({ format: frame.format, colorSpace: frame.colorSpace.toJSON() });
+          const pixels = new Uint8ClampedArray(canvas.width * canvas.height * 4);
+          await frame.copyTo(pixels, { format: "RGBA", colorSpace: "srgb", rect: { x: 0, y: 0, width: canvas.width, height: canvas.height } });
+          copiedFrames.push(new ImageData(pixels, canvas.width, canvas.height));
+        } finally {
+          frame.close();
+        }
       }
     }
-    return { frames, width: video.videoWidth, height: video.videoHeight, duration: video.duration, frameMetadata };
+    return { frames, copiedFrames, width: video.videoWidth, height: video.videoHeight, duration: video.duration, frameMetadata };
   } finally {
     video.removeAttribute("src");
     video.load();

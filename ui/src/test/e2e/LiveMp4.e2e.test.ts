@@ -3,6 +3,7 @@ import type { RenderingEngine } from "../../../../rendering/src/types/RenderingE
 import { ShaderRecorder } from "../../lib/recording/ShaderRecorder";
 import raySpheres from "../../../../tests/fixtures/capture/ray-spheres.glsl?raw";
 import { decodeVideoFrames, glslInfo, lumaPsnr, psnr, renderReference } from "./captureMediaHelpers";
+import { encodeBt709I420Diagnostic } from "./bt709I420Diagnostic";
 
 it.each(["mp4", "webm"] as const)("keeps Aurora gradients smooth in Live %s", async format => {
   const canvas = document.createElement("canvas");
@@ -67,12 +68,12 @@ it.each(["mp4", "webm"] as const)("keeps Aurora gradients smooth in Live %s", as
     const decoded = await decodeVideoFrames(blob, [0.1]);
     if (format === "mp4") {
       expect(decoded.duration).toBeGreaterThanOrEqual(0.8);
-      const channels = [0, 1, 2].map(channel => {
+      const measureChannels = (frame: ImageData) => [0, 1, 2].map(channel => {
         let bias = 0;
         let mse = 0;
         let maximumError = 0;
         for (let pixel = channel; pixel < reference.data.length; pixel += 4) {
-          const error = decoded.frames[0].data[pixel] - reference.data[pixel];
+          const error = frame.data[pixel] - reference.data[pixel];
           bias += error;
           mse += error * error;
           maximumError = Math.max(maximumError, Math.abs(error));
@@ -81,9 +82,17 @@ it.each(["mp4", "webm"] as const)("keeps Aurora gradients smooth in Live %s", as
         return { bias: bias / count, mse: mse / count, maximumError };
       });
       console.log("Live MP4 colour diagnostics", JSON.stringify({
-        rgbPsnr: psnr(decoded.frames[0], reference), channels,
+        rgbPsnr: psnr(decoded.frames[0], reference), channels: measureChannels(decoded.frames[0]),
+        copiedPsnr: psnr(decoded.copiedFrames[0], reference), copiedChannels: measureChannels(decoded.copiedFrames[0]),
         canvas: ctx.getContextAttributes(), configurations, sample, decoder,
         decoded: decoded.frameMetadata,
+      }));
+      const explicitBlob = await encodeBt709I420Diagnostic(reference, 60);
+      const explicit = await decodeVideoFrames(explicitBlob, [.1]);
+      console.log("Explicit BT709 I420 colour diagnostics", JSON.stringify({
+        rgbPsnr: psnr(explicit.frames[0], reference), channels: measureChannels(explicit.frames[0]),
+        copiedPsnr: psnr(explicit.copiedFrames[0], reference), copiedChannels: measureChannels(explicit.copiedFrames[0]),
+        configurations, sample, decoder, decoded: explicit.frameMetadata,
       }));
     }
     // RGB catches chroma blocks that a luma-only quality test can miss.
