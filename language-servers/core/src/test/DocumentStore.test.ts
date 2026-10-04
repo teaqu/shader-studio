@@ -69,7 +69,7 @@ describe("DocumentStore", () => {
     store.open(document);
     store.syncEnvironment(authoringEnvironment);
     document.text = "source changed";
-    authoringEnvironment.generation = 9;
+    (authoringEnvironment as { generation: number }).generation = 9;
 
     const storedDocument = store.getDocument(URI);
     const storedEnvironment = store.getEnvironment(URI);
@@ -87,7 +87,7 @@ describe("DocumentStore", () => {
     const authoringEnvironment = {
       ...environment(4),
       customUniforms: [{ name: "tint", type: "vec3" as const }],
-      resources: [{ name: "sky", kind: "texture-cube" as const }],
+      resources: [{ name: "sky", kind: "texture-cube" as const }] as { name: string; kind: "texture-cube" | "texture-2d" }[],
       virtualFiles: [{ uri: "file:///common.glsl", text: "float helper() { return 0.; }", version: 2 }],
       commonFile: { uri: "file:///shared.glsl", text: "float shared() { return 1.; }", version: 3 },
     };

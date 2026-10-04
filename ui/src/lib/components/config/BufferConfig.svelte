@@ -75,7 +75,7 @@
     isImagePass?: boolean;
     suggestedPath?: string;
     projectConfig?: ShaderConfig | null;
-    postMessage?: (msg: any) => void;
+    postMessage?: (msg: { type: string; [key: string]: unknown }) => void;
     onMessage?: (handler: (event: MessageEvent) => void) => void;
     shaderPath?: string;
     audioVideoController?: AudioVideoController;

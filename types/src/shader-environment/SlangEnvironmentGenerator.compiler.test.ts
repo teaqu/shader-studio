@@ -49,10 +49,10 @@ function baseEnvironment(): ShaderAuthoringEnvironment {
 }
 
 function vectorToArray<T>(value: readonly T[] | SlangVectorLike<T>): readonly T[] {
-  if (Array.isArray(value)) {
-    return value;
+  if ("size" in value) {
+    return Array.from({ length: value.size() }, (_, index) => value.get(index));
   }
-  return Array.from({ length: value.size() }, (_, index) => value.get(index));
+  return value;
 }
 
 describe.runIf(hasBundledSlangWasm)("Slang authoring modules with bundled slang-wasm", () => {

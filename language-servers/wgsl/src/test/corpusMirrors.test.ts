@@ -220,6 +220,9 @@ const collectDocs = (): MirrorDoc[] => {
         && (peer.path ? normalize(join(dir, peer.path)) : join(dir, `${stem}.wgsl`)) === fileRel).map(([name]) => name);
       const sharedResources = resourcesForSharedSource(cfg as never, passName, sharedPassNames);
       const stage = stageForPass(cfg as never, passName, fileRel);
+      if (stage !== "fragment" && stage !== "vertex" && stage !== "compute") {
+        continue;
+      }
       const entry = stage === "compute"
         ? pass.entryPoints?.compute ?? pass.entryPoint ?? firstComputeEntry(text) ?? firstFn(text) ?? "main"
         : pass.entryPoints?.fragment ?? firstFn(text) ?? "mainImage";

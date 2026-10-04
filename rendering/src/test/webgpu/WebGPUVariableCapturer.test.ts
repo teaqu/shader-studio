@@ -1,6 +1,8 @@
+import { engineOwners } from "./engineOwners";
 import { getSlangChannels } from "../../webgpu/SlangBindingPlan";
 import { describe, it, expect, vi } from "vitest";
 import type { DebugInstrumentationPlan } from "@shader-studio/types";
+import type { AsyncSlangCompiler } from "../../webgpu/AsyncSlangCompiler";
 import { WebGPUVariableCapturer } from "../../webgpu/WebGPUVariableCapturer";
 import type { CaptureUniforms } from "../../capture/VariableCapturer";
 import type { StorageBindingNode } from "../../types/PassGraph";
@@ -22,7 +24,10 @@ const uniforms: CaptureUniforms = {
 
 interface MockGpu {
   device: GPUDevice;
-  compiler: { compile: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn> };
+  compiler: AsyncSlangCompiler & {
+    compile: ReturnType<typeof vi.fn<AsyncSlangCompiler["compile"]>>;
+    dispose: ReturnType<typeof vi.fn<AsyncSlangCompiler["dispose"]>>;
+  };
   writeBuffer: ReturnType<typeof vi.fn>;
   submit: ReturnType<typeof vi.fn>;
   copyTextureToBuffer: ReturnType<typeof vi.fn>;
@@ -84,8 +89,8 @@ function mockGpu(readbackFloats?: (size: number) => Float32Array): MockGpu {
   } as unknown as GPUDevice;
 
   const compiler = {
-    compile: vi.fn(async () => ({ success: true as const, wgsl: "// wgsl" })),
-    dispose: vi.fn(),
+    compile: vi.fn<AsyncSlangCompiler["compile"]>(async () => ({ success: true, wgsl: "// wgsl" })),
+    dispose: vi.fn<AsyncSlangCompiler["dispose"]>(),
   };
 
   return {
@@ -263,7 +268,7 @@ describe("WebGPUVariableCapturer", () => {
 
   it("keeps the capture target alive until its submitted draws complete", async () => {
     const gpu = mockGpu();
-    const submittedWork = deferred<void>();
+    const submittedWork = deferred<undefined>();
     gpu.device.queue.onSubmittedWorkDone = vi.fn(() => submittedWork.promise);
     const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler);
 
@@ -274,7 +279,7 @@ describe("WebGPUVariableCapturer", () => {
     expect(gpu.device.queue.onSubmittedWorkDone).toHaveBeenCalledTimes(1);
     expect(target.destroy).not.toHaveBeenCalled();
 
-    submittedWork.resolve();
+    submittedWork.resolve(undefined);
     await submittedWork.promise;
     await Promise.resolve();
 
@@ -1273,7 +1278,7 @@ describe("WebGPURenderingEngine capture wiring", () => {
   it("exposes the Image pass channels in the capture compile context", async () => {
     const { WebGPURenderingEngine } = await import("../../webgpu/WebGPURenderingEngine");
     const engine = new WebGPURenderingEngine({ scriptUrl: "s.js", wasmUrl: "s.wasm" });
-    (engine as any).passGraph = [
+    (engineOwners(engine).session as any).passGraph = [
       { name: "BufferA", source: "a", output: "texture", width: 1, height: 1, channels: [] },
       {
         name: "Image", source: "i", output: "canvas", width: 1, height: 1,
@@ -1282,11 +1287,11 @@ describe("WebGPURenderingEngine capture wiring", () => {
         }],
       },
     ];
-    (engine as any).lastCompile = { code: "i", path: "/i.slang", buffers: { common: "float x;" } };
+    (engineOwners(engine).session as any).lastCompile = { code: "i", path: "/i.slang", buffers: { common: "float x;" } };
     const positions = { tag: "positions" } as unknown as GPUBuffer;
     const storageBuffers = new Map([[storageA.name, positions]]);
-    (engine as any).storageLayouts = new Map([[storageA.name, storageA]]);
-    (engine as any).storageBuffers = storageBuffers;
+    (engineOwners(engine).storage as any).storageLayouts = new Map([[storageA.name, storageA]]);
+    (engineOwners(engine).storage as any).storageBuffers = storageBuffers;
 
     const context = engine.getVariableCaptureCompileContext();
 
@@ -1301,10 +1306,10 @@ describe("WebGPURenderingEngine capture wiring", () => {
     const { WebGPURenderingEngine } = await import("../../webgpu/WebGPURenderingEngine");
     const engine = new WebGPURenderingEngine({ scriptUrl: "s.js", wasmUrl: "s.wasm" });
     const commonCode = "float helper(float x) { return x * 2.0; }";
-    (engine as any).passGraph = [
+    (engineOwners(engine).session as any).passGraph = [
       { name: "Image", source: "image", output: "canvas", width: 1, height: 1, channels: [] },
     ];
-    (engine as any).lastCompile = {
+    (engineOwners(engine).session as any).lastCompile = {
       code: "image",
       path: "/image.slang",
       buffers: { common: commonCode },
@@ -1341,8 +1346,8 @@ float4 mainImage(float2 fragCoord) {
         },
       },
     };
-    (engine as any).currentConfig = config;
-    (engine as any).lastCompile = {
+    (engineOwners(engine).session as any).currentConfig = config;
+    (engineOwners(engine).session as any).lastCompile = {
       code: imageCode,
       config,
       path: "/slang-multipass-test/flow.slang",
@@ -1351,7 +1356,7 @@ float4 mainImage(float2 fragCoord) {
         BufferB: "float4 mainImage(float2 fragCoord) { return float4(0.0); }",
       },
     };
-    (engine as any).passGraph = [];
+    (engineOwners(engine).session as any).passGraph = [];
 
     const context = engine.getVariableCaptureCompileContext(imageCode, "Image");
 
@@ -1369,11 +1374,11 @@ float4 mainImage(float2 fragCoord) {
     const firstBuffer = { tag: "positions-1", destroy: vi.fn() } as unknown as GPUBuffer;
     (engine as any).device = gpu.device;
     (engine as any).compiler = gpu.compiler;
-    (engine as any).passGraph = [
+    (engineOwners(engine).session as any).passGraph = [
       { name: "Image", source: "i", output: "canvas", width: 1, height: 1, channels: [] },
     ];
-    (engine as any).storageLayouts = new Map([[storageA.name, storageA]]);
-    (engine as any).storageBuffers = new Map([[storageA.name, firstBuffer]]);
+    (engineOwners(engine).storage as any).storageLayouts = new Map([[storageA.name, storageA]]);
+    (engineOwners(engine).storage as any).storageBuffers = new Map([[storageA.name, firstBuffer]]);
     const capturer = engine.createVariableCapturer();
 
     await capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4);
@@ -1381,7 +1386,7 @@ float4 mainImage(float2 fragCoord) {
       .not.toBe(firstBuffer);
 
     engine.resetTime();
-    const resetBuffer = (engine as any).pendingReset.storageBuffers.get(storageA.name) as GPUBuffer;
+    const resetBuffer = (engineOwners(engine).storage as any).pendingReset.storageBuffers.get(storageA.name) as GPUBuffer;
     await capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4);
 
     expect(gpu.createBindGroup.mock.calls.at(-1)![0].entries.find((entry: GPUBindGroupEntry) => entry.binding === 1)!.resource.buffer)
@@ -1389,7 +1394,7 @@ float4 mainImage(float2 fragCoord) {
     expect((firstBuffer as unknown as { destroy: ReturnType<typeof vi.fn> }).destroy)
       .not.toHaveBeenCalled();
 
-    (engine as any).storageBuffers = new Map([[storageA.name, resetBuffer]]);
+    (engineOwners(engine).storage as any).storageBuffers = new Map([[storageA.name, resetBuffer]]);
     (firstBuffer as unknown as { destroy: () => void }).destroy();
     await capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4);
 

@@ -2,6 +2,14 @@ import * as vscode from "vscode";
 
 const EXTENSION_PREFIX = "shader-studio";
 
+function tabInputViewType(input: unknown): string | undefined {
+  if (typeof input !== "object" || input === null || !("viewType" in input)) {
+    return undefined;
+  }
+  const viewType = input.viewType;
+  return typeof viewType === "string" ? viewType : undefined;
+}
+
 export interface TabGroupInfo {
     viewColumn: vscode.ViewColumn;
     tabs: ReadonlyArray<{ label: string; input: unknown }>;
@@ -73,7 +81,7 @@ export class TabGroupResolver {
   ): vscode.ViewColumn {
     const match = groups.find((group) =>
       group.tabs.some((tab) => {
-        const tabViewType = (tab.input as any)?.viewType;
+        const tabViewType = tabInputViewType(tab.input);
         return (
           (typeof tabViewType === "string" && viewTypes.includes(tabViewType)) ||
                     labels.includes(tab.label)
@@ -94,7 +102,7 @@ export class TabGroupResolver {
 
   public static isExtensionTab(tab: { label: string; input: unknown }): boolean {
     // Check viewType on the input (works for TabInputWebview and TabInputCustom)
-    const viewType = (tab.input as any)?.viewType;
+    const viewType = tabInputViewType(tab.input);
     if (typeof viewType === 'string' && viewType.startsWith(EXTENSION_PREFIX)) {
       return true;
     }

@@ -119,6 +119,8 @@
   let editor: monaco.editor.IStandaloneCodeEditor | null = null;
   let languageServiceController = $state<LanguageServiceController | null>(null);
   let environmentGeneration = 0;
+  // codemirror-vim ships an untyped, versioned runtime extension; this is the
+  // isolated adapter boundary for its instance and Ex command callback API.
   let vimModeInstance: any = null;
   let popupContainer: HTMLDivElement | null = null;
   let hostEditorPreferences: HostEditorPreferencesController | null = null;

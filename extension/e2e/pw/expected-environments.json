@@ -585,6 +585,81 @@
     "environment": "gpu"
   },
   {
+    "id": "8740fb339880f59c0a69-4fe0644fee67aaa5ed33:",
+    "title": "vertex-topology.e2e.mjs › glsl vertices geometry, blend, depth and cull in VS Code › edits vertices, blend, depth and cull in the config panel, keeps them after reload, and restores vertices fields after a mesh",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "8740fb339880f59c0a69-5155de510d01ea923388:",
+    "title": "vertex-topology.e2e.mjs › glsl vertices geometry, blend, depth and cull in VS Code › sets the instance count in the config panel, draws every instance, and keeps it after reload",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "8740fb339880f59c0a69-59e4aa3fc85aee96d022:",
+    "title": "vertex-topology.e2e.mjs › glsl vertices geometry, blend, depth and cull in VS Code › switches a cube between triangles, wireframe and points in the config panel and keeps it after reload",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "8740fb339880f59c0a69-f8786cbf1d18b9a3b855:",
+    "title": "vertex-topology.e2e.mjs › glsl vertices geometry, blend, depth and cull in VS Code › turns on 4x MSAA in the config panel, keeps drawing, and keeps it after reload",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "8740fb339880f59c0a69-4d6c5071763286e1372f:",
+    "title": "vertex-topology.e2e.mjs › glsl vertices geometry, blend, depth and cull in VS Code › reports vertices, depth and cull fields on the wrong geometry as config errors",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "8740fb339880f59c0a69-6789d395d98e06e756fe:",
+    "title": "vertex-topology.e2e.mjs › slang vertices geometry, blend, depth and cull in VS Code @gpu › edits vertices, blend, depth and cull in the config panel, keeps them after reload, and restores vertices fields after a mesh",
+    "environment": "gpu"
+  },
+  {
+    "id": "8740fb339880f59c0a69-32071ef5f217b9e74f57:",
+    "title": "vertex-topology.e2e.mjs › slang vertices geometry, blend, depth and cull in VS Code @gpu › sets the instance count in the config panel, draws every instance, and keeps it after reload",
+    "environment": "gpu"
+  },
+  {
+    "id": "8740fb339880f59c0a69-674246d060a16c7c51d4:",
+    "title": "vertex-topology.e2e.mjs › slang vertices geometry, blend, depth and cull in VS Code @gpu › switches a cube between triangles, wireframe and points in the config panel and keeps it after reload",
+    "environment": "gpu"
+  },
+  {
+    "id": "8740fb339880f59c0a69-f2d8fd33d717e5173bb5:",
+    "title": "vertex-topology.e2e.mjs › slang vertices geometry, blend, depth and cull in VS Code @gpu › turns on 4x MSAA in the config panel, keeps drawing, and keeps it after reload",
+    "environment": "gpu"
+  },
+  {
+    "id": "8740fb339880f59c0a69-70adff1c47f325309309:",
+    "title": "vertex-topology.e2e.mjs › slang vertices geometry, blend, depth and cull in VS Code @gpu › reports vertices, depth and cull fields on the wrong geometry as config errors",
+    "environment": "gpu"
+  },
+  {
+    "id": "8740fb339880f59c0a69-7552f64e3ee2b26f2aa0:",
+    "title": "vertex-topology.e2e.mjs › wgsl vertices geometry, blend, depth and cull in VS Code @gpu › edits vertices, blend, depth and cull in the config panel, keeps them after reload, and restores vertices fields after a mesh",
+    "environment": "gpu"
+  },
+  {
+    "id": "8740fb339880f59c0a69-a908f643b23a5ba593a0:",
+    "title": "vertex-topology.e2e.mjs › wgsl vertices geometry, blend, depth and cull in VS Code @gpu › sets the instance count in the config panel, draws every instance, and keeps it after reload",
+    "environment": "gpu"
+  },
+  {
+    "id": "8740fb339880f59c0a69-0ae97fd1a7a1e7623392:",
+    "title": "vertex-topology.e2e.mjs › wgsl vertices geometry, blend, depth and cull in VS Code @gpu › switches a cube between triangles, wireframe and points in the config panel and keeps it after reload",
+    "environment": "gpu"
+  },
+  {
+    "id": "8740fb339880f59c0a69-655e068837f2773454dc:",
+    "title": "vertex-topology.e2e.mjs › wgsl vertices geometry, blend, depth and cull in VS Code @gpu › turns on 4x MSAA in the config panel, keeps drawing, and keeps it after reload",
+    "environment": "gpu"
+  },
+  {
+    "id": "8740fb339880f59c0a69-9ee447c2b0fdd3cd5a2d:",
+    "title": "vertex-topology.e2e.mjs › wgsl vertices geometry, blend, depth and cull in VS Code @gpu › reports vertices, depth and cull fields on the wrong geometry as config errors",
+    "environment": "gpu"
+  },
+  {
     "id": "75c5e8537b50fd6488db-bf8a5a6bf32a589b9098:",
     "title": "websocket-origin.e2e.mjs › browser WebSocket access follows the confirmed web server port",
     "environment": "non-gpu"

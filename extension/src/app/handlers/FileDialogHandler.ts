@@ -10,6 +10,8 @@ import { getConfigPathForShaderPath } from "../ShaderConfigPaths";
 import type { ErrorMessage } from "@shader-studio/types";
 import { GLSL_EXTENSIONS, SCRIPT_EXTENSIONS, TEXTURE_EXTENSIONS, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, CUBEMAP_EXTENSIONS, WGSL_EXTENSIONS, createShaderInsertion, insertionLanguage, createNativeComputeSource, createNativeFragmentSource, shaderLanguageForPath } from "@shader-studio/types";
 
+type ResponseSender = (message: { type: string; payload: unknown }) => void;
+
 function fileTypeToFilters(fileType: string): { [name: string]: string[] } {
   switch (fileType) {
     case 'script':   return { 'Script files': SCRIPT_EXTENSIONS };
@@ -46,7 +48,7 @@ export class FileDialogHandler {
 
   async handleSelectFile(
     payload: { shaderPath: string; fileType: string; requestId: string },
-    respondFn: (msg: any) => void,
+    respondFn: ResponseSender,
   ): Promise<void> {
     try {
       const shaderDir = payload.shaderPath
@@ -79,7 +81,7 @@ export class FileDialogHandler {
 
   async handleCreateFile(
     payload: { shaderPath: string; suggestedPath: string; fileType: string; requestId: string; authoringMode?: 'hooks' | 'native'; passName?: string; outputCount?: number; geometryType?: string; vertexSpace?: string },
-    respondFn: (msg: any) => void,
+    respondFn: ResponseSender,
   ): Promise<void> {
     try {
       const shaderDir = payload.shaderPath
@@ -174,7 +176,7 @@ export class FileDialogHandler {
 
   async handleInsertShaderSource(
     payload: { shaderPath: string; sourcePath?: string; fileType: string; requestId: string; authoringMode?: 'hooks' | 'native'; passName?: string; outputCount?: number; geometryType?: string },
-    respondFn: (msg: any) => void,
+    respondFn: ResponseSender,
   ): Promise<void> {
     const fail = (error: string) => respondFn({ type: 'fileSelected', payload: { path: '', requestId: payload.requestId, error } });
     try {
@@ -221,7 +223,7 @@ export class FileDialogHandler {
 
   async handleSaveFile(
     payload: { data: string; defaultName: string; filters: Record<string, string[]> },
-    respondFn: (msg: any) => void,
+    respondFn: ResponseSender,
   ): Promise<void> {
     try {
       const saveFilters: Record<string, string[]> = {};
@@ -305,7 +307,7 @@ export class FileDialogHandler {
 
   async handleRequestWorkspaceFiles(
     payload: { extensions: string[]; shaderPath: string },
-    respondFn: (msg: any) => void,
+    respondFn: ResponseSender,
     pathConverter: (absPath: string) => string,
   ): Promise<void> {
     try {

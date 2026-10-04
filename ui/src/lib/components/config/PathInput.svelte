@@ -39,7 +39,7 @@
       entryPoint?: string;
       authoringMode?: 'hooks' | 'native';
     }) => void;
-    postMessage?: (msg: any) => void;
+    postMessage?: (msg: { type: string; [key: string]: unknown }) => void;
     onMessage?: (handler: (event: MessageEvent) => void) => void;
   }
 

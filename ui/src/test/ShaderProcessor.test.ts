@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ShaderProcessor } from '../lib/ShaderProcessor';
 import type { RenderingEngine } from '../../../rendering/src/types';
 import type { ShaderDebugManager } from '../lib/ShaderDebugManager';
-import type { ShaderSourceMessage } from '@shader-studio/types';
+import type { ShaderConfig, ShaderSourceMessage } from '@shader-studio/types';
 
 describe('ShaderProcessor', () => {
   let shaderProcessor: ShaderProcessor;
@@ -281,7 +281,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: 'void mainImage() {}',
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'test.glsl',
         buffers: {},
       };
@@ -313,7 +313,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: shaderCode,
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'test.glsl',
         buffers: {},
       };
@@ -329,7 +329,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: 'void mainImage() {}',
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'test.glsl',
         buffers: {},
       };
@@ -388,7 +388,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: 'void mainImage() {}',
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'test.glsl',
         buffers: {},
         customUniformDeclarations: 'uniform float uFresh;',
@@ -412,7 +412,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: 'float4 mainImage(float2 c) { return 1; }',
-        config: { passes: { ComputeLife: { type: 'compute', path: 'passes/life-step.slang' } } },
+        config: { passes: { ComputeLife: { type: 'compute', path: 'passes/life-step.slang' } } } as unknown as ShaderConfig,
         path: '/shaders/image.slang',
         buffers: { ComputeLife: 'void computeMain(uint3 id) {}' },
         bufferPathMap: {
@@ -440,7 +440,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: 'void mainImage() {}',
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'test.glsl',
         buffers: {},
       };
@@ -456,7 +456,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: 'void mainImage() {}',
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'test.glsl',
         buffers: {},
       };
@@ -473,7 +473,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: 'void mainImage() {}',
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'test.glsl',
         buffers: {},
       };
@@ -490,7 +490,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: 'void mainImage() {}',
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'test.glsl',
         buffers: {},
       };
@@ -504,7 +504,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: 'void mainImage() {}',
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'test.glsl',
         buffers: {},
       };
@@ -526,7 +526,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: 'void mainImage() {}',
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'test.glsl',
         buffers: {},
       };
@@ -553,7 +553,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: 'invalid shader code',
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'test.glsl',
         buffers: {},
       };
@@ -578,7 +578,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: 'void mainImage(out vec4 c, in vec2 f) { c = vec4(iDayOfWeek); }',
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'mix.glsl',
         buffers: {},
         scriptBundleError: 'Script file not found: ./mix.uniforms.ts',
@@ -612,7 +612,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: 'void mainImage(out vec4 c, in vec2 f) { c = vec4(iDayOfWeek); }',
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'mix.glsl',
         buffers: {},
         scriptBundleError: 'Script evaluation error: ctx.iDate is not iterable',
@@ -639,7 +639,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: 'void mainImage() {}',
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'mix.glsl',
         buffers: {},
         scriptBundleError: 'Script file not found: ./mix.uniforms.ts',
@@ -658,7 +658,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: 'void mainImage() {}',
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'mix.glsl',
         buffers: {},
         scriptBundleError: 'Script file not found: ./mix.uniforms.ts',
@@ -681,7 +681,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: 'void mainImage() {}',
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'test.glsl',
         buffers: {},
       };
@@ -706,7 +706,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: 'void mainImage() {}',
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'test.glsl',
         buffers: {},
       };
@@ -734,7 +734,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: imageShaderCode,
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'test.glsl',
         buffers: {},
       };
@@ -775,7 +775,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: imageShaderCode,
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'test.glsl',
         buffers: {},
       };
@@ -809,7 +809,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: imageShaderCode,
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'test.glsl',
         buffers: {},
       };
@@ -838,7 +838,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: 'void mainImage() {}',
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'test.glsl',
         buffers: {},
       };
@@ -870,7 +870,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: imageShaderCode,
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'test.glsl',
         buffers: {},
       };
@@ -895,7 +895,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: 'void mainImage() {}',
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'test.glsl',
         buffers: {},
       };
@@ -1004,7 +1004,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: 'void mainImage() {}',
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'test.glsl',
         buffers: {},
       };
@@ -1022,7 +1022,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: imageShaderCode,
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'test.glsl',
         buffers: {},
       };
@@ -1063,7 +1063,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: imageShaderCode,
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'test.glsl',
         buffers: {},
       };
@@ -1105,7 +1105,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: imageShaderCode,
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'test.glsl',
         buffers: {},
       };
@@ -1144,7 +1144,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: imageShaderCode,
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'test.glsl',
         buffers: {},
       };
@@ -1183,7 +1183,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: imageShaderCode,
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'test.glsl',
         buffers: {},
       };
@@ -1234,7 +1234,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: imageShaderCode,
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'test.glsl',
         buffers: {},
       };
@@ -1256,7 +1256,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: imageShaderCode,
-        config: {},
+        config: {} as unknown as ShaderConfig,
         path: 'test.glsl',
         buffers: {},
       };

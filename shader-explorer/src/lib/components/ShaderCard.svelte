@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ShaderFile } from '../types/ShaderFile';
+  import type { ShaderCodeRequestApi } from '../shaderCodeRequest';
   import ShaderPreview from './ShaderPreview.svelte';
   import { portal } from '../actions/portal';
   import {
@@ -11,7 +12,7 @@
 
   let { shader, vscodeApi, cardSize = 280, refreshAll = false, forceFresh = false, layoutMode = 'grid', compact = false, selected = false, onOpen, onCompilationFailed }: {
     shader: ShaderFile;
-    vscodeApi: any;
+    vscodeApi: ShaderCodeRequestApi | null;
     cardSize?: number;
     refreshAll?: boolean;
     forceFresh?: boolean;

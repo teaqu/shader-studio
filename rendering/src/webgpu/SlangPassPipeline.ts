@@ -60,7 +60,7 @@ export interface SlangChannelResource {
 // available; rgba16float remains the portable fallback.
 export const BUFFER_TEXTURE_FORMAT: GPUTextureFormat = "rgba16float";
 export const HIGH_PRECISION_BUFFER_TEXTURE_FORMAT: GPUTextureFormat = "rgba32float";
-export const MESH_UNIFORM_SIZE = 256;
+const MESH_UNIFORM_SIZE = 256;
 
 /** An assembled-module line mapped onto user lines. */
 export interface RemappedWgslDiagnosticLine {

@@ -2,8 +2,6 @@ import { writable, type Writable } from 'svelte/store';
 import type { ShaderFile } from '../types/ShaderFile';
 
 export const shadersStore: Writable<ShaderFile[]> = writable([]);
-export const selectedShader: Writable<ShaderFile | null> = writable(null);
-export const searchQuery: Writable<string> = writable('');
 
 // Rendering queue to limit concurrent WebGL contexts while still letting the
 // first page warm thumbnails in parallel.
@@ -100,8 +98,6 @@ export class RenderQueue {
     });
   }
 }
-
-export const renderQueue = new RenderQueue();
 
 // A single WebGL context renders all GLSL thumbnails. Serialize work so a
 // thumbnail never replaces another shader's in-progress capture.

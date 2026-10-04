@@ -19,7 +19,7 @@
     onRemove: (channelName: string) => void;
     onRename?: (oldName: string, newName: string) => void;
     existingChannelNames?: string[];
-    postMessage?: (msg: any) => void;
+    postMessage?: (msg: { type: string; [key: string]: unknown }) => void;
     onMessage?: (handler: (event: MessageEvent) => void) => void;
     shaderPath?: string;
     audioVideoController?: AudioVideoController;
@@ -117,14 +117,14 @@
     if (!open || !ci || !('resolved_path' in ci)) {
       return;
     }
-    const parentResolved = (ci as any).resolved_path;
+    const parentResolved = ci.resolved_path;
     const parentPath = 'path' in ci ? ci.path : undefined;
     untrack(() => {
       if (!tempInput) {
         return;
       }
       const tempPath = 'path' in tempInput ? tempInput.path : undefined;
-      if (parentResolved && parentPath === tempPath && (tempInput as any).resolved_path !== parentResolved) {
+      if (parentResolved && parentPath === tempPath && 'resolved_path' in tempInput && tempInput.resolved_path !== parentResolved) {
         tempInput = { ...tempInput, resolved_path: parentResolved } as ConfigInput;
       }
     });
@@ -228,22 +228,20 @@
   function updatePath(path: string, resolvedUri?: string) {
     if (tempInput && (tempInput.type === "texture" || tempInput.type === "video" || tempInput.type === "cubemap" || tempInput.type === "audio")) {
       const cleanPath = extractOriginalPath(path);
-      const { resolved_path, startTime, endTime, ...rest } = tempInput as any;
-      const isPathChange = 'path' in tempInput && (tempInput as any).path !== cleanPath;
+      const isPathChange = tempInput.path !== cleanPath;
       const preserveTimes = tempInput.type === "audio" && !isPathChange;
-      const updated: any = { ...rest, path: cleanPath };
-      if (resolvedUri) {
-        updated.resolved_path = resolvedUri;
+      if (tempInput.type === "audio") {
+        const { resolved_path: _resolvedPath, ...audio } = tempInput;
+        tempInput = {
+          ...audio,
+          path: cleanPath,
+          ...(resolvedUri ? { resolved_path: resolvedUri } : {}),
+          ...(!preserveTimes ? { startTime: undefined, endTime: undefined } : {}),
+        };
+      } else {
+        const { resolved_path: _resolvedPath, ...input } = tempInput;
+        tempInput = { ...input, path: cleanPath, ...(resolvedUri ? { resolved_path: resolvedUri } : {}) };
       }
-      if (preserveTimes) {
-        if (startTime !== null && startTime !== undefined) {
-          updated.startTime = startTime;
-        }
-        if (endTime !== null && endTime !== undefined) {
-          updated.endTime = endTime;
-        }
-      }
-      tempInput = updated as ConfigInput;
       autoSave();
       // If changing audio path while playing, auto-play the new song
       if (tempInput.type === "audio" && isPathChange && tempInput.path) {
@@ -318,7 +316,7 @@
   /** Resume audio after a config save that triggers a reload recompile */
   function resumeAudioAfterSave() {
     if (tempInput?.type === 'audio' && tempInput.path && audioVideoController) {
-      const path = (tempInput as any).resolved_path
+      const path = tempInput.resolved_path
         || (getWebviewUri ? getWebviewUri(tempInput.path) : null)
         || lastSelectedResolvedUri
         || tempInput.path;

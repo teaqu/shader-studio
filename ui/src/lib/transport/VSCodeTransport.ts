@@ -2,7 +2,7 @@ import type { BaseMessage } from '@shader-studio/types';
 import type { Transport, TransportMessage } from './MessageTransport';
 
 export class VSCodeTransport implements Transport {
-  private vscode: any;
+  private readonly vscode: ReturnType<typeof acquireVsCodeApi>;
   private readonly messageHandlers = new Set<(event: MessageEvent) => void>();
 
   constructor() {

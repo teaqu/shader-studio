@@ -1,5 +1,6 @@
 import type { DebugInstrumentationPlan, ShaderConfig, ShaderLanguageId, SlangSourceModule, StorageBufferSnapshot } from "@shader-studio/types";
-import type { CompilationResult } from "../models";
+import type { RenderPassNode } from "./PassGraph";
+import type { CompilationResult, Pass } from "../models";
 import type { TimeManager } from "../util/TimeManager";
 import type { IVariableCapturer, CaptureUniforms, CaptureCustomUniform, CaptureCompileContext } from "../capture/VariableCapturer";
 import type { PixelRegionResult } from "./PixelRegion";
@@ -25,7 +26,7 @@ export interface RenderingEngine {
   writeStorageBuffer(name: string, start: number, data: ArrayBuffer): Promise<void>;
   setInputEnabled(enabled: boolean): void;
   updateBufferAndRecompile(bufferName: string, bufferContent: string): Promise<CompilationResult | undefined>;
-  getPasses(): any[];
+  getPasses(): (Pass | RenderPassNode)[];
   /** Effective colour-attachment limits of the installed WebGPU device. */
   getRenderOutputLimits?(): { maxColorAttachments: number; maxColorAttachmentBytesPerSample: number } | null;
   togglePause(): void;

@@ -1,7 +1,7 @@
 import { expect } from "vitest";
 import type { PixelRegionResult } from "../../types/PixelRegion";
 
-export function pixelAt(rgba: Uint8ClampedArray, x: number, y: number): number[] {
+function pixelAt(rgba: Uint8ClampedArray, x: number, y: number): number[] {
   const offset = (y * 60 + x) * 4;
   return [...rgba.slice(offset, offset + 4)];
 }

@@ -448,7 +448,7 @@ export class ShaderProcessor {
 
   private async compile(
     code: string,
-    config: any,
+    config: ShaderConfig | null,
     path: string,
     buffers: Record<string, string>,
     customUniformDeclarations?: string,

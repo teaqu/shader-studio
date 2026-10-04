@@ -8,9 +8,9 @@ import type { SlangLanguageServerModule } from "../slangLanguageServerTypes";
 let module: SlangLanguageServerModule;
 
 beforeAll(async () => {
-  module = await createSlangModule({
+  module = (await createSlangModule({
     wasmBinary: readFileSync(new URL("../../../../ui/src/slang/slang-wasm.wasm", import.meta.url)),
-  });
+  })) as unknown as SlangLanguageServerModule;
 }, 20_000);
 
 describe("SlangLanguageService with bundled WASM", () => {

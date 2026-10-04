@@ -13,6 +13,20 @@ export interface CustomUniformValue {
   value: number | number[] | boolean;
 }
 
+type UniformValue = number | number[] | boolean;
+type UniformResult = Record<string, unknown>;
+type UniformsFunction = (ctx: Record<string, unknown>) => UniformResult;
+
+function errorMessage(error: unknown): string {
+  if ((typeof error === "object" && error !== null) || typeof error === "function") {
+    const message = (error as { message?: unknown }).message;
+    if (message) {
+      return String(message);
+    }
+  }
+  return String(error);
+}
+
 /**
  * What the viewer is actually showing. The script runs in the extension host,
  * which has no clock of the shader's own: without this it invents one from wall
@@ -42,7 +56,7 @@ export interface ScriptLoadResult {
  */
 export class ScriptEvaluator {
   private logger = Logger.getInstance();
-  private uniformsFn: ((ctx: any) => Record<string, any>) | null = null;
+  private uniformsFn: UniformsFunction | null = null;
   private inferredTypes: Record<string, string> = {};
   private pollTimer: NodeJS.Timeout | null = null;
   private lastValues: CustomUniformValue[] = [];
@@ -73,7 +87,7 @@ export class ScriptEvaluator {
       const scriptRequire = scriptPath ? createRequire(scriptPath) : require;
 
       // Create a sandbox with require support
-      const sandbox: any = {
+      const sandbox: Record<string, unknown> = {
         __shaderUniforms: undefined,
         console,
         setTimeout,
@@ -90,11 +104,11 @@ export class ScriptEvaluator {
       script.runInContext(sandbox);
 
       const module = sandbox.__shaderUniforms;
-      if (typeof module?.uniforms !== 'function') {
+      if (!module || typeof module !== "object" || typeof (module as { uniforms?: unknown }).uniforms !== "function") {
         return { declarations: "", uniforms: [], error: "Script must export a uniforms(ctx) function" };
       }
 
-      this.uniformsFn = module.uniforms;
+      this.uniformsFn = (module as { uniforms: UniformsFunction }).uniforms;
 
       // Initial call to infer types
       const dummyCtx = {
@@ -141,9 +155,9 @@ export class ScriptEvaluator {
       }
 
       return { declarations: declLines.join("\n"), uniforms: uniformTypes };
-    } catch (err: any) {
+    } catch (err: unknown) {
       this.uniformsFn = null;
-      return { declarations: "", uniforms: [], error: `Script evaluation error: ${err?.message || err}` };
+      return { declarations: "", uniforms: [], error: `Script evaluation error: ${errorMessage(err)}` };
     }
   }
 
@@ -425,11 +439,13 @@ export class ScriptEvaluator {
           continue;
         }
 
-        values.push({ name, type: expectedType, value });
+        // inferType is the longstanding acceptance rule: vector arity defines
+        // its GLSL type, including values supplied by existing user scripts.
+        values.push({ name, type: expectedType, value: value as UniformValue });
       }
       return values;
-    } catch (err: any) {
-      this.logger.warn(`Script runtime error: ${err?.message || err}`);
+    } catch (err: unknown) {
+      this.logger.warn(`Script runtime error: ${errorMessage(err)}`);
       return this.getZeroValues();
     }
   }
@@ -477,7 +493,7 @@ export class ScriptEvaluator {
     return changed;
   }
 
-  private inferType(value: any): string | null {
+  private inferType(value: unknown): string | null {
     if (typeof value === 'number') {
       return 'float';
     }

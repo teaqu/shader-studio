@@ -12,16 +12,16 @@ function createApi(): StandaloneDockviewApi & { emitLayoutChange(): void; activa
   type TestPanel = {
     id: string;
     api: {
-      close: () => void;
+      close(): void;
       group: TestGroup;
-      setActive: () => void;
-      setTitle: (title: string) => void;
-      setSize: (size: { width: number }) => void;
+      setActive(): void;
+      setTitle(title: string): void;
+      setSize(size: { width: number }): void;
     };
   };
   type TestGroup = {
     panels: TestPanel[];
-    api: { isVisible: boolean; setVisible: (visible: boolean) => void };
+    api: { isVisible: boolean; setVisible(visible: boolean): void };
   };
   const panels = new Map<string, TestPanel>();
   const createGroup = (): TestGroup => {

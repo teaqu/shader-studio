@@ -50,6 +50,8 @@ export class ClientMessageHandler {
     );
   }
 
+  // The UI protocol is deliberately open-ended for forward-compatible clients;
+  // each switch branch delegates to a command handler that validates its shape.
   async handle(
     message: any,
     respondFn: (msg: any) => void,

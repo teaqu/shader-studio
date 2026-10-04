@@ -277,10 +277,7 @@ describe("buildSlangPassGraph", () => {
           inputs: {},
           resolution: { scale: 0.5 },
         },
-        common: {
-          path: "common.slang",
-          inputs: {},
-        },
+        common: { path: "common.slang" },
       },
     };
 
@@ -467,12 +464,12 @@ describe("buildSlangPassGraph", () => {
           inputs: {
             // "common" is a configured pass but not renderable, and "Image"
             // is renderable but not a buffer: neither can feed a channel.
-            iChannel0: { type: "buffer", source: "common" },
-            iChannel1: { type: "buffer", source: "Image" },
+            iChannel0: { type: "buffer", source: "common" } as unknown as import("@shader-studio/types").ConfigInput,
+            iChannel1: { type: "buffer", source: "Image" } as unknown as import("@shader-studio/types").ConfigInput,
           },
         },
         BufferA: { path: "buffer-a.slang", inputs: {} },
-        common: { path: "common.slang", inputs: {} },
+        common: { path: "common.slang" },
       },
     };
 
@@ -522,7 +519,8 @@ describe("buildSlangPassGraph", () => {
         BufferA: {
           path: "buffer-a.slang",
           inputs: {},
-          resolution: { width: 200, height: 100, scale: 0.5 },
+          // Deliberately invalid configuration: the graph reports the conflict.
+          resolution: { width: 200, height: 100, scale: 0.5 } as unknown as import("@shader-studio/types").BufferResolution,
         },
       },
     };

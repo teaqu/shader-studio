@@ -280,7 +280,7 @@ interface WgslChannelAccessors {
 }
 
 function channelAccessors(channel: WgslChannelAccessors, fragmentStage: boolean): string {
-  const { key, slot, textureVar, samplerVar, cube } = channel;
+  const { key, textureVar, samplerVar, cube } = channel;
   const coordType = cube ? "vec3<f32>" : "vec2<f32>";
   const coordName = cube ? "dir" : "uv";
   // Mirror describeSlangChannel: 2D sampling flips Y for the ShaderToy
