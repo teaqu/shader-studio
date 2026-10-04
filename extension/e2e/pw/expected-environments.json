@@ -505,21 +505,6 @@
     "environment": "non-gpu"
   },
   {
-    "id": "22c84224861e748b98b8-a6b1b1f2bec94e357b10:",
-    "title": "script-uniforms-debug-panel.e2e.mjs › debug panel uniforms @gpu › glsl keeps script values out of the debug Uniforms section",
-    "environment": "gpu"
-  },
-  {
-    "id": "22c84224861e748b98b8-651ec4636a50ea3caace:",
-    "title": "script-uniforms-debug-panel.e2e.mjs › debug panel uniforms @gpu › slang keeps script values out of the debug Uniforms section",
-    "environment": "gpu"
-  },
-  {
-    "id": "22c84224861e748b98b8-49f9bf7e886e34466614:",
-    "title": "script-uniforms-debug-panel.e2e.mjs › debug panel uniforms @gpu › wgsl keeps script values out of the debug Uniforms section",
-    "environment": "gpu"
-  },
-  {
     "id": "a503f73d1c3570e63ffb-19a26fc4862d1070da70:",
     "title": "slang-broken-capture.e2e.mjs › Slang capture around a broken statement › captures the values declared above the break",
     "environment": "non-gpu"
