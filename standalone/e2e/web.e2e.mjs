@@ -1178,6 +1178,47 @@ for (const format of ['PNG', 'JPEG', 'WebM', 'MP4', 'GIF']) {
   });
 }
 
+test('Live MP4 saves an indexed file with a duration for desktop players', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('shader-option-aurora-glsl').click();
+  await page.getByLabel('Toggle export panel').click();
+  await page.getByRole('button', { name: 'Video', exact: true }).click();
+  await page.getByRole('button', { name: 'MP4', exact: true }).click();
+  await page.getByRole('button', { name: 'Start recording', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Stop & save', exact: true })).toBeVisible();
+  await page.waitForTimeout(1500);
+  const downloading = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Stop & save', exact: true }).click();
+  const download = await downloading;
+  const chunks = [];
+  for await (const chunk of await download.createReadStream()) {
+chunks.push(chunk);
+}
+  const bytes = Buffer.concat(chunks);
+  const boxes = [];
+  function walk(start, end) {
+    for (let offset = start; offset + 8 <= end;) {
+      const size = bytes.readUInt32BE(offset);
+      const type = bytes.toString('ascii', offset + 4, offset + 8);
+      expect(size).toBeGreaterThanOrEqual(8);
+      boxes.push({ type, offset });
+      if (['moov', 'trak', 'mdia', 'minf', 'stbl'].includes(type)) {
+walk(offset + 8, offset + size);
+}
+      offset += size;
+    }
+  }
+  walk(0, bytes.length);
+  expect(boxes.some(box => box.type === 'moof')).toBe(false);
+  const mvhd = boxes.find(box => box.type === 'mvhd').offset;
+  const duration = bytes[mvhd + 8] === 1
+    ? Number(bytes.readBigUInt64BE(mvhd + 32)) / bytes.readUInt32BE(mvhd + 28)
+    : bytes.readUInt32BE(mvhd + 24) / bytes.readUInt32BE(mvhd + 20);
+  expect(duration).toBeGreaterThan(0.5);
+  const stsz = boxes.find(box => box.type === 'stsz').offset;
+  expect(bytes.readUInt32BE(stsz + 16)).toBeGreaterThan(1);
+});
+
 test('records the live preview to WebM and remembers capture settings after reload', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('shader-option-aurora-glsl').click();

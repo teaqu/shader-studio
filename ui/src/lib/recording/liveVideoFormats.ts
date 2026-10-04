@@ -1,7 +1,9 @@
 export type LiveVideoFormat = "mp4" | "webm";
 
 const LIVE_MIME_CANDIDATES: Record<LiveVideoFormat, string[]> = {
-  mp4: ["video/mp4;codecs=avc1.42E01E", "video/mp4"],
+  // A fixed level 3.0 caps AVC at 10 Mbps, even for large, detailed previews.
+  // Prefer High/Baseline level 5.2 for bitrate headroom, with host fallbacks.
+  mp4: ["video/mp4;codecs=avc1.640034", "video/mp4;codecs=avc1.420034", "video/mp4;codecs=avc1", "video/mp4"],
   webm: ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"],
 };
 

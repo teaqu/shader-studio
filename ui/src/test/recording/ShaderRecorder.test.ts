@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
+const { mockFinalizeLiveMp4 } = vi.hoisted(() => ({ mockFinalizeLiveMp4: vi.fn() }));
+vi.mock('../../lib/recording/finalizeLiveMp4', () => ({ finalizeLiveMp4: mockFinalizeLiveMp4 }));
 
 // Polyfill ImageData for jsdom (used by GIF recording path)
 if (typeof globalThis.ImageData === 'undefined') {
@@ -719,6 +721,36 @@ describe('ShaderRecorder', () => {
   });
 
   describe('Live video', () => {
+    it('finalizes MP4 before saving and prevents a second recording during finalization', async () => {
+      const { stream, MockMediaRecorder } = installMediaRecorder();
+      MockMediaRecorder.isTypeSupported.mockReturnValue(true);
+      const canvas = { width: 800, height: 600, captureStream: vi.fn(() => stream) } as any;
+      const config = { mode: 'live', format: 'mp4', duration: 5, startTime: 0, fps: 30, width: 800, height: 600 };
+      let finish!: (blob: Blob) => void;
+      mockFinalizeLiveMp4.mockImplementationOnce(() => new Promise<Blob>(resolve => {
+        finish = resolve;
+      }));
+      const recording = (recorder as any).recordLive(config, { getCanvas: () => canvas });
+      (recorder as any).stopLiveRecording();
+      expect(mockFinalizeLiveMp4).toHaveBeenCalledWith(expect.any(Blob), expect.any(AbortSignal));
+      await expect((recorder as any).recordLive(config, { getCanvas: () => canvas })).rejects.toThrow('already active');
+      const indexed = new Blob(['indexed'], { type: 'video/mp4' });
+      finish(indexed);
+      expect(await recording).toBe(indexed);
+    });
+
+    it('aborts MP4 finalization when the recording is discarded', async () => {
+      const { stream, MockMediaRecorder } = installMediaRecorder();
+      MockMediaRecorder.isTypeSupported.mockReturnValue(true);
+      mockFinalizeLiveMp4.mockImplementationOnce((_blob: Blob, signal: AbortSignal) => new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      }));
+      const recording = (recorder as any).recordLive({ mode: 'live', format: 'mp4', duration: 5, startTime: 0, fps: 30, width: 800, height: 600 },
+        { getCanvas: () => ({ width: 800, height: 600, captureStream: () => stream }) });
+      (recorder as any).stopLiveRecording();
+      recorder.cancel();
+      await expect(recording).rejects.toThrow('Recording cancelled');
+    });
     function installMediaRecorder() {
       const tracks = [{ stop: vi.fn() }];
       const stream = { getTracks: () => tracks } as unknown as MediaStream;

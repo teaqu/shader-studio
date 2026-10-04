@@ -12,6 +12,7 @@ import {
 } from "./types";
 import { createRenderTimeline, type RenderFrameStep, type RenderTimeline } from "./renderTimeline";
 import { liveVideoMimeType } from "./liveVideoFormats";
+import { finalizeLiveMp4 } from "./finalizeLiveMp4";
 import { describeRenderInputLimitations, renderInputLimitations } from "./captureSnapshot";
 
 export type { ScreenshotConfig, RecordingConfig, ShaderInfo };
@@ -23,6 +24,7 @@ export class ShaderRecorder {
   private activeGifEncoder: GifEncoderWrapper | null = null;
   private activeMediaRecorder: MediaRecorder | null = null;
   private liveStream: MediaStream | null = null;
+  private liveFinalization: AbortController | null = null;
   private rejectLiveRecording: ((reason?: unknown) => void) | null = null;
   private outputNotice: string | null = null;
 
@@ -95,7 +97,7 @@ export class ShaderRecorder {
     if (config.format === "gif") {
       return Promise.reject(new Error("Live GIF recording is not supported"));
     }
-    if (this.activeMediaRecorder) {
+    if (this.activeMediaRecorder || this.liveFinalization) {
       return Promise.reject(new Error("A Live recording is already active"));
     }
     const canvas = engine.getCanvas();
@@ -157,7 +159,16 @@ export class ShaderRecorder {
             "Live recording captured no frames from the preview. If the preview is blank, reload it and try again.",
           ));
         } else {
-          resolve(new Blob(chunks, { type: mediaRecorder.mimeType || mimeType }));
+          const blob = new Blob(chunks, { type: mediaRecorder.mimeType || mimeType });
+          if (config.format === "mp4") {
+            const controller = new AbortController();
+            this.liveFinalization = controller;
+            void finalizeLiveMp4(blob, controller.signal).then(resolve, reject).finally(() => {
+              this.liveFinalization = null;
+            });
+          } else {
+            resolve(blob);
+          }
         }
       };
       try {
@@ -373,6 +384,7 @@ export class ShaderRecorder {
 
   cancel(): void {
     this.cancelled = true;
+    this.liveFinalization?.abort(new Error("Recording cancelled"));
     if (this.activeGifEncoder) {
       this.activeGifEncoder.cancel();
       this.activeGifEncoder = null;

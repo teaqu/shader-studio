@@ -2,6 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { liveVideoMimeType, supportedLiveVideoFormats } from "../../lib/recording/liveVideoFormats";
 
 describe("liveVideoFormats", () => {
+  it("prefers AVC with enough bitrate headroom for detailed previews", () => {
+    vi.stubGlobal("MediaRecorder", { isTypeSupported: () => true });
+    expect(liveVideoMimeType("mp4")).toBe("video/mp4;codecs=avc1.640034");
+  });
   afterEach(() => {
     vi.unstubAllGlobals();
   });
