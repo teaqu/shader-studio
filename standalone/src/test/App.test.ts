@@ -229,6 +229,50 @@ describe('standalone App', () => {
     expect(pwa.checkForUpdate).toHaveBeenCalledOnce();
   });
 
+  it.each(['declined', 'failed', 'unknown'])('remembers an automatic request across app launches: %s', async (result) => {
+    const transport = createTransport();
+    if (result === 'failed') {
+      transport.requestPersistentStorage.mockRejectedValue(new Error('denied'));
+    } else {
+      transport.requestPersistentStorage.mockResolvedValue({ backend: 'indexeddb', persisted: result === 'unknown' ? null : false, persistSupported: true });
+    }
+    const first = render(App, { props: { transport } });
+    await waitFor(() => expect(transport.requestPersistentStorage).toHaveBeenCalledOnce());
+    first.unmount();
+    render(App, { props: { transport } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+    await tick();
+    expect(transport.requestPersistentStorage).toHaveBeenCalledOnce();
+  });
+
+  it('keeps requests manual when a decision cannot be remembered', async () => {
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {
+      throw new Error('blocked');
+    } });
+    const transport = createTransport();
+    render(App, { props: { transport } });
+    expect(await screen.findByTestId('storage-warning')).toBeTruthy();
+    expect(transport.requestPersistentStorage).not.toHaveBeenCalled();
+    await fireEvent.click(screen.getByRole('button', { name: 'Dismiss storage warning' }));
+    expect(screen.queryByTestId('storage-warning')).toBeNull();
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Request storage protection' }));
+    await waitFor(() => expect(transport.requestPersistentStorage).toHaveBeenCalledOnce());
+  });
+
+  it('shows a dismissible storage warning without opening a menu and remembers dismissal', async () => {
+    const transport = createTransport();
+    transport.requestPersistentStorage.mockResolvedValue({ backend: 'indexeddb', persisted: false, persistSupported: true });
+    const first = render(App, { props: { transport } });
+    expect(await screen.findByTestId('storage-warning')).toBeTruthy();
+    await fireEvent.click(screen.getByRole('button', { name: 'Dismiss storage warning' }));
+    expect(screen.queryByTestId('storage-warning')).toBeNull();
+    first.unmount();
+    render(App, { props: { transport } });
+    await tick();
+    expect(screen.queryByTestId('storage-warning')).toBeNull();
+  });
+
   it('automatically requests storage protection when it has not been granted', async () => {
     const transport = createTransport();
     render(App, { props: { transport } });
@@ -236,6 +280,7 @@ describe('standalone App', () => {
     await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
     expect(await screen.findByText(/Storage protection is enabled/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Request storage protection' })).toBeNull();
+    expect(screen.queryByTestId('storage-warning')).toBeNull();
   });
 
   it('explains automatic saving and allows retry when protection is declined', async () => {
@@ -244,7 +289,7 @@ describe('standalone App', () => {
     render(App, { props: { transport } });
     await waitFor(() => expect(transport.requestPersistentStorage).toHaveBeenCalledOnce());
     await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
-    expect(await screen.findByText(/Work saves automatically.*browser may remove local work/)).toBeTruthy();
+    expect(await screen.findByText(/Work saves automatically\.\s+Storage protection has not been granted/)).toBeTruthy();
     await fireEvent.click(screen.getByRole('button', { name: 'Request storage protection' }));
     await waitFor(() => expect(transport.requestPersistentStorage).toHaveBeenCalledTimes(2));
     expect(await screen.findByText(/Storage protection is enabled/)).toBeTruthy();
@@ -262,6 +307,14 @@ describe('standalone App', () => {
     await tick();
     expect(transport.requestPersistentStorage).not.toHaveBeenCalled();
     expect(screen.queryByRole('button', { name: 'Request storage protection' })).toBeNull();
+    if (status.backend === 'session') {
+      expect(screen.getByTestId('storage-warning').textContent).toContain('closing the app will lose your work');
+      expect(screen.queryByRole('button', { name: 'Dismiss storage warning' })).toBeNull();
+    } else if (!status.persisted) {
+      expect(screen.getByTestId('storage-warning')).toBeTruthy();
+    } else {
+      expect(screen.queryByTestId('storage-warning')).toBeNull();
+    }
   });
 
   it('keeps saving feedback and a retry available when the protection request fails', async () => {

@@ -4,20 +4,28 @@ import { readWorkspaceFiles } from './workspace-store.mjs';
 test('storage protection is requested automatically and the Workspace menu explains a declined request', async ({ page }) => {
   await page.addInitScript(() => {
     let protectedStorage = false;
-    window.__storageProtectionRequests = 0;
+    window.__storageProtectionRequests = Number(sessionStorage.getItem('test-storage-requests') ?? 0);
     Object.defineProperty(navigator.storage, 'persisted', { value: async () => protectedStorage });
     Object.defineProperty(navigator.storage, 'persist', { value: async () => {
       window.__storageProtectionRequests++;
+      sessionStorage.setItem('test-storage-requests', String(window.__storageProtectionRequests));
       protectedStorage = window.__storageProtectionRequests > 1;
       return protectedStorage;
     } });
   });
   await page.goto('/');
   await expect.poll(() => page.evaluate(() => window.__storageProtectionRequests)).toBe(1);
+  await expect(page.getByTestId('storage-warning')).toBeVisible();
+  const warningBox = await page.getByTestId('storage-warning').boundingBox();
+  expect(warningBox.x + warningBox.width).toBeLessThanOrEqual(page.viewportSize().width);
+  await page.getByRole('button', { name: 'Dismiss storage warning' }).click();
+  await page.reload();
   await page.getByRole('button', { name: 'Workspace', exact: true }).click();
   const menu = page.getByRole('menu', { name: 'Workspace' });
   await expect(menu).toContainText('Work saves automatically.');
   await expect(menu).toContainText('The browser may remove local work if space runs low.');
+  await expect(page.getByTestId('storage-warning')).toHaveCount(0);
+  expect(await page.evaluate(() => window.__storageProtectionRequests)).toBe(1);
   await menu.getByRole('button', { name: 'Request storage protection' }).click();
   await expect(menu).toBeHidden();
   await page.getByRole('button', { name: 'Workspace', exact: true }).click();

@@ -21,6 +21,36 @@
 
   interface Props { transport: WebTransport; pwa?: PwaController; }
   const ALPHA_NOTICE_DISMISSED_KEY = 'shader-studio.alpha-notice-dismissed';
+  const STORAGE_PROTECTION_ATTEMPTED_KEY = 'shader-studio.storage-protection-attempted';
+  const STORAGE_WARNING_DISMISSED_KEY = 'shader-studio.storage-warning-dismissed';
+
+  function shouldShowStorageWarning(): boolean {
+    try {
+      return localStorage.getItem(STORAGE_WARNING_DISMISSED_KEY) !== 'true';
+    } catch {
+      return true;
+    }
+  }
+
+  function claimAutomaticStorageRequest(): boolean {
+    try {
+      if (localStorage.getItem(STORAGE_PROTECTION_ATTEMPTED_KEY) === 'true') {
+        return false;
+      }
+      localStorage.setItem(STORAGE_PROTECTION_ATTEMPTED_KEY, 'true');
+      return true;
+    } catch {
+      // Without a remembered decision, keep requests manual to avoid repeated prompts.
+      return false;
+    }
+  }
+
+  function dismissStorageWarning() {
+    storageWarningVisible = false;
+    try {
+      localStorage.setItem(STORAGE_WARNING_DISMISSED_KEY, 'true');
+    } catch { /* Dismiss for this session even if preferences cannot be saved. */ }
+  }
 
   function shouldShowAlphaNotice(): boolean {
     try {
@@ -49,6 +79,7 @@
   });
   let storageStatus = $state<WorkspaceStorageStatus | null>(null);
   let storageProtectionPending = $state(false);
+  let storageWarningVisible = $state(shouldShowStorageWarning());
   let workspaceFileInput: HTMLInputElement;
   const session = $derived(getViewerSession());
   const explorerApi = transport.getShaderExplorerHostApi();
@@ -56,7 +87,7 @@
   onMount(() => {
     void transport.getStorageStatus?.().then(async (status) => {
       storageStatus = status;
-      if (status.backend === 'indexeddb' && status.persistSupported && !status.persisted) {
+      if (status.backend === 'indexeddb' && status.persistSupported && !status.persisted && claimAutomaticStorageRequest()) {
         await requestPersistentStorage();
       }
     }).catch(() => { /* Storage inspection must not interrupt editing. */ });
@@ -360,6 +391,21 @@
       <button class="dismiss-alpha-notice" aria-label="Dismiss alpha notice" title="Dismiss" onclick={dismissAlphaNotice}>×</button>
     </aside>
   {/if}
+  {#if storageStatus && !storageStatus.persisted && !storageProtectionPending && (storageWarningVisible || storageStatus.backend === 'session')}
+    <aside class="storage-warning" data-testid="storage-warning" role="note">
+      <span>
+        {#if storageStatus.backend === 'session'}
+          Session-only: closing the app will lose your work. Export a backup to keep it.
+        {:else}
+          Work saves automatically in this browser, but storage protection is not enabled. The browser may remove local work if space runs low. Export backups to keep a separate copy.
+        {/if}
+      </span>
+      <button onclick={exportWorkspace}>Export backup</button>
+      {#if storageStatus.backend !== 'session'}
+        <button aria-label="Dismiss storage warning" onclick={dismissStorageWarning}>×</button>
+      {/if}
+    </aside>
+  {/if}
   {#if workspaceError}<p role="alert">{workspaceError}</p>{/if}
   {#if pwaStatus.offlinePreparation.state === 'error'}
     <p class="shell-status-error" role="alert">Offline preparation failed: {pwaStatus.offlinePreparation.message}</p>
@@ -396,6 +442,9 @@
   .dropdown-menu button:not([role="menuitemcheckbox"]) { display: block; }
   .dropdown-menu .danger-action { color: var(--vscode-errorForeground, #f48771); }
   .storage-notice { max-width: 280px; margin: 4px 0; padding: 8px 12px; font-size: 12px; line-height: 1.5; white-space: normal; color: var(--vscode-descriptionForeground); border-top: 1px solid var(--vscode-panel-border); }
+  .storage-warning { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 12px; line-height: 1.5; color: var(--vscode-editorWarning-foreground, #cca700); border-bottom: 1px solid var(--vscode-panel-border); }
+  .storage-warning span { flex: 1; min-width: 0; }
+  .storage-warning button { flex-shrink: 0; }
   .alpha-notice { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 3px 10px; font-size: 11px; text-align: center; color: var(--vscode-descriptionForeground); border-bottom: 1px solid var(--vscode-panel-border); }
   .dismiss-alpha-notice { flex: 0 0 auto; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; color: inherit; background: transparent; font: inherit; font-size: 18px; line-height: 1; cursor: pointer; }
   .dismiss-alpha-notice:hover { background: var(--vscode-list-hoverBackground); }
