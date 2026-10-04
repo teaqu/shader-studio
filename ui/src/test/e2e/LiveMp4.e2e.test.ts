@@ -4,6 +4,7 @@ import { ShaderRecorder } from "../../lib/recording/ShaderRecorder";
 import raySpheres from "../../../../tests/fixtures/capture/ray-spheres.glsl?raw";
 import { decodeVideoFrames, glslInfo, lumaPsnr, psnr, renderReference } from "./captureMediaHelpers";
 import { bt709I420Planes, encodeBt709I420Diagnostic, i420ToRgbaDiagnostic } from "./bt709I420Diagnostic";
+import { patchMp4SpsColourDiagnostic } from "./spsColourDiagnostic";
 
 it.each(["mp4", "webm"] as const)("keeps Aurora gradients smooth in Live %s", async format => {
   const canvas = document.createElement("canvas");
@@ -131,6 +132,21 @@ it.each(["mp4", "webm"] as const)("keeps Aurora gradients smooth in Live %s", as
         packets, blobBytes: explicitBlob.size, avccHeader, yuvPlanes: explicit.nativePlanes[0] && measurePlanes(explicit.nativePlanes[0], "bt709"),
         cpuRgb: explicit.nativePlanes[0] && measureCpuRgb(explicit.nativePlanes[0], explicit.frames[0]),
       }));
+      const primariesBlob = await patchMp4SpsColourDiagnostic(blob, "primaries", 1);
+      const transferBlob = await patchMp4SpsColourDiagnostic(explicitBlob, "transfer", 1);
+      for (const [kind, fixture] of [["originalPrimaries709", primariesBlob], ["explicitTransfer709", transferBlob]] as const) {
+        const altered = await decodeVideoFrames(fixture, [.1]);
+        console.log("SPS-only decoded colour diagnostics", JSON.stringify({ kind,
+          rgbPsnr: psnr(altered.frames[0], reference), channels: measureChannels(altered.frames[0]),
+          decoded: altered.frameMetadata, cpuRgb: measureCpuRgb(altered.nativePlanes[0], altered.frames[0]),
+        }));
+      }
+      // Transport this small procedural fixture for decode-only comparison on another host.
+      // It contains the generated gradient above; no workspace media or shader source.
+      for (const [kind, fixture] of [["original", blob], ["explicit709", explicitBlob], ["originalPrimaries709", primariesBlob], ["explicitTransfer709", transferBlob]] as const) {
+        const bytes = new Uint8Array(await fixture.arrayBuffer());
+        console.log("Live MP4 procedural fixture bytes", JSON.stringify({ kind, bytes: bytes.length, base64: btoa(Array.from(bytes, byte => String.fromCharCode(byte)).join("")) }));
+      }
     }
     // RGB catches chroma blocks that a luma-only quality test can miss.
     expect(psnr(decoded.frames[0], reference)).toBeGreaterThanOrEqual(42);
