@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { PNG } from 'pngjs';
 
 for (const shader of ['aurora-glsl', 'aurora-wgsl-wgsl']) {
   for (const format of ['MP4', 'WebM']) {
@@ -22,17 +23,19 @@ for (const shader of ['aurora-glsl', 'aurora-wgsl-wgsl']) {
       await page.getByPlaceholder('W', { exact: true }).fill('816');
       await page.getByPlaceholder('H', { exact: true }).fill('458');
       await page.getByLabel('Change resolution settings').click();
-      const preview = page.getByTestId('web-preview').locator('canvas').first();
-      // WebGPU discards the presented canvas texture after each frame. Read
-      // during the animation callback while the rendered texture is available.
-      await expect.poll(() => preview.evaluate(element => new Promise(resolve => requestAnimationFrame(() => {
-        const copy = new OffscreenCanvas(element.width, element.height);
-        const context = copy.getContext('2d');
-        context.drawImage(element, 0, 0);
-        const pixels = context.getImageData(0, 0, copy.width, copy.height).data;
-        resolve(pixels.some((value, index) => index % 4 !== 3 && value > 32));
-      })))).toBe(true);
       await page.getByLabel('Toggle export panel').click();
+      // The swap-chain canvas can be discarded before an unrelated animation
+      // callback runs. Exercise Live Screenshot's stable frame readback to
+      // verify the shader has a nonblack picture before recording it.
+      await page.getByRole('button', { name: 'Screenshot', exact: true }).click();
+      const screenshotDownload = page.waitForEvent('download');
+      await page.getByRole('button', { name: 'Capture screenshot', exact: true }).click();
+      const screenshotChunks = [];
+      for await (const chunk of await (await screenshotDownload).createReadStream()) {
+        screenshotChunks.push(chunk);
+      }
+      const { data: pixels } = PNG.sync.read(Buffer.concat(screenshotChunks));
+      expect(pixels.some((value, index) => index % 4 !== 3 && value > 32)).toBe(true);
       await page.getByRole('button', { name: 'Video', exact: true }).click();
       await page.getByRole('button', { name: format, exact: true }).click();
       await page.getByRole('button', { name: '60', exact: true }).click();
