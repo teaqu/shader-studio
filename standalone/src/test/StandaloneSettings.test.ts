@@ -25,6 +25,7 @@ describe('standalone global settings', () => {
       expect(settings.update('editor.fontSize', value)).toBe(false);
     }
     expect(settings.update('editor.wordWrap', 'invalid')).toBe(false);
+    expect(settings.update('webgpu.defaultRenderAuthoring', 'invalid')).toBe(false);
     expect(settings.update('editor.insertSpaces', 'false')).toBe(false);
     expect(listener).not.toHaveBeenCalled();
     expect(settings.snapshot).toEqual(DEFAULT_SETTINGS);

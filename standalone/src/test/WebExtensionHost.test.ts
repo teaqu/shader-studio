@@ -35,6 +35,34 @@ async function createHost(options: ConstructorParameters<typeof WebExtensionHost
 }
 
 describe('WebExtensionHost', () => {
+  it('requests and broadcasts the global insertion mode', async () => {
+    const settings = new StandaloneSettings({ getItem: () => null, setItem: vi.fn() });
+    const host = await createHost({ settings });
+    const receive = vi.fn(); host.onViewerMessage(receive);
+    await host.handleViewerMessage({ type: 'requestShaderAuthoringSettings' });
+    expect(receive).toHaveBeenLastCalledWith({ type: 'shaderAuthoringSettings', payload: { defaultRenderAuthoring: 'hooks' } });
+    settings.update('webgpu.defaultRenderAuthoring', 'native');
+    expect(receive).toHaveBeenLastCalledWith({ type: 'shaderAuthoringSettings', payload: { defaultRenderAuthoring: 'native' } });
+  });
+
+  it('creates an owned built-in buffer source and refuses to insert a vertex into a missing source', async () => {
+    const host = await createHost(); const receive = vi.fn(); host.onViewerMessage(receive);
+    await host.handleViewerMessage({ type: 'insertShaderSource', payload: { shaderPath: '/shaders/aurora.glsl',
+      sourcePath: 'owned.glsl', fileType: 'glsl-buffer', requestId: 'owned', authoringMode: 'hooks' } });
+    expect(receive).toHaveBeenCalledWith({ type: 'fileSelected', payload: { path: '/shaders/owned.glsl', requestId: 'owned', authoringMode: 'hooks' } });
+    await host.handleViewerMessage({ type: 'insertShaderSource', payload: { shaderPath: '/shaders/aurora.glsl',
+      sourcePath: 'missing.glsl', fileType: 'glsl-vertex', requestId: 'missing', authoringMode: 'hooks' } });
+    expect(receive).toHaveBeenLastCalledWith({ type: 'fileSelected', payload: { path: '', requestId: 'missing', error: 'Create or insert the buffer source before adding a shader stage.' } });
+  });
+  it('inserts only a native vertex stage and returns its selected entry point', async () => {
+    const host = await createHost();
+    const receive = vi.fn();
+    host.onViewerMessage(receive);
+    await host.handleViewerMessage({ type: 'insertShaderSource', payload: { shaderPath: '/shaders/clouds.slang',
+      sourcePath: '/shaders/clouds.slang', fileType: 'slang-vertex', passName: 'Image', authoringMode: 'native', requestId: 'native-vertex' } });
+    expect(receive).toHaveBeenCalledWith({ type: 'fileSelected', payload: { path: '/shaders/clouds.slang',
+      requestId: 'native-vertex', authoringMode: 'native', entryPoints: { vertex: 'ImageVertex' } } });
+  });
   it.each(['glsl', 'slang', 'wgsl'])('inserts and reuses a vertex hook in a shared %s source', async language => {
     const sourcePath = `/shaders/shared.${language}`;
     const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), [{ path: sourcePath,
@@ -47,7 +75,7 @@ describe('WebExtensionHost', () => {
     await host.handleViewerMessage(message);
     const inserted = workspace.readText(sourcePath);
     expect(inserted).toContain('corners[vertexIndex % 3');
-    expect(receive).toHaveBeenCalledWith({ type: 'fileSelected', payload: { path: sourcePath, requestId: 'vertex' } });
+    expect(receive).toHaveBeenCalledWith({ type: 'fileSelected', payload: { path: sourcePath, requestId: 'vertex', authoringMode: 'hooks' } });
     await host.handleViewerMessage(message);
     expect(workspace.readText(sourcePath)).toBe(inserted);
   });
@@ -466,7 +494,7 @@ describe('WebExtensionHost', () => {
     } });
   });
 
-  it('does not mutate a source when hook insertion is requested', async () => {
+  it('reuses an existing built-in buffer hook without duplicating it', async () => {
     const host = await createHost();
     const receive = vi.fn();
     host.onViewerMessage(receive);
@@ -475,7 +503,7 @@ describe('WebExtensionHost', () => {
       requestId: 'hooks', authoringMode: 'hooks', passName: 'BufferA',
     } });
     expect(receive).toHaveBeenLastCalledWith({ type: 'fileSelected', payload: {
-      path: '', requestId: 'hooks', error: 'Insert into current source requires an existing native WebGPU source.',
+      path: '/shaders/aurora.glsl', requestId: 'hooks', authoringMode: 'hooks',
     } });
   });
 
@@ -1557,7 +1585,7 @@ describe('standalone layout profiles', () => {
       requestId: 'wrong-kind', authoringMode: 'native',
     } });
     expect(receive).toHaveBeenLastCalledWith({ type: 'fileSelected', payload: {
-      path: '', requestId: 'wrong-kind', error: 'Insert supports Buffer and Compute pass sources only.',
+      path: '', requestId: 'wrong-kind', error: 'Insert supports Buffer, Vertex, and Compute sources only.',
     } });
     expect(receive).toHaveBeenCalledWith({ type: 'fileSelected', payload: {
       path: '', requestId: 'wrong-language', error: 'Insert source language must match the target source language.',

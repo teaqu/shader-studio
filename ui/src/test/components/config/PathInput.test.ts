@@ -4,6 +4,16 @@ import { describe, expect, it, vi } from 'vitest';
 import PathInput from '../../../lib/components/config/PathInput.svelte';
 
 describe('PathInput', () => {
+  it('sends the selected mode and the corresponding source destination', async () => {
+    const postMessage = vi.fn();
+    const view = render(PathInput, { value: '', shaderPath: '/image.wgsl', sourcePath: '/image.wgsl',
+      builtInSourcePath: '/buffer.wgsl', fileType: 'wgsl-buffer', allowInsert: true, postMessage });
+    await fireEvent.click(view.getByText('Insert'));
+    expect(postMessage).toHaveBeenLastCalledWith(expect.objectContaining({ payload: expect.objectContaining({ authoringMode: 'hooks', sourcePath: '/buffer.wgsl' }) }));
+    await fireEvent.change(view.getByRole('combobox', { name: 'Insert mode' }), { target: { value: 'native' } });
+    await fireEvent.click(view.getByText('Insert'));
+    expect(postMessage).toHaveBeenLastCalledWith(expect.objectContaining({ payload: expect.objectContaining({ authoringMode: 'native', sourcePath: '/image.wgsl' }) }));
+  });
   it('requests insertion into the selected source file', async () => {
     const postMessage = vi.fn();
     const { getByText } = render(PathInput, {

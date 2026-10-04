@@ -70,7 +70,7 @@
                   event.currentTarget.value = String(settings.snapshot[setting.key]);
                 }} />
               {:else}
-                <select id={`setting-${setting.key}`} value={String(values[setting.key])} onchange={(event) => settings.update(setting.key, event.currentTarget.value)}><option value="on">On</option><option value="off">Off</option></select>
+                <select id={`setting-${setting.key}`} value={String(values[setting.key])} onchange={(event) => settings.update(setting.key, event.currentTarget.value)}>{#each setting.choices ?? [{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }] as choice}<option value={choice.value}>{choice.label}</option>{/each}</select>
               {/if}
               <small>{setting.description}</small>
             </div>

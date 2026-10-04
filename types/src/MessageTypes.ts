@@ -160,6 +160,9 @@ export interface ResetLayoutMessage extends BaseMessage {
   type: "resetLayout";
 }
 
+export interface RequestShaderAuthoringSettingsMessage extends BaseMessage { type: 'requestShaderAuthoringSettings'; }
+export interface ShaderAuthoringSettingsMessage extends BaseMessage { type: 'shaderAuthoringSettings'; payload: { defaultRenderAuthoring: WebGPUAuthoringMode }; }
+
 export interface RequestViewerCameraSettingsMessage extends BaseMessage {
   type: "requestViewerCameraSettings";
 }
@@ -337,6 +340,8 @@ export interface InsertShaderSourceMessage extends BaseMessage {
   payload: {
     shaderPath: string;
     sourcePath?: string;
+    geometryType?: string;
+    vertexSpace?: string;
     fileType: FileDialogFileType;
     requestId: string;
     authoringMode?: WebGPUAuthoringMode;
@@ -392,4 +397,4 @@ export interface ProfileDeleteProfileMessage extends BaseMessage {
   id: string;
 }
 
-export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | ShaderLockStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage | ResetLayoutMessage | RequestViewerCameraSettingsMessage | UpdateViewerCameraSettingsMessage | ViewerCameraSettingsMessage | ManualCompileMessage | SetCompileModeMessage | NavigateToBufferMessage | RequestWorkspaceFilesMessage | WorkspaceFilesMessage | ForkShaderMessage | GoToLineMessage | SaveFileMessage | SaveFileResultMessage | SelectFileMessage | CreateFileMessage | InsertShaderSourceMessage | FileSelectedMessage | CustomUniformValuesMessage | RequestCustomUniformValuesMessage | ScriptRuntimeStateMessage | LanguageServiceSettingsMessage | ShaderAuthoringEnvironmentMessage | ProfileReadIndexMessage | ProfileIndexDataMessage | ProfileReadProfileMessage | ProfileDataMessage | ProfileWriteProfileMessage | ProfileWriteIndexMessage | ProfileDeleteProfileMessage;
+export type MessageEvent = RequestShaderAuthoringSettingsMessage | ShaderAuthoringSettingsMessage | LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | ShaderLockStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage | ResetLayoutMessage | RequestViewerCameraSettingsMessage | UpdateViewerCameraSettingsMessage | ViewerCameraSettingsMessage | ManualCompileMessage | SetCompileModeMessage | NavigateToBufferMessage | RequestWorkspaceFilesMessage | WorkspaceFilesMessage | ForkShaderMessage | GoToLineMessage | SaveFileMessage | SaveFileResultMessage | SelectFileMessage | CreateFileMessage | InsertShaderSourceMessage | FileSelectedMessage | CustomUniformValuesMessage | RequestCustomUniformValuesMessage | ScriptRuntimeStateMessage | LanguageServiceSettingsMessage | ShaderAuthoringEnvironmentMessage | ProfileReadIndexMessage | ProfileIndexDataMessage | ProfileReadProfileMessage | ProfileDataMessage | ProfileWriteProfileMessage | ProfileWriteIndexMessage | ProfileDeleteProfileMessage;

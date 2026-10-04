@@ -10,6 +10,18 @@ beforeEach(() => {
   HTMLDialogElement.prototype.close = vi.fn();
 });
 
+it('exposes a persistent default shader mode in global settings', async () => {
+  const values = new Map<string, string>();
+  const backend = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => {
+    values.set(key, value);
+  } };
+  const settings = new StandaloneSettings(backend);
+  render(SettingsPanel, { settings, onClose: vi.fn() });
+  const mode = screen.getByRole('combobox', { name: 'Default shader mode' });
+  await fireEvent.change(mode, { target: { value: 'native' } });
+  expect(new StandaloneSettings(backend).snapshot).toMatchObject({ 'webgpu.defaultRenderAuthoring': 'native' });
+});
+
 it('searches relevant preferences and applies and resets them through the store', async () => {
   const settings = new StandaloneSettings({ getItem: () => null, setItem: vi.fn() });
   render(SettingsPanel, { settings, onClose: vi.fn() });

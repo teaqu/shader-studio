@@ -2,6 +2,7 @@ export const SETTINGS_STORAGE_KEY = 'shader-studio.standalone.settings';
 export const CAMERA_STORAGE_KEY = 'shader-studio.webgpu.useViewerCamera';
 
 export const DEFAULT_SETTINGS = Object.freeze({
+  'webgpu.defaultRenderAuthoring': 'hooks' as 'hooks' | 'native',
   'webgpu.useViewerCamera': true,
   'languageServers.glsl.enabled': true,
   'languageServers.slang.enabled': true,
@@ -28,6 +29,9 @@ function availableStorage(): StorageBackend | undefined {
 }
 
 function valid(key: StandaloneSettingKey, value: unknown): boolean {
+  if (key === 'webgpu.defaultRenderAuthoring') {
+    return value === 'hooks' || value === 'native';
+  }
   if (key === 'editor.fontSize' || key === 'editor.tabSize') {
     return typeof value === 'number' && Number.isInteger(value)
       && value >= (key === 'editor.fontSize' ? 8 : 1) && value <= (key === 'editor.fontSize' ? 40 : 8);

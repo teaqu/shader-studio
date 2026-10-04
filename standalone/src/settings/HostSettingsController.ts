@@ -24,6 +24,9 @@ export class HostSettingsController {
   }
 
   handleMessage(type: string, payload: Record<string, unknown>): boolean {
+    if (type === 'requestShaderAuthoringSettings') {
+      this.emitAuthoringSettings(); return true;
+    }
     if (type === 'requestViewerCameraSettings') {
       this.emitViewerCameraSettings();
       return true;
@@ -60,6 +63,9 @@ export class HostSettingsController {
 
   private handleSettingsChanged(settings: Readonly<StandaloneSettings['snapshot']>): void {
     const previous = this.settingsSnapshot;
+    if (previous['webgpu.defaultRenderAuthoring'] !== settings['webgpu.defaultRenderAuthoring']) {
+      this.emitAuthoringSettings();
+    }
     this.settingsSnapshot = settings;
     if (previous['webgpu.useViewerCamera'] !== settings['webgpu.useViewerCamera']) {
       this.emitViewerCameraSettings();
@@ -70,6 +76,10 @@ export class HostSettingsController {
       || previous['editor.colorDecorators'] !== settings['editor.colorDecorators']) {
       this.emitLanguageServiceSettings();
     }
+  }
+
+  private emitAuthoringSettings(): void {
+    this.emit({ type: 'shaderAuthoringSettings', payload: { defaultRenderAuthoring: this.settings.snapshot['webgpu.defaultRenderAuthoring'] } });
   }
 
   private emitViewerCameraSettings(): void {

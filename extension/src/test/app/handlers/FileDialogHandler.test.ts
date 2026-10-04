@@ -994,7 +994,7 @@ suite('FileDialogHandler Test Suite', () => {
         await handler.handleInsertShaderSource({ shaderPath: sourcePath, fileType: `${language}-vertex`,
           requestId: 'vertex', authoringMode: 'hooks', geometryType: 'vertices' }, respondFn);
         assert.ok(source.includes('corners[vertexIndex % 3'));
-        assert.deepStrictEqual(respondFn.firstCall.args[0].payload, { path: sourcePath, requestId: 'vertex' });
+        assert.deepStrictEqual(respondFn.firstCall.args[0].payload, { path: sourcePath, requestId: 'vertex', authoringMode: 'hooks' });
         await handler.handleInsertShaderSource({ shaderPath: sourcePath, fileType: `${language}-vertex`,
           requestId: 'again', authoringMode: 'hooks' }, respondFn);
         assert.strictEqual(apply.callCount, 1);
@@ -1017,7 +1017,7 @@ suite('FileDialogHandler Test Suite', () => {
       await handler.handleInsertShaderSource({ shaderPath: '/test/image.wgsl', sourcePath: '/test/image.wgsl',
         fileType: 'wgsl-common', requestId: 'wrong-kind', authoringMode: 'native' }, respondFn);
       assert.ok(openDocument.notCalled);
-      assert.strictEqual(respondFn.firstCall.args[0].payload.error, 'Insert supports Buffer and Compute pass sources only.');
+      assert.strictEqual(respondFn.firstCall.args[0].payload.error, 'Insert supports Buffer, Vertex, and Compute sources only.');
     });
   });
 

@@ -27,6 +27,25 @@ function getMainPathConfig(container: HTMLElement): HTMLElement {
 }
 
 describe('BufferConfig', () => {
+  it('offers Insert and mode selection on a new hook-style WGSL buffer', () => {
+    const view = render(BufferConfig, { bufferName: 'BufferA', language: 'wgsl', shaderPath: '/shaders/image.wgsl',
+      config: { path: '' }, onUpdate: vi.fn(), getWebviewUri: () => undefined, postMessage: vi.fn() });
+    const main = getMainPathConfig(view.container);
+    expect(main.querySelector('.insert-file-btn')).not.toBeNull();
+    expect(main.querySelector('select[aria-label="Insert mode"]')).not.toBeNull();
+  });
+
+  it('inserts the vertex into its owning buffer even when another source is active', async () => {
+    setCurrentEditorSource('/shaders/image.wgsl', '/shaders/other.wgsl');
+    const postMessage = vi.fn();
+    const view = render(BufferConfig, { bufferName: 'BufferA', language: 'wgsl', shaderPath: '/shaders/image.wgsl',
+      config: { path: 'buffer.wgsl' }, onUpdate: vi.fn(), getWebviewUri: () => undefined, postMessage });
+    const vertex = Array.from(view.container.querySelectorAll('.config-item')).find(item => item.querySelector('.vertex-shader-title'))!;
+    await fireEvent.click(vertex.querySelector('button.insert-file-btn')!);
+    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'insertShaderSource',
+      payload: expect.objectContaining({ sourcePath: 'buffer.wgsl' }) }));
+    clearCurrentEditorSource();
+  });
   it.each(['glsl', 'slang', 'wgsl'] as const)('offers vertex insertion into the %s pass source', async language => {
     const postMessage = vi.fn();
     const view = render(BufferConfig, { bufferName: 'Image', isImagePass: true, language,
@@ -210,6 +229,7 @@ describe('BufferConfig', () => {
       onUpdate: vi.fn(), getWebviewUri: () => undefined, shaderPath: '/shaders/image.wgsl', postMessage,
     });
 
+    await fireEvent.change(getMainPathConfig(container).querySelector('select[aria-label="Insert mode"]')!, { target: { value: 'native' } });
     await fireEvent.click(getMainPathConfig(container).querySelector('.insert-file-btn')!);
 
     expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
@@ -368,13 +388,13 @@ describe('BufferConfig', () => {
       }));
     });
 
-    it('does not offer insertion for hook-style WGSL render passes', () => {
+    it('offers insertion for hook-style WGSL render passes', () => {
       const { container } = render(BufferConfig, {
         bufferName: 'BufferA', config: { path: '', inputs: {} }, onUpdate: mockOnUpdate,
         getWebviewUri: mockGetWebviewUri, language: 'wgsl', shaderPath: '/shaders/image.wgsl', postMessage: mockPostMessage,
       });
 
-      expect(getMainPathConfig(container).querySelector('.insert-file-btn')).toBeNull();
+      expect(getMainPathConfig(container).querySelector('.insert-file-btn')).not.toBeNull();
     });
 
     it('should show create file button when path is empty and postMessage provided', () => {
@@ -1461,21 +1481,21 @@ describe('BufferConfig', () => {
     it('replaces the hook vertex file control with native entry point controls', () => {
     });
 
-    it('hides the hook vertex file only for a selected native vertex', () => {
+    it('keeps vertex insertion available for selected native vertices', () => {
       const native = render(BufferConfig, {
         bufferName: 'BufferA', language: 'wgsl',
         config: { path: 'a.wgsl', inputs: {}, entryPoints: { vertex: 'nativeVertex' } },
         renderEntryPoints: [{ name: 'nativeVertex', stage: 'vertex' }, { name: 'nativeFragment', stage: 'fragment' }],
         onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri,
       });
-      expect(native.queryByRole('heading', { name: 'Vertex shader' })).toBeNull();
+      expect(native.queryByRole('heading', { name: 'Vertex shader' })).not.toBeNull();
       expect(native.getByLabelText('Vertex function')).toBeInTheDocument();
 
       const hooks = render(BufferConfig, {
         bufferName: 'BufferA', language: 'wgsl', config: { path: 'a.wgsl', inputs: {} },
         onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri,
       });
-      expect(hooks.getByRole('heading', { name: 'Vertex shader' })).toBeInTheDocument();
+      expect(hooks.container.querySelector('.vertex-shader-title')).not.toBeNull();
 
       const nativeFragmentOnly = render(BufferConfig, {
         bufferName: 'BufferA', language: 'wgsl',

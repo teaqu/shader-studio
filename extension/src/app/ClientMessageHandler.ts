@@ -129,6 +129,9 @@ export class ClientMessageHandler {
       case 'setCompileMode':
         await vscode.commands.executeCommand('shader-studio.setCompileMode', message.payload?.mode);
         break;
+      case 'requestShaderAuthoringSettings':
+        respondFn({ type: 'shaderAuthoringSettings', payload: { defaultRenderAuthoring: vscode.workspace.getConfiguration('shader-studio').get('webgpu.defaultRenderAuthoring', 'hooks') } });
+        break;
       case 'requestViewerCameraSettings':
         respondFn({ type: 'viewerCameraSettings', payload: {
           useViewerCamera: vscode.workspace.getConfiguration('shader-studio').get('webgpu.useViewerCamera', true),

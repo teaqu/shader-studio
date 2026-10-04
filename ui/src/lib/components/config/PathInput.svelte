@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getDefaultAuthoringMode } from '../../state/authoringModeState.svelte';
   import { onMount, onDestroy, untrack } from 'svelte';
 
   import type { FileDialogFileType } from '@shader-studio/types';
@@ -18,7 +19,10 @@
     allowCreate?: boolean;
     allowInsert?: boolean;
     sourcePath?: string;
+    builtInSourcePath?: string;
+    vertexSpace?: string;
     authoringMode?: 'hooks' | 'native';
+    createAuthoringMode?: 'hooks' | 'native';
     passName?: string;
     geometryType?: string;
     outputCount?: number;
@@ -47,7 +51,10 @@
     allowCreate = true,
     allowInsert = false,
     sourcePath = undefined,
+    builtInSourcePath = undefined,
+    vertexSpace = undefined,
     authoringMode = undefined,
+    createAuthoringMode = undefined,
     passName = undefined,
     geometryType = undefined,
     outputCount = undefined,
@@ -56,6 +63,9 @@
     onMessage = undefined,
   }: Props = $props();
 
+  let selectedMode = $state<'hooks' | 'native' | null>(null);
+  const supportsNative = $derived(fileType.startsWith('wgsl-') || fileType.startsWith('slang-'));
+  const effectiveMode = $derived(supportsNative ? selectedMode ?? authoringMode ?? getDefaultAuthoringMode() : 'hooks');
   let pathInputFocused = $state(false);
   let localPath = $state(value);
   $effect(() => {
@@ -125,8 +135,11 @@
           pendingRequestId = null;
           if (event.data.payload.path) {
             requestError = null;
-            onPathChange?.(event.data.payload.path);
-            onCreated?.(event.data.payload);
+            if (onCreated) {
+onCreated(event.data.payload);
+} else {
+onPathChange?.(event.data.payload.path);
+}
           } else if (typeof event.data.payload.error === 'string' && event.data.payload.error) {
             requestError = event.data.payload.error;
           }
@@ -148,7 +161,7 @@
     pendingRequestId = requestId;
     postMessage?.({
       type: 'createFile',
-      payload: { shaderPath, suggestedPath, fileType, requestId, authoringMode, passName, outputCount },
+      payload: { shaderPath, suggestedPath, fileType, requestId, authoringMode: createAuthoringMode ?? authoringMode, passName, outputCount },
     });
   }
 
@@ -158,7 +171,7 @@
     pendingRequestId = requestId;
     postMessage?.({
       type: 'insertShaderSource',
-      payload: { shaderPath, sourcePath, fileType, requestId, authoringMode, passName, outputCount, geometryType },
+      payload: { shaderPath, sourcePath: effectiveMode === 'hooks' ? builtInSourcePath ?? sourcePath : sourcePath, fileType, requestId, authoringMode: effectiveMode, passName, outputCount, geometryType, vertexSpace },
     });
   }
 </script>
@@ -187,6 +200,10 @@
         <button class="create-file-btn" onclick={handleCreate}>Create</button>
       {/if}
       {#if allowInsert}
+        <select aria-label="Insert mode" value={effectiveMode} onchange={(event) => selectedMode = event.currentTarget.value as 'hooks' | 'native'}>
+          <option value="hooks">Built-in</option>
+          {#if supportsNative}<option value="native">Native</option>{/if}
+        </select>
         <button class="insert-file-btn" onclick={handleInsert}>Insert</button>
       {/if}
       {#if note}

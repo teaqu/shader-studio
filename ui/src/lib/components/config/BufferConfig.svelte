@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { applyRenderSource, applyVertexSource, bufferInsertionTarget } from '../../config/PassSourceAuthoring';
   import VerticesControls from './VerticesControls.svelte';
   import { ConfigValidator, resolveRenderState } from "@shader-studio/rendering";
   import { BufferConfig as BufferConfigModel } from "../../BufferConfig";
@@ -156,7 +157,6 @@
     renderPassConfig?.entryPoints?.vertex !== undefined || renderPassConfig?.entryPoints?.fragment !== undefined,
   );
   const hasNativeTemplate = $derived(renderPassConfig?.entryPoints !== undefined);
-  const hasNativeVertex = $derived(renderPassConfig?.entryPoints?.vertex !== undefined);
   const hasNativeFragment = $derived(renderPassConfig?.entryPoints?.fragment !== undefined);
   // Omitted outputs means the standard one-target render pass. It remains
   // editable here without serialising an invalid empty output list.
@@ -170,13 +170,15 @@
     Math.floor(maxColorAttachmentBytesPerSample / outputFormatBytes),
   )));
   const isWebGpuLanguage = $derived(SHADER_LANGUAGES[language].engine === 'webgpu');
-  const canInsert = $derived(isWebGpuLanguage && hasNativeTemplate);
   const currentEditorSourcePath = $derived(getCurrentEditorSource(shaderPath));
   const insertionSourcePath = $derived(
     currentEditorSourcePath && shaderLanguageForPath(currentEditorSourcePath) === language
       ? currentEditorSourcePath
       : ('path' in config && config.path ? config.path : shaderPath),
   );
+  const ownedSourcePath = $derived(isImagePass ? shaderPath : bufferInsertionTarget(config as BufferPass, shaderPath,
+    suggestedPath || shaderPath.replace(/\.[^.]+$/, '.' + bufferName.toLowerCase() + '.' + vertexExtension)));
+  const nativeInsertionPath = $derived('path' in config && config.path ? config.path : insertionSourcePath);
   let modelSelectionPending = $state(false);
   const modelGeometry = $derived(config.geometry?.type === 'model'
     ? config.geometry
@@ -712,11 +714,7 @@ return;
       });
       return;
     }
-    updateConfig({
-      ...config,
-      ...(result.path ? { path: result.path } : {}),
-      ...(result.authoringMode === 'native' || result.entryPoints ? { entryPoints: result.entryPoints ?? {} } : {}),
-    } as EditableConfig);
+    updateConfig(applyRenderSource(config as BufferPass | ImagePass, result));
   }
 
   function updateOutputs(outputs: { name?: string }[]) {
@@ -757,11 +755,13 @@ return;
           {suggestedPath}
           {postMessage}
           {onMessage}
-          sourcePath={insertionSourcePath}
-          authoringMode={passType === 'compute' || hasNativeTemplate ? 'native' : 'hooks'}
+          sourcePath={nativeInsertionPath}
+          builtInSourcePath={ownedSourcePath}
+          authoringMode={hasNativeTemplate ? 'native' : undefined}
+          createAuthoringMode={passType === 'compute' || hasNativeTemplate ? 'native' : 'hooks'}
           passName={bufferName}
           outputCount={passType === 'render' && hasNativeTemplate ? renderOutputs.length : undefined}
-          allowInsert={canInsert || (passType === 'compute' && isWebGpuLanguage)}
+          allowInsert={bufferName !== 'common' && (passType === 'render' || isWebGpuLanguage)}
           onCreated={applyCreatedSource}
         />
 
@@ -1036,15 +1036,17 @@ return;
       {#if renderState.depth}
         <DepthTestingControls bufferName={bufferName} depth={renderState.depth} onChange={updateDepth} />
       {/if}
-      {#if !(isWebGpuLanguage && hasNativeVertex)}
+      {#if passType === 'render'}
         <div class="config-item">
           <h3 class="section-title vertex-shader-title" ondblclick={openVertexShaderInOverlay}>Vertex shader</h3>
           <PathInput
             value={config.vertex ?? ""}
             onPathChange={handleVertexPathChange}
             allowInsert={true}
-            sourcePath={insertionSourcePath}
-            authoringMode="hooks"
+            sourcePath={ownedSourcePath}
+            passName={bufferName}
+            onCreated={(result) => updateConfig(applyVertexSource(config as BufferPass | ImagePass, result))}
+            vertexSpace={verticesGeometry?.space ?? DEFAULT_VERTEX_SPACE}
             geometryType={selectedGeometry}
             fileType={vertexFileType}
             suggestedPath={vertexSuggestedPath}

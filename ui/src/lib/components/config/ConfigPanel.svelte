@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getDefaultAuthoringMode } from '../../state/authoringModeState.svelte';
   import { onMount, onDestroy, tick, untrack } from "svelte";
   import { ConfigManager, type BufferRenameError } from "../../ConfigManager";
   import { getEditorOverlayVisible, setOverlayActiveFile } from "../../state/editorOverlayState.svelte";
@@ -158,7 +159,7 @@
     }
   }
 
-  const defaultRenderAuthoring = $derived(config?.webgpu?.defaultRenderAuthoring ?? 'hooks');
+  const defaultRenderAuthoring = $derived(config?.webgpu?.defaultRenderAuthoring ?? getDefaultAuthoringMode());
   function addBuffer(authoringMode: 'hooks' | 'native' = defaultRenderAuthoring) {
     const bufferName = addRenderPass(configManager, authoringMode);
     if (bufferName) {
