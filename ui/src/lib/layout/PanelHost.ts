@@ -6,7 +6,8 @@ export type HostedPanelId = 'debug' | 'config' | 'performance' | 'recording';
 export interface HostedPanelDefinition {
   mount(container: HTMLElement): void | (() => void);
   onClose(): void;
-  onRestore?(): void;
+  /** Synchronize viewer-owned state when the shell shows or restores a panel. */
+  onShow?(): void;
 }
 
 export interface PanelHost {

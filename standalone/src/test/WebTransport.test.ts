@@ -2,7 +2,7 @@ import { getEditorDocument } from '../state/editorDocuments.svelte';
 import { getSelectedEditor, getRequestedEditor, getNewShaderVisible, getRequestedPanel, resetShellState, setNewShaderVisible } from '../state/shellState.svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDefaultWorkspaceFiles } from '../defaultWorkspace';
-import { WebTransport } from '../WebTransport';
+import { inspectWorkspaceStorage, WebTransport } from '../WebTransport';
 
 async function eventually(assertion: () => void): Promise<void> {
   await vi.waitFor(assertion);
@@ -121,6 +121,117 @@ describe('WebTransport', () => {
     const transport = new WebTransport();
     expect(transport.getType()).toBe('web');
     expect(transport.getShaderExplorerHostApi()).toBeDefined();
+    transport.dispose();
+  });
+
+  it('exposes durable workspace backup and persistence APIs for the shell', async () => {
+    const transport = new WebTransport();
+    const states: string[] = [];
+    const unsubscribe = transport.onPersistenceStatus(status => states.push(status.state));
+    await vi.waitFor(() => expect(states).toContain('saved'));
+    const backup = await transport.exportWorkspaceBackup();
+    expect(JSON.parse(backup)).toMatchObject({ format: 'shader-studio-workspace', version: 1 });
+    expect(await transport.getPersistenceStatus()).toEqual({ state: 'saved' });
+    await expect(transport.importWorkspaceBackup('{bad', { replace: true })).rejects.toThrow('valid JSON');
+    await transport.flush();
+    unsubscribe();
+    transport.dispose();
+  });
+
+  it('truthfully reports the session-only fallback and does not claim a persist grant', async () => {
+    const transport = new WebTransport();
+    expect(await transport.getStorageStatus()).toMatchObject({ backend: 'session', persisted: false });
+    expect(await transport.requestPersistentStorage()).toMatchObject({ backend: 'session', persisted: false });
+    transport.dispose();
+  });
+
+  it('falls back to a session-only workspace when IndexedDB cannot open', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'indexedDB');
+    Object.defineProperty(globalThis, 'indexedDB', {
+      configurable: true,
+      value: { open: () => {
+        throw new Error('IndexedDB blocked');
+      } },
+    });
+    try {
+      const transport = new WebTransport();
+      expect(await transport.getStorageStatus()).toMatchObject({ backend: 'session', persisted: false });
+      transport.dispose();
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(globalThis, 'indexedDB', descriptor);
+      } else {
+        Reflect.deleteProperty(globalThis, 'indexedDB');
+      }
+    }
+  });
+
+  it('queries and requests browser eviction protection best-effort', async () => {
+    const persist = vi.fn().mockResolvedValue(true);
+    const persisted = vi.fn().mockResolvedValue(true);
+    const storage = { persist, persisted };
+    await expect(inspectWorkspaceStorage('indexeddb', storage, true))
+      .resolves.toEqual({ backend: 'indexeddb', persisted: true, persistSupported: true });
+    expect(persist).toHaveBeenCalledOnce();
+    expect(persisted).toHaveBeenCalledOnce();
+    await expect(inspectWorkspaceStorage('indexeddb', {
+      persist: vi.fn().mockRejectedValue(new Error('denied')),
+      persisted: vi.fn().mockRejectedValue(new Error('blocked')),
+    }, true)).resolves.toEqual({ backend: 'indexeddb', persisted: null, persistSupported: true });
+  });
+
+  it('reports unknown eviction protection where the Storage API is missing', async () => {
+    await expect(inspectWorkspaceStorage('indexeddb', undefined, true))
+      .resolves.toEqual({ backend: 'indexeddb', persisted: null, persistSupported: false });
+  });
+
+  it('reports unknown eviction protection when the browser can request it but not report it', async () => {
+    const persist = vi.fn().mockResolvedValue(true);
+
+    await expect(inspectWorkspaceStorage('indexeddb', { persist } as unknown as StorageManager, true))
+      .resolves.toEqual({ backend: 'indexeddb', persisted: null, persistSupported: true });
+    expect(persist).toHaveBeenCalledOnce();
+  });
+
+  it('only asks the browser for protection when the user requested it', async () => {
+    const persist = vi.fn().mockResolvedValue(true);
+    const persisted = vi.fn().mockResolvedValue(false);
+
+    await expect(inspectWorkspaceStorage('indexeddb', { persist, persisted }))
+      .resolves.toEqual({ backend: 'indexeddb', persisted: false, persistSupported: true });
+    expect(persist).not.toHaveBeenCalled();
+  });
+
+  it('never requests protection for a session-only workspace, which has nothing to protect', async () => {
+    const persist = vi.fn().mockResolvedValue(true);
+    const persisted = vi.fn().mockResolvedValue(true);
+
+    await expect(inspectWorkspaceStorage('session', { persist, persisted }, true))
+      .resolves.toEqual({ backend: 'session', persisted: false, persistSupported: true });
+    expect(persist).not.toHaveBeenCalled();
+    expect(persisted).not.toHaveBeenCalled();
+  });
+
+  it('stops persistence updates when the transport is disposed before the workspace opens', async () => {
+    const transport = new WebTransport();
+    const listener = vi.fn();
+    transport.onPersistenceStatus(listener);
+
+    transport.dispose();
+    await transport.flush();
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('stops persistence updates for a listener that detached before the workspace opened', async () => {
+    const transport = new WebTransport();
+    const listener = vi.fn();
+    const detach = transport.onPersistenceStatus(listener);
+
+    detach();
+    await transport.flush();
+
+    expect(listener).not.toHaveBeenCalled();
     transport.dispose();
   });
 

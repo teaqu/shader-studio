@@ -1,6 +1,7 @@
 export const STANDALONE_LAYOUT_STORAGE_KEY = 'shader-studio.standalone-layout.v1';
 
 export type StandalonePanelId = 'explorer' | 'editor' | 'preview';
+export type MobileDockviewPanelId = StandalonePanelId | 'debug' | 'config' | 'performance' | 'recording';
 
 interface Disposable {
   dispose(): void;
@@ -53,6 +54,23 @@ const panelDefinitions: Record<StandalonePanelId, { title: string; position?: Re
   editor: { title: 'No file open', position: { referencePanel: 'explorer', direction: 'right' }, initialWidth: 820 },
 };
 
+/** Remove the old resize fix's hard limits while retaining saved splits and sizes. */
+function withoutPanelMinimumWidths(layout: unknown): unknown {
+  if (!isRecord(layout) || !isRecord(layout.panels)) {
+    return layout;
+  }
+  return {
+    ...layout,
+    panels: Object.fromEntries(Object.entries(layout.panels).map(([id, panel]) => {
+      if ((id === 'explorer' || id === 'preview') && isRecord(panel)) {
+        const unconstrained = { ...panel };
+        delete unconstrained.minimumWidth;
+        return [id, unconstrained];
+      }
+      return [id, panel];
+    })),
+  };
+}
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value)
     && typeof value === 'object'
@@ -152,6 +170,8 @@ export class StandaloneLayoutController {
   private layoutChangeDisposable: Disposable | null = null;
   private readonly panelRestorations = new Map<StandalonePanelId, PanelRestoration>();
   private readonly storage: LayoutStorage | null;
+  private desktopVisibility: Map<PanelGroup, boolean> | null = null;
+  private mobilePanel: MobileDockviewPanelId | null = null;
 
   constructor(
     private readonly api: StandaloneDockviewApi,
@@ -280,6 +300,56 @@ export class StandaloneLayoutController {
     this.createDefaultLayout();
   }
 
+  /**
+   * Shows a single existing panel group for the phone shell. This only toggles
+   * Dockview group visibility, so the Svelte snippets and editor models remain
+   * mounted. Visibility is restored when returning to desktop.
+   */
+  showMobilePanel(panelId: StandalonePanelId): void {
+    this.showMobileDockviewPanel(panelId);
+  }
+
+  /** Shows exactly one existing Dockview group for the phone shell. */
+  showMobileDockviewPanel(panelId: MobileDockviewPanelId): void {
+    const selected = this.api.getPanel(panelId);
+    if (!selected) {
+      return;
+    }
+    if (!this.desktopVisibility) {
+      this.desktopVisibility = new Map(
+        this.api.panels.map((panel) => [panel.api.group, panel.api.group.api.isVisible]),
+      );
+    }
+    const selectedTool = panelId === 'debug' || panelId === 'config'
+      || panelId === 'performance' || panelId === 'recording';
+    if (selectedTool || !this.desktopVisibility.has(selected.api.group)) {
+      // Opening a tool from the phone shell is a deliberate workspace change,
+      // even when a restored copy of that group was hidden on desktop.
+      this.desktopVisibility.set(selected.api.group, true);
+    }
+    this.mobilePanel = panelId;
+    for (const panel of this.api.panels) {
+      panel.api.group.api.setVisible(panel.api.group === selected.api.group);
+    }
+    selected.api.group.api.setVisible(true);
+    selected.api.setActive();
+  }
+
+  restoreDesktopPanels(): void {
+    if (!this.desktopVisibility) {
+      return;
+    }
+    for (const [group, visible] of this.desktopVisibility) {
+      group.api.setVisible(visible);
+    }
+    this.desktopVisibility = null;
+    this.mobilePanel = null;
+  }
+
+  getMobilePanel(): MobileDockviewPanelId | null {
+    return this.mobilePanel;
+  }
+
   private createDefaultLayout(): void {
     this.addPanel('preview');
     this.addPanel('explorer');
@@ -335,9 +405,10 @@ export class StandaloneLayoutController {
         this.removeStoredLayout();
         return false;
       }
-      this.api.fromJSON(layout);
+      const constrainedLayout = withoutPanelMinimumWidths(layout);
+      this.api.fromJSON(constrainedLayout);
       if (migrated) {
-        this.writeLayout(layout);
+        this.writeLayout(constrainedLayout);
       }
       return true;
     } catch {
@@ -348,6 +419,9 @@ export class StandaloneLayoutController {
   }
 
   private persistLayout(): void {
+    if (this.desktopVisibility) {
+      return;
+    }
     this.writeLayout(this.api.toJSON());
   }
 

@@ -8,6 +8,8 @@
     togglePanel: vi.fn(),
     isPanelVisible: vi.fn((_panel: 'explorer' | 'editor' | 'preview') => true),
     resetLayout: vi.fn(),
+    isMobileLayout: vi.fn(() => false),
+    selectMobilePanel: vi.fn(),
   };
 </script>
 
@@ -44,6 +46,14 @@
 
   export function resetLayout() {
     layoutStub.resetLayout();
+  }
+
+  export function isMobileLayout() {
+    return layoutStub.isMobileLayout();
+  }
+
+  export function selectMobilePanel(panel: 'explorer' | 'editor' | 'preview' | 'tools') {
+    layoutStub.selectMobilePanel(panel);
   }
 </script>
 
