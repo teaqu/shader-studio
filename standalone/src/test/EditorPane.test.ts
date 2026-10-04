@@ -117,6 +117,32 @@ describe('EditorPane', () => {
     expect(toggle.getAttribute('aria-pressed')).toBe('false');
     expect(getByTestId('shader-editor').getAttribute('data-vim')).toBe('false');
   });
+
+  it('finishes editor teardown when a viewer session disappears and mounts its replacement', async () => {
+    const disposed = vi.fn();
+    document.addEventListener('editor-disposed', disposed, { once: true });
+    setViewerSession(createSession());
+    const { getByTestId, queryByTestId } = render(EditorPane);
+    expect(getByTestId('shader-editor').getAttribute('data-path')).toBe('/shaders/image.glsl');
+
+    setViewerSession(null);
+    await tick();
+    expect(queryByTestId('shader-editor')).toBeNull();
+    expect(disposed).toHaveBeenCalledWith(expect.objectContaining({
+      detail: expect.objectContaining({ shaderPath: '/shaders/image.glsl', shaderCode: 'initial source' }),
+    }));
+
+    setViewerSession(createSession({ shaderPath: '/replacement.glsl' }));
+    await tick();
+    expect(getByTestId('shader-editor').getAttribute('data-path')).toBe('/replacement.glsl');
+  });
+
+  it('retains editor props when teardown starts before the cleared session has flushed', () => {
+    setViewerSession(createSession());
+    const pane = render(EditorPane);
+    setViewerSession(null);
+    expect(() => pane.unmount()).not.toThrow();
+  });
 });
 
 

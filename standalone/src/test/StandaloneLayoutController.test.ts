@@ -12,16 +12,16 @@ function createApi(): StandaloneDockviewApi & { emitLayoutChange(): void; activa
   type TestPanel = {
     id: string;
     api: {
-      close: ReturnType<typeof vi.fn>;
+      close: ReturnType<typeof vi.fn<() => void>>;
       group: TestGroup;
-      setActive: ReturnType<typeof vi.fn>;
-      setTitle: ReturnType<typeof vi.fn>;
-      setSize: ReturnType<typeof vi.fn>;
+      setActive: ReturnType<typeof vi.fn<() => void>>;
+      setTitle: ReturnType<typeof vi.fn<(title: string) => void>>;
+      setSize: ReturnType<typeof vi.fn<(size: { width: number }) => void>>;
     };
   };
   type TestGroup = {
     panels: TestPanel[];
-    api: { isVisible: boolean; setVisible: ReturnType<typeof vi.fn> };
+    api: { isVisible: boolean; setVisible: ReturnType<typeof vi.fn<(visible: boolean) => void>> };
   };
   const panels = new Map<string, TestPanel>();
   const createGroup = (): TestGroup => {

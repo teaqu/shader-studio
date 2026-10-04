@@ -21,6 +21,42 @@ describe('WebTransport', () => {
     });
   });
 
+  it('keeps the workspace connected when a viewer is disposed and restores its replacement', async () => {
+    const transport = new WebTransport();
+    const oldViewer = transport.createViewerTransport();
+    const oldReceive = vi.fn();
+    oldViewer.onMessage(oldReceive);
+    await eventually(() => expect(oldReceive).toHaveBeenCalled());
+    oldViewer.dispose();
+    expect(oldViewer.isConnected()).toBe(false);
+    expect(transport.isConnected()).toBe(true);
+    oldReceive.mockClear();
+    const replacement = transport.createViewerTransport();
+    const receive = vi.fn();
+    replacement.onMessage(receive);
+    replacement.postMessage({ type: 'refresh' });
+    await eventually(() => expect(receive).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ type: 'shaderSource' }),
+    })));
+    expect(oldReceive).not.toHaveBeenCalled();
+    transport.dispose();
+    expect(replacement.isConnected()).toBe(false);
+  });
+
+  it('does not attach a disposed viewer while the workspace is opening', async () => {
+    const transport = new WebTransport();
+    const viewer = transport.createViewerTransport();
+    const receive = vi.fn();
+    viewer.onMessage(receive);
+    viewer.dispose();
+    viewer.onMessage(receive);
+    viewer.postMessage({ type: 'refresh' });
+    await transport.readEditorFile('/shaders/aurora.glsl');
+    expect(receive).not.toHaveBeenCalled();
+    expect(transport.isConnected()).toBe(true);
+    transport.dispose();
+  });
+
   it('persists explorer preferences before queued workspace saves can finish', async () => {
     const transport = new WebTransport();
     const explorer = transport.getShaderExplorerHostApi();

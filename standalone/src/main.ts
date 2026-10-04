@@ -29,7 +29,7 @@ function defaultAssets(): WorkspaceFileInfo[] {
 installSlangAssetMetadata();
 const transport = new WebTransport();
 configureHost({
-  createTransport: () => transport,
+  createTransport: () => transport.createViewerTransport(),
   defaultAssets: defaultAssets(),
   capabilities: { compileOnSave: false },
 });
