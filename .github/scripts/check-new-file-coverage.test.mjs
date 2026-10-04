@@ -45,7 +45,7 @@ test("accepts narrow capability type-only modules and reports each measured modu
   assert.doesNotMatch(formatNewFileCoverage(result), /Types.ts/);
 });
 
- test("new workspace or extension source cannot silently fall outside the coverage instrumentation", () => {
+test("new workspace or extension source cannot silently fall outside the coverage instrumentation", () => {
   const result = checkNewFileCoverage({}, ["extension/src/new.ts", "future-package/src/new.ts"], "/repo", source);
   assert.equal(result.errors.length, 2);
   assert.ok(result.errors.every((error) => error.endsWith("missing unit coverage")));
@@ -68,8 +68,9 @@ test("CLI compares the whole branch against its supplied base and fails on an un
   const root = mkdtempSync(join(tmpdir(), "new-file-coverage-"));
   const git = (...args) => execFileSync("git", args, { cwd: root, stdio: "pipe" });
   const commit = () => {
- git("add", "."); git("-c", "user.name=Coverage", "-c", "user.email=coverage@localhost", "commit", "-m", "fixture");
-};
+    git("add", ".");
+    git("-c", "user.name=Coverage", "-c", "user.email=coverage@localhost", "commit", "-m", "fixture");
+  };
   try {
     git("init", "-q");
     writeFileSync(join(root, "README.md"), "fixture");
