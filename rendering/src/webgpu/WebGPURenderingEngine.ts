@@ -53,10 +53,12 @@ import { WebGPUTextureBackend, type WebGPUTextureHandle } from "./WebGPUTextureB
 import { ResourceManager } from "../resources/ResourceManager";
 import type { PixelRegionResult } from "../types/PixelRegion";
 import { WebGPUPixelRegionCapturer, type PixelRegionRequestStage } from "./WebGPUPixelRegionCapturer";
-import { WebGPUMeshResources } from "./WebGPUMeshResources";
+import { WebGPUMeshResources, type WebGPUMeshResource } from "./WebGPUMeshResources";
+import { depthClearValue, geometryInstanceCount, meshTopology, renderPipelineStateKey, resolveRenderState, verticesSpace, verticesTopology, verticesVertexCount } from "../types/Geometry";
+import { FULLSCREEN_VERTEX_COUNT } from "@shader-studio/types";
 import { extractStructSizes } from "./wgslStructSize";
-import { OrbitCamera } from "../preview3d/OrbitCamera";
-import { createModelMatrix, createNormalMatrix3, multiplyMatrices } from "../preview3d/math";
+import { OrbitCamera, type CameraMatrices } from "../preview3d/OrbitCamera";
+import { createModelMatrix, createNormalMatrix3 } from "../preview3d/math";
 import {
   gpuBackpressureEnabled,
   MAX_FRAMES_IN_FLIGHT,
@@ -832,6 +834,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       rgba16floatRenderable: true,
       rgba32floatRenderable: true,
       float32Filterable: this.device.features?.has?.("float32-filterable") === true,
+      float32Blendable: this.device.features?.has?.("float32-blendable") === true,
     });
     const graphMs = this.now() - graphStartedAt;
 
@@ -1061,6 +1064,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
               passKind: pass.kind,
               ...(pass.geometry !== "fullscreen" ? { geometry: pass.geometry } : {}),
               ...(pass.vertexSrc ? { vertexCode: pass.vertexSrc } : {}),
+              ...(pass.geometry === "vertices" ? { vertexSpace: verticesSpace(pass) } : {}),
               workgroupSize: pass.workgroupSize,
               outputLayers: pass.outputLayers,
               hasOutput: pass.output === "texture",
@@ -2165,6 +2169,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
       pass.source,
       pass.geometry,
       pass.vertexSrc,
+      // World and clip space generate different vertices wrappers.
+      pass.geometry === "vertices" ? verticesSpace(pass) : null,
       commonCode,
       channels,
       storageLayout,
@@ -2217,7 +2223,35 @@ export class WebGPURenderingEngine implements RenderingEngine {
       pass.output,
       pass.outputLayers,
       pass.resolvedOutputFormat,
+      // Topology, space, blend, depth and cull are baked into the render
+      // pipeline; vertexCount and instanceCount are only draw arguments.
+      pass.kind === "render" ? renderPipelineStateKey(pass) : null,
     ]);
+  }
+
+  /** The loaded mesh a render pass draws; undefined for fullscreen, vertices, or a model still loading. */
+  private resolvePassMesh(pass: RenderPassNode): WebGPUMeshResource | undefined {
+    if (!pass.geometry || pass.geometry === "fullscreen" || pass.geometry === "vertices") {
+      return undefined;
+    }
+    return pass.modelPath
+      ? this.meshResources?.getModel(pass.name)
+      : pass.geometry === "model" ? undefined : this.meshResources?.get(pass.geometry);
+  }
+
+  /** iViewMatrix, iProjectionMatrix and iViewProjection: the orbit camera at the pass's aspect ratio. */
+  private passCameraMatrices(pass: { width: number; height: number }): CameraMatrices {
+    return this.meshCamera.getMatrices(pass.width / Math.max(pass.height, 1), "webgpu");
+  }
+
+  /** iVertexCount: the vertices the pass draws, matching the range of vertexIndex. */
+  private resolvePassVertexCount(pass: RenderPassNode): number {
+    if (pass.geometry === "vertices") {
+      return verticesVertexCount(pass);
+    }
+    return !pass.geometry || pass.geometry === "fullscreen"
+      ? FULLSCREEN_VERTEX_COUNT
+      : this.resolvePassMesh(pass)?.vertexCount ?? 0;
   }
 
   private static hasFileResources(passes: RenderPassNode[]): boolean {
@@ -2326,6 +2360,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
         height: pass.height,
         output: pass.output === "canvas" ? "canvas" : "texture",
         geometry: pass.geometry,
+        ...(pass.geometry === "vertices"
+          ? { topology: verticesTopology(pass), vertexSpace: verticesSpace(pass) }
+          : pass.geometry && pass.geometry !== "fullscreen" ? { topology: meshTopology(pass) } : {}),
+        renderState: resolveRenderState(pass),
         channels,
         vertexChannels: Boolean(pass.vertexSrc),
         vertexRange: compilation?.vertexRange,
@@ -2663,20 +2701,25 @@ export class WebGPURenderingEngine implements RenderingEngine {
         continue;
       }
 
+      const fullscreen = !pass.geometry || pass.geometry === "fullscreen";
+      const mesh = this.resolvePassMesh(pass);
+      const camera = this.passCameraMatrices(pass);
       const data = packShaderToyUniforms({
         channelCount: getShaderToyChannelCount(pass.channels),
         width: pass.width,
         height: pass.height,
+        vertexCount: this.resolvePassVertexCount(pass),
+        instanceCount: geometryInstanceCount(pass),
+        viewMatrix: camera.view,
+        projectionMatrix: camera.projection,
+        viewProjection: camera.viewProjection,
         ...frameInput,
         ...this.getChannelUniforms(pass),
       }, this.customUniformManager.getUniformInfo(), frameCustomUniformValues);
       this.device.queue.writeBuffer(pipeline.getUniformBuffer()!, 0, data);
       if (pass.geometry && pass.geometry !== "fullscreen" && pipeline.getMeshUniformBuffer?.()) {
         const model = createModelMatrix({ position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] });
-        const viewProjection = multiplyMatrices(
-          this.meshCamera.getProjectionMatrix(pass.width / Math.max(pass.height, 1), "webgpu"),
-          this.meshCamera.getViewMatrix(),
-        );
+        const viewProjection = camera.viewProjection;
         const normal = createNormalMatrix3(model);
         const meshData = new Float32Array(64);
         meshData.set(model, 0);
@@ -2693,29 +2736,40 @@ export class WebGPURenderingEngine implements RenderingEngine {
         continue;
       }
 
+      const renderState = resolveRenderState(pass);
+      const [clearR, clearG, clearB, clearA] = renderState.clear;
+      // With MSAA the pass draws into the multisampled texture and resolves into
+      // its output; the samples themselves are not needed after the pass.
+      const msaaView = pipeline.getMsaaView?.() ?? null;
       const renderPass = encoder.beginRenderPass({
         colorAttachments: [{
-          view: targetView,
-          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+          ...(msaaView ? { view: msaaView, resolveTarget: targetView, storeOp: "discard" as const } : { view: targetView, storeOp: "store" as const }),
+          clearValue: { r: clearR, g: clearG, b: clearB, a: clearA },
           loadOp: "clear",
-          storeOp: "store",
         }],
         ...(pass.geometry && pass.geometry !== "fullscreen" && pipeline.getDepthView?.() ? {
-          depthStencilAttachment: { view: pipeline.getDepthView()!, depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store" },
+          depthStencilAttachment: { view: pipeline.getDepthView()!, depthClearValue: depthClearValue(renderState), depthLoadOp: "clear", depthStoreOp: "store" },
         } : {}),
       });
       renderPass.setPipeline(pipeline.getPipeline()!);
       renderPass.setBindGroup(0, bindGroup);
-      if (!pass.geometry || pass.geometry === "fullscreen") {
-        renderPass.draw(3);
-      } else {
-        const mesh = pass.modelPath
-          ? this.meshResources?.getModel(pass.name)
-          : pass.geometry === "model" ? undefined : this.meshResources?.get(pass.geometry);
-        if (mesh) {
-          renderPass.setVertexBuffer(0, mesh.vertexBuffer);
+      if (fullscreen) {
+        renderPass.draw(FULLSCREEN_VERTEX_COUNT);
+      } else if (pass.geometry === "vertices") {
+        // Non-indexed with no vertex buffers; mainVertex places every vertex.
+        renderPass.draw(verticesVertexCount(pass), geometryInstanceCount(pass));
+      } else if (mesh) {
+        renderPass.setVertexBuffer(0, mesh.vertexBuffer);
+        const topology = meshTopology(pass);
+        if (topology === "point-list") {
+          // Each unique vertex once, without the index buffer.
+          renderPass.draw(mesh.vertexCount, geometryInstanceCount(pass));
+        } else if (topology === "line-list") {
+          renderPass.setIndexBuffer(mesh.edgeIndexBuffer, mesh.indexFormat);
+          renderPass.drawIndexed(mesh.edgeIndexCount, geometryInstanceCount(pass));
+        } else {
           renderPass.setIndexBuffer(mesh.indexBuffer, mesh.indexFormat);
-          renderPass.drawIndexed(mesh.indexCount);
+          renderPass.drawIndexed(mesh.indexCount, geometryInstanceCount(pass));
         }
       }
       renderPass.end();
@@ -3635,6 +3689,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       date: u.date as number[],
       cameraPos: u.cameraPos as number[],
       cameraDir: u.cameraDir as number[],
+      ...(pass ? { vertexCount: this.resolvePassVertexCount(pass), instanceCount: geometryInstanceCount(pass), camera: this.passCameraMatrices(pass) } : {}),
       ...channelUniforms,
     };
   }

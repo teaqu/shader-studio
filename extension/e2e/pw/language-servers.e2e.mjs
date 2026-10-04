@@ -1,5 +1,5 @@
 import { test, expect, workspacePath } from './fixtures.mjs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 
 const fixturePath = join(workspacePath, 'language-servers');
 const wgslFixturePath = join(fixturePath, 'wgsl');
@@ -335,7 +335,7 @@ test.describe('Shader language servers in VS Code', () => {
 
     // `twice` is declared in the configured Common pass. Cross-file rename
     // (3c498bfb) edits the declaration there and the call here in one edit.
-    expect(result.includedRename.map((item) => ({ file: item.path.split('/').pop(), edits: item.edits }))
+    expect(result.includedRename.map((item) => ({ file: basename(item.path), edits: item.edits }))
       .sort((left, right) => left.file.localeCompare(right.file))).toEqual([
       { file: 'common.glsl', edits: [{ line: 0, newText: 'doubled' }] },
       { file: 'image.glsl', edits: [{ line: 3, newText: 'doubled' }] },
@@ -429,7 +429,7 @@ test.describe('Shader language servers in VS Code', () => {
     expect(result.rename[0].edits.every((item) => item.newText === 'screenUv')).toBeTruthy();
 
     // `twice` is declared in the configured Common pass.
-    expect(result.includedRename.map((item) => ({ file: item.path.split('/').pop(), edits: item.edits }))
+    expect(result.includedRename.map((item) => ({ file: basename(item.path), edits: item.edits }))
       .sort((left, right) => left.file.localeCompare(right.file))).toEqual([
       { file: 'common.wgsl', edits: [{ line: 0, newText: 'doubled' }] },
       { file: 'image.wgsl', edits: [{ line: 3, newText: 'doubled' }] },
@@ -479,15 +479,17 @@ test.describe('Shader language servers in VS Code', () => {
   });
 
   test('provides vertex and compute contracts only in their configured stages', async ({ vscode }) => {
-    const glslVertex = await stageSnapshot(vscode, join(fixturePath, 'vertex.glsl'), ['mainVertex', 'deformed', 'surfaceNormal', 'textureUv']);
+    const glslVertex = await stageSnapshot(vscode, join(fixturePath, 'vertex.glsl'), ['mainVertex', 'vertexIndex', 'deformed', 'surfaceNormal', 'textureUv']);
     expect(glslVertex.hovers.mainVertex).toMatch(/vertex hook/i);
+    expect(glslVertex.hovers.vertexIndex).toMatch(/vertex index/i);
     expect(glslVertex.hovers.deformed).toMatch(/vertex position/i);
     expect(glslVertex.hovers.surfaceNormal).toMatch(/vertex normal/i);
     expect(glslVertex.hovers.textureUv).toMatch(/texture coordinate/i);
     expect(!glslVertex.labels.includes('mainImage')).toBeTruthy();
 
-    const slangVertex = await stageSnapshot(vscode, join(fixturePath, 'vertex.slang'), ['mainVertex', 'deformed', 'surfaceNormal', 'textureUv']);
+    const slangVertex = await stageSnapshot(vscode, join(fixturePath, 'vertex.slang'), ['mainVertex', 'vertexIndex', 'deformed', 'surfaceNormal', 'textureUv']);
     expect(slangVertex.hovers.mainVertex).toMatch(/vertex hook/i);
+    expect(slangVertex.hovers.vertexIndex).toMatch(/vertex index/i);
     expect(slangVertex.hovers.deformed).toMatch(/vertex position/i);
     expect(slangVertex.hovers.surfaceNormal).toMatch(/vertex normal/i);
     expect(slangVertex.hovers.textureUv).toMatch(/texture coordinate/i);
@@ -505,8 +507,9 @@ test.describe('Shader language servers in VS Code', () => {
     expect(!compute.labels.includes('mainImage')).toBeTruthy();
     expect(!compute.labels.includes('mainVertex')).toBeTruthy();
 
-    const wgslVertex = await stageSnapshot(vscode, join(wgslFixturePath, 'vertex.wgsl'), ['mainVertex', 'deformed', 'surfaceNormal', 'textureUv']);
+    const wgslVertex = await stageSnapshot(vscode, join(wgslFixturePath, 'vertex.wgsl'), ['mainVertex', 'vertexIndex', 'deformed', 'surfaceNormal', 'textureUv']);
     expect(wgslVertex.hovers.mainVertex).toMatch(/vertex hook/i);
+    expect(wgslVertex.hovers.vertexIndex).toMatch(/vertex index/i);
     expect(wgslVertex.hovers.deformed).toMatch(/vertex position/i);
     expect(wgslVertex.hovers.surfaceNormal).toMatch(/vertex normal/i);
     expect(wgslVertex.hovers.textureUv).toMatch(/texture coordinate/i);

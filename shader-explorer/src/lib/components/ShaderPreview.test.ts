@@ -849,3 +849,286 @@ describe('ShaderPreview - forceFresh', () => {
         }));
     });
 });
+
+describe('ShaderPreview - file changes', () => {
+    const VERSION_REFRESH_WAIT_MS = 1050;
+    const EDIT_ERROR_GRACE_MS = 60_000;
+
+    beforeEach(() => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+    const shaderCodeRequests = (vscodeApi: ReturnType<typeof makeVscodeApi>) => vscodeApi.postMessage.mock.calls
+        .filter(([message]) => message.type === 'requestShaderCode');
+    const savedThumbnails = (vscodeApi: ReturnType<typeof makeVscodeApi>) => vscodeApi.postMessage.mock.calls
+        .map(([message]) => message)
+        .filter((message) => message.type === 'saveThumbnail');
+
+    it('saves rendered thumbnails under the shader thumbnail version', async () => {
+        const vscodeApi = makeVscodeApi();
+        render(ShaderPreview, {
+            props: { shader: makeShader({ thumbnailVersion: 1500 }), vscodeApi, width: 320, height: 180 },
+        });
+
+        await waitFor(() => expect(savedThumbnails(vscodeApi)).toHaveLength(1));
+        expect(savedThumbnails(vscodeApi)[0]).toEqual(expect.objectContaining({
+            path: '/test/shader.glsl',
+            thumbnailVersion: 1500,
+        }));
+        expect(savedThumbnails(vscodeApi)[0]).not.toHaveProperty('modifiedTime');
+    });
+
+    it('re-renders from fresh source when the thumbnail version changes, keeping the old image meanwhile', async () => {
+        const vscodeApi = makeVscodeApi();
+        const { container, rerender } = render(ShaderPreview, {
+            props: { shader: makeShader({ thumbnailVersion: 1 }), vscodeApi, width: 320, height: 180 },
+        });
+        await waitFor(() => expect(savedThumbnails(vscodeApi)).toHaveLength(1));
+        toDataUrlMock.mockReturnValue('data:image/png;base64,updated');
+
+        await rerender({ shader: makeShader({ thumbnailVersion: 2 }) });
+
+        expect(container.querySelector('img')?.getAttribute('src')).toBe('data:image/png;base64,rendered');
+        expect(mockEngine.compileShaderPipeline).toHaveBeenCalledOnce();
+
+        await vi.advanceTimersByTimeAsync(VERSION_REFRESH_WAIT_MS);
+        await waitFor(() => expect(savedThumbnails(vscodeApi)).toHaveLength(2));
+
+        expect(shaderCodeRequests(vscodeApi)).toHaveLength(2);
+        expect(mockEngine.compileShaderPipeline).toHaveBeenCalledTimes(2);
+        expect(savedThumbnails(vscodeApi)[1]).toEqual(expect.objectContaining({ thumbnailVersion: 2 }));
+        expect(container.querySelector('img')?.getAttribute('src')).toBe('data:image/png;base64,updated');
+    });
+
+    it('coalesces rapid version changes into one re-render', async () => {
+        const vscodeApi = makeVscodeApi();
+        const { rerender } = render(ShaderPreview, {
+            props: { shader: makeShader({ thumbnailVersion: 1 }), vscodeApi, width: 320, height: 180 },
+        });
+        await waitFor(() => expect(savedThumbnails(vscodeApi)).toHaveLength(1));
+
+        await rerender({ shader: makeShader({ thumbnailVersion: 2 }) });
+        await vi.advanceTimersByTimeAsync(500);
+        await rerender({ shader: makeShader({ thumbnailVersion: 3 }) });
+        await vi.advanceTimersByTimeAsync(VERSION_REFRESH_WAIT_MS);
+        await waitFor(() => expect(savedThumbnails(vscodeApi)).toHaveLength(2));
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        expect(mockEngine.compileShaderPipeline).toHaveBeenCalledTimes(2);
+        expect(savedThumbnails(vscodeApi)).toHaveLength(2);
+        expect(savedThumbnails(vscodeApi)[1]).toEqual(expect.objectContaining({ thumbnailVersion: 3 }));
+    });
+
+    it('does not re-render when the list is resent with the same version', async () => {
+        const vscodeApi = makeVscodeApi();
+        const { rerender } = render(ShaderPreview, {
+            props: { shader: makeShader({ thumbnailVersion: 7 }), vscodeApi, width: 320, height: 180 },
+        });
+        await waitFor(() => expect(savedThumbnails(vscodeApi)).toHaveLength(1));
+
+        await rerender({ shader: makeShader({ thumbnailVersion: 7, cachedThumbnail: 'data:image/png;base64,rendered' }) });
+        await vi.advanceTimersByTimeAsync(VERSION_REFRESH_WAIT_MS);
+
+        expect(mockEngine.compileShaderPipeline).toHaveBeenCalledOnce();
+        expect(shaderCodeRequests(vscodeApi)).toHaveLength(1);
+    });
+
+    it('shows a thumbnail already cached for the new version without rendering', async () => {
+        const vscodeApi = makeVscodeApi();
+        const { container, rerender } = render(ShaderPreview, {
+            props: {
+                shader: makeShader({ thumbnailVersion: 1, cachedThumbnail: 'data:image/png;base64,v1' }),
+                vscodeApi,
+                width: 320,
+                height: 180,
+            },
+        });
+
+        await rerender({ shader: makeShader({ thumbnailVersion: 2, cachedThumbnail: 'data:image/png;base64,v2' }) });
+        await vi.advanceTimersByTimeAsync(VERSION_REFRESH_WAIT_MS);
+
+        expect(container.querySelector('img')?.getAttribute('src')).toBe('data:image/png;base64,v2');
+        expect(mockEngine.compileShaderPipeline).not.toHaveBeenCalled();
+        expect(shaderCodeRequests(vscodeApi)).toHaveLength(0);
+    });
+
+    it('renders a card that was showing a cached thumbnail once its files change', async () => {
+        const vscodeApi = makeVscodeApi();
+        const { container, rerender } = render(ShaderPreview, {
+            props: {
+                shader: makeShader({ thumbnailVersion: 1, cachedThumbnail: 'data:image/png;base64,v1' }),
+                vscodeApi,
+                width: 320,
+                height: 180,
+            },
+        });
+        expect(mockEngine.compileShaderPipeline).not.toHaveBeenCalled();
+
+        await rerender({ shader: makeShader({ thumbnailVersion: 2 }) });
+        expect(container.querySelector('img')?.getAttribute('src')).toBe('data:image/png;base64,v1');
+
+        await vi.advanceTimersByTimeAsync(VERSION_REFRESH_WAIT_MS);
+        await waitFor(() => expect(savedThumbnails(vscodeApi)).toHaveLength(1));
+
+        expect(savedThumbnails(vscodeApi)[0]).toEqual(expect.objectContaining({ thumbnailVersion: 2 }));
+        expect(container.querySelector('img')?.getAttribute('src')).toBe('data:image/png;base64,rendered');
+    });
+
+    it('keeps the last good thumbnail while an edited shader fails to compile', async () => {
+        const onCompilationFailed = vi.fn();
+        const vscodeApi = makeVscodeApi();
+        const { container, rerender } = render(ShaderPreview, {
+            props: { shader: makeShader({ thumbnailVersion: 1 }), vscodeApi, width: 320, height: 180, onCompilationFailed },
+        });
+        await waitFor(() => expect(container.querySelector('img')).not.toBeNull());
+        mockEngine.compileShaderPipeline.mockResolvedValue({ success: false, errors: ['syntax error'] });
+
+        await rerender({ shader: makeShader({ thumbnailVersion: 2 }) });
+        await vi.advanceTimersByTimeAsync(VERSION_REFRESH_WAIT_MS);
+        await waitFor(() => expect(mockEngine.compileShaderPipeline).toHaveBeenCalledTimes(2));
+        await vi.advanceTimersByTimeAsync(EDIT_ERROR_GRACE_MS - VERSION_REFRESH_WAIT_MS - 1000);
+
+        expect(container.querySelector('img')?.getAttribute('src')).toBe('data:image/png;base64,rendered');
+        expect(container.querySelector('.shader-error')).toBeNull();
+        expect(onCompilationFailed).not.toHaveBeenCalled();
+        expect(savedThumbnails(vscodeApi)).toHaveLength(1);
+    });
+
+    it('shows the failure once an edited shader stays broken for the grace period', async () => {
+        const onCompilationFailed = vi.fn();
+        const vscodeApi = makeVscodeApi();
+        const { container, rerender } = render(ShaderPreview, {
+            props: { shader: makeShader({ thumbnailVersion: 1 }), vscodeApi, width: 320, height: 180, onCompilationFailed },
+        });
+        await waitFor(() => expect(container.querySelector('img')).not.toBeNull());
+        mockEngine.compileShaderPipeline.mockResolvedValue({ success: false, errors: ['syntax error'] });
+
+        await rerender({ shader: makeShader({ thumbnailVersion: 2 }) });
+        await vi.advanceTimersByTimeAsync(VERSION_REFRESH_WAIT_MS);
+        await waitFor(() => expect(mockEngine.compileShaderPipeline).toHaveBeenCalledTimes(2));
+        // A further broken edit must not restart the grace period.
+        await vi.advanceTimersByTimeAsync(30_000);
+        await rerender({ shader: makeShader({ thumbnailVersion: 3 }) });
+        await vi.advanceTimersByTimeAsync(VERSION_REFRESH_WAIT_MS);
+        await waitFor(() => expect(mockEngine.compileShaderPipeline).toHaveBeenCalledTimes(3));
+        await vi.advanceTimersByTimeAsync(30_000);
+
+        await waitFor(() => expect(container.querySelector('.shader-error')).not.toBeNull());
+        expect(container.querySelector('img')).toBeNull();
+        expect(onCompilationFailed).toHaveBeenCalledOnce();
+    });
+
+    it('cancels the pending failure when the shader is fixed within the grace period', async () => {
+        const onCompilationFailed = vi.fn();
+        const vscodeApi = makeVscodeApi();
+        const { container, rerender } = render(ShaderPreview, {
+            props: { shader: makeShader({ thumbnailVersion: 1 }), vscodeApi, width: 320, height: 180, onCompilationFailed },
+        });
+        await waitFor(() => expect(container.querySelector('img')).not.toBeNull());
+        mockEngine.compileShaderPipeline.mockResolvedValue({ success: false, errors: ['syntax error'] });
+        await rerender({ shader: makeShader({ thumbnailVersion: 2 }) });
+        await vi.advanceTimersByTimeAsync(VERSION_REFRESH_WAIT_MS);
+        await waitFor(() => expect(mockEngine.compileShaderPipeline).toHaveBeenCalledTimes(2));
+
+        mockEngine.compileShaderPipeline.mockResolvedValue({ success: true, errors: [] });
+        toDataUrlMock.mockReturnValue('data:image/png;base64,fixed');
+        await rerender({ shader: makeShader({ thumbnailVersion: 3 }) });
+        await vi.advanceTimersByTimeAsync(VERSION_REFRESH_WAIT_MS);
+        await waitFor(() => expect(savedThumbnails(vscodeApi)).toHaveLength(2));
+        await vi.advanceTimersByTimeAsync(EDIT_ERROR_GRACE_MS);
+
+        expect(container.querySelector('img')?.getAttribute('src')).toBe('data:image/png;base64,fixed');
+        expect(container.querySelector('.shader-error')).toBeNull();
+        expect(onCompilationFailed).not.toHaveBeenCalled();
+        expect(savedThumbnails(vscodeApi)[1]).toEqual(expect.objectContaining({ thumbnailVersion: 3 }));
+    });
+
+    it('keeps the last good thumbnail while an edited shader cannot be loaded', async () => {
+        const onCompilationFailed = vi.fn();
+        let failLoad = false;
+        const vscodeApi = {
+            postMessage: vi.fn((msg: any) => {
+                if (msg.type === 'requestShaderCode') {
+                    setTimeout(() => window.dispatchEvent(new MessageEvent('message', {
+                        data: {
+                            type: 'shaderCode', path: msg.path, requestId: msg.requestId,
+                            code: 'void mainImage(out vec4 o,vec2 u){o=vec4(1);}', config: null, buffers: {}, language: 'glsl',
+                            ...(failLoad ? { scriptBundleError: 'bundle failed' } : {}),
+                        },
+                    })), 0);
+                }
+            }),
+        };
+        const { container, rerender } = render(ShaderPreview, {
+            props: { shader: makeShader({ thumbnailVersion: 1 }), vscodeApi, width: 320, height: 180, onCompilationFailed },
+        });
+        await waitFor(() => expect(container.querySelector('img')).not.toBeNull());
+        failLoad = true;
+
+        await rerender({ shader: makeShader({ thumbnailVersion: 2 }) });
+        await vi.advanceTimersByTimeAsync(VERSION_REFRESH_WAIT_MS);
+        await waitFor(() => expect(vscodeApi.postMessage.mock.calls
+            .filter(([message]) => message.type === 'requestShaderCode')).toHaveLength(2));
+        await vi.advanceTimersByTimeAsync(100);
+
+        expect(container.querySelector('img')).not.toBeNull();
+        expect(onCompilationFailed).not.toHaveBeenCalled();
+        expect(mockEngine.compileShaderPipeline).toHaveBeenCalledOnce();
+
+        await vi.advanceTimersByTimeAsync(EDIT_ERROR_GRACE_MS);
+        await waitFor(() => expect(container.querySelector('.shader-error')).not.toBeNull());
+        expect(onCompilationFailed).toHaveBeenCalledOnce();
+    });
+
+    it('does not show a grace-period failure after unmount', async () => {
+        const onCompilationFailed = vi.fn();
+        const vscodeApi = makeVscodeApi();
+        const { container, rerender, unmount } = render(ShaderPreview, {
+            props: { shader: makeShader({ thumbnailVersion: 1 }), vscodeApi, width: 320, height: 180, onCompilationFailed },
+        });
+        await waitFor(() => expect(container.querySelector('img')).not.toBeNull());
+        mockEngine.compileShaderPipeline.mockResolvedValue({ success: false, errors: ['syntax error'] });
+        await rerender({ shader: makeShader({ thumbnailVersion: 2 }) });
+        await vi.advanceTimersByTimeAsync(VERSION_REFRESH_WAIT_MS);
+        await waitFor(() => expect(mockEngine.compileShaderPipeline).toHaveBeenCalledTimes(2));
+
+        unmount();
+        await vi.advanceTimersByTimeAsync(EDIT_ERROR_GRACE_MS);
+
+        expect(onCompilationFailed).not.toHaveBeenCalled();
+    });
+
+    it('recovers from a failed thumbnail once the shader is fixed', async () => {
+        mockEngine.compileShaderPipeline.mockResolvedValue({ success: false, errors: ['syntax error'] });
+        const vscodeApi = makeVscodeApi();
+        const { container, rerender } = render(ShaderPreview, {
+            props: { shader: makeShader({ thumbnailVersion: 1 }), vscodeApi, width: 320, height: 180 },
+        });
+        await waitFor(() => expect(container.querySelector('.shader-error')).not.toBeNull());
+        mockEngine.compileShaderPipeline.mockResolvedValue({ success: true, errors: [] });
+
+        await rerender({ shader: makeShader({ thumbnailVersion: 2 }) });
+        await vi.advanceTimersByTimeAsync(VERSION_REFRESH_WAIT_MS);
+
+        await waitFor(() => expect(container.querySelector('img')).not.toBeNull());
+        expect(container.querySelector('.shader-error')).toBeNull();
+    });
+
+    it('does not render a pending version refresh after unmount', async () => {
+        const vscodeApi = makeVscodeApi();
+        const { rerender, unmount } = render(ShaderPreview, {
+            props: { shader: makeShader({ thumbnailVersion: 1 }), vscodeApi, width: 320, height: 180 },
+        });
+        await waitFor(() => expect(savedThumbnails(vscodeApi)).toHaveLength(1));
+
+        await rerender({ shader: makeShader({ thumbnailVersion: 2 }) });
+        unmount();
+        await vi.advanceTimersByTimeAsync(VERSION_REFRESH_WAIT_MS);
+
+        expect(shaderCodeRequests(vscodeApi)).toHaveLength(1);
+        expect(mockEngine.compileShaderPipeline).toHaveBeenCalledOnce();
+    });
+});

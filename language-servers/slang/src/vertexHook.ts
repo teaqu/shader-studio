@@ -10,14 +10,20 @@ export const SLANG_VERTEX_HOOK_FEATURES: readonly SlangVertexHookFeature[] = Obj
   Object.freeze({
     name: "mainVertex",
     kind: "function",
-    signature: "void mainVertex(inout float3 position, inout float3 normal, inout float2 uv)",
+    signature: "void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv)",
     description: "Shader Studio vertex hook called before vertex transforms and varyings are calculated. Modify its parameters to deform geometry or adjust vertex data.",
+  }),
+  Object.freeze({
+    name: "vertexIndex",
+    kind: "parameter",
+    signature: "uint vertexIndex",
+    description: "Vertex index passed to the hook (`SV_VertexID`). Fullscreen geometry passes 0, 1 and 2; vertices geometry runs from 0 to iVertexCount - 1 (its configured `vertexCount`); mesh geometry passes the mesh vertex index. Every instance repeats the same range; iInstanceIndex says which copy is being drawn.",
   }),
   Object.freeze({
     name: "position",
     kind: "parameter",
     signature: "inout float3 position",
-    description: "Mutable vertex position. It is object-space for mesh geometry and becomes the clip-space position for fullscreen geometry.",
+    description: "Mutable vertex position. It is object-space for mesh geometry and vertices geometry in world space (the orbit camera transforms it), and the final clip-space position for fullscreen geometry and vertices geometry in clip space ((-1,-1) bottom-left to (1,1) top-right). Vertices geometry starts every vertex at (0,0,0).",
   }),
   Object.freeze({
     name: "normal",
@@ -29,6 +35,6 @@ export const SLANG_VERTEX_HOOK_FEATURES: readonly SlangVertexHookFeature[] = Obj
     name: "uv",
     kind: "parameter",
     signature: "inout float2 uv",
-    description: "Mutable vertex texture coordinate used to calculate fragment coordinates for mesh geometry.",
+    description: "Mutable vertex texture coordinate. Its perspective-correct interpolated value is available to mainImage as iVertexUv; mesh and world-space vertices also use it to calculate mainImage's coordinate.",
   }),
 ]);

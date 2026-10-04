@@ -110,6 +110,30 @@ const conformanceCases: ConformanceCase[] = [
     },
   },
   {
+    name: "binds scalar and vector script values together",
+    expected: solid([191, 96, 48, 255]),
+    programs: {
+      glsl: {
+        image: "void mainImage(out vec4 color, in vec2 fragCoord) { color = vec4(tint * gain, 1.0); }",
+        customUniformDeclarations: "uniform float gain; uniform vec3 tint;",
+        customUniformInfo: [{ name: "gain", type: "float" }, { name: "tint", type: "vec3" }],
+        customUniformValues: [{ name: "gain", type: "float", value: 0.75 }, { name: "tint", type: "vec3", value: [1, 0.5, 0.25] }],
+      },
+      slang: {
+        image: "float4 mainImage(float2 fragCoord) { return float4(tint * gain, 1.0); }",
+        customUniformDeclarations: "uniform float gain; uniform vec3 tint;",
+        customUniformInfo: [{ name: "gain", type: "float" }, { name: "tint", type: "vec3" }],
+        customUniformValues: [{ name: "gain", type: "float", value: 0.75 }, { name: "tint", type: "vec3", value: [1, 0.5, 0.25] }],
+      },
+      wgsl: {
+        image: "fn mainImage(coord: vec2f) -> vec4f { return vec4f(tint * gain, 1.0); }",
+        customUniformDeclarations: "uniform float gain; uniform vec3 tint;",
+        customUniformInfo: [{ name: "gain", type: "float" }, { name: "tint", type: "vec3" }],
+        customUniformValues: [{ name: "gain", type: "float", value: 0.75 }, { name: "tint", type: "vec3", value: [1, 0.5, 0.25] }],
+      },
+    },
+  },
+  {
     name: "renders and samples a buffer pass",
     expected: solid([255, 0, 255, 255]),
     programs: {

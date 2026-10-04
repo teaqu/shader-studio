@@ -45,7 +45,7 @@ describe('BufferConfig', () => {
 
   describe('geometry validation', () => {
     it('accepts every supported geometry type for image and buffer configs', () => {
-      const geometryTypes = ['fullscreen', 'plane', 'cube', 'sphere'] as const;
+      const geometryTypes = ['fullscreen', 'vertices', 'plane', 'cube', 'sphere'] as const;
 
       for (const type of geometryTypes) {
         const imageConfig: ImagePass = { geometry: { type } };
@@ -100,6 +100,61 @@ describe('BufferConfig', () => {
       expect(new BufferConfig('BufferA', config).validate().isValid).toBe(false);
     });
 
+    it('accepts vertices vertexCount, topology and space, as the renderer does', () => {
+      expect(new BufferConfig('Image', { geometry: { type: 'vertices', vertexCount: 6, topology: 'triangle-strip', space: 'clip' } }).validate())
+        .toEqual({ isValid: true, errors: [] });
+      expect(new BufferConfig('BufferA', { path: 'a.glsl', geometry: { type: 'vertices', vertexCount: 2147483647 } }).validate())
+        .toEqual({ isValid: true, errors: [] });
+    });
+
+    it.each([0, 2147483648, 1.5])('rejects vertices vertexCount %s with the renderer message', (vertexCount) => {
+      expect(new BufferConfig('BufferA', { path: 'a.glsl', geometry: { type: 'vertices', vertexCount } }).validate()).toEqual({
+        isValid: false,
+        errors: ['BufferA pass geometry vertexCount must be an integer from 1 to 2147483647'],
+      });
+    });
+
+    it('rejects an unknown topology or space and vertex fields on other geometry', () => {
+      expect(new BufferConfig('Image', { geometry: { type: 'vertices', topology: 'triangle-fan' } } as never).validate().errors)
+        .toEqual(['Image pass geometry topology must be one of: triangle-list, triangle-strip, line-list, line-strip, point-list']);
+      expect(new BufferConfig('Image', { geometry: { type: 'vertices', space: 'screen' } } as never).validate().errors)
+        .toEqual(['Image pass geometry space must be one of: world, clip']);
+      expect(new BufferConfig('Image', { geometry: { type: 'sphere', vertexCount: 6 } } as never).validate().errors)
+        .toEqual(['Image pass geometry vertexCount is only supported for vertices geometry, not sphere']);
+      expect(new BufferConfig('Image', { geometry: { type: 'fullscreen', space: 'clip' } } as never).validate().errors)
+        .toEqual(['Image pass geometry space is only supported for vertices geometry, not fullscreen']);
+    });
+
+    it('validates instanceCount with the renderer messages', () => {
+      expect(new BufferConfig('BufferA', { path: 'a.glsl', geometry: { type: 'cube', instanceCount: 64 } }).validate())
+        .toEqual({ isValid: true, errors: [] });
+      expect(new BufferConfig('BufferA', { path: 'a.glsl', geometry: { type: 'cube', instanceCount: 0 } }).validate().errors)
+        .toEqual(['BufferA pass geometry instanceCount must be an integer from 1 to 2147483647']);
+      expect(new BufferConfig('Image', { geometry: { type: 'fullscreen', instanceCount: 2 } } as never).validate().errors)
+        .toEqual(['Image pass geometry instanceCount is not supported for fullscreen geometry']);
+    });
+
+    it('validates blend, depth and cull with the renderer messages', () => {
+      expect(new BufferConfig('BufferA', { path: 'a.glsl', geometry: { type: 'cube' }, blend: 'additive', depth: { write: false }, cull: 'back' }).validate())
+        .toEqual({ isValid: true, errors: [] });
+      expect(new BufferConfig('Image', { blend: 'alpha' }).validate()).toEqual({ isValid: true, errors: [] });
+      expect(new BufferConfig('Image', { blend: 'multiply' } as never).validate().errors)
+        .toEqual(['Image pass blend must be one of: none, alpha, premultiplied, additive']);
+      expect(new BufferConfig('Image', { geometry: { type: 'cube' }, depth: { test: 'yes' } } as never).validate().errors)
+        .toEqual(['Image pass depth test must be true or false']);
+      expect(new BufferConfig('Image', { cull: 'back' }).validate().errors)
+        .toEqual(['Image pass cull is not supported for fullscreen geometry']);
+      expect(new BufferConfig('Image', { depth: {} }).validate().errors)
+        .toEqual(['Image pass depth is not supported for fullscreen geometry, which has no depth buffer']);
+    });
+
+    it('rejects render settings on compute and Common passes', () => {
+      expect(new BufferConfig('Sim', { type: 'compute', path: 'sim.slang', blend: 'additive' } as never).validate().errors)
+        .toEqual(['Sim compute pass cannot define blend']);
+      expect(new BufferConfig('common', { path: 'common.glsl', cull: 'back' } as never).validate().errors)
+        .toContain('common pass cannot define cull');
+    });
+
     it('reports the supported types for unknown geometry', () => {
       const config = {
         path: 'buffer.glsl',
@@ -107,7 +162,7 @@ describe('BufferConfig', () => {
       } as never;
 
       expect(new BufferConfig('BufferA', config).validate().errors)
-        .toContain('BufferA pass geometry type must be one of: fullscreen, plane, cube, sphere, model');
+        .toContain('BufferA pass geometry type must be one of: fullscreen, vertices, plane, cube, sphere, model');
     });
 
     it('rejects geometry on the Common pass', () => {

@@ -10,6 +10,7 @@ import {
   setEditorOverlayVisible,
   setOverlayActiveFile,
 } from '../../../lib/state/editorOverlayState.svelte';
+import { resetVerticesDrawMemory } from '../../../lib/state/verticesDrawMemory.svelte';
 
 vi.mock('../../../../../rendering/src/preview3d/GltfMeshLoader', () => ({
   listGlbMeshNames: vi.fn().mockResolvedValue(['Body', 'Visor']),
@@ -136,6 +137,7 @@ describe('BufferConfig', () => {
   let mockPostMessage: FunctionMock;
 
   beforeEach(() => {
+    resetVerticesDrawMemory();
     mockOnUpdate = vi.fn();
     mockGetWebviewUri = vi.fn();
     mockPostMessage = vi.fn();
@@ -198,7 +200,7 @@ describe('BufferConfig', () => {
       });
 
       const sectionTitles = Array.from(container.querySelectorAll('.section-title')).map((title) => title.textContent);
-      expect(sectionTitles).toEqual(['Channels', 'Resolution', 'Geometry', 'Vertex shader']);
+      expect(sectionTitles).toEqual(['Channels', 'Resolution', 'Geometry', 'Rendering', 'Vertex shader']);
     });
   });
 
@@ -495,7 +497,7 @@ describe('BufferConfig', () => {
       });
 
       const sectionTitles = Array.from(container.querySelectorAll('.section-title')).map((title) => title.textContent);
-      expect(sectionTitles).toEqual(['Channels', 'Resolution', 'Geometry', 'Vertex shader']);
+      expect(sectionTitles).toEqual(['Channels', 'Resolution', 'Geometry', 'Rendering', 'Depth testing', 'Vertex shader']);
     });
 
     it('defaults renderable passes to fullscreen and serializes a selected sphere', async () => {
@@ -526,6 +528,19 @@ describe('BufferConfig', () => {
       const modelPath = getByLabelText('Model file:');
       await fireEvent.click(modelPath.closest('.input-group')!.querySelector('.select-file-btn')!);
       expect(mockPostMessage).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'selectFile', payload: expect.objectContaining({ fileType: 'model' }) }));
+    });
+
+    it('keeps the instance count when the model mesh changes', async () => {
+      mockGetWebviewUri.mockReturnValue('vscode-webview://webview-panel/robot.glb');
+      const { getByLabelText } = render(BufferConfig, {
+        bufferName: 'Image', config: { inputs: {}, geometry: { type: 'model', path: './robot.glb', instanceCount: 3 } }, onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri,
+        postMessage: mockPostMessage, shaderPath: '/shaders/image.slang',
+      });
+
+      await waitFor(() => expect(getByLabelText('Mesh')).toHaveTextContent('Body'));
+      await fireEvent.change(getByLabelText('Mesh'), { target: { value: 'Body' } });
+
+      expect(mockOnUpdate).toHaveBeenLastCalledWith('Image', { inputs: {}, geometry: { type: 'model', path: './robot.glb', mesh: 'Body', instanceCount: 3 } });
     });
 
     it('waits for the model webview URI instead of fetching a raw relative path', async () => {
@@ -560,6 +575,713 @@ describe('BufferConfig', () => {
       });
 
       expect(getByRole('heading', { name: 'Vertex shader' })).toBeInTheDocument();
+    });
+
+    it('offers Vertices between Fullscreen and the meshes', () => {
+      const { getByLabelText } = render(BufferConfig, {
+        bufferName: 'BufferA', config: { path: 'a.glsl', inputs: {} }, onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri,
+      });
+
+      expect(Array.from((getByLabelText('Geometry') as HTMLSelectElement).options).map((option) => option.value))
+        .toEqual(['fullscreen', 'vertices', 'plane', 'cube', 'sphere', 'model']);
+    });
+
+    describe('vertices count, topology and space', () => {
+      const renderPass = (config: BufferPass | ImagePass, bufferName = 'BufferA') => render(BufferConfig, {
+        bufferName, config, onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri, isImagePass: bufferName === 'Image',
+      });
+      const vertices = (fields: Record<string, unknown> = {}) => ({ path: 'a.glsl', inputs: {}, geometry: { type: 'vertices' as const, ...fields } });
+
+      it('shows defaults for vertices geometry without fields', () => {
+        const { getByLabelText } = renderPass(vertices());
+        const count = getByLabelText('Vertices') as HTMLInputElement;
+
+        expect(count.value).toBe('');
+        expect(count.placeholder).toBe('3');
+        expect(count.min).toBe('1');
+        expect(count.max).toBe('2147483647');
+        expect(count.step).toBe('1');
+        expect(count.classList.contains('dim-input')).toBe(false);
+        expect((getByLabelText('Topology') as HTMLSelectElement).value).toBe('triangle-list');
+        expect((getByLabelText('Space') as HTMLSelectElement).value).toBe('world');
+      });
+
+      it('shows configured values', () => {
+        const { getByLabelText } = renderPass(vertices({ vertexCount: 12, topology: 'line-strip', space: 'clip' }));
+
+        expect((getByLabelText('Vertices') as HTMLInputElement).value).toBe('12');
+        expect((getByLabelText('Topology') as HTMLSelectElement).value).toBe('line-strip');
+        expect((getByLabelText('Space') as HTMLSelectElement).value).toBe('clip');
+      });
+
+      it('offers exactly the five portable topologies and both spaces', () => {
+        const { getByLabelText } = renderPass(vertices());
+
+        expect(Array.from((getByLabelText('Topology') as HTMLSelectElement).options).map((option) => option.value))
+          .toEqual(['triangle-list', 'triangle-strip', 'line-list', 'line-strip', 'point-list']);
+        expect(Array.from((getByLabelText('Space') as HTMLSelectElement).options).map((option) => option.value))
+          .toEqual(['world', 'clip']);
+      });
+
+      it.each([
+        ['fullscreen', { path: 'a.glsl', inputs: {} }],
+        ['explicit fullscreen', { path: 'a.glsl', inputs: {}, geometry: { type: 'fullscreen' as const } }],
+        ['plane', { path: 'a.glsl', inputs: {}, geometry: { type: 'plane' as const } }],
+        ['cube', { path: 'a.glsl', inputs: {}, geometry: { type: 'cube' as const } }],
+        ['sphere', { path: 'a.glsl', inputs: {}, geometry: { type: 'sphere' as const } }],
+      ])('hides the vertices controls for %s geometry', (_name, config) => {
+        const { queryByLabelText } = renderPass(config as BufferPass);
+
+        expect(queryByLabelText('Vertices')).toBeNull();
+        expect(queryByLabelText('Space')).toBeNull();
+        // Meshes have their own Topology control without the strip topologies.
+        const topology = queryByLabelText('Topology') as HTMLSelectElement | null;
+        if (topology) {
+          expect(Array.from(topology.options).map((option) => option.value)).toEqual(['triangle-list', 'line-list', 'point-list']);
+        } else {
+          expect((config as BufferPass).geometry?.type ?? 'fullscreen').toBe('fullscreen');
+        }
+      });
+
+      it('hides the controls for model geometry and while a model is being selected', async () => {
+        const model = renderPass({ inputs: {}, geometry: { type: 'model', path: './robot.glb' } }, 'Image');
+        expect(model.queryByLabelText('Vertices')).toBeNull();
+        model.unmount();
+
+        const pending = renderPass(vertices({ vertexCount: 6 }));
+        await fireEvent.change(pending.getByLabelText('Geometry'), { target: { value: 'model' } });
+        expect(pending.queryByLabelText('Vertices')).toBeNull();
+        expect(pending.queryByLabelText('Space')).toBeNull();
+      });
+
+      it('switches fullscreen to bare vertices geometry', async () => {
+        const { getByLabelText } = renderPass({ path: 'a.glsl', inputs: {} });
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'vertices' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', vertices());
+        expect(getByLabelText('Vertices')).toBeInTheDocument();
+      });
+
+      it('writes a vertex count', async () => {
+        const { getByLabelText } = renderPass(vertices());
+
+        await fireEvent.change(getByLabelText('Vertices'), { target: { value: '12' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', vertices({ vertexCount: 12 }));
+      });
+
+      it.each(['1', '2147483647'])('accepts the boundary vertex count %s', async (value) => {
+        const { getByLabelText, queryByRole } = renderPass(vertices());
+
+        await fireEvent.change(getByLabelText('Vertices'), { target: { value } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', vertices({ vertexCount: Number(value) }));
+        expect(queryByRole('alert')).toBeNull();
+      });
+
+      it.each(['0', '-3', '2147483648', '1.5', '1e40'])('rejects vertex count %s without writing or clamping', async (value) => {
+        const { getByLabelText, getByRole, queryByRole } = renderPass(vertices({ vertexCount: 6 }));
+
+        await fireEvent.change(getByLabelText('Vertices'), { target: { value } });
+
+        expect(mockOnUpdate).not.toHaveBeenCalled();
+        expect(getByRole('alert')).toHaveTextContent('Vertex count must be a whole number from 1 to 2147483647');
+        // A valid value afterwards clears the message.
+        await fireEvent.change(getByLabelText('Vertices'), { target: { value: '9' } });
+        expect(queryByRole('alert')).toBeNull();
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', vertices({ vertexCount: 9 }));
+      });
+
+      it('clears the vertex count but keeps the other fields and the vertices type', async () => {
+        const { getByLabelText } = renderPass(vertices({ vertexCount: 6, topology: 'point-list', space: 'clip' }));
+
+        await fireEvent.change(getByLabelText('Vertices'), { target: { value: '' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', vertices({ topology: 'point-list', space: 'clip' }));
+      });
+
+      it('keeps bare vertices geometry when the last field is cleared', async () => {
+        const { getByLabelText } = renderPass(vertices({ vertexCount: 6 }));
+
+        await fireEvent.change(getByLabelText('Vertices'), { target: { value: '' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', vertices());
+      });
+
+      it('writes a non-default topology and space and keeps the vertex count', async () => {
+        const { getByLabelText } = renderPass({ inputs: {}, geometry: { type: 'vertices', vertexCount: 6 } }, 'Image');
+
+        await fireEvent.change(getByLabelText('Topology'), { target: { value: 'triangle-strip' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('Image', { inputs: {}, geometry: { type: 'vertices', vertexCount: 6, topology: 'triangle-strip' } });
+
+        await fireEvent.change(getByLabelText('Space'), { target: { value: 'clip' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('Image', { inputs: {}, geometry: { type: 'vertices', vertexCount: 6, topology: 'triangle-strip', space: 'clip' } });
+      });
+
+      it('removes topology and space when their defaults are chosen', async () => {
+        const { getByLabelText } = renderPass(vertices({ vertexCount: 6, topology: 'line-list', space: 'clip' }));
+
+        await fireEvent.change(getByLabelText('Topology'), { target: { value: 'triangle-list' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', vertices({ vertexCount: 6, space: 'clip' }));
+        await fireEvent.change(getByLabelText('Space'), { target: { value: 'world' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', vertices({ vertexCount: 6 }));
+      });
+
+      it.each(['fullscreen', 'plane', 'cube', 'sphere'] as const)('drops the vertices fields when switching to %s', async (type) => {
+        const { getByLabelText } = renderPass(vertices({ vertexCount: 6, topology: 'line-strip', space: 'clip' }));
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: type } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', type === 'fullscreen'
+          ? { path: 'a.glsl', inputs: {} }
+          : { path: 'a.glsl', inputs: {}, geometry: { type } });
+      });
+
+      it('drops the vertices fields when a model is chosen', async () => {
+        const { getByLabelText } = renderPass(vertices({ vertexCount: 6, topology: 'point-list' }));
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'model' } });
+        expect(mockOnUpdate).not.toHaveBeenCalled();
+        await fireEvent.input(getByLabelText('Model file:'), { target: { value: './robot.glb' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', { path: 'a.glsl', inputs: {}, geometry: { type: 'model', path: './robot.glb' } });
+      });
+
+      it.each(['fullscreen', 'plane', 'cube', 'sphere'] as const)('restores the remembered fields when switching %s back to vertices', async (type) => {
+        const { getByLabelText } = renderPass(vertices({ vertexCount: 6, topology: 'line-strip', space: 'clip' }));
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: type } });
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'vertices' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', vertices({ vertexCount: 6, topology: 'line-strip', space: 'clip' }));
+        expect((getByLabelText('Vertices') as HTMLInputElement).value).toBe('6');
+        expect((getByLabelText('Topology') as HTMLSelectElement).value).toBe('line-strip');
+        expect((getByLabelText('Space') as HTMLSelectElement).value).toBe('clip');
+      });
+
+      it('restores the fields after abandoning a model selection', async () => {
+        const { getByLabelText } = renderPass(vertices({ vertexCount: 12 }));
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'model' } });
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'vertices' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', vertices({ vertexCount: 12 }));
+      });
+
+      it('restores the fields after a chosen model is switched back to vertices', async () => {
+        const { getByLabelText } = renderPass(vertices({ topology: 'point-list' }));
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'model' } });
+        await fireEvent.input(getByLabelText('Model file:'), { target: { value: './robot.glb' } });
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'vertices' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', vertices({ topology: 'point-list' }));
+      });
+
+      it('remembers the fields when the panel is closed and reopened on the mesh pass', async () => {
+        const first = renderPass(vertices({ vertexCount: 9, topology: 'triangle-strip' }));
+        await fireEvent.change(first.getByLabelText('Geometry'), { target: { value: 'cube' } });
+        first.unmount();
+
+        const reopened = renderPass({ path: 'a.glsl', inputs: {}, geometry: { type: 'cube' } });
+        await fireEvent.change(reopened.getByLabelText('Geometry'), { target: { value: 'vertices' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', vertices({ vertexCount: 9, topology: 'triangle-strip' }));
+      });
+
+      it('does not carry remembered fields to another pass or shader', async () => {
+        const bufferA = renderPass(vertices({ vertexCount: 9 }));
+        await fireEvent.change(bufferA.getByLabelText('Geometry'), { target: { value: 'cube' } });
+        bufferA.unmount();
+
+        const bufferB = renderPass({ path: 'b.glsl', inputs: {}, geometry: { type: 'cube' } }, 'BufferB');
+        await fireEvent.change(bufferB.getByLabelText('Geometry'), { target: { value: 'vertices' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferB', { path: 'b.glsl', inputs: {}, geometry: { type: 'vertices' } });
+        bufferB.unmount();
+
+        const otherShader = render(BufferConfig, {
+          bufferName: 'BufferA', config: { path: 'a.glsl', inputs: {}, geometry: { type: 'cube' } },
+          onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri, shaderPath: '/other/shader.glsl',
+        });
+        await fireEvent.change(otherShader.getByLabelText('Geometry'), { target: { value: 'vertices' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', vertices());
+      });
+
+      it('forgets restored fields, so a second switch back starts bare', async () => {
+        const { getByLabelText } = renderPass(vertices({ vertexCount: 9 }), 'BufferD');
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'cube' } });
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'vertices' } });
+        mockOnUpdate.mockClear();
+        await fireEvent.change(getByLabelText('Vertices'), { target: { value: '' } });
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'cube' } });
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'vertices' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferD', { path: 'a.glsl', inputs: {}, geometry: { type: 'vertices' } });
+      });
+
+      it('clears a pending vertex count error when the geometry changes', async () => {
+        const { getByLabelText, queryByRole } = renderPass(vertices());
+
+        await fireEvent.change(getByLabelText('Vertices'), { target: { value: '0' } });
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'cube' } });
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'vertices' } });
+
+        expect(queryByRole('alert')).toBeNull();
+      });
+    });
+
+    describe('mesh topology', () => {
+      const renderPass = (config: BufferPass | ImagePass, bufferName = 'BufferA') => render(BufferConfig, {
+        bufferName, config, onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri, isImagePass: bufferName === 'Image',
+      });
+      const pass = (geometry?: Record<string, unknown>) => ({ path: 'a.glsl', inputs: {}, ...(geometry ? { geometry } : {}) }) as BufferPass;
+      const topology = (view: ReturnType<typeof renderPass>) => view.getByLabelText('Topology') as HTMLSelectElement;
+
+      it.each([
+        ['plane', { type: 'plane' }],
+        ['cube', { type: 'cube' }],
+        ['sphere', { type: 'sphere' }],
+        ['model', { type: 'model', path: './robot.glb' }],
+      ])('offers triangles, wireframe and points for %s geometry, defaulting to triangles', (_name, geometry) => {
+        const view = renderPass(pass(geometry));
+
+        expect(topology(view).value).toBe('triangle-list');
+        expect(Array.from(topology(view).options).map((option) => [option.value, option.textContent])).toEqual([
+          ['triangle-list', 'Triangles'],
+          ['line-list', 'Wireframe (line list)'],
+          ['point-list', 'Points'],
+        ]);
+      });
+
+      it('shows a configured mesh topology', () => {
+        expect(topology(renderPass(pass({ type: 'sphere', topology: 'point-list' }))).value).toBe('point-list');
+      });
+
+      it('writes a mesh topology, keeping the other geometry fields, and removes it at the default', async () => {
+        const view = renderPass(pass({ type: 'model', path: './robot.glb', mesh: 'Body', instanceCount: 2 }));
+
+        await fireEvent.change(topology(view), { target: { value: 'line-list' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'model', path: './robot.glb', mesh: 'Body', instanceCount: 2, topology: 'line-list' }));
+        view.unmount();
+
+        const configured = renderPass(pass({ type: 'cube', topology: 'point-list' }));
+        await fireEvent.change(topology(configured), { target: { value: 'triangle-list' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'cube' }));
+      });
+
+      it('carries the mesh topology between meshes', async () => {
+        const view = renderPass(pass({ type: 'cube', topology: 'line-list' }));
+
+        await fireEvent.change(view.getByLabelText('Geometry'), { target: { value: 'sphere' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'sphere', topology: 'line-list' }));
+      });
+
+      it.each(['fullscreen', 'vertices'] as const)('drops the mesh topology for %s and restores it on the way back', async (type) => {
+        const view = renderPass(pass({ type: 'cube', topology: 'point-list' }));
+
+        await fireEvent.change(view.getByLabelText('Geometry'), { target: { value: type } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', type === 'fullscreen' ? pass() : pass({ type: 'vertices' }));
+
+        await fireEvent.change(view.getByLabelText('Geometry'), { target: { value: 'plane' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'plane', topology: 'point-list' }));
+      });
+
+      it('keeps the vertices topology and the mesh topology apart', async () => {
+        const view = renderPass(pass({ type: 'vertices', topology: 'line-strip' }));
+
+        await fireEvent.change(view.getByLabelText('Geometry'), { target: { value: 'cube' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'cube' }));
+      });
+
+      it('carries the mesh topology to a chosen model, and hides it while the model is picked', async () => {
+        const view = renderPass(pass({ type: 'cube', topology: 'line-list' }));
+
+        await fireEvent.change(view.getByLabelText('Geometry'), { target: { value: 'model' } });
+        expect(view.queryByLabelText('Topology')).toBeNull();
+        await fireEvent.input(view.getByLabelText('Model file:'), { target: { value: './robot.glb' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'model', path: './robot.glb', topology: 'line-list' }));
+      });
+    });
+
+    describe('instance count', () => {
+      const renderPass = (config: BufferPass | ImagePass, bufferName = 'BufferA') => render(BufferConfig, {
+        bufferName, config, onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri, isImagePass: bufferName === 'Image',
+      });
+      const pass = (geometry?: Record<string, unknown>) => ({ path: 'a.glsl', inputs: {}, ...(geometry ? { geometry } : {}) }) as BufferPass;
+
+      it.each([
+        ['vertices', { type: 'vertices' }],
+        ['plane', { type: 'plane' }],
+        ['cube', { type: 'cube' }],
+        ['sphere', { type: 'sphere' }],
+        ['model', { type: 'model', path: './robot.glb' }],
+      ])('shows a default single instance for %s geometry', (_name, geometry) => {
+        const { getByLabelText } = renderPass(pass(geometry));
+        const count = getByLabelText('Instances') as HTMLInputElement;
+
+        expect(count.value).toBe('');
+        expect(count.placeholder).toBe('1');
+        expect(count.min).toBe('1');
+        expect(count.max).toBe('2147483647');
+        expect(count.step).toBe('1');
+      });
+
+      it('shows a configured instance count', () => {
+        const { getByLabelText } = renderPass(pass({ type: 'cube', instanceCount: 25 }));
+
+        expect((getByLabelText('Instances') as HTMLInputElement).value).toBe('25');
+      });
+
+      it.each([
+        ['implicit fullscreen', undefined],
+        ['explicit fullscreen', { type: 'fullscreen' }],
+      ])('hides the control for %s geometry', (_name, geometry) => {
+        expect(renderPass(pass(geometry)).queryByLabelText('Instances')).toBeNull();
+      });
+
+      it('writes an instance count into the geometry, keeping its other fields', async () => {
+        const { getByLabelText } = renderPass(pass({ type: 'vertices', vertexCount: 6, space: 'clip' }));
+
+        await fireEvent.change(getByLabelText('Instances'), { target: { value: '40' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'vertices', vertexCount: 6, space: 'clip', instanceCount: 40 }));
+      });
+
+      it.each(['', '1'])('removes instanceCount when set to %j, the default', async (value) => {
+        const { getByLabelText } = renderPass(pass({ type: 'model', path: './robot.glb', mesh: 'Body', instanceCount: 3 }));
+
+        await fireEvent.change(getByLabelText('Instances'), { target: { value } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'model', path: './robot.glb', mesh: 'Body' }));
+      });
+
+      it.each(['0', '-1', '1.5', '2147483648'])('rejects instance count %s without writing it', async (value) => {
+        const { getByLabelText, getByRole } = renderPass(pass({ type: 'cube' }));
+
+        await fireEvent.change(getByLabelText('Instances'), { target: { value } });
+
+        expect(mockOnUpdate).not.toHaveBeenCalled();
+        expect(getByRole('alert')).toHaveTextContent('Instance count must be a whole number from 1 to 2147483647');
+      });
+
+      it('clears the error once a valid count is entered', async () => {
+        const { getByLabelText, queryByRole } = renderPass(pass({ type: 'cube' }));
+
+        await fireEvent.change(getByLabelText('Instances'), { target: { value: '0' } });
+        await fireEvent.change(getByLabelText('Instances'), { target: { value: '2' } });
+
+        expect(queryByRole('alert')).toBeNull();
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'cube', instanceCount: 2 }));
+      });
+
+      it('clears a pending instance count error when the geometry changes', async () => {
+        const { getByLabelText, queryByRole } = renderPass(pass({ type: 'cube' }));
+
+        await fireEvent.change(getByLabelText('Instances'), { target: { value: '0' } });
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'sphere' } });
+
+        expect(queryByRole('alert')).toBeNull();
+      });
+
+      it('carries the instance count between non-fullscreen geometry', async () => {
+        const { getByLabelText } = renderPass(pass({ type: 'vertices', vertexCount: 6, instanceCount: 8 }));
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'cube' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'cube', instanceCount: 8 }));
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'vertices' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'vertices', vertexCount: 6, instanceCount: 8 }));
+      });
+
+      it('does not remember instanceCount as a vertices-only field', async () => {
+        const { getByLabelText } = renderPass(pass({ type: 'vertices', instanceCount: 8 }));
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'cube' } });
+        await fireEvent.change(getByLabelText('Instances'), { target: { value: '' } });
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'vertices' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'vertices' }));
+      });
+
+      it('drops the instance count for fullscreen and restores it on the way back', async () => {
+        const { getByLabelText } = renderPass(pass({ type: 'sphere', instanceCount: 5 }));
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'fullscreen' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass());
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'plane' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'plane', instanceCount: 5 }));
+      });
+
+      it('carries the instance count to a chosen model', async () => {
+        const { getByLabelText } = renderPass(pass({ type: 'cube', instanceCount: 4 }));
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'model' } });
+        await fireEvent.input(getByLabelText('Model file:'), { target: { value: './robot.glb' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'model', path: './robot.glb', instanceCount: 4 }));
+      });
+
+      it('restores a remembered instance count when a model is chosen after fullscreen', async () => {
+        const { getByLabelText } = renderPass(pass({ type: 'cube', instanceCount: 6 }));
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'fullscreen' } });
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'model' } });
+        await fireEvent.input(getByLabelText('Model file:'), { target: { value: './robot.glb' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'model', path: './robot.glb', instanceCount: 6 }));
+      });
+    });
+
+    describe('blend, clear, depth and cull', () => {
+      const renderPass = (config: BufferPass | ImagePass, bufferName = 'BufferA') => render(BufferConfig, {
+        bufferName, config, onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri, isImagePass: bufferName === 'Image',
+      });
+      const cube = (settings: Record<string, unknown> = {}) => ({ path: 'a.glsl', inputs: {}, geometry: { type: 'cube' as const }, ...settings });
+
+      it.each(['Image', 'BufferA'])('groups depth controls separately for %s geometry', (bufferName) => {
+        const view = renderPass(cube(), bufferName);
+        const section = view.getByRole('heading', { name: 'Depth testing' }).parentElement!;
+        for (const label of ['Depth test', 'Depth write', 'Compare']) {
+          expect(section.contains(view.getByLabelText(label))).toBe(true);
+        }
+        const rendering = view.getByRole('heading', { name: 'Rendering' }).parentElement!;
+        for (const label of ['Blend', 'Clear colour', 'Clear alpha', 'Cull', 'Antialiasing']) {
+          expect(rendering.contains(view.getByLabelText(label))).toBe(true);
+        }
+        expect(rendering.contains(view.getByLabelText('Depth test'))).toBe(false);
+        expect(Array.from(view.container.querySelectorAll('.section-title')).map((title) => title.textContent).filter((title) => title !== 'Channels'))
+          .toEqual(['Resolution', 'Geometry', 'Rendering', 'Depth testing', 'Vertex shader']);
+      });
+
+      it('hides the depth section for fullscreen geometry and restores it for a mesh', async () => {
+        const view = renderPass({ path: 'a.glsl', inputs: {} });
+        expect(view.queryByRole('heading', { name: 'Depth testing' })).toBeNull();
+        await fireEvent.change(view.getByLabelText('Geometry'), { target: { value: 'cube' } });
+        expect(view.getByRole('heading', { name: 'Depth testing' })).toBeTruthy();
+        await fireEvent.change(view.getByLabelText('Geometry'), { target: { value: 'fullscreen' } });
+        expect(view.queryByRole('heading', { name: 'Depth testing' })).toBeNull();
+      });
+
+      it('offers Antialiasing off or 4x MSAA for geometry, defaulting to off, but not for fullscreen', () => {
+        const view = renderPass(cube());
+        const samples = view.getByLabelText('Antialiasing') as HTMLSelectElement;
+        expect(samples.value).toBe('1');
+        expect(Array.from(samples.options).map((option) => [option.value, option.textContent])).toEqual([['1', 'Off'], ['4', '4× MSAA']]);
+        view.unmount();
+
+        expect(renderPass({ path: 'a.glsl', inputs: {} }).queryByLabelText('Antialiasing')).toBeNull();
+      });
+
+      it('shows a configured sample count', () => {
+        expect((renderPass(cube({ samples: 4 })).getByLabelText('Antialiasing') as HTMLSelectElement).value).toBe('4');
+      });
+
+      it('writes 4x MSAA as samples and removes it when switched off', async () => {
+        const view = renderPass(cube());
+        await fireEvent.change(view.getByLabelText('Antialiasing'), { target: { value: '4' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', cube({ samples: 4 }));
+        view.unmount();
+
+        const configured = renderPass(cube({ samples: 4, cull: 'back' }));
+        await fireEvent.change(configured.getByLabelText('Antialiasing'), { target: { value: '1' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', cube({ cull: 'back' }));
+      });
+
+      it('drops samples for fullscreen and restores them on the way back', async () => {
+        const view = renderPass(cube({ samples: 4 }), 'BufferF');
+
+        await fireEvent.change(view.getByLabelText('Geometry'), { target: { value: 'fullscreen' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferF', { path: 'a.glsl', inputs: {} });
+
+        await fireEvent.change(view.getByLabelText('Geometry'), { target: { value: 'sphere' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferF', { path: 'a.glsl', inputs: {}, samples: 4, geometry: { type: 'sphere' } });
+      });
+
+      it('keeps samples when switching between non-fullscreen geometry', async () => {
+        const view = renderPass(cube({ samples: 4 }));
+
+        await fireEvent.change(view.getByLabelText('Geometry'), { target: { value: 'vertices' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', { path: 'a.glsl', inputs: {}, samples: 4, geometry: { type: 'vertices' } });
+      });
+
+      it('offers the four blend modes on fullscreen passes but no depth or cull', () => {
+        const { getByLabelText, queryByLabelText } = renderPass({ path: 'a.glsl', inputs: {} });
+
+        const blend = getByLabelText('Blend') as HTMLSelectElement;
+        expect(blend.value).toBe('none');
+        expect(Array.from(blend.options).map((option) => option.value)).toEqual(['none', 'alpha', 'premultiplied', 'additive']);
+        expect((getByLabelText('Clear colour') as HTMLInputElement).value).toBe('#000000');
+        expect((getByLabelText('Clear alpha') as HTMLInputElement).value).toBe('1');
+        expect(queryByLabelText('Depth test')).toBeNull();
+        expect(queryByLabelText('Depth write')).toBeNull();
+        expect(queryByLabelText('Compare')).toBeNull();
+        expect(queryByLabelText('Cull')).toBeNull();
+      });
+
+      it.each([
+        ['vertices', { type: 'vertices' as const }],
+        ['plane', { type: 'plane' as const }],
+        ['cube', { type: 'cube' as const }],
+        ['sphere', { type: 'sphere' as const }],
+        ['model', { type: 'model' as const, path: './robot.glb' }],
+      ])('shows depth and cull with today\'s defaults for %s geometry', (_name, geometry) => {
+        const { getByLabelText } = renderPass({ inputs: {}, geometry }, 'Image');
+
+        expect((getByLabelText('Depth test') as HTMLInputElement).checked).toBe(true);
+        expect((getByLabelText('Depth write') as HTMLInputElement).checked).toBe(true);
+        expect((getByLabelText('Compare') as HTMLSelectElement).value).toBe('less');
+        expect((getByLabelText('Compare') as HTMLSelectElement).disabled).toBe(false);
+        expect(Array.from((getByLabelText('Compare') as HTMLSelectElement).options).map((option) => option.value))
+          .toEqual(['never', 'less', 'equal', 'less-equal', 'greater', 'not-equal', 'greater-equal', 'always']);
+        expect((getByLabelText('Cull') as HTMLSelectElement).value).toBe('none');
+        expect(Array.from((getByLabelText('Cull') as HTMLSelectElement).options).map((option) => option.value))
+          .toEqual(['none', 'back', 'front']);
+      });
+
+      it('shows the depth test off, and compare disabled, for clip-space vertices by default', () => {
+        const { getByLabelText } = renderPass({ path: 'a.glsl', inputs: {}, geometry: { type: 'vertices', space: 'clip' } });
+
+        expect((getByLabelText('Depth test') as HTMLInputElement).checked).toBe(false);
+        expect((getByLabelText('Compare') as HTMLSelectElement).disabled).toBe(true);
+      });
+
+      it('shows configured values', () => {
+        const { getByLabelText } = renderPass(cube({ blend: 'additive', clear: [0.25, 0.5, 0.75, 0.5], depth: { test: false, write: false, compare: 'greater' }, cull: 'front' }));
+
+        expect((getByLabelText('Blend') as HTMLSelectElement).value).toBe('additive');
+        expect((getByLabelText('Clear colour') as HTMLInputElement).value).toBe('#4080bf');
+        expect((getByLabelText('Clear alpha') as HTMLInputElement).value).toBe('0.5');
+        expect((getByLabelText('Depth test') as HTMLInputElement).checked).toBe(false);
+        expect((getByLabelText('Depth write') as HTMLInputElement).checked).toBe(false);
+        expect((getByLabelText('Compare') as HTMLSelectElement).value).toBe('greater');
+        expect((getByLabelText('Cull') as HTMLSelectElement).value).toBe('front');
+      });
+
+      it.each(['alpha', 'premultiplied', 'additive'] as const)('writes blend %s and removes it again for none', async (blend) => {
+        const { getByLabelText } = renderPass({ path: 'a.glsl', inputs: {} });
+
+        await fireEvent.change(getByLabelText('Blend'), { target: { value: blend } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', { path: 'a.glsl', inputs: {}, blend });
+      });
+
+      it('removes blend when none is chosen', async () => {
+        const { getByLabelText } = renderPass({ path: 'a.glsl', inputs: {}, blend: 'alpha' } as BufferPass);
+
+        await fireEvent.change(getByLabelText('Blend'), { target: { value: 'none' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', { path: 'a.glsl', inputs: {} });
+      });
+
+      it('writes a selected clear colour and removes opaque black again', async () => {
+        const { getByLabelText } = renderPass({ path: 'a.glsl', inputs: {} });
+
+        await fireEvent.change(getByLabelText('Clear colour'), { target: { value: '#ff8040' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', {
+          path: 'a.glsl', inputs: {}, clear: [1, 128 / 255, 64 / 255, 1],
+        });
+      });
+
+      it('writes clear alpha and removes the clear setting at its default', async () => {
+        const { getByLabelText } = renderPass({ path: 'a.glsl', inputs: {}, clear: [0, 0, 0, 0.5] });
+
+        await fireEvent.change(getByLabelText('Clear alpha'), { target: { value: '1' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', { path: 'a.glsl', inputs: {} });
+      });
+
+      it('writes depth write off and drops the depth object when it returns to the default', async () => {
+        const { getByLabelText } = renderPass(cube());
+
+        await fireEvent.click(getByLabelText('Depth write'));
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', cube({ depth: { write: false } }));
+      });
+
+      it('drops the depth object when every field is back at its default', async () => {
+        const { getByLabelText } = renderPass(cube({ depth: { write: false } }));
+
+        await fireEvent.click(getByLabelText('Depth write'));
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', cube());
+      });
+
+      it('writes the depth test off and a non-default compare, keeping other depth fields', async () => {
+        const { getByLabelText } = renderPass(cube({ depth: { write: false } }));
+
+        await fireEvent.change(getByLabelText('Compare'), { target: { value: 'greater-equal' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', cube({ depth: { write: false, compare: 'greater-equal' } }));
+        await fireEvent.click(getByLabelText('Depth test'));
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', cube({ depth: { test: false, write: false, compare: 'greater-equal' } }));
+      });
+
+      it('removes compare when less, the default, is chosen', async () => {
+        const { getByLabelText } = renderPass(cube({ depth: { compare: 'greater' } }));
+
+        await fireEvent.change(getByLabelText('Compare'), { target: { value: 'less' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', cube());
+      });
+
+      it('writes the clip-space depth test on, since its default is off', async () => {
+        const clip = { path: 'a.glsl', inputs: {}, geometry: { type: 'vertices' as const, space: 'clip' as const } };
+        const { getByLabelText } = renderPass(clip);
+
+        await fireEvent.click(getByLabelText('Depth test'));
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', { ...clip, depth: { test: true } });
+      });
+
+      it.each(['back', 'front'] as const)('writes cull %s and removes it for none', async (cull) => {
+        const { getByLabelText } = renderPass(cube());
+
+        await fireEvent.change(getByLabelText('Cull'), { target: { value: cull } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', cube({ cull }));
+      });
+
+      it('removes cull when none is chosen', async () => {
+        const { getByLabelText } = renderPass(cube({ cull: 'back' }));
+
+        await fireEvent.change(getByLabelText('Cull'), { target: { value: 'none' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', cube());
+      });
+
+      it('drops depth and cull when switching to fullscreen, keeps blend, and restores them on the way back', async () => {
+        const { getByLabelText } = renderPass(cube({ blend: 'additive', depth: { write: false }, cull: 'back' }), 'BufferE');
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'fullscreen' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferE', { path: 'a.glsl', inputs: {}, blend: 'additive' });
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'vertices' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferE', {
+          path: 'a.glsl', inputs: {}, blend: 'additive', depth: { write: false }, cull: 'back', geometry: { type: 'vertices' },
+        });
+      });
+
+      it('keeps depth and cull when switching between non-fullscreen geometry', async () => {
+        const { getByLabelText } = renderPass(cube({ depth: { compare: 'greater' }, cull: 'front' }));
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'sphere' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', { path: 'a.glsl', inputs: {}, geometry: { type: 'sphere' }, depth: { compare: 'greater' }, cull: 'front' });
+      });
+
+      it('does not show render settings for compute passes or Common', () => {
+        const compute = render(BufferConfig, {
+          bufferName: 'Sim', passType: 'compute', config: { type: 'compute', path: 'sim.slang' } as ComputePass,
+          onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri,
+        });
+        expect(compute.queryByLabelText('Blend')).toBeNull();
+        compute.unmount();
+        const common = render(BufferConfig, {
+          bufferName: 'common', config: { path: 'common.glsl' } as BufferPass, onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri,
+        });
+        expect(common.queryByLabelText('Blend')).toBeNull();
+        expect(common.queryByText('Rendering')).toBeNull();
+      });
     });
 
     it('does not show geometry controls for Common', () => {

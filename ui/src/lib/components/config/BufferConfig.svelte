@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { ConfigValidator } from "@shader-studio/rendering";
+  import { ConfigValidator, resolveRenderState } from "@shader-studio/rendering";
   import { BufferConfig as BufferConfigModel } from "../../BufferConfig";
   import type {
     BufferPass,
@@ -12,16 +12,46 @@
     AspectRatioMode,
     FileDialogFileType,
     GeometryType,
+    GeometryConfig,
+    FullscreenGeometryConfig,
+    MeshGeometryConfig,
+    MeshTopology,
+    SampleCount,
+    ModelGeometryConfig,
     ComputePass,
     ShaderLanguageId,
     BufferOutputFormat,
+    VerticesGeometryConfig,
+    VertexTopology,
+    VertexSpace,
+    BlendMode,
+    ClearColor,
+    CullMode,
+    DepthSettings,
   } from "@shader-studio/types";
-  import { SHADER_LANGUAGES, vertexPassKey } from "@shader-studio/types";
+  import {
+    DEFAULT_BLEND_MODE,
+    DEFAULT_CLEAR_COLOR,
+    DEFAULT_CULL_MODE,
+    DEFAULT_DEPTH_COMPARE,
+    DEFAULT_INSTANCE_COUNT,
+    DEFAULT_MESH_TOPOLOGY,
+    DEFAULT_SAMPLE_COUNT,
+    DEFAULT_VERTEX_COUNT,
+    DEFAULT_VERTEX_SPACE,
+    DEFAULT_VERTEX_TOPOLOGY,
+    MAX_INSTANCE_COUNT,
+    MAX_VERTEX_COUNT,
+    SHADER_LANGUAGES,
+    vertexPassKey,
+  } from "@shader-studio/types";
   import ChannelListItem from "./ChannelListItem.svelte";
   import ChannelConfigModal from "./ChannelConfigModal.svelte";
   import ComputePassControls from "./ComputePassControls.svelte";
   import PathInput from "./PathInput.svelte";
+  import DepthTestingControls from "./DepthTestingControls.svelte";
   import { getEditorOverlayVisible, setEditorOverlayVisible, setOverlayActiveFile } from "../../state/editorOverlayState.svelte";
+  import { rememberDrawFields, takeDrawField } from "../../state/verticesDrawMemory.svelte";
   import type { AudioVideoController } from "../../AudioVideoController";
   import { listGlbMeshNames } from "../../../../../rendering/src/preview3d/GltfMeshLoader";
 
@@ -110,6 +140,37 @@
   const modelGeometry = $derived(config.geometry?.type === 'model'
     ? config.geometry
     : modelSelectionPending ? { type: 'model' as const, path: '' } : undefined);
+  const verticesGeometry = $derived<VerticesGeometryConfig | undefined>(
+    !modelGeometry && config.geometry?.type === 'vertices' ? config.geometry : undefined,
+  );
+  const selectedGeometry = $derived<GeometryType>(modelGeometry ? 'model' : config.geometry?.type ?? 'fullscreen');
+  /** Geometry that accepts instanceCount: anything drawn but fullscreen. */
+  const instancedGeometry = $derived<Exclude<GeometryConfig, FullscreenGeometryConfig> | undefined>(
+    config.geometry && config.geometry.type !== 'fullscreen' ? config.geometry : undefined,
+  );
+  /** The configured plane, cube, sphere or model geometry, which accepts a mesh topology. */
+  const configuredMeshGeometry = $derived<MeshGeometryConfig | ModelGeometryConfig | undefined>(
+    instancedGeometry?.type === 'vertices' ? undefined : instancedGeometry,
+  );
+  /** The mesh geometry the Topology control edits; hidden while a model is being picked to replace another mesh. */
+  const meshGeometry = $derived(
+    modelSelectionPending && configuredMeshGeometry?.type !== 'model' ? undefined : configuredMeshGeometry,
+  );
+  /** Blend/clear/depth/cull the pass draws with, defaults applied, for the controls' displayed values. */
+  const renderState = $derived(resolveRenderState({
+    geometry: selectedGeometry,
+    ...(verticesGeometry?.space ? { space: verticesGeometry.space } : {}),
+    ...('blend' in config && config.blend ? { blend: config.blend } : {}),
+    ...('clear' in config && config.clear ? { clear: config.clear } : {}),
+    ...('depth' in config && config.depth ? { depth: config.depth } : {}),
+    ...('cull' in config && config.cull ? { cull: config.cull } : {}),
+    ...('samples' in config && config.samples ? { samples: config.samples } : {}),
+  }));
+  const clearRgbHex = $derived(`#${renderState.clear.slice(0, 3)
+    .map((component) => Math.round(component * 255).toString(16).padStart(2, '0'))
+    .join('')}`);
+  let vertexCountError = $state<string | null>(null);
+  let instanceCountError = $state<string | null>(null);
   const modelUrl = $derived(modelGeometry?.resolved_path ?? (modelGeometry ? getWebviewUri(modelGeometry.path) : undefined));
 
   let currentPath = $state("path" in config ? config.path : "");
@@ -346,19 +407,194 @@
     updateBufferResolution(undefined);
   }
 
+  type RenderSettingsConfig = EditableConfig & { blend?: BlendMode; clear?: ClearColor; depth?: DepthSettings; cull?: CullMode; samples?: SampleCount };
+
+  /** Drops keys whose value is undefined so defaults never reach the config file. */
+  function withoutUndefined<T extends object>(value: T): Partial<T> {
+    return Object.fromEntries(Object.entries(value).filter(([, field]) => field !== undefined)) as Partial<T>;
+  }
+
+  /**
+   * instanceCount for geometry replacing the current one: kept from drawn
+   * geometry, or restored from memory when the pass was fullscreen.
+   */
+  function carriedInstanceCount(): { instanceCount?: number } {
+    const instanceCount = instancedGeometry
+      ? instancedGeometry.instanceCount
+      : takeDrawField(shaderPath, bufferName, 'instanceCount');
+    return instanceCount === undefined ? {} : { instanceCount };
+  }
+
+  /**
+   * Mesh topology for mesh geometry replacing the current one: kept from a
+   * mesh, or restored from memory when the pass was fullscreen or vertices.
+   */
+  function carriedMeshTopology(): { topology?: MeshTopology } {
+    const topology = configuredMeshGeometry
+      ? configuredMeshGeometry.topology
+      : takeDrawField(shaderPath, bufferName, 'meshTopology');
+    return topology === undefined ? {} : { topology };
+  }
+
   function handleGeometryChange(type: GeometryType) {
-    if (type === 'fullscreen') {
-      modelSelectionPending = false;
-      const { geometry: _geometry, ...next } = config;
-      updateConfig(next as EditableConfig);
-      return;
+    vertexCountError = null;
+    instanceCountError = null;
+    // Fullscreen and vertices reject a mesh topology; keep it for a switch back.
+    if (configuredMeshGeometry && (type === 'fullscreen' || type === 'vertices')) {
+      rememberDrawFields(shaderPath, bufferName, { meshTopology: configuredMeshGeometry.topology });
+    }
+    // Other geometry rejects vertexCount/topology/space; keep them for a switch back.
+    if (verticesGeometry && type !== 'vertices') {
+      const { type: _type, instanceCount: _instanceCount, ...fields } = verticesGeometry;
+      rememberDrawFields(shaderPath, bufferName, { vertices: fields });
     }
     if (type === 'model') {
+      // The geometry changes once a model file is chosen.
       modelSelectionPending = true;
       return;
     }
     modelSelectionPending = false;
-    updateConfig({ ...config, geometry: { type } });
+    const { geometry: _geometry, ...current } = config as RenderSettingsConfig;
+    if (type === 'fullscreen') {
+      // Fullscreen has no depth buffer, nothing to cull or antialias, and draws once; keep them for a switch back.
+      rememberDrawFields(shaderPath, bufferName, { depth: current.depth, cull: current.cull, samples: current.samples, instanceCount: instancedGeometry?.instanceCount });
+      const { depth: _depth, cull: _cull, samples: _samples, ...rest } = current;
+      updateConfig(rest as EditableConfig);
+      return;
+    }
+    const restored: Partial<RenderSettingsConfig> = {};
+    if (selectedGeometry === 'fullscreen') {
+      const depth = takeDrawField(shaderPath, bufferName, 'depth');
+      const cull = takeDrawField(shaderPath, bufferName, 'cull');
+      const samples = takeDrawField(shaderPath, bufferName, 'samples');
+      Object.assign(restored, depth ? { depth } : {}, cull ? { cull } : {}, samples ? { samples } : {});
+    }
+    const geometry = type === 'vertices'
+      ? { type, ...takeDrawField(shaderPath, bufferName, 'vertices'), ...carriedInstanceCount() }
+      : { type, ...carriedMeshTopology(), ...carriedInstanceCount() };
+    updateConfig({ ...current, ...restored, geometry } as EditableConfig);
+  }
+
+  /** Writes vertices draw fields, leaving out any that are at their default. */
+  function updateVerticesDraw(fields: Partial<Pick<VerticesGeometryConfig, 'vertexCount' | 'topology' | 'space'>>) {
+    const { type: _type, ...current } = verticesGeometry ?? { type: 'vertices' as const };
+    const draw = withoutUndefined({ ...current, ...fields });
+    updateConfig({ ...config, geometry: { type: 'vertices', ...draw } } as EditableConfig);
+  }
+
+  function handleVertexCountChange(event: Event) {
+    const raw = (event.currentTarget as HTMLInputElement).value.trim();
+    if (raw === '') {
+      vertexCountError = null;
+      updateVerticesDraw({ vertexCount: undefined });
+      return;
+    }
+    const count = Number(raw);
+    if (!Number.isInteger(count) || count < 1 || count > MAX_VERTEX_COUNT) {
+      vertexCountError = `Vertex count must be a whole number from 1 to ${MAX_VERTEX_COUNT}`;
+      return;
+    }
+    vertexCountError = null;
+    updateVerticesDraw({ vertexCount: count });
+  }
+
+  function handleMeshTopologyChange(event: Event) {
+    if (!meshGeometry) {
+      return;
+    }
+    const topology = (event.currentTarget as HTMLSelectElement).value as MeshTopology;
+    const { topology: _topology, ...geometry } = meshGeometry;
+    updateConfig({
+      ...config,
+      geometry: topology === DEFAULT_MESH_TOPOLOGY ? geometry : { ...geometry, topology },
+    } as EditableConfig);
+  }
+
+  function handleInstanceCountChange(event: Event) {
+    if (!instancedGeometry) {
+      return;
+    }
+    const raw = (event.currentTarget as HTMLInputElement).value.trim();
+    const count = raw === '' ? DEFAULT_INSTANCE_COUNT : Number(raw);
+    if (!Number.isInteger(count) || count < 1 || count > MAX_INSTANCE_COUNT) {
+      instanceCountError = `Instance count must be a whole number from 1 to ${MAX_INSTANCE_COUNT}`;
+      return;
+    }
+    instanceCountError = null;
+    const { instanceCount: _instanceCount, ...geometry } = instancedGeometry;
+    updateConfig({
+      ...config,
+      geometry: count === DEFAULT_INSTANCE_COUNT ? geometry : { ...geometry, instanceCount: count },
+    } as EditableConfig);
+  }
+
+  function handleTopologyChange(event: Event) {
+    const topology = (event.currentTarget as HTMLSelectElement).value as VertexTopology;
+    updateVerticesDraw({ topology: topology === DEFAULT_VERTEX_TOPOLOGY ? undefined : topology });
+  }
+
+  function handleSpaceChange(event: Event) {
+    const space = (event.currentTarget as HTMLSelectElement).value as VertexSpace;
+    updateVerticesDraw({ space: space === DEFAULT_VERTEX_SPACE ? undefined : space });
+  }
+
+  /** Writes one pass-level render setting; the default value removes the key. */
+  function updateRenderSetting<K extends 'blend' | 'cull' | 'samples'>(field: K, value: RenderSettingsConfig[K], fallback: RenderSettingsConfig[K]) {
+    const { [field]: _current, ...rest } = config as RenderSettingsConfig;
+    updateConfig((value === fallback ? rest : { ...rest, [field]: value }) as EditableConfig);
+  }
+
+  function handleBlendChange(event: Event) {
+    updateRenderSetting('blend', (event.currentTarget as HTMLSelectElement).value as BlendMode, DEFAULT_BLEND_MODE);
+  }
+
+  function updateClear(clear: ClearColor) {
+    const current = config as RenderSettingsConfig;
+    const { clear: _clear, ...rest } = current;
+    updateConfig((clear.every((component, index) => component === DEFAULT_CLEAR_COLOR[index])
+      ? rest
+      : { ...rest, clear }) as EditableConfig);
+  }
+
+  function handleClearColorChange(event: Event) {
+    const hex = (event.currentTarget as HTMLInputElement).value;
+    updateClear([
+      Number.parseInt(hex.slice(1, 3), 16) / 255,
+      Number.parseInt(hex.slice(3, 5), 16) / 255,
+      Number.parseInt(hex.slice(5, 7), 16) / 255,
+      renderState.clear[3],
+    ]);
+  }
+
+  function handleClearAlphaChange(event: Event) {
+    const parsed = Number((event.currentTarget as HTMLInputElement).value);
+    const alpha = Number.isFinite(parsed) ? Math.min(1, Math.max(0, parsed)) : renderState.clear[3];
+    updateClear([renderState.clear[0], renderState.clear[1], renderState.clear[2], alpha]);
+  }
+
+  function handleSamplesChange(event: Event) {
+    updateRenderSetting('samples', Number((event.currentTarget as HTMLSelectElement).value) as SampleCount, DEFAULT_SAMPLE_COUNT);
+  }
+
+  function handleCullChange(event: Event) {
+    updateRenderSetting('cull', (event.currentTarget as HTMLSelectElement).value as CullMode, DEFAULT_CULL_MODE);
+  }
+
+  /** Writes depth fields; each at its geometry's default is left out, and an empty depth object is dropped. */
+  function updateDepth(fields: Partial<DepthSettings>) {
+    const current = config as RenderSettingsConfig;
+    const defaults = resolveRenderState({
+      geometry: selectedGeometry,
+      ...(verticesGeometry?.space ? { space: verticesGeometry.space } : {}),
+    }).depth!;
+    const merged = { ...current.depth, ...fields };
+    const depth = withoutUndefined({
+      test: merged.test === defaults.test ? undefined : merged.test,
+      write: merged.write === defaults.write ? undefined : merged.write,
+      compare: merged.compare === DEFAULT_DEPTH_COMPARE ? undefined : merged.compare,
+    });
+    const { depth: _depth, ...rest } = current;
+    updateConfig((Object.keys(depth).length === 0 ? rest : { ...rest, depth }) as EditableConfig);
   }
 
   function handleModelPathChange(path: string) {
@@ -369,12 +605,12 @@
       return;
     }
     modelSelectionPending = false;
-    updateConfig({ ...config, geometry: { type: 'model', path, ...(modelGeometry?.mesh ? { mesh: modelGeometry.mesh } : {}) } });
+    updateConfig({ ...config, geometry: { type: 'model', path, ...(modelGeometry?.mesh ? { mesh: modelGeometry.mesh } : {}), ...carriedMeshTopology(), ...carriedInstanceCount() } });
   }
 
   function handleModelMeshChange(event: Event) {
     const mesh = (event.currentTarget as HTMLInputElement).value.trim();
-    updateConfig({ ...config, geometry: { type: 'model', path: modelGeometry?.path ?? '', ...(mesh ? { mesh } : {}) } });
+    updateConfig({ ...config, geometry: { type: 'model', path: modelGeometry?.path ?? '', ...(mesh ? { mesh } : {}), ...carriedMeshTopology(), ...carriedInstanceCount() } });
   }
 
   function handleVertexPathChange(path: string) {
@@ -587,10 +823,11 @@
         <h3 class="section-title">Geometry</h3>
         <select
           aria-label="Geometry"
-          value={modelGeometry ? "model" : config.geometry?.type ?? "fullscreen"}
+          value={selectedGeometry}
           onchange={(event) => handleGeometryChange((event.currentTarget as HTMLSelectElement).value as GeometryType)}
         >
           <option value="fullscreen">Fullscreen</option>
+          <option value="vertices">Vertices</option>
           <option value="plane">Plane</option>
           <option value="cube">Cube</option>
           <option value="sphere">Sphere</option>
@@ -622,7 +859,120 @@
           </select>
           {#if modelMeshError}<span class="input-note">{modelMeshError}</span>{/if}
         {/if}
+        {#if meshGeometry}
+          <div class="resolution-row">
+            <label class="resolution-label" for="mesh-topology-{bufferName}">Topology</label>
+            <select
+              id="mesh-topology-{bufferName}"
+              value={meshGeometry.topology ?? DEFAULT_MESH_TOPOLOGY}
+              onchange={handleMeshTopologyChange}
+            >
+              <option value="triangle-list">Triangles</option>
+              <option value="line-list">Wireframe (line list)</option>
+              <option value="point-list">Points</option>
+            </select>
+          </div>
+        {/if}
+        {#if verticesGeometry}
+          <div class="resolution-row">
+            <label class="resolution-label" for="vertex-count-{bufferName}">Vertices</label>
+            <input
+              id="vertex-count-{bufferName}"
+              class="vertex-count-input"
+              type="number"
+              min="1"
+              max={MAX_VERTEX_COUNT}
+              step="1"
+              placeholder={String(DEFAULT_VERTEX_COUNT)}
+              value={verticesGeometry.vertexCount ?? ''}
+              onchange={handleVertexCountChange}
+            />
+          </div>
+          {#if vertexCountError}<span class="input-note" role="alert">{vertexCountError}</span>{/if}
+          <div class="resolution-row">
+            <label class="resolution-label" for="topology-{bufferName}">Topology</label>
+            <select
+              id="topology-{bufferName}"
+              value={verticesGeometry.topology ?? DEFAULT_VERTEX_TOPOLOGY}
+              onchange={handleTopologyChange}
+            >
+              <option value="triangle-list">Triangle list</option>
+              <option value="triangle-strip">Triangle strip</option>
+              <option value="line-list">Line list</option>
+              <option value="line-strip">Line strip</option>
+              <option value="point-list">Point list</option>
+            </select>
+          </div>
+          <div class="resolution-row">
+            <label class="resolution-label" for="space-{bufferName}">Space</label>
+            <select
+              id="space-{bufferName}"
+              value={verticesGeometry.space ?? DEFAULT_VERTEX_SPACE}
+              onchange={handleSpaceChange}
+            >
+              <option value="world">World (orbit camera)</option>
+              <option value="clip">Clip (screen)</option>
+            </select>
+          </div>
+        {/if}
+        {#if instancedGeometry}
+          <div class="resolution-row">
+            <label class="resolution-label" for="instance-count-{bufferName}">Instances</label>
+            <input
+              id="instance-count-{bufferName}"
+              class="vertex-count-input"
+              type="number"
+              min="1"
+              max={MAX_INSTANCE_COUNT}
+              step="1"
+              placeholder={String(DEFAULT_INSTANCE_COUNT)}
+              value={instancedGeometry.instanceCount ?? ''}
+              onchange={handleInstanceCountChange}
+            />
+          </div>
+          {#if instanceCountError}<span class="input-note" role="alert">{instanceCountError}</span>{/if}
+        {/if}
       </div>
+      <div class="config-item render-settings-section">
+        <h3 class="section-title">Rendering</h3>
+        <div class="resolution-row">
+          <label class="resolution-label" for="blend-{bufferName}">Blend</label>
+          <select id="blend-{bufferName}" value={renderState.blend} onchange={handleBlendChange}>
+            <option value="none">None</option>
+            <option value="alpha">Alpha</option>
+            <option value="premultiplied">Premultiplied alpha</option>
+            <option value="additive">Additive</option>
+          </select>
+        </div>
+        <div class="resolution-row">
+          <label class="resolution-label" for="clear-color-{bufferName}">Clear colour</label>
+          <input id="clear-color-{bufferName}" class="clear-color-input" type="color" value={clearRgbHex} onchange={handleClearColorChange} />
+        </div>
+        <div class="resolution-row">
+          <label class="resolution-label" for="clear-alpha-{bufferName}">Clear alpha</label>
+          <input id="clear-alpha-{bufferName}" class="clear-alpha-input" type="number" min="0" max="1" step="0.05" value={renderState.clear[3]} onchange={handleClearAlphaChange} />
+        </div>
+        {#if renderState.depth}
+          <div class="resolution-row">
+            <label class="resolution-label" for="cull-{bufferName}">Cull</label>
+            <select id="cull-{bufferName}" value={renderState.cull} onchange={handleCullChange}>
+              <option value="none">None</option>
+              <option value="back">Back faces</option>
+              <option value="front">Front faces</option>
+            </select>
+          </div>
+          <div class="resolution-row">
+            <label class="resolution-label" for="samples-{bufferName}">Antialiasing</label>
+            <select id="samples-{bufferName}" value={String(renderState.samples)} onchange={handleSamplesChange}>
+              <option value="1">Off</option>
+              <option value="4">4× MSAA</option>
+            </select>
+          </div>
+        {/if}
+      </div>
+      {#if renderState.depth}
+        <DepthTestingControls bufferName={bufferName} depth={renderState.depth} onChange={updateDepth} />
+      {/if}
       <div class="config-item">
         <h3 class="section-title vertex-shader-title" ondblclick={openVertexShaderInOverlay}>Vertex shader</h3>
         <PathInput
@@ -807,7 +1157,9 @@
     gap: 6px;
   }
 
-  .dim-input {
+  .dim-input,
+  .clear-alpha-input,
+  .vertex-count-input {
     width: 80px;
     padding: 3px 6px;
     font-size: 11px;
@@ -818,7 +1170,14 @@
     outline: none;
   }
 
-  .dim-input:focus {
+  /* Wide enough for the 10-digit maximum vertex count. */
+  .vertex-count-input {
+    width: 110px;
+  }
+
+  .dim-input:focus,
+  .clear-alpha-input:focus,
+  .vertex-count-input:focus {
     border-color: var(--vscode-focusBorder, #007acc);
   }
 

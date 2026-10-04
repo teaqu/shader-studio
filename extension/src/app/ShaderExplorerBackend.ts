@@ -26,7 +26,13 @@ interface ShaderExplorerFile {
   cachedThumbnail?: string | null;
   modifiedTime?: number;
   createdTime?: number;
+  /** Newest filesystem mtime of the shader, its config and its pass sources. */
+  thumbnailVersion?: number;
 }
+
+/** Files whose creation, change or deletion can alter the explorer list or a thumbnail. */
+export const SHADER_EXPLORER_WATCH_GLOB = "**/*.{glsl,frag,vert,slang,wgsl,sha.json}";
+export const SHADER_EXPLORER_REFRESH_DELAY_MS = 250;
 
 interface ShaderSearchCacheEntry {
   cacheKey: string;
@@ -53,6 +59,9 @@ export class ShaderExplorerBackend {
   private shaderSearchTextCache = new Map<string, ShaderSearchCacheEntry>();
   private latestSearchRequestId = 0;
   private readonly shaderSearchConcurrency = 16;
+  private shaderListGeneration = 0;
+  private refreshTimer: ReturnType<typeof setTimeout> | undefined;
+  private fileWatcher: vscode.FileSystemWatcher | undefined;
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -64,6 +73,31 @@ export class ShaderExplorerBackend {
     this.configProcessor = new ShaderConfigProcessor();
     this.tabGroupResolver = new TabGroupResolver();
     this.gitMetadataProvider = gitMetadataProvider ?? new ShaderGitMetadataProvider(context);
+    this.watchShaderFiles();
+  }
+
+  private watchShaderFiles(): void {
+    this.fileWatcher = vscode.workspace.createFileSystemWatcher(SHADER_EXPLORER_WATCH_GLOB);
+    const onFileEvent = (uri: vscode.Uri) => this.scheduleShaderListRefresh(uri);
+    this.fileWatcher.onDidCreate(onFileEvent);
+    this.fileWatcher.onDidChange(onFileEvent);
+    this.fileWatcher.onDidDelete(onFileEvent);
+  }
+
+  /** Coalesce bursts of file events (saves, git checkouts) into one list update. */
+  private scheduleShaderListRefresh(uri: vscode.Uri): void {
+    if (/[\\/]node_modules[\\/]/.test(uri.fsPath)) {
+      return;
+    }
+    if (this.refreshTimer !== undefined) {
+      clearTimeout(this.refreshTimer);
+    }
+    this.refreshTimer = setTimeout(() => {
+      this.refreshTimer = undefined;
+      this.sendShaderList().catch(error => {
+        this.logger.error(`Failed to refresh shader list after file change: ${error}`);
+      });
+    }, SHADER_EXPLORER_REFRESH_DELAY_MS);
   }
 
   async handleMessage(message: any): Promise<void> {
@@ -82,7 +116,7 @@ export class ShaderExplorerBackend {
         break;
 
       case "saveThumbnail":
-        await this.saveThumbnail(message.path, message.thumbnail, message.modifiedTime);
+        await this.saveThumbnail(message.path, message.thumbnail, message.thumbnailVersion);
         break;
 
       case "openShader":
@@ -256,6 +290,14 @@ export class ShaderExplorerBackend {
   }
 
   dispose(): void {
+    if (this.refreshTimer !== undefined) {
+      clearTimeout(this.refreshTimer);
+      this.refreshTimer = undefined;
+    }
+    this.fileWatcher?.dispose();
+    this.fileWatcher = undefined;
+    // Invalidate any list scan still in flight so it cannot post to a disposed webview.
+    this.shaderListGeneration++;
     this.tabGroupResolver.dispose();
     this.shaderSearchTextCache.clear();
     this.shaderListCache = [];
@@ -266,7 +308,12 @@ export class ShaderExplorerBackend {
       this.gitMetadataProvider.clearCache();
     }
 
+    const generation = ++this.shaderListGeneration;
     const shaders = await this.findAllShaders();
+    if (generation !== this.shaderListGeneration) {
+      // A newer scan started while this one ran; let it publish the fresher list.
+      return;
+    }
     this.shaderListCache = shaders;
     this.pruneShaderSearchCache(new Set(shaders.map(shader => shader.path)));
     this.logger.debug(`Found ${shaders.length} shaders`);
@@ -280,7 +327,7 @@ export class ShaderExplorerBackend {
         };
       }
 
-      const thumbnail = this.thumbnailCache.getThumbnail(shader.path, shader.modifiedTime);
+      const thumbnail = this.thumbnailCache.getThumbnail(shader.path, shader.thumbnailVersion);
       return {
         ...shader,
         cachedThumbnail: thumbnail,
@@ -288,7 +335,7 @@ export class ShaderExplorerBackend {
     });
 
     // Prune old thumbnails in the background
-    this.thumbnailCache.pruneCache(shaders.map(s => s.path)).catch(err => {
+    this.thumbnailCache.pruneCache(shaders).catch(err => {
       this.logger.error(`Failed to prune thumbnail cache: ${err}`);
     });
 
@@ -773,6 +820,7 @@ export class ShaderExplorerBackend {
           hasConfig: hasConfig,
           modifiedTime: modifiedTime,
           createdTime: createdTime,
+          thumbnailVersion: this.getThumbnailVersion(file.fsPath, filesystemModifiedTime, hasConfig ? configPath : undefined),
         });
       }
     }
@@ -781,6 +829,58 @@ export class ShaderExplorerBackend {
     shaders.sort((a, b) => a.name.localeCompare(b.name));
 
     return shaders;
+  }
+
+  /**
+   * The newest mtime among the files a thumbnail is rendered from. Editing a
+   * buffer or the config changes the picture without touching the shader file.
+   */
+  private getThumbnailVersion(shaderPath: string, shaderModifiedTime: number | undefined, configPath: string | undefined): number | undefined {
+    let version = shaderModifiedTime;
+    const include = (filePath: string) => {
+      try {
+        const mtime = fs.statSync(filePath).mtimeMs;
+        version = version === undefined ? mtime : Math.max(version, mtime);
+      } catch {
+        // Missing dependencies are reported by the renderer, not the explorer.
+      }
+    };
+
+    if (!configPath) {
+      return version;
+    }
+    include(configPath);
+    for (const sourcePath of this.getConfigSourcePaths(shaderPath, configPath)) {
+      include(sourcePath);
+    }
+    return version;
+  }
+
+  private getConfigSourcePaths(shaderPath: string, configPath: string): string[] {
+    let config: unknown;
+    try {
+      config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    } catch {
+      return [];
+    }
+    const passes = (config as { passes?: unknown } | null)?.passes;
+    if (!passes || typeof passes !== "object") {
+      return [];
+    }
+
+    const sourcePaths = new Set<string>();
+    for (const pass of Object.values(passes as Record<string, unknown>)) {
+      if (!pass || typeof pass !== "object") {
+        continue;
+      }
+      for (const source of [(pass as { path?: unknown }).path, (pass as { vertex?: unknown }).vertex]) {
+        if (typeof source === "string" && source) {
+          sourcePaths.add(PathResolver.resolvePath(shaderPath, source));
+        }
+      }
+    }
+    sourcePaths.delete(shaderPath);
+    return [...sourcePaths];
   }
 
   private getConfigPath(shaderPath: string): string {
@@ -989,9 +1089,9 @@ export class ShaderExplorerBackend {
     }
   }
 
-  private async saveThumbnail(shaderPath: string, thumbnail: string, modifiedTime?: number): Promise<void> {
+  private async saveThumbnail(shaderPath: string, thumbnail: string, thumbnailVersion?: number): Promise<void> {
     try {
-      const success = this.thumbnailCache.saveThumbnail(shaderPath, thumbnail, modifiedTime);
+      const success = this.thumbnailCache.saveThumbnail(shaderPath, thumbnail, thumbnailVersion);
       if (success) {
         this.logger.debug(`Saved thumbnail for ${shaderPath}`);
       } else {

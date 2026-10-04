@@ -9,6 +9,7 @@
     isCurrentShaderSearchResult,
     type ShaderSearchResultsMessage,
   } from '../shaderSearch';
+  import { retainUnchangedFailures } from '../shaderListUpdate';
 
   interface ShaderExplorerHostApi {
     postMessage(message: { type: string; [key: string]: unknown }): void;
@@ -180,6 +181,7 @@
             }
           }
         }
+        failedShaders = retainUnchangedFailures(failedShaders, oldList, newList);
         shaders = newList;
         shadersStore.set(shaders);
         

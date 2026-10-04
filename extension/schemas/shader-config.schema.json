@@ -65,11 +65,32 @@
         "geometry": {
           "$ref": "#/definitions/GeometryConfig"
         },
+        "blend": {
+          "$ref": "#/definitions/BlendMode"
+        },
+        "clear": {
+          "$ref": "#/definitions/ClearColor"
+        },
+        "depth": {
+          "$ref": "#/definitions/DepthSettings"
+        },
+        "cull": {
+          "$ref": "#/definitions/CullMode"
+        },
+        "samples": {
+          "$ref": "#/definitions/SampleCount"
+        },
         "vertex": {
           "type": "string",
           "description": "Path to the optional per-pass vertex shader hook source"
         }
       },
+      "allOf": [
+        {
+          "if": { "properties": { "geometry": { "properties": { "type": { "const": "fullscreen" } } } } },
+          "then": { "properties": { "depth": false, "cull": false, "samples": false } }
+        }
+      ],
       "additionalProperties": false
     },
     "BufferPass": {
@@ -90,6 +111,21 @@
         "geometry": {
           "$ref": "#/definitions/GeometryConfig"
         },
+        "blend": {
+          "$ref": "#/definitions/BlendMode"
+        },
+        "clear": {
+          "$ref": "#/definitions/ClearColor"
+        },
+        "depth": {
+          "$ref": "#/definitions/DepthSettings"
+        },
+        "cull": {
+          "$ref": "#/definitions/CullMode"
+        },
+        "samples": {
+          "$ref": "#/definitions/SampleCount"
+        },
         "vertex": {
           "type": "string",
           "description": "Path to the optional per-pass vertex shader hook source"
@@ -98,6 +134,12 @@
           "$ref": "#/definitions/BufferOutputFormat"
         }
       },
+      "allOf": [
+        {
+          "if": { "properties": { "geometry": { "properties": { "type": { "const": "fullscreen" } } } } },
+          "then": { "properties": { "depth": false, "cull": false, "samples": false } }
+        }
+      ],
       "additionalProperties": false
     },
     "CommonPass": {
@@ -117,7 +159,45 @@
         {
           "type": "object",
           "required": ["type"],
-          "properties": { "type": { "enum": ["fullscreen", "plane", "cube", "sphere"] } },
+          "description": "One oversized triangle covering every pixel (three vertices).",
+          "properties": { "type": { "const": "fullscreen" } },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type"],
+          "description": "A non-indexed draw with no vertex buffers; mainVertex places every vertex.",
+          "properties": {
+            "type": { "const": "vertices" },
+            "vertexCount": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647,
+              "default": 3,
+              "description": "Number of vertices drawn; mainVertex runs once per vertex and receives its index. Defaults to 3."
+            },
+            "topology": {
+              "enum": ["triangle-list", "triangle-strip", "line-list", "line-strip", "point-list"],
+              "default": "triangle-list",
+              "description": "How the drawn vertices are joined into primitives. Lines and points rasterise at 1px."
+            },
+            "space": {
+              "enum": ["world", "clip"],
+              "default": "world",
+              "description": "world: mainVertex writes object space and the orbit camera projects it, with depth. clip: mainVertex writes the final screen position, (-1,-1) bottom-left to (1,1) top-right, and the camera is ignored."
+            },
+            "instanceCount": { "$ref": "#/definitions/InstanceCount" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type"],
+          "properties": {
+            "type": { "enum": ["plane", "cube", "sphere"] },
+            "topology": { "$ref": "#/definitions/MeshTopology" },
+            "instanceCount": { "$ref": "#/definitions/InstanceCount" }
+          },
           "additionalProperties": false
         },
         {
@@ -126,11 +206,71 @@
           "properties": {
             "type": { "const": "model" },
             "path": { "type": "string", "minLength": 1 },
-            "mesh": { "type": "string" }
+            "mesh": { "type": "string" },
+            "topology": { "$ref": "#/definitions/MeshTopology" },
+            "instanceCount": { "$ref": "#/definitions/InstanceCount" }
           },
           "additionalProperties": false
         }
       ]
+    },
+    "MeshTopology": {
+      "enum": ["triangle-list", "line-list", "point-list"],
+      "default": "triangle-list",
+      "description": "How the mesh is drawn: its triangles (default), a wireframe of each unique edge (line-list), or each unique vertex as a 1px point (point-list). cull has no effect on lines and points."
+    },
+    "InstanceCount": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647,
+      "default": 1,
+      "description": "Number of copies of the geometry drawn in one call; iInstanceIndex tells the shader which copy it is on. Defaults to 1. Not allowed on fullscreen geometry."
+    },
+    "BlendMode": {
+      "type": "string",
+      "enum": ["none", "alpha", "premultiplied", "additive"],
+      "default": "none",
+      "description": "How this pass combines each fragment with what its own draw already wrote this frame (default: none)."
+    },
+    "ClearColor": {
+      "type": "array",
+      "items": { "type": "number", "minimum": 0, "maximum": 1 },
+      "minItems": 4,
+      "maxItems": 4,
+      "default": [0, 0, 0, 1],
+      "description": "RGBA colour this pass starts with each frame (default: opaque black)."
+    },
+    "DepthSettings": {
+      "type": "object",
+      "description": "Depth state for plane, cube, sphere, model and vertices geometry. Not allowed on fullscreen geometry.",
+      "properties": {
+        "test": {
+          "type": "boolean",
+          "description": "Discard fragments that fail the compare. Defaults to true, or false for vertices in clip space."
+        },
+        "write": {
+          "type": "boolean",
+          "default": true,
+          "description": "Write the depth of fragments that pass. Defaults to true."
+        },
+        "compare": {
+          "enum": ["never", "less", "equal", "less-equal", "greater", "not-equal", "greater-equal", "always"],
+          "default": "less",
+          "description": "Depth comparison used while test is on. Defaults to less."
+        }
+      },
+      "additionalProperties": false
+    },
+    "SampleCount": {
+      "enum": [1, 4],
+      "default": 1,
+      "description": "Multisample antialiasing for rasterised geometry: 1 is off (default), 4 smooths triangle, line and point edges. A multisampled float buffer pass stores rgba16float. Not allowed on fullscreen geometry, which antialiases in mainImage."
+    },
+    "CullMode": {
+      "type": "string",
+      "enum": ["none", "back", "front"],
+      "default": "none",
+      "description": "Faces to discard; counter-clockwise triangles are front-facing. Not allowed on fullscreen geometry (default: none)."
     },
     "ComputePass": {
       "type": "object",

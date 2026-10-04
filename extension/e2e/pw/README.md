@@ -110,6 +110,27 @@ Failures retain a trace. Open it with:
 It carries a DOM snapshot per step, which is the capability the previous runner
 lacked and which several failures in this area badly needed.
 
+## Script uniform assertion coverage
+
+The language matrix for the debug panel's Uniforms section lives below the
+installed VS Code suite:
+
+- `ui/src/test/components/debug/DebugPanel.uniforms.test.ts` checks exact
+  built-in names and values for GLSL, Slang and WGSL, excludes script values,
+  enables the inspector through its header control, and checks live updates
+  and absent-uniform fallback.
+- `rendering/src/test/e2e/ShaderLanguageConformance.e2e.test.ts` checks real
+  scalar/vector uniform binding and rendered pixels for all three backends.
+- `wgsl-script-uniform-debug.e2e.mjs` retains the assembled VS Code debug-panel
+  check, with the script-driven Common/buffer/Image chain and local capture.
+
+The installed `script-runtime-*`, context, pause, polling-rate and error-repair
+tests retain the extension-host boundaries. They exercise script evaluation,
+transport, reset, persistence and runtime state that a component test cannot
+replace. Moving the display matrix avoids its dedicated VS Code launch; judge
+the net cost with repeated same-runner comparisons that include the component
+and renderer checks.
+
 ## Slang resource deduplication
 
 `slang-dedup.e2e.mjs` opens the real extension preview and browser-connected UI,

@@ -1,5 +1,32 @@
 # Change Log
 
+### Unreleased
+
+- Breaking: `mainVertex` now receives the vertex index as its first parameter in every language. Add it to existing vertex shaders:
+  - GLSL: `void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv)`
+  - Slang: `void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv)`
+  - WGSL: `fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>)`
+- Breaking: fullscreen passes now draw one three-vertex triangle in GLSL, matching Slang and WGSL. A GLSL fullscreen vertex shader runs three times instead of six, `gl_VertexID` is 0–2 instead of 0–5, and `position` and `uv` start at the corners of a triangle covering the screen, `(-1, -1)`, `(3, -1)` and `(-1, 3)`, instead of the four corners of a quad. Shaders that moved individual quad corners need rewriting; fragment-only shaders and plane, cube, sphere, and model geometry are unaffected.
+- The fullscreen `normal` passed to a GLSL vertex shader is now `(0, 0, 1)`, matching Slang and WGSL.
+- Fullscreen vertex shaders can place their own triangle from `vertexIndex`; pixels it leaves uncovered are black in every language.
+- Plane, cube, sphere, and model vertex shaders receive the mesh vertex index.
+- New Vertices geometry: draw any number of vertices as triangles, lines, or points, placed by the vertex shader from `vertexIndex`. Set `{ "type": "vertices", "vertexCount": 6, "topology": "triangle-strip", "space": "clip" }` in `.sha.json`, or pick Vertices in the Geometry dropdown and use the new Vertices, Topology and Space controls. `topology` is `triangle-list` (default), `triangle-strip`, `line-list`, `line-strip`, or `point-list`; lines and points are 1px wide. `space` is `world` (default), where the orbit camera views your shape in 3D with depth, or `clip`, where positions are screen coordinates from `(-1, -1)` to `(1, 1)` and `mainImage` gets the real pixel coordinate. Fullscreen passes still draw one three-vertex triangle. `vertexCount` and `space` apply only to vertices geometry; meshes accept the topologies described below.
+- New built-in uniform `iVertexCount` (GLSL `int`, Slang `uint`, WGSL `u32`): the vertices geometry's `vertexCount`, 3 for fullscreen, or the mesh vertex count for plane, cube, sphere, and model geometry.
+- New fragment built-in `iVertexUv` (GLSL `vec2`, Slang `float2`, WGSL `vec2f`): the perspective-correct interpolated `uv` written by `mainVertex`, available for fullscreen, vertices, and mesh geometry without changing the `mainImage` signature.
+- New fragment built-in `iFrontFacing` (`bool` in every language): reports whether vertices and mesh primitives are front-facing, and is always `true` for fullscreen passes.
+- New instancing: add `"instanceCount": n` to vertices, plane, cube, sphere, or model geometry to draw it `n` times in one draw call, or use the new Instances control under Geometry. New built-ins `iInstanceIndex` (which copy is being drawn, in the vertex and fragment shader) and `iInstanceCount` are GLSL `int`, Slang `uint`, and WGSL `u32`. Fullscreen passes always draw one copy; `instanceCount` on fullscreen geometry is a config error.
+- New per-pass `samples` setting for vertices, plane, cube, sphere, and model geometry: `4` turns on multisample antialiasing for triangle, line and point edges, `1` (default) leaves it off. Choose it with the Antialiasing control under Rendering. A multisampled buffer pass stores `rgba16float`, with a warning, because 32-bit float textures cannot be multisampled in WebGPU.
+- Plane, cube, sphere, and model geometry accept a `topology`: `triangle-list` (default), `line-list` for a wireframe of each unique edge, or `point-list` for each unique vertex as a 1px point. Pick Triangles, Wireframe or Points with the Topology control in the config panel.
+- New built-ins `iViewMatrix`, `iProjectionMatrix` and `iViewProjection` (GLSL `mat4`, Slang `float4x4`, WGSL `mat4x4f`): the orbit camera that meshes and world-space vertices are drawn with, available in vertex and fragment shaders. Project world points yourself in clip space with `iViewProjection` and a divide by `w`.
+- New per-pass `blend` setting for Image and buffer passes: `none` (default), `alpha`, `premultiplied`, or `additive`, in `.sha.json` or the config panel's new Rendering section. It works with every geometry. A blended buffer pass falls back from 32-bit to 16-bit float storage, with a warning, on GPUs that cannot blend 32-bit floats.
+- New per-pass `clear` colour for Image and buffer passes: an `[r, g, b, a]` array with components from 0 to 1, configurable under Rendering. It defaults to opaque black; use `[0, 0, 0, 0]` for transparent buffer layers.
+- New per-pass `depth` setting for vertices, plane, cube, sphere, and model geometry: `{ "test": true, "write": true, "compare": "less" }`, with Depth test, Depth write and Compare controls in the config panel's Depth testing section. Turn `write` off for additive or transparent particles. Clip-space vertices default to `test: false`, so shapes draw in the order you emit them. `compare: "greater"` and `"greater-equal"` start from a cleared depth of 0 so they can pass.
+- WebGL meshes now depth-test with `less` instead of `less-equal`, matching WebGPU. Set `"depth": { "compare": "less-equal" }` to keep the old behaviour.
+- New per-pass `cull` setting for vertices, plane, cube, sphere, and model geometry: `none` (default), `back`, or `front`. Counter-clockwise triangles face the camera, as on the built-in meshes and glTF models, in both WebGL and WebGPU.
+- Fixed Slang shaders failing to compile with "unreachable" after the preview had been recreated about a dozen times in one session.
+- Clear colour, Clear alpha and Instances controls now follow the VS Code or standalone theme.
+- Fixed new standalone Slang vertex files declaring `uv` as `vec2` instead of `float2`.
+
 ### 1.2.0
 
 - Added WGSL support: write `.wgsl` shaders with completion, hover documentation, snippets, and error checking. Use image, vertex, and compute passes, storage buffers, script uniforms, and visual debugging.

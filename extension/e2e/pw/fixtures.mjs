@@ -1,7 +1,8 @@
 import { test as base, expect } from '@playwright/test';
 import { _electron as electron } from 'playwright';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
+import { hostCallbackId } from './host-callback.mjs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -219,7 +220,7 @@ export const test = base.extend({
       const evaluateInHost = (fn, ...args) => evaluateBridgeCall({
         portFile,
         token: bridgeToken,
-        id: createHash('sha256').update(fn.toString()).digest('hex'),
+        id: hostCallbackId(fn.toString()),
         args,
       });
 

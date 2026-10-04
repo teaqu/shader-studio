@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   LocalStorageWorkspaceJournal,
   MemoryWorkspaceJournal,
@@ -189,6 +189,25 @@ describe('VirtualWorkspace', () => {
     const workspace = await VirtualWorkspace.open(store, files);
     await workspace.applyTextTransaction(files.map(file => ({ path: file.path, before: 'tone', after: 'curve' })));
     expect((await VirtualWorkspace.open(store, [])).list().map(file => file.contents)).toEqual(['curve', 'curve']);
+  });
+
+  it('notifies listeners of committed transaction targets but not of rejected ones', async () => {
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), []);
+    workspace.writeText('/shaders/main.glsl', 'tone');
+    workspace.writeText('/shaders/common.glsl', 'tone');
+    const listener = vi.fn();
+    workspace.onDidChange(listener);
+
+    await expect(workspace.applyTextTransaction([
+      { path: '/shaders/main.glsl', before: 'stale', after: 'curve' },
+    ])).rejects.toThrow('stale');
+    expect(listener).not.toHaveBeenCalled();
+
+    await workspace.applyTextTransaction([
+      { path: 'shaders/main.glsl', before: 'tone', after: 'curve' },
+      { path: '/shaders/common.glsl', before: 'tone', after: 'curve' },
+    ]);
+    expect(listener).toHaveBeenCalledExactlyOnceWith(['/shaders/main.glsl', '/shaders/common.glsl']);
   });
 
   it('accepts a transaction whose stored copy lags an open buffer', async () => {
@@ -527,6 +546,46 @@ describe('VirtualWorkspace', () => {
 
     const restored = await VirtualWorkspace.open(store, seedFiles);
     expect(restored.list()).toEqual(seedFiles);
+  });
+
+  it('notifies listeners of written, renamed, deleted and cleared paths until unsubscribed', async () => {
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), []);
+    const listener = vi.fn();
+    const unsubscribe = workspace.onDidChange(listener);
+
+    workspace.writeText('a/./one.glsl', 'one');
+    workspace.rename('/a/one.glsl', '/a/two.glsl');
+    workspace.writeText('/b.glsl', 'b');
+    workspace.delete('/a/two.glsl');
+    await workspace.clear();
+
+    expect(listener.mock.calls).toEqual([
+      [['/a/one.glsl']],
+      [['/a/one.glsl', '/a/two.glsl']],
+      [['/b.glsl']],
+      [['/a/two.glsl']],
+      [['/b.glsl']],
+    ]);
+
+    unsubscribe();
+    workspace.writeText('/c.glsl', 'c');
+    expect(listener).toHaveBeenCalledTimes(5);
+  });
+
+  it('does not notify for failed operations or clearing an empty workspace', async () => {
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), []);
+    workspace.writeText('/a.glsl', 'a');
+    workspace.writeText('/b.glsl', 'b');
+    const listener = vi.fn();
+    workspace.onDidChange(listener);
+
+    expect(() => workspace.delete('/missing.glsl')).toThrow();
+    expect(() => workspace.rename('/a.glsl', '/b.glsl')).toThrow();
+    await workspace.clear();
+    listener.mockClear();
+    await workspace.clear();
+
+    expect(listener).not.toHaveBeenCalled();
   });
 });
 
