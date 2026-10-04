@@ -58,7 +58,8 @@ export function resolveSlangExpressionType(
   const allStructs = [...structs, ...includeStructs];
   const cursorOffset = positionOffset(request.source, request.position);
 
-  let typeName = leadingStepType(steps[0], request.source, cursorOffset, context);
+  let typeName = matrixMultiplyType(request, context)
+    ?? leadingStepType(steps[0], request.source, cursorOffset, context);
   for (const step of steps.slice(1)) {
     if (!typeName) {
       return undefined;
@@ -68,6 +69,56 @@ export function resolveSlangExpressionType(
       : resolveSlangSwizzleType(typeName, step.name) ?? fieldType(typeName, step.name, allStructs) ?? builtinMethodType(typeName, step.name);
   }
   return typeName ? describeType(typeName, allStructs) : undefined;
+}
+
+/** Infer `mul(matrix, vector)` and `mul(vector, matrix)` before generic intrinsic lookup. */
+function matrixMultiplyType(request: SlangExpressionRequest, context: SlangExpressionContext): string | undefined {
+  const arguments_ = callArguments(request.expression, "mul");
+  if (!arguments_ || arguments_.length !== 2) {
+    return undefined;
+  }
+  const [leftExpression, rightExpression] = arguments_;
+  const left = resolveSlangExpressionType({ ...request, expression: leftExpression }, context)?.name;
+  const right = resolveSlangExpressionType({ ...request, expression: rightExpression }, context)?.name;
+  const leftMatrix = left ? slangMatrixType(left) : undefined;
+  const rightMatrix = right ? slangMatrixType(right) : undefined;
+  const leftVector = left ? slangVectorType(left) : undefined;
+  const rightVector = right ? slangVectorType(right) : undefined;
+  if (leftMatrix && rightVector
+    && leftMatrix.componentType === rightVector.componentType
+    && leftMatrix.columns === rightVector.size) {
+    return slangVectorTypeName(leftMatrix.componentType, leftMatrix.rows);
+  }
+  if (leftVector && rightMatrix
+    && leftVector.componentType === rightMatrix.componentType
+    && leftVector.size === rightMatrix.rows) {
+    return slangVectorTypeName(rightMatrix.componentType, rightMatrix.columns);
+  }
+  return undefined;
+}
+
+/** Returns top-level arguments for a leading call, keeping nested constructors intact. */
+function callArguments(expression: string, name: string): string[] | undefined {
+  const match = new RegExp(`^\\s*${name}\\s*\\(`).exec(expression);
+  if (!match) {
+    return undefined;
+  }
+  const arguments_: string[] = [];
+  let start = match[0].length;
+  let depth = 1;
+  for (let index = start; index < expression.length; index++) {
+    const character = expression[index];
+    depth += character === "(" ? 1 : character === ")" ? -1 : 0;
+    if (depth === 0) {
+      arguments_.push(expression.slice(start, index).trim());
+      return expression.slice(index + 1).trim().match(/^(?:\.[A-Za-z_]\w*|\[\d+\])*$/) ? arguments_ : undefined;
+    }
+    if (character === "," && depth === 1) {
+      arguments_.push(expression.slice(start, index).trim());
+      start = index + 1;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -524,7 +575,7 @@ interface SlangStruct {
 }
 
 const STRUCT_HEADER = /\bstruct\s+([A-Za-z_]\w*)\s*\{/g;
-const FIELD_DECLARATION = new RegExp(`^\\s*(${TYPE_TOKEN.source})\\s+([A-Za-z_]\\w*)\\s*(?::\\s*[A-Za-z_]\\w*\\s*)?;`);
+const FIELD_DECLARATION = new RegExp(`^\\s*(?:\\[\\[[^\\]]+\\]\\]\\s*)*(${TYPE_TOKEN.source})\\s+([A-Za-z_]\\w*)\\s*(?::\\s*[A-Za-z_]\\w*\\s*)?;`);
 
 function findSlangStructs(text: string): SlangStruct[] {
   // Comments after a field, such as `float4 position; // xyz`, must not hide the next field.
@@ -542,7 +593,8 @@ function findSlangStructs(text: string): SlangStruct[] {
     const fields: SlangTypeField[] = [];
     for (const statement of body.split(";")) {
       const declaration = FIELD_DECLARATION.exec(`${statement.trim()};`);
-      if (declaration?.[1] && declaration[2] && !statement.includes("(")) {
+      const withoutAttributes = statement.replace(/\[\[[^\]]+\]\]\s*/g, "");
+      if (declaration?.[1] && declaration[2] && !withoutAttributes.includes("(")) {
         fields.push({ name: declaration[2], type: canonicalizeSlangType(declaration[1]) });
       }
     }
@@ -572,21 +624,31 @@ interface SlangFunctionDeclaration {
 
 /** One parameter: qualifiers, type, name, optional array brackets, then an optional semantic and default value. */
 const PARAMETER_DECLARATION = new RegExp(
-  `^\\s*((?:(?:in|out|inout|const)\\s+)*)(${TYPE_TOKEN.source})\\s+([A-Za-z_]\\w*)\\s*(\\[\\s*\\d*\\s*\\])?(\\s*(?::\\s*[A-Za-z_]\\w*)?\\s*(?:=[\\s\\S]*)?)$`,
+  `^\\s*(?:\\[\\[[^\\]]+\\]\\]\\s*)*((?:(?:in|out|inout|const)\\s+)*)(${TYPE_TOKEN.source})\\s+([A-Za-z_]\\w*)\\s*(\\[\\s*\\d*\\s*\\])?(\\s*(?::\\s*[A-Za-z_]\\w*)?\\s*(?:=[\\s\\S]*)?)$`,
 );
 
-const FUNCTION_HEADER = new RegExp(`\\b(${TYPE_TOKEN.source})\\s+([A-Za-z_]\\w*)\\s*\\(([^)]*)\\)\\s*\\{`, "g");
+const FUNCTION_START = new RegExp(`\\b(${TYPE_TOKEN.source})\\s+([A-Za-z_]\\w*)\\s*\\(`, "g");
 
 function findSlangFunctions(source: string): SlangFunctionDeclaration[] {
   const functions: SlangFunctionDeclaration[] = [];
-  for (const match of source.matchAll(FUNCTION_HEADER)) {
-    const [whole, rawReturnType, name, parameterList] = match;
+  for (const match of source.matchAll(FUNCTION_START)) {
+    const [, rawReturnType, name] = match;
     if (!name || rawReturnType === undefined || match.index === undefined || CONTROL_KEYWORDS.has(name)) {
       continue;
     }
+    const parameterStart = match.index + match[0].length;
+    const parameterEnd = findBalancedClosingParen(source, parameterStart);
+    if (parameterEnd === undefined) {
+      continue;
+    }
+    const bodyOpen = source.indexOf("{", parameterEnd);
+    if (bodyOpen === -1 || /;/.test(source.slice(parameterEnd, bodyOpen))) {
+      continue;
+    }
+    const parameterList = source.slice(parameterStart, parameterEnd);
     const parameters: { name: string; typeName: string; nameOffset: number; semantic: boolean }[] = [];
-    let entryOffset = match.index + whole.indexOf("(") + 1;
-    for (const entry of (parameterList ?? "").split(",")) {
+    let entryOffset = parameterStart;
+    for (const entry of splitTopLevelParameters(parameterList)) {
       const parameter = PARAMETER_DECLARATION.exec(entry);
       if (parameter?.[2] && parameter[3]) {
         const brackets = parameter[4] ? "[]" : "";
@@ -603,8 +665,43 @@ function findSlangFunctions(source: string): SlangFunctionDeclaration[] {
       name,
       returnType: canonicalizeSlangType(rawReturnType),
       parameters,
-      parameterListEnd: match.index + whole.length - 1,
+      parameterListEnd: bodyOpen,
     });
   }
   return functions;
+}
+
+function findBalancedClosingParen(source: string, start: number): number | undefined {
+  let depth = 1;
+  for (let index = start; index < source.length; index++) {
+    if (source[index] === "(") {
+      depth++;
+    } else if (source[index] === ")" && --depth === 0) {
+      return index;
+    }
+  }
+  return undefined;
+}
+
+function splitTopLevelParameters(parameters: string): string[] {
+  const entries: string[] = [];
+  let start = 0;
+  let parens = 0;
+  let brackets = 0;
+  for (let index = 0; index < parameters.length; index++) {
+    switch (parameters[index]) {
+      case "(": parens++; break;
+      case ")": parens--; break;
+      case "[": brackets++; break;
+      case "]": brackets--; break;
+      case ",":
+        if (parens === 0 && brackets === 0) {
+          entries.push(parameters.slice(start, index));
+          start = index + 1;
+        }
+        break;
+    }
+  }
+  entries.push(parameters.slice(start));
+  return entries;
 }

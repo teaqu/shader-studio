@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { MessageEvent as ShaderMessage } from "@shader-studio/types";
   import { onMount, tick, untrack } from "svelte";
   import { portal } from "../../actions/portal";
   import type { ConfigInput } from "@shader-studio/types";
@@ -19,11 +20,13 @@
     onRemove: (channelName: string) => void;
     onRename?: (oldName: string, newName: string) => void;
     existingChannelNames?: string[];
-    postMessage?: (msg: { type: string; [key: string]: unknown }) => void;
+    postMessage?: (msg: ShaderMessage) => void;
     onMessage?: (handler: (event: MessageEvent) => void) => void;
     shaderPath?: string;
     audioVideoController?: AudioVideoController;
     availableBufferNames?: string[];
+    renderOutputCounts?: Record<string, number>;
+    computeOutputLayerCounts?: Record<string, number>;
   }
 
   let {
@@ -41,12 +44,14 @@
     shaderPath = "",
     audioVideoController = undefined,
     availableBufferNames = [],
+    renderOutputCounts = {},
+    computeOutputLayerCounts = {},
   }: Props = $props();
 
   // Capture onSave in a stable ref so it remains callable during child onDestroy
   let onSaveRef = onSave;
   $effect(() => {
-    onSaveRef = onSave; 
+    onSaveRef = onSave;
   });
 
   let editingName = $state(false);
@@ -66,6 +71,8 @@
   function typeToTab(type: string | undefined): TabName | null {
     switch (type) {
       case "buffer":
+      case "webcam":
+      case "screen":
       case "keyboard":
         return "Misc";
       case "texture":
@@ -74,6 +81,8 @@
         return "Cubemaps";
       case "video":
         return "Videos";
+      case "microphone":
+      case "system-audio":
       case "audio":
         return "Audio";
       default:
@@ -361,7 +370,7 @@
           <h2 id="modal-title" class="channel-title">
             <span>{channelName}</span>
             <button class="rename-btn" onclick={(e) => {
-              e.stopPropagation(); startRename(); 
+              e.stopPropagation(); startRename();
             }} title="Rename channel" aria-label="Rename channel">
               <i class="codicon codicon-edit"></i>
             </button>
@@ -390,9 +399,13 @@
           <div class="tab-prompt">Select a category above to configure this channel.</div>
         {:else if activeTab === "Misc"}
           <MiscTab
+            {shaderPath}
+            {audioVideoController}
             {tempInput}
             {getWebviewUri}
             {availableBufferNames}
+            {renderOutputCounts}
+            {computeOutputLayerCounts}
             onSelect={(input) => {
               tempInput = input; autoSave();
             }}

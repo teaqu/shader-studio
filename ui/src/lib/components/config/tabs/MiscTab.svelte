@@ -1,22 +1,41 @@
 <script lang="ts">
   import type { ConfigInput } from "@shader-studio/types";
+  import { getRenderOutputMetadata } from "../../../state/renderOutputMetadata.svelte";
+  import type { AudioVideoController } from "../../../AudioVideoController";
+  import { isVSCodeEnvironment } from "../../../transport/TransportFactory";
+  import { tooltip } from "../../../actions/tooltip";
   import ChannelPreview from "../ChannelPreview.svelte";
+  import ScreenControls from "../ScreenControls.svelte";
 
   interface Props {
+    shaderPath?: string;
     tempInput?: ConfigInput;
+    audioVideoController?: AudioVideoController;
     getWebviewUri: (path: string) => string | undefined;
     onSelect: (input: ConfigInput) => void;
     availableBufferNames?: string[];
+    renderOutputCounts?: Record<string, number>;
+    computeOutputLayerCounts?: Record<string, number>;
   }
 
   const MIN_BUFFERS = ["BufferA", "BufferB", "BufferC", "BufferD"];
 
   let {
+    shaderPath = '',
     tempInput = undefined as ConfigInput | undefined,
     getWebviewUri,
+    audioVideoController,
     onSelect,
     availableBufferNames = [],
+    renderOutputCounts = {},
+    computeOutputLayerCounts = {},
   }: Props = $props();
+  const captureUnavailable = isVSCodeEnvironment();
+  function selectCapture(type: 'webcam' | 'screen') {
+    if (!captureUnavailable) {
+      onSelect({ type });
+    }
+  }
 
   const bufferList = $derived.by(() => {
     const all = new Set([...MIN_BUFFERS, ...availableBufferNames]);
@@ -25,7 +44,7 @@
 
   function selectBuffer(source: string) {
     onSelect(tempInput?.type === "buffer"
-      ? { ...tempInput, source }
+      ? { ...tempInput, source, ...(tempInput.source !== source ? { output: undefined, layer: undefined } : {}) }
       : { type: "buffer", source });
   }
 
@@ -43,6 +62,54 @@
     }
     const wrap = (event.currentTarget as HTMLSelectElement).value as "repeat" | "clamp";
     onSelect({ ...tempInput, wrap });
+  }
+
+  const selectedOutputs = $derived(tempInput?.type === 'buffer'
+    ? getRenderOutputMetadata(shaderPath)[tempInput.source] ?? { outputs: Array.from({ length: renderOutputCounts[tempInput.source] ?? 1 }, (_, slot) => ({ slot, name: undefined as string | undefined })) }
+    : { outputs: [] });
+  const selectedSlot = $derived(tempInput?.type === 'buffer' ? tempInput.output ?? 0 : 0);
+  const missingOutput = $derived(!selectedOutputs.outputs.some(output => output.slot === selectedSlot));
+  const selectedIsCompute = $derived(
+    tempInput?.type === "buffer" && computeOutputLayerCounts[tempInput.source] !== undefined,
+  );
+  const selectedComputeLayerCount = $derived(
+    tempInput?.type === "buffer" ? (computeOutputLayerCounts[tempInput.source] ?? 1) : 1,
+  );
+
+  function updateBufferOutput(output: number) {
+    if (tempInput?.type !== 'buffer') {
+return;
+}
+    onSelect({ ...tempInput, output: output === 0 ? undefined : output });
+  }
+
+  function updateBufferLayer(event: Event) {
+    if (tempInput?.type !== "buffer") {
+return;
+}
+    const layer = Number((event.currentTarget as HTMLSelectElement).value);
+    onSelect({ ...tempInput, ...(layer === 0 ? { layer: undefined } : { layer }) });
+  }
+
+  function updateScreenFilter(event: Event) {
+    if (tempInput?.type !== "screen") {
+return;
+}
+    onSelect({ ...tempInput, filter: (event.currentTarget as HTMLSelectElement).value as "linear" | "nearest" | "mipmap" });
+  }
+
+  function updateScreenWrap(event: Event) {
+    if (tempInput?.type !== "screen") {
+return;
+}
+    onSelect({ ...tempInput, wrap: (event.currentTarget as HTMLSelectElement).value as "repeat" | "clamp" });
+  }
+
+  function updateScreenVFlip(event: Event) {
+    if (tempInput?.type !== "screen") {
+return;
+}
+    onSelect({ ...tempInput, vflip: (event.currentTarget as HTMLInputElement).checked });
   }
 </script>
 
@@ -64,15 +131,31 @@
   {#if tempInput?.type === "buffer"}
     <div class="buffer-sampling">
       <label for="buffer-filter">Filter:</label>
-      <select id="buffer-filter" value={tempInput.filter ?? "linear"} onchange={updateBufferFilter}>
+      <select class="input-select" id="buffer-filter" value={tempInput.filter ?? "linear"} onchange={updateBufferFilter}>
         <option value="linear">Linear</option>
         <option value="nearest">Nearest</option>
       </select>
       <label for="buffer-wrap">Wrap:</label>
-      <select id="buffer-wrap" value={tempInput.wrap ?? "clamp"} onchange={updateBufferWrap}>
+      <select class="input-select" id="buffer-wrap" value={tempInput.wrap ?? "clamp"} onchange={updateBufferWrap}>
         <option value="clamp">Clamp</option>
         <option value="repeat">Repeat</option>
       </select>
+      {#if !selectedIsCompute && (selectedOutputs.outputs.length > 1 || missingOutput)}
+        <fieldset class="output-options"><legend>Buffer output</legend>
+          {#each selectedOutputs.outputs as output}
+            <label><input type="radio" name="buffer-output" checked={selectedSlot === output.slot} onchange={() => updateBufferOutput(output.slot)} />Output {output.slot}{output.name ? ` · ${output.name}` : ''}</label>
+          {/each}
+          {#if missingOutput}<p role="alert">Output {selectedSlot} is unavailable. {selectedOutputs.error ?? 'Choose an available output.'}</p>{/if}
+        </fieldset>
+      {/if}
+      {#if selectedIsCompute && selectedComputeLayerCount > 1}
+        <label for="buffer-layer">Layer:</label>
+        <select class="input-select" id="buffer-layer" aria-label="Compute output layer" value={tempInput.layer ?? 0} onchange={updateBufferLayer}>
+          {#each Array(selectedComputeLayerCount) as _, layer}
+            <option value={layer}>Layer {layer}</option>
+          {/each}
+        </select>
+      {/if}
     </div>
   {/if}
 
@@ -86,10 +169,63 @@
       <ChannelPreview channelInput={{ type: "keyboard" }} {getWebviewUri} />
       <div class="misc-card-label">Keyboard</div>
     </button>
+    <button class="misc-card" class:selected={tempInput?.type === "webcam"} aria-label="Webcam"
+      aria-disabled={captureUnavailable}
+      use:tooltip={captureUnavailable ? 'Webcam is unavailable in VS Code. Open Shader Studio in a browser to use this input.' : ''}
+      onclick={() => selectCapture('webcam')}>
+      <ChannelPreview channelInput={{ type: "webcam" }} {getWebviewUri} {audioVideoController} />
+      <div class="misc-card-label">Webcam</div>
+    </button>
+    <button class="misc-card" class:selected={tempInput?.type === "screen"} aria-label="Screen"
+      aria-disabled={captureUnavailable}
+      use:tooltip={captureUnavailable ? 'Screen is unavailable in VS Code. Open Shader Studio in a browser to use this input.' : ''}
+      onclick={() => selectCapture('screen')}>
+      <ChannelPreview channelInput={{ type: "screen" }} {getWebviewUri} {audioVideoController} />
+      <div class="misc-card-label">Screen</div>
+    </button>
   </div>
+  {#if !captureUnavailable && tempInput?.type === "webcam"}
+    <p>Uses your default device. Allow access when prompted. If this host blocks capture,
+      open Shader Studio in a browser on localhost or HTTPS. </p>
+  {/if}
+  {#if !captureUnavailable && tempInput?.type === "screen"}
+    <ScreenControls {audioVideoController} />
+    <div class="screen-sampling">
+      <label for="screen-filter">Filter:</label>
+      <select id="screen-filter" value={tempInput.filter ?? "linear"} onchange={updateScreenFilter}>
+        <option value="linear">Linear</option>
+        <option value="nearest">Nearest</option>
+        <option value="mipmap">Mipmap</option>
+      </select>
+      <label for="screen-wrap">Wrap:</label>
+      <select id="screen-wrap" value={tempInput.wrap ?? "clamp"} onchange={updateScreenWrap}>
+        <option value="clamp">Clamp</option>
+        <option value="repeat">Repeat</option>
+      </select>
+      <label for="screen-vflip"><input id="screen-vflip" type="checkbox" checked={tempInput.vflip ?? true} onchange={updateScreenVFlip} /> Flip vertically</label>
+    </div>
+  {/if}
 </div>
 
 <style>
+  .input-select {
+    padding: 8px 12px;
+    border: 1px solid var(--vscode-input-border, #3c3c3c);
+    border-radius: 4px;
+    background: var(--vscode-input-background, #2d2d2d);
+    color: var(--vscode-input-foreground, #cccccc);
+    font-size: 14px;
+  }
+
+  .input-select:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder, #007acc);
+  }
+
+
+  .output-options { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--vscode-panel-border); padding: 10px; }
+  .output-options label { display: flex; gap: 8px; align-items: center; }
+  .output-options p { color: var(--vscode-errorForeground); }
   .misc-grid {
     display: flex;
     flex-direction: column;
@@ -120,6 +256,32 @@
     margin-bottom: 8px;
   }
 
+  .screen-sampling {
+    display: grid;
+    grid-template-columns: auto minmax(100px, 1fr);
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .screen-sampling select,
+  .buffer-sampling select {
+    padding: 8px 12px;
+    border: 1px solid var(--vscode-input-border, #3c3c3c);
+    border-radius: 4px;
+    background: var(--vscode-input-background, #2d2d2d);
+    color: var(--vscode-input-foreground, #cccccc);
+    font-size: 14px;
+  }
+
+  .screen-sampling select:focus,
+  .buffer-sampling select:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder, #007acc);
+  }
+
+  .screen-sampling label:last-child { grid-column: 1 / -1; }
+
   .misc-card {
     display: flex;
     flex-direction: column;
@@ -132,7 +294,9 @@
     padding: 0;
   }
 
-  .misc-card:hover {
+  .misc-card[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
+
+  .misc-card:not([aria-disabled="true"]):hover {
     border-color: var(--vscode-focusBorder, #007acc);
     transform: translateY(-1px);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);

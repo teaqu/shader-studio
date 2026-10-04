@@ -1,0 +1,160 @@
+import { test, expect } from '@playwright/test';
+import { workspace } from './language-service-fixtures.mjs';
+
+test('compute file and function rows add native code to their source and expose layers in Misc', async ({ page }) => {
+  await page.route('**/__compute_ui_fixture__', route => route.fulfill({ contentType: 'text/html', body: '<title>Fixture</title>' }));
+  await page.goto('/__compute_ui_fixture__');
+  const main = 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(1); }';
+  const kernels = '@compute @workgroup_size(1) fn clear() {}\n@compute @workgroup_size(1) fn step() {}';
+  await workspace(page, [['compute-ui.wgsl', main], ['kernels.wgsl', kernels], ['compute-ui.sha.json', JSON.stringify({
+    version: '1.0', passes: {
+      Image: { inputs: { iChannel0: { type: 'buffer', source: 'ComputeA' } } },
+      ComputeA: { type: 'compute', path: 'kernels.wgsl', entryPoints: { compute: 'clear' }, outputLayers: 3 },
+    },
+  })]]);
+  await page.goto('/');
+  await page.getByTestId('shader-option-compute-ui-wgsl').click();
+  await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
+  await page.locator('[data-tab-name="ComputeA"]').click();
+  await expect(page.getByRole('heading', { name: 'Compute shader' })).toHaveCount(0);
+  await expect(page.getByLabel('File', { exact: true })).toHaveValue('kernels.wgsl');
+  await page.getByRole('button', { name: 'Change…' }).click();
+  await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: 'kernels.wgsl', exact: true }).click();
+  const functions = page.getByRole('group', { name: 'Compute function controls' });
+  await expect(functions.getByRole('radio', { name: '@compute clear' })).toBeChecked();
+  await expect(functions.getByRole('combobox')).toHaveCount(0);
+  await functions.getByRole('radio', { name: '@compute step' }).check();
+  await functions.getByRole('button', { name: 'Add function…' }).click();
+  await expect(functions.getByRole('radio', { name: '@compute ComputeACompute' })).toBeChecked();
+  await expect.poll(async () => (await workspace(page))['/shaders/kernels.wgsl']).toContain('ComputeACompute');
+  expect((await workspace(page))['/shaders/compute-ui.wgsl']).toBe(main);
+  await page.locator('[data-tab-name="Image"]').click();
+  await page.getByRole('button', { name: 'Configure iChannel0', exact: true }).click();
+  await page.getByRole('tab', { name: 'Misc', exact: true }).click();
+  for (const label of ['Filter:', 'Wrap:', 'Compute output layer']) {
+    const control = page.getByLabel(label, { exact: true });
+    const styles = await control.evaluate(element => {
+      const actual = getComputedStyle(element);
+      const probe = document.createElement('span');
+      probe.style.backgroundColor = 'var(--vscode-input-background)';
+      probe.style.color = 'var(--vscode-input-foreground)';
+      element.parentElement.append(probe);
+      const expected = getComputedStyle(probe);
+      const result = { background: actual.backgroundColor, color: actual.color,
+        expectedBackground: expected.backgroundColor, expectedColor: expected.color, padding: actual.padding };
+      probe.remove();
+      return result;
+    });
+    expect(styles.background).toBe(styles.expectedBackground);
+    expect(styles.color).toBe(styles.expectedColor);
+    expect(styles.padding).toBe('8px 12px');
+  }
+  await page.getByLabel('Compute output layer').selectOption('2');
+  await page.reload();
+  const config = JSON.parse((await workspace(page))['/shaders/compute-ui.sha.json']);
+  expect(config.passes.Image.inputs.iChannel0.layer).toBe(2);
+  expect(config.passes.ComputeA.entryPoints.compute).toBe('ComputeACompute');
+  await page.locator('[data-tab-name="ComputeA"]').click();
+  await expect(page.getByRole('radio', { name: '@compute ComputeACompute' })).toBeChecked();
+});
+
+test('standalone source controls select config and workspace files, add to the correct vertex file, and persist', async ({ page }) => {
+ await page.route('**/__select_fixture__', route => route.fulfill({ contentType: 'text/html', body: '<title>Fixture</title>' }));
+ await page.goto('/__select_fixture__');
+ const source = 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(1); }';
+ await workspace(page, [['reuse.wgsl', source], ['existing.wgsl', source + '\n@vertex fn separateVertex() -> @builtin(position) vec4f { return vec4f(0); }'], ['reuse.sha.json', JSON.stringify({ version:'1.0', passes:{ Image:{}, BufferA:{path:''}, BufferB:{path:'existing.wgsl'} } })]]);
+ await page.goto('/');
+ await page.getByTestId('shader-option-reuse-wgsl').click();
+ await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
+ await page.locator('[data-tab-name="BufferA"]').click();
+ const main=page.locator('.tab-content .buffer-details > .config-item').first();
+ await expect(main.getByLabel('File', {exact:true})).toBeVisible();
+ await main.getByRole('button', {name:'Change…'}).click();
+ await page.getByRole('dialog', {name:'Choose shader file'}).getByRole('button', {name:'existing.wgsl', exact:true}).click();
+ await expect(main.getByLabel('File', {exact:true})).toHaveValue('existing.wgsl');
+ await main.getByRole('button',{name:'Change…'}).click();
+ await page.getByRole('dialog',{name:'Choose shader file'}).getByRole('button',{name:'Browse workspace…'}).click();
+ const dialog=page.getByRole('dialog',{name:'Select workspace file'});
+ await dialog.getByLabel('Filter files').fill('reuse');
+ await dialog.getByRole('button',{name:'/shaders/reuse.wgsl',exact:true}).click();
+ await expect(main.getByLabel('File', {exact:true})).toHaveValue('/shaders/reuse.wgsl');
+ const vertex=page.locator('.config-item').filter({has:page.getByRole('heading',{name:'Vertex shader',exact:true})});
+ await vertex.getByRole('button',{name:'Same file'}).click();
+ await expect(vertex.getByLabel('File', {exact:true})).toHaveCount(0);
+ await expect(vertex.getByRole('button',{name:'Add function…'})).toBeVisible();
+ await vertex.getByRole('button',{name:'Separate file'}).click();
+ await expect(vertex.getByLabel('File', {exact:true})).toBeVisible();
+ await vertex.getByRole('button',{name:'Change…'}).click();
+ await page.getByRole('dialog',{name:'Choose shader file'}).getByRole('button',{name:'existing.wgsl',exact:true}).click();
+ await expect(vertex.getByLabel('File', {exact:true})).toHaveValue('existing.wgsl');
+ await expect(vertex.getByRole('radio',{name:'@vertex separateVertex'})).toBeVisible();
+ const functions=vertex.getByRole('group',{name:'Vertex function controls'});
+ await functions.getByLabel('Insert mode').selectOption('native');
+ await functions.getByRole('button',{name:'Add function…'}).click();
+ await expect.poll(async()=>(await workspace(page))['/shaders/existing.wgsl']).toContain('BufferAVertex');
+ expect((await workspace(page))['/shaders/reuse.wgsl']).toBe(source);
+ await vertex.getByRole('button',{name:'Built-in'}).click();
+ await expect(vertex.getByRole('button',{name:'Built-in',exact:true})).toHaveAttribute('aria-pressed','true');
+ await vertex.getByRole('button',{name:'Same file'}).click();
+ await page.getByLabel('Output format',{exact:true}).selectOption('rgba16float');
+ await expect(page.getByRole('region',{name:'Output'}).getByLabel('Output format')).toHaveValue('rgba16float');
+ await expect.poll(async()=>JSON.parse((await workspace(page))['/shaders/reuse.sha.json']).passes.BufferA).toMatchObject({path:'/shaders/reuse.wgsl',outputFormat:'rgba16float',vertex:'/shaders/reuse.wgsl'});
+ await page.reload();
+ await page.locator('[data-tab-name="BufferA"]').click();
+ await expect(page.getByLabel('File',{exact:true})).toHaveValue('/shaders/reuse.wgsl');
+ expect(JSON.parse((await workspace(page))['/shaders/reuse.sha.json']).passes.BufferA).toMatchObject({path:'/shaders/reuse.wgsl',outputFormat:'rgba16float',vertex:'/shaders/reuse.wgsl'});
+});
+
+test('named native buffer outputs are inferred, selectable in Misc, and persist without an output list', async ({ page }) => {
+ await page.route('**/__mrt_fixture__', route => route.fulfill({contentType:'text/html',body:'<title>Fixture</title>'}));
+ await page.goto('/__mrt_fixture__');
+ const native='struct Results { @location(0) colour: vec4f, @location(1) normals: vec4f, @location(2) velocity: vec4f, } @fragment fn shade() -> Results { return Results(vec4f(1),vec4f(0),vec4f(0)); }';
+ await workspace(page,[['mrt.wgsl','fn mainImage(coord: vec2f) -> vec4f { return vec4f(1); }'],['outputs.wgsl',native],['mrt.sha.json',JSON.stringify({version:'1.0',passes:{Image:{inputs:{iChannel0:{type:'buffer',source:'BufferA'}}},BufferA:{path:'outputs.wgsl',entryPoints:{fragment:'shade'}}}})]]);
+ await page.goto('/');
+ await page.getByTestId('shader-option-mrt-wgsl').click();
+ await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
+ await page.locator('[data-tab-name="BufferA"]').click();
+ await expect(page.getByText('Output 2 · velocity',{exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Add output'})).toHaveCount(0);
+ await page.locator('[data-tab-name="Image"]').click();
+ await expect(page.getByLabel('File',{exact:true})).toHaveCount(0);
+ await page.getByRole('button',{name:'Configure iChannel0',exact:true}).click();
+ await page.getByRole('tab',{name:'Misc',exact:true}).click();
+ await page.getByRole('radio',{name:'Output 1 · normals'}).check();
+ await expect.poll(async()=>JSON.parse((await workspace(page))['/shaders/mrt.sha.json']).passes.Image.inputs.iChannel0.output).toBe(1);
+ expect(JSON.parse((await workspace(page))['/shaders/mrt.sha.json']).passes.BufferA.outputs).toBeUndefined();
+ await page.reload();
+ expect(JSON.parse((await workspace(page))['/shaders/mrt.sha.json']).passes.Image.inputs.iChannel0.output).toBe(1);
+});
+
+
+test('config selections stay visibly highlighted for scale, aspect, and vertex source on hover', async ({ page }) => {
+ await page.goto('/');
+ await page.getByTestId('shader-option-aurora-glsl').click();
+ await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
+ const resolution = page.locator('.resolution-section');
+ const scale = resolution.getByRole('button', {name:'1x',exact:true});
+ const otherScale = resolution.getByRole('button', {name:'2x',exact:true});
+ const background = locator => locator.evaluate(element => getComputedStyle(element).backgroundColor);
+ await expect(scale).toHaveClass(/active/);
+ expect(await background(scale)).not.toBe(await background(otherScale));
+ const selected = await background(scale);
+ await scale.hover();
+ expect(await background(scale)).toBe(selected);
+ await otherScale.click();
+ await expect(otherScale).toHaveClass(/active/);
+ await expect(otherScale).toHaveCSS('background-color', selected);
+ const aspect = resolution.getByRole('button', {name:'4:3',exact:true});
+ await aspect.click();
+ await expect(aspect).toHaveClass(/active/);
+ await expect(aspect).toHaveCSS('background-color', selected);
+ const builtin = page.getByRole('button', {name:'Built-in',exact:true});
+ const same = page.getByRole('button', {name:'Same file',exact:true});
+ expect(await background(builtin)).not.toBe(await background(same));
+ await same.click();
+ await expect(same).toHaveAttribute('aria-pressed','true');
+ await same.hover();
+ await expect(same).toHaveCSS('background-color', selected);
+ await expect(same).toHaveText('Same file');
+ await page.screenshot({path:test.info().outputPath('config-selection.png'),fullPage:true});
+});

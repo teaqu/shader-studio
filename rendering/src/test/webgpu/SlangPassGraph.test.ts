@@ -13,6 +13,19 @@ const computeCode = `[shader("compute")]
 void computeKernel(uint3 id : SV_DispatchThreadID) {}`;
 
 describe("buildSlangPassGraph", () => {
+  it.each([undefined, true, false])("retains the viewer-camera choice %s on Image and Buffer independently", useViewerCamera => {
+    const graph = buildSlangPassGraph({ imageCode, buffers: { BufferA: imageCode }, canvasWidth: 80, canvasHeight: 80,
+      config: { version: "1.0", passes: {
+        Image: { geometry: { type: "cube" }, useViewerCamera },
+        BufferA: { path: "a.slang", geometry: { type: "model", path: "mesh.glb" }, useViewerCamera },
+      } } });
+    expect(graph.errors).toEqual([]);
+    for (const pass of graph.passes) {
+      expect(pass.useViewerCamera).toBe(useViewerCamera);
+    }
+    expect(graph.passes[0]?.modelPath).toBe("mesh.glb");
+  });
+
   it("creates an Image pass when no config is provided", () => {
     const graph = buildSlangPassGraph({
       imageCode,
@@ -1179,6 +1192,31 @@ describe("Slang compute passes", () => {
     expect(graph.passes[0]).toMatchObject({ entryPoint: "draw", workgroupSize: [8, 8, 1] });
   });
 
+  it("prefers canonical entryPoints.compute and rejects a conflicting legacy value", () => {
+    const source = `@compute @workgroup_size(1) fn clear() {}
+@compute @workgroup_size(1) fn draw() {}`;
+    const buildNative = (config: ShaderConfig) => buildSlangPassGraph({
+      imageCode: "fn mainImage(coord: vec2f) -> vec4f { return vec4f(); }",
+      config,
+      buffers: { ComputeA: source },
+      canvasWidth: 16,
+      canvasHeight: 16,
+      language: "wgsl",
+    });
+    const canonical = buildNative({
+      version: "1",
+      passes: { Image: {}, ComputeA: { type: "compute", path: "shared.wgsl", entryPoints: { compute: "draw" } } },
+    } as ShaderConfig);
+    expect(canonical.errors).toEqual([]);
+    expect(canonical.passes[0]?.entryPoint).toBe("draw");
+
+    const conflicting = buildNative({
+      version: "1",
+      passes: { Image: {}, ComputeA: { type: "compute", path: "shared.wgsl", entryPoint: "clear", entryPoints: { compute: "draw" } } },
+    } as ShaderConfig);
+    expect(conflicting.errors).toContain("ComputeA: entryPoints.compute conflicts with legacy entryPoint");
+  });
+
   it("selects a configured native entrypoint from a multi-entry compute source", () => {
     const source = `[shader("compute")] [numthreads(1, 1, 1)] void clearKernel(uint3 id : SV_DispatchThreadID) {}
 [shader("compute")] [numthreads(64, 1, 1)] void simulateKernel(uint3 id : SV_DispatchThreadID) {}`;
@@ -1753,6 +1791,81 @@ describe("Slang pass references", () => {
     });
   }
 
+  it("routes a selected native render output without conflating it with compute layers", () => {
+    const native = `@vertex fn vertices(@builtin(vertex_index) index: u32) -> @builtin(position) vec4f {
+  let positions = array<vec2f, 3>(vec2f(-1), vec2f(3, -1), vec2f(-1, 3));
+  return vec4f(positions[index], 0, 1);
+}
+struct Outputs { @location(0) colour: vec4f, @location(1) normals: vec4f }
+@fragment fn scene() -> Outputs { return Outputs(vec4f(1), vec4f(0)); }`;
+    const graph = buildSlangPassGraph({
+      imageCode,
+      language: "wgsl",
+      config: {
+        version: "1",
+        passes: {
+          Image: { inputs: { iChannel0: { type: "buffer", source: "Scene", output: 1 } } },
+          Scene: {
+            path: "scene.wgsl",
+            entryPoints: { vertex: "vertices", fragment: "scene" },
+            outputs: [{ name: "Colour" }, { name: "Normals" }],
+          },
+        },
+      },
+      buffers: { Scene: native },
+      canvasWidth: 128,
+      canvasHeight: 64,
+    });
+
+    expect(graph.errors).toEqual([]);
+    expect(graph.passes.find(({ name }) => name === "Scene")).toMatchObject({
+      outputCount: 2,
+      outputs: [{ name: "Colour" }, { name: "Normals" }],
+    });
+    expect(graph.passes.find(({ name }) => name === "Image")?.channels).toContainEqual(expect.objectContaining({
+      source: "Scene",
+      output: 1,
+    }));
+  });
+
+  it.each([
+    ["hooks", { path: "scene.wgsl", outputs: [{}, {}] }, "require native render entryPoints"],
+    ["GLSL", { path: "scene.glsl", entryPoints: {}, outputs: [{}, {}] }, "GLSL MRT is not supported"],
+  ] as const)("uses the implicit single output for %s despite legacy output labels", (_name, pass, _message) => {
+    const graph = buildSlangPassGraph({
+      imageCode,
+      language: _name === "GLSL" ? "glsl" : "wgsl",
+      config: { version: "1", passes: { Image: {}, Scene: pass } } as ShaderConfig,
+      buffers: { Scene: imageCode },
+      canvasWidth: 128,
+      canvasHeight: 64,
+    });
+
+    expect(graph.errors).toEqual([]);
+    expect(graph.passes.find(pass => pass.name === "Scene")?.outputCount ?? 1).toBe(1);
+  });
+
+  it("rejects render-output selection on compute inputs and dangling render outputs", () => {
+    const graph = build({
+      version: "1",
+      passes: {
+        Image: {
+          inputs: {
+            compute: { type: "buffer", source: "Simulation", output: 0 },
+            scene: { type: "buffer", source: "Scene", output: 2 },
+          },
+        },
+        Simulation: { type: "compute", path: "simulation.slang" },
+        Scene: { path: "scene.slang", entryPoints: {}, outputs: [{}, {}] },
+      },
+    }, { Simulation: computeCode, Scene: imageCode });
+
+    expect(graph.errors).toEqual(expect.arrayContaining([
+      expect.stringContaining("output selection is only valid for render buffer"),
+      expect.stringContaining('output 2 is invalid for source "Scene" with 1 output(s)'),
+    ]));
+  });
+
   it.each([-1, 1.5, 3])("rejects invalid compute output layer %s", (layer) => {
     const config: ShaderConfig = {
       version: "1",
@@ -1885,6 +1998,46 @@ describe("WGSL pass graph language", () => {
       language: "wgsl",
     });
   }
+
+  it("keeps generated stages when native entries are not selected", () => {
+    const source = `@vertex fn fullscreen(@builtin(vertex_index) id: u32) -> @builtin(position) vec4f { return vec4f(); }
+@fragment fn present() -> @location(0) vec4f { return vec4f(); }
+@compute @workgroup_size(1) fn update() {}`;
+    const graph = buildWgsl({
+      version: "1",
+      passes: {
+        Image: { inputs: {} },
+        BufferA: { path: "shared.wgsl", entryPoints: {} },
+        ComputeA: { type: "compute", path: "shared.wgsl", entryPoint: "update" },
+      },
+    }, { BufferA: source, ComputeA: source });
+    expect(graph.errors).toEqual([]);
+    expect(graph.passes.find((pass) => pass.name === "BufferA")?.entryPoints)
+      .toEqual({});
+  });
+
+  it("ignores unselected native stages even when discovery is ambiguous", () => {
+    const source = `@vertex fn one() -> @builtin(position) vec4f { return vec4f(); }
+@vertex fn two() -> @builtin(position) vec4f { return vec4f(); }
+@fragment fn present() -> @location(0) vec4f { return vec4f(); }`;
+    const graph = buildWgsl({ version: "1", passes: { Image: { inputs: {} }, BufferA: { path: "shared.wgsl", entryPoints: {} } } }, { BufferA: source });
+    expect(graph.errors).toEqual([]);
+    expect(graph.passes.map((pass) => pass.name)).toEqual(["BufferA", "Image"]);
+  });
+
+  it("rejects malformed render entryPoints instead of silently using hook wrappers", () => {
+    const graph = buildWgsl({
+      version: "1",
+      passes: {
+        Image: { inputs: {} },
+        BufferA: { path: "shared.wgsl", entryPoints: { compute: "update" } },
+      },
+    } as unknown as ShaderConfig, {
+      BufferA: "@vertex fn full(@builtin(vertex_index) id: u32) -> @builtin(position) vec4f { return vec4f(); }\n@fragment fn paint() -> @location(0) vec4f { return vec4f(); }",
+    });
+    expect(graph.errors).toContain("BufferA: entryPoints must be a render object with optional vertex and fragment names");
+    expect(graph.passes.map((pass) => pass.name)).toEqual(["Image"]);
+  });
 
   it("defaults every node to slang when no language is given", () => {
     const graph = buildSlangPassGraph({

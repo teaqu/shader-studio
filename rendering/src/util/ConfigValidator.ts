@@ -199,6 +199,7 @@ export function validatePassRenderSettings(pass: unknown, passName: string): str
 
 // Validation accepts malformed author input; each property is narrowed before use.
 interface UnvalidatedPass {
+  useViewerCamera?: unknown;
   path?: unknown;
   outputFormat?: unknown;
   geometry?: unknown;
@@ -218,6 +219,10 @@ export class ConfigValidator {
     }
 
     const errors: string[] = [];
+
+    if (config.webgpu?.useViewerCamera !== undefined && typeof config.webgpu.useViewerCamera !== "boolean") {
+      errors.push("webgpu.useViewerCamera must be a boolean");
+    }
 
     // Validate version
     if (!config.version || typeof config.version !== 'string') {
@@ -271,6 +276,9 @@ export class ConfigValidator {
       errors.push("Image pass cannot define outputFormat");
     }
     errors.push(...validatePassRenderSettings(pass, "Image"));
+    if (pass.useViewerCamera !== undefined && typeof pass.useViewerCamera !== "boolean") {
+      errors.push("useViewerCamera must be a boolean");
+    }
 
     if (pass.inputs) {
       this.validateInputs(pass.inputs, 'Image', errors);
@@ -287,6 +295,9 @@ export class ConfigValidator {
     }
 
     errors.push(...validatePassRenderSettings(pass, passName));
+    if (pass.useViewerCamera !== undefined && typeof pass.useViewerCamera !== "boolean") {
+      errors.push("useViewerCamera must be a boolean");
+    }
 
     if (pass.inputs) {
       this.validateInputs(pass.inputs, passName, errors);
@@ -360,6 +371,12 @@ export class ConfigValidator {
         return this.validateCubemapInput(input);
       case 'video':
         return this.validateVideoInput(input);
+      case 'system-audio':
+      case 'microphone':
+      case 'webcam':
+        return Object.keys(input).every(key => key === 'type');
+      case 'screen':
+        return this.validateScreenInput(input);
       case 'keyboard':
         return this.validateKeyboardInput(input);
       case 'audio':
@@ -367,6 +384,15 @@ export class ConfigValidator {
       default:
         return false;
     }
+  }
+
+  private static validateScreenInput(input: Record<string, unknown>): boolean {
+    if (!Object.keys(input).every(key => ['type', 'filter', 'wrap', 'vflip'].includes(key))) {
+      return false;
+    }
+    return (input.filter === undefined || (typeof input.filter === 'string' && ['linear', 'nearest', 'mipmap'].includes(input.filter))) &&
+      (input.wrap === undefined || (typeof input.wrap === 'string' && ['repeat', 'clamp'].includes(input.wrap))) &&
+      (input.vflip === undefined || typeof input.vflip === 'boolean');
   }
 
   private static validateBufferInput(input: Record<string, unknown>): boolean {

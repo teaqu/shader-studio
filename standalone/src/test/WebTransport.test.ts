@@ -318,6 +318,21 @@ it.each(['active', 'beside'] as const)('opens requested buffer in standalone wit
   transport.dispose();
 });
 
+it('does not open buffers when navigation on buffer switch is disabled', async () => {
+  resetShellState();
+  const transport = new WebTransport();
+  expect(transport.settings.update('navigateOnBufferSwitch', false)).toBe(true);
+  transport.postMessage({ type: 'navigateToBuffer', payload: {
+    bufferPath: '/shaders/glow-trails/trails.buffer.glsl', shaderPath: '/shaders/glow-trails.glsl', mode: 'active',
+  } });
+  await transport.readEditorFile('/shaders/aurora.glsl');
+  expect(getRequestedEditor()).toBeNull();
+  // Standalone preferences are browser-global. Restore the default so later
+  // transport tests do not inherit this deliberate opt-out.
+  transport.settings.update('navigateOnBufferSwitch', true);
+  transport.dispose();
+});
+
 it('ignores missing navigation targets and navigation after disposal', async () => {
   resetShellState();
   const transport = new WebTransport();

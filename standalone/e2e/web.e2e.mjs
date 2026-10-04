@@ -1647,9 +1647,11 @@ test('creates a valid WGSL vertex hook from the config panel', async ({ page }) 
   await page.getByTestId('shader-option-aurora-wgsl-wgsl').click();
   await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
   const vertex = page.locator('.config-item').filter({ has: page.getByRole('heading', { name: 'Vertex shader', exact: true }) });
+  await vertex.getByRole('button', { name: 'Separate file', exact: true }).click();
+  await vertex.getByRole('button', { name: 'Change…', exact: true }).click();
   page.once('dialog', (dialog) => dialog.accept(dialog.defaultValue()));
-  await vertex.getByRole('button', { name: 'Create', exact: true }).click();
-  await expect(vertex.locator('input')).toHaveValue(/\.vert\.wgsl$/);
+  await page.getByRole('dialog', { name: 'Choose shader file', exact: true }).getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(vertex.getByRole('textbox', { name: 'File', exact: true })).toHaveValue(/\.vert\.wgsl$/);
   await expect.poll(async () => (await readWorkspaceFiles(page))
     .find((file) => file.path.endsWith('.vert.wgsl'))?.contents ?? '')
     .toContain('position: ptr<function, vec3f>');
@@ -1657,4 +1659,98 @@ test('creates a valid WGSL vertex hook from the config panel', async ({ page }) 
   await expect(page.getByTestId('shader-option-aurora-wgsl-wgsl')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('web-preview').getByLabel('Change FPS limit')).not.toContainText('0.0 FPS');
   await expect(page.getByTestId('shader-option-aurora-wgsl-wgsl').locator('.shader-error')).toHaveCount(0);
+});
+
+test('standalone global settings apply live, persist, search, and reset without changing shader files', async ({ page }) => {
+  await page.goto('/');
+  const editor = page.getByTestId('web-editor');
+  await expect(editor.locator('.monaco-editor')).toBeVisible();
+  const before = await readWorkspaceFiles(page);
+  const open = () => page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
+  await open();
+  await expect(dialog.getByRole('searchbox', { name: 'Search settings' })).toBeFocused();
+  await dialog.getByLabel('Font size', { exact: true }).fill('24');
+  await dialog.getByLabel('Font size', { exact: true }).press('Tab');
+  await dialog.getByLabel('Tab size', { exact: true }).fill('2');
+  await dialog.getByLabel('Tab size', { exact: true }).press('Tab');
+  await dialog.getByLabel('Insert spaces', { exact: true }).uncheck();
+  await dialog.getByLabel('Word wrap', { exact: true }).selectOption('on');
+  await dialog.getByLabel('Minimap', { exact: true }).check();
+  await dialog.getByLabel('Line numbers', { exact: true }).selectOption('off');
+  await dialog.getByLabel('GLSL language service', { exact: true }).uncheck();
+  await dialog.getByLabel('Use viewer camera', { exact: true }).uncheck();
+  await dialog.getByRole('searchbox').fill('camera');
+  await expect(dialog.getByLabel('Use viewer camera', { exact: true })).toBeVisible();
+  await expect(dialog.getByLabel('Font size', { exact: true })).toHaveCount(0);
+  await dialog.getByRole('searchbox').fill('no-setting-matches');
+  await expect(dialog.getByRole('status')).toHaveText('No matching settings.');
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeFocused();
+  await expect(editor.locator('.view-lines')).toHaveCSS('font-size', '24px');
+  await expect(editor.locator('.minimap')).toBeVisible();
+  await page.reload();
+  await expect(editor.locator('.view-lines')).toHaveCSS('font-size', '24px');
+  await open();
+  await expect(dialog.getByLabel('Tab size', { exact: true })).toHaveValue('2');
+  await expect(dialog.getByLabel('Insert spaces', { exact: true })).not.toBeChecked();
+  await expect(dialog.getByLabel('Word wrap', { exact: true })).toHaveValue('on');
+  await expect(dialog.getByLabel('Line numbers', { exact: true })).toHaveValue('off');
+  await expect(dialog.getByLabel('GLSL language service', { exact: true })).not.toBeChecked();
+  await expect(dialog.getByLabel('Use viewer camera', { exact: true })).not.toBeChecked();
+  await dialog.getByRole('button', { name: 'Reset all settings' }).click();
+  await expect(dialog.getByLabel('Font size', { exact: true })).toHaveValue('14');
+  await expect(dialog.getByLabel('GLSL language service', { exact: true })).toBeChecked();
+  await expect(dialog.getByLabel('Use viewer camera', { exact: true })).toBeChecked();
+  await dialog.getByRole('button', { name: 'Done' }).click();
+  await expect(editor.locator('.view-lines')).toHaveCSS('font-size', '14px');
+  await expect(editor.locator('.minimap')).not.toBeVisible();
+  const after = await readWorkspaceFiles(page);
+  for (const file of before) {
+    if (/\.(glsl|wgsl|slang|sha\.json)$/.test(file.path)) {
+ expect(after.find(saved => saved.path === file.path)?.contents).toEqual(file.contents);
+}
+  }
+});
+
+test('standalone global settings synchronize between open tabs', async ({ page, context }) => {
+  await page.goto('/');
+  const other = await context.newPage();
+  await other.goto('/');
+  const otherEditor = other.getByTestId('web-editor');
+  await expect(otherEditor.locator('.monaco-editor')).toBeVisible();
+  await other.getByRole('button', { name: 'Settings', exact: true }).click();
+  const otherDialog = other.getByRole('dialog', { name: 'Settings' });
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Settings' });
+  await dialog.getByLabel('Font size', { exact: true }).fill('28');
+  await dialog.getByLabel('Font size', { exact: true }).press('Tab');
+  await dialog.getByLabel('Use viewer camera', { exact: true }).uncheck();
+  await expect(otherDialog.getByLabel('Font size', { exact: true })).toHaveValue('28');
+  await expect(otherDialog.getByLabel('Use viewer camera', { exact: true })).not.toBeChecked();
+  await expect(otherEditor.locator('.view-lines')).toHaveCSS('font-size', '28px');
+  await otherDialog.getByRole('button', { name: 'Reset all settings' }).click();
+  await expect(dialog.getByLabel('Font size', { exact: true })).toHaveValue('14');
+  await expect(dialog.getByLabel('Use viewer camera', { exact: true })).toBeChecked();
+  await other.close();
+});
+
+test('standalone global settings disable and restore language service diagnostics live', async ({ page }) => {
+  await page.goto('/');
+  // Keep compiler diagnostics out of this language-service toggle check.
+  await page.getByTestId('web-preview').getByLabel('Open options menu').click();
+  await page.getByLabel('Set manual compile mode').click();
+  const editor = page.getByTestId('web-editor');
+  await waitForLanguageService(editor);
+  await editor.locator('.view-lines').click({ position: { x: 80, y: 20 } });
+  await page.keyboard.press('ControlOrMeta+A');
+  await page.keyboard.insertText('void mainImage(out vec4 color, in vec2 coord) {\n  color = missingName;\n}');
+  await expect(editor.locator('.squiggly-error').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Settings' });
+  await dialog.getByLabel('GLSL language service', { exact: true }).uncheck();
+  await expect(editor.locator('.squiggly-error')).toHaveCount(0);
+  await dialog.getByLabel('GLSL language service', { exact: true }).check();
+  await expect(editor.locator('.squiggly-error').first()).toBeVisible();
 });

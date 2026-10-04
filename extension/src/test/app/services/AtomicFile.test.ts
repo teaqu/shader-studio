@@ -11,7 +11,10 @@ suite('AtomicFile Test Suite', () => {
 
   setup(() => {
     sandbox = sinon.createSandbox();
-    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'atomic-file-'));
+    // macOS commonly exposes /var as a symlink to /private/var. AtomicFile
+    // resolves its temporary sibling via the filesystem, so use the same
+    // canonical directory for path assertions.
+    directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'atomic-file-')));
   });
 
   teardown(() => {

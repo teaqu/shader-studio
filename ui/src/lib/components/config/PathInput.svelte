@@ -1,4 +1,6 @@
 <script lang="ts">
+  import type { MessageEvent as ShaderMessage } from "@shader-studio/types";
+  import { getDefaultAuthoringMode } from '../../state/authoringModeState.svelte';
   import { onMount, onDestroy, untrack } from 'svelte';
 
   import type { FileDialogFileType } from '@shader-studio/types';
@@ -16,7 +18,30 @@
     suggestedPath?: string;
     fileType?: FileDialogFileType;
     allowCreate?: boolean;
-    postMessage?: (msg: { type: string; [key: string]: unknown }) => void;
+    allowSelect?: boolean;
+    selectLabel?: string;
+    allowInsert?: boolean;
+    showSelectWhenHidden?: boolean;
+    insertLabel?: string;
+    hidePath?: boolean;
+    onClear?: () => void;
+    existingModes?: ('hooks' | 'native')[];
+    clearEnabled?: boolean;
+    sourcePath?: string;
+    builtInSourcePath?: string;
+    vertexSpace?: string;
+    authoringMode?: 'hooks' | 'native';
+    createAuthoringMode?: 'hooks' | 'native';
+    passName?: string;
+    geometryType?: string;
+    outputCount?: number;
+    onCreated?: (result: {
+      path: string;
+      entryPoints?: { vertex?: string; fragment?: string; compute?: string };
+      entryPoint?: string;
+      authoringMode?: 'hooks' | 'native';
+    }) => void;
+    postMessage?: (msg: ShaderMessage) => void;
     onMessage?: (handler: (event: MessageEvent) => void) => void;
   }
 
@@ -33,10 +58,31 @@
     suggestedPath = '',
     fileType = 'glsl-buffer',
     allowCreate = true,
+    allowSelect = true,
+    selectLabel = 'Select',
+    allowInsert = false,
+    showSelectWhenHidden = false,
+    insertLabel = 'Insert',
+    hidePath = false,
+    onClear = undefined,
+    existingModes = [],
+    clearEnabled = !!value,
+    sourcePath = undefined,
+    builtInSourcePath = undefined,
+    vertexSpace = undefined,
+    authoringMode = undefined,
+    createAuthoringMode = undefined,
+    passName = undefined,
+    geometryType = undefined,
+    outputCount = undefined,
+    onCreated = undefined,
     postMessage = undefined,
     onMessage = undefined,
   }: Props = $props();
 
+  let selectedMode = $state<'hooks' | 'native' | null>(null);
+  const supportsNative = $derived(fileType.startsWith('wgsl-') || fileType.startsWith('slang-'));
+  const effectiveMode = $derived(supportsNative ? fileType.endsWith('-compute') ? 'native' : selectedMode ?? authoringMode ?? getDefaultAuthoringMode() : 'hooks');
   let pathInputFocused = $state(false);
   let localPath = $state(value);
   $effect(() => {
@@ -94,6 +140,7 @@
   let showCreate = $derived(allowCreate && !suppressCreate && (localPath === '' || !fileExists));
 
   let pendingRequestId: string | null = null;
+  let requestError = $state<string | null>(null);
 
   onMount(() => {
     if (onMessage) {
@@ -103,31 +150,58 @@
           event.data.payload?.requestId === pendingRequestId
         ) {
           pendingRequestId = null;
-          onPathChange?.(event.data.payload.path);
+          if (event.data.payload.path) {
+            requestError = null;
+            if (onCreated) {
+onCreated(event.data.payload);
+} else {
+onPathChange?.(event.data.payload.path);
+}
+          } else if (typeof event.data.payload.error === 'string' && event.data.payload.error) {
+            requestError = event.data.payload.error;
+          }
         }
       });
     }
   });
 
   function handleSelect() {
+    requestError = null;
     const requestId = crypto.randomUUID();
     pendingRequestId = requestId;
     postMessage?.({ type: 'selectFile', payload: { shaderPath, fileType, requestId } });
   }
 
   function handleCreate() {
+    requestError = null;
     const requestId = crypto.randomUUID();
     pendingRequestId = requestId;
-    postMessage?.({ type: 'createFile', payload: { shaderPath, suggestedPath, fileType, requestId } });
+    postMessage?.({
+      type: 'createFile',
+      payload: { shaderPath, suggestedPath, fileType, requestId, authoringMode: createAuthoringMode ?? effectiveMode, passName, outputCount },
+    });
+  }
+
+  function handleInsert() {
+    requestError = null;
+    const requestId = crypto.randomUUID();
+    pendingRequestId = requestId;
+    postMessage?.({
+      type: 'insertShaderSource',
+      payload: { shaderPath, sourcePath: effectiveMode === 'hooks' ? builtInSourcePath ?? sourcePath : sourcePath, fileType, requestId, authoringMode: effectiveMode, passName, outputCount, geometryType, vertexSpace },
+    });
   }
 </script>
 
 <div class="input-group">
-  <div class="input-row">
+  {#if !hidePath}<div class="input-row">
     <label for={inputId}>{label}</label>
     <input
       id={inputId}
       type="text"
+      autocomplete="off"
+      autocapitalize="off"
+      spellcheck={false}
       value={localPath}
       oninput={handlePathInput}
       onfocus={() => pathInputFocused = true}
@@ -138,13 +212,23 @@
       class:error={hasError}
       {placeholder}
     />
-  </div>
+  </div>{/if}
   {#if postMessage}
     <div class="input-actions">
-      <button class="select-file-btn" onclick={handleSelect}>Select</button>
+      {#if (!hidePath || showSelectWhenHidden) && allowSelect}<button class="select-file-btn" onclick={handleSelect}>{selectLabel}</button>{/if}
       {#if showCreate}
         <button class="create-file-btn" onclick={handleCreate}>Create</button>
       {/if}
+      {#if allowInsert}
+        {#if supportsNative && !fileType.endsWith('-compute')}
+        <select aria-label="Insert mode" value={effectiveMode} onchange={(event) => selectedMode = event.currentTarget.value as 'hooks' | 'native'}>
+          <option value="hooks">Built-in</option>
+          <option value="native">Native</option>
+        </select>
+        {/if}
+        {#if !existingModes.includes(effectiveMode)}<button class="insert-file-btn" onclick={handleInsert}>{insertLabel}</button>{/if}
+      {/if}
+      {#if onClear}<button class="select-file-btn" onclick={onClear} disabled={!clearEnabled}>Clear</button>{/if}
       {#if note}
         <span class="input-note">{note}</span>
       {/if}
@@ -152,6 +236,7 @@
   {:else if note}
     <span class="input-note">{note}</span>
   {/if}
+  {#if requestError}<p class="request-error" role="alert">{requestError}</p>{/if}
 </div>
 
 <style>
@@ -198,9 +283,14 @@
     gap: 6px;
     margin-top: 4px;
   }
+  .request-error { margin: 0; color: var(--vscode-errorForeground, #f48771); font-size: 12px; }
+  select { padding: 4px 6px; border-radius: 4px; font-size: 13px; color: var(--vscode-input-foreground, #ccc); background: var(--vscode-input-background, #3c3c3c); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, #3c3c3c)); }
+  select:focus { outline: 1px solid var(--vscode-focusBorder, #007acc); }
+  button:disabled { opacity: 0.5; cursor: default; }
 
   .select-file-btn,
-  .create-file-btn {
+  .create-file-btn,
+  .insert-file-btn {
     padding: 4px 12px;
     font-size: 13px;
     background: none;
@@ -213,7 +303,8 @@
   }
 
   .select-file-btn:hover,
-  .create-file-btn:hover {
+  .create-file-btn:hover,
+  .insert-file-btn:hover {
     color: var(--vscode-foreground, #cccccc);
     border-color: var(--vscode-focusBorder, #007acc);
   }

@@ -1,4 +1,5 @@
-import { findSlangAuthoredDeclarations } from "@shader-studio/types";
+import { isolateShaderEntryPoints } from "@shader-studio/types";
+import { findSlangAuthoredDeclarations, getShaderSourceFunctions } from "@shader-studio/types";
 import { buildSlangBindingPlan, type SlangBindingChannel } from "./SlangBindingPlan";
 import { stripComments } from "../util/ShaderText";
 // Slang ShaderToy authoring convention for the WebGPU pipeline.
@@ -137,6 +138,32 @@ function buildMeshPrelude(binding: number): string {
 
 [[vk::binding(${binding}, 0)]]
 ConstantBuffer<MeshUniforms> _mesh;
+
+#define iModelMatrix _mesh.model
+#define iViewProjectionMatrix _mesh.viewProjection
+#define iNormalMatrix _mesh.normalMatrix
+`;
+}
+
+function buildGeneratedMeshVertex(vertexCode: string, hasAuthoredHook: boolean): string {
+  const hook = vertexCode.trim() || (hasAuthoredHook ? "" : "void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {}");
+  return `${hook}
+struct MixedMeshVertexOut { float4 position : SV_Position; float2 uv : TEXCOORD0; float3 worldPosition : TEXCOORD1; float3 normal : TEXCOORD2; };
+[shader("vertex")] MixedMeshVertexOut ${SLANG_ENTRY_VERTEX}([[vk::location(0)]] float3 position : POSITION, [[vk::location(1)]] float3 normal : NORMAL, [[vk::location(2)]] float2 uv : TEXCOORD0, uint vertexID : SV_VertexID) { mainVertex(vertexID, position, normal, uv); MixedMeshVertexOut output; float4 world = mul(_mesh.model, float4(position, 1)); output.position = mul(_mesh.viewProjection, world); output.uv = uv; output.worldPosition = world.xyz; output.normal = mul(_mesh.normalMatrix, float4(normal, 0)).xyz; return output; }
+`;
+}
+function buildGeneratedMeshFragment(): string {
+  return `[shader("fragment")] float4 ${SLANG_ENTRY_FRAGMENT}(float2 uv : TEXCOORD0, float3 worldPosition : TEXCOORD1, float3 normal : TEXCOORD2) : SV_Target { iWorldPosition = worldPosition; iNormal = normal; iCameraPosition = _mesh.cameraPosition.xyz; return mainImage(uv * iResolution.xy); }
+`;
+}
+function buildGeneratedFullscreenVertex(vertexCode: string, hasAuthoredHook: boolean): string {
+  const hook = vertexCode.trim() || (hasAuthoredHook ? "" : "void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {}");
+  return `${hook}
+[shader("vertex")] float4 ${SLANG_ENTRY_VERTEX}(uint id : SV_VertexID) : SV_Position { float2 p[3] = {float2(-1,-1),float2(3,-1),float2(-1,3)}; float3 position = float3(p[id],0); float3 normal = float3(0,0,1); float2 uv = p[id] * .5 + .5; mainVertex(id,position,normal,uv); return float4(position,1); }
+`;
+}
+function buildGeneratedFullscreenFragment(): string {
+  return `[shader("fragment")] float4 ${SLANG_ENTRY_FRAGMENT}(float4 p : SV_Position) : SV_Target { return mainImage(float2(p.x, iResolution.y - p.y)); }
 `;
 }
 
@@ -183,8 +210,8 @@ MeshVertexOut ${SLANG_ENTRY_VERTEX}([[vk::location(0)]] float3 position : POSITI
 ${MESH_FRAGMENT_ENTRY_POINT}`;
 }
 
-function buildFullscreenEntryPoints(vertexCode: string): string {
-  if (!vertexCode.trim()) {
+function buildFullscreenEntryPoints(vertexCode: string, hasAuthoredHook = false): string {
+  if (!vertexCode.trim() && !hasAuthoredHook) {
     return ENTRY_POINTS;
   }
   return `${vertexCode}
@@ -204,8 +231,8 @@ const SLANG_VERTICES_SEED = "float3 position = float3(0, 0, 0); float3 normal = 
  * through the orbit camera like a mesh; clip space writes it straight to
  * SV_Position and shades with the real pixel coordinate.
  */
-function buildVerticesEntryPoints(vertexCode: string, space: VertexSpace): string {
-  const hook = vertexCode.trim() ? vertexCode : SLANG_VERTEX_HOOK_STUB;
+function buildVerticesEntryPoints(vertexCode: string, space: VertexSpace, hasAuthoredHook = false): string {
+  const hook = vertexCode.trim() ? vertexCode : hasAuthoredHook ? "" : SLANG_VERTEX_HOOK_STUB;
   if (space === "clip") {
     return `${hook}
 ${SLANG_CLIP_VERTEX_OUT}
@@ -268,6 +295,8 @@ export interface SlangWrapOptions {
    * immutable, so the remap cannot be injected into the user body like GLSL.
    */
   captureMode?: boolean;
+  /** Authored native render stages selected by the pass configuration. */
+  renderEntryPoints?: { vertex?: string; fragment?: string };
 }
 
 export interface SlangComputeWrapOptions {
@@ -378,6 +407,9 @@ ${bufferType}<${renderElementType(node.elementType)}> ${node.name};
 
 /** Wrap a user image-shader source into a full, compilable Slang module. */
 export function wrapSlangImageSource(userSource: string, options: SlangWrapOptions = {}): string {
+  if (options.vertexCode?.trim() === userSource.trim()) {
+    options = { ...options, vertexCode: undefined };
+  }
   const prelude = buildPrelude(getShaderToyChannelCount(options.channels), options.customUniforms);
   const trimmedCommonCode = (options.commonCode ?? "").trim();
   const commonCode = trimmedCommonCode ? `${trimmedCommonCode}\n` : "";
@@ -388,6 +420,19 @@ export function wrapSlangImageSource(userSource: string, options: SlangWrapOptio
     options.passKind ?? "render",
     buildSlangBindingPlan(options.channels ?? []).nextBinding,
   );
+  // Native stages retain the shared Shader Studio declarations but own their
+  // stage interfaces. Do not append the mainImage/mainVertex adapters.
+  if (options.renderEntryPoints && (options.renderEntryPoints.vertex || options.renderEntryPoints.fragment)) {
+    const mesh = isMeshGeometry(options.geometry);
+    const nativeBinding = buildSlangBindingPlan(options.channels ?? []).nextBinding + (options.storage?.length ?? 0);
+    const meshPrelude = mesh ? buildMeshPrelude(nativeBinding) : "";
+    const capturePrelude = options.captureMode ? buildCapturePrelude(nativeBinding + (mesh ? 1 : 0)) : "";
+    const vertexCode = options.vertexCode?.trim() ?? "";
+    const hasAuthoredHook = getShaderSourceFunctions(`${commonCode}\n${userSource}`, "slang").some((fn) => fn.name === "mainVertex");
+    const vertex = options.renderEntryPoints.vertex ? "" : mesh ? buildGeneratedMeshVertex(vertexCode, hasAuthoredHook) : buildGeneratedFullscreenVertex(vertexCode, hasAuthoredHook);
+    const fragment = options.renderEntryPoints.fragment ? "" : mesh ? buildGeneratedMeshFragment() : buildGeneratedFullscreenFragment();
+    return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${meshPrelude}${capturePrelude}#line 1\n${userSource}\n${vertex}${fragment}`;
+  }
   if (options.captureMode) {
     // Capture uniforms bind after the channel texture/sampler pairs and storage buffers.
     const captureBinding = buildSlangBindingPlan(options.channels ?? []).nextBinding + (options.storage?.length ?? 0);
@@ -398,25 +443,27 @@ export function wrapSlangImageSource(userSource: string, options: SlangWrapOptio
   // above the user source (after commonCode and custom storage declarations)
   // to keep user diagnostics on the user's real line numbers.
   const meshBinding = buildSlangBindingPlan(options.channels ?? []).nextBinding + (options.storage?.length ?? 0);
-  const { meshPrelude, entryPoints } = buildGeometryEntryPoints(options, meshBinding);
+  const { meshPrelude, entryPoints } = buildGeometryEntryPoints(options, meshBinding, `${commonCode}\n${userSource}`);
   return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${meshPrelude}#line 1\n${userSource}\n${entryPoints}`;
 }
 
 /** The camera-uniform prelude (meshes and world-space vertices only) and entry points for a pass's geometry. */
-function buildGeometryEntryPoints(options: SlangWrapOptions, meshBinding: number): { meshPrelude: string; entryPoints: string } {
+function buildGeometryEntryPoints(options: SlangWrapOptions, meshBinding: number, authoredSource: string): { meshPrelude: string; entryPoints: string } {
   const vertexCode = options.vertexCode?.trim() ?? "";
+  const hasAuthoredHook = getShaderSourceFunctions(authoredSource, "slang")
+    .some((fn) => fn.name === "mainVertex");
   if (isMeshGeometry(options.geometry)) {
-    return { meshPrelude: buildMeshPrelude(meshBinding), entryPoints: buildMeshEntryPoints(vertexCode || SLANG_VERTEX_HOOK_STUB) };
+    return { meshPrelude: buildMeshPrelude(meshBinding), entryPoints: buildMeshEntryPoints(vertexCode || (hasAuthoredHook ? "" : SLANG_VERTEX_HOOK_STUB)) };
   }
   if (options.geometry === "vertices") {
     const space = options.vertexSpace ?? DEFAULT_VERTEX_SPACE;
     // Clip space ignores the camera, so only world space binds mesh uniforms.
     return {
       meshPrelude: space === "world" ? buildMeshPrelude(meshBinding) : "",
-      entryPoints: buildVerticesEntryPoints(vertexCode, space),
+      entryPoints: buildVerticesEntryPoints(vertexCode, space, hasAuthoredHook),
     };
   }
-  return { meshPrelude: "", entryPoints: buildFullscreenEntryPoints(vertexCode) };
+  return { meshPrelude: "", entryPoints: buildFullscreenEntryPoints(vertexCode, hasAuthoredHook) };
 }
 
 function buildOutputPrelude(binding: number, outputLayers: number, imageFormat: "rgba16f" | "rgba32f" = "rgba16f"): string {
@@ -489,6 +536,11 @@ export function getNativeComputeEntryPoints(source: string): Array<{ name: strin
     }
   }
   return entries;
+}
+
+/** Blank unselected native stage declarations without moving diagnostic lines. */
+export function isolateSlangEntryPoints(source: string, selected: readonly string[], commonCode = ""): string {
+  return isolateShaderEntryPoints(source, "slang", selected, [commonCode]);
 }
 
 export function getNativeComputeWorkgroupSize(source: string): [number, number, number] | null {
