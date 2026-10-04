@@ -62,6 +62,8 @@
     },
     "rendering": {
       "entry": [
+        // Separate webview bundle built by extension/esbuild.js.
+        "src/trace/WgslTraceWebview.ts",
         "src/index.ts",
         "src/**/*.{bench,test,test-d,spec,spec-d}.?(c|m)[jt]s?(x)",
         "src/**/test/**/*.{ts,svelte}",

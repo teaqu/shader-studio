@@ -83,6 +83,6 @@ describe('WGSL trace messages', () => {
           sites: [], events: [] },
       },
     };
-    expect(message.payload.recording.path).toBe('/shader/image.wgsl');
+    expect(message.payload.recording?.path).toBe('/shader/image.wgsl');
   });
 });

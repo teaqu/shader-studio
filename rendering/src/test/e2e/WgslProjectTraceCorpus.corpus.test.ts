@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type {
+  ShaderProgram,
   WgslProjectTraceRequest,
   WgslProjectTraceTarget,
   WgslTraceRecording,
@@ -163,7 +164,7 @@ function storageSnapshot(
         const snapshot = await harness.engine.readStorageBuffer(
           name,
           0,
-          storage.count,
+          (storage as { count: number }).count,
         );
         return [name, new Uint8Array(snapshot.data)] as const;
       },
@@ -218,7 +219,7 @@ describe("WGSL project trace: configured corpus", () => {
         const harness = createShaderCanvasHarness("wgsl");
         try {
           harness.resize(64, 64);
-          await harness.compile(project);
+          await harness.compile(project as ShaderProgram);
           const targets = traceEngine(harness).getWgslTraceTargets();
           const passCount = Object.keys(project.config?.passes ?? {}).filter(
             (name) => name !== "common",
@@ -285,7 +286,7 @@ describe("WGSL project trace: configured corpus", () => {
       const harness = createShaderCanvasHarness("wgsl");
       try {
         harness.resize(64, 64);
-        await harness.compile(project);
+        await harness.compile(project as ShaderProgram);
         const region = await harness.renderAndReadRegion(renderTime(project));
         const engine = traceEngine(harness);
         const targets = engine.getWgslTraceTargets();

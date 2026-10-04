@@ -198,7 +198,10 @@ export function loadShaderFixtureCorpus(root) {
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 
-/** Raw sources, including auxiliary passes without their own project config. */
+/** Raw sources, including auxiliary passes without their own project config.
+ * @param {string} root
+ * @param {string} extension
+ */
 export function loadShaderFixtureSources(root, extension) {
   if (!fs.existsSync(root)) {
     throw new Error(`Shader fixture corpus not found at ${root}`);
