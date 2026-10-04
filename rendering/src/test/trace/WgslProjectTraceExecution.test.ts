@@ -29,7 +29,7 @@ function gpuHarness() {
     }),
     createCommandEncoder: vi.fn(() => encoder), createSampler: vi.fn(() => ({})), createBindGroup: vi.fn(() => ({})),
     createBindGroupLayout: vi.fn(() => ({})), createPipelineLayout: vi.fn(() => ({})),
-    createShaderModule: vi.fn(() => ({ getCompilationInfo: vi.fn(async () => ({ messages: [] as Array<{ type: string; message: string }> })) })),
+    createShaderModule: vi.fn((_descriptor: GPUShaderModuleDescriptor) => ({ getCompilationInfo: vi.fn(async () => ({ messages: [] as Array<{ type: string; message: string }> })) })),
     createRenderPipelineAsync: vi.fn(async () => ({ getBindGroupLayout: () => ({}) })), createComputePipelineAsync: vi.fn(async () => ({ getBindGroupLayout: () => ({}) })),
     queue: { submit: vi.fn(), writeBuffer: vi.fn((target: ReturnType<typeof buffer>, offset: number, value: ArrayBuffer | ArrayBufferView) => {
       const bytes = ArrayBuffer.isView(value) ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength) : new Uint8Array(value);
@@ -260,7 +260,7 @@ describe('configured WGSL trace resource execution', () => {
       return original(descriptor);
     });
     await expect(captureWgslProjectTrace(frozen, request)).rejects.toThrow('primitive selector invalid');
-    expect(h.buffers.filter(item => item !== frozen.mesh?.vertexBuffer && item !== frozen.mesh?.indexBuffer).every(item => item.destroy.mock.calls.length === 1)).toBe(true);
+    expect(h.buffers.filter(item => (item as unknown) !== frozen.mesh?.vertexBuffer && (item as unknown) !== frozen.mesh?.indexBuffer).every(item => item.destroy.mock.calls.length === 1)).toBe(true);
   });
 
 });
