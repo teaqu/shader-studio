@@ -89,14 +89,14 @@ export class ShaderRecorder {
 
   async captureLiveScreenshot(
     config: ScreenshotConfig,
-    engine: RenderingEngine,
+    engine: Pick<RenderingEngine, "captureCurrentFrame">,
   ): Promise<Blob> {
     this.outputNotice = null;
     const image = await engine.captureCurrentFrame();
     return this.encodeImageData(image, config.format);
   }
 
-  recordLive(config: RecordingConfig, engine: RenderingEngine): Promise<Blob> {
+  recordLive(config: RecordingConfig, engine: Pick<RenderingEngine, "getCanvas">): Promise<Blob> {
     this.outputNotice = null;
     if (config.format === "gif") {
       return Promise.reject(new Error("Live GIF recording is not supported"));

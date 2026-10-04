@@ -3,6 +3,8 @@ import type { RecordingConfig, ScreenshotConfig, ShaderInfo } from "./recording/
 import { recordingStore } from "./stores/recordingStore";
 import type { RenderingEngineInterface as RenderingEngine } from "@shader-studio/rendering";
 
+type LiveCaptureEngine = Pick<RenderingEngine, "captureCurrentFrame" | "getCanvas">;
+
 function buildCaptureFilename(shaderPath: string, extension: string, capturedAt = new Date()): string {
   const leaf = shaderPath.replaceAll("\\", "/").split("/").pop() ?? "";
   const withoutExtension = leaf.replace(/\.[^.]+$/, "");
@@ -29,7 +31,7 @@ export class RecordingManager {
     private getShaderContext: () => ShaderInfo,
     private sendFile: (blob: Blob, defaultName: string, filters: Record<string, string[]>) => void | Promise<void>,
     onStateChanged?: (isRecording: boolean) => void,
-    private getLiveEngine?: () => RenderingEngine,
+    private getLiveEngine?: () => LiveCaptureEngine,
   ) {
     this.onStateChanged = onStateChanged ?? null;
     this.unsubRecording = recordingStore.subscribe((s) => {
@@ -125,7 +127,7 @@ export class RecordingManager {
     this.recorder.stopLiveRecording();
   }
 
-  private requireLiveEngine(): RenderingEngine {
+  private requireLiveEngine(): LiveCaptureEngine {
     const engine = this.getLiveEngine?.();
     if (!engine) {
       throw new Error("Live capture is unavailable because the shader viewer is not ready");
