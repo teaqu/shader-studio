@@ -64,6 +64,15 @@ async function openProjectTrace(vscode, path) {
   return frame;
 }
 
+async function pressTraceStep(vscode, key) {
+  // A DAP stack can be available before the workbench enables stepping.
+  // Parallel VS Code windows also share keyboard focus on macOS.
+  const action = key === 'F10' ? /^Step Over/ : /^Step Into/;
+  await expect(vscode.window.locator('.debug-toolbar').getByRole('button', { name: action })).toBeEnabled();
+  await vscode.window.bringToFront();
+  await vscode.window.keyboard.press(key);
+}
+
 async function nextTraceLocals(vscode) {
   return vscode.evaluateInHost(async vscode => {
     const session = vscode.debug.activeDebugSession;
@@ -162,7 +171,7 @@ test('starts a GPU recording from the inspected pixel and steps it in the shader
       }
     })).toBe(2);
     // Exercise the same action as the user pressing Step Over in the toolbar.
-    await vscode.window.keyboard.press('F10');
+    await pressTraceStep(vscode, 'F10');
     await expect.poll(() => vscode.evaluateInHost(async vscode => {
       return (await vscode.debug.activeDebugSession.customRequest('stackTrace', { threadId: 1 })).stackFrames[0].line;
     })).toBe(3);
@@ -304,10 +313,10 @@ test('traces an installed WGSL Image pass with Common and a named texture @gpu',
       .toBe('shader-studio-wgsl-trace');
     // Exercise the actual debug toolbar keybindings: Step Over stays at the
     // Image call site, while Step Into enters Common.
-    await vscode.window.keyboard.press('F10');
+    await pressTraceStep(vscode, 'F10');
     await expect.poll(() => vscode.evaluateInHost(async vscode =>
       (await vscode.debug.activeDebugSession.customRequest('stackTrace', { threadId: 1 })).stackFrames[0].source.path)).toBe(expected.image);
-    await vscode.window.keyboard.press('F11');
+    await pressTraceStep(vscode, 'F11');
     await expect.poll(() => vscode.evaluateInHost(async vscode =>
       (await vscode.debug.activeDebugSession.customRequest('stackTrace', { threadId: 1 })).stackFrames[0].source.path)).toBe(expected.common);
     const commonDeclaration = await traceFrameLocals(vscode);
@@ -316,7 +325,7 @@ test('traces an installed WGSL Image pass with Common and a named texture @gpu',
     expect(commonDeclaration.stack.totalFrames).toBeGreaterThanOrEqual(2);
     expect(commonDeclaration.stack.stackFrames[1].source.path).toBe(expected.image);
     expect(commonDeclaration.variables.variables.find(variable => variable.name === 'commonValue')).toBeUndefined();
-    await vscode.window.keyboard.press('F10');
+    await pressTraceStep(vscode, 'F10');
     const commonTrace = await traceFrameLocals(vscode);
     expect(commonTrace.stack.stackFrames[0].source.path).toBe(expected.common);
     expect(commonTrace.variables.variables.find(variable => variable.name === 'commonValue')?.value).toBe('0.25');
