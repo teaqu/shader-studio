@@ -735,8 +735,8 @@
     "environment": "gpu"
   },
   {
-    "id": "5265205325de056db891-cdb0efeb6d1ebe0e7403:",
-    "title": "wgsl-step-trace.e2e.mjs › launches explicit uniforms and steps else-if with unavailable aggregate values @gpu",
+    "id": "5265205325de056db891-72e9a32887f4b41d88c7:",
+    "title": "wgsl-step-trace.e2e.mjs › launches explicit uniforms and expands aggregate trace locals in VS Code @gpu",
     "environment": "gpu"
   },
   {
