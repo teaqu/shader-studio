@@ -24,6 +24,11 @@
     availableBufferNames = [],
   }: Props = $props();
   const captureUnavailable = isVSCodeEnvironment();
+  function selectCapture(type: 'webcam' | 'screen') {
+    if (!captureUnavailable) {
+      onSelect({ type });
+    }
+  }
 
   const bufferList = $derived.by(() => {
     const all = new Set([...MIN_BUFFERS, ...availableBufferNames]);
@@ -117,22 +122,14 @@ return;
     <button class="misc-card" class:selected={tempInput?.type === "webcam"} aria-label="Webcam"
       aria-disabled={captureUnavailable}
       use:tooltip={captureUnavailable ? 'Webcam is unavailable in VS Code. Open Shader Studio in a browser to use this input.' : ''}
-      onclick={() => {
- if (!captureUnavailable) {
-onSelect({ type: "webcam" });
-} 
-}}>
+      onclick={() => selectCapture('webcam')}>
       <ChannelPreview channelInput={{ type: "webcam" }} {getWebviewUri} {audioVideoController} />
       <div class="misc-card-label">Webcam</div>
     </button>
     <button class="misc-card" class:selected={tempInput?.type === "screen"} aria-label="Screen"
       aria-disabled={captureUnavailable}
       use:tooltip={captureUnavailable ? 'Screen is unavailable in VS Code. Open Shader Studio in a browser to use this input.' : ''}
-      onclick={() => {
- if (!captureUnavailable) {
-onSelect({ type: "screen" });
-} 
-}}>
+      onclick={() => selectCapture('screen')}>
       <ChannelPreview channelInput={{ type: "screen" }} {getWebviewUri} {audioVideoController} />
       <div class="misc-card-label">Screen</div>
     </button>

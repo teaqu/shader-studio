@@ -14,6 +14,11 @@
   }
   let { input, audioVideoController, getWebviewUri, onSelect }: Props = $props();
   const captureUnavailable = isVSCodeEnvironment();
+  function selectLiveAudio(type: 'microphone' | 'system-audio') {
+    if (!captureUnavailable) {
+      onSelect({ type });
+    }
+  }
 </script>
 
 <div class="live-audio-options">
@@ -21,11 +26,7 @@
     <button class:selected={input?.type === option.type} aria-label={option.label}
       aria-disabled={captureUnavailable}
       use:tooltip={captureUnavailable ? `${option.label} is unavailable in VS Code. Open Shader Studio in a browser to use this input.` : ''}
-      onclick={() => {
- if (!captureUnavailable) {
-onSelect({ type: option.type as 'microphone' | 'system-audio' });
-} 
-}}>
+      onclick={() => selectLiveAudio(option.type as 'microphone' | 'system-audio')}>
       <ChannelPreview channelInput={{ type: option.type as 'microphone' | 'system-audio' }} {getWebviewUri} {audioVideoController} />
       <span>{option.label}</span>
     </button>
