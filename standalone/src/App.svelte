@@ -48,14 +48,18 @@
     offlinePreparation: { state: 'idle' },
   });
   let storageStatus = $state<WorkspaceStorageStatus | null>(null);
+  let storageProtectionPending = $state(false);
   let workspaceFileInput: HTMLInputElement;
   const session = $derived(getViewerSession());
   const explorerApi = transport.getShaderExplorerHostApi();
 
   onMount(() => {
-    void transport.getStorageStatus?.().then((status) => {
+    void transport.getStorageStatus?.().then(async (status) => {
       storageStatus = status;
-    });
+      if (status.backend === 'indexeddb' && status.persistSupported && !status.persisted) {
+        await requestPersistentStorage();
+      }
+    }).catch(() => { /* Storage inspection must not interrupt editing. */ });
     const stopPersistence = transport.onPersistenceStatus?.((status) => {
       persistenceStatus = status;
     }) ?? (() => {});
@@ -164,7 +168,15 @@
   }
 
   async function requestPersistentStorage() {
-    storageStatus = await transport.requestPersistentStorage();
+    if (storageProtectionPending) {
+      return;
+    }
+    storageProtectionPending = true;
+    try {
+      storageStatus = await transport.requestPersistentStorage();
+    } catch { /* Keep the current status and allow a manual retry. */ } finally {
+      storageProtectionPending = false;
+    }
   }
 
   async function prepareOffline() {
@@ -285,7 +297,24 @@
           <button onclick={exportWorkspace}>Export Workspace Backup</button>
           <button onclick={() => workspaceFileInput.click()}>Import Workspace Backup…</button>
           {#if storageStatus?.backend === 'indexeddb' && storageStatus.persistSupported && !storageStatus.persisted}
-            <button onclick={requestPersistentStorage}>Protect local storage</button>
+            <button onclick={requestPersistentStorage} disabled={storageProtectionPending}>Request storage protection</button>
+          {/if}
+          {#if storageStatus}
+            <p class="storage-notice" aria-live="polite">
+              {#if storageStatus.backend === 'session'}
+                Session-only: work will not survive closing the app. Export a workspace backup to keep it.
+              {:else if storageProtectionPending}
+                Work saves automatically. Requesting storage protection…
+              {:else if storageStatus.persisted}
+                Work saves automatically. Storage protection is enabled. Clearing site data still deletes your work; export backups to keep a separate copy.
+              {:else}
+                Work saves automatically.
+                {storageStatus.persisted === null && storageStatus.persistSupported
+                  ? 'Storage protection could not be confirmed.'
+                  : storageStatus.persistSupported ? 'Storage protection has not been granted.' : 'Your browser does not support storage protection.'}
+                The browser may remove local work if space runs low. Export workspace backups to keep a separate copy.
+              {/if}
+            </p>
           {/if}
           {#if pwaStatus.supported}
             <button onclick={() => pwa?.checkForUpdate()}>Check for Updates</button>
@@ -366,6 +395,7 @@
   .dropdown-menu button { display: grid; grid-template-columns: 16px 1fr; gap: 4px; width: 100%; border: 0; text-align: left; white-space: nowrap; }
   .dropdown-menu button:not([role="menuitemcheckbox"]) { display: block; }
   .dropdown-menu .danger-action { color: var(--vscode-errorForeground, #f48771); }
+  .storage-notice { max-width: 280px; margin: 4px 0; padding: 8px 12px; font-size: 12px; line-height: 1.5; white-space: normal; color: var(--vscode-descriptionForeground); border-top: 1px solid var(--vscode-panel-border); }
   .alpha-notice { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 3px 10px; font-size: 11px; text-align: center; color: var(--vscode-descriptionForeground); border-bottom: 1px solid var(--vscode-panel-border); }
   .dismiss-alpha-notice { flex: 0 0 auto; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; color: inherit; background: transparent; font: inherit; font-size: 18px; line-height: 1; cursor: pointer; }
   .dismiss-alpha-notice:hover { background: var(--vscode-list-hoverBackground); }

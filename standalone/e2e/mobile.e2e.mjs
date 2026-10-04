@@ -1,6 +1,33 @@
 import { expect, test } from '@playwright/test';
 import { readWorkspaceFiles } from './workspace-store.mjs';
 
+test('storage protection is requested automatically and the Workspace menu explains a declined request', async ({ page }) => {
+  await page.addInitScript(() => {
+    let protectedStorage = false;
+    window.__storageProtectionRequests = 0;
+    Object.defineProperty(navigator.storage, 'persisted', { value: async () => protectedStorage });
+    Object.defineProperty(navigator.storage, 'persist', { value: async () => {
+      window.__storageProtectionRequests++;
+      protectedStorage = window.__storageProtectionRequests > 1;
+      return protectedStorage;
+    } });
+  });
+  await page.goto('/');
+  await expect.poll(() => page.evaluate(() => window.__storageProtectionRequests)).toBe(1);
+  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
+  const menu = page.getByRole('menu', { name: 'Workspace' });
+  await expect(menu).toContainText('Work saves automatically.');
+  await expect(menu).toContainText('The browser may remove local work if space runs low.');
+  await menu.getByRole('button', { name: 'Request storage protection' }).click();
+  await expect(menu).toBeHidden();
+  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
+  await expect(menu).toContainText('Storage protection is enabled.');
+  await expect(menu.getByRole('button', { name: 'Request storage protection' })).toHaveCount(0);
+  expect(await page.evaluate(() => window.__storageProtectionRequests)).toBe(2);
+  const box = await menu.boundingBox();
+  expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize().width);
+});
+
 for (const [explorerWidth, previewWidth] of [[180, 280], [350, 700]]) {
 test(`preview and explorer keep user widths ${explorerWidth}/${previewWidth} while the editor absorbs window resizing`, async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 900 });

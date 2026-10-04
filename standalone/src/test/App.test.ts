@@ -229,14 +229,73 @@ describe('standalone App', () => {
     expect(pwa.checkForUpdate).toHaveBeenCalledOnce();
   });
 
-  it('requests eviction protection only from a user action', async () => {
+  it('automatically requests storage protection when it has not been granted', async () => {
     const transport = createTransport();
     render(App, { props: { transport } });
+    await waitFor(() => expect(transport.requestPersistentStorage).toHaveBeenCalledOnce());
     await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
-    const protect = await screen.findByRole('button', { name: 'Protect local storage' });
+    expect(await screen.findByText(/Storage protection is enabled/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Request storage protection' })).toBeNull();
+  });
+
+  it('explains automatic saving and allows retry when protection is declined', async () => {
+    const transport = createTransport();
+    transport.requestPersistentStorage.mockResolvedValueOnce({ backend: 'indexeddb', persisted: false, persistSupported: true });
+    render(App, { props: { transport } });
+    await waitFor(() => expect(transport.requestPersistentStorage).toHaveBeenCalledOnce());
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+    expect(await screen.findByText(/Work saves automatically.*browser may remove local work/)).toBeTruthy();
+    await fireEvent.click(screen.getByRole('button', { name: 'Request storage protection' }));
+    await waitFor(() => expect(transport.requestPersistentStorage).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText(/Storage protection is enabled/)).toBeTruthy();
+  });
+
+  it.each([
+    { backend: 'indexeddb', persisted: true, persistSupported: true },
+    { backend: 'indexeddb', persisted: null, persistSupported: false },
+    { backend: 'session', persisted: false, persistSupported: true },
+  ])('does not request protection for an already protected or unsupported workspace: %j', async (status) => {
+    const transport = createTransport();
+    transport.getStorageStatus.mockResolvedValue(status);
+    render(App, { props: { transport } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+    await tick();
     expect(transport.requestPersistentStorage).not.toHaveBeenCalled();
-    await fireEvent.click(protect);
-    expect(transport.requestPersistentStorage).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('button', { name: 'Request storage protection' })).toBeNull();
+  });
+
+  it('keeps saving feedback and a retry available when the protection request fails', async () => {
+    const transport = createTransport();
+    transport.requestPersistentStorage.mockRejectedValue(new Error('denied'));
+    render(App, { props: { transport } });
+    await waitFor(() => expect(transport.requestPersistentStorage).toHaveBeenCalledOnce());
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+    expect(await screen.findByRole('button', { name: 'Request storage protection' })).toBeTruthy();
+    expect(screen.getByRole('status', { name: 'Online · Saved' })).toBeTruthy();
+  });
+
+  it('reports unknown protection without claiming a request was declined', async () => {
+    const transport = createTransport();
+    transport.requestPersistentStorage.mockResolvedValue({ backend: 'indexeddb', persisted: null, persistSupported: true });
+    render(App, { props: { transport } });
+    await waitFor(() => expect(transport.requestPersistentStorage).toHaveBeenCalledOnce());
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+    expect(await screen.findByText(/Storage protection could not be confirmed/)).toBeTruthy();
+  });
+
+  it('disables manual requests while the automatic request is pending', async () => {
+    const transport = createTransport();
+    let finish!: (status: { backend: string; persisted: boolean; persistSupported: boolean }) => void;
+    transport.requestPersistentStorage.mockReturnValue(new Promise((resolve) => {
+      finish = resolve;
+    }));
+    render(App, { props: { transport } });
+    await waitFor(() => expect(transport.requestPersistentStorage).toHaveBeenCalledOnce());
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+    expect(screen.getByRole('button', { name: 'Request storage protection' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByText(/Requesting storage protection/)).toBeTruthy();
+    finish({ backend: 'indexeddb', persisted: true, persistSupported: true });
+    expect(await screen.findByText(/Storage protection is enabled/)).toBeTruthy();
   });
 
   it('exports a portable workspace backup from the Workspace menu', async () => {
