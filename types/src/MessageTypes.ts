@@ -326,6 +326,7 @@ export interface CreateFileMessage extends BaseMessage {
     requestId: string;
     authoringMode?: WebGPUAuthoringMode;
     passName?: string;
+    geometryType?: string;
     /** Requested native render colour attachments (one when omitted). */
     outputCount?: number;
   };

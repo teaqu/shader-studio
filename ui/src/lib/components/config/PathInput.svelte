@@ -20,6 +20,7 @@
     sourcePath?: string;
     authoringMode?: 'hooks' | 'native';
     passName?: string;
+    geometryType?: string;
     outputCount?: number;
     onCreated?: (result: {
       path: string;
@@ -48,6 +49,7 @@
     sourcePath = undefined,
     authoringMode = undefined,
     passName = undefined,
+    geometryType = undefined,
     outputCount = undefined,
     onCreated = undefined,
     postMessage = undefined,
@@ -156,7 +158,7 @@
     pendingRequestId = requestId;
     postMessage?.({
       type: 'insertShaderSource',
-      payload: { shaderPath, sourcePath, fileType, requestId, authoringMode, passName, outputCount },
+      payload: { shaderPath, sourcePath, fileType, requestId, authoringMode, passName, outputCount, geometryType },
     });
   }
 </script>

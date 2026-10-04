@@ -5,6 +5,13 @@ import { findSlangChannelDeclarationCollisions, isolateSlangEntryPoints, SLANG_E
 const image = 'float4 mainImage(float2 fragCoord) { return float4(1); }';
 
 describe('wrapSlangImageSource', () => {
+  it.each(['fullscreen', 'vertices', 'cube'] as const)('includes a shared %s hook source only once', geometry => {
+    const source = 'void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {}\n' + image;
+    const wrapped = wrapSlangImageSource(source, { geometry, vertexCode: source });
+    expect(wrapped.match(/void mainVertex\s*\(/g)).toHaveLength(1);
+    expect(wrapped.match(/float4 mainImage\s*\(/g)).toHaveLength(1);
+    expect(wrapped).toContain('mainVertex(vertexID, position, normal, uv);');
+  });
   it('uses selected native render stages without generated ShaderToy adapters', () => {
     const source = '[shader("vertex")] float4 full(uint id : SV_VertexID) : SV_Position { return 0; }\n[shader("fragment")] float4 paint() : SV_Target { return 1; }';
     const wrapped = wrapSlangImageSource(source, { renderEntryPoints: { vertex: 'full', fragment: 'paint' } });
@@ -23,17 +30,17 @@ describe('wrapSlangImageSource', () => {
   it('supplies the default vertex hook for mesh geometry without an authored hook', () => {
     const wrapped = wrapSlangImageSource('float4 mainImage(float2 coord) { return 1; }', { geometry: 'sphere' });
     expect(wrapped.match(/void mainVertex\s*\(/g)).toHaveLength(1);
-    expect(wrapped).toContain('mainVertex(position, normal, uv);');
+    expect(wrapped).toContain('mainVertex(vertexID, position, normal, uv);');
   });
 
   it('uses an authored same-file mainVertex hook without adding a duplicate stub', () => {
-    const source = 'void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {}\nfloat4 mainImage(float2 coord) { return 1; }';
+    const source = 'void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {}\nfloat4 mainImage(float2 coord) { return 1; }';
     const wrapped = wrapSlangImageSource(source);
     expect(wrapped.match(/void mainVertex\s*\(/g)).toHaveLength(1);
   });
 
   it('uses a Common-defined mainVertex hook without adding a duplicate stub', () => {
-    const common = 'void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {}';
+    const common = 'void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {}';
     const wrapped = wrapSlangImageSource('float4 mainImage(float2 coord) { return 1; }', { commonCode: common });
     expect(wrapped.match(/void mainVertex\s*\(/g)).toHaveLength(1);
   });

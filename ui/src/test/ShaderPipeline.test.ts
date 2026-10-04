@@ -1013,6 +1013,13 @@ describe('ShaderPipeline — unlocked vertex-source routing', () => {
     } as unknown as MessageEvent;
   }
 
+  it.each(["glsl", "slang", "wgsl"])("routes a shared %s root as main after a config update", (language) => {
+    const path = "/project/shared." + language;
+    lastEventWith({ type: "shaderSource", path, code: fragmentCode,
+      bufferPathMap: { Image: path, "__shader_studio_vertex__:Image": path } });
+    expect(pipeline.getShaderMessageTarget({ path, code: fragmentCode + vertexCode })).toEqual({ kind: "main" });
+  });
+
   it('routes a linked vertex source as vertex when unlocked', () => {
     const ownerPath = '/project/main.wgsl';
     const vertexPath = '/project/main.vert.wgsl';

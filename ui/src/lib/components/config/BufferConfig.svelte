@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import VerticesControls from './VerticesControls.svelte';
   import { ConfigValidator, resolveRenderState } from "@shader-studio/rendering";
   import { BufferConfig as BufferConfigModel } from "../../BufferConfig";
   import type {
@@ -38,7 +39,6 @@
     DEFAULT_INSTANCE_COUNT,
     DEFAULT_MESH_TOPOLOGY,
     DEFAULT_SAMPLE_COUNT,
-    DEFAULT_VERTEX_COUNT,
     DEFAULT_VERTEX_SPACE,
     DEFAULT_VERTEX_TOPOLOGY,
     MAX_INSTANCE_COUNT,
@@ -479,7 +479,9 @@
   }
 
   function handleGeometryChange(type: GeometryType) {
-    if (passType === 'compute') return;
+    if (passType === 'compute') {
+return;
+}
     vertexCountError = null;
     instanceCountError = null;
     // Fullscreen and vertices reject a mesh topology; keep it for a switch back.
@@ -973,46 +975,8 @@
           </div>
         {/if}
         {#if verticesGeometry}
-          <div class="resolution-row">
-            <label class="resolution-label" for="vertex-count-{bufferName}">Vertices</label>
-            <input
-              id="vertex-count-{bufferName}"
-              class="vertex-count-input"
-              type="number"
-              min="1"
-              max={MAX_VERTEX_COUNT}
-              step="1"
-              placeholder={String(DEFAULT_VERTEX_COUNT)}
-              value={verticesGeometry.vertexCount ?? ''}
-              onchange={handleVertexCountChange}
-            />
-          </div>
-          {#if vertexCountError}<span class="input-note" role="alert">{vertexCountError}</span>{/if}
-          <div class="resolution-row">
-            <label class="resolution-label" for="topology-{bufferName}">Topology</label>
-            <select
-              id="topology-{bufferName}"
-              value={verticesGeometry.topology ?? DEFAULT_VERTEX_TOPOLOGY}
-              onchange={handleTopologyChange}
-            >
-              <option value="triangle-list">Triangle list</option>
-              <option value="triangle-strip">Triangle strip</option>
-              <option value="line-list">Line list</option>
-              <option value="line-strip">Line strip</option>
-              <option value="point-list">Point list</option>
-            </select>
-          </div>
-          <div class="resolution-row">
-            <label class="resolution-label" for="space-{bufferName}">Space</label>
-            <select
-              id="space-{bufferName}"
-              value={verticesGeometry.space ?? DEFAULT_VERTEX_SPACE}
-              onchange={handleSpaceChange}
-            >
-              <option value="world">World (orbit camera)</option>
-              <option value="clip">Clip (screen)</option>
-            </select>
-          </div>
+          <VerticesControls {bufferName} geometry={verticesGeometry} {vertexCountError}
+            onVertexCountChange={handleVertexCountChange} onTopologyChange={handleTopologyChange} onSpaceChange={handleSpaceChange} />
         {/if}
         {#if instancedGeometry}
           <div class="resolution-row">
@@ -1078,6 +1042,10 @@
           <PathInput
             value={config.vertex ?? ""}
             onPathChange={handleVertexPathChange}
+            allowInsert={true}
+            sourcePath={insertionSourcePath}
+            authoringMode="hooks"
+            geometryType={selectedGeometry}
             fileType={vertexFileType}
             suggestedPath={vertexSuggestedPath}
             {shaderPath}

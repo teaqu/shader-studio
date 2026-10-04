@@ -92,6 +92,12 @@ function storageNode(name: string, binding: number, elementType: string, builtin
 }
 
 describe("wrapWgslImageSource uniform block", () => {
+  it.each(['fullscreen', 'vertices', 'cube'] as const)('includes a shared %s hook source only once', geometry => {
+    const source = 'fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {}\nfn mainImage(coord: vec2f) -> vec4f { return vec4f(1); }';
+    const wrapped = wrapWgslImageSource(source, { geometry, vertexCode: source }).source;
+    expect(wrapped.match(/fn mainVertex\s*\(/g)).toHaveLength(1);
+    expect(wrapped.match(/fn mainImage\s*\(/g)).toHaveLength(1);
+  });
   it("keeps selected native stages, removes unrelated entries, and initializes both", () => {
     const source = `@vertex fn full() -> @builtin(position) vec4f { return vec4f(); }
 @fragment fn paint() -> @location(0) vec4f { return vec4f(iTime); }
@@ -126,14 +132,14 @@ fn computeHelper() { writeOutput(vec2u(), vec4f()); }
   });
 
   it("uses an authored same-file mainVertex hook without adding a duplicate stub", () => {
-    const source = `fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {}
+    const source = `fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {}
 fn mainImage(coord: vec2f) -> vec4f { return vec4f(); }`;
     const wrapped = wrapWgslImageSource(source).source;
     expect(wrapped.match(/fn mainVertex\(/g)).toHaveLength(1);
   });
 
   it("uses a Common-defined mainVertex hook without adding a duplicate stub", () => {
-    const common = `fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {}`;
+    const common = `fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {}`;
     const wrapped = wrapWgslImageSource("fn mainImage(coord: vec2f) -> vec4f { return vec4f(); }", { commonCode: common }).source;
     expect(wrapped.match(/fn mainVertex\(/g)).toHaveLength(1);
   });

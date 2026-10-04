@@ -245,6 +245,10 @@ export class ShaderPipeline {
     const messagePath = message.path;
     if (messagePath) {
       const currentMessage = this.lastEvent?.data as ShaderSourceMessage | undefined;
+      // A source shared by both stages still owns config updates for the pass.
+      if (currentMessage?.path && this.pathsEqual(currentMessage.path, messagePath)) {
+        return null;
+      }
       const linked = Object.entries(currentMessage?.bufferPathMap ?? {}).find(
         ([passName, passPath]) => parseVertexPassKey(passName) !== undefined
           && this.pathsEqual(passPath, messagePath),

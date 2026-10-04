@@ -56,11 +56,9 @@ import { FULLSCREEN_VERTEX_COUNT } from "@shader-studio/types";
 import { nativeRasterCaptureContext } from "./NativeRasterCaptureContext";
 import { extractStructSizes } from "./wgslStructSize";
 import { OrbitCamera, type CameraMatrices } from "../preview3d/OrbitCamera";
-import { createModelMatrix, createNormalMatrix3 } from "../preview3d/math";
 import { ShaderCameraSession } from "../preview3d/ShaderCameraSession";
 import { meshUniformData } from "./MeshUniformData";
 import { meshDepthCompare } from "./MeshDepthCompare";
-import { renderOutputAttachments } from "./RenderOutputAttachments";
 import { debugPlanDisplaySource } from "./DebugPlanDisplaySource";
 import { captureFeedbackChannels } from "./CaptureFeedbackChannels";
 import { RenderedCaptureState } from "./RenderedCaptureState";
@@ -2768,14 +2766,17 @@ export class WebGPURenderingEngine implements RenderingEngine {
       const [clearR, clearG, clearB, clearA] = renderState.clear;
       // With MSAA the pass draws into the multisampled texture and resolves into
       // its output; the samples themselves are not needed after the pass.
-      const msaaView = pipeline.getMsaaView?.() ?? null;
+      const outputViews = pass.output === "canvas" ? [targetView] : pipeline.getCurrentOutputViews();
       const renderPass = encoder.beginRenderPass({
-        colorAttachments: [{
-          ...(msaaView ? { view: msaaView, resolveTarget: targetView, storeOp: "discard" as const } : { view: targetView, storeOp: "store" as const }),
-          clearValue: { r: clearR, g: clearG, b: clearB, a: clearA },
-          loadOp: "clear",
-        }],
-        ...(pass.geometry && pass.geometry !== "fullscreen" && pipeline.getDepthView?.() ? {
+        colorAttachments: outputViews.map((targetView, index) => {
+          const msaaView = pipeline.getMsaaView?.(index) ?? null;
+          return {
+            ...(msaaView ? { view: msaaView, resolveTarget: targetView, storeOp: "discard" as const } : { view: targetView, storeOp: "store" as const }),
+            clearValue: { r: clearR, g: clearG, b: clearB, a: clearA },
+            loadOp: "clear",
+          };
+        }),
+        ...(pipeline.getDepthView?.() ? {
           depthStencilAttachment: { view: pipeline.getDepthView()!, depthClearValue: depthClearValue(renderState), depthLoadOp: "clear", depthStoreOp: "store" },
         } : {}),
       });

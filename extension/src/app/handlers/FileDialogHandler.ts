@@ -8,7 +8,7 @@ import { writeWorkspaceTypeDefs } from "../WorkspaceTypeDefs";
 import { Logger } from "../services/Logger";
 import { getConfigPathForShaderPath } from "../ShaderConfigPaths";
 import type { ErrorMessage } from "@shader-studio/types";
-import { GLSL_EXTENSIONS, SCRIPT_EXTENSIONS, TEXTURE_EXTENSIONS, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, CUBEMAP_EXTENSIONS, WGSL_EXTENSIONS, createNativeComputeSource, createNativeRenderSource, shaderLanguageForPath } from "@shader-studio/types";
+import { GLSL_EXTENSIONS, SCRIPT_EXTENSIONS, TEXTURE_EXTENSIONS, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, CUBEMAP_EXTENSIONS, WGSL_EXTENSIONS, createVertexHookSource, createNativeComputeSource, createNativeRenderSource, shaderLanguageForPath } from "@shader-studio/types";
 
 function fileTypeToFilters(fileType: string): { [name: string]: string[] } {
   switch (fileType) {
@@ -78,7 +78,7 @@ export class FileDialogHandler {
   }
 
   async handleCreateFile(
-    payload: { shaderPath: string; suggestedPath: string; fileType: string; requestId: string; authoringMode?: 'hooks' | 'native'; passName?: string; outputCount?: number },
+    payload: { shaderPath: string; suggestedPath: string; fileType: string; requestId: string; authoringMode?: 'hooks' | 'native'; passName?: string; outputCount?: number; geometryType?: string },
     respondFn: (msg: any) => void,
   ): Promise<void> {
     try {
@@ -173,22 +173,23 @@ export class FileDialogHandler {
   }
 
   async handleInsertShaderSource(
-    payload: { shaderPath: string; sourcePath?: string; fileType: string; requestId: string; authoringMode?: 'hooks' | 'native'; passName?: string; outputCount?: number },
+    payload: { shaderPath: string; sourcePath?: string; fileType: string; requestId: string; authoringMode?: 'hooks' | 'native'; passName?: string; outputCount?: number; geometryType?: string },
     respondFn: (msg: any) => void,
   ): Promise<void> {
     const fail = (error: string) => respondFn({ type: 'fileSelected', payload: { path: '', requestId: payload.requestId, error } });
     try {
-      if (payload.authoringMode !== 'native') {
+      const isVertex = /^(glsl|slang|wgsl)-vertex$/.test(payload.fileType);
+      if (!isVertex && payload.authoringMode !== 'native') {
         fail('Insert into current source requires native WebGPU entry points.');
         return;
       }
       const language = payload.fileType.startsWith('wgsl-') ? 'wgsl'
-        : payload.fileType.startsWith('slang-') ? 'slang' : null;
+        : payload.fileType.startsWith('slang-') ? 'slang' : isVertex ? 'glsl' : null;
       if (!language) {
         fail('Native source insertion is supported for WGSL and Slang only.');
         return;
       }
-      if (payload.fileType !== `${language}-buffer` && payload.fileType !== `${language}-compute`) {
+      if (!isVertex && payload.fileType !== `${language}-buffer` && payload.fileType !== `${language}-compute`) {
         fail('Insert supports Buffer and Compute pass sources only.');
         return;
       }
@@ -205,12 +206,16 @@ export class FileDialogHandler {
       const document = await vscode.workspace.openTextDocument(uri);
       const source = document.getText();
       const isCompute = payload.fileType.endsWith('-compute');
-      const generated = isCompute
-        ? createNativeComputeSource(language, source, payload.passName ?? 'Compute')
-        : createNativeRenderSource(language, source, payload.passName ?? 'Buffer', nativeOutputCount(payload.outputCount));
+      const generated = isVertex
+        ? { text: createVertexHookSource(language, source, payload.geometryType === 'vertices'), entryPoints: undefined }
+        : isCompute
+          ? createNativeComputeSource(language as 'wgsl' | 'slang', source, payload.passName ?? 'Compute')
+          : createNativeRenderSource(language as 'wgsl' | 'slang', source, payload.passName ?? 'Buffer', nativeOutputCount(payload.outputCount));
       const edit = new vscode.WorkspaceEdit();
-      edit.insert(uri, document.positionAt(source.length), generated.text);
-      if (!await vscode.workspace.applyEdit(edit)) {
+      if (generated.text) {
+        edit.insert(uri, document.positionAt(source.length), generated.text);
+      }
+      if (generated.text && !await vscode.workspace.applyEdit(edit)) {
         fail('Could not insert the shader entry point.');
         return;
       }

@@ -218,8 +218,8 @@ export class ShaderPipeline {
             modelPath: pass.geometry.resolved_path ?? pass.geometry.path,
             modelMesh: pass.geometry.mesh,
           } : {}),
-          path: this.isBufferPass(pass) ? (pass as BufferPass).path : undefined,
-          resolution: this.isBufferPass(pass) ? (pass as BufferPass).resolution : undefined,
+          path: this.isBufferPass(renderPass) ? (renderPass as BufferPass).path : undefined,
+          resolution: this.isBufferPass(renderPass) ? (renderPass as BufferPass).resolution : undefined,
           ...this.resolveOutputFormat(passName, pass),
         };
       })

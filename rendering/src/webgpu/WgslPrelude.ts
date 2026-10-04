@@ -508,9 +508,9 @@ const WGSL_VERTICES_SEED = `  var position = vec3<f32>(0.0, 0.0, 0.0);
  * through the orbit camera like a mesh; clip space writes it straight to the
  * position builtin and shades with the real pixel coordinate.
  */
-function buildVerticesEntryPoints(vertexCode: string, space: VertexSpace): WgslEntryPoints {
+function buildVerticesEntryPoints(vertexCode: string, space: VertexSpace, hasAuthoredHook = false): WgslEntryPoints {
   const hook = vertexCode.trim() ? vertexCode : "";
-  const hookSource = hook === "" ? `${WGSL_VERTEX_HOOK} {}` : hook;
+  const hookSource = hook === "" && !hasAuthoredHook ? `${WGSL_VERTEX_HOOK} {}` : hook;
   const entries = space === "clip"
     ? `${WGSL_CLIP_VERTEX_OUT}
 @vertex fn ${WGSL_ENTRY_VERTEX}(@builtin(vertex_index) vid: u32, @builtin(instance_index) iid: u32) -> _ss_VertexUvOut {
@@ -548,12 +548,13 @@ ${entries}`,
     vertexStartLine: 1,
     vertexLineCount: hook === "" ? 0 : hookSource.split("\n").length,
   };
+}
 function buildGeneratedMeshVertex(vertexCode: string, hasAuthoredHook: boolean): string {
   const hook = vertexCode.trim() || (hasAuthoredHook ? "" : `${WGSL_VERTEX_HOOK} {}`);
   return `${hook}
 struct _ss_MixedMeshVertexOut { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f32>, @location(1) worldPosition: vec3<f32>, @location(2) normal: vec3<f32>, }
-@vertex fn ${WGSL_ENTRY_VERTEX}(@location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) uv: vec2<f32>) -> _ss_MixedMeshVertexOut {
-  _ss_initGlobals(); var p = position; var n = normal; var t = uv; mainVertex(&p, &n, &t);
+@vertex fn ${WGSL_ENTRY_VERTEX}(@location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) uv: vec2<f32>, @builtin(vertex_index) vid: u32) -> _ss_MixedMeshVertexOut {
+  _ss_initGlobals(); var p = position; var n = normal; var t = uv; mainVertex(vid, &p, &n, &t);
   let world = _ss_mesh.model * vec4f(p, 1); return _ss_MixedMeshVertexOut(_ss_mesh.viewProjection * world, t, world.xyz, (_ss_mesh.normalMatrix * vec4f(n, 0)).xyz);
 }
 `;
@@ -565,7 +566,7 @@ function buildGeneratedMeshFragment(): string {
 function buildGeneratedFullscreenVertex(vertexCode: string, hasAuthoredHook: boolean): string {
   const hook = vertexCode.trim() || (hasAuthoredHook ? "" : `${WGSL_VERTEX_HOOK} {}`);
   return `${hook}
-@vertex fn ${WGSL_ENTRY_VERTEX}(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4<f32> { _ss_initGlobals(); var p = vec3f(array<vec2f, 3>(vec2f(-1,-1),vec2f(3,-1),vec2f(-1,3))[vid], 0); var n = vec3f(0,0,1); var uv = p.xy * .5 + .5; mainVertex(&p, &n, &uv); return vec4f(p,1); }
+@vertex fn ${WGSL_ENTRY_VERTEX}(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4<f32> { _ss_initGlobals(); var p = vec3f(array<vec2f, 3>(vec2f(-1,-1),vec2f(3,-1),vec2f(-1,3))[vid], 0); var n = vec3f(0,0,1); var uv = p.xy * .5 + .5; mainVertex(vid, &p, &n, &uv); return vec4f(p,1); }
 `;
 }
 function buildGeneratedFullscreenFragment(): string {
@@ -993,7 +994,7 @@ function assembleWgslImageSource(userSource: string, options: WgslWrapOptions = 
   const hoisted = hoistWgslDirectives(
     userSource,
     options.commonCode ?? "",
-    options.vertexCode ?? "",
+    options.vertexCode?.trim() === userSource.trim() ? "" : options.vertexCode ?? "",
   );
   const strippedCommonCode = hoisted.commonCode;
   const commonCode = strippedCommonCode ? `${strippedCommonCode}\n` : "";
@@ -1052,7 +1053,7 @@ function assembleWgslImageSource(userSource: string, options: WgslWrapOptions = 
     const meshPrelude = space === "world" ? buildMeshPrelude(plan.nextBinding + (options.storage?.length ?? 0)) : "";
     const body = `${prefix}${meshPrelude}${commonCode}`;
     const head = `${body}\n${strippedUserSource}\n${storageDeclarations.afterCommon}`;
-    const entries = buildVerticesEntryPoints(vertexCode, space);
+    const entries = buildVerticesEntryPoints(vertexCode, space, hasAuthoredHook);
     return {
       source: `${head}${entries.source}`,
       preludeLineCount: countLines(body) + 1,

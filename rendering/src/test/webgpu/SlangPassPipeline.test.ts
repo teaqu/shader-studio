@@ -73,6 +73,20 @@ const storageB: StorageBindingNode = {
 };
 
 describe("SlangPassPipeline", () => {
+  it("allocates a multisample resolve target for every native colour output", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Scene", width: 64, height: 64, output: "texture", outputCount: 2, geometry: "cube", channels: [],
+      entryPoints: { vertex: "vertices", fragment: "scene" },
+      renderState: { clear: [0, 0, 0, 1], blend: "opaque", depth: { test: true, write: true, compare: "less" }, cull: "none", samples: 4 },
+    });
+    await pass.rebuild('struct Outputs { @location(0) colour: vec4f, @location(1) data: vec4f, }\n@fragment fn scene() -> Outputs { return Outputs(); }');
+    expect(device.createRenderPipeline.mock.calls[0]![0].fragment.targets).toHaveLength(2);
+    expect(device.createTexture.mock.calls.filter(call => call[0].sampleCount === 4 && call[0].format !== "depth24plus")).toHaveLength(2);
+    expect(pass.getMsaaView(0)).not.toBeNull();
+    expect(pass.getMsaaView(1)).not.toBeNull();
+    expect(pass.getMsaaView(2)).toBeNull();
+  });
   it("allocates and swaps every MRT attachment as one ping-pong set", async () => {
     const device = fakeDevice();
     const pass = new SlangPassPipeline(device, "bgra8unorm", {

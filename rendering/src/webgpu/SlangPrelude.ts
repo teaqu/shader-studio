@@ -146,10 +146,10 @@ ConstantBuffer<MeshUniforms> _mesh;
 }
 
 function buildGeneratedMeshVertex(vertexCode: string, hasAuthoredHook: boolean): string {
-  const hook = vertexCode.trim() || (hasAuthoredHook ? "" : "void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {}");
+  const hook = vertexCode.trim() || (hasAuthoredHook ? "" : "void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {}");
   return `${hook}
 struct MixedMeshVertexOut { float4 position : SV_Position; float2 uv : TEXCOORD0; float3 worldPosition : TEXCOORD1; float3 normal : TEXCOORD2; };
-[shader("vertex")] MixedMeshVertexOut ${SLANG_ENTRY_VERTEX}([[vk::location(0)]] float3 position : POSITION, [[vk::location(1)]] float3 normal : NORMAL, [[vk::location(2)]] float2 uv : TEXCOORD0) { mainVertex(position, normal, uv); MixedMeshVertexOut output; float4 world = mul(_mesh.model, float4(position, 1)); output.position = mul(_mesh.viewProjection, world); output.uv = uv; output.worldPosition = world.xyz; output.normal = mul(_mesh.normalMatrix, float4(normal, 0)).xyz; return output; }
+[shader("vertex")] MixedMeshVertexOut ${SLANG_ENTRY_VERTEX}([[vk::location(0)]] float3 position : POSITION, [[vk::location(1)]] float3 normal : NORMAL, [[vk::location(2)]] float2 uv : TEXCOORD0, uint vertexID : SV_VertexID) { mainVertex(vertexID, position, normal, uv); MixedMeshVertexOut output; float4 world = mul(_mesh.model, float4(position, 1)); output.position = mul(_mesh.viewProjection, world); output.uv = uv; output.worldPosition = world.xyz; output.normal = mul(_mesh.normalMatrix, float4(normal, 0)).xyz; return output; }
 `;
 }
 function buildGeneratedMeshFragment(): string {
@@ -157,9 +157,9 @@ function buildGeneratedMeshFragment(): string {
 `;
 }
 function buildGeneratedFullscreenVertex(vertexCode: string, hasAuthoredHook: boolean): string {
-  const hook = vertexCode.trim() || (hasAuthoredHook ? "" : "void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {}");
+  const hook = vertexCode.trim() || (hasAuthoredHook ? "" : "void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {}");
   return `${hook}
-[shader("vertex")] float4 ${SLANG_ENTRY_VERTEX}(uint id : SV_VertexID) : SV_Position { float2 p[3] = {float2(-1,-1),float2(3,-1),float2(-1,3)}; float3 position = float3(p[id],0); float3 normal = float3(0,0,1); float2 uv = p[id] * .5 + .5; mainVertex(position,normal,uv); return float4(position,1); }
+[shader("vertex")] float4 ${SLANG_ENTRY_VERTEX}(uint id : SV_VertexID) : SV_Position { float2 p[3] = {float2(-1,-1),float2(3,-1),float2(-1,3)}; float3 position = float3(p[id],0); float3 normal = float3(0,0,1); float2 uv = p[id] * .5 + .5; mainVertex(id,position,normal,uv); return float4(position,1); }
 `;
 }
 function buildGeneratedFullscreenFragment(): string {
@@ -231,8 +231,8 @@ const SLANG_VERTICES_SEED = "float3 position = float3(0, 0, 0); float3 normal = 
  * through the orbit camera like a mesh; clip space writes it straight to
  * SV_Position and shades with the real pixel coordinate.
  */
-function buildVerticesEntryPoints(vertexCode: string, space: VertexSpace): string {
-  const hook = vertexCode.trim() ? vertexCode : SLANG_VERTEX_HOOK_STUB;
+function buildVerticesEntryPoints(vertexCode: string, space: VertexSpace, hasAuthoredHook = false): string {
+  const hook = vertexCode.trim() ? vertexCode : hasAuthoredHook ? "" : SLANG_VERTEX_HOOK_STUB;
   if (space === "clip") {
     return `${hook}
 ${SLANG_CLIP_VERTEX_OUT}
@@ -407,6 +407,9 @@ ${bufferType}<${renderElementType(node.elementType)}> ${node.name};
 
 /** Wrap a user image-shader source into a full, compilable Slang module. */
 export function wrapSlangImageSource(userSource: string, options: SlangWrapOptions = {}): string {
+  if (options.vertexCode?.trim() === userSource.trim()) {
+    options = { ...options, vertexCode: undefined };
+  }
   const prelude = buildPrelude(getShaderToyChannelCount(options.channels), options.customUniforms);
   const trimmedCommonCode = (options.commonCode ?? "").trim();
   const commonCode = trimmedCommonCode ? `${trimmedCommonCode}\n` : "";
@@ -457,7 +460,7 @@ function buildGeometryEntryPoints(options: SlangWrapOptions, meshBinding: number
     // Clip space ignores the camera, so only world space binds mesh uniforms.
     return {
       meshPrelude: space === "world" ? buildMeshPrelude(meshBinding) : "",
-      entryPoints: buildVerticesEntryPoints(vertexCode, space),
+      entryPoints: buildVerticesEntryPoints(vertexCode, space, hasAuthoredHook),
     };
   }
   return { meshPrelude: "", entryPoints: buildFullscreenEntryPoints(vertexCode, hasAuthoredHook) };

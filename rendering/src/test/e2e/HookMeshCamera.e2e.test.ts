@@ -50,8 +50,8 @@ describe("hook mesh camera fallback", () => {
     it.each(["wgsl", "slang"] as const)(`disables and reenables the %s viewer camera with ${authoredHook ? "authored" : "built-in"} mainVertex`, { timeout: 30_000 }, async language => {
       const harness = createShaderCanvasHarness(language);
       const hook = language === "wgsl"
-        ? "fn mainVertex(p: ptr<function, vec3f>, n: ptr<function, vec3f>, uv: ptr<function, vec2f>) { *p *= 0.5; }"
-        : "void mainVertex(inout float3 p, inout float3 n, inout float2 uv) { p *= 0.5; }";
+        ? "fn mainVertex(vertexIndex: u32, p: ptr<function, vec3f>, n: ptr<function, vec3f>, uv: ptr<function, vec2f>) { *p *= 0.5; }"
+        : "void mainVertex(uint vertexIndex, inout float3 p, inout float3 n, inout float2 uv) { p *= 0.5; }";
       const image = (authoredHook ? hook : "") + hookSource[language];
       try {
         harness.resize(96, 96);

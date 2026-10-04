@@ -1,6 +1,12 @@
 import type { CaptureCompileContext } from "../capture/VariableCapturer";
 import type { RenderPassNode } from "../types/PassGraph";
 import type { WebGPUMeshResources } from "./WebGPUMeshResources";
+import { geometryInstanceCount, verticesVertexCount } from "../types/Geometry";
+
+export function nativeRasterUsesCamera(native: CaptureCompileContext["nativeRender"]): boolean {
+  return native !== undefined && native.geometry !== "fullscreen"
+    && !(native.geometry === "vertices" && native.vertexSpace === "clip");
+}
 
 /** Capture keeps the installed pass identity while resolving geometry buffers live. */
 export function nativeRasterCaptureContext(
@@ -17,6 +23,8 @@ export function nativeRasterCaptureContext(
     ...(pass.vertexSrc ? { vertexCode: pass.vertexSrc } : {}),
     ...(pass.entryPoints.fragment ? { fragmentEntryPoint: pass.entryPoints.fragment } : {}),
     geometry: pass.geometry,
+    ...(pass.topology ? { topology: pass.topology } : {}),
+    ...(pass.space ? { vertexSpace: pass.space } : {}),
     ...(pass.useViewerCamera === undefined ? {} : { useViewerCamera: pass.useViewerCamera }),
     width: pass.width,
     height: pass.height,
@@ -26,6 +34,10 @@ export function nativeRasterCaptureContext(
     draw: encoder => {
       if (pass.geometry === "fullscreen") {
         encoder.draw(3);
+        return;
+      }
+      if (pass.geometry === "vertices") {
+        encoder.draw(verticesVertexCount(pass), geometryInstanceCount(pass));
         return;
       }
       const meshes = resources();

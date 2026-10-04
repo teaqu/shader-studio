@@ -979,6 +979,27 @@ suite('FileDialogHandler Test Suite', () => {
 
 
   suite('handleInsertShaderSource', () => {
+    for (const language of ['glsl', 'slang', 'wgsl']) {
+      test(`inserts a ${language} vertex hook into the source and reuses an existing hook`, async () => {
+        const sourcePath = vscode.Uri.file(`/test/image.${language}`).fsPath;
+        let source = '// fragment source';
+        const position = new vscode.Position(0, source.length);
+        sandbox.stub(vscode.workspace, 'openTextDocument').callsFake(async () => ({
+          getText: () => source, positionAt: () => position,
+        } as unknown as vscode.TextDocument));
+        const apply = sandbox.stub(vscode.workspace, 'applyEdit').callsFake(async edit => {
+          source += edit.entries()[0]![1][0]!.newText;
+          return true;
+        });
+        await handler.handleInsertShaderSource({ shaderPath: sourcePath, fileType: `${language}-vertex`,
+          requestId: 'vertex', authoringMode: 'hooks', geometryType: 'vertices' }, respondFn);
+        assert.ok(source.includes('corners[vertexIndex % 3'));
+        assert.deepStrictEqual(respondFn.firstCall.args[0].payload, { path: sourcePath, requestId: 'vertex' });
+        await handler.handleInsertShaderSource({ shaderPath: sourcePath, fileType: `${language}-vertex`,
+          requestId: 'again', authoringMode: 'hooks' }, respondFn);
+        assert.strictEqual(apply.callCount, 1);
+      });
+    }
     test('rejects a requested WGSL insertion into a Slang target before opening or editing it', async () => {
       const openDocument = sandbox.stub(vscode.workspace, 'openTextDocument');
       const applyEdit = sandbox.stub(vscode.workspace, 'applyEdit');

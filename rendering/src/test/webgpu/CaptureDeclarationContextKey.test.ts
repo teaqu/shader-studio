@@ -10,6 +10,12 @@ const base = {
 };
 
 describe("captureDeclarationContextKey", () => {
+  it("invalidates procedural capture for changes in topology and coordinate space", () => {
+    const original = { nativeRender: { geometry: "vertices" as const, width: 16, height: 16 } };
+    const key = captureDeclarationContextKey(original);
+    expect(captureDeclarationContextKey({ nativeRender: { ...original.nativeRender, topology: "point-list" } })).not.toBe(key);
+    expect(captureDeclarationContextKey({ nativeRender: { ...original.nativeRender, vertexSpace: "clip" } })).not.toBe(key);
+  });
   it("treats the default viewer camera as enabled and invalidates for the disabled depth rule", () => {
     const implicit = captureDeclarationContextKey(base);
     const enabled = captureDeclarationContextKey({ nativeRender: { ...base.nativeRender, useViewerCamera: true } });

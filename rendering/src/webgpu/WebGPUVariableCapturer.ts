@@ -1,3 +1,4 @@
+import { nativeRasterUsesCamera } from "./NativeRasterCaptureContext";
 /// <reference types="@webgpu/types" />
 import type {
   IVariableCapturer,
@@ -301,7 +302,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     }
 
     const meshUniformBuffer = this.createMeshUniformSnapshot(rasterContext);
-    if (rasterContext && rasterContext.geometry !== "fullscreen" && !meshUniformBuffer) {
+    if (nativeRasterUsesCamera(rasterContext) && !meshUniformBuffer) {
       this.errors.record("Native mesh capture requires a frozen mesh uniform snapshot.");
       this.releaseChannelSnapshot(channelSnapshot);
       return null;
@@ -418,10 +419,10 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
   }
 
   private createMeshUniformSnapshot(rasterContext: CaptureCompileContext["nativeRender"]): GPUBuffer | undefined {
-    if (!rasterContext || rasterContext.geometry === "fullscreen") {
+    if (!nativeRasterUsesCamera(rasterContext)) {
       return undefined;
     }
-    const data = rasterContext.meshUniformData?.();
+    const data = rasterContext?.meshUniformData?.();
     const snapshot = data && new Float32Array(data);
     const buffer = createNativeMeshUniformBuffer(this.device, snapshot);
     if (buffer) {
@@ -548,7 +549,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     meshUniformBuffer?: GPUBuffer,
     nativeRaster = false,
   ): GPUBindGroup | null {
-    const nativeMesh = nativeRaster && this.compileContext.nativeRender?.geometry !== "fullscreen";
+    const nativeMesh = nativeRaster && nativeRasterUsesCamera(this.compileContext.nativeRender);
     const result = createCaptureBindGroup(
       this.device, layout, channels, resources, storage, storageBuffers, this.sampler,
       this.uniformBuffer, this.captureUniformBuffer, meshUniformBuffer, nativeMesh,

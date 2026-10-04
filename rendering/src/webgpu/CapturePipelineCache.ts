@@ -1,3 +1,4 @@
+import { nativeRasterUsesCamera } from "./NativeRasterCaptureContext";
 /// <reference types="@webgpu/types" />
 import type { DebugInstrumentationPlan } from "@shader-studio/types";
 import type { CaptureCompileContext, CaptureCustomUniform } from "../capture/VariableCapturer";
@@ -29,7 +30,7 @@ export async function compileCapturePipeline(
   try {
     const native = context.nativeRender && (debugPlan?.nativeRender || (context.nativeRender.vertexEntryPoint && !context.nativeRender.fragmentEntryPoint)) ? context.nativeRender : undefined;
     const module = device.createShaderModule({ code: allowNonUniformDerivatives(result.wgsl) });
-    const bindGroupLayout = device.createBindGroupLayout({ entries: captureBindGroupLayoutEntries(channels, storage, Boolean(native), native !== undefined && native.geometry !== "fullscreen") });
+    const bindGroupLayout = device.createBindGroupLayout({ entries: captureBindGroupLayoutEntries(channels, storage, Boolean(native), nativeRasterUsesCamera(native)) });
     const descriptor = capturePipelineDescriptor(device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }), module, native, debugPlan?.nativeRender?.fragmentEntryPoint, debugPlan?.nativeRender?.output ?? 0);
     const pipeline = device.createRenderPipelineAsync ? await device.createRenderPipelineAsync(descriptor) : device.createRenderPipeline(descriptor);
     return { cached: { pipeline, bindGroupLayout, lastUsed: performance.now() } };

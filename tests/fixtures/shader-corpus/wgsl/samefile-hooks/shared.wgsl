@@ -1,5 +1,5 @@
 // Legacy hooks may live together in one WGSL file. No `vertex` path is needed.
-fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {
+fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {
   (*position).xy = (*position).xy * 0.72;
 }
 

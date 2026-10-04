@@ -74,7 +74,9 @@ export interface CaptureCompileContext {
     vertexEntryPoint?: string;
     vertexCode?: string;
     fragmentEntryPoint?: string;
-    geometry: "fullscreen" | "plane" | "sphere" | "cube" | "model";
+    geometry: "fullscreen" | "vertices" | "plane" | "sphere" | "cube" | "model";
+    topology?: GPUPrimitiveTopology;
+    vertexSpace?: "world" | "clip";
     width: number;
     height: number;
     /** Native render attachment count; capture reads attachment zero for now. */

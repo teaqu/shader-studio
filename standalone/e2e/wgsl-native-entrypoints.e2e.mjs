@@ -63,7 +63,7 @@ test('WGSL native Insert appends one buffer and one compute entry point, then pe
   await expect(buffer.getByLabel('Vertex function')).toHaveValue('');
   await buffer.getByRole('button', { name: 'Add output' }).click();
   await expect(buffer.getByLabel('Output 1 name')).toBeVisible();
-  await buffer.getByRole('button', { name: 'Insert', exact: true }).click();
+  await buffer.locator('.config-item').first().getByRole('button', { name: 'Insert', exact: true }).click();
   await expect(buffer.getByLabel('Vertex function')).toHaveValue('BufferAVertex');
   await expect(buffer.getByLabel('Fragment function')).toHaveValue('BufferAFragment');
 

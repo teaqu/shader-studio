@@ -13,6 +13,8 @@ export function captureDeclarationContextKey(context: CaptureCompileContext): st
       vertexEntryPoint: context.nativeRender.vertexEntryPoint,
       fragmentEntryPoint: context.nativeRender.fragmentEntryPoint,
       geometry: context.nativeRender.geometry,
+      topology: context.nativeRender.topology ?? "triangle-list",
+      vertexSpace: context.nativeRender.vertexSpace ?? "world",
       vertexCode: context.nativeRender.vertexCode,
       outputCount: context.nativeRender.outputCount ?? 1,
       writesDepth: context.nativeRender.writesDepth ?? false,

@@ -35,6 +35,34 @@ async function createHost(options: ConstructorParameters<typeof WebExtensionHost
 }
 
 describe('WebExtensionHost', () => {
+  it.each(['glsl', 'slang', 'wgsl'])('inserts and reuses a vertex hook in a shared %s source', async language => {
+    const sourcePath = `/shaders/shared.${language}`;
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), [{ path: sourcePath,
+      contents: '// fragment source', createdAt: 1, modifiedAt: 1 }]);
+    const host = new WebExtensionHost(workspace);
+    const receive = vi.fn();
+    host.onViewerMessage(receive);
+    const message = { type: 'insertShaderSource', payload: { shaderPath: sourcePath, sourcePath,
+      fileType: `${language}-vertex`, authoringMode: 'hooks', geometryType: 'vertices', requestId: 'vertex' } };
+    await host.handleViewerMessage(message);
+    const inserted = workspace.readText(sourcePath);
+    expect(inserted).toContain('corners[vertexIndex % 3');
+    expect(receive).toHaveBeenCalledWith({ type: 'fileSelected', payload: { path: sourcePath, requestId: 'vertex' } });
+    await host.handleViewerMessage(message);
+    expect(workspace.readText(sourcePath)).toBe(inserted);
+  });
+
+  it('rejects vertex insertion into a different source language', async () => {
+    const host = await createHost();
+    const receive = vi.fn();
+    host.onViewerMessage(receive);
+    await host.handleViewerMessage({ type: 'insertShaderSource', payload: {
+      shaderPath: '/shaders/aurora.glsl', fileType: 'wgsl-vertex', requestId: 'wrong', authoringMode: 'hooks',
+    } });
+    expect(receive).toHaveBeenLastCalledWith({ type: 'fileSelected', payload: {
+      path: '', requestId: 'wrong', error: 'Insert source language must match the target source language.',
+    } });
+  });
   it('uses shared settings for language services and broadcasts live preference changes', async () => {
     const values = new Map<string, string>();
     const settings = new StandaloneSettings({

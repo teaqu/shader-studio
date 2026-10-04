@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { nativeRasterCaptureContext } from "../../webgpu/NativeRasterCaptureContext";
+import { nativeRasterCaptureContext, nativeRasterUsesCamera } from "../../webgpu/NativeRasterCaptureContext";
 import type { RenderPassNode } from "../../types/PassGraph";
 
 function pass(overrides: Partial<RenderPassNode> = {}): RenderPassNode {
@@ -15,6 +15,21 @@ function encoder() {
 }
 
 describe("nativeRasterCaptureContext", () => {
+  it.each([['fullscreen', undefined, false], ['cube', undefined, true], ['vertices', 'clip', false], ['vertices', 'world', true]] as const)(
+    "resolves camera bindings for %s %s", (geometry, vertexSpace, expected) => {
+      expect(nativeRasterUsesCamera({ geometry, vertexSpace, width: 1, height: 1 })).toBe(expected);
+    });
+  it("draws configured procedural vertices without a mesh buffer", () => {
+    const resources = vi.fn();
+    const context = nativeRasterCaptureContext(pass({ geometry: "vertices", vertexCount: 12, instanceCount: 2,
+      topology: "point-list", space: "clip" }), resources)!;
+    const draw = encoder();
+    context.draw!(draw as unknown as GPURenderPassEncoder);
+    expect(draw.draw).toHaveBeenCalledWith(12, 2);
+    expect(resources).not.toHaveBeenCalled();
+    expect(draw.setVertexBuffer).not.toHaveBeenCalled();
+    expect(context).toMatchObject({ topology: "point-list", vertexSpace: "clip" });
+  });
   it("returns undefined for missing and legacy hook passes", () => {
     const resources = vi.fn();
     expect(nativeRasterCaptureContext(undefined, resources as any)).toBeUndefined();
