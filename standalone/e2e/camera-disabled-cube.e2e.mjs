@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { workspace } from './language-service-fixtures.mjs';
 
 const sources = {
+  glsl: `void mainImage(out vec4 color, vec2 coord) { color = vec4(abs(iWorldPosition) * 0.65 + vec3(0.08), 1.0); }`,
   wgsl: `fn mainImage(coord: vec2f) -> vec4f {
   return vec4f(abs(iWorldPosition) * 0.65 + vec3f(0.08), 1.0);
 }`,
@@ -34,6 +35,15 @@ for (const [language, source] of Object.entries(sources)) {
     await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
     const camera = page.getByLabel('Use viewer camera', { exact: true });
     const canvas = page.getByTestId('web-preview').locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
+    if (language === 'glsl') {
+      await page.getByRole('button', { name: 'Settings', exact: true }).click();
+      const settings = page.getByRole('dialog', { name: 'Settings' });
+      await settings.getByLabel('Use viewer camera', { exact: true }).uncheck();
+      await settings.getByRole('button', { name: 'Done' }).click();
+      await expect(camera).not.toBeChecked();
+      await expect.poll(() => hasColor(canvas)).toBe(true);
+      await camera.check();
+    }
     await expect(camera).toBeChecked();
     await expect.poll(() => hasColor(canvas)).toBe(true);
     const orbitView = await canvas.evaluate(element => element.toDataURL());

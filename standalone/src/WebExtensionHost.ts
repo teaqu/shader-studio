@@ -1,5 +1,5 @@
 import { insertShaderSource } from './insertShaderSource';
-import { configPathForShader, createNativeComputeSource, createNativeRenderSource, parseVertexPassKey, resolveConfiguredPath, shaderLanguageForPath, stageForPass, vertexPassKey } from '@shader-studio/types';
+import { configPathForShader, createNativeComputeSource, createNativeFragmentSource, parseVertexPassKey, resolveConfiguredPath, shaderLanguageForPath, stageForPass, vertexPassKey } from '@shader-studio/types';
 import type { ConfiguredPathHost, ProfileData, ProfileIndex, ShaderConfig, ShaderLanguageId } from '@shader-studio/types';
 import type { VirtualWorkspace } from './VirtualWorkspace';
 import { virtualConfiguredPathHost } from './passSources';
@@ -304,9 +304,11 @@ export class WebExtensionHost {
         if (this.workspace.exists(path)) {
           return;
         }
-        const authoringMode = payload.authoringMode === 'native' && language !== 'glsl' ? 'native' : 'hooks';
+        const requestedMode = payload.authoringMode === 'hooks' || payload.authoringMode === 'native'
+          ? payload.authoringMode : this.settingsController.defaultShaderMode;
+        const authoringMode = requestedMode === 'native' && language !== 'glsl' ? 'native' : 'hooks';
         const native = authoringMode === 'native'
-          ? createNativeRenderSource(language === 'slang' ? 'slang' : 'wgsl', '', 'Image')
+          ? createNativeFragmentSource(language === 'slang' ? 'slang' : 'wgsl', '', 'Image')
           : null;
         const source = native?.text.trimStart()
           ?? (language === 'slang' ? SLANG_STARTER_SHADER : language === 'wgsl' ? WGSL_STARTER_SHADER : GLSL_STARTER_SHADER);
@@ -364,11 +366,11 @@ export class WebExtensionHost {
         let created = false;
         if (!this.workspace.exists(path)) {
           if (authoringMode === 'native' && payload.fileType === 'wgsl-buffer') {
-            const native = createNativeRenderSource('wgsl', '', passName, nativeOutputCount(payload.outputCount));
+            const native = createNativeFragmentSource('wgsl', '', passName, nativeOutputCount(payload.outputCount));
             template = native.text.trimStart();
             entryPoints = native.entryPoints;
           } else if (authoringMode === 'native' && payload.fileType === 'slang-buffer') {
-            const native = createNativeRenderSource('slang', '', passName, nativeOutputCount(payload.outputCount));
+            const native = createNativeFragmentSource('slang', '', passName, nativeOutputCount(payload.outputCount));
             template = native.text.trimStart();
             entryPoints = native.entryPoints;
           } else if (authoringMode === 'native' && payload.fileType === 'wgsl-compute') {

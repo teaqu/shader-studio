@@ -29,3 +29,5 @@ export { findSlangAuthoredDeclarations, type SlangAuthoredDeclaration } from "./
 export * from "./VertexHookInsertion";
 
 export * from "./ShaderInsertion";
+
+export { createNativeFragmentSource } from './ShaderSourceTemplates';

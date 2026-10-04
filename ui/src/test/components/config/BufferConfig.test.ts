@@ -56,9 +56,9 @@ describe('BufferConfig', () => {
       sourcePath: `/shaders/shared.${language}`, fileType: `${language}-vertex`, authoringMode: 'hooks', geometryType: 'vertices',
     }) });
   });
-  it('defaults the WebGPU mesh camera on and persists an explicit opt-out', async () => {
+  it.each(['wgsl', 'glsl'] as const)('defaults the %s mesh camera on and persists an explicit opt-out', async language => {
     const onUpdate = vi.fn();
-    const view = render(BufferConfig, { bufferName: 'Image', isImagePass: true, language: 'wgsl',
+    const view = render(BufferConfig, { bufferName: 'Image', isImagePass: true, language,
       config: { geometry: { type: 'cube' } }, onUpdate, getWebviewUri: () => undefined });
     const checkbox = view.getByRole('checkbox', { name: 'Use viewer camera' });
     expect(checkbox).toBeChecked();
@@ -82,7 +82,6 @@ describe('BufferConfig', () => {
   });
 
   it.each([
-    ['GLSL mesh', { language: 'glsl', config: { path: 'a.glsl', geometry: { type: 'cube' } } }],
     ['WebGPU fullscreen', { language: 'wgsl', config: { path: 'a.wgsl' } }],
     ['compute pass', { language: 'wgsl', passType: 'compute' as const, config: { path: 'a.wgsl', geometry: { type: 'cube' } } }],
   ])('hides the viewer camera control for %s', (_label, props) => {

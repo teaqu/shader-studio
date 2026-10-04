@@ -207,6 +207,7 @@ export class ShaderPipeline {
           name: passName,
           shaderSrc,
           vertexSrc: buffers[`${VERTEX_SOURCE_PREFIX}${passName}`],
+          useViewerCamera: renderPass?.useViewerCamera ?? config?.webgpu?.useViewerCamera ?? true,
           inputs: pass?.inputs ?? {},
           geometry: resolvePassGeometry(pass && "geometry" in pass ? pass : undefined),
           ...resolveVerticesDraw(pass && "geometry" in pass ? pass : undefined),

@@ -477,7 +477,7 @@ describe('WebExtensionHost', () => {
     } });
     expect(receive).toHaveBeenLastCalledWith({ type: 'fileSelected', payload: {
       path: '/shaders/aurora.wgsl', requestId: 'insert-2', authoringMode: 'native',
-      entryPoints: { vertex: 'BufferAVertex2', fragment: 'BufferAFragment2' },
+      entryPoints: { fragment: 'BufferAFragment2' },
     } });
   });
 
@@ -732,7 +732,7 @@ describe('WebExtensionHost', () => {
       code: expect.stringContaining('@fragment\nfn ImageFragment'),
       config: expect.objectContaining({
         webgpu: { defaultRenderAuthoring: 'native' },
-        passes: { Image: expect.objectContaining({ entryPoints: { vertex: 'ImageVertex', fragment: 'ImageFragment' } }) },
+        passes: { Image: expect.objectContaining({ entryPoints: { fragment: 'ImageFragment' } }) },
       }),
     }));
   });

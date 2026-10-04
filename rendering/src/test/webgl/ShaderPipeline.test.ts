@@ -1135,6 +1135,7 @@ describe("ShaderPipeline", () => {
         shaderSrc: buffers.BufferA,
         inputs: {},
         geometry: "fullscreen",
+        useViewerCamera: true,
         path: undefined,
         resolution: undefined,
       });
@@ -1143,6 +1144,7 @@ describe("ShaderPipeline", () => {
         shaderSrc: buffers.BufferB,
         inputs: { iChannel0: { type: "buffer", source: "BufferA" } },
         geometry: "fullscreen",
+        useViewerCamera: true,
         path: undefined,
         resolution: undefined,
       });
@@ -1169,6 +1171,7 @@ describe("ShaderPipeline", () => {
         shaderSrc: shaderCode,
         inputs: {},
         geometry: "fullscreen",
+        useViewerCamera: true,
         path: undefined,
         resolution: undefined,
       });
@@ -1177,6 +1180,7 @@ describe("ShaderPipeline", () => {
         shaderSrc: buffers.BufferA,
         inputs: {},
         geometry: "fullscreen",
+        useViewerCamera: true,
         path: undefined,
         resolution: undefined,
       });

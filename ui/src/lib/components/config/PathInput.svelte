@@ -18,6 +18,11 @@
     fileType?: FileDialogFileType;
     allowCreate?: boolean;
     allowInsert?: boolean;
+    insertLabel?: string;
+    hidePath?: boolean;
+    onClear?: () => void;
+    existingModes?: ('hooks' | 'native')[];
+    clearEnabled?: boolean;
     sourcePath?: string;
     builtInSourcePath?: string;
     vertexSpace?: string;
@@ -50,6 +55,11 @@
     fileType = 'glsl-buffer',
     allowCreate = true,
     allowInsert = false,
+    insertLabel = 'Insert',
+    hidePath = false,
+    onClear = undefined,
+    existingModes = [],
+    clearEnabled = !!value,
     sourcePath = undefined,
     builtInSourcePath = undefined,
     vertexSpace = undefined,
@@ -177,7 +187,7 @@ onPathChange?.(event.data.payload.path);
 </script>
 
 <div class="input-group">
-  <div class="input-row">
+  {#if !hidePath}<div class="input-row">
     <label for={inputId}>{label}</label>
     <input
       id={inputId}
@@ -192,10 +202,10 @@ onPathChange?.(event.data.payload.path);
       class:error={hasError}
       {placeholder}
     />
-  </div>
+  </div>{/if}
   {#if postMessage}
     <div class="input-actions">
-      <button class="select-file-btn" onclick={handleSelect}>Select</button>
+      {#if !hidePath}<button class="select-file-btn" onclick={handleSelect}>Select</button>{/if}
       {#if showCreate}
         <button class="create-file-btn" onclick={handleCreate}>Create</button>
       {/if}
@@ -204,8 +214,9 @@ onPathChange?.(event.data.payload.path);
           <option value="hooks">Built-in</option>
           {#if supportsNative}<option value="native">Native</option>{/if}
         </select>
-        <button class="insert-file-btn" onclick={handleInsert}>Insert</button>
+        {#if !existingModes.includes(effectiveMode)}<button class="insert-file-btn" onclick={handleInsert}>{insertLabel}</button>{/if}
       {/if}
+      {#if onClear}<button class="select-file-btn" onclick={onClear} disabled={!clearEnabled}>Clear</button>{/if}
       {#if note}
         <span class="input-note">{note}</span>
       {/if}
@@ -261,6 +272,9 @@ onPathChange?.(event.data.payload.path);
     margin-top: 4px;
   }
   .request-error { margin: 0; color: var(--vscode-errorForeground, #f48771); font-size: 12px; }
+  select { padding: 4px 6px; border-radius: 4px; font-size: 13px; color: var(--vscode-input-foreground, #ccc); background: var(--vscode-input-background, #3c3c3c); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, #3c3c3c)); }
+  select:focus { outline: 1px solid var(--vscode-focusBorder, #007acc); }
+  button:disabled { opacity: 0.5; cursor: default; }
 
   .select-file-btn,
   .create-file-btn,

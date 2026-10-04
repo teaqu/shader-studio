@@ -3,6 +3,46 @@ import { readWorkspaceFiles } from './workspace-store.mjs';
 import { workspace } from './language-service-fixtures.mjs';
 
 for (const language of ['wgsl', 'slang']) {
+  test(`Native defaults create fragment-only ${language} shaders and buffers, with Add and vertex Clear`, async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    const settings = page.getByRole('dialog', { name: 'Settings' });
+    await settings.getByLabel('Default shader mode', { exact: true }).selectOption('native');
+    await settings.getByRole('button', { name: 'Done' }).click();
+    await page.getByTestId('web-shader-explorer').getByTitle('New Shader').click();
+    const dialog = page.getByRole('dialog', { name: 'New Shader' });
+    await dialog.getByLabel('Shader name').fill('default-native');
+    await dialog.getByLabel('Shader language').selectOption(language);
+    await expect(dialog.getByLabel('Shader functions')).toHaveValue('native');
+    await dialog.getByRole('button', { name: 'Create Shader' }).click();
+    const sourcePath = `/shaders/default-native.${language}`;
+    const configPath = '/shaders/default-native.sha.json';
+    await expect.poll(async () => (await workspace(page))[sourcePath]).toContain('ImageFragment');
+    expect((await workspace(page))[sourcePath]).not.toContain('ImageVertex');
+    await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
+    await expect(page.getByLabel('Vertex function', { exact: true })).toHaveValue('');
+    await page.getByRole('button', { name: '+ New', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Buffer', exact: true }).click();
+    const main = page.locator('.tab-content .buffer-details > .config-item').first();
+    await main.getByRole('button', { name: 'Insert', exact: true }).click();
+    await expect(page.getByLabel('Fragment function', { exact: true })).toHaveValue('BufferAFragment');
+    await expect(page.getByLabel('Vertex function', { exact: true })).toHaveValue('');
+    await expect(main.getByRole('button', { name: 'Insert', exact: true })).toHaveCount(0);
+    expect((await workspace(page))[sourcePath]).not.toContain('BufferAVertex');
+    const functions = page.getByLabel('Render entry points', { exact: true });
+    await functions.getByRole('button', { name: 'Add', exact: true }).click();
+    await expect(page.getByLabel('Fragment function', { exact: true })).toHaveValue('BufferAFragment2');
+    const vertex = page.locator('.config-item').filter({ has: page.getByRole('heading', { name: 'Vertex shader', exact: true }) });
+    await vertex.getByRole('button', { name: 'Insert', exact: true }).click();
+    await expect(page.getByLabel('Vertex function', { exact: true })).toHaveValue('BufferAVertex3');
+    await expect(vertex.getByRole('button', { name: 'Insert', exact: true })).toHaveCount(0);
+    await vertex.getByRole('button', { name: 'Clear', exact: true }).click();
+    await expect(vertex.locator('.config-input')).toHaveValue('');
+    await expect(page.getByLabel('Vertex function', { exact: true })).toHaveValue('');
+    await expect.poll(async () => JSON.parse((await workspace(page))[configPath]).passes.BufferA.entryPoints).toEqual({ fragment: 'BufferAFragment2' });
+    await page.reload();
+    await expect.poll(async () => JSON.parse((await workspace(page))[configPath]).passes.BufferA.entryPoints).toEqual({ fragment: 'BufferAFragment2' });
+  });
   test(`global mode defaults and buffer-owned Built-in/Native Insert persist for ${language}`, async ({ page }) => {
     const stem = `insert-mode-${language}`;
     const source = language === 'wgsl' ? 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(1); }' : 'float4 mainImage(float2 coord) { return float4(1); }';
@@ -80,7 +120,7 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
     }).toBeUndefined();
     await page.getByLabel('Space', { exact: true }).selectOption('clip');
     await expect.poll(centerRed).toBeGreaterThan(240);
-    await vertex.getByRole('button', { name: 'Insert', exact: true }).click();
+    await expect(vertex.getByRole('button', { name: 'Insert', exact: true })).toHaveCount(0);
     await expect.poll(async () => {
       const files = await readWorkspaceFiles(page);
       return (files.find(file => file.path.endsWith(`${stem}.${language}`)).contents.match(/(?:fn|void) mainVertex\(/g) ?? []).length;

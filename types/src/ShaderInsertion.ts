@@ -1,5 +1,5 @@
 import { getShaderSourceFunctions } from "./ShaderEntryPoints";
-import { createNativeComputeSource, createNativeRenderSource } from "./ShaderSourceTemplates";
+import { createNativeComputeSource, createNativeFragmentSource, createNativeRenderSource } from "./ShaderSourceTemplates";
 import { createVertexHookSource } from "./VertexHookInsertion";
 import type { ShaderLanguageId } from "./shader-environment/ShaderLanguages";
 
@@ -39,7 +39,7 @@ export function createShaderInsertion(source: string, options: ShaderInsertionOp
     }
     const generated = createNativeRenderSource(language, source, options.passName ?? "Buffer", options.outputCount);
     if (!vertex) {
-      return { ...generated, authoringMode: "native" };
+      return { ...createNativeFragmentSource(language, source, options.passName ?? 'Buffer', options.outputCount), authoringMode: "native" };
     }
     return { text: nativeVertexSource(language, generated.entryPoints.vertex, options),
       authoringMode: "native", entryPoints: { vertex: generated.entryPoints.vertex } };

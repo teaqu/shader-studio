@@ -9,7 +9,7 @@
   import StandaloneLayout from './StandaloneLayout.svelte';
   import EditorPane from './EditorPane.svelte';
   import SettingsPanel from './settings/SettingsPanel.svelte';
-  import { connectSettings } from './settings/settingsState.svelte';
+  import { connectSettings, getDefaultShaderMode } from './settings/settingsState.svelte';
   import NewShaderModal from './NewShaderModal.svelte';
   import type { WebTransport } from './WebTransport';
   import {
@@ -180,7 +180,7 @@
     }} />
   {/if}
   {#if getNewShaderVisible()}
-    <NewShaderModal onCreate={createShader} onClose={() => setNewShaderVisible(false)} />
+    <NewShaderModal defaultAuthoringMode={getDefaultShaderMode()} onCreate={createShader} onClose={() => setNewShaderVisible(false)} />
   {/if}
 </div>
 

@@ -11,8 +11,8 @@ interface SettingDefinition {
   max?: number;
 }
 export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
-  { key: 'webgpu.defaultRenderAuthoring', label: 'Default shader mode', description: 'Default for new WGSL/Slang buffers and source insertion. Choose Built-in hooks or Native entry points.', group: 'Preview', kind: 'choice', choices: [{ value: 'hooks', label: 'Built-in' }, { value: 'native', label: 'Native' }] },
-  { key: 'webgpu.useViewerCamera', label: 'Use viewer camera', description: 'Apply the viewer camera to WGSL/Slang meshes by default. Passes can override this. GLSL meshes always use the viewer camera.', group: 'Preview', kind: 'boolean' },
+  { key: 'webgpu.defaultRenderAuthoring', label: 'Default shader mode', description: 'Default for new WGSL/Slang shaders, buffers, and source insertion. Choose Built-in hooks or Native entry points.', group: 'Preview', kind: 'choice', choices: [{ value: 'hooks', label: 'Built-in' }, { value: 'native', label: 'Native' }] },
+  { key: 'webgpu.useViewerCamera', label: 'Use viewer camera', description: 'Apply the viewer camera to mesh shaders by default. Individual shaders and passes can override this.', group: 'Preview', kind: 'boolean' },
   { key: 'navigateOnBufferSwitch', label: 'Open editor on buffer switch', description: 'Select the corresponding file when switching buffers in the preview.', group: 'Preview', kind: 'boolean' },
   ...(['glsl', 'slang', 'wgsl'] as const).map((language): SettingDefinition => ({ key: `languageServers.${language}.enabled`, label: `${language === 'slang' ? 'Slang' : language.toUpperCase()} language service`, description: 'Enable diagnostics, completion, hover, and navigation for this language.', group: 'Language services', kind: 'boolean' })),
   { key: 'editor.colorDecorators', label: 'Color swatches', description: 'Show color previews and pickers in shader source.', group: 'Editor', kind: 'boolean' },

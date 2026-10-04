@@ -64,7 +64,7 @@ test('WGSL native Insert appends one buffer and one compute entry point, then pe
   await buffer.getByRole('button', { name: 'Add output' }).click();
   await expect(buffer.getByLabel('Output 1 name')).toBeVisible();
   await buffer.locator('.config-item').first().getByRole('button', { name: 'Insert', exact: true }).click();
-  await expect(buffer.getByLabel('Vertex function')).toHaveValue('BufferAVertex');
+  await expect(buffer.getByLabel('Vertex function')).toHaveValue('');
   await expect(buffer.getByLabel('Fragment function')).toHaveValue('BufferAFragment');
 
   await page.getByRole('button', { name: '+ New' }).click();
@@ -86,18 +86,18 @@ test('WGSL native Insert appends one buffer and one compute entry point, then pe
     };
   }).toMatchObject({
     config: { webgpu: { defaultRenderAuthoring: 'native' } },
-    bufferPass: { entryPoints: { vertex: 'BufferAVertex', fragment: 'BufferAFragment' }, outputs: [{}, {}] },
+    bufferPass: { entryPoints: { fragment: 'BufferAFragment' }, outputs: [{}, {}] },
     computePass: { type: 'compute', entryPoints: { compute: 'ComputeACompute' } },
   });
 
   const saved = await workspace(page);
-  expect(saved[`/shaders/${stem}.wgsl`].match(/@vertex\s+fn BufferAVertex/g)).toHaveLength(1);
+  expect(saved[`/shaders/${stem}.wgsl`]).not.toContain('@vertex\nfn BufferAVertex');
   expect(saved[`/shaders/${stem}.wgsl`].match(/@compute @workgroup_size/g)).toHaveLength(1);
   expect(saved[`/shaders/${stem}.wgsl`]).toContain('@location(1)');
 
   await page.reload();
   await expect.poll(async () => JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`]).passes).toMatchObject({
-    BufferA: { entryPoints: { vertex: 'BufferAVertex', fragment: 'BufferAFragment' } },
+    BufferA: { entryPoints: { fragment: 'BufferAFragment' } },
     ComputeA: { entryPoints: { compute: 'ComputeACompute' } },
   });
 });
@@ -251,7 +251,7 @@ test('new native WGSL Image compiles and makes native Buffer the default', async
   await expect(shader.locator('.shader-error')).toHaveCount(0);
   await expect.poll(async () => JSON.parse((await workspace(page))['/shaders/native-image-created.sha.json'])).toMatchObject({
     webgpu: { defaultRenderAuthoring: 'native' },
-    passes: { Image: { entryPoints: { vertex: 'ImageVertex', fragment: 'ImageFragment' } } },
+    passes: { Image: { entryPoints: { fragment: 'ImageFragment' } } },
   });
 
   await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
@@ -277,7 +277,7 @@ test('new native Slang Image compiles, then inserts Buffer and Compute into the 
   await expect(shader.locator('.shader-error')).toHaveCount(0);
   await expect.poll(async () => JSON.parse((await workspace(page))['/shaders/native-slang-created.sha.json'])).toMatchObject({
     webgpu: { defaultRenderAuthoring: 'native' },
-    passes: { Image: { entryPoints: { vertex: 'ImageVertex', fragment: 'ImageFragment' } } },
+    passes: { Image: { entryPoints: { fragment: 'ImageFragment' } } },
   });
 
   await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
@@ -285,7 +285,7 @@ test('new native Slang Image compiles, then inserts Buffer and Compute into the 
   await page.getByRole('menuitem', { name: 'Buffer' }).click();
   await expect(page.getByLabel('Vertex function')).toHaveValue('');
   await page.getByRole('button', { name: 'Insert', exact: true }).click();
-  await expect(page.getByLabel('Vertex function')).toHaveValue('BufferAVertex');
+  await expect(page.getByLabel('Vertex function')).toHaveValue('');
   await expect(page.getByLabel('Fragment function')).toHaveValue('BufferAFragment');
 
   await page.getByRole('button', { name: '+ New' }).click();
@@ -303,8 +303,8 @@ test('new native Slang Image compiles, then inserts Buffer and Compute into the 
     config: {
       webgpu: { defaultRenderAuthoring: 'native' },
       passes: {
-        Image: { entryPoints: { vertex: 'ImageVertex', fragment: 'ImageFragment' } },
-        BufferA: { entryPoints: { vertex: 'BufferAVertex', fragment: 'BufferAFragment' } },
+        Image: { entryPoints: { fragment: 'ImageFragment' } },
+        BufferA: { entryPoints: { fragment: 'BufferAFragment' } },
         ComputeA: { type: 'compute', entryPoints: { compute: 'ComputeACompute' } },
       },
     },
@@ -312,7 +312,7 @@ test('new native Slang Image compiles, then inserts Buffer and Compute into the 
 
   await page.reload();
   await expect.poll(async () => JSON.parse((await workspace(page))['/shaders/native-slang-created.sha.json']).passes).toMatchObject({
-    BufferA: { entryPoints: { vertex: 'BufferAVertex', fragment: 'BufferAFragment' } },
+    BufferA: { entryPoints: { fragment: 'BufferAFragment' } },
     ComputeA: { entryPoints: { compute: 'ComputeACompute' } },
   });
 });

@@ -6,7 +6,7 @@
   import { shaderPathsEqual } from "../../editor/sharedSourcePassNames";
   import { portal } from "../../actions/portal";
   import type { ShaderConfig, BufferPass, ComputePass, ImagePass, StorageBufferConfig, StorageBufferSnapshot, ShaderEntryPoint } from "@shader-studio/types";
-  import { getShaderEntryPoints, SHADER_LANGUAGES } from "@shader-studio/types";
+  import { getShaderEntryPoints, SHADER_LANGUAGES, vertexPassKey } from "@shader-studio/types";
   import type { Transport } from "../../transport/MessageTransport";
   import BufferConfig from "./BufferConfig.svelte";
   import ScriptInfo from "./ScriptInfo.svelte";
@@ -858,6 +858,8 @@ continue;
           maxColorAttachments={renderOutputLimits?.maxColorAttachments}
           maxColorAttachmentBytesPerSample={renderOutputLimits?.maxColorAttachmentBytesPerSample}
           renderEntryPoints={shaderEntryPoints('Image')}
+          passSource={sourceForPass('Image')}
+          vertexSource={bufferSources[vertexPassKey('Image')] ?? ''}
           {onOpenInNewTab}
         />
       {:else}
@@ -891,6 +893,8 @@ continue;
           storageNames={Object.keys(config?.storage ?? {})}
           entryPointNames={computeEntryPoints(getActualBufferName(activeTab))}
           renderEntryPoints={shaderEntryPoints(getActualBufferName(activeTab))}
+          passSource={sourceForPass(getActualBufferName(activeTab))}
+          vertexSource={bufferSources[vertexPassKey(getActualBufferName(activeTab))] ?? ''}
           onComputeCommit={(nextConfig) => {
             const result = configManager?.updateComputePass(getActualBufferName(activeTab), nextConfig);
             return result && !result.ok ? result.errors : {};

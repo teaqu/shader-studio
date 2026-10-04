@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { applyRenderSource, applyVertexSource, bufferInsertionTarget } from '../../config/PassSourceAuthoring';
+  import { applyRenderSource, applyVertexSource, bufferInsertionTarget, clearVertexSource, existingShaderModes } from '../../config/PassSourceAuthoring';
   import VerticesControls from './VerticesControls.svelte';
   import { ConfigValidator, resolveRenderState } from "@shader-studio/rendering";
   import { BufferConfig as BufferConfigModel } from "../../BufferConfig";
@@ -81,6 +81,8 @@
     storageNames?: string[];
     entryPointNames?: string[];
     renderEntryPoints?: ShaderEntryPoint[];
+    passSource?: string;
+    vertexSource?: string;
     maxColorAttachments?: number;
     maxColorAttachmentBytesPerSample?: number;
     renderOutputCounts?: Record<string, number>;
@@ -94,6 +96,8 @@
     config,
     onUpdate,
     getWebviewUri,
+    passSource = '',
+    vertexSource = '',
     isImagePass = false,
     suggestedPath = "",
     postMessage = undefined,
@@ -214,7 +218,7 @@
     .join('')}`);
   let vertexCountError = $state<string | null>(null);
   let instanceCountError = $state<string | null>(null);
-  const showViewerCamera = $derived(isWebGpuLanguage && selectedGeometry !== 'fullscreen' && selectedGeometry !== 'vertices');
+  const showViewerCamera = $derived(selectedGeometry !== 'fullscreen' && selectedGeometry !== 'vertices');
   const modelUrl = $derived(modelGeometry?.resolved_path ?? (modelGeometry ? getWebviewUri(modelGeometry.path) : undefined));
 
   let currentPath = $state("path" in config ? config.path : "");
@@ -762,6 +766,7 @@ return;
           passName={bufferName}
           outputCount={passType === 'render' && hasNativeTemplate ? renderOutputs.length : undefined}
           allowInsert={bufferName !== 'common' && (passType === 'render' || isWebGpuLanguage)}
+          existingModes={existingShaderModes(passSource, language, passType === 'compute' ? 'compute' : 'fragment')}
           onCreated={applyCreatedSource}
         />
 
@@ -1043,6 +1048,9 @@ return;
             value={config.vertex ?? ""}
             onPathChange={handleVertexPathChange}
             allowInsert={true}
+            existingModes={existingShaderModes(passSource + '\n' + vertexSource, language, 'vertex')}
+            clearEnabled={!!config.vertex || !!renderPassConfig?.entryPoints?.vertex}
+            onClear={() => updateConfig(clearVertexSource(config as BufferPass | ImagePass))}
             sourcePath={ownedSourcePath}
             passName={bufferName}
             onCreated={(result) => updateConfig(applyVertexSource(config as BufferPass | ImagePass, result))}
@@ -1097,7 +1105,16 @@ return;
           entryPoints={renderEntryPoints}
           {language}
           onCommit={(nextPass) => updateConfig(nextPass)}
-        />
+        >
+          {#snippet authoringControls()}
+            <PathInput value="" hidePath={true} allowCreate={false} allowInsert={true} insertLabel="Add"
+              sourcePath={ownedSourcePath} {fileType} passName={bufferName}
+              authoringMode={hasNativeTemplate ? 'native' : undefined}
+              outputCount={renderOutputs.length}
+              onCreated={(result) => updateConfig(applyRenderSource(config as BufferPass | ImagePass, { ...result, path: isImagePass ? '' : result.path }))}
+              {shaderPath} {postMessage} {onMessage} />
+          {/snippet}
+        </RenderEntryPointControls>
       </div>
     {/if}
   </div>

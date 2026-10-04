@@ -1,5 +1,15 @@
 import { expect, it } from 'vitest';
-import { applyRenderSource, applyVertexSource, bufferInsertionTarget } from '../../lib/config/PassSourceAuthoring';
+import { applyRenderSource, applyVertexSource, bufferInsertionTarget, clearVertexSource, existingShaderModes } from '../../lib/config/PassSourceAuthoring';
+it('clears vertex associations while preserving fragment code selection and other pass settings', () => {
+  const pass = { path: 'a.wgsl', vertex: 'a.vert.wgsl', entryPoints: { vertex: 'custom', fragment: 'paint' } };
+  expect(clearVertexSource(pass)).toEqual({ path: 'a.wgsl', entryPoints: { fragment: 'paint' } });
+  expect(clearVertexSource({ vertex: 'a.vert.wgsl' })).toEqual({});
+});
+it('detects existing hooks and native stages without counting comments', () => {
+  expect(existingShaderModes('// mainVertex()\nfn mainImage(coord: vec2f) -> vec4f { return vec4f(1); }', 'wgsl', 'vertex')).toEqual([]);
+  expect(existingShaderModes('void mainImage(out vec4 c, vec2 p) { c = vec4(1); }', 'glsl', 'fragment')).toEqual(['hooks']);
+  expect(existingShaderModes('@fragment fn color() -> @location(0) vec4f { return vec4f(1); }', 'wgsl', 'fragment')).toEqual(['native']);
+});
 it('keeps vertex authoring changes within the owning pass and preserves its fragment', () => {
   const pass = { path: 'buffer.wgsl', entryPoints: { vertex: 'before', fragment: 'paint' } };
   const native = applyVertexSource(pass, { path: 'buffer.wgsl', authoringMode: 'native', entryPoints: { vertex: 'after' } });

@@ -4,7 +4,7 @@ import * as fs from "fs";
 import { Logger } from "./services/Logger";
 import { GlslFileTracker } from "./GlslFileTracker";
 import { getConfigPathForShaderPath } from "./ShaderConfigPaths";
-import { createNativeRenderSource } from "@shader-studio/types";
+import { createNativeFragmentSource } from "@shader-studio/types";
 
 export class ShaderCreator {
   private logger: Logger;
@@ -90,11 +90,12 @@ export class ShaderCreator {
       const filePath = uri.fsPath;
       const lowerPath = filePath.toLowerCase();
       const isWebGpuLanguage = lowerPath.endsWith(".wgsl") || lowerPath.endsWith(".slang");
+      const defaultMode = vscode.workspace.getConfiguration('shader-studio').get('webgpu.defaultRenderAuthoring', 'hooks');
       const authoringMode = isWebGpuLanguage
         ? await vscode.window.showQuickPick([
           { label: 'ShaderToy hooks', value: 'hooks' as const, description: 'Generate the familiar mainImage wrapper' },
-          { label: 'Native entry points', value: 'native' as const, description: 'Start with @vertex and @fragment stages' },
-        ], { title: 'WebGPU authoring style' })
+          { label: 'Native entry points', value: 'native' as const, description: 'Start with a native fragment function and the viewer vertex shader' },
+        ].sort((a, b) => Number(b.value === defaultMode) - Number(a.value === defaultMode)), { title: 'WebGPU authoring style' })
         : { value: 'hooks' as const };
       if (!authoringMode) {
         return;
@@ -107,7 +108,7 @@ export class ShaderCreator {
 
       // Create a basic shader template
       const nativeTemplate = authoringMode.value === 'native'
-        ? createNativeRenderSource(lowerPath.endsWith(".slang") ? 'slang' : 'wgsl', '', 'Image')
+        ? createNativeFragmentSource(lowerPath.endsWith(".slang") ? 'slang' : 'wgsl', '', 'Image')
         : undefined;
       const shaderTemplate = nativeTemplate
         ? nativeTemplate.text.trimStart()

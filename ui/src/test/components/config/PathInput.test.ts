@@ -4,6 +4,16 @@ import { describe, expect, it, vi } from 'vitest';
 import PathInput from '../../../lib/components/config/PathInput.svelte';
 
 describe('PathInput', () => {
+  it('hides Insert for an existing stage while keeping mode selection and Clear', async () => {
+    const onClear = vi.fn();
+    const view = render(PathInput, { value: 'a.wgsl', fileType: 'wgsl-vertex', allowInsert: true,
+      existingModes: ['hooks'], onClear, postMessage: vi.fn() });
+    expect(view.queryByText('Insert')).toBeNull();
+    await fireEvent.change(view.getByLabelText('Insert mode'), { target: { value: 'native' } });
+    expect(view.getByText('Insert')).toBeTruthy();
+    await fireEvent.click(view.getByText('Clear'));
+    expect(onClear).toHaveBeenCalledOnce();
+  });
   it('sends the selected mode and the corresponding source destination', async () => {
     const postMessage = vi.fn();
     const view = render(PathInput, { value: '', shaderPath: '/image.wgsl', sourcePath: '/image.wgsl',

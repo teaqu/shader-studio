@@ -103,7 +103,7 @@ suite('ShaderCreator Test Suite', () => {
     assert.match(fs.readFileSync(filePath, 'utf8'), /@fragment\s+fn ImageFragment/);
     const config = JSON.parse(fs.readFileSync(path.join(testDir, 'native.sha.json'), 'utf8'));
     assert.deepStrictEqual(config.webgpu.defaultRenderAuthoring, 'native');
-    assert.deepStrictEqual(config.passes.Image.entryPoints, { vertex: 'ImageVertex', fragment: 'ImageFragment' });
+    assert.deepStrictEqual(config.passes.Image.entryPoints, { fragment: 'ImageFragment' });
   });
 
   test('should do nothing when user cancels the save dialog', async () => {

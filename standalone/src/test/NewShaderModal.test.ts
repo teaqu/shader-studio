@@ -3,6 +3,15 @@ import { describe, expect, it, vi } from 'vitest';
 import NewShaderModal from '../NewShaderModal.svelte';
 
 describe('NewShaderModal', () => {
+  it('defaults to the global mode and allows an explicit override', async () => {
+    const onCreate = vi.fn();
+    render(NewShaderModal, { props: { onCreate, onClose: vi.fn(), defaultAuthoringMode: 'native' } });
+    await fireEvent.change(screen.getByLabelText('Shader language'), { target: { value: 'wgsl' } });
+    expect((screen.getByLabelText('Shader functions') as HTMLSelectElement).value).toBe('native');
+    await fireEvent.change(screen.getByLabelText('Shader functions'), { target: { value: 'hooks' } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Create Shader' }));
+    expect(onCreate).toHaveBeenCalledWith('untitled', 'wgsl', 'hooks');
+  });
   it('defaults new shaders to GLSL', async () => {
     const onCreate = vi.fn();
     render(NewShaderModal, { props: { onCreate, onClose: vi.fn() } });
@@ -41,7 +50,7 @@ describe('NewShaderModal', () => {
 
     await fireEvent.change(screen.getByLabelText('Shader language'), { target: { value: 'wgsl' } });
     expect(screen.getByRole('option', { name: 'mainImage / mainVertex' })).not.toBeNull();
-    expect(screen.getByRole('option', { name: '@fragment / @vertex' })).not.toBeNull();
+    expect(screen.getByRole('option', { name: '@fragment' })).not.toBeNull();
     expect(screen.queryByText(/authoring/i)).toBeNull();
   });
 

@@ -5,14 +5,16 @@
   interface Props {
     onCreate: (name: string, language: ShaderLanguageId, authoringMode?: WebGPUAuthoringMode) => void;
     onClose: () => void;
+    defaultAuthoringMode?: WebGPUAuthoringMode;
   }
 
-  let { onCreate, onClose }: Props = $props();
+  let { onCreate, onClose, defaultAuthoringMode = 'hooks' }: Props = $props();
   let name = $state('untitled');
   let language = $state<ShaderLanguageId>('glsl');
-  let webgpuAuthoring = $state<WebGPUAuthoringMode>('hooks');
+  let selectedAuthoring = $state<WebGPUAuthoringMode | null>(null);
+  const webgpuAuthoring = $derived(selectedAuthoring ?? defaultAuthoringMode);
   const nativeFunctionLabel = $derived(
-    language === 'slang' ? '[shader("fragment")] / [shader("vertex")]' : '@fragment / @vertex',
+    language === 'slang' ? '[shader("fragment")]' : '@fragment',
   );
 
   function submit() {
@@ -63,7 +65,7 @@
       {#if language !== 'glsl'}
         <label>
           Shader functions
-          <select bind:value={webgpuAuthoring} aria-label="Shader functions">
+          <select value={webgpuAuthoring} onchange={(event) => selectedAuthoring = event.currentTarget.value as WebGPUAuthoringMode} aria-label="Shader functions">
             <option value="hooks">mainImage / mainVertex</option>
             <option value="native">{nativeFunctionLabel}</option>
           </select>

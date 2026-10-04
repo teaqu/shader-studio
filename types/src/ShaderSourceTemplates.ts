@@ -1,4 +1,4 @@
-import { tokenizeShaderSource } from "./ShaderEntryPoints";
+import { getShaderSourceFunctions, tokenizeShaderSource } from "./ShaderEntryPoints";
 
 export interface NativeRenderTemplate {
   text: string;
@@ -8,6 +8,14 @@ export interface NativeRenderTemplate {
 export interface NativeComputeTemplate {
   text: string;
   entryPoints: { compute: string };
+}
+
+/** Leave vertex generation to the viewer unless the user explicitly inserts that stage. */
+export function createNativeFragmentSource(language: 'wgsl' | 'slang', source: string, passName: string, outputCount = 1) {
+  const generated = createNativeRenderSource(language, source, passName, outputCount);
+  const vertex = getShaderSourceFunctions(generated.text, language).find(fn => fn.stage === 'vertex')!;
+  return { text: generated.text.slice(0, vertex.start) + generated.text.slice(vertex.end),
+    entryPoints: { fragment: generated.entryPoints.fragment } };
 }
 
 function sourceIdentifiers(source: string): Set<string> {

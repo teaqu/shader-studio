@@ -286,11 +286,11 @@ suite('FileDialogHandler Test Suite', () => {
         respondFn,
       );
 
-      assert.match(writeStub.firstCall.args[1], /@vertex\s+fn BufferAVertex/);
+      assert.doesNotMatch(writeStub.firstCall.args[1], /@vertex/);
       assert.match(writeStub.firstCall.args[1], /@fragment\s+fn BufferAFragment/);
       assert.deepStrictEqual(respondFn.firstCall.args[0], { type: 'fileSelected', payload: {
         path: './buffer.wgsl', requestId: 'native', authoringMode: 'native',
-        entryPoints: { vertex: 'BufferAVertex', fragment: 'BufferAFragment' },
+        entryPoints: { fragment: 'BufferAFragment' },
       } });
     });
 

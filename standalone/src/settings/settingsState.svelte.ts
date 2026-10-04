@@ -2,6 +2,10 @@ import { DEFAULT_SETTINGS, type StandaloneSettings, type StandaloneSettingsValue
 
 let values = $state<StandaloneSettingsValues>({ ...DEFAULT_SETTINGS });
 
+export function getDefaultShaderMode() {
+  return values['webgpu.defaultRenderAuthoring'];
+}
+
 export function connectSettings(settings: StandaloneSettings): () => void {
   values = { ...settings.snapshot };
   return settings.subscribe((snapshot) => {

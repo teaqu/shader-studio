@@ -23,6 +23,10 @@ export class HostSettingsController {
     this.unsubscribe();
   }
 
+  get defaultShaderMode(): 'hooks' | 'native' {
+    return this.settings.snapshot['webgpu.defaultRenderAuthoring'];
+  }
+
   handleMessage(type: string, payload: Record<string, unknown>): boolean {
     if (type === 'requestShaderAuthoringSettings') {
       this.emitAuthoringSettings(); return true;

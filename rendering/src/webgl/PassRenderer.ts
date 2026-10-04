@@ -25,6 +25,7 @@ import {
 } from "../types/Geometry";
 import { FULLSCREEN_VERTEX_COUNT, type MeshTopology, type VertexTopology } from "@shader-studio/types";
 import { applyWebGLRenderState } from "./WebGLRenderState";
+import { passCameraMatrices, passCameraRenderState } from './PassViewerCamera';
 
 /** piRenderer primitive for each portable vertices topology. */
 const WEBGL_PRIMITIVES = {
@@ -221,7 +222,7 @@ export class PassRenderer {
     const mesh = this.resolveMesh(passConfig);
     this.renderer.SetShaderConstant1I("iVertexCount", this.getPassVertexCount(passConfig));
     this.renderer.SetShaderConstant1I("iInstanceCount", this.getPassInstanceCount(passConfig));
-    const camera = this.getCameraMatrices(uniforms.res);
+    const camera = passCameraMatrices(this.getCameraMatrices(uniforms.res), passConfig.useViewerCamera);
     this.renderer.SetShaderConstantMat4F("iViewMatrix", Array.from(camera.view), true);
     this.renderer.SetShaderConstantMat4F("iProjectionMatrix", Array.from(camera.projection), true);
     this.renderer.SetShaderConstantMat4F("iViewProjection", Array.from(camera.viewProjection), true);
@@ -293,14 +294,14 @@ export class PassRenderer {
       }
     }
 
-    const state = resolveRenderState(passConfig);
+    const state = passCameraRenderState(passConfig);
     if (fullscreen) {
       this.withRenderState(state, () => this.drawFullscreen(passConfig, state));
       return;
     }
     if (passConfig.geometry === "vertices") {
       if (!isClipSpaceVertices(passConfig)) {
-        this.setCameraUniforms(shader, camera);
+        this.setCameraUniforms(shader, camera, passConfig.useViewerCamera !== false);
       }
       this.clearColorAndDepth(state);
       this.withRenderState(state, () => this.drawVertices(passConfig));
@@ -309,7 +310,7 @@ export class PassRenderer {
     if (!mesh || !this.gl) {
       return;
     }
-    this.setCameraUniforms(shader, camera);
+    this.setCameraUniforms(shader, camera, passConfig.useViewerCamera !== false);
     this.clearColorAndDepth(state);
     const gl = this.gl;
     this.withRenderState(state, () => {
@@ -322,16 +323,16 @@ export class PassRenderer {
   }
 
   /** Orbit-camera matrices for meshes and world-space vertices. */
-  private setCameraUniforms(shader: PiShader, camera: CameraMatrices): void {
+  private setCameraUniforms(shader: PiShader, camera: CameraMatrices, enabled = true): void {
     const model = createModelMatrix({ position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] });
     this.renderer.SetShaderConstantMat4F("_meshModel", Array.from(model), true);
-    this.renderer.SetShaderConstantMat4F("_meshView", Array.from(camera.view), true);
-    this.renderer.SetShaderConstantMat4F("_meshProjection", Array.from(camera.projection), true);
+    this.renderer.SetShaderConstantMat4F("_meshView", Array.from(enabled ? camera.view : model), true);
+    this.renderer.SetShaderConstantMat4F("_meshProjection", Array.from(enabled ? camera.projection : model), true);
     const normalLocation = this.gl && shader.mProgram && this.gl.getUniformLocation(shader.mProgram, "_meshNormalMatrix");
     if (normalLocation) {
       this.gl!.uniformMatrix3fv(normalLocation, false, createNormalMatrix3(model));
     }
-    this.renderer.SetShaderConstant3FV("iCameraPosition", this.meshCamera.getPosition());
+    this.renderer.SetShaderConstant3FV("iCameraPosition", enabled ? this.meshCamera.getPosition() : [0, 0, 0]);
   }
 
   private clearColorAndDepth(state: ResolvedRenderState): void {

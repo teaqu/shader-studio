@@ -3,6 +3,13 @@ import { createShaderInsertion, insertionLanguage } from '../ShaderInsertion';
 import { getShaderSourceFunctions } from '../ShaderEntryPoints';
 
 describe('shader source insertion', () => {
+  it.each(['wgsl', 'slang'] as const)('leaves the %s vertex behind the scenes for native buffers', language => {
+    for (const outputCount of [1, 3]) {
+      const result = createShaderInsertion('', { fileType: `${language}-buffer`, authoringMode: 'native', passName: 'BufferA', outputCount });
+      expect(result.entryPoints).toEqual({ fragment: 'BufferAFragment' });
+      expect(getShaderSourceFunctions(result.text, language).filter(fn => fn.stage)).toMatchObject([{ stage: 'fragment' }]);
+    }
+  });
   it.each(['glsl', 'slang', 'wgsl'])('adds and reuses a built-in %s buffer hook', language => {
     const options = { fileType: `${language}-buffer`, authoringMode: 'hooks' as const };
     const first = createShaderInsertion('// mainImage in a comment', options);

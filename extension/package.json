@@ -183,7 +183,7 @@
           "type": "boolean",
           "scope": "application",
           "default": true,
-          "description": "Use the viewer camera by default for WebGPU mesh passes."
+          "description": "Use the viewer camera by default for mesh passes."
         },
         "shader-studio.languageServers.glsl.enabled": {
           "type": "boolean",

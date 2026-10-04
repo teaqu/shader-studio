@@ -8,7 +8,7 @@ import { writeWorkspaceTypeDefs } from "../WorkspaceTypeDefs";
 import { Logger } from "../services/Logger";
 import { getConfigPathForShaderPath } from "../ShaderConfigPaths";
 import type { ErrorMessage } from "@shader-studio/types";
-import { GLSL_EXTENSIONS, SCRIPT_EXTENSIONS, TEXTURE_EXTENSIONS, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, CUBEMAP_EXTENSIONS, WGSL_EXTENSIONS, createShaderInsertion, insertionLanguage, createNativeComputeSource, createNativeRenderSource, shaderLanguageForPath } from "@shader-studio/types";
+import { GLSL_EXTENSIONS, SCRIPT_EXTENSIONS, TEXTURE_EXTENSIONS, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, CUBEMAP_EXTENSIONS, WGSL_EXTENSIONS, createShaderInsertion, insertionLanguage, createNativeComputeSource, createNativeFragmentSource, shaderLanguageForPath } from "@shader-studio/types";
 
 function fileTypeToFilters(fileType: string): { [name: string]: string[] } {
   switch (fileType) {
@@ -130,11 +130,11 @@ export class FileDialogHandler {
           template = native.text;
           entryPoints = native.entryPoints;
         } else if (payload.authoringMode === 'native' && payload.fileType === 'slang-buffer') {
-          const native = createNativeRenderSource('slang', '', payload.passName ?? 'Buffer', nativeOutputCount(payload.outputCount));
+          const native = createNativeFragmentSource('slang', '', payload.passName ?? 'Buffer', nativeOutputCount(payload.outputCount));
           template = native.text.trimStart();
           entryPoints = native.entryPoints;
         } else if (payload.authoringMode === 'native' && payload.fileType === 'wgsl-buffer') {
-          const native = createNativeRenderSource('wgsl', '', payload.passName ?? 'Buffer', nativeOutputCount(payload.outputCount));
+          const native = createNativeFragmentSource('wgsl', '', payload.passName ?? 'Buffer', nativeOutputCount(payload.outputCount));
           template = native.text.trimStart();
           entryPoints = native.entryPoints;
         } else if (payload.fileType === 'slang-compute') {
