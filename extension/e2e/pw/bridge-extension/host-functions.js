@@ -414,18 +414,6 @@ module.exports = Object.freeze({
         new vscode.Location(vscode.Uri.file(path), new vscode.Position(5, 0)),
       )]);
     },
-  "22c40b78a7c0c090b4b7d97719b0f0e1a630e19a8ea8c8c47ed1a9ba08694e0a": async (vscode, directory) => {
-    // The webview may own focus. Revert each dirty fixture's text editor
-    // explicitly before deleting it, so the next test cannot open a save prompt.
-    for (const document of vscode.workspace.textDocuments) {
-      const prefix = vscode.Uri.file(directory).fsPath + (process.platform === 'win32' ? '\\' : '/');
-      if (!document.isDirty || !document.uri.fsPath.startsWith(prefix)) {
-        continue;
-      }
-      await vscode.window.showTextDocument(document, { preserveFocus: false, preview: false });
-      await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
-    }
-  },
   "23997a58eead2b1f2350cdbb0da2b962b7e82a7284f3e220bbea707ea8eea64a": async vscode => {
       await vscode.commands.executeCommand('notifications.clearAll');
     },
@@ -1195,21 +1183,6 @@ module.exports = Object.freeze({
           activeParameter: signature?.activeParameter
         };
       },
-  "741ecf9b2c4ed038349ce877b0a67e8d384651ca5f758b4e3461dab02594b96f": async (vscode, directory) => {
-    // The webview may own focus. Revert each dirty fixture's text editor
-    // explicitly before deleting it, so the next test cannot open a save prompt.
-    for (const document of vscode.workspace.textDocuments) {
-      const prefix = vscode.Uri.file(directory).fsPath + (process.platform === 'win32' ? '\\' : '/');
-      if (!document.isDirty || !document.uri.fsPath.startsWith(prefix)) {
-        continue;
-      }
-      await vscode.window.showTextDocument(document, {
-        preserveFocus: false,
-        preview: false
-      });
-      await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
-    }
-  },
   "7551c50dc6a7db2df9b414a9c5ccabedc64f40bf14ff49bf0dc484d1d75d4da3": async (vscode, paths, text) => {
         await vscode.workspace.fs.writeFile(vscode.Uri.file(paths.config), Buffer.from(JSON.stringify({
           version: '1.0', passes: { Image: { path: `./${paths.name}` } },
@@ -1579,6 +1552,27 @@ module.exports = Object.freeze({
         await passDocument.save();
         return true;
       },
+  "afa494cb444db4e2adf355b0afb35eb9c0d53354e8ec21d03593e2c3e4e14b19": async (vscode, directory) => {
+    // The webview may own focus. Revert each dirty fixture's text editor
+    // explicitly before deleting it, so the next test cannot open a save prompt.
+    const cleanPaths = [];
+    for (const document of vscode.workspace.textDocuments) {
+      const prefix = vscode.Uri.file(directory).fsPath + (process.platform === 'win32' ? '\\' : '/');
+      if (!document.uri.fsPath.startsWith(prefix)) {
+        continue;
+      }
+      if (!document.isDirty) {
+        cleanPaths.push(document.uri.fsPath);
+        continue;
+      }
+      await vscode.window.showTextDocument(document, {
+        preserveFocus: false,
+        preview: false
+      });
+      await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
+    }
+    return cleanPaths;
+  },
   "b0f8f13686a98f3cdfe2e2fbf54db2314693fe1ab28eefeb0ed80ce2482f0999": async (vscode, targetPath, key) => {
         await vscode.workspace.getConfiguration('shader-studio').update(key, true, vscode.ConfigurationTarget.Global);
         const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
@@ -1790,6 +1784,17 @@ module.exports = Object.freeze({
         );
         await vscode.workspace.applyEdit(edit);
       },
+  "c243d2bd4ba9eda3035381a11916731b83ab74c9a8769af939cddf8dcfc47227": async (vscode, path) => {
+      const document = vscode.workspace.textDocuments.find(document => document.uri.fsPath === path);
+      if (!document) {
+        return false;
+      }
+      await vscode.window.showTextDocument(document, {
+        preserveFocus: false,
+        preview: false
+      });
+      return true;
+    },
   "c28610b2742d6cb5218988f16c17c36aa111390f9b118778f64c8c2c9a37f7e1": vscode => vscode.commands.executeCommand('shader-studio.view'),
   "c4088d534d4f723024c235bd107def66182c836492dff9e23f0591be19d52506": async (vscode, path) => {
       const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
@@ -1899,6 +1904,23 @@ module.exports = Object.freeze({
   "ce5e295b30297d2eee67199d6203d23e1a0ad653e0ba66b41f8f375ac375985a": async vscode => {
       await vscode.extensions.getExtension('teaqu.shader-studio')?.activate();
     },
+  "cedac9112b17ee455cf56e31878562bca38276ab7648c6ec7e678c63c5121228": async (vscode, directory) => {
+    // The webview may own focus. Revert each dirty fixture's text editor
+    // explicitly before deleting it, so the next test cannot open a save prompt.
+    const cleanPaths = [];
+    for (const document of vscode.workspace.textDocuments) {
+      const prefix = vscode.Uri.file(directory).fsPath + (process.platform === 'win32' ? '\\' : '/');
+      if (!document.uri.fsPath.startsWith(prefix)) {
+        continue;
+      }
+      if (!document.isDirty) {
+        cleanPaths.push(document.uri.fsPath); continue;
+      }
+      await vscode.window.showTextDocument(document, { preserveFocus: false, preview: false });
+      await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
+    }
+    return cleanPaths;
+  },
   "cf7f0f7bb4d5d187e6cba312596917f3fda506d013a51f40391063679222ef4f": vscode => ({
       active: vscode.window.activeTextEditor?.document.uri.toString(),
       previews: vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab => tab.label === 'Shader Studio').length,
@@ -2023,6 +2045,14 @@ module.exports = Object.freeze({
             }).then(undefined, () => {});
           }
         },
+  "e373b73b5b3eb4f8ff55147aea6afbd52cfa04fa420503a6346a4250f14ec06b": async (vscode, path) => {
+      const document = vscode.workspace.textDocuments.find(document => document.uri.fsPath === path);
+      if (!document) {
+        return false;
+      }
+      await vscode.window.showTextDocument(document, { preserveFocus: false, preview: false });
+      return true;
+    },
   "e498ab435a10b8974c8f264f01aa9231ddaa5d77ab0e3d00443c34462a50803e": async (vscode, key) => {
         await vscode.workspace.getConfiguration('shader-studio').update(key, undefined, vscode.ConfigurationTarget.Global);
       },

@@ -5,15 +5,21 @@ import { closeNativeEditor, revertFixtureEditors } from './editor-actions.mjs';
 
 const Uri = { file: path => ({ fsPath: resolve(path) }) };
 
-function fakeVscode(documents, { rejectCommand = false } = {}) {
+function fakeVscode(documents, { rejectCommand = false, rejectClose = false } = {}) {
   const shown = [];
   const commands = [];
+  const closed = [];
+  let activeDocument;
   const host = {
     Uri,
     workspace: { textDocuments: documents },
     window: {
+      get activeTextEditor() {
+        return activeDocument ? { document: activeDocument } : undefined;
+      },
       showTextDocument: async (document, options) => {
         shown.push({ document, options });
+        activeDocument = document;
       },
     },
     commands: {
@@ -27,12 +33,20 @@ function fakeVscode(documents, { rejectCommand = false } = {}) {
   };
   return {
     evaluateInHost: async (callback, ...args) => callback(host, ...args),
+    window: { locator: () => ({ filter: ({ hasText }) => ({ locator: () => ({ click: async () => {
+      if (rejectClose) {
+        throw new Error('close failed');
+      }
+      assert.equal(activeDocument.uri.fsPath.split(/[\\/]/).at(-1), hasText);
+      closed.push(activeDocument); activeDocument = undefined;
+    } }) }) }) },
     shown,
     commands,
+    closed,
   };
 }
 
-test('revertFixtureEditors reverts only dirty fixture editors before cleanup', async () => {
+test('revertFixtureEditors reverts dirty fixture editors and closes clean fixture editors before cleanup', async () => {
   const ownedDirty = { isDirty: true, uri: Uri.file('/fixtures/worker-0/update.wgsl') };
   const ownedClean = { isDirty: false, uri: Uri.file('/fixtures/worker-0/image.wgsl') };
   const otherDirty = { isDirty: true, uri: Uri.file('/fixtures/worker-1/update.wgsl') };
@@ -44,8 +58,9 @@ test('revertFixtureEditors reverts only dirty fixture editors before cleanup', a
   assert.deepEqual(vscode.shown, [{
     document: ownedDirty,
     options: { preserveFocus: false, preview: false },
-  }]);
+  }, { document: ownedClean, options: { preserveFocus: false, preview: false } }]);
   assert.deepEqual(vscode.commands, ['workbench.action.revertAndCloseActiveEditor']);
+  assert.deepEqual(vscode.closed, [ownedClean]);
 });
 
 test('revertFixtureEditors surfaces a failed fixture revert', async () => {
@@ -54,6 +69,11 @@ test('revertFixtureEditors surfaces a failed fixture revert', async () => {
   });
 
   await assert.rejects(() => revertFixtureEditors(vscode, '/fixtures/worker-0'), /revert failed/);
+});
+
+test('revertFixtureEditors surfaces a failed clean fixture close', async () => {
+  const vscode = fakeVscode([{ isDirty: false, uri: Uri.file('/fixtures/worker-0/image.wgsl') }], { rejectClose: true });
+  await assert.rejects(() => revertFixtureEditors(vscode, '/fixtures/worker-0'), /close failed/);
 });
 
 test('closeNativeEditor clicks the named active tab without depending on browser or host-command focus', async () => {
@@ -111,4 +131,23 @@ test('cleanup unlocks the preview without clicking controls that move during edi
   assert.deepEqual(commands, ['shader-studio.toggleLock']);
   await unlockPreviewForCleanup(vscode, frame);
   assert.deepEqual(commands, ['shader-studio.toggleLock']);
+});
+
+
+test('cleanup skips a clean fixture document already closed after the snapshot', async () => {
+  const document = { isDirty: false, uri: Uri.file('/fixtures/worker-0/image.wgsl') };
+  const documents = [document];
+  const vscode = fakeVscode(documents);
+  const evaluate = vscode.evaluateInHost;
+  let calls = 0;
+  vscode.evaluateInHost = async (...args) => {
+    const result = await evaluate(...args);
+    if (++calls === 1) {
+      documents.length = 0;
+    }
+    return result;
+  };
+  await revertFixtureEditors(vscode, '/fixtures/worker-0');
+  assert.deepEqual(vscode.shown, []);
+  assert.deepEqual(vscode.closed, []);
 });

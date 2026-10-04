@@ -62,18 +62,38 @@ export async function unlockPreviewForCleanup(vscode, frame) {
 }
 
 export async function revertFixtureEditors(vscode, directory) {
-  await vscode.evaluateInHost(async (vscode, directory) => {
+  const cleanPaths = await vscode.evaluateInHost(async (vscode, directory) => {
     // The webview may own focus. Revert each dirty fixture's text editor
     // explicitly before deleting it, so the next test cannot open a save prompt.
+    const cleanPaths = [];
     for (const document of vscode.workspace.textDocuments) {
       const prefix = vscode.Uri.file(directory).fsPath + (process.platform === 'win32' ? '\\' : '/');
-      if (!document.isDirty || !document.uri.fsPath.startsWith(prefix)) {
+      if (!document.uri.fsPath.startsWith(prefix)) {
         continue;
+      }
+      if (!document.isDirty) {
+        cleanPaths.push(document.uri.fsPath); continue;
       }
       await vscode.window.showTextDocument(document, { preserveFocus: false, preview: false });
       await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
     }
+    return cleanPaths;
   }, directory);
+  // Close clean fixture tabs before removing their files. Use the exact active
+  // tab rather than dispatching a close command into a focused preview.
+  for (const path of cleanPaths) {
+    const shown = await vscode.evaluateInHost(async (vscode, path) => {
+      const document = vscode.workspace.textDocuments.find(document => document.uri.fsPath === path);
+      if (!document) {
+        return false;
+      }
+      await vscode.window.showTextDocument(document, { preserveFocus: false, preview: false });
+      return true;
+    }, path);
+    if (shown) {
+      await closeNativeEditor(vscode, path);
+    }
+  }
 }
 
 export async function setParameterExpression(frame, name, value) {
