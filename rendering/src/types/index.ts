@@ -6,3 +6,4 @@ export {
   type PixelRegionRequest,
   type PixelRegionResult,
 } from "./PixelRegion";
+export { resolveRenderState, type ResolvedRenderState, type ResolvedDepthState } from "./Geometry";

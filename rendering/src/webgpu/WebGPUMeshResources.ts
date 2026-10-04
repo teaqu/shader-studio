@@ -1,12 +1,22 @@
 /// <reference types="@webgpu/types" />
 import type { GeometryType } from "@shader-studio/types";
-import { createPreviewMesh } from "../preview3d/meshes";
+import { createEdgeIndices, createPreviewMesh } from "../preview3d/meshes";
 import { loadGlbMesh } from "../preview3d/GltfMeshLoader";
 import type { PreviewMesh } from "../preview3d/types";
 
-type MeshKind = Exclude<GeometryType, "fullscreen" | "model">;
+type MeshKind = Exclude<GeometryType, "fullscreen" | "vertices" | "model">;
 
-export interface WebGPUMeshResource { vertexBuffer: GPUBuffer; indexBuffer: GPUBuffer; indexCount: number; indexFormat: GPUIndexFormat; }
+export interface WebGPUMeshResource {
+  vertexBuffer: GPUBuffer;
+  indexBuffer: GPUBuffer;
+  indexCount: number;
+  indexFormat: GPUIndexFormat;
+  /** Distinct mesh vertices, the range of the vertex index (iVertexCount). */
+  vertexCount: number;
+  /** Each unique edge once, in the same index format, for line-list topology. */
+  edgeIndexBuffer: GPUBuffer;
+  edgeIndexCount: number;
+}
 
 export class WebGPUMeshResources {
   private readonly resources = new Map<MeshKind, WebGPUMeshResource>();
@@ -27,7 +37,7 @@ export class WebGPUMeshResources {
     const previous = this.resources.get(key as MeshKind);
     const resource = this.upload(await loadGlbMesh(new Uint8Array(await response.arrayBuffer()), meshName));
     this.resources.set(key as MeshKind, resource);
-    previous?.vertexBuffer.destroy(); previous?.indexBuffer.destroy();
+    previous?.vertexBuffer.destroy(); previous?.indexBuffer.destroy(); previous?.edgeIndexBuffer.destroy();
   }
   getModel(key: string): WebGPUMeshResource | undefined {
     return this.resources.get(key as MeshKind);
@@ -36,6 +46,7 @@ export class WebGPUMeshResources {
     for (const resource of this.resources.values()) {
       resource.vertexBuffer.destroy();
       resource.indexBuffer.destroy();
+      resource.edgeIndexBuffer.destroy();
     }
     this.resources.clear();
   }
@@ -48,7 +59,16 @@ export class WebGPUMeshResources {
     }
     const vertexBuffer = this.device.createBuffer({ size: data.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST });
     const indexBuffer = this.device.createBuffer({ size: mesh.indices.byteLength, usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST });
+    const edgeIndices = createEdgeIndices(mesh.indices);
+    // Edges are index pairs, so even uint16 edge lists fill whole 4-byte words.
+    const edgeIndexBuffer = this.device.createBuffer({ size: Math.max(4, edgeIndices.byteLength), usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST });
     this.device.queue.writeBuffer(vertexBuffer, 0, data); this.device.queue.writeBuffer(indexBuffer, 0, mesh.indices);
-    return { vertexBuffer, indexBuffer, indexCount: mesh.indices.length, indexFormat: mesh.indices instanceof Uint32Array ? "uint32" : "uint16" };
+    this.device.queue.writeBuffer(edgeIndexBuffer, 0, edgeIndices);
+    return {
+      vertexBuffer, indexBuffer, vertexCount: mesh.positions.length / 3, indexCount: mesh.indices.length,
+      indexFormat: mesh.indices instanceof Uint32Array ? "uint32" : "uint16",
+      edgeIndexBuffer, edgeIndexCount: edgeIndices.length,
+    };
   }
 }
+

@@ -581,7 +581,7 @@ describe('Slang Monarch language', () => {
   });
 
   it('matches the extension numeric forms and rejects invalid boundaries', () => {
-    const textMateNumbers = grammar.repository.numbers.patterns!.map((entry) => new RegExp(entry.match));
+    const textMateNumbers = grammar.repository.numbers.patterns!.map((entry) => new RegExp(entry.match!));
     const valid = [
       '0xCA\'FEu', '0X1LL', '0b1010\'0011', '0B1ul',
       '1\'000.25e-2f', '1.', '.5h', '4e+2', '42UL', '0',
@@ -605,7 +605,7 @@ describe('Slang Monarch language', () => {
 
   it('keeps actual Monaco number ranges aligned with full-source TextMate semantics', () => {
     const textMateNumbers = grammar.repository.numbers.patterns!
-      .map((entry) => new RegExp(entry.match));
+      .map((entry) => new RegExp(entry.match!));
     const standaloneDiscrepancies: Array<{
       source: string;
       expected: TokenRange[];

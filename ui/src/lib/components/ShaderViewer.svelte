@@ -180,7 +180,7 @@
     ? (getInjectedLayoutSlot() ?? 'vscode:1')
     : allocateWebLayoutSlot();
   const profileAdapter = new FileProfileAdapter(transport);
-  let timeManager: any = null;
+  let timeManager: ReturnType<IRenderingEngine['getTimeManager']> | null = null;
   let pixelInspectorManager: PixelInspectorManager | undefined;
   let wgslTraceLaunchManager: WgslTraceLaunchManager | undefined;
   let shaderDebugManager = $state<ShaderDebugManager | undefined>(undefined);
@@ -860,7 +860,7 @@
     recordingManager.screenshot(config);
   }
 
-  function handleRecord(config: any) {
+  function handleRecord(config: import('../recording/types').RecordingConfig) {
     if (!initialized) {
       return;
     }
@@ -1373,7 +1373,7 @@
       );
 
       pixelInspectorManager = new PixelInspectorManager(setInspectorState);
-      pixelInspectorManager.initialize(renderingEngine, timeManager, glCanvas);
+      pixelInspectorManager.initialize(renderingEngine, timeManager!, glCanvas);
       pixelInspectorManager.setEnabled($debugPanelStore.isPixelInspectorEnabled && debugState.isEnabled);
       registerLockAtHandler((x, y) => pixelInspectorManager?.lockToPosition(x, y));
       wgslTraceLaunchManager = new WgslTraceLaunchManager({
@@ -1474,7 +1474,7 @@
     debugState.isEnabled;
     debugState.isActive;
     debugState.isInlineRenderingEnabled;
-    (debugState as any).activeBufferName;
+    debugState.activeBufferName;
     currentConfig;
     resolutionController.handleDebugStateChanged();
   });

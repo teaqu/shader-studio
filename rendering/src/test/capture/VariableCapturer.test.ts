@@ -98,6 +98,7 @@ const createMockGl = () => {
     getUniformLocation: vi.fn(() => ({ loc: true })),
     uniform1f: vi.fn(),
     uniform1i: vi.fn(),
+    uniformMatrix4fv: vi.fn(),
     uniform2f: vi.fn(),
     uniform3fv: vi.fn(),
     uniform4fv: vi.fn(),
@@ -317,7 +318,7 @@ describe("VariableCapturer", () => {
     });
 
     it("should return 0 when FBO creation fails", async () => {
-      vi.mocked(gl.createFramebuffer).mockReturnValue(null);
+      vi.mocked(gl.createFramebuffer).mockReturnValue(null as unknown as WebGLFramebuffer);
 
       const captures = [
         { varName: "x", varType: "float", captureShader: "code" },
@@ -385,6 +386,75 @@ describe("VariableCapturer", () => {
     });
   });
 
+  describe("iVertexCount", () => {
+    it.each([
+      [{ vertexCount: 12 }, 12],
+      [{}, 0],
+    ])("binds iVertexCount from the capture uniforms (%j)", async (extra, expected) => {
+      const vertexCountLoc = { name: "iVertexCount" };
+      vi.mocked(gl.getUniformLocation).mockImplementation((_program, name) => (
+        name === "iVertexCount" ? vertexCountLoc as WebGLUniformLocation : null
+      ));
+
+      await capturer.issueCaptureGrid(selectorCaptures([["a", "float"]]), { ...createDefaultUniforms(), ...extra }, 2, 2);
+
+      expect(gl.uniform1i).toHaveBeenCalledWith(vertexCountLoc, expected);
+    });
+  });
+
+  describe("camera matrices", () => {
+    const identity = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+    const locations = {
+      iViewMatrix: { name: "iViewMatrix" },
+      iProjectionMatrix: { name: "iProjectionMatrix" },
+      iViewProjection: { name: "iViewProjection" },
+    };
+
+    beforeEach(() => {
+      vi.mocked(gl.getUniformLocation).mockImplementation((_program, name) => (
+        (locations as Record<string, object>)[name] as WebGLUniformLocation ?? null
+      ));
+    });
+
+    it("binds the captured pass's camera matrices", async () => {
+      const camera = {
+        view: new Float32Array(16).fill(1),
+        projection: new Float32Array(16).fill(2),
+        viewProjection: new Float32Array(16).fill(3),
+      };
+
+      await capturer.issueCaptureGrid(selectorCaptures([["a", "float"]]), { ...createDefaultUniforms(), camera }, 2, 2);
+
+      expect(gl.uniformMatrix4fv).toHaveBeenCalledWith(locations.iViewMatrix, false, camera.view);
+      expect(gl.uniformMatrix4fv).toHaveBeenCalledWith(locations.iProjectionMatrix, false, camera.projection);
+      expect(gl.uniformMatrix4fv).toHaveBeenCalledWith(locations.iViewProjection, false, camera.viewProjection);
+    });
+
+    it("binds identity matrices when the capture uniforms have no camera", async () => {
+      await capturer.issueCaptureGrid(selectorCaptures([["a", "float"]]), createDefaultUniforms(), 2, 2);
+
+      for (const location of Object.values(locations)) {
+        expect(gl.uniformMatrix4fv).toHaveBeenCalledWith(location, false, identity);
+      }
+    });
+  });
+
+  describe("iInstanceCount", () => {
+    it.each([
+      [{ instanceCount: 4 }, 4],
+      [{}, 1],
+    ])("binds iInstanceCount from the capture uniforms (%j)", async (extra, expected) => {
+      const instanceCountLoc = { name: "iInstanceCount" };
+      vi.mocked(gl.getUniformLocation).mockImplementation((_program, name) => (
+        name === "iInstanceCount" ? instanceCountLoc as WebGLUniformLocation : null
+      ));
+
+      await capturer.issueCaptureGrid(selectorCaptures([["a", "float"]]), { ...createDefaultUniforms(), ...extra }, 2, 2);
+
+      expect(gl.uniform1i).toHaveBeenCalledWith(instanceCountLoc, expected);
+    });
+  });
+
   describe("issueCaptureGrid", () => {
     it("should return 0 for empty captures array", async () => {
       const result = await capturer.issueCaptureGrid(
@@ -438,7 +508,7 @@ describe("VariableCapturer", () => {
     });
 
     it("should return 0 when FBO creation fails", async () => {
-      vi.mocked(gl.createFramebuffer).mockReturnValue(null);
+      vi.mocked(gl.createFramebuffer).mockReturnValue(null as unknown as WebGLFramebuffer);
 
       const captures = [
         { varName: "x", varType: "float", captureShader: "code" },
@@ -455,7 +525,7 @@ describe("VariableCapturer", () => {
     });
 
     it("should skip captures with failed shader compilation", async () => {
-      vi.mocked(shaderCompiler.compileShaderAsync).mockReturnValue(null);
+      vi.mocked(shaderCompiler.compileShaderAsync).mockReturnValue(null as unknown as Promise<PiShader | null>);
 
       const captures = [
         { varName: "x", varType: "float", captureShader: "bad_code" },

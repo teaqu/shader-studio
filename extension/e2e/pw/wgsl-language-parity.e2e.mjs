@@ -26,7 +26,7 @@ async function errorDiagnostics(vscode, uri) {
 
 async function documentText(vscode, path) {
   return vscode.evaluateInHost(async (vscode, targetPath) => (
-    vscode.workspace.textDocuments.find((document) => document.uri.fsPath === targetPath)?.getText() ?? ''
+    vscode.workspace.textDocuments.find((document) => document.uri.fsPath === vscode.Uri.file(targetPath).fsPath)?.getText() ?? ''
   ), path);
 }
 

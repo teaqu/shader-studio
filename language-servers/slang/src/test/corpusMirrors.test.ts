@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, existsSync } from "node:fs";
-import { join, dirname, normalize, relative } from "node:path";
+import { join, dirname, normalize, relative, sep, basename, posix } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { stageForPass } from "@shader-studio/types";
@@ -65,9 +65,9 @@ const walkConfigs = (dir: string, out: string[] = []): string[] => {
 // else resolves relative to the owning config, like the extension loader.
 const resolveRef = (configAbs: string, value: string): string => {
   if (value.startsWith("@/")) {
-    return normalize(relative(CORPUS, join(CORPUS_ROOT, value.slice("@/".length))));
+    return relative(CORPUS, join(CORPUS_ROOT, value.slice("@/".length))).split(sep).join("/");
   }
-  return normalize(relative(CORPUS, join(dirname(configAbs), value)));
+  return relative(CORPUS, join(dirname(configAbs), value)).split(sep).join("/");
 };
 
 const uniformsFor = (script?: string) => {
@@ -165,11 +165,11 @@ interface MirrorDoc {
 
 const collectDocs = (): MirrorDoc[] => {
   const docs: MirrorDoc[] = [];
-  const toRel = (abs: string) => abs.slice(`${CORPUS}/`.length);
+  const toRel = (abs: string) => relative(CORPUS, abs).split(sep).join("/");
   for (const configAbs of walkConfigs(CORPUS)) {
     const configRel = toRel(configAbs);
-    const dir = dirname(configRel);
-    const stem = configAbs.slice(configAbs.lastIndexOf("/") + 1, -".sha.json".length);
+    const dir = posix.dirname(configRel);
+    const stem = basename(configAbs, ".sha.json");
     const cfg = JSON.parse(readFileSync(configAbs, "utf8")) as ShaConfig;
     const passes = cfg.passes ?? {};
     const uniforms = uniformsFor(cfg.script);
@@ -205,12 +205,15 @@ const collectDocs = (): MirrorDoc[] => {
       if (passName === "common") {
         continue;
       }
-      const fileRel = pass.path ? resolveRef(configAbs, pass.path) : join(dir, `${stem}.slang`);
+      const fileRel = pass.path ? resolveRef(configAbs, pass.path) : posix.join(dir, `${stem}.slang`);
       if (!existsSync(join(CORPUS, fileRel))) {
         continue;
       }
       const text = readFileSync(join(CORPUS, fileRel), "utf8");
       const stage = stageForPass(cfg as never, passName, fileRel);
+      if (stage !== "fragment" && stage !== "vertex" && stage !== "compute") {
+        continue;
+      }
       const entry = pass.entryPoint ?? firstSlangFn(text) ?? "mainImage";
       docs.push({
         configRel, pass: passName, fileRel, text, stage, entry,
@@ -313,7 +316,7 @@ describe("Slang corpus mirrors in the language service", () => {
   beforeAll(async () => {
     const wasmBinary = readFileSync(new URL("../../../../ui/src/slang/slang-wasm.wasm", import.meta.url));
     const module = await createSlangModule({ wasmBinary });
-    service = new SlangLanguageService(module);
+    service = new SlangLanguageService(module as unknown as import("../slangLanguageServerTypes").SlangLanguageServerModule);
   }, 120_000);
 
   afterAll(async () => {
@@ -339,7 +342,7 @@ describe("Slang corpus mirrors in the language service", () => {
         // expects /unknown language version '2024'/ from the compiler, and
         // the language server must flag it too.
         expect(problems.length).toBeGreaterThan(0);
-        expect(problems.some((d) => /2024/.test(d.message))).toBe(true);
+        expect(problems.some((d) => /2024/.test(typeof d.message === "string" ? d.message : d.message.value))).toBe(true);
       } else {
         expect(problems, `${label}: unexpected diagnostics ${JSON.stringify(problems.map((d) => d.message))}`).toEqual([]);
       }
@@ -361,9 +364,9 @@ describe("Slang corpus mirrors in the language service", () => {
 
   it("leaves no corpus shader unaccounted for", () => {
     const referenced = new Set([
-      ...DOCS.map((d) => normalize(d.fileRel)),
+      ...DOCS.map((d) => posix.normalize(d.fileRel)),
       // Struct-only commons open as context, never as their own document.
-      ...DOCS.flatMap((d) => (d.commonFile ? [normalize(d.commonFile.rel)] : [])),
+      ...DOCS.flatMap((d) => (d.commonFile ? [posix.normalize(d.commonFile.rel)] : [])),
     ]);
     const unreferenced: string[] = [];
     const walk = (dir: string): void => {
@@ -372,7 +375,7 @@ describe("Slang corpus mirrors in the language service", () => {
         if (e.isDirectory()) {
           walk(p);
         } else if (e.name.endsWith(".slang")) {
-          const rel = normalize(relative(CORPUS, p));
+          const rel = relative(CORPUS, p).split(sep).join("/");
           if (!referenced.has(rel)) {
             unreferenced.push(rel);
           }
@@ -380,7 +383,7 @@ describe("Slang corpus mirrors in the language service", () => {
       }
     };
     walk(CORPUS);
-    const virtualRel = new Set(seenVirtualUris.map((uri) => normalize(relative(CORPUS, fileURLToPath(uri)))));
+    const virtualRel = new Set(seenVirtualUris.map((uri) => relative(CORPUS, fileURLToPath(uri)).split(sep).join("/")));
     const unexplained = unreferenced.filter((rel) => !virtualRel.has(rel) && rel !== "test.hlsl");
     expect(unexplained).toEqual([]);
   });

@@ -4,7 +4,9 @@ import { buildSlangBindingPlan } from "./SlangBindingPlan";
 import { slangChannelLayoutEntries, slangChannelResourceEntries } from "./SlangBindingResources";
 import type { StorageBindingNode } from "../types/PassGraph";
 import { allowNonUniformDerivatives, type WgslVertexRange, type WgslDirectiveRange } from "./wgslDiagnostics";
-import type { GeometryType } from "@shader-studio/types";
+import type { GeometryType, VertexSpace, VertexTopology } from "@shader-studio/types";
+import { resolveRenderState, type ResolvedRenderState } from "../types/Geometry";
+import { webgpuBlendState } from "./WebGPURenderState";
 import { createShaderToyUniformLayout, getShaderToyChannelCount, SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX } from "./SlangPrelude";
 
 export interface SlangPassPipelineDescriptor {
@@ -16,6 +18,12 @@ export interface SlangPassPipelineDescriptor {
   vertexChannels?: boolean;
   storage?: StorageBindingNode[];
   geometry: GeometryType;
+  /** Primitive topology of vertices or mesh geometry; omitted means triangle-list. */
+  topology?: VertexTopology;
+  /** Vertices space; clip space binds no camera uniforms. Omitted means world. */
+  vertexSpace?: VertexSpace;
+  /** Blend/depth/cull baked into the pipeline; omitted resolves the geometry defaults. */
+  renderState?: ResolvedRenderState;
   uniformBufferSize?: number;
   /** Generated prelude lines before user line 1; remaps diagnostics onto user lines. */
   sourceLineOffset?: number;
@@ -47,7 +55,7 @@ export interface SlangChannelResource {
 // available; rgba16float remains the portable fallback.
 export const BUFFER_TEXTURE_FORMAT: GPUTextureFormat = "rgba16float";
 export const HIGH_PRECISION_BUFFER_TEXTURE_FORMAT: GPUTextureFormat = "rgba32float";
-export const MESH_UNIFORM_SIZE = 256;
+const MESH_UNIFORM_SIZE = 256;
 
 /** An assembled-module line mapped onto user lines. */
 export interface RemappedWgslDiagnosticLine {
@@ -131,6 +139,8 @@ export class SlangPassPipeline {
   private uniformBuffer: GPUBuffer | null = null;
   private meshUniformBuffer: GPUBuffer | null = null;
   private depthTexture: GPUTexture | null = null;
+  /** Multisampled colour target resolved into the pass output; only with samples above 1. */
+  private msaaTexture: GPUTexture | null = null;
   private bindGroup: GPUBindGroup | null = null;
   private bindGroupResourceIdentities: unknown[] | null = null;
   private bindGroupLayout: GPUBindGroupLayout | null = null;
@@ -170,25 +180,7 @@ export class SlangPassPipeline {
     if (layoutError) {
       return [`${this.descriptor.name}: ${layoutError.message}`];
     }
-    const pipelineDescriptor: GPURenderPipelineDescriptor = {
-      layout: this.device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
-      vertex: {
-        module: shaderModule,
-        entryPoint: SLANG_ENTRY_VERTEX,
-        ...(this.isMesh() ? { buffers: [{ arrayStride: 32, attributes: [
-          { shaderLocation: 0, offset: 0, format: "float32x3" },
-          { shaderLocation: 1, offset: 12, format: "float32x3" },
-          { shaderLocation: 2, offset: 24, format: "float32x2" },
-        ] }] } : {}),
-      },
-      fragment: {
-        module: shaderModule,
-        entryPoint: SLANG_ENTRY_FRAGMENT,
-        targets: [{ format: this.targetFormat() }],
-      },
-      primitive: { topology: "triangle-list" },
-      ...(this.isMesh() ? { depthStencil: { format: "depth24plus", depthWriteEnabled: true, depthCompare: "less" } } : {}),
-    };
+    const pipelineDescriptor = this.buildPipelineDescriptor(shaderModule, bindGroupLayout);
     let pipeline: GPURenderPipeline;
     if (this.device.createRenderPipelineAsync) {
       // WebGPU's off-thread pipeline compile (the KHR_parallel_shader_compile
@@ -218,10 +210,10 @@ export class SlangPassPipeline {
       size: this.descriptor.uniformBufferSize ?? createShaderToyUniformLayout(getShaderToyChannelCount(this.descriptor.channels)).size,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
-    if (this.isMesh()) {
+    if (this.usesCameraUniforms()) {
       this.meshUniformBuffer = this.device.createBuffer({ size: MESH_UNIFORM_SIZE, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-      this.depthTexture = this.device.createTexture({ size: { width: this.descriptor.width, height: this.descriptor.height }, format: "depth24plus", usage: GPUTextureUsage.RENDER_ATTACHMENT });
     }
+    this.resizeAttachments(this.descriptor.width, this.descriptor.height);
     this.sampler = this.device.createSampler({ magFilter: "linear", minFilter: "linear" });
     if (this.descriptor.output === "texture") {
       const textures: GPUTexture[] = [];
@@ -240,7 +232,7 @@ export class SlangPassPipeline {
       // (the explicit layout requires those resources); rebuildBindGroup
       // creates it each frame once live resources are resolved.
       const entries: GPUBindGroupEntry[] = [{ binding: 0, resource: { buffer: this.uniformBuffer } }];
-      if (this.isMesh() && this.meshUniformBuffer) {
+      if (this.usesCameraUniforms() && this.meshUniformBuffer) {
         entries.push({ binding: 1, resource: { buffer: this.meshUniformBuffer } });
       }
       this.bindGroup = this.device.createBindGroup({
@@ -294,7 +286,7 @@ export class SlangPassPipeline {
     }
     if (this.descriptor.output !== "texture" || this.textures.length === 0) {
       this.descriptor = { ...this.descriptor, width, height };
-      this.resizeDepthTexture(width, height);
+      this.resizeAttachments(width, height);
       return;
     }
     const encoder = this.device.createCommandEncoder();
@@ -355,13 +347,13 @@ export class SlangPassPipeline {
       this.textures = newTextures;
       this.outputViews = newViews;
       this.textureIndex = oldTextureIndex;
-      this.resizeDepthTexture(width, height);
+      this.resizeAttachments(width, height);
       return () => {
         this.retireTexturesAfterSubmittedWork(oldTextures);
       };
     }
     this.descriptor = { ...this.descriptor, width, height };
-    this.resizeDepthTexture(width, height);
+    this.resizeAttachments(width, height);
     return null;
   }
 
@@ -415,7 +407,7 @@ export class SlangPassPipeline {
         resource: { buffer: buffer! },
       });
     }
-    if (this.isMesh() && this.meshUniformBuffer) {
+    if (this.usesCameraUniforms() && this.meshUniformBuffer) {
       entries.push({
         binding: storageBaseBinding + (this.descriptor.storage?.length ?? 0),
         resource: { buffer: this.meshUniformBuffer },
@@ -448,8 +440,69 @@ export class SlangPassPipeline {
     return this.depthTexture?.createView() ?? null;
   }
 
-  isMesh(): boolean {
+  /** The multisampled colour attachment to draw into and resolve from, or null without MSAA. */
+  getMsaaView(): GPUTextureView | null {
+    return this.msaaTexture?.createView() ?? null;
+  }
+
+  private renderState(): ResolvedRenderState {
+    return this.descriptor.renderState ?? resolveRenderState({
+      geometry: this.descriptor.geometry,
+      ...(this.descriptor.vertexSpace ? { space: this.descriptor.vertexSpace } : {}),
+    });
+  }
+
+  /** Shader stages plus the topology, blend, depth, cull and sample count baked into the render pipeline. */
+  private buildPipelineDescriptor(shaderModule: GPUShaderModule, bindGroupLayout: GPUBindGroupLayout): GPURenderPipelineDescriptor {
+    const renderState = this.renderState();
+    return {
+      layout: this.device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
+      vertex: {
+        module: shaderModule,
+        entryPoint: SLANG_ENTRY_VERTEX,
+        ...(this.hasVertexBuffers() ? { buffers: [{ arrayStride: 32, attributes: [
+          { shaderLocation: 0, offset: 0, format: "float32x3" },
+          { shaderLocation: 1, offset: 12, format: "float32x3" },
+          { shaderLocation: 2, offset: 24, format: "float32x2" },
+        ] }] } : {}),
+      },
+      fragment: {
+        module: shaderModule,
+        entryPoint: SLANG_ENTRY_FRAGMENT,
+        targets: [{ format: this.targetFormat(), ...webgpuBlendState(renderState.blend) }],
+      },
+      primitive: {
+        topology: this.descriptor.topology ?? "triangle-list",
+        // Counter-clockwise triangles are front-facing in both backends.
+        ...(renderState.cull === "none" ? {} : { cullMode: renderState.cull, frontFace: "ccw" as const }),
+      },
+      // Every non-fullscreen pass has a depth attachment, so its pipeline
+      // declares one; a disabled test still writes depth when asked, as in WebGL.
+      ...(renderState.depth ? {
+        depthStencil: {
+          format: "depth24plus" as const,
+          depthWriteEnabled: renderState.depth.write,
+          depthCompare: renderState.depth.test ? renderState.depth.compare : "always" as const,
+        },
+      } : {}),
+      ...(renderState.samples > 1 ? { multisample: { count: renderState.samples } } : {}),
+    };
+  }
+
+  /** Every non-fullscreen pass (meshes and vertices) draws into a depth attachment. */
+  hasDepthAttachment(): boolean {
     return this.descriptor.geometry !== undefined && this.descriptor.geometry !== "fullscreen";
+  }
+
+  /** Indexed meshes read position, normal and uv from a vertex buffer; vertices geometry has none. */
+  hasVertexBuffers(): boolean {
+    return this.hasDepthAttachment() && this.descriptor.geometry !== "vertices";
+  }
+
+  /** Meshes and world-space vertices bind the orbit camera's matrices. */
+  usesCameraUniforms(): boolean {
+    return this.hasDepthAttachment() &&
+      !(this.descriptor.geometry === "vertices" && this.descriptor.vertexSpace === "clip");
   }
 
   getOutputSize(): { width: number; height: number } {
@@ -511,7 +564,7 @@ export class SlangPassPipeline {
         buffer: { type: writable ? "storage" : "read-only-storage" },
       });
     }
-    if (this.isMesh()) {
+    if (this.usesCameraUniforms()) {
       entries.push({ binding: storageBaseBinding + (this.descriptor.storage?.length ?? 0), visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: "uniform" } });
     }
     return entries;
@@ -537,18 +590,31 @@ export class SlangPassPipeline {
     });
   }
 
-  private resizeDepthTexture(width: number, height: number): void {
-    if (!this.isMesh()) {
+  /** (Re)creates the depth and multisampled colour attachments at the pass size and sample count. */
+  private resizeAttachments(width: number, height: number): void {
+    if (!this.hasDepthAttachment()) {
       return;
     }
+    const sampleCount = this.renderState().samples;
     const nextDepthTexture = this.device.createTexture({
       label: `${this.descriptor.name} depth`,
       size: { width, height },
       format: "depth24plus",
       usage: GPUTextureUsage.RENDER_ATTACHMENT,
+      ...(sampleCount > 1 ? { sampleCount } : {}),
     });
     this.depthTexture?.destroy?.();
     this.depthTexture = nextDepthTexture;
+    this.msaaTexture?.destroy?.();
+    this.msaaTexture = sampleCount > 1
+      ? this.device.createTexture({
+        label: `${this.descriptor.name} multisample`,
+        size: { width, height },
+        format: this.targetFormat(),
+        usage: GPUTextureUsage.RENDER_ATTACHMENT,
+        sampleCount,
+      })
+      : null;
   }
 
   private resetResources(): void {
@@ -567,6 +633,8 @@ export class SlangPassPipeline {
     this.meshUniformBuffer = null;
     this.depthTexture?.destroy?.();
     this.depthTexture = null;
+    this.msaaTexture?.destroy?.();
+    this.msaaTexture = null;
   }
 
   private invalidateBindGroup(): void {

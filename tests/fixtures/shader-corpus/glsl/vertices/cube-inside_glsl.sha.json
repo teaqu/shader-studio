@@ -1,0 +1,11 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "geometry": {
+        "type": "cube"
+      },
+      "cull": "front"
+    }
+  }
+}

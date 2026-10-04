@@ -1,13 +1,11 @@
 declare function acquireVsCodeApi(): {
-  postMessage: (msg: any) => void;
-  setState: (state: any) => void;
-  getState: () => any;
+  postMessage: (msg: unknown) => void;
+  setState: (state: unknown) => void;
+  getState: () => unknown;
 };
 
-declare global {
-  interface Window {
-    shaderViewConfig?: {
-      port: number;
-    };
-  }
+interface Window {
+  shaderViewConfig?: {
+    port: number;
+  };
 }

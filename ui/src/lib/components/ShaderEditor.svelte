@@ -115,6 +115,8 @@
   let editor: monaco.editor.IStandaloneCodeEditor | null = null;
   let languageServiceController = $state<LanguageServiceController | null>(null);
   let environmentGeneration = 0;
+  // codemirror-vim ships an untyped, versioned runtime extension; this is the
+  // isolated adapter boundary for its instance and Ex command callback API.
   let vimModeInstance: any = null;
   let popupContainer: HTMLDivElement | null = null;
   let renamePopupKeyCleanup: (() => void) | null = null;
@@ -540,10 +542,10 @@
       return;
     }
 
-    setupMonacoGlsl(monaco as any);
-    setupMonacoSlang(monaco as any);
-    setupMonacoWgsl(monaco as any);
-    setupMonacoJson(monaco as any);
+    setupMonacoGlsl(monaco);
+    setupMonacoSlang(monaco);
+    setupMonacoWgsl(monaco);
+    setupMonacoJson(monaco);
 
     if (overflowWidgetsDomNode) {
       // Monaco scopes widget layout and colour variables to .monaco-editor.

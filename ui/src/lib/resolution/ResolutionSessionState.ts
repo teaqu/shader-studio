@@ -67,7 +67,7 @@ export function resetResolutionSessionState(state: ResolutionSessionState): Reso
   };
 }
 
-export function isBufferResolution(resolution: BufferResolution | undefined): boolean {
+function isBufferResolution(resolution: BufferResolution | undefined): boolean {
   return Boolean(
     resolution && (
       resolution.width !== undefined
@@ -114,7 +114,7 @@ export function getBufferConfigResolution(
   return (config?.passes?.[bufferName] as BufferPass | undefined)?.resolution;
 }
 
-export function getBufferResolutionMenuState(
+function getBufferResolutionMenuState(
   resolution: BufferResolution | undefined,
 ): BufferResolutionMenuState {
   if (!resolution || (!resolution.width && !resolution.height && resolution.scale === undefined)) {

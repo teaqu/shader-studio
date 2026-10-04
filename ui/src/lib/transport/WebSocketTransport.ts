@@ -1,6 +1,8 @@
 import type { BaseMessage } from '@shader-studio/types';
 import type { Transport, TransportMessage } from './MessageTransport';
 
+type PendingMessage = TransportMessage<BaseMessage>;
+
 export class WebSocketTransport implements Transport {
   private ws: WebSocket | null = null;
   private messageHandlers: Array<(event: MessageEvent) => void> = [];
@@ -9,7 +11,7 @@ export class WebSocketTransport implements Transport {
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
-  private pendingMessages: any[] = [];
+  private pendingMessages: PendingMessage[] = [];
 
   constructor() {
     const port = this.getPort();
@@ -23,8 +25,8 @@ export class WebSocketTransport implements Transport {
   private url: string;
 
   private getPort(): number {
-    if (typeof window !== 'undefined' && (window as any).shaderViewConfig?.port) {
-      const port = (window as any).shaderViewConfig.port;
+    if (typeof window !== 'undefined' && window.shaderViewConfig?.port) {
+      const port = window.shaderViewConfig.port;
       return port;
     }
 

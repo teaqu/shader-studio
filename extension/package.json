@@ -490,6 +490,7 @@
     "package": "npm run build:ui && npm run build:shader-explorer && node esbuild.js --production && npm run copy-glsl-to-dist",
     "vsce-package": "npm run package && vsce package --no-dependencies",
     "compile-tests": "npm run build:deps && rimraf out && tsc -p ./tsconfig.test.json",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit",
     "watch-tests": "rimraf out && tsc -p . -w --outDir out",
     "build:code": "npm run build:deps && node esbuild.js && tsc -p ./",
     "build:deps": "turbo run build --filter=@shader-studio/types --filter=@shader-studio/language-server-core --filter=@shader-studio/glsl-analysis --filter=@shader-studio/glsl-language-server --filter=@shader-studio/slang-language-server --filter=@shader-studio/wgsl-analysis --filter=@shader-studio/wgsl-language-server --filter=@shader-studio/utils --filter=@shader-studio/debug --filter=@shader-studio/rendering",
@@ -523,7 +524,9 @@
     "js-yaml": "^4.3.2",
     "sinon": "^21.0.0",
     "vscode-oniguruma": "^2.0.1",
-    "vscode-textmate": "^9.3.2"
+    "vscode-textmate": "^9.3.2",
+    "ajv": "^6.12.6",
+    "playwright": "^1.60.0"
   },
   "dependencies": {
     "@shader-studio/glsl-language-server": "*",
@@ -535,6 +538,7 @@
     "entities": "^6.0.1",
     "esbuild-wasm": "^0.24.0",
     "glsl-transpiler": "^3.0.3",
-    "ws": "^8.18.3"
+    "ws": "^8.18.3",
+    "vscode-languageserver-protocol": "3.18.2"
   }
 }

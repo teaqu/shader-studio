@@ -178,7 +178,7 @@ export class BufferManager {
     this.renderer.AttachTextures(1, sourceTexture, null, null, null);
 
     const posLoc = this.renderer.GetAttribLocation(this.copyShader, "position");
-    this.renderer.DrawUnitQuad_XY(posLoc);
+    this.renderer.DrawFullScreenTriangle_XY(posLoc);
   }
 
   private clearNewBuffers(

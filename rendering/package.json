@@ -7,6 +7,7 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc",
+    "typecheck": "tsc -p tsconfig.test.json",
     "watch": "tsc --watch",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -23,7 +24,6 @@
     "@shader-studio/wgsl-analysis": "*"
   },
   "devDependencies": {
-    "@vitest/browser": "^4.1.10",
     "@vitest/browser-playwright": "^4.0.18",
     "@webgpu/types": "^0.1.70",
     "playwright": "^1.60.0",

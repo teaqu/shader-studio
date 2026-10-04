@@ -2,6 +2,7 @@ import { test, expect, workspacePath } from './fixtures.mjs';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expectCanvasPixels } from './editor-actions.mjs';
+import { isWithinDirectory } from './platform.mjs';
 
 // CI tests the artifact supplied by the packaging job. Keep the legacy
 // production-specific spelling for callers that need to override it, but do
@@ -34,7 +35,7 @@ test('uses the installed production extension to render a WGSL shader @gpu', asy
       return { extensionPath: installed.extensionPath, active: installed.isActive };
     });
     expect(extension.active).toBe(true);
-    expect(extension.extensionPath.startsWith(`${vscode.extensionsDir}/`)).toBe(true);
+    expect(isWithinDirectory(vscode.extensionsDir, extension.extensionPath)).toBe(true);
 
     await vscode.evaluateInHost(async (vscode, path) => {
       const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));

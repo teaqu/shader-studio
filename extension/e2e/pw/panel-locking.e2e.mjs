@@ -26,9 +26,9 @@ test('preview remains available while another file opens before its group is act
     const frame = await vscode.shaderFrame();
     await expect(frame.locator('.canvas-container')).toBeVisible();
     expect(await vscode.evaluateInHost(vscode => ({
-      active: vscode.window.activeTextEditor?.document.uri.fsPath,
+      active: vscode.window.activeTextEditor?.document.uri.toString(),
       previews: vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab => tab.label === 'Shader Studio').length,
-    }))).toEqual({ active: otherPath, previews: 1 });
+    }))).toEqual({ active: await vscode.evaluateInHost((vscode, path) => vscode.Uri.file(path).toString(), otherPath), previews: 1 });
     const previewGroup = vscode.window.locator('.editor-group-container').filter({ has: vscode.window.getByRole('tab', { name: /Shader Studio, Editor Group/ }) });
     await expect(previewGroup).not.toHaveClass(/locked/);
     await vscode.window.getByRole('tab', { name: /Shader Studio, Editor Group/ }).click();

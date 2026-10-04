@@ -11,6 +11,7 @@
   ],
   "scripts": {
     "build": "node -e \"const fs=require('fs'); fs.mkdirSync('dist',{recursive:true}); fs.writeFileSync('dist/.turbo-stamp','');\"",
+    "typecheck": "tsc -p tsconfig.test.json",
     "test": "vitest run"
   },
   "devDependencies": {

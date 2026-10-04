@@ -13,7 +13,7 @@ export class ConfigPathConverter {
    * The original path is preserved for display in the UI config panel.
    */
   public static async processConfigPaths(
-    message: { type: string; config: ShaderConfig; path?: string; [key: string]: any },
+    message: { type: string; config: ShaderConfig; path?: string } & Record<string, unknown>,
     webview: vscode.Webview,
     options: {
       skipVideoProcessing?: boolean;

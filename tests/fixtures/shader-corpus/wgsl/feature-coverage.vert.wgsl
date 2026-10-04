@@ -2,7 +2,7 @@
 // WGSL mirror of ../slang/feature-coverage.vert.slang. Nudges vertices by
 // the sampled pattern texture, proving vertex hooks can read channels.
 
-fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {
+fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {
     let channelOffset = patternTexSampleLevel(*uv, 0.0).rg - 0.5;
     // NOTE: a swizzle store needs the optional `swizzle_assignment` language
     // feature, which the Chromium inside VS Code does not have yet. Portable

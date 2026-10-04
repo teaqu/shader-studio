@@ -12,6 +12,12 @@ const noopErrorHandler = {
   handlePersistentError: () => {},
 };
 
+type ShaderPass = {
+  path?: string;
+  vertex?: string;
+  inputs?: Record<string, { type?: string; path?: string }>;
+};
+
 /**
  * Shared utility for processing shader configurations.
  * Used by both ShaderProvider and Shader ExplorerProvider.
@@ -137,7 +143,7 @@ export class ShaderConfigProcessor {
    * Resolves the path and loads the buffer content from memory or disk.
    */
   private processBufferPath(
-    pass: any,
+    pass: ShaderPass & { path: string },
     passName: string,
     shaderPath: string,
     buffers: Record<string, string>,
@@ -205,7 +211,7 @@ export class ShaderConfigProcessor {
    * Validates that texture/video files exist without mutating the original paths.
    */
   private processInputs(
-    pass: any,
+    pass: ShaderPass,
     passName: string,
     shaderPath: string,
   ): void {

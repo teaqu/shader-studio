@@ -151,7 +151,8 @@ describe("SlangCompiler", () => {
     expect(onDelete).toHaveBeenCalledExactlyOnceWith("session");
   });
 
-  it("releases the cached global WASM session when disposed", () => {
+  it("keeps the shared global WASM session alive when a compiler is disposed", () => {
+    // slang-wasm does not free a deleted global session, so it stays with its module.
     const onDelete = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onDelete }));
 
@@ -159,7 +160,44 @@ describe("SlangCompiler", () => {
     compiler.dispose();
     compiler.dispose();
 
-    expect(onDelete.mock.calls.filter(([handle]) => handle === "globalSession")).toHaveLength(1);
+    expect(onDelete.mock.calls.filter(([handle]) => handle === "globalSession")).toHaveLength(0);
+  });
+
+  it("shares one global session between compilers on the same slang module", () => {
+    const slang = makeFakeSlang();
+    const spy = vi.spyOn(slang, "createGlobalSession");
+    const first = new SlangCompiler(slang);
+    first.compileImagePass("float4 mainImage(float2 c) { return 0; }");
+    first.dispose();
+
+    const second = new SlangCompiler(slang);
+    const result = second.compileImagePass("float4 mainImage(float2 c) { return 1; }");
+
+    expect(result.success).toBe(true);
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a separate global session per slang module", () => {
+    const first = makeFakeSlang();
+    const second = makeFakeSlang();
+    const firstSpy = vi.spyOn(first, "createGlobalSession");
+    const secondSpy = vi.spyOn(second, "createGlobalSession");
+
+    new SlangCompiler(first).compileImagePass("a");
+    new SlangCompiler(second).compileImagePass("b");
+
+    expect(firstSpy).toHaveBeenCalledTimes(1);
+    expect(secondSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not share a global session that has no WGSL target", () => {
+    const slang = makeFakeSlang({ targets: [{ name: "GLSL", value: 1 }] });
+    const spy = vi.spyOn(slang, "createGlobalSession");
+
+    expect(new SlangCompiler(slang).compileImagePass("a").success).toBe(false);
+    expect(new SlangCompiler(slang).compileImagePass("b").success).toBe(false);
+
+    expect(spy).toHaveBeenCalledTimes(2);
   });
 
   it.each(["plane", "cube", "sphere"] as const)(
@@ -189,7 +227,12 @@ describe("SlangCompiler", () => {
       expect(wrapped).toContain(`iWorldPosition = input.worldPosition;
     iNormal = input.normal;
     iCameraPosition = _mesh.cameraPosition.xyz;
+    iFrontFacing = frontFacing;
+    iInstanceIndex = input.instanceIndex;
     float4 color = mainImage(input.uv * _st.resolution.xy);`);
+      expect(wrapped).toContain("static uint iInstanceIndex;");
+      expect(wrapped).toContain("nointerpolation uint instanceIndex : TEXCOORD3;");
+      expect(wrapped).toContain("uint instanceID : SV_InstanceID) { iInstanceIndex = instanceID;");
       expect(wrapped).toContain("return color;");
       expect(wrapped).not.toContain("_previewWrap");
       expect(wrapped).not.toContain("mapped * _st.resolution.xy");
@@ -208,7 +251,9 @@ describe("SlangCompiler", () => {
     expect(wrapped).toContain("static float3 iWorldPosition;");
     expect(wrapped).toContain("static float3 iNormal;");
     expect(wrapped).toContain("static float3 iCameraPosition;");
-    expect(wrapped).toContain("float2 coord = float2(fragCoord.x, _st.resolution.y - fragCoord.y);");
+    expect(wrapped).toContain("static float2 iVertexUv;");
+    expect(wrapped).toContain("iVertexUv = input.uv;");
+    expect(wrapped).toContain("float2 coord = float2(input.position.x, _st.resolution.y - input.position.y);");
     expect(wrapped).toContain("return mainImage(coord);");
     expect(wrapped).not.toContain("struct MeshVertexOut");
   });
@@ -295,7 +340,7 @@ describe("SlangCompiler", () => {
         "float4 mainImage(float2 fragCoord) { return float4(1); }",
         {
           channels: [{ slot: 3, key: "iChannel3" }],
-          vertexCode: "void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) { position.x += iChannel3.SampleLevel(uv, 0.0).x; }",
+          vertexCode: "void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) { position.x += iChannel3.SampleLevel(uv, 0.0).x; }",
         },
       );
 
@@ -305,6 +350,40 @@ describe("SlangCompiler", () => {
       }
     },
   );
+
+  it.runIf(realSlangAssets)(
+    "compiles a vertices hook and fragment that read iVertexCount with real Slang",
+    async () => {
+      const slang = await loadRealSlang(realSlangAssets!.script, realSlangAssets!.wasm);
+      const compiler = new SlangCompiler(slang);
+
+      const result = compiler.compileImagePass(
+        "float4 mainImage(float2 fragCoord) { return float4(float(iVertexCount) / 12.0); }",
+        {
+          geometry: "vertices",
+          vertexSpace: "clip",
+          vertexCode: "void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) { position.x = float(vertexIndex) / float(iVertexCount - 1u); }",
+        },
+      );
+
+      expect(result.success, result.success ? "" : result.errors.join("\n")).toBe(true);
+      if (result.success) {
+        expect(result.wgsl).toContain("vertexCount");
+      }
+    },
+  );
+
+  it("forwards the vertices space to the Slang wrapper", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+    compiler.compileImagePass("float4 mainImage(float2 c) { return float4(0); }", { geometry: "vertices", vertexSpace: "clip" });
+    compiler.compileImagePass("float4 mainImage(float2 c) { return float4(0); }", { geometry: "vertices", vertexSpace: "world" });
+    compiler.compileImagePass("float4 mainImage(float2 c) { return float4(0); }");
+    expect(onLoad.mock.calls[0][0]).toContain("float3 position = float3(0, 0, 0);");
+    expect(onLoad.mock.calls[0][0]).not.toContain("MeshUniforms");
+    expect(onLoad.mock.calls[1][0]).toContain("ConstantBuffer<MeshUniforms> _mesh;");
+    expect(onLoad.mock.calls[2][0]).not.toContain("float3 position = float3(0, 0, 0);");
+  });
 
   it("compiles user source to WGSL", () => {
     const compiler = new SlangCompiler(makeFakeSlang({ wgsl: "FINAL_WGSL" }));

@@ -46,6 +46,14 @@ test('debugging a script-driven WGSL chain captures locals and lists no script u
     await panel.getByLabel('Toggle variable inspector').click();
   }
   await expect(panel.locator('.variables-section')).toBeVisible();
+  // Retain the assembled VS Code/debug-panel boundary while the three-language
+  // display matrix runs in component tests instead of another VS Code session.
+  const uniforms = panel.locator('.uniforms-section .uniform-name');
+  await expect(uniforms.filter({ hasText: /^iTime$/ })).toBeVisible();
+  await expect(uniforms.filter({ hasText: /^iCameraDir$/ })).toBeVisible();
+  for (const name of ['gain', 'tint', 'unused']) {
+    await expect(uniforms.filter({ hasText: new RegExp(`^${name}$`) })).toHaveCount(0);
+  }
   await expect(panel.locator('.header-info:not(.fn-name):not(.fn-type)')).toContainText('L8');
   for (const name of ['fragCoord', 'uv', 'src', 'col', 'depth']) {
     await expect(variableRow(frame, name)).toBeVisible();

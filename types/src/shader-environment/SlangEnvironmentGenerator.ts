@@ -109,6 +109,8 @@ export interface SlangRuntimeContextNames {
   worldPosition: string;
   normal: string;
   cameraPosition: string;
+  uv: string;
+  frontFacing: string;
 }
 
 /**
@@ -121,6 +123,8 @@ export function buildSlangRuntimePrelude(
     worldPosition: "_shaderStudioWorldPosition",
     normal: "_shaderStudioNormal",
     cameraPosition: "_shaderStudioCameraPosition",
+    uv: "_shaderStudioVertexUv",
+    frontFacing: "_shaderStudioFrontFacing",
   },
   channelCount = 4,
 ): string {
@@ -140,6 +144,8 @@ export function buildSlangRuntimePrelude(
     { symbol: SHADER_STUDIO_FRAGMENT_CONTEXT.worldPosition, contextName: contextNames.worldPosition },
     { symbol: SHADER_STUDIO_FRAGMENT_CONTEXT.normal, contextName: contextNames.normal },
     { symbol: SHADER_STUDIO_FRAGMENT_CONTEXT.cameraPosition, contextName: contextNames.cameraPosition },
+    { symbol: SHADER_STUDIO_FRAGMENT_CONTEXT.vertexUv, contextName: contextNames.uv },
+    { symbol: SHADER_STUDIO_FRAGMENT_CONTEXT.frontFacing, contextName: contextNames.frontFacing },
   ].map(({ symbol, contextName }) => `static ${symbol.slangType} ${contextName};`).join("\n");
 
   return `// ---- shader-studio Slang prelude (generated) ----
@@ -158,6 +164,10 @@ struct ShaderToyUniforms
     float3 channelResolution[${channelCount}];
     float4 cameraPos;
     float4 cameraDir;
+    uint4 vertexCount;
+    column_major float4x4 viewMatrix;
+    column_major float4x4 projectionMatrix;
+    column_major float4x4 viewProjection;
 ${fields}
 };
 
@@ -167,5 +177,7 @@ ConstantBuffer<ShaderToyUniforms> ${SLANG_RUNTIME_UNIFORM_BUFFER_NAME};
 ${SLANG_RUNTIME_UNIFORM_ALIAS_LINES.join("\n")}
 ${aliases}
 ${contextDeclarations}
+// Set by the vertex entry from SV_InstanceID and passed flat to the fragment entry.
+static uint iInstanceIndex;
 `;
 }

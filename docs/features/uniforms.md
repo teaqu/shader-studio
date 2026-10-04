@@ -20,6 +20,12 @@ These are always available — no declaration needed. Types differ slightly betw
 | `iSampleRate` | `float` | `float` | `f32` | Audio sample rate in hertz |
 | `iCameraPos` | `vec3` | `float3` | `vec3f` | Camera position in world space |
 | `iCameraDir` | `vec3` | `float3` | `vec3f` | Normalised camera look direction |
+| `iVertexCount` | `int` | `uint` | `u32` | Vertices drawn by the pass: the vertices geometry's `vertexCount` (default 3), 3 for fullscreen, or the mesh vertex count |
+| `iInstanceCount` | `int` | `uint` | `u32` | Copies of the geometry the pass draws: the geometry's `instanceCount` (default 1), or 1 for fullscreen |
+| `iViewMatrix` | `mat4` | `float4x4` | `mat4x4f` | The orbit camera's view matrix (world to view space) |
+| `iProjectionMatrix` | `mat4` | `float4x4` | `mat4x4f` | The orbit camera's perspective projection at the pass's aspect ratio |
+| `iViewProjection` | `mat4` | `float4x4` | `mat4x4f` | `iProjectionMatrix * iViewMatrix`: world space to clip space. See [Camera matrices](vertex-shaders.md#camera-matrices) |
+| `iInstanceIndex` | `int` | `uint` | `u32` | Which copy is being drawn, from 0 to `iInstanceCount - 1`; fragments get the value of the copy that drew them. See [Instancing](vertex-shaders.md#instancing) |
 | `iChannel0`–`iChannel3` | `sampler2D` (or cube/3D) | `ShaderStudioChannel2D` / `…Cube` / `…3D` | Metadata object; use `iChannel0Texture` and `iChannel0Sampler` to sample | Input channel textures in configured slot order |
 | `iCh0`–`iCh3` | channel metadata struct | — | — | Input channel with sampler, size, playback time, and loaded state |
 | `<name>` | named channel object | `ShaderStudioChannel2D` / `…Cube` / `…3D` | Metadata object; use `<name>Texture` and `<name>Sampler` to sample | Input channel configured with that name |
@@ -27,8 +33,10 @@ These are always available — no declaration needed. Types differ slightly betw
 | `iWorldPosition` | `vec3` | `float3` | `vec3f` | Fragment only: world-space position of the fragment; zero for fullscreen geometry |
 | `iNormal` | `vec3` | `float3` | `vec3f` | Fragment only: world-space interpolated normal; zero for fullscreen geometry |
 | `iCameraPosition` | `vec3` | `float3` | `vec3f` | Fragment only: world-space camera position for mesh fragments; zero for fullscreen geometry |
+| `iVertexUv` | `vec2` | `float2` | `vec2f` | Fragment only: perspective-correct interpolated `uv` written by `mainVertex`, for every geometry and space |
+| `iFrontFacing` | `bool` | `bool` | `bool` | Fragment only: whether the current primitive is front-facing; always `true` for fullscreen geometry |
 
-`iWorldPosition`, `iNormal`, and `iCameraPosition` carry values only when the pass renders 3D geometry — see [Vertex Shaders](vertex-shaders.md#fragment-shader-access).
+`iVertexUv` and `iFrontFacing` are available for every geometry and space. `iWorldPosition`, `iNormal`, and `iCameraPosition` carry values only when the pass renders 3D geometry — see [Vertex Shaders](vertex-shaders.md#fragment-shader-access).
 
 Slang has no `iChN`, `iChannelTime`, or `iChannelResolution` symbols. Each
 configured channel is a direct global named by its exact configuration key —

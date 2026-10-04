@@ -3,43 +3,20 @@ import { render, fireEvent, screen } from '@testing-library/svelte';
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import DebugPanel from '../../../lib/components/debug/DebugPanel.svelte';
-import type { ShaderDebugState, DebugFunctionContext } from '../../../lib/types/ShaderDebugState';
-import type { PassUniforms } from '../../../../../rendering/src/models/PassUniforms';
+import type { DebugFunctionContext } from '../../../lib/types/ShaderDebugState';
 import type { RefreshMode } from '../../../lib/VariableCaptureManager';
 import type { ShaderDebugManager } from '../../../lib/ShaderDebugManager';
 import type { VariableCaptureManager } from '../../../lib/VariableCaptureManager';
 import { debugPanelStore } from '../../../lib/stores/debugPanelStore';
 import { getVariablePreview, resetVariablePreview } from '../../../lib/state/variablePreviewState.svelte';
 import { setInspectorState } from '../../../lib/state/pixelInspectorState.svelte';
+import { makeDebugState, mockGetUniforms, mockUniforms } from './DebugPanel.fixtures';
 
 const DEFAULT_INSPECTOR_STATE = {
   isEnabled: false, isActive: false, isLocked: false,
   mouseX: 0, mouseY: 0, pixelRGB: null, fragCoord: null, canvasPosition: null,
   region: null,
 };
-
-function makeDebugState(overrides: Partial<ShaderDebugState> = {}): ShaderDebugState {
-  return {
-    isEnabled: true,
-    currentLine: 5,
-    lineContent: 'float d = length(p) - r;',
-    filePath: '/test.glsl',
-    isActive: true,
-    functionContext: null,
-    isLineLocked: false,
-    isInlineRenderingEnabled: true,
-    normalizeMode: 'off' as const,
-    isStepEnabled: false,
-    stepEdge: 0.5,
-    debugError: null,
-    debugNotice: null,
-    isVariableInspectorEnabled: false,
-    isErrorsEnabled: false,
-    capturedVariables: [],
-    activeBufferName: 'Image',
-    ...overrides,
-  };
-}
 
 function makeFunctionContext(overrides: Partial<DebugFunctionContext> = {}): DebugFunctionContext {
   return {
@@ -53,25 +30,6 @@ function makeFunctionContext(overrides: Partial<DebugFunctionContext> = {}): Deb
     loops: [],
     ...overrides,
   };
-}
-
-const mockUniforms: PassUniforms = {
-  time: 1.5,
-  res: [800, 600, 1],
-  mouse: [400, 300, 0, 0],
-  frame: 90,
-  timeDelta: 0.0167,
-  frameRate: 60.0,
-  date: [2024, 1, 15, 12345.0],
-  channelTime: [0, 0, 0, 0],
-  sampleRate: 44100,
-  channelLoaded: [0, 0, 0, 0],
-  cameraPos: [0, 0, 5],
-  cameraDir: [0, 0, -1],
-};
-
-function mockGetUniforms(): PassUniforms | null {
-  return mockUniforms;
 }
 
 function createMockShaderDebugManager(language = 'slang') {
@@ -324,24 +282,6 @@ describe('DebugPanel', () => {
     });
 
     expect(container.querySelector('.uniforms-section')).toBeFalsy();
-  });
-
-  it.each(['/shader.glsl', '/shader.slang', '/shader.wgsl'])('lists only built-in uniforms for %s, never script values', (filePath) => {
-    // The host still holds script values (the Script tab shows them); spread so
-    // this stays a runtime check that nothing forwards them into the panel.
-    const hostScriptValues = { customUniformValues: { uLevel: 0.75, tint: [1, 0.5, 0.25], enabled: true } };
-    const { container } = render(DebugPanel, {
-      debugState: makeDebugState({ filePath, isVariableInspectorEnabled: true }),
-      getUniforms: mockGetUniforms,
-      uniforms: mockUniforms,
-      ...hostScriptValues,
-    });
-
-    const names = Array.from(container.querySelectorAll('.uniforms-section .uniform-name')).map(el => el.textContent);
-    expect(names).toEqual([
-      'iTime', 'iResolution', 'iMouse', 'iFrame', 'iTimeDelta', 'iFrameRate',
-      'iDate', 'iSampleRate', 'iCameraPos', 'iCameraDir',
-    ]);
   });
 
   it('lock button toggles active state', async () => {

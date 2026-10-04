@@ -1,5 +1,6 @@
-import { buildGlslNamedChannelDeclarations, type GeometryType } from "@shader-studio/types";
+import { buildGlslNamedChannelDeclarations, type GeometryType, type MeshTopology, type VertexSpace, type VertexTopology } from "@shader-studio/types";
 import {
+  INSTANCE_INDEX,
   isMeshGeometry,
   MESH_FRAGMENT_CONTEXT,
   MESH_FRAGMENT_CONTEXT_TYPES,
@@ -16,6 +17,10 @@ export interface ShaderWrapOptions {
   channelTypes?: ChannelSamplerType[];
   customUniformDeclarations?: string;
   vertexCode?: string;
+  /** Resolved space and topology for vertices geometry. */
+  vertices?: { space: VertexSpace; topology: VertexTopology };
+  /** Resolved topology for plane, cube, sphere and model geometry. */
+  meshTopology?: MeshTopology;
 }
 
 export interface WrappedShaderSource {
@@ -31,6 +36,51 @@ export interface WrappedShaderSource {
 }
 
 const ASYNC_COMPILE_TIMEOUT_MS = 5000;
+
+const INSTANCE_INDEX_OUT = `flat out int ${INSTANCE_INDEX};`;
+const CAMERA_MATRIX_UNIFORMS = `uniform mat4 iViewMatrix;
+uniform mat4 iProjectionMatrix;
+uniform mat4 iViewProjection;`;
+
+/** Corners of the oversized triangle that covers clip space, indexed by gl_VertexID. */
+const FULLSCREEN_TRIANGLE_CORNERS = "vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0)";
+const FULLSCREEN_TRIANGLE_VERTEX_SOURCE =
+  `out vec2 ${MESH_FRAGMENT_CONTEXT.uv};
+void main() { vec2 corners[3] = vec2[3](${FULLSCREEN_TRIANGLE_CORNERS}); vec2 corner = corners[gl_VertexID]; ${MESH_FRAGMENT_CONTEXT.uv} = corner * 0.5 + 0.5; gl_Position = vec4(corner, 0.0, 1.0); }`;
+
+/** Every vertices-geometry vertex starts here before mainVertex moves it. */
+const VERTICES_SEED = ` vec3 _vertexPosition = vec3(0.0);
+ vec3 _vertexNormal = vec3(0.0, 0.0, 1.0);
+ vec2 _vertexUv = vec2(0.0);`;
+
+/**
+ * Meshes read their seeds from vertex attributes; world-space vertices have
+ * no vertex buffers and start every vertex at the origin.
+ */
+function projectedVertexInputs(vertices: boolean): { attributes: string; seed: string } {
+  return vertices
+    ? { attributes: "", seed: VERTICES_SEED }
+    : {
+      attributes: `layout(location = 0) in vec3 position;
+layout(location = 1) in vec3 normal;
+layout(location = 2) in vec2 uv;
+`,
+      seed: ` vec3 _vertexPosition = position;
+ vec3 _vertexNormal = normal;
+ vec2 _vertexUv = uv;`,
+    };
+}
+
+/** Clip-space vertices write the hook's position straight to gl_Position. */
+function buildClipVerticesMain(hasHook: boolean, pointSize: string): string {
+  const callHook = hasHook ? "\n mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);" : "";
+  return `void main() {
+ ${INSTANCE_INDEX} = gl_InstanceID;
+${VERTICES_SEED}${callHook}
+ ${MESH_FRAGMENT_CONTEXT.uv} = _vertexUv;
+ gl_Position = vec4(_vertexPosition, 1.0);${pointSize}
+}`;
+}
 
 export class ShaderCompiler {
   private static nextAsyncCompileId = 1;
@@ -76,14 +126,24 @@ export class ShaderCompiler {
     const channelCount = this.getChannelCount(options.slotAssignments);
     const channelDeclarations = this.buildChannelDeclarations(options.slotAssignments, types);
     const mesh = isMeshGeometry(options.geometry);
-    const fragmentContext = mesh
-      ? `in vec2 ${MESH_FRAGMENT_CONTEXT.uv};
-in ${MESH_FRAGMENT_CONTEXT_TYPES.worldPosition} ${MESH_FRAGMENT_CONTEXT.worldPosition};
+    // World-space vertices are projected by the orbit camera like a mesh.
+    const worldVertices = options.geometry === "vertices" && options.vertices?.space !== "clip";
+    const fragmentContext = `in ${MESH_FRAGMENT_CONTEXT_TYPES.uv} ${MESH_FRAGMENT_CONTEXT.uv};
+${mesh || worldVertices
+    ? `in ${MESH_FRAGMENT_CONTEXT_TYPES.worldPosition} ${MESH_FRAGMENT_CONTEXT.worldPosition};
 in ${MESH_FRAGMENT_CONTEXT_TYPES.normal} ${MESH_FRAGMENT_CONTEXT.normal};
 uniform ${MESH_FRAGMENT_CONTEXT_TYPES.cameraPosition} ${MESH_FRAGMENT_CONTEXT.cameraPosition};`
-      : `const ${MESH_FRAGMENT_CONTEXT_TYPES.worldPosition} ${MESH_FRAGMENT_CONTEXT.worldPosition} = ${MESH_FRAGMENT_CONTEXT_TYPES.worldPosition}(0.0);
+    : `const ${MESH_FRAGMENT_CONTEXT_TYPES.worldPosition} ${MESH_FRAGMENT_CONTEXT.worldPosition} = ${MESH_FRAGMENT_CONTEXT_TYPES.worldPosition}(0.0);
 const ${MESH_FRAGMENT_CONTEXT_TYPES.normal} ${MESH_FRAGMENT_CONTEXT.normal} = ${MESH_FRAGMENT_CONTEXT_TYPES.normal}(0.0);
-const ${MESH_FRAGMENT_CONTEXT_TYPES.cameraPosition} ${MESH_FRAGMENT_CONTEXT.cameraPosition} = ${MESH_FRAGMENT_CONTEXT_TYPES.cameraPosition}(0.0);`;
+const ${MESH_FRAGMENT_CONTEXT_TYPES.cameraPosition} ${MESH_FRAGMENT_CONTEXT.cameraPosition} = ${MESH_FRAGMENT_CONTEXT_TYPES.cameraPosition}(0.0);`}`;
+    const frontFacingContext = options.geometry === undefined || options.geometry === "fullscreen"
+      ? `const ${MESH_FRAGMENT_CONTEXT_TYPES.frontFacing} ${MESH_FRAGMENT_CONTEXT.frontFacing} = true;`
+      : `#define ${MESH_FRAGMENT_CONTEXT.frontFacing} gl_FrontFacing`;
+    // Fullscreen draws a single instance; every other geometry receives the
+    // vertex stage's gl_InstanceID unchanged across the primitive.
+    const instanceIndexContext = options.geometry === undefined || options.geometry === "fullscreen"
+      ? `const int ${INSTANCE_INDEX} = 0;`
+      : `flat in int ${INSTANCE_INDEX};`;
 
     let header = `
 precision highp float;
@@ -101,7 +161,12 @@ uniform float iChannelTime[${channelCount}];
 uniform float iSampleRate;
 uniform vec3 iCameraPos;
 uniform vec3 iCameraDir;
+uniform int iVertexCount;
+uniform int iInstanceCount;
+${CAMERA_MATRIX_UNIFORMS}
 ${fragmentContext}
+${frontFacingContext}
+${instanceIndexContext}
 ${this.buildChannelMetadataDeclarations(types, channelCount)}
 `;
 
@@ -115,7 +180,7 @@ ${this.buildChannelMetadataDeclarations(types, channelCount)}
       header += options.commonCode + "\n";
     }
 
-    const coordinate = mesh
+    const coordinate = mesh || worldVertices
       ? `${MESH_FRAGMENT_CONTEXT.uv} * iResolution.xy`
       : "gl_FragCoord.xy";
     const shaderCode = header + code + `\nvoid main() {\n mainImage(fragColor, ${coordinate});\n}`;
@@ -469,9 +534,10 @@ ${this.buildChannelMetadataDeclarations(types, channelCount)}
     vertexLineCount: number;
   } {
     const hasHook = Boolean(options.vertexCode?.trim());
-    if (!hasHook && !mesh) {
+    const vertices = options.geometry === "vertices" ? options.vertices ?? { space: "world", topology: "triangle-list" } : null;
+    if (!hasHook && !mesh && !vertices) {
       return {
-        source: "in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }",
+        source: FULLSCREEN_TRIANGLE_VERTEX_SOURCE,
         vertexStartLine: 1,
         vertexLineCount: 0,
       };
@@ -498,21 +564,33 @@ ${this.buildChannelMetadataDeclarations(types, channelCount)}
       vertexStartLine: (head.match(/\n/g) ?? []).length + 1 + (hasHook ? firstCodeLine : 0),
       vertexLineCount: hasHook ? lastCodeLine - firstCodeLine + 1 : 0,
     });
-    if (!mesh) {
-      return place(`in vec2 position;
-${vertexUniforms}${channelHelpers}
+    // WebGL leaves the point size undefined unless the vertex stage writes it.
+    const pointSize = vertices?.topology === "point-list" || (mesh && options.meshTopology === "point-list")
+      ? "\n gl_PointSize = 1.0;"
+      : "";
+    if (vertices?.space === "clip") {
+      return place(`${vertexUniforms}${channelHelpers}
+out ${MESH_FRAGMENT_CONTEXT_TYPES.uv} ${MESH_FRAGMENT_CONTEXT.uv};
+${INSTANCE_INDEX_OUT}
+`, buildClipVerticesMain(hasHook, pointSize));
+    }
+    if (!mesh && !vertices) {
+      return place(`${vertexUniforms}${channelHelpers}
+out ${MESH_FRAGMENT_CONTEXT_TYPES.uv} ${MESH_FRAGMENT_CONTEXT.uv};
+const int ${INSTANCE_INDEX} = 0;
 `, `void main() {
- vec3 _vertexPosition = vec3(position, 0.0);
- vec3 _vertexNormal = vec3(0.0);
- vec2 _vertexUv = position * 0.5 + 0.5;
- mainVertex(_vertexPosition, _vertexNormal, _vertexUv);
+ vec2 _vertexCorners[3] = vec2[3](${FULLSCREEN_TRIANGLE_CORNERS});
+ vec2 _vertexCorner = _vertexCorners[gl_VertexID];
+ vec3 _vertexPosition = vec3(_vertexCorner, 0.0);
+ vec3 _vertexNormal = vec3(0.0, 0.0, 1.0);
+ vec2 _vertexUv = _vertexCorner * 0.5 + 0.5;
+ mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);
+ ${MESH_FRAGMENT_CONTEXT.uv} = _vertexUv;
  gl_Position = vec4(_vertexPosition, 1.0);
 }`);
     }
-    return place(`layout(location = 0) in vec3 position;
-layout(location = 1) in vec3 normal;
-layout(location = 2) in vec2 uv;
-uniform mat4 _meshModel;
+    const { attributes, seed } = projectedVertexInputs(Boolean(vertices));
+    return place(`${attributes}uniform mat4 _meshModel;
 uniform mat4 _meshView;
 uniform mat4 _meshProjection;
 uniform mat3 _meshNormalMatrix;
@@ -520,16 +598,16 @@ ${vertexUniforms}${channelHelpers}
 out vec2 ${MESH_FRAGMENT_CONTEXT.uv};
 out ${MESH_FRAGMENT_CONTEXT_TYPES.worldPosition} ${MESH_FRAGMENT_CONTEXT.worldPosition};
 out ${MESH_FRAGMENT_CONTEXT_TYPES.normal} ${MESH_FRAGMENT_CONTEXT.normal};
+${INSTANCE_INDEX_OUT}
 `, `void main() {
- vec3 _vertexPosition = position;
- vec3 _vertexNormal = normal;
- vec2 _vertexUv = uv;
- ${hasHook ? "mainVertex(_vertexPosition, _vertexNormal, _vertexUv);" : ""}
+ ${INSTANCE_INDEX} = gl_InstanceID;
+${seed}
+ ${hasHook ? "mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);" : ""}
  vec4 _meshWorldPosition = _meshModel * vec4(_vertexPosition, 1.0);
  gl_Position = _meshProjection * _meshView * _meshWorldPosition;
  ${MESH_FRAGMENT_CONTEXT.uv} = _vertexUv;
  ${MESH_FRAGMENT_CONTEXT.worldPosition} = _meshWorldPosition.xyz;
- ${MESH_FRAGMENT_CONTEXT.normal} = _meshNormalMatrix * _vertexNormal;
+ ${MESH_FRAGMENT_CONTEXT.normal} = _meshNormalMatrix * _vertexNormal;${pointSize}
 }`);
   }
 
@@ -548,10 +626,13 @@ uniform float iChannelTime[${channelCount}];
 uniform float iSampleRate;
 uniform vec3 iCameraPos;
 uniform vec3 iCameraDir;
+uniform int iVertexCount;
+uniform int iInstanceCount;
+${CAMERA_MATRIX_UNIFORMS}
 ${this.buildChannelMetadataDeclarations(types, channelCount)}${options.customUniformDeclarations ? `${options.customUniformDeclarations}\n` : ""}`;
   }
 
-  private buildVertexChannelHelpers(slotAssignments?: SlotAssignment[], channelTypes?: ChannelSamplerType[], fragmentStage = true): string {
+  private buildVertexChannelHelpers(slotAssignments?: SlotAssignment[], channelTypes?: ChannelSamplerType[]): string {
     const types = channelTypes || ['2D', '2D', '2D', '2D'];
     const channelCount = !slotAssignments || slotAssignments.length === 0
       ? 4

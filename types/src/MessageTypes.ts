@@ -1,5 +1,6 @@
 // Message types for communication between extension and UI
 
+import type { ShaderConfig } from './ShaderConfig';
 import type { ProfileIndex, ProfileData } from './ProfileTypes';
 import type { SlangDependencyDiagnostic, SlangSourceModule } from './SlangSourceModule';
 import type { ShaderAuthoringEnvironment } from './shader-environment/ShaderAuthoringEnvironment';
@@ -77,7 +78,7 @@ export interface ShowConfigMessage extends BaseMessage {
 export interface ShaderSourceMessage extends BaseMessage {
   type: "shaderSource";
   code: string;
-  config: any;
+  config: ShaderConfig | null;
   path: string;
   buffers: Record<string, string>;
   /** Shader source language. Defaults to "glsl" when absent. */
@@ -130,7 +131,7 @@ export interface CursorPositionMessage extends BaseMessage {
 export interface UpdateConfigMessage extends BaseMessage {
   type: "updateConfig";
   payload: {
-    config: any;
+    config: ShaderConfig | null;
     text: string;
   };
 }

@@ -8,7 +8,7 @@
 // fullscreen: scale ~(0.62, 0.58), offset (0.16, -0.12), plus a small
 // texture-driven wobble.
 
-fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {
+fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {
     let transform = vertexTransform[0];
     // NOTE: a swizzle store needs the optional `swizzle_assignment` language
     // feature, which the Chromium inside VS Code does not have yet. Portable
