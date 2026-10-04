@@ -118,7 +118,7 @@ export class ShaderRecorder {
     }
 
     if (typeof globalThis.VideoEncoder !== "undefined") {
-      const captureFrame = engine.captureCurrentFrame && canvas.getContext?.("webgpu")
+      const captureFrame = engine.captureCurrentFrame && (config.format === "mp4" || canvas.getContext?.("webgpu"))
         ? () => engine.captureCurrentFrame!() : undefined;
       return this.recordQualityLiveVideo(canvas, config.fps, config.format, captureFrame);
     }
