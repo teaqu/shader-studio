@@ -16,7 +16,7 @@
     suggestedPath?: string;
     fileType?: FileDialogFileType;
     allowCreate?: boolean;
-    postMessage?: (msg: any) => void;
+    postMessage?: (msg: { type: string; [key: string]: unknown }) => void;
     onMessage?: (handler: (event: MessageEvent) => void) => void;
   }
 

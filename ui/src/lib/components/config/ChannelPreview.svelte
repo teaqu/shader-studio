@@ -25,7 +25,7 @@
   const configMuted = $derived(
     !!channelInput
     && (channelInput.type === 'video' || channelInput.type === 'audio')
-    && (channelInput as any).muted === true
+    && channelInput.muted === true
   );
 
   let onVideoControl = $derived(audioVideoController ? (p: string, a: string) => audioVideoController!.videoControl(p, a) : undefined);
@@ -45,7 +45,7 @@
 
   // Video preview source
   let videoSrc = $derived(channelInput && channelInput.type === "video" && channelInput.path
-    ? (channelInput as any).resolved_path || getWebviewUri(channelInput.path) || channelInput.path
+    ? channelInput.resolved_path || getWebviewUri(channelInput.path) || channelInput.path
     : "");
 
   let videoLoaded = $state(false);
@@ -67,15 +67,15 @@
 
   $effect(() => {
     const type = channelInput?.type;
-    const path = channelInput && 'path' in channelInput ? (channelInput as any).path : undefined;
+    const path = channelInput && 'path' in channelInput ? channelInput.path : undefined;
     const gvs = getVideoState;
     const ovc = onVideoControl;
     if (type === "video" && path && gvs && ovc) {
-      const resolvedPath = (channelInput as any).resolved_path || path;
+      const resolvedPath = channelInput?.type === "video" ? channelInput.resolved_path || path : path;
       videoState = gvs(resolvedPath);
       const interval = setInterval(() => {
         if (channelInput?.type === "video" && 'path' in channelInput && gvs) {
-          const p = (channelInput as any).resolved_path || (channelInput as any).path;
+          const p = channelInput.resolved_path || channelInput.path;
           videoState = gvs(p);
         }
       }, 500);
@@ -88,12 +88,12 @@
   function handlePreviewVideoControl(action: string, event: MouseEvent) {
     event.stopPropagation();
     if (channelInput?.type === "video" && channelInput.path && onVideoControl) {
-      const path = (channelInput as any).resolved_path || channelInput.path;
+      const path = channelInput.resolved_path || channelInput.path;
       onVideoControl(path, action);
       if (getVideoState) {
         setTimeout(() => {
           if (channelInput?.type === "video" && channelInput.path && getVideoState) {
-            const p = (channelInput as any).resolved_path || channelInput.path;
+            const p = channelInput.resolved_path || channelInput.path;
             videoState = getVideoState(p);
           }
         }, 100);
@@ -147,15 +147,15 @@
 
   $effect(() => {
     const type = channelInput?.type;
-    const path = channelInput && 'path' in channelInput ? (channelInput as any).path : undefined;
+    const path = channelInput && 'path' in channelInput ? channelInput.path : undefined;
     const gas = getAudioState;
     const oac = onAudioControl;
     if (type === "audio" && path && gas && oac) {
-      const resolvedPath = (channelInput as any).resolved_path || path;
+      const resolvedPath = channelInput?.type === "audio" ? channelInput.resolved_path || path : path;
       audioControlState = gas(resolvedPath);
       const interval = setInterval(() => {
         if (channelInput?.type === "audio" && 'path' in channelInput && gas) {
-          const p = (channelInput as any).resolved_path || (channelInput as any).path;
+          const p = channelInput.resolved_path || channelInput.path;
           audioControlState = gas(p);
         }
       }, 500);
@@ -168,12 +168,12 @@
   function handlePreviewAudioControl(action: string, event: MouseEvent) {
     event.stopPropagation();
     if (channelInput?.type === "audio" && channelInput.path && onAudioControl) {
-      const path = (channelInput as any).resolved_path || channelInput.path;
+      const path = channelInput.resolved_path || channelInput.path;
       onAudioControl(path, action);
       if (getAudioState) {
         setTimeout(() => {
           if (channelInput?.type === "audio" && channelInput.path && getAudioState) {
-            const p = (channelInput as any).resolved_path || channelInput.path;
+            const p = channelInput.resolved_path || channelInput.path;
             audioControlState = getAudioState(p);
           }
         }, 100);
@@ -235,7 +235,7 @@
       }
 
       const type = channelInput.type;
-      const path = 'path' in channelInput ? (channelInput as any).resolved_path || (channelInput as any).path : undefined;
+      const path = 'path' in channelInput ? channelInput.resolved_path || channelInput.path : undefined;
       const fftData = getAudioFFT(type, path);
 
       const w = fftCanvas.width;

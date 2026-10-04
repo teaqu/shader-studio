@@ -3,6 +3,7 @@ import type { ShaderConfig } from "@shader-studio/types";
 import {
   createShaderCanvasHarness,
   type Pixel,
+  type ShaderCanvasHarness,
   type ShaderLanguage,
   type ShaderProgram,
 } from "./ShaderCanvasHarness";

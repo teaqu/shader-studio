@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
+    "typecheck": "npm run check",
     "test": "vitest run",
     "test:e2e": "playwright test -c e2e/playwright.config.mjs",
     "icons": "node scripts/generate-pwa-icons.mjs",
@@ -28,6 +29,11 @@
     "@sveltejs/vite-plugin-svelte": "^5.0.3",
     "@testing-library/svelte": "^5.2.8",
     "pngjs": "^7.0.0",
-    "svelte-check": "^4.0.8"
+    "svelte-check": "^4.0.8",
+    "@shader-studio/rendering": "*",
+    "@shader-studio/utils": "*",
+    "monaco-vim": "^0.4.4",
+    "@playwright/test": "^1.60.0",
+    "playwright": "^1.60.0"
   }
 }

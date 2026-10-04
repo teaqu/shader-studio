@@ -10,7 +10,7 @@
     tempInput: ConfigInput | undefined;
     channelName: string;
     shaderPath: string;
-    postMessage?: (msg: any) => void;
+    postMessage?: (msg: { type: string; [key: string]: unknown }) => void;
     onMessage?: (handler: (event: MessageEvent) => void) => void;
     onAssetSelect: (path: string, resolvedUri?: string) => void;
     onUpdatePath: (path: string) => void;
@@ -44,15 +44,15 @@
 
   $effect(() => {
     const type = tempInput?.type;
-    const path = tempInput && 'path' in tempInput ? (tempInput as any).path : undefined;
+    const path = tempInput && 'path' in tempInput ? tempInput.path : undefined;
     const gvs = getVideoState;
     const ovc = onVideoControl;
     if (type === "video" && path && gvs && ovc) {
-      const resolvedPath = (tempInput as any).resolved_path || path;
+      const resolvedPath = tempInput?.type === "video" ? tempInput.resolved_path || path : path;
       videoState = gvs(resolvedPath);
       const interval = setInterval(() => {
         if (tempInput?.type === "video" && 'path' in tempInput && gvs) {
-          const p = (tempInput as any).resolved_path || (tempInput as any).path;
+          const p = tempInput.resolved_path || tempInput.path;
           videoState = gvs(p);
         }
       }, 500);
@@ -64,12 +64,12 @@
 
   function handleVideoControl(action: string) {
     if (tempInput?.type === "video" && tempInput.path && onVideoControl) {
-      const path = (tempInput as any).resolved_path || tempInput.path;
+      const path = tempInput.resolved_path || tempInput.path;
       onVideoControl(path, action);
       if (getVideoState) {
         setTimeout(() => {
           if (tempInput?.type === "video" && tempInput.path && getVideoState) {
-            const p = (tempInput as any).resolved_path || tempInput.path;
+            const p = tempInput.resolved_path || tempInput.path;
             videoState = getVideoState(p);
           }
         }, 100);

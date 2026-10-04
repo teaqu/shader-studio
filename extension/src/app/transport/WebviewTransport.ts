@@ -6,6 +6,7 @@ import { PathResolver } from "../PathResolver";
 import { Logger } from "../services/Logger";
 
 export class WebviewTransport implements MessageTransport {
+  // VS Code delivers untyped JSON from independently versioned webviews.
   private messageHandler?: (message: any) => void;
   private panels: Set<vscode.WebviewPanel> = new Set();
 
@@ -28,6 +29,7 @@ export class WebviewTransport implements MessageTransport {
     this.panels.delete(panel);
   }
 
+  // Outgoing messages preserve optional fields from the shared protocol.
   public send(message: any): void {
     Logger.trace(`WebviewTransport: send() called with message type: ${message.type}`);
 
@@ -40,6 +42,7 @@ export class WebviewTransport implements MessageTransport {
     this.postToAllPanels(message);
   }
 
+  // ConfigPathConverter augments the complete shader-source envelope.
   private async sendShaderSourceAsync(message: any): Promise<void> {
     Logger.trace(`WebviewTransport: Processing shaderSource message with config`);
     const firstPanel = this.panels.values().next().value;
@@ -58,6 +61,7 @@ export class WebviewTransport implements MessageTransport {
     this.postToAllPanels(message);
   }
 
+  // Webview.postMessage accepts the protocol envelope unchanged.
   private postToAllPanels(message: any): void {
     let sentCount = 0;
     const totalPanels = this.panels.size;
@@ -81,6 +85,7 @@ export class WebviewTransport implements MessageTransport {
     Logger.trace(`Webview: Sent to ${sentCount}/${totalPanels} panels`);
   }
 
+  // Shader config extensions are carried alongside the source message.
   private handleVideoResourceRoots(message: any): void {
     if (!message.config?.passes) {
       return;
@@ -148,6 +153,7 @@ export class WebviewTransport implements MessageTransport {
     this.panels.clear();
   }
 
+  // Incoming payload validation belongs to the command handler.
   public onMessage(handler: (message: any) => void): void {
     this.messageHandler = handler;
   }

@@ -15,6 +15,7 @@
   },
   "scripts": {
     "build": "tsc && tsc -p tsconfig.esm.json",
+    "typecheck": "tsc -p tsconfig.test.json",
     "test": "vitest run --config vitest.config.ts",
     "watch": "tsc --watch"
   },

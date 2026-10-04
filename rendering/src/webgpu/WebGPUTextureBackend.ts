@@ -45,7 +45,7 @@ function mipLevelCountFor(width: number, height: number): number {
 }
 
 /** Returns a copy of `rgba` with its pixel rows in reverse order. */
-export function reverseRows(rgba: Uint8Array, width: number, height: number): Uint8Array {
+function reverseRows(rgba: Uint8Array, width: number, height: number): Uint8Array {
   const out = new Uint8Array(rgba.length);
   const rowBytes = width * 4;
   for (let y = 0; y < height; y++) {

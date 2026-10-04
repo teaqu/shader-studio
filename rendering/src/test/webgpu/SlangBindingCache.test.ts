@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
+import * as keys from "../../webgpu/WebGPUCompileKeys";
 import { buildSlangPassGraph } from "../../webgpu/SlangPassGraph";
-import type { RenderPassNode, StorageBindingNode } from "../../types/PassGraph";
 import type { ConfigInput } from "@shader-studio/types";
 
-const keys = WebGPURenderingEngine as unknown as Record<"wgslCacheKey" | "pipelineCacheKey", (pass: RenderPassNode, common: string, storage: StorageBindingNode[]) => string>;
 function pass(a: ConfigInput, b: ConfigInput) {
   return buildSlangPassGraph({ imageCode: "float4 mainImage(float2 p) { return a.Sample(p) + b.Sample(p); }", config: {
     version: "1", passes: { Image: { inputs: { a, b } } },

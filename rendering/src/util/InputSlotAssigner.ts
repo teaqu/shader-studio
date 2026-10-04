@@ -20,7 +20,7 @@ export interface SlotAssignment {
  *
  * No hard limit; the GPU will enforce its own texture unit count.
  */
-export function assignInputSlots(inputs: Readonly<Record<string, GlslInputLike>>): SlotAssignment[] {
+export function assignInputSlots<T extends GlslInputLike>(inputs: Readonly<Record<string, T>>): SlotAssignment[] {
   return resolveGlslInputBindings(inputs).map(({ slot, key, isCustomName }) => ({
     slot,
     key,
@@ -33,8 +33,8 @@ export function assignInputSlots(inputs: Readonly<Record<string, GlslInputLike>>
  * A cubemap slot declared as sampler2D makes every texture() call against it
  * fail to compile, which is why render and variable capture must agree here.
  */
-export function resolveChannelSamplerTypes(
-  inputs: Readonly<Record<string, GlslInputLike>>,
+export function resolveChannelSamplerTypes<T extends GlslInputLike>(
+  inputs: Readonly<Record<string, T>>,
   slotAssignments: SlotAssignment[] = assignInputSlots(inputs),
 ): ChannelSamplerType[] {
   const channelCount = Math.max(4, slotAssignments.length);

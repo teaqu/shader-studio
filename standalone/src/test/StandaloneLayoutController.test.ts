@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   STANDALONE_LAYOUT_STORAGE_KEY,
   StandaloneLayoutController,
@@ -12,16 +12,16 @@ function createApi(): StandaloneDockviewApi & { emitLayoutChange(): void; activa
   type TestPanel = {
     id: string;
     api: {
-      close: Mock<() => void>;
+      close(): void;
       group: TestGroup;
-      setActive: Mock<() => void>;
-      setTitle: Mock<(title: string) => void>;
-      setSize: Mock<(size: { width: number }) => void>;
+      setActive(): void;
+      setTitle(title: string): void;
+      setSize(size: { width: number }): void;
     };
   };
   type TestGroup = {
     panels: TestPanel[];
-    api: { isVisible: boolean; setVisible: Mock<(visible: boolean) => void> };
+    api: { isVisible: boolean; setVisible(visible: boolean): void };
   };
   const panels = new Map<string, TestPanel>();
   const createGroup = (): TestGroup => {

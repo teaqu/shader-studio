@@ -1,3 +1,4 @@
+import { engineOwners } from "./engineOwners";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
 import { MAX_GPU_STALL_MS } from "../../util/GpuBackpressure";
@@ -28,9 +29,9 @@ function engineWithQueue() {
   return {
     engine,
      
-    submit: () => (engine as any).trackFrameInFlight(),
+    submit: () => (engineOwners(engine).timing as any).trackFrameInFlight(),
 
-    shouldWait: (time = 0) => (engine as any).shouldWaitForGpu(time) as boolean,
+    shouldWait: (time = 0) => (engineOwners(engine).timing as any).shouldWaitForGpu(time) as boolean,
     async completeOne() {
       releases.shift()?.();
       await Promise.resolve();
@@ -140,7 +141,7 @@ describe("WebGPURenderingEngine GPU backpressure", () => {
     submit();
 
 
-    expect((engine as any).framesInFlight).toBe(0);
+    expect((engineOwners(engine).timing as any).framesInFlight).toBe(0);
   });
 
   it("does not leak a counted frame when the completion signal throws synchronously", () => {
@@ -162,13 +163,13 @@ describe("WebGPURenderingEngine GPU backpressure", () => {
     (engine as any).running = true;
 
 
-    (engine as any).trackFrameInFlight();
+    (engineOwners(engine).timing as any).trackFrameInFlight();
 
-    (engine as any).trackFrameInFlight();
+    (engineOwners(engine).timing as any).trackFrameInFlight();
 
 
-    expect((engine as any).framesInFlight).toBe(0);
+    expect((engineOwners(engine).timing as any).framesInFlight).toBe(0);
 
-    expect((engine as any).shouldWaitForGpu(0)).toBe(false);
+    expect((engineOwners(engine).timing as any).shouldWaitForGpu(0)).toBe(false);
   });
 });

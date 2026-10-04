@@ -100,6 +100,7 @@ export class ShaderExplorerBackend {
     }, SHADER_EXPLORER_REFRESH_DELAY_MS);
   }
 
+  // Explorer messages come from a separately bundled webview protocol.
   async handleMessage(message: any): Promise<void> {
     this.logger.debug(`Received message from webview: ${message.type}`);
     switch (message.type) {
@@ -410,6 +411,7 @@ export class ShaderExplorerBackend {
 
       await this.addCustomUniformMetadata(config, previewPath, message);
 
+      // The converter preserves explorer-specific fields outside its config contract.
       const processedMessage = await ConfigPathConverter.processConfigPaths(
         message as any,
         this.webview,

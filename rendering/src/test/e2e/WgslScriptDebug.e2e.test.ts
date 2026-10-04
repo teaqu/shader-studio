@@ -19,7 +19,7 @@ const uniforms = [
   { name: "gain", type: "float", value: 0.75 },
   { name: "tint", type: "vec3", value: [1, 0.5, 0.25] },
   { name: "unused", type: "float", value: 0.125 },
-] as const;
+];
 const uniformInfo = uniforms.map(({ name, type }) => ({ name, type }));
 const config = { version: "1.0", script: "./chain.uniforms.ts", passes: {
   BufferA: { path: "chain.buffer.wgsl", inputs: {} },

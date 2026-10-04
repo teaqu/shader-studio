@@ -39,7 +39,7 @@ describe("Slang rename with the bundled compiler", { timeout: 30_000 }, () => {
   let module: SlangLanguageServerModule;
   let service: SlangLanguageService;
   beforeAll(async () => {
-    module = await createSlangModule({ wasmBinary: readFileSync(new URL("../../../../ui/src/slang/slang-wasm.wasm", import.meta.url)) });
+    module = (await createSlangModule({ wasmBinary: readFileSync(new URL("../../../../ui/src/slang/slang-wasm.wasm", import.meta.url)) })) as unknown as SlangLanguageServerModule;
   }, 20_000);
   afterEach(async () => {
     await service?.dispose();
