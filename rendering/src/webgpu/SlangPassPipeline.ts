@@ -9,6 +9,7 @@ import { resolveRenderState, type ResolvedRenderState } from "../types/Geometry"
 import { webgpuBlendState } from "./WebGPURenderState";
 import { createShaderToyUniformLayout, getShaderToyChannelCount, SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX } from "./SlangPrelude";
 import { nativeFragmentWritesDepth, validateMrtPipeline } from "./MrtPipelineValidation";
+import { meshDepthCompare } from "./MeshDepthCompare";
 
 export interface SlangPassPipelineDescriptor {
   name: string;
@@ -27,6 +28,7 @@ export interface SlangPassPipelineDescriptor {
   vertexSpace?: VertexSpace;
   /** Blend/depth/cull baked into the pipeline; omitted resolves the geometry defaults. */
   renderState?: ResolvedRenderState;
+  useViewerCamera?: boolean;
   uniformBufferSize?: number;
   /** Native stages selected by the pass, or generated ShaderToy adapters. */
   entryPoints?: { vertex?: string; fragment?: string };

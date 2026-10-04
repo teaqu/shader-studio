@@ -3,6 +3,7 @@ import type { DebugInstrumentationPlan } from "@shader-studio/types";
 import type { CaptureCompileContext, CaptureCustomUniform } from "../capture/VariableCapturer";
 import type { SlangChannelBinding } from "./SlangPrelude";
 import type { StorageBindingNode } from "../types/PassGraph";
+import { meshDepthCompare } from "./MeshDepthCompare";
 
 /** Resolve the instrumented workspace and authored stage pair for capture compilation. */
 export function captureCompileOptions(
@@ -62,7 +63,7 @@ export function capturePipelineDescriptor(
       output === readbackOutput ? { format: "rgba32float" } : null) },
     primitive: { topology: "triangle-list" },
     ...(mesh || writesDepth ? { depthStencil: {
-      format: "depth24plus", depthWriteEnabled: mesh, depthCompare: mesh ? "less" : "always",
+      format: "depth24plus", depthWriteEnabled: mesh, depthCompare: mesh ? meshDepthCompare(native.useViewerCamera) : "always",
     } } : {}),
   };
 }

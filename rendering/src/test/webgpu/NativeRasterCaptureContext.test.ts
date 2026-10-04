@@ -45,6 +45,13 @@ describe("nativeRasterCaptureContext", () => {
     expect(draw.drawIndexed).toHaveBeenCalledWith(36);
   });
 
+  it("propagates an explicit viewer-camera choice for native capture depth state", () => {
+    expect(nativeRasterCaptureContext(pass({ geometry: "cube", useViewerCamera: false }), vi.fn() as any))
+      .toMatchObject({ useViewerCamera: false });
+    expect(nativeRasterCaptureContext(pass({ geometry: "cube", useViewerCamera: true }), vi.fn() as any))
+      .toMatchObject({ useViewerCamera: true });
+  });
+
   it("looks up GLB geometry by pass name and diagnoses a missing mesh", () => {
     const mesh = { vertexBuffer: {} as GPUBuffer, indexBuffer: {} as GPUBuffer, indexFormat: "uint16" as GPUIndexFormat, indexCount: 12 };
     const resources = vi.fn(() => ({ get: vi.fn(), getModel: vi.fn(() => mesh) }));

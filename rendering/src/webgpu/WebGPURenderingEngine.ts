@@ -59,6 +59,7 @@ import { OrbitCamera, type CameraMatrices } from "../preview3d/OrbitCamera";
 import { createModelMatrix, createNormalMatrix3 } from "../preview3d/math";
 import { ShaderCameraSession } from "../preview3d/ShaderCameraSession";
 import { meshUniformData } from "./MeshUniformData";
+import { meshDepthCompare } from "./MeshDepthCompare";
 import { renderOutputAttachments } from "./RenderOutputAttachments";
 import { debugPlanDisplaySource } from "./DebugPlanDisplaySource";
 import { captureFeedbackChannels } from "./CaptureFeedbackChannels";
@@ -2245,6 +2246,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       // Topology, space, blend, depth and cull are baked into the render
       // pipeline; vertexCount and instanceCount are only draw arguments.
       pass.kind === "render" ? renderPipelineStateKey(pass) : null,
+      pass.geometry !== "fullscreen" ? meshDepthCompare(pass.useViewerCamera) : null,
     ]);
   }
 
@@ -2384,6 +2386,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
           ? { topology: verticesTopology(pass), vertexSpace: verticesSpace(pass) }
           : pass.geometry && pass.geometry !== "fullscreen" ? { topology: meshTopology(pass) } : {}),
         renderState: resolveRenderState(pass),
+        useViewerCamera: pass.useViewerCamera,
         channels,
         vertexChannels: Boolean(pass.vertexSrc),
         entryPoints: pass.entryPoints,
