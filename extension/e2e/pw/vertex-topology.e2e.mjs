@@ -194,6 +194,7 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
       await expectCentre(frame, isWhite, 'blend none did not overwrite');
 
       // Depth: turning the test on and comparing with never hides everything.
+      await frame.getByText('Depth settings', { exact: true }).click();
       await frame.getByLabel('Depth test').check();
       await expect.poll(image).toMatchObject({ depth: { test: true } });
       await expect(frame.getByLabel('Compare')).toBeEnabled();
