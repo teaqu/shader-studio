@@ -68,6 +68,7 @@ export class WebGPUFrameRenderer {
   }
 
   pendingScreenshotCopies: Array<(encoder: GPUCommandEncoder, texture: GPUTexture) => void> = [];
+  private completedComputePasses: ReadonlySet<string> = new Set();
 
   renderFrame(time: number, capture: boolean, imageOnly = false, captureCanvas?: (encoder: GPUCommandEncoder, texture: GPUTexture) => void): void {
     if (!this.host.device || !this.host.context) {
@@ -195,7 +196,9 @@ export class WebGPUFrameRenderer {
       // All-or-nothing: the pass's WGSL was compiled against its full channel
       // list, so if any channel source is unresolvable this frame, binding the
       // survivors positionally would mis-bind them. Skip the pass entirely.
-      const channelResources = this.host.channels.getChannelResources(pass, isPaused, encodedComputePasses);
+      const channelResources = this.host.channels.getChannelResources(
+        pass, isPaused, imageOnly ? this.completedComputePasses : encodedComputePasses, imageOnly,
+      );
       if (channelResources === null) {
         continue;
       }
@@ -307,6 +310,9 @@ export class WebGPUFrameRenderer {
     }
     for (const passName of encodedComputePasses) {
       this.host.session.computePipelines.get(passName)?.swap();
+    }
+    if (!imageOnly) {
+      this.completedComputePasses = encodedComputePasses;
     }
 
     if (!skipBufferPasses && !imageOnly) {
