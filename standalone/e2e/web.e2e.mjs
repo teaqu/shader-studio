@@ -1651,7 +1651,7 @@ test('creates a valid WGSL vertex hook from the config panel', async ({ page }) 
   await vertex.getByRole('button', { name: 'Change…', exact: true }).click();
   page.once('dialog', (dialog) => dialog.accept(dialog.defaultValue()));
   await page.getByRole('dialog', { name: 'Choose shader file', exact: true }).getByRole('button', { name: 'Create', exact: true }).click();
-  await expect(vertex.locator('input')).toHaveValue(/\.vert\.wgsl$/);
+  await expect(vertex.getByRole('textbox', { name: 'File', exact: true })).toHaveValue(/\.vert\.wgsl$/);
   await expect.poll(async () => (await readWorkspaceFiles(page))
     .find((file) => file.path.endsWith('.vert.wgsl'))?.contents ?? '')
     .toContain('position: ptr<function, vec3f>');
