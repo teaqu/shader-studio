@@ -24,6 +24,7 @@
   h3 { margin: 0 0 8px; padding-bottom: 6px; font-size: 13px; border-bottom: 1px solid var(--vscode-panel-border); }
   .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; } label { font-size: 12px; min-width: 80px; color: var(--vscode-descriptionForeground); }
   input, select { min-width: 0; padding: 4px 6px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 3px; }
+  input:focus, select:focus { border-color: var(--vscode-focusBorder); }
   input[type='number'] { width: 80px; } input[type='color'] { width: 44px; height: 28px; padding: 2px; }
   summary { font-size: 12px; color: var(--vscode-descriptionForeground); cursor: pointer; margin-bottom: 8px; }
 </style>
