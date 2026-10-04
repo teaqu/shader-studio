@@ -5,6 +5,13 @@ import { expectCanvasPixels, revertFixtureEditors } from './editor-actions.mjs';
 
 test.use({ vscodeKey: 'wgsl-step-trace' });
 
+test.afterEach(async ({ vscode }, testInfo) => {
+  if (testInfo.status !== testInfo.expectedStatus) {
+    const frame = await vscode.shaderFrame();
+    console.log('WGSL trace launch failure:', await frame.evaluate(() => ({ current: [...document.querySelectorAll('.trace-reason')].map(element => element.textContent), history: window.__traceReasons ?? [] }))); 
+  }
+});
+
 async function canonicalSourcePaths(vscode, paths) {
   return vscode.evaluateInHost((vscode, paths) => Object.fromEntries(
     Object.entries(paths).map(([name, path]) => [name, vscode.Uri.file(path).fsPath]),
@@ -390,7 +397,7 @@ test('selects a WGSL vertex replay target and exposes its recorded local @gpu', 
   const vertex = join(directory, 'image.vertex.wgsl');
   const config = join(directory, 'image.sha.json');
   writeFileSync(image, 'fn mainImage(p: vec2f) -> vec4f { return vec4f(128.0 / 255.0, 64.0 / 255.0, 191.0 / 255.0, 1); }\n');
-  writeFileSync(vertex, `fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {
+  writeFileSync(vertex, `fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {
   let traceVertex = (*position).x;
   *position = *position;
 }\n`);
