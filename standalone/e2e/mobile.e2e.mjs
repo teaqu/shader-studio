@@ -161,11 +161,18 @@ test('mobile Export tabs stay inside their bar and video recording downloads', a
   await page.getByRole('navigation', { name: 'Tools' }).getByRole('button', { name: 'Export' }).click();
 
   const tabBar = page.locator('.recording-panel > .tab-navigation');
-  const tabBarBox = await tabBar.boundingBox();
-  const tabBoxes = await tabBar.locator('.tab-button').evaluateAll((buttons) => buttons.map((button) => {
-    const box = button.getBoundingClientRect();
-    return { top: box.top, right: box.right, bottom: box.bottom, left: box.left };
-  }));
+  // Read the container and its children in one layout snapshot: opening Tools
+  // can move the panel between separate Playwright calls.
+  const { tabBarBox, tabBoxes } = await tabBar.evaluate((bar) => {
+    const container = bar.getBoundingClientRect();
+    return {
+      tabBarBox: { x: container.x, y: container.y, width: container.width, height: container.height },
+      tabBoxes: [...bar.querySelectorAll('.tab-button')].map((button) => {
+        const box = button.getBoundingClientRect();
+        return { top: box.top, right: box.right, bottom: box.bottom, left: box.left };
+      }),
+    };
+  });
   expect(tabBarBox).not.toBeNull();
   for (const box of tabBoxes) {
     expect(box.top).toBeGreaterThanOrEqual(tabBarBox.y);
