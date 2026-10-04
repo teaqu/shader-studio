@@ -352,7 +352,6 @@ module.exports = Object.freeze({
       });
       return true;
     },
-  "1a727b995077ba7138a027eef97a88c5dcaf177c0d4d4e138da08422d2bdf4ce": (vscode, target) => vscode.window.activeTextEditor?.document.uri.fsPath !== target,
   "1ab468682ee61c9e1987cbf7a619d6b2c8472d84832780675b853c18ce89c827": async vscode => {
     const session = vscode.debug.activeDebugSession;
     await session.customRequest('next', { threadId: 1 });
@@ -791,10 +790,6 @@ module.exports = Object.freeze({
         elements
       };
     },
-  "476bff9743d1f8bdf3ca886e47b0f0799f5474539ba6c324cfc03450dcff85d1": vscode => ({
-      active: vscode.window.activeTextEditor?.document.uri.fsPath,
-      previews: vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab => tab.label === 'Shader Studio').length
-    }),
   "482197e1f8cbe2638a77658506b4e236ee046d636db8f707dbaa0b226bc5c466": async (vscode, path, target, targetOffset) => {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
     const editor = await vscode.window.showTextDocument(document, {
@@ -1489,8 +1484,6 @@ module.exports = Object.freeze({
   "9e1c330e5f9dd044267a4d74dd8e07998b000487f96c6598348a94215bc4cd68": async (vscode) => {
       await vscode.extensions.getExtension('teaqu.shader-studio')?.activate();
     },
-  "a3115e615fed4a31c03fadbeb67bea894673fc68ca34236ef9d44a75b189dbc9": (vscode, target) =>
-    vscode.window.activeTextEditor?.document.uri.fsPath !== target,
   "a325eb72ad47626a8133658583e30aab1a1fc2360922d9d8ed7bc3b0f4494108": async vscode => {
     const session = vscode.debug.activeDebugSession;
     await session.customRequest('next', {
@@ -1910,6 +1903,9 @@ module.exports = Object.freeze({
       active: vscode.window.activeTextEditor?.document.uri.toString(),
       previews: vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab => tab.label === 'Shader Studio').length,
     }),
+  "d039417c84e56ff8323a8c7bea51569b1f311b6cb2e7471a4b05c577bd257223": (vscode, paths) => Object.fromEntries(
+    Object.entries(paths).map(([name, path]) => [name, vscode.Uri.file(path).fsPath]),
+  ),
   "d107beb305acc6f648e7bd10d1f44787492ca92f287a946354758f6020895d77": async (api) => {
       await api.commands.executeCommand('shader-studio.toggleEditorOverlay');
     },
@@ -2073,6 +2069,7 @@ module.exports = Object.freeze({
       });
       await vscode.commands.executeCommand('shader-studio.view');
     },
+  "e9c0ed02e5fc0672ac4d457d35d8f343650dad095a0eb4c13cff412a67130e23": (vscode, paths) => Object.fromEntries(Object.entries(paths).map(([name, path]) => [name, vscode.Uri.file(path).fsPath])),
   "eaa37e700e9993e5a028bc70ccecea0d8105e6c41f19301b636f6c2952e25a7b": async vscode => {
       return (await vscode.debug.activeDebugSession.customRequest('stackTrace', {
         threadId: 1
