@@ -20,7 +20,9 @@ describe("liveVideoFormats", () => {
     vi.stubGlobal("MediaRecorder", undefined);
     expect(supportedLiveVideoFormats()).toEqual([]);
 
-    vi.stubGlobal("MediaRecorder", { isTypeSupported: () => { throw new Error("blocked"); } });
+    vi.stubGlobal("MediaRecorder", { isTypeSupported: () => {
+      throw new Error("blocked");
+    } });
     expect(liveVideoMimeType("webm")).toBeNull();
   });
 });

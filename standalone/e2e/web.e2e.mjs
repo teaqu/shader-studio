@@ -1227,7 +1227,9 @@ test('Live capture of a preview that lost its WebGL context fails visibly instea
   });
   expect(lost).toBe(true);
   let downloads = 0;
-  page.on('download', () => { downloads++; });
+  page.on('download', () => {
+ downloads++;
+});
   await page.getByLabel('Toggle export panel').click();
   const panelError = page.locator('.recording-panel [role="alert"]');
 
