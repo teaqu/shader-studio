@@ -1,6 +1,9 @@
 /** Explicit limited-range BT709 planes for a diagnostic comparison, not product capture. */
-export function bt709I420Planes(image: ImageData): Uint8Array {
+export function bt709I420Planes(image: ImageData, matrix: "bt709" | "smpte170m" = "bt709"): Uint8Array {
   const { width, height, data: rgba } = image;
+  const kr = matrix === "bt709" ? .2126 : .299;
+  const kb = matrix === "bt709" ? .0722 : .114;
+  const kg = 1 - kr - kb;
   if (width % 2 || height % 2) {
     throw new Error("I420 diagnostics require even dimensions");
   }
@@ -8,7 +11,7 @@ export function bt709I420Planes(image: ImageData): Uint8Array {
   const planes = new Uint8Array(pixels * 3 / 2);
   for (let pixel = 0; pixel < pixels; pixel++) {
     const offset = pixel * 4;
-    const luma = .2126 * rgba[offset] + .7152 * rgba[offset + 1] + .0722 * rgba[offset + 2];
+    const luma = kr * rgba[offset] + kg * rgba[offset + 1] + kb * rgba[offset + 2];
     planes[pixel] = Math.round(16 + 219 * luma / 255);
   }
   for (let y = 0; y < height; y += 2) {
@@ -17,10 +20,10 @@ export function bt709I420Planes(image: ImageData): Uint8Array {
       for (const offset of [(y * width + x) * 4, (y * width + x + 1) * 4, ((y + 1) * width + x) * 4, ((y + 1) * width + x + 1) * 4]) {
         r += rgba[offset] / 4; g += rgba[offset + 1] / 4; b += rgba[offset + 2] / 4;
       }
-      const luma = .2126 * r + .7152 * g + .0722 * b;
+      const luma = kr * r + kg * g + kb * b;
       const chroma = y / 2 * (width / 2) + x / 2;
-      planes[pixels + chroma] = Math.round(128 + 224 * (b - luma) / (2 * 255 * (1 - .0722)));
-      planes[pixels * 5 / 4 + chroma] = Math.round(128 + 224 * (r - luma) / (2 * 255 * (1 - .2126)));
+      planes[pixels + chroma] = Math.round(128 + 224 * (b - luma) / (2 * 255 * (1 - kb)));
+      planes[pixels * 5 / 4 + chroma] = Math.round(128 + 224 * (r - luma) / (2 * 255 * (1 - kr)));
     }
   }
   return planes;

@@ -22,7 +22,7 @@ export async function renderReference(info: ShaderInfo, width: number, height: n
 }
 
 /** Decode frames of a saved video at the given presentation times (seconds). */
-export async function decodeVideoFrames(blob: Blob, times: number[]): Promise<{ frames: ImageData[]; copiedFrames: ImageData[]; width: number; height: number; duration: number; frameMetadata: Array<{ format: string | null; colorSpace: VideoColorSpaceInit }> }> {
+export async function decodeVideoFrames(blob: Blob, times: number[]): Promise<{ frames: ImageData[]; copiedFrames: ImageData[]; nativePlanes: Uint8Array[]; width: number; height: number; duration: number; frameMetadata: Array<{ format: string | null; colorSpace: VideoColorSpaceInit }> }> {
   const url = URL.createObjectURL(blob);
   const video = document.createElement("video");
   video.muted = true;
@@ -37,6 +37,7 @@ export async function decodeVideoFrames(blob: Blob, times: number[]): Promise<{ 
     const context = canvas.getContext("2d", { willReadFrequently: true })!;
     const frames: ImageData[] = [];
     const copiedFrames: ImageData[] = [];
+    const nativePlanes: Uint8Array[] = [];
     const frameMetadata: Array<{ format: string | null; colorSpace: VideoColorSpaceInit }> = [];
     for (const time of times) {
       await new Promise<void>((resolve) => {
@@ -52,12 +53,35 @@ export async function decodeVideoFrames(blob: Blob, times: number[]): Promise<{ 
           const pixels = new Uint8ClampedArray(canvas.width * canvas.height * 4);
           await frame.copyTo(pixels, { format: "RGBA", colorSpace: "srgb", rect: { x: 0, y: 0, width: canvas.width, height: canvas.height } });
           copiedFrames.push(new ImageData(pixels, canvas.width, canvas.height));
+          if ((frame.format === "I420" || frame.format === "NV12") && canvas.width % 2 === 0 && canvas.height % 2 === 0) {
+            const rect = { x: 0, y: 0, width: canvas.width, height: canvas.height };
+            const native = new Uint8Array(frame.allocationSize({ rect }));
+            const layout = await frame.copyTo(native, { rect });
+            const area = canvas.width * canvas.height;
+            const planar = new Uint8Array(area * 3 / 2);
+            for (let y = 0; y < canvas.height; y++) {
+              planar.set(native.subarray(layout[0].offset + y * layout[0].stride, layout[0].offset + y * layout[0].stride + canvas.width), y * canvas.width);
+            }
+            for (let y = 0; y < canvas.height / 2; y++) {
+              for (let x = 0; x < canvas.width / 2; x++) {
+                const destination = y * canvas.width / 2 + x;
+                if (frame.format === "I420") {
+                  planar[area + destination] = native[layout[1].offset + y * layout[1].stride + x];
+                  planar[area * 5 / 4 + destination] = native[layout[2].offset + y * layout[2].stride + x];
+                } else {
+                  planar[area + destination] = native[layout[1].offset + y * layout[1].stride + x * 2];
+                  planar[area * 5 / 4 + destination] = native[layout[1].offset + y * layout[1].stride + x * 2 + 1];
+                }
+              }
+            }
+            nativePlanes.push(planar);
+          }
         } finally {
           frame.close();
         }
       }
     }
-    return { frames, copiedFrames, width: video.videoWidth, height: video.videoHeight, duration: video.duration, frameMetadata };
+    return { frames, copiedFrames, nativePlanes, width: video.videoWidth, height: video.videoHeight, duration: video.duration, frameMetadata };
   } finally {
     video.removeAttribute("src");
     video.load();

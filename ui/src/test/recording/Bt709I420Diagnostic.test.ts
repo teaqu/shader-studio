@@ -20,3 +20,10 @@ it("averages all four chroma pixels and writes U and V into separate planes", ()
 it("rejects dimensions that cannot have a complete two-by-two chroma block", () => {
   expect(() => bt709I420Planes(image(3, 2, []))).toThrow("even dimensions");
 });
+it.each([
+  [[255, 0, 0], [81, 81, 81, 81, 90, 240]],
+  [[0, 255, 0], [145, 145, 145, 145, 54, 34]],
+  [[0, 0, 255], [41, 41, 41, 41, 240, 110]],
+])("matches BT601 legal-range primary vectors %j", (color, expected) => {
+  expect([...bt709I420Planes(image(2, 2, [color, color, color, color]), "smpte170m")]).toEqual(expected);
+});
