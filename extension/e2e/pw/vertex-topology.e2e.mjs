@@ -125,6 +125,85 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
       rmSync(fixtureDir, { recursive: true, force: true });
     });
 
+    test('keeps newer clip-space controls when an older world-space host echo is delayed', async ({ vscode }) => {
+      await vscode.window.addInitScript(() => {
+        const add = window.addEventListener;
+        const remove = window.removeEventListener;
+        const wrappers = new Map();
+        window.addEventListener = function (type, listener, options) {
+          if (type !== 'message' || typeof listener !== 'function') {
+            return add.call(this, type, listener, options);
+          }
+          const wrapped = (event) => {
+            if (window.__delayConfigEcho && !window.__replayingConfigEcho && event.data?.type === 'shaderSource') {
+              const pass = event.data.config?.passes?.Image;
+              if (!window.__heldConfigEcho && pass?.geometry?.type === 'vertices' && pass.geometry.space !== 'clip') {
+                window.__heldConfigEcho = event.data;
+              }
+              if (window.__heldConfigEcho) {
+                window.__latestConfigEcho = event.data;
+                return;
+              }
+            }
+            listener.call(this, event);
+          };
+          wrappers.set(listener, wrapped);
+          return add.call(this, type, wrapped, options);
+        };
+        window.removeEventListener = function (type, listener, options) {
+          return remove.call(this, type, wrappers.get(listener) ?? listener, options);
+        };
+      });
+      mkdirSync(fixtureDir, { recursive: true });
+      writeFileSync(shaderPath, IMAGE[language]);
+      writeFileSync(vertexPath, HEXAGON[language]);
+      writeConfig({ vertex: `hexagon.vert.${language}`, geometry: CLIP_STRIP });
+      const frame = await openShader(vscode, shaderPath);
+      await expectHexagon(frame);
+      await openConfigPanel(frame);
+      await frame.getByRole('button', { name: 'Image', exact: true }).click();
+      // Delay genuine host responses before the transport handler receives
+      // them, then replay the older world response before the clip acknowledgement.
+      await frame.evaluate(() => {
+        window.__heldConfigEcho = null;
+        window.__latestConfigEcho = null;
+        window.__delayConfigEcho = true;
+      });
+      try {
+        await frame.getByLabel('Space').selectOption('world');
+        await expect.poll(() => frame.evaluate(() => Boolean(window.__heldConfigEcho))).toBe(true);
+        await frame.getByLabel('Space').selectOption('clip');
+        await expect.poll(() => image().geometry).toEqual(CLIP_STRIP);
+        await frame.evaluate(() => {
+          window.__replayingConfigEcho = true;
+          window.dispatchEvent(new MessageEvent('message', { data: window.__heldConfigEcho }));
+          window.__replayingConfigEcho = false;
+        });
+        await expect(frame.getByLabel('Space')).toHaveValue('clip');
+        await expect(frame.getByLabel('Depth test')).not.toBeChecked();
+        // A subsequent user edit must persist the latest geometry too.
+        await frame.getByLabel('Blend').selectOption('alpha');
+        await expect.poll(image).toMatchObject({ geometry: CLIP_STRIP, blend: 'alpha' });
+      } finally {
+        await frame.evaluate(() => {
+          window.__delayConfigEcho = false;
+          if (window.__latestConfigEcho) {
+            window.dispatchEvent(new MessageEvent('message', { data: window.__latestConfigEcho }));
+          }
+        });
+      }
+      await vscode.evaluateInHost(vscode => {
+        setTimeout(() => vscode.commands.executeCommand('workbench.action.reloadWindow'), 100);
+      });
+      await expect.poll(() => frame.isDetached(), { timeout: 30_000 }).toBe(true);
+      const reloaded = await openShader(vscode, shaderPath);
+      await openConfigPanel(reloaded);
+      await reloaded.getByRole('button', { name: 'Image', exact: true }).click();
+      await expect(reloaded.getByLabel('Space')).toHaveValue('clip');
+      await expect(reloaded.getByLabel('Depth test')).not.toBeChecked();
+      await expect.poll(image).toMatchObject({ geometry: CLIP_STRIP, blend: 'alpha' });
+    });
+
     test('edits vertices, blend, depth and cull in the config panel, keeps them after reload, and restores vertices fields after a mesh', async ({ vscode }) => {
       rmSync(fixtureDir, { recursive: true, force: true });
       mkdirSync(fixtureDir, { recursive: true });
