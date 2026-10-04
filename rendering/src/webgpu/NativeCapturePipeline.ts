@@ -15,7 +15,8 @@ export function captureCompileOptions(
   uniforms: CaptureCustomUniform[],
 ): SlangCompileOptions {
   const common = plan?.files.find(file => file.uri !== plan.rootUri && file.moduleName === ""
-    && (file.path === context.slangSourcePath || file.path.toLowerCase().endsWith(".wgsl")));
+    && (file.path.replaceAll("\\", "/") === context.slangSourcePath?.replaceAll("\\", "/")
+      || file.path.toLowerCase().endsWith(".wgsl")));
   const modules = plan
     ? plan.files.filter(file => file.uri !== plan.rootUri && file.uri !== common?.uri)
       .map(file => ({ moduleName: file.moduleName, path: file.path, source: file.source }))

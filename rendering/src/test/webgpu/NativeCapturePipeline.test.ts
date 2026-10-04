@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { capturePipelineDescriptor } from "../../webgpu/NativeCapturePipeline";
+import { captureCompileOptions, capturePipelineDescriptor } from "../../webgpu/NativeCapturePipeline";
+
+it("uses the instrumented common source when Windows paths use different separators", () => {
+  const plan = {
+    rootUri: 'file:///C:/shaders/image.slang',
+    files: [
+      { uri: 'file:///C:/shaders/image.slang', path: 'C:/shaders/image.slang', moduleName: '', source: 'root' },
+      { uri: 'file:///C:/shaders/common.slang', path: 'C:/shaders/common.slang', moduleName: '', source: 'instrumented common' },
+    ],
+  } as Parameters<typeof captureCompileOptions>[1];
+  const options = captureCompileOptions({ slangSourcePath: 'C:\\shaders\\common.slang' }, plan, 'original common', [], [], []);
+  expect(options.commonCode).toBe('instrumented common');
+  expect(options.modules).toEqual([]);
+});
 
 function descriptor(useViewerCamera?: boolean, geometry: "cube" | "fullscreen" = "cube") {
   return capturePipelineDescriptor({} as GPUPipelineLayout, {} as GPUShaderModule, {
