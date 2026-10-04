@@ -440,7 +440,7 @@ for (const language of ['wgsl', 'slang']) {
 
 test('the viewer camera checkbox disables orbit and survives reload', async ({ page }) => {
   const stem = 'viewer-camera-choice';
-  await openFixture(page, stem, `fn mainVertex(p: ptr<function, vec3f>, n: ptr<function, vec3f>, uv: ptr<function, vec2f>) { *p *= 0.65; }
+  await openFixture(page, stem, `fn mainVertex(vertexIndex: u32, p: ptr<function, vec3f>, n: ptr<function, vec3f>, uv: ptr<function, vec2f>) { *p *= 0.65; }
 fn mainImage(coord: vec2f) -> vec4f { return vec4f(abs(iWorldPosition) * 0.65 + vec3f(0.08,0.03,0.12),1); }`,
     { version: '1.0', passes: { Image: { geometry: { type: 'cube' } } } });
   const preview = page.getByTestId('web-preview');
@@ -480,7 +480,7 @@ fn mainImage(coord: vec2f) -> vec4f { return vec4f(abs(iWorldPosition) * 0.65 + 
 
 test('viewer camera inherits global settings, supports per-pass overrides, and survives reload', async ({ page }) => {
   const stem = 'camera-defaults';
-  const source = `fn mainVertex(p: ptr<function, vec3f>, n: ptr<function, vec3f>, uv: ptr<function, vec2f>) { *p *= 0.65; }
+  const source = `fn mainVertex(vertexIndex: u32, p: ptr<function, vec3f>, n: ptr<function, vec3f>, uv: ptr<function, vec2f>) { *p *= 0.65; }
 fn mainImage(coord: vec2f) -> vec4f { return vec4f(abs(iWorldPosition) * 0.65 + vec3f(0.08,0.03,0.12),1); }`;
   const config = { version: '1.0', passes: { Image: { geometry: { type: 'cube' } } } };
   await openFixture(page, stem, source, config);
