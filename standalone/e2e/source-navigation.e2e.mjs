@@ -21,10 +21,10 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
             : 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(1.0); }'],
         [`/shaders/shared.${language}`, '// shared functions'],
         [`/shaders/vertex.${language}`, language === 'glsl'
-          ? 'void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) {}'
+          ? 'void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {}'
           : language === 'slang'
-            ? 'void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {}'
-            : 'fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {}'],
+            ? 'void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {}'
+            : 'fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {}'],
         ['/shaders/aurora.sha.json', JSON.stringify({ version: '1.0', passes: {
           Image: { inputs: {}, vertex: `vertex.${language}` }, common: { path: `shared.${language}` },
         } })],

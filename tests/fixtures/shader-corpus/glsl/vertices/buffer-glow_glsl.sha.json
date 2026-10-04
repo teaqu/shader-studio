@@ -1,0 +1,25 @@
+{
+  "version": "1.0",
+  "passes": {
+    "BufferA": {
+      "path": "./buffer-glow_glsl.buffer.glsl",
+      "vertex": "./buffer-glow_glsl.buffer.vert.glsl",
+      "geometry": {
+        "type": "vertices",
+        "vertexCount": 3072,
+        "topology": "line-list",
+        "space": "clip"
+      },
+      "blend": "additive"
+    },
+    "Image": {
+      "inputs": {
+        "iChannel0": {
+          "type": "buffer",
+          "source": "BufferA",
+          "filter": "linear"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "vertex": "./instanced-cubes.vert.slang",
+      "geometry": {
+        "type": "cube",
+        "instanceCount": 100
+      },
+      "cull": "back"
+    }
+  }
+}

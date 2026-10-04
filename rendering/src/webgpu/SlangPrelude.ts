@@ -19,10 +19,12 @@ import type { StorageBindingNode } from "../types/PassGraph";
 import {
   buildSlangRuntimePrelude,
   buildSlangChannels,
+  DEFAULT_VERTEX_SPACE,
   type GeometryType,
   type SlangCustomUniformInfo,
+  type VertexSpace,
 } from "@shader-studio/types";
-import { isMeshGeometry, MESH_FRAGMENT_CONTEXT } from "../preview3d/MeshFragmentContext";
+import { INSTANCE_INDEX as SLANG_INSTANCE_INDEX, isMeshGeometry, MESH_FRAGMENT_CONTEXT } from "../preview3d/MeshFragmentContext";
 
 export const SLANG_ENTRY_VERTEX = "vertexMain";
 export const SLANG_ENTRY_FRAGMENT = "fragmentMain";
@@ -76,6 +78,10 @@ export interface ShaderToyUniformLayout {
     iChannelResolution: number;
     iCameraPos: number;
     iCameraDir: number;
+    iVertexCount: number;
+    iViewMatrix: number;
+    iProjectionMatrix: number;
+    iViewProjection: number;
   };
 }
 
@@ -92,10 +98,16 @@ export function createShaderToyUniformLayout(channelCount: number): ShaderToyUni
   const iChannelResolution = iDate + 16;
   const iCameraPos = iChannelResolution + count * 16;
   const iCameraDir = iCameraPos + 16;
+  // A whole 16-byte slot (uint4 / vec4<u32>, read as .x) keeps custom uniforms 16-aligned.
+  const iVertexCount = iCameraDir + 16;
+  // Column-major 4x4 float matrices, 64 bytes each.
+  const iViewMatrix = iVertexCount + 16;
+  const iProjectionMatrix = iViewMatrix + 64;
+  const iViewProjection = iProjectionMatrix + 64;
   return {
     channelCount: count,
-    size: iCameraDir + 16,
-    offsets: { iResolution: 0, iMouse: 16, iTime: 32, iTimeDelta: 36, iFrameRate: 40, iFrame: 44, iChannelTime, iChannelLoaded, iSampleRate, iDate, iChannelResolution, iCameraPos, iCameraDir },
+    size: iViewProjection + 64,
+    offsets: { iResolution: 0, iMouse: 16, iTime: 32, iTimeDelta: 36, iFrameRate: 40, iFrame: 44, iChannelTime, iChannelLoaded, iSampleRate, iDate, iChannelResolution, iCameraPos, iCameraDir, iVertexCount, iViewMatrix, iProjectionMatrix, iViewProjection },
   };
 }
 
@@ -128,20 +140,47 @@ ConstantBuffer<MeshUniforms> _mesh;
 `;
 }
 
-function buildMeshEntryPoints(vertexCode: string): string {
-  return `${vertexCode}
-struct MeshVertexOut { float4 position : SV_Position; float2 uv : TEXCOORD0; float3 worldPosition : TEXCOORD1; float3 normal : TEXCOORD2; };
-[shader("vertex")]
-MeshVertexOut ${SLANG_ENTRY_VERTEX}([[vk::location(0)]] float3 position : POSITION, [[vk::location(1)]] float3 normal : NORMAL, [[vk::location(2)]] float2 uv : TEXCOORD0) { mainVertex(position, normal, uv); MeshVertexOut output; float4 worldPosition = mul(_mesh.model, float4(position, 1)); output.position = mul(_mesh.viewProjection, worldPosition); output.uv = uv; output.worldPosition = worldPosition.xyz; output.normal = mul(_mesh.normalMatrix, float4(normal, 0)).xyz; return output; }
-[shader("fragment")]
-float4 ${SLANG_ENTRY_FRAGMENT}(MeshVertexOut input) : SV_Target {
+const SLANG_VERTEX_UV_OUT = "struct ShaderStudioVertexUvOut { float4 position : SV_Position; float2 uv : TEXCOORD0; };";
+/** Clip-space vertices also carry the drawing instance, unchanged across each primitive. */
+const SLANG_CLIP_VERTEX_OUT = "struct ShaderStudioVertexUvOut { float4 position : SV_Position; float2 uv : TEXCOORD0; nointerpolation uint instanceIndex : TEXCOORD1; };";
+/** Vertex entries record the instance before mainVertex so the hook can read iInstanceIndex. */
+const SLANG_INSTANCE_ID_PARAMETER = "uint instanceID : SV_InstanceID";
+const SLANG_SET_INSTANCE_INDEX = `${SLANG_INSTANCE_INDEX} = instanceID;`;
+/**
+ * Fullscreen primitives are always front-facing and draw one instance, so
+ * iInstanceIndex keeps its zero initial value; clip-space vertices read both
+ * from the rasterizer.
+ */
+function buildSlangVertexUvFragment(clipVertices: boolean): string {
+  const parameter = clipVertices ? ", bool frontFacing : SV_IsFrontFace" : "";
+  const frontFacing = clipVertices ? "frontFacing" : "true";
+  const instanceIndex = clipVertices ? ` ${SLANG_INSTANCE_INDEX} = input.instanceIndex;` : "";
+  return `[shader("fragment")]
+float4 ${SLANG_ENTRY_FRAGMENT}(ShaderStudioVertexUvOut input${parameter}) : SV_Target { ${MESH_FRAGMENT_CONTEXT.uv} = input.uv; ${MESH_FRAGMENT_CONTEXT.frontFacing} = ${frontFacing};${instanceIndex} return mainImage(float2(input.position.x, _st.resolution.y - input.position.y)); }
+`;
+}
+
+const MESH_FRAGMENT_ENTRY_POINT = `[shader("fragment")]
+float4 ${SLANG_ENTRY_FRAGMENT}(MeshVertexOut input, bool frontFacing : SV_IsFrontFace) : SV_Target {
+    ${MESH_FRAGMENT_CONTEXT.uv} = input.uv;
     ${MESH_FRAGMENT_CONTEXT.worldPosition} = input.worldPosition;
     ${MESH_FRAGMENT_CONTEXT.normal} = input.normal;
     ${MESH_FRAGMENT_CONTEXT.cameraPosition} = _mesh.cameraPosition.xyz;
+    ${MESH_FRAGMENT_CONTEXT.frontFacing} = frontFacing;
+    ${SLANG_INSTANCE_INDEX} = input.instanceIndex;
     float4 color = mainImage(input.uv * _st.resolution.xy);
     return color;
 }
 `;
+
+const SLANG_MESH_VERTEX_OUT = "struct MeshVertexOut { float4 position : SV_Position; float2 uv : TEXCOORD0; float3 worldPosition : TEXCOORD1; float3 normal : TEXCOORD2; nointerpolation uint instanceIndex : TEXCOORD3; };";
+
+function buildMeshEntryPoints(vertexCode: string): string {
+  return `${vertexCode}
+${SLANG_MESH_VERTEX_OUT}
+[shader("vertex")]
+MeshVertexOut ${SLANG_ENTRY_VERTEX}([[vk::location(0)]] float3 position : POSITION, [[vk::location(1)]] float3 normal : NORMAL, [[vk::location(2)]] float2 uv : TEXCOORD0, uint vertexID : SV_VertexID, ${SLANG_INSTANCE_ID_PARAMETER}) { ${SLANG_SET_INSTANCE_INDEX} mainVertex(vertexID, position, normal, uv); MeshVertexOut output; output.instanceIndex = instanceID; float4 worldPosition = mul(_mesh.model, float4(position, 1)); output.position = mul(_mesh.viewProjection, worldPosition); output.uv = uv; output.worldPosition = worldPosition.xyz; output.normal = mul(_mesh.normalMatrix, float4(normal, 0)).xyz; return output; }
+${MESH_FRAGMENT_ENTRY_POINT}`;
 }
 
 function buildFullscreenEntryPoints(vertexCode: string): string {
@@ -149,27 +188,58 @@ function buildFullscreenEntryPoints(vertexCode: string): string {
     return ENTRY_POINTS;
   }
   return `${vertexCode}
+${SLANG_VERTEX_UV_OUT}
 [shader("vertex")]
-float4 ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID) : SV_Position { float2 verts[3] = { float2(-1, -1), float2(3, -1), float2(-1, 3) }; float3 position = float3(verts[vertexID], 0); float3 normal = float3(0, 0, 1); float2 uv = verts[vertexID] * 0.5 + 0.5; mainVertex(position, normal, uv); return float4(position, 1); }
-[shader("fragment")]
-float4 ${SLANG_ENTRY_FRAGMENT}(float4 fragCoord : SV_Position) : SV_Target { return mainImage(float2(fragCoord.x, _st.resolution.y - fragCoord.y)); }
+ShaderStudioVertexUvOut ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID) { float2 verts[3] = { float2(-1, -1), float2(3, -1), float2(-1, 3) }; float3 position = float3(verts[vertexID], 0); float3 normal = float3(0, 0, 1); float2 uv = verts[vertexID] * 0.5 + 0.5; mainVertex(vertexID, position, normal, uv); ShaderStudioVertexUvOut output; output.position = float4(position, 1); output.uv = uv; return output; }
+${buildSlangVertexUvFragment(false)}
 `;
 }
 
-const ENTRY_POINTS = `
+const SLANG_VERTEX_HOOK_STUB = "void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {}";
+/** Every vertices-geometry vertex starts here before mainVertex moves it. */
+const SLANG_VERTICES_SEED = "float3 position = float3(0, 0, 0); float3 normal = float3(0, 0, 1); float2 uv = float2(0, 0);";
+
+/**
+ * Vertices geometry: no vertex buffers. World space runs the hook's output
+ * through the orbit camera like a mesh; clip space writes it straight to
+ * SV_Position and shades with the real pixel coordinate.
+ */
+function buildVerticesEntryPoints(vertexCode: string, space: VertexSpace): string {
+  const hook = vertexCode.trim() ? vertexCode : SLANG_VERTEX_HOOK_STUB;
+  if (space === "clip") {
+    return `${hook}
+${SLANG_CLIP_VERTEX_OUT}
+[shader("vertex")]
+ShaderStudioVertexUvOut ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID, ${SLANG_INSTANCE_ID_PARAMETER}) { ${SLANG_SET_INSTANCE_INDEX} ${SLANG_VERTICES_SEED} mainVertex(vertexID, position, normal, uv); ShaderStudioVertexUvOut output; output.position = float4(position, 1); output.uv = uv; output.instanceIndex = instanceID; return output; }
+${buildSlangVertexUvFragment(true)}
+`;
+  }
+  return `${hook}
+${SLANG_MESH_VERTEX_OUT}
+[shader("vertex")]
+MeshVertexOut ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID, ${SLANG_INSTANCE_ID_PARAMETER}) { ${SLANG_SET_INSTANCE_INDEX} ${SLANG_VERTICES_SEED} mainVertex(vertexID, position, normal, uv); MeshVertexOut output; output.instanceIndex = instanceID; float4 worldPosition = mul(_mesh.model, float4(position, 1)); output.position = mul(_mesh.viewProjection, worldPosition); output.uv = uv; output.worldPosition = worldPosition.xyz; output.normal = mul(_mesh.normalMatrix, float4(normal, 0)).xyz; return output; }
+${MESH_FRAGMENT_ENTRY_POINT}`;
+}
+
+const ENTRY_POINTS = `${SLANG_VERTEX_UV_OUT}
 // ---- shader-studio Slang entry points (generated) ----
 [shader("vertex")]
-float4 ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID) : SV_Position
+ShaderStudioVertexUvOut ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID)
 {
     float2 verts[3] = { float2(-1, -1), float2(3, -1), float2(-1, 3) };
-    return float4(verts[vertexID], 0, 1);
+    ShaderStudioVertexUvOut output;
+    output.position = float4(verts[vertexID], 0, 1);
+    output.uv = verts[vertexID] * 0.5 + 0.5;
+    return output;
 }
 
 [shader("fragment")]
-float4 ${SLANG_ENTRY_FRAGMENT}(float4 fragCoord : SV_Position) : SV_Target
+float4 ${SLANG_ENTRY_FRAGMENT}(ShaderStudioVertexUvOut input) : SV_Target
 {
+    ${MESH_FRAGMENT_CONTEXT.uv} = input.uv;
+    ${MESH_FRAGMENT_CONTEXT.frontFacing} = true;
     // Flip Y so fragCoord origin is bottom-left, matching ShaderToy.
-    float2 coord = float2(fragCoord.x, _st.resolution.y - fragCoord.y);
+    float2 coord = float2(input.position.x, _st.resolution.y - input.position.y);
     return mainImage(coord);
 }
 `;
@@ -188,6 +258,8 @@ export interface SlangWrapOptions {
   passKind?: "render" | "compute";
   geometry?: GeometryType;
   vertexCode?: string;
+  /** Space of vertices geometry; ignored for other geometry. Defaults to world. */
+  vertexSpace?: VertexSpace;
   customUniforms?: SlangCustomUniformInfo[];
   /**
    * Variable-capture mode: adds the capture uniform block (selector index,
@@ -243,21 +315,27 @@ ConstantBuffer<DbgCaptureUniforms> _dbgCapU;
 // spread over the full canvas. Texture row 0 maps to fragCoord.y≈0 (bottom of
 // the canvas in ShaderToy space), so the readback buffer has the same
 // bottom-to-top row order as WebGL's readPixels and decodes identically.
-const CAPTURE_ENTRY_POINTS = `
+const CAPTURE_ENTRY_POINTS = `${SLANG_VERTEX_UV_OUT}
 // ---- shader-studio Slang capture entry points (generated) ----
 [shader("vertex")]
-float4 ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID) : SV_Position
+ShaderStudioVertexUvOut ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID)
 {
     float2 verts[3] = { float2(-1, -1), float2(3, -1), float2(-1, 3) };
-    return float4(verts[vertexID], 0, 1);
+    ShaderStudioVertexUvOut output;
+    output.position = float4(verts[vertexID], 0, 1);
+    output.uv = verts[vertexID] * 0.5 + 0.5;
+    return output;
 }
 
 [shader("fragment")]
-float4 ${SLANG_ENTRY_FRAGMENT}(float4 fragCoord : SV_Position) : SV_Target
+float4 ${SLANG_ENTRY_FRAGMENT}(ShaderStudioVertexUvOut input) : SV_Target
 {
+    ${MESH_FRAGMENT_CONTEXT.uv} = input.uv;
+    ${MESH_FRAGMENT_CONTEXT.frontFacing} = true;
+    float2 fragCoord = input.position.xy;
     float2 coord = _dbgCapU.isPixelMode != 0
         ? _dbgCapU.coordGrid.xy
-        : fragCoord.xy / _dbgCapU.coordGrid.zw * _st.resolution.xy;
+        : fragCoord / _dbgCapU.coordGrid.zw * _st.resolution.xy;
     return mainImage(coord);
 }
 `;
@@ -319,12 +397,26 @@ export function wrapSlangImageSource(userSource: string, options: SlangWrapOptio
   // `#line 1` renumbers the line that follows it, so it must sit directly
   // above the user source (after commonCode and custom storage declarations)
   // to keep user diagnostics on the user's real line numbers.
+  const meshBinding = buildSlangBindingPlan(options.channels ?? []).nextBinding + (options.storage?.length ?? 0);
+  const { meshPrelude, entryPoints } = buildGeometryEntryPoints(options, meshBinding);
+  return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${meshPrelude}#line 1\n${userSource}\n${entryPoints}`;
+}
+
+/** The camera-uniform prelude (meshes and world-space vertices only) and entry points for a pass's geometry. */
+function buildGeometryEntryPoints(options: SlangWrapOptions, meshBinding: number): { meshPrelude: string; entryPoints: string } {
   const vertexCode = options.vertexCode?.trim() ?? "";
   if (isMeshGeometry(options.geometry)) {
-    const meshBinding = buildSlangBindingPlan(options.channels ?? []).nextBinding + (options.storage?.length ?? 0);
-    return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${buildMeshPrelude(meshBinding)}#line 1\n${userSource}\n${buildMeshEntryPoints(vertexCode || "void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {}")}`;
+    return { meshPrelude: buildMeshPrelude(meshBinding), entryPoints: buildMeshEntryPoints(vertexCode || SLANG_VERTEX_HOOK_STUB) };
   }
-  return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}#line 1\n${userSource}\n${buildFullscreenEntryPoints(vertexCode)}`;
+  if (options.geometry === "vertices") {
+    const space = options.vertexSpace ?? DEFAULT_VERTEX_SPACE;
+    // Clip space ignores the camera, so only world space binds mesh uniforms.
+    return {
+      meshPrelude: space === "world" ? buildMeshPrelude(meshBinding) : "",
+      entryPoints: buildVerticesEntryPoints(vertexCode, space),
+    };
+  }
+  return { meshPrelude: "", entryPoints: buildFullscreenEntryPoints(vertexCode) };
 }
 
 function buildOutputPrelude(binding: number, outputLayers: number, imageFormat: "rgba16f" | "rgba32f" = "rgba16f"): string {

@@ -179,6 +179,48 @@ describe("WebGPUVariableCapturer", () => {
     expect(values.getInt32(SHADERTOY_UNIFORM_SIZE + 12, true)).toBe(1);
   });
 
+  it.each([
+    [{ vertexCount: 6 }, 6],
+    [{}, 0],
+  ])("packs iVertexCount from the capture uniforms (%j)", async (extra, expected) => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler);
+
+    await capturer.issueCaptureGrid(captures, { ...uniforms, ...extra }, 8, 4);
+
+    const packed = gpu.writeBuffer.mock.calls[0][2] as ArrayBuffer;
+    expect(new DataView(packed).getUint32(UNIFORM_OFFSETS.iVertexCount, true)).toBe(expected);
+  });
+
+  it("packs the capture uniforms' camera matrices, or identity without them", async () => {
+    const camera = { view: new Float32Array(16).fill(1), projection: new Float32Array(16).fill(2), viewProjection: new Float32Array(16).fill(3) };
+    const withCamera = mockGpu();
+    await new WebGPUVariableCapturer(withCamera.device, withCamera.compiler).issueCaptureGrid(captures, { ...uniforms, camera }, 8, 4);
+    const packed = new Float32Array(withCamera.writeBuffer.mock.calls[0][2] as ArrayBuffer);
+    expect(packed[UNIFORM_OFFSETS.iViewMatrix / 4]).toBe(1);
+    expect(packed[UNIFORM_OFFSETS.iProjectionMatrix / 4 + 15]).toBe(2);
+    expect(packed[UNIFORM_OFFSETS.iViewProjection / 4 + 7]).toBe(3);
+
+    const withoutCamera = mockGpu();
+    await new WebGPUVariableCapturer(withoutCamera.device, withoutCamera.compiler).issueCaptureGrid(captures, uniforms, 8, 4);
+    const identity = new Float32Array(withoutCamera.writeBuffer.mock.calls[0][2] as ArrayBuffer);
+    expect(Array.from(identity.subarray(UNIFORM_OFFSETS.iViewProjection / 4, UNIFORM_OFFSETS.iViewProjection / 4 + 16)))
+      .toEqual([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+  });
+
+  it.each([
+    [{ instanceCount: 5 }, 5],
+    [{}, 1],
+  ])("packs iInstanceCount from the capture uniforms (%j)", async (extra, expected) => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler);
+
+    await capturer.issueCaptureGrid(captures, { ...uniforms, ...extra }, 8, 4);
+
+    const packed = gpu.writeBuffer.mock.calls[0][2] as ArrayBuffer;
+    expect(new DataView(packed).getUint32(UNIFORM_OFFSETS.iVertexCount + 4, true)).toBe(expected);
+  });
+
   it("packs provided channel timing, loaded state, and sample rate", async () => {
     const gpu = mockGpu();
     const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler);

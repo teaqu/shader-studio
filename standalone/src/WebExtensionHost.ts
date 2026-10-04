@@ -304,10 +304,10 @@ export class WebExtensionHost {
           'glsl-common': '// Common functions shared across all passes\n',
           'slang-common': '// Common functions shared across all passes\n',
           'wgsl-common': '// Common functions shared across all passes\n',
-          'glsl-vertex': 'void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) {\n}\n',
+          'glsl-vertex': 'void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {\n}\n',
           'glsl-compute': GLSL_STARTER_SHADER,
-          'slang-vertex': 'void mainVertex(inout float3 position, inout float3 normal, inout vec2 uv) {\n}\n',
-          'wgsl-vertex': 'fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {\n}\n',
+          'slang-vertex': 'void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {\n}\n',
+          'wgsl-vertex': 'fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {\n}\n',
           'slang-compute': '[shader("compute")]\n[numthreads(8, 8, 1)]\nvoid compute(uint3 dispatchThreadID : SV_DispatchThreadID) {\n}\n',
           'wgsl-compute': '@compute @workgroup_size(8, 8, 1)\nfn compute(@builtin(global_invocation_id) dispatchThreadID: vec3u) {\n}\n',
         };

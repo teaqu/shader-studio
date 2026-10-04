@@ -86,13 +86,16 @@ Each buffer and Image pass can render with 2D or 3D geometry. Open the **Geometr
 
 | Geometry | Description |
 |----------|-------------|
-| **Fullscreen** | A full-screen quad (default). Standard 2D shader rendering. |
+| **Fullscreen** | One triangle covering the screen (default). Standard 2D shader rendering. |
+| **Vertices** | Any number of vertices placed by the vertex shader, joined as triangles, lines, or points, in world space (seen by the orbit camera) or clip space (fixed on screen). Set **Vertices**, **Topology** and **Space** below the dropdown. |
 | **Plane** | A flat 3D plane. |
 | **Cube** | A unit cube centred at the origin. |
 | **Sphere** | A UV-mapped sphere. |
 | **Model** | A custom GLB mesh. |
 
-When a 3D geometry type is selected, a **Vertex shader** section appears below the dropdown. Set a path to a `.vert.glsl`, `.vert.slang`, or `.vert.wgsl` file, or click **Create File** to generate a stub. See [Vertex Shaders](vertex-shaders.md) for details on writing vertex shaders and the `mainVertex` API.
+When a 3D geometry type is selected, a **Vertex shader** section appears below the dropdown. Set a path to a `.vert.glsl`, `.vert.slang`, or `.vert.wgsl` file, or click **Create File** to generate a stub. See [Vertex Shaders](vertex-shaders.md) for details on writing vertex shaders and the `mainVertex` API, and [Vertices geometry](vertex-shaders.md#vertices-geometry) for `vertexCount`, `topology` and `space`.
+
+The **Rendering** section below it sets the pass's **Blend** mode, and for every geometry but fullscreen its **Depth test**, **Depth write**, **Compare** and **Cull**. See [Render settings](vertex-shaders.md#render-settings).
 
 ## Compute Passes
 

@@ -127,6 +127,7 @@ describe("wgsl feature negotiation", () => {
     expect(WGSL_ENABLE_TO_GPU_FEATURE["subgroups"]).toBe("subgroups");
     expect(WGSL_ENABLE_TO_GPU_FEATURE["pointer_composite_access"]).toBeUndefined();
     expect(WGSL_KNOWN_GPU_FEATURES).toContain("float32-filterable");
+    expect(WGSL_KNOWN_GPU_FEATURES).toContain("float32-blendable");
     expect(WGSL_KNOWN_GPU_FEATURES).toContain("shader-f16");
   });
 
@@ -151,7 +152,7 @@ describe("wgsl feature negotiation", () => {
       limits: {},
     };
     const adapter = {
-      features: new Set(["shader-f16"]),
+      features: new Set(["shader-f16", "float32-blendable"]),
       limits: {},
       requestDevice: vi.fn(async () => device),
     };
@@ -173,7 +174,7 @@ describe("wgsl feature negotiation", () => {
         removeEventListener: vi.fn(),
       } as unknown as HTMLCanvasElement);
       await (engine as unknown as { ready: Promise<void> }).ready;
-      expect(adapter.requestDevice).toHaveBeenCalledWith({ requiredFeatures: ["shader-f16"] });
+      expect(adapter.requestDevice).toHaveBeenCalledWith({ requiredFeatures: ["float32-blendable", "shader-f16"] });
     } finally {
       vi.unstubAllGlobals();
     }

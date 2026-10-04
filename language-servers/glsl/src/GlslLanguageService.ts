@@ -883,17 +883,18 @@ function vertexHookFeature(analysis: GlslAnalysisDocument, symbol: GlslSymbol): 
     candidate.kind === "function"
     && candidate.name === "mainVertex"
     && candidate.typeName === "void"
-    && candidate.signature === "void mainVertex(vec3, vec3, vec2)"
+    && candidate.signature === "void mainVertex(int, vec3, vec3, vec2)"
     && rangeContains(candidate.definition, scope.range)
   ));
   const definitionText = sourceForRange(analysis.source, functionSymbol?.definition);
   if (
     !functionSymbol
-    || parameters.length !== 3
-    || parameters[0]?.typeName !== "vec3"
+    || parameters.length !== 4
+    || parameters[0]?.typeName !== "int"
     || parameters[1]?.typeName !== "vec3"
-    || parameters[2]?.typeName !== "vec2"
-    || !/\bvoid\s+mainVertex\s*\(\s*inout\s+vec3\b[\s\S]*,\s*inout\s+vec3\b[\s\S]*,\s*inout\s+vec2\b/.test(definitionText)
+    || parameters[2]?.typeName !== "vec3"
+    || parameters[3]?.typeName !== "vec2"
+    || !/\bvoid\s+mainVertex\s*\(\s*(?:in\s+)?int\b[\s\S]*,\s*inout\s+vec3\b[\s\S]*,\s*inout\s+vec3\b[\s\S]*,\s*inout\s+vec2\b/.test(definitionText)
   ) {
     return undefined;
   }
@@ -901,14 +902,14 @@ function vertexHookFeature(analysis: GlslAnalysisDocument, symbol: GlslSymbol): 
   if (symbol.id === functionSymbol.id && functionFeature) {
     return {
       ...functionFeature,
-      signature: `void mainVertex(inout vec3 ${parameters[0].name}, inout vec3 ${parameters[1].name}, inout vec2 ${parameters[2].name})`,
+      signature: `void mainVertex(int ${parameters[0].name}, inout vec3 ${parameters[1].name}, inout vec3 ${parameters[2].name}, inout vec2 ${parameters[3].name})`,
     };
   }
   const parameterIndex = parameters.findIndex((parameter) => parameter.id === symbol.id);
   const role = GLSL_VERTEX_HOOK_FEATURES[parameterIndex + 1];
   const parameter = parameters[parameterIndex];
   return role && parameter
-    ? { ...role, name: parameter.name, signature: `inout ${parameter.typeName} ${parameter.name}` }
+    ? { ...role, name: parameter.name, signature: `${parameterIndex === 0 ? "" : "inout "}${parameter.typeName} ${parameter.name}` }
     : undefined;
 }
 

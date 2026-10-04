@@ -3,13 +3,16 @@ import type { ShaderCompiler, ChannelSamplerType } from '../webgl/ShaderCompiler
 import type { PiShader } from '../types/piRenderer';
 import type { PiTexture } from '../types/piRenderer';
 import type { SlotAssignment } from '../util/InputSlotAssigner';
-import type { ConfigInput, DebugInstrumentationPlan } from '@shader-studio/types';
+import { DEFAULT_INSTANCE_COUNT, type ConfigInput, type DebugInstrumentationPlan } from '@shader-studio/types';
 import type { SlangSourceModule } from '@shader-studio/types';
 import { bindTextures } from '../util/TextureBinder';
 import { resolveBufferSamplerSettings } from '../util/TextureBindingResolver';
 import { WebGLSamplerCache } from '../webgl/WebGLSamplerCache';
 import type { StorageBindingNode } from '../types/PassGraph';
 import { CaptureErrorLog, type CaptureError } from "./CaptureErrorLog";
+import type { CameraMatrices } from "../preview3d/OrbitCamera";
+
+const IDENTITY_MATRIX = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 
 export interface CaptureUniforms {
   time: number;
@@ -21,6 +24,12 @@ export interface CaptureUniforms {
   date: number[];
   cameraPos: number[];
   cameraDir: number[];
+  /** iVertexCount of the captured pass; capture itself still covers the whole pixel grid. */
+  vertexCount?: number;
+  /** iInstanceCount of the captured pass; capture draws one instance, so iInstanceIndex is 0. */
+  instanceCount?: number;
+  /** Orbit-camera matrices of the captured pass (iViewMatrix, iProjectionMatrix, iViewProjection); identity when absent. */
+  camera?: CameraMatrices;
   channelTime?: number[];
   channelLoaded?: number[];
   sampleRate?: number;
@@ -711,6 +720,11 @@ export class VariableCapturer implements IVariableCapturer {
     gl.uniform4fv(gl.getUniformLocation(program, 'iDate'), uniforms.date);
     gl.uniform3fv(gl.getUniformLocation(program, 'iCameraPos'), uniforms.cameraPos);
     gl.uniform3fv(gl.getUniformLocation(program, 'iCameraDir'), uniforms.cameraDir);
+    gl.uniform1i(gl.getUniformLocation(program, 'iVertexCount'), uniforms.vertexCount ?? 0);
+    gl.uniform1i(gl.getUniformLocation(program, 'iInstanceCount'), uniforms.instanceCount ?? DEFAULT_INSTANCE_COUNT);
+    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'iViewMatrix'), false, uniforms.camera?.view ?? IDENTITY_MATRIX);
+    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'iProjectionMatrix'), false, uniforms.camera?.projection ?? IDENTITY_MATRIX);
+    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'iViewProjection'), false, uniforms.camera?.viewProjection ?? IDENTITY_MATRIX);
 
     // Set custom uniforms from script
     for (const u of this.customUniforms) {

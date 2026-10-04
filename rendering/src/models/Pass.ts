@@ -1,6 +1,7 @@
-import type { BufferOutputFormat, BufferResolution, GeometryType } from "@shader-studio/types";
+import type { BufferOutputFormat, BufferResolution, GeometryType, RenderPassSettings } from "@shader-studio/types";
+import type { InstanceDrawConfig, VerticesDrawConfig } from "../types/Geometry";
 
-export type Pass = {
+export type Pass = VerticesDrawConfig & InstanceDrawConfig & RenderPassSettings & {
   name: string;
   shaderSrc: string;
   vertexSrc?: string;
@@ -11,4 +12,6 @@ export type Pass = {
   path?: string;
   resolution?: BufferResolution;
   outputFormat?: BufferOutputFormat;
+  /** Set when a blended buffer falls back from rgba32float to rgba16float. */
+  outputFormatWarning?: string;
 }
