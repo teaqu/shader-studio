@@ -1,7 +1,9 @@
 import istanbul from '@vitest/coverage-istanbul';
-import { GenMapping, addMapping, setSourceContent, toEncodedMap } from '@jridgewell/gen-mapping';
-import { TraceMap, eachMapping, originalPositionFor } from '@jridgewell/trace-mapping';
+import { addMapping, toEncodedMap } from '@jridgewell/gen-mapping';
+import { TraceMap, originalPositionFor } from '@jridgewell/trace-mapping';
 import { parse } from 'svelte/compiler';
+import { copyCoverageMap } from './coverage-source-maps.mjs';
+import { instrumentBarrelEntries } from './module-entry-coverage.mjs';
 
 /**
  * Svelte leaves its component mount unmapped when all script declarations vanish.
@@ -37,29 +39,7 @@ export function mapSvelteMount(code, id, sourceMap) {
     const prefix = source.slice(0, offset);
     return { line: prefix.split('\n').length, column: offset - prefix.lastIndexOf('\n') - 1 };
   };
-  const map = new GenMapping(sourceMap);
-  eachMapping(trace, (mapping) => {
-    const generated = { line: mapping.generatedLine, column: mapping.generatedColumn };
-    if (mapping.source === null) {
-      addMapping(map, { generated });
-    } else {
-      const mapped = {
-        generated,
-        source: mapping.source,
-        original: { line: mapping.originalLine, column: mapping.originalColumn },
-      };
-      if (mapping.name === null) {
-        addMapping(map, mapped);
-      } else {
-        addMapping(map, { ...mapped, name: mapping.name });
-      }
-    }
-  });
-  sourceMap.sources.forEach((file, index) => {
-    if (file !== null) {
-      setSourceContent(map, file, sourceMap.sourcesContent?.[index] ?? null);
-    }
-  });
+  const map = copyCoverageMap(sourceMap);
   addMapping(map, { generated, source: sourceFile, original: position(first.start) });
   addMapping(map, {
     generated: { line: generated.line, column: generated.column + code.slice(start, mount.index + mount[0].length).length },
@@ -76,10 +56,13 @@ export default {
     if (!transform) {
       throw new Error('Istanbul coverage provider does not implement source transformation');
     }
-    provider.onFileTransform = (code, id, context) => transform.call(provider, code, id, {
-      ...context,
-      getCombinedSourcemap: () => mapSvelteMount(code, id, context.getCombinedSourcemap()),
-    });
+    provider.onFileTransform = (code, id, context) => {
+      const result = instrumentBarrelEntries(code, id, mapSvelteMount(code, id, context.getCombinedSourcemap()));
+      return transform.call(provider, result.code, id, {
+        ...context,
+        getCombinedSourcemap: () => result.map,
+      });
+    };
     return provider;
   },
 };
