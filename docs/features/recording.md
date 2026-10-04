@@ -48,7 +48,8 @@ Hosts without WebCodecs use MediaRecorder, so the formats offered depend
 on the host: a format it can't record is disabled, and a saved choice it can't
 record falls back to one it can, with a note in the panel. MP4 needs even
 dimensions; an odd custom size is rounded up and the panel tells you the saved
-size. Video quality is automatic. Live recordings prefer a fixed quality level;
+size. Video quality is automatic. Live recordings request minimum quantization
+and prefer software encoding for fidelity over hardware speed or compression;
 complex shaders can therefore produce larger files. Render and bitrate fallback
 encoders use variable bitrate with a
 high ceiling (5 bits per pixel), so detailed, fast-changing shaders keep their
