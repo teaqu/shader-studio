@@ -7,6 +7,7 @@ import { allowNonUniformDerivatives, type WgslVertexRange, type WgslDirectiveRan
 import type { GeometryType } from "@shader-studio/types";
 import { createShaderToyUniformLayout, getShaderToyChannelCount, SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX } from "./SlangPrelude";
 import { nativeFragmentWritesDepth, validateMrtPipeline } from "./MrtPipelineValidation";
+import { meshDepthCompare } from "./MeshDepthCompare";
 
 export interface SlangPassPipelineDescriptor {
   name: string;
@@ -19,6 +20,7 @@ export interface SlangPassPipelineDescriptor {
   vertexChannels?: boolean;
   storage?: StorageBindingNode[];
   geometry: GeometryType;
+  useViewerCamera?: boolean;
   uniformBufferSize?: number;
   /** Native stages selected by the pass, or generated ShaderToy adapters. */
   entryPoints?: { vertex?: string; fragment?: string };
@@ -204,7 +206,7 @@ export class SlangPassPipeline {
         targets: Array.from({ length: outputCount }, () => ({ format: this.targetFormat() })),
       },
       primitive: { topology: "triangle-list" },
-      ...(this.needsDepth() ? { depthStencil: { format: "depth24plus", depthWriteEnabled: true, depthCompare: this.isMesh() ? "less" : "always" } } : {}),
+      ...(this.needsDepth() ? { depthStencil: { format: "depth24plus", depthWriteEnabled: true, depthCompare: this.isMesh() ? meshDepthCompare(this.descriptor.useViewerCamera) : "always" } } : {}),
     };
     let pipeline: GPURenderPipeline;
     if (this.device.createRenderPipelineAsync) {

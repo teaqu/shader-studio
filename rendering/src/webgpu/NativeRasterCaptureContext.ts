@@ -17,6 +17,7 @@ export function nativeRasterCaptureContext(
     ...(pass.vertexSrc ? { vertexCode: pass.vertexSrc } : {}),
     ...(pass.entryPoints.fragment ? { fragmentEntryPoint: pass.entryPoints.fragment } : {}),
     geometry: pass.geometry,
+    ...(pass.useViewerCamera === undefined ? {} : { useViewerCamera: pass.useViewerCamera }),
     width: pass.width,
     height: pass.height,
     ...(pass.outputCount ? { outputCount: pass.outputCount } : {}),

@@ -18,6 +18,7 @@ import { CaptureErrorLog, type CaptureError } from "../capture/CaptureErrorLog";
 import { NativeRasterCaptureTarget } from "./NativeRasterCaptureTarget";
 import { CaptureTargetLifecycle } from "./CaptureTargetLifecycle";
 import { compileCapturePipeline, type CachedCapturePipeline } from "./CapturePipelineCache";
+import { captureDeclarationContextKey } from "./CaptureDeclarationContextKey";
 import { encodeVariableCapture, type CaptureSample } from "./VariableCaptureDraw";
 import { createNativeMeshUniformBuffer } from "./NativeCaptureMeshBinding";
 import { createStorageCaptureSnapshots, releaseStorageCaptureSnapshot, type StorageCaptureSnapshot } from "./StorageCaptureSnapshots";
@@ -102,11 +103,11 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       (count) => captureCounters.gpuTexturesDestroyed += count,
     );
     this.compileContext = compileContext;
-    this.compileContextKey = this.getDeclarationContextKey(compileContext);
+    this.compileContextKey = captureDeclarationContextKey(compileContext);
   }
 
   setCompileContext(context: CaptureCompileContext): void {
-    const nextContextKey = this.getDeclarationContextKey(context);
+    const nextContextKey = captureDeclarationContextKey(context);
     if (nextContextKey !== this.compileContextKey) {
       this.compileContextGeneration++;
       this.compileContextKey = nextContextKey;
@@ -717,25 +718,6 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     }
     this.pipelineCache.set(key, cached);
     this.pipelineCacheOrder.push(key);
-  }
-
-  private getDeclarationContextKey(context: CaptureCompileContext): string {
-    return JSON.stringify([
-      context.commonCode ?? "",
-      context.slangChannels ?? [],
-      context.slangStorage ?? [],
-      context.slangPassName ?? "",
-      context.slangModules ?? [],
-      context.slangSourcePath ?? "",
-      context.nativeRender ? {
-        vertexEntryPoint: context.nativeRender.vertexEntryPoint,
-        fragmentEntryPoint: context.nativeRender.fragmentEntryPoint,
-        geometry: context.nativeRender.geometry,
-        vertexCode: context.nativeRender.vertexCode,
-        outputCount: context.nativeRender.outputCount ?? 1,
-        writesDepth: context.nativeRender.writesDepth ?? false,
-      } : null,
-    ]);
   }
 
   private isCompileContextCurrent(generation: number, contextKey: string): boolean {

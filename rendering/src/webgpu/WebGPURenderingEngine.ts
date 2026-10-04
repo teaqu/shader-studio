@@ -56,6 +56,7 @@ import { extractStructSizes } from "./wgslStructSize";
 import { OrbitCamera } from "../preview3d/OrbitCamera";
 import { ShaderCameraSession } from "../preview3d/ShaderCameraSession";
 import { meshUniformData } from "./MeshUniformData";
+import { meshDepthCompare } from "./MeshDepthCompare";
 import { renderOutputAttachments } from "./RenderOutputAttachments";
 import { debugPlanDisplaySource } from "./DebugPlanDisplaySource";
 import { captureFeedbackChannels } from "./CaptureFeedbackChannels";
@@ -2235,6 +2236,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       pass.outputLayers,
       pass.outputCount ?? 1,
       pass.resolvedOutputFormat,
+      pass.geometry !== "fullscreen" ? meshDepthCompare(pass.useViewerCamera) : null,
     ]);
   }
 
@@ -2345,6 +2347,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         output: pass.output === "canvas" ? "canvas" : "texture",
         outputCount: pass.outputCount,
         geometry: pass.geometry,
+        useViewerCamera: pass.useViewerCamera,
         channels,
         vertexChannels: Boolean(pass.vertexSrc),
         entryPoints: pass.entryPoints,

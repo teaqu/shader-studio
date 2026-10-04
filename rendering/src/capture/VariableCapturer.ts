@@ -72,6 +72,8 @@ export interface CaptureCompileContext {
     outputCount?: number;
     /** The selected fragment writes frag depth and therefore needs a depth target. */
     writesDepth?: boolean;
+    /** Whether the installed mesh pass uses the interactive viewer camera. */
+    useViewerCamera?: boolean;
     /** Encodes the pass's original geometry and mesh vertex bindings. */
     draw?: (pass: GPURenderPassEncoder) => void;
     /** Returns the installed mesh camera/model uniform data for this capture batch. */
