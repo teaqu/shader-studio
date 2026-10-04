@@ -1,5 +1,10 @@
 [
   {
+    "id": "3ec93de8b27ca7af4e45-73a1c02d3e4273cc32f9:",
+    "title": "capture-preview.e2e.mjs › opens a synced capture preview inside VS Code @gpu",
+    "environment": "gpu"
+  },
+  {
     "id": "4fdf373967410ece119e-ca89ceb84925b911fe20:",
     "title": "common-storage-debug.e2e.mjs › glsl Common selection captures the authored value and follows an edit",
     "environment": "non-gpu"

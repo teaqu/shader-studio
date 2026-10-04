@@ -23,6 +23,51 @@ describe('AudioTab', () => {
     audioVideoController: undefined as any,
   });
 
+  it.each(['microphone', 'system-audio'] as const)('keeps audio-file fields alongside live inputs for %s', async type => {
+    const api = defaultProps();
+    const view = render(AudioTab, { ...api, tempInput: { type } });
+    expect(view.getByRole('button', { name: 'Mic' })).toBeVisible();
+    expect(view.getByRole('button', { name: 'Shared Audio' })).toBeVisible();
+    expect(view.getByPlaceholderText('Path to audio or video file')).toBeVisible();
+    await fireEvent.click(view.getByRole('button', { name: 'Mic' }));
+    expect(api.onUpdateTempInput).toHaveBeenCalledWith({ type: 'microphone' });
+    expect(api.onAutoSave).toHaveBeenCalledOnce();
+  });
+
+  it.each(['microphone', 'system-audio'] as const)('switches %s to audio file when entering a path', async type => {
+    const api = defaultProps();
+    const view = render(AudioTab, { ...api, tempInput: { type } });
+    await fireEvent.input(view.getByPlaceholderText('Path to audio or video file'), { target: { value: './song.mp3' } });
+    expect(api.onUpdateTempInput).toHaveBeenCalledWith({ type: 'audio', path: '' });
+    expect(api.onUpdatePath).toHaveBeenCalledWith('./song.mp3');
+    expect(api.onUpdateTempInput.mock.invocationCallOrder[0]).toBeLessThan(api.onUpdatePath.mock.invocationCallOrder[0]);
+  });
+
+  it('receives audio asset responses through the host message subscription', async () => {
+    const api = defaultProps();
+    const handlers: ((event: MessageEvent) => void)[] = [];
+    api.postMessage.mockImplementation(message => {
+      if (message.type === 'requestWorkspaceFiles') {
+        for (const handler of handlers) {
+          handler(new MessageEvent('message', { data: { type: 'workspaceFiles', payload: { files: [] } } }));
+        }
+      }
+    });
+    const view = render(AudioTab, { ...api, onMessage: handler => {
+      handlers.push(handler);
+    } });
+    await Promise.resolve();
+    expect(view.queryByText('Loading files...')).toBeNull();
+    expect(view.getByText('No files found')).toBeVisible();
+  });
+
+  it('places live inputs below the audio-file section', () => {
+    const view = render(AudioTab, defaultProps());
+    const path = view.getByPlaceholderText('Path to audio or video file');
+    const mic = view.getByRole('button', { name: 'Mic' });
+    expect(path.compareDocumentPosition(mic) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   describe('Rendering', () => {
     it('should render path input with audio placeholder', () => {
       render(AudioTab, defaultProps());

@@ -1,3 +1,4 @@
+import { normalizeLiveInput } from "../util/LiveInputConfig";
 import type { ComputePass, ConfigInput, ShaderConfig, ShaderLanguageId } from "@shader-studio/types";
 import { vertexPassKey } from "@shader-studio/types";
 import type {
@@ -957,7 +958,7 @@ function resolveChannels(options: {
   const validInputs: Record<string, ConfigInput> = {};
 
   for (const [key, input] of Object.entries(options.inputs)) {
-    validInputs[key] = input;
+    validInputs[key] = normalizeLiveInput(input);
   }
 
   for (const { slot, key } of assignInputSlots(validInputs)) {

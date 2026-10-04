@@ -40,6 +40,11 @@ export class ShaderStudioStatusBar {
       description: 'Open Shader Studio in a new window',
       action: 'show-window'
     });
+    items.push({
+      label: '$(device-camera) Open Capture Preview',
+      description: 'Use webcam, microphone and audio in the Integrated Browser',
+      action: 'capture-preview'
+    });
     if (this.isServerRunning) {
       items.push({
         label: '$(stop-circle) Stop Web Server',
@@ -86,6 +91,9 @@ export class ShaderStudioStatusBar {
 
     if (selected) {
       switch (selected.action) {
+        case 'capture-preview':
+          await vscode.commands.executeCommand('shader-studio.openCapturePreview');
+          break;
         case 'start-server':
           await vscode.commands.executeCommand('shader-studio.startWebServer');
           break;

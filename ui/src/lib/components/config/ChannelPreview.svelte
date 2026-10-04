@@ -1,4 +1,5 @@
 <script lang="ts">
+  import LiveInputPreview from "./LiveInputPreview.svelte";
   import { onDestroy } from "svelte";
   import type { ConfigInput } from "@shader-studio/types";
   import type { AudioVideoController } from "../../AudioVideoController";
@@ -299,6 +300,8 @@
     <div class="empty-preview">
       <div class="empty-icon">+</div>
     </div>
+  {:else if channelInput.type === "webcam" || channelInput.type === "screen" || channelInput.type === "microphone" || channelInput.type === "system-audio"}
+    <LiveInputPreview type={channelInput.type} {audioVideoController} />
   {:else if channelInput.type === "texture"}
     <!-- Texture preview -->
     <div class="texture-preview">

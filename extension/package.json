@@ -57,6 +57,10 @@
     },
     "commands": [
       {
+        "command": "shader-studio.openCapturePreview",
+        "title": "Shader Studio: Open Capture Preview"
+      },
+      {
         "command": "shader-studio.view",
         "title": "Shader Studio: New Panel"
       },

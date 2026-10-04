@@ -1,4 +1,7 @@
 /// <reference types="@webgpu/types" />
+import { audioPreviewData, livePreviewData, controlSystemAudio, controlAudioInput } from "../resources/MediaPreview";
+import type { LiveInputType, LiveInputPreview } from "../resources/LiveInputTextureManager";
+import { audioLoadWarning } from "../util/LiveInputConfig";
 import { buildSlangBindingPlan, getSlangChannels, getSlangSamplerSettings, getSlangTextureIdentity, validateSlangBindingBudget } from "./SlangBindingPlan";
 import { getWebGPUSampler } from "./WebGPUSamplerCache";
 import type { DebugInstrumentationPlan, ShaderConfig, ShaderLanguageId, SlangSourceModule, StorageBufferSnapshot } from "@shader-studio/types";
@@ -957,8 +960,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
                   channel.startTime,
                   channel.endTime,
                 );
-              } catch {
-                graph.warnings.push(`Audio loading failed: ${channel.path}`);
+              } catch (error) {
+                graph.warnings.push(audioLoadWarning(channel.path, error));
               }
             }
             if (generation !== this.compileGeneration || this.disposed) {
@@ -3676,9 +3679,23 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.resourceManager?.seekAudio(path, time);
   }
   getAudioFFTData(type: string, path?: string): Uint8Array | null {
-    return type === "audio" && path
-      ? this.resourceManager?.getAudioFFTData(path) ?? null
-      : null;
+    return audioPreviewData(this.resourceManager, type, path);
+  }
+
+  controlAudioInput(action: "start" | "stop", deviceId?: string): Promise<string | undefined> {
+    return controlAudioInput(this.resourceManager, action, deviceId);
+  }
+
+  controlSystemAudio(action: "start" | "stop", deviceId?: string): Promise<string | undefined> {
+    return controlSystemAudio(this.resourceManager, action, deviceId);
+  }
+
+  controlScreen(action: "start" | "stop"): Promise<string | undefined> {
+    return this.resourceManager?.controlScreen(action) ?? Promise.resolve("Shader is not ready. Try again after it loads.");
+  }
+
+  getLiveInputPreview(type: LiveInputType): LiveInputPreview | null {
+    return livePreviewData(this.resourceManager, type);
   }
 
   // ---- Custom uniforms ----

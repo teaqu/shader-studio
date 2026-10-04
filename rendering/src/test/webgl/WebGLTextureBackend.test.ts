@@ -56,6 +56,18 @@ describe("WebGLTextureBackend", () => {
     expect(backend.createTextureFromImage(faces, { type: "cubemap", format: "rgba8", filter: "nearest", wrap: "clamp", vflip: false })).toBeNull();
   });
 
+  it("reports decoded video dimensions on creation and resolution changes", () => {
+    const video = { width: 0, height: 0, videoWidth: 640, videoHeight: 480 } as HTMLVideoElement;
+    const texture = backend.createTextureFromImage(video, { type: "2d", format: "rgba8", filter: "linear", wrap: "clamp", vflip: true });
+    expect(texture).toMatchObject({ mXres: 640, mYres: 480 });
+    Object.assign(video, { videoWidth: 1280, videoHeight: 720 });
+    backend.updateTextureFromImage(texture!, video);
+    expect(texture).toMatchObject({ mXres: 1280, mYres: 720 });
+    Object.assign(video, { videoWidth: 0, videoHeight: 0 });
+    backend.updateTextureFromImage(texture!, video);
+    expect(texture).toMatchObject({ mXres: 1280, mYres: 720 });
+  });
+
   it("delegates createMipmaps, updateTexture, updateTextureFromImage, destroyTexture", () => {
     const tex = { mObjectID: {} } as PiTexture;
     const data = new Uint8Array(4);
