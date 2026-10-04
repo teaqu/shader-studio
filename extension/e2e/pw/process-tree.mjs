@@ -83,6 +83,8 @@ export async function monitorProcessTree(rootPid, {
   let peakRoles = {};
   const samplingErrors = [];
   let inFlight = Promise.resolve();
+  let pendingReads = 0;
+  let stopped = false;
   const refresh = async () => {
     latest = updateOwnedProcesses(owned, await read());
     const rssKiB = latest.reduce((total, row) => total + row.rssKiB, 0);
@@ -95,19 +97,32 @@ export async function monitorProcessTree(rootPid, {
       peakRssKiB = rssKiB;
       peakRoles = roles;
     }
-    sample({ phase: 'process-sample', rootPid, rssKiB, roles, processes: latest.map(row => ({
-      pid: row.pid, ppid: row.ppid, role: processRole(row, rootPid), rssKiB: row.rssKiB,
-    })) });
+    try {
+      sample({ phase: 'process-sample', rootPid, rssKiB, roles, processes: latest.map(row => ({
+        pid: row.pid, ppid: row.ppid, role: processRole(row, rootPid), rssKiB: row.rssKiB,
+      })) });
+    } catch (error) {
+      // Observer failures must not invalidate authoritative cleanup reads.
+      if (samplingErrors.length < 10) {
+        samplingErrors.push(error.message);
+      }
+    }
     return latest;
   };
   const inspect = () => {
     // A failed periodic sample must not poison authoritative cleanup reads.
-    inFlight = inFlight.catch(() => {}).then(refresh);
+    pendingReads++;
+    inFlight = inFlight.catch(() => {}).then(refresh).finally(() => {
+      pendingReads--;
+    });
     return inFlight;
   };
   await inspect();
   const timer = setInterval(() => {
-    // Retain measurement gaps; cleanup always takes a fresh inventory.
+    // Coalesce observer ticks; explicit cleanup inspections still read afresh.
+    if (stopped || pendingReads) {
+      return;
+    }
     inspect().catch(error => {
       if (samplingErrors.length < 10) {
         samplingErrors.push(error.message);
@@ -119,6 +134,7 @@ export async function monitorProcessTree(rootPid, {
     inspect,
     summary: () => ({ rootPid, peakRssKiB, peakRoles, samplingErrors }),
     stop: async () => {
+      stopped = true;
       clearInterval(timer);
       await inFlight.catch(() => {});
     },

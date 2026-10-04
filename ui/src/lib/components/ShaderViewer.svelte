@@ -3,6 +3,7 @@
   import { onMount, onDestroy, tick, setContext, untrack } from "svelte";
   import { get } from "svelte/store";
   import { ShaderPipeline } from "../ShaderPipeline";
+  import { ConfigEchoGuard } from '../config/ConfigEchoGuard';
   import { logSwitchTiming } from "../diagnostics/switchTiming";
   import { ShaderLocker } from "../ShaderLocker";
   import { createTransport } from "../transport/TransportFactory";
@@ -221,6 +222,7 @@
 
   // Config panel state
   let currentConfig = $state<ShaderConfig | null>(null);
+  const configEchoGuard = new ConfigEchoGuard();
   const hasMeshPass = $derived(Boolean(Object.values(currentConfig?.passes ?? {}).some((pass) => pass && 'geometry' in pass && pass.geometry?.type && pass.geometry.type !== 'fullscreen')));
   let pathMap = $state<Record<string, string>>({});
   let bufferPathMap = $state<Record<string, string>>({});
@@ -1260,6 +1262,9 @@
       }
 
       if (messageTarget.kind === 'main') {
+        if (!configEchoGuard.accepts(event.data.path || '', event.data.config || null, event.data.compileSequence)) {
+          return;
+        }
         handleShaderSource(event);
       }
       publishCommonShaderSource(event.data);
@@ -1547,6 +1552,7 @@
   }
 
   async function handleConfigPanelConfigChange(updatedConfig: ShaderConfig) {
+    configEchoGuard.recordLocalEdit(shaderPath, currentConfig, updatedConfig);
     resolutionController.handleConfigUpdated(updatedConfig);
     await tick();
   }
