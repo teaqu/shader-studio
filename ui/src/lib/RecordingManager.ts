@@ -3,7 +3,7 @@ import type { RecordingConfig, ScreenshotConfig, ShaderInfo } from "./recording/
 import { recordingStore } from "./stores/recordingStore";
 import type { RenderingEngine } from "../../../rendering/src/types/RenderingEngine";
 
-export function buildCaptureFilename(shaderPath: string, extension: string, capturedAt = new Date()): string {
+function buildCaptureFilename(shaderPath: string, extension: string, capturedAt = new Date()): string {
   const leaf = shaderPath.replaceAll("\\", "/").split("/").pop() ?? "";
   const withoutExtension = leaf.replace(/\.[^.]+$/, "");
   const safeBase = withoutExtension
