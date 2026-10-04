@@ -3,6 +3,10 @@ import { test, expect } from '@playwright/test';
 for (const shader of ['aurora-glsl', 'aurora-wgsl-wgsl']) {
   for (const format of ['MP4', 'WebM']) {
     test(`${shader} Live ${format} preserves smooth colour gradients`, async ({ page }, testInfo) => {
+      // Temporarily disabled at the user's request after restoring the earlier
+      // encoder settings: one decoded WGSL MP4 frame failed the quality floor.
+      // Re-enable when the remaining Live MP4 artifact issue is resolved.
+      test.skip(shader === 'aurora-wgsl-wgsl' && format === 'MP4', 'Known Live WGSL MP4 decoded-frame quality failure after encoder rollback');
       await page.addInitScript(() => {
         globalThis.captureEncoderConfigs = [];
         const configure = VideoEncoder.prototype.configure;
