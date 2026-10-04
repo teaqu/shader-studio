@@ -87,7 +87,7 @@ function applyAliases(specifier: string, entries: AliasEntry[]): string {
 function resolveFrom(fromFile: string, specifier: string, entries: AliasEntry[]): string | null {
   const aliased = applyAliases(specifier, entries);
   if (path.isAbsolute(aliased)) {
-    return fs.existsSync(aliased) ? aliased : null;
+    return fs.existsSync(aliased) ? fs.realpathSync(aliased) : null;
   }
   try {
     return fs.realpathSync(createRequire(fromFile).resolve(aliased));

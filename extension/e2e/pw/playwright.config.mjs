@@ -34,7 +34,7 @@ export default defineConfig({
   expect: { timeout: 60_000 },
   forbidOnly: !!process.env.CI,
   retries: 0,
-  reporter: process.env.CI ? [['list'], ['github']] : [['list']],
+  reporter: process.env.CI ? [['list'], ['github'], ['json']] : [['list']],
   // The release workflow narrows the suite to a subset; honoured here so that
   // filter keeps working now the runner has changed. The inverse splits the
   // suite by runner: specs tagged @gpu are the ones measured to fail without a

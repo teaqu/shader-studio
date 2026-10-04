@@ -42,7 +42,7 @@ async function main() {
       process.exit(1);
     }
 
-    execFileSync('npx', ['playwright', 'test', '--config', './e2e/pw/playwright.config.mjs'], {
+    execFileSync('npx', ['playwright', 'test', '--config', './e2e/pw/playwright.config.mjs', ...process.argv.slice(2)], {
       cwd: extensionRoot,
       stdio: 'inherit',
       env: {

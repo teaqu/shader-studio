@@ -1,3 +1,4 @@
+import { slangWasmPath } from './slangWasmPath';
 import { beforeAll, describe, expect, it } from 'vitest';
 import SlangModuleFactory from '../../../../ui/src/slang/slang-wasm.js';
 import { SlangDebugEngine } from '../../../../debug/src';
@@ -8,7 +9,7 @@ import type { SlangModuleApi } from '../../webgpu/slangTypes';
 describe('Slang compute replay compiler audit', () => {
   let compiler: SlangCompiler;
   beforeAll(async () => {
-    const slang = await SlangModuleFactory({ locateFile: () => new URL('../../../../ui/src/slang/slang-wasm.wasm', import.meta.url).pathname.replace(/^\/@fs/, '') }) as SlangModuleApi;
+    const slang = await SlangModuleFactory({ locateFile: () => slangWasmPath() }) as SlangModuleApi;
     compiler = new SlangCompiler(slang);
   });
   for (const mode of ['preview', 'capture'] as const) {

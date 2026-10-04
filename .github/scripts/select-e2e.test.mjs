@@ -18,7 +18,7 @@ import {
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const readJson = file => JSON.parse(fs.readFileSync(path.join(root, file), 'utf8'));
-const turbo = path.join(root, 'node_modules/.bin/turbo');
+const turbo = path.join(root, 'node_modules/turbo/bin/turbo');
 
 const item = (fullName, typename = 'TaskFileChanged') => ({
   name: fullName.split('#')[1],
@@ -142,10 +142,11 @@ test('turboAffected surfaces Turbo query errors', () => {
 const workflow = fs.readFileSync(path.join(root, '.github/workflows/verify.yml'), 'utf8');
 
 /** Splits verify.yml into its jobs, keyed by job id. */
-function workflowJobs() {
+function workflowJobs(source = workflow) {
+  source = source.replace(/\r\n/g, '\n');
   const jobs = {};
   let current;
-  for (const line of workflow.slice(workflow.indexOf('\njobs:')).split('\n')) {
+  for (const line of source.slice(source.indexOf('\njobs:')).split('\n')) {
     const header = /^ {2}([a-z0-9-]+):\s*$/.exec(line);
     if (header) {
       current = header[1];
@@ -157,6 +158,12 @@ function workflowJobs() {
   return jobs;
 }
 const jobs = workflowJobs();
+
+test('workflow parsing produces identical job steps for LF and CRLF', () => {
+  const source = 'name: Verify\njobs:\n  build:\n    steps:\n      - name: Build\n        run: npm run build\n';
+  assert.deepEqual(workflowJobs(source.replaceAll('\n', '\r\n')), workflowJobs(source));
+  assert.deepEqual(Object.keys(workflowJobs(source)), ['build']);
+});
 
 test('every suite names a step of its job in verify.yml', () => {
   for (const suite of suites) {
@@ -246,12 +253,12 @@ test('Turbo selects the expected suites for representative changes', { timeout: 
   }
   git('add', '-A');
   git('commit', '--quiet', '--allow-empty', '-m', 'working tree');
-  fs.symlinkSync(path.join(root, 'node_modules'), path.join(clone, 'node_modules'));
+  fs.symlinkSync(path.join(root, 'node_modules'), path.join(clone, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
 
   const affected = file => {
     fs.appendFileSync(path.join(clone, file), '\n');
     git('commit', '--quiet', '-am', `touch ${file}`);
-    const output = execFileSync(turbo, ['query', 'affected', '--tasks', ...taskNames, '--base', 'HEAD~1', '--head', 'HEAD'], {
+    const output = execFileSync(process.execPath, [turbo, 'query', 'affected', '--tasks', ...taskNames, '--base', 'HEAD~1', '--head', 'HEAD'], {
       cwd: clone,
       encoding: 'utf8',
       env: { ...process.env, TURBO_TELEMETRY_DISABLED: '1', DO_NOT_TRACK: '1' },

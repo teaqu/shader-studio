@@ -30,8 +30,13 @@ test.describe('pause error tooltip geometry', () => {
       const win = BrowserWindow.getAllWindows()[0];
       win.setBounds({ ...win.getBounds(), height: 420, width: 900 });
     });
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    frame = await vscode.shaderFrame();
+    const contentBounds = await vscode.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getContentBounds());
+    await expect.poll(() => vscode.window.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight })))
+      .toEqual({ width: contentBounds.width, height: contentBounds.height });
+    await expect.poll(async () => {
+      frame = await vscode.shaderFrame();
+      return frame.evaluate(height => window.innerHeight > 0 && window.innerHeight < height, contentBounds.height);
+    }, { message: 'preview layout did not follow the small window' }).toBe(true);
 
     await frame.getByLabel('Toggle pause').hover();
     await expect.poll(

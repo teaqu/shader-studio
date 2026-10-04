@@ -1,14 +1,16 @@
 import { test as base, expect } from '@playwright/test';
 import { _electron as electron } from 'playwright';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
+import { hostCallbackId } from './host-callback.mjs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertProductionVsixLaunchArgs, cloneProductionVsixSeed, installProductionVsix, productionVsixLaunchArgs } from './vsix-launch.mjs';
 import { findShownAppFrame } from './shader-frame.mjs';
 import { evaluateBridgeCall, readBridgePort } from './bridge-client.mjs';
-import { recordE2ePhase } from './e2e-timing.mjs';
+import { recordE2ePhase, recordE2eSample } from './e2e-timing.mjs';
+import { monitorProcessTree, closeOwnedProcessTree } from './process-tree.mjs';
 import { openWindowDisplay } from './private-display.mjs';
 
 const extensionPath = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -167,92 +169,127 @@ export const test = base.extend({
       await windowDisplay.close();
       throw error;
     });
-    recordE2ePhase('electron-launch', launchStartedAt, { vscodeKey });
-
-    const workbenchStartedAt = performance.now();
-    const window = await app.firstWindow({ timeout: 60_000 });
-    await window.waitForSelector('.monaco-workbench', { timeout: 60_000 });
-    recordE2ePhase('workbench-ready', workbenchStartedAt, { vscodeKey });
-    // Opt-in only: specs must work at whatever width the host opens with, and
-    // this exists to reproduce a narrow workbench (SHADER_STUDIO_E2E_WINDOW=900x700),
-    // where the preview toolbar collapses controls into its options menu.
-    if (process.env.SHADER_STUDIO_E2E_WINDOW) {
-      const [width, height] = process.env.SHADER_STUDIO_E2E_WINDOW.split('x').map(Number);
-      await app.evaluate(async ({ BrowserWindow }, size) => {
-        BrowserWindow.getAllWindows()[0]?.setBounds({ x: 0, y: 0, width: size.width, height: size.height });
-      }, { width, height });
-    }
-
-    const bridgeStartedAt = performance.now();
-    await waitFor(
-      () => {
-        if (!existsSync(portFile)) {
-          return null;
-        }
-        try {
-          return readBridgePort(portFile);
-        } catch {
-          return null;
-        }
-      },
-      { timeout: 60_000, message: 'extension-host bridge never reported a port' },
-    );
-    recordE2ePhase('bridge-ready', bridgeStartedAt, { vscodeKey });
-
-    /**
-     * Run a function inside the extension host with the real `vscode` module.
-     * VS Code cancels API calls while it is still activating, surfacing as
-     * "Canceled"; that is a readiness signal rather than a real failure, so
-     * retry briefly instead of failing the whole file in beforeAll.
-     */
-    const evaluateInHost = (fn, ...args) => evaluateBridgeCall({
-      portFile,
-      token: bridgeToken,
-      id: createHash('sha256').update(fn.toString()).digest('hex'),
-      args,
-    });
-
-    // Do not let the first real call be the one that races activation.
-    const hostStartedAt = performance.now();
-    await evaluateInHost(async (vscode) => vscode.workspace.name ?? null);
-    // The empty, per-worker extensions directory admits only these explicit
-    // development extensions. Keeping extensions enabled avoids VS Code's
-    // --disable-extensions toast, including after reload.
-    const nonBuiltinExtensionIds = await evaluateInHost(vscode => vscode.extensions.all
-      .filter(extension => !extension.packageJSON.isBuiltin)
-      .map(extension => extension.id)
-      .sort());
-    const expectedNonBuiltinExtensionIds = [
-      'shader-studio-tests.shader-studio-pw-bridge',
-      'teaqu.shader-studio',
-    ];
-    if (JSON.stringify(nonBuiltinExtensionIds) !== JSON.stringify(expectedNonBuiltinExtensionIds)) {
-      throw new Error(`unexpected non-builtin extensions: ${nonBuiltinExtensionIds.join(', ')}`);
-    }
-    recordE2ePhase('host-ready', hostStartedAt, { vscodeKey });
-    recordE2ePhase('fixture-setup', fixtureStartedAt, { vscodeKey });
-
-    const shaderFrame = async (timeout = 90_000) => waitFor(
-      () => findShownAppFrame(window.frames()),
-      { timeout, message: 'no frame hosting the Shader Studio app appeared' },
-    );
-
-    const testStartedAt = performance.now();
-    await use({ app, window, evaluateInHost, shaderFrame, workspacePath, extensionsDir });
-    recordE2ePhase('test-execution', testStartedAt, { vscodeKey });
-
-    const teardownStartedAt = performance.now();
-    // A wedged extension host can leave close() pending, which surfaces as a
-    // worker teardown timeout and hides whatever actually failed.
-    await Promise.race([
-      app.close(),
-      new Promise((resolve) => setTimeout(resolve, 15_000)),
-    ]).catch(() => { /* the process is going away regardless */ });
-    await windowDisplay.close();
+    let processTree;
+    let fixtureError;
     try {
-      rmSync(userDataDir, { recursive: true, force: true });
-    } catch { /* best effort */ }
-    recordE2ePhase('fixture-teardown', teardownStartedAt, { vscodeKey });
+      processTree = await monitorProcessTree(app.process().pid, {
+        sample: sample => recordE2eSample({ vscodeKey, ...sample }),
+      });
+      recordE2ePhase('electron-launch', launchStartedAt, { vscodeKey });
+
+      const workbenchStartedAt = performance.now();
+      const window = await app.firstWindow({ timeout: 60_000 });
+      await window.waitForSelector('.monaco-workbench', { timeout: 60_000 });
+      recordE2ePhase('workbench-ready', workbenchStartedAt, { vscodeKey });
+      // Opt-in only: specs must work at whatever width the host opens with, and
+      // this exists to reproduce a narrow workbench (SHADER_STUDIO_E2E_WINDOW=900x700),
+      // where the preview toolbar collapses controls into its options menu.
+      if (process.env.SHADER_STUDIO_E2E_WINDOW) {
+        const [width, height] = process.env.SHADER_STUDIO_E2E_WINDOW.split('x').map(Number);
+        await app.evaluate(async ({ BrowserWindow }, size) => {
+          BrowserWindow.getAllWindows()[0]?.setBounds({ x: 0, y: 0, width: size.width, height: size.height });
+        }, { width, height });
+      }
+
+      const bridgeStartedAt = performance.now();
+      await waitFor(
+        () => {
+          if (!existsSync(portFile)) {
+            return null;
+          }
+          try {
+            return readBridgePort(portFile);
+          } catch {
+            return null;
+          }
+        },
+        { timeout: 60_000, message: 'extension-host bridge never reported a port' },
+      );
+      recordE2ePhase('bridge-ready', bridgeStartedAt, { vscodeKey });
+
+      /**
+       * Run a function inside the extension host with the real `vscode` module.
+       * VS Code cancels API calls while it is still activating, surfacing as
+       * "Canceled"; that is a readiness signal rather than a real failure, so
+       * retry briefly instead of failing the whole file in beforeAll.
+       */
+      const evaluateInHost = (fn, ...args) => evaluateBridgeCall({
+        portFile,
+        token: bridgeToken,
+        id: hostCallbackId(fn.toString()),
+        args,
+      });
+
+      // Do not let the first real call be the one that races activation.
+      const hostStartedAt = performance.now();
+      await evaluateInHost(async (vscode) => vscode.workspace.name ?? null);
+      // The empty, per-worker extensions directory admits only these explicit
+      // development extensions. Keeping extensions enabled avoids VS Code's
+      // --disable-extensions toast, including after reload.
+      const nonBuiltinExtensionIds = await evaluateInHost(vscode => vscode.extensions.all
+        .filter(extension => !extension.packageJSON.isBuiltin)
+        .map(extension => extension.id)
+        .sort());
+      const expectedNonBuiltinExtensionIds = [
+        'shader-studio-tests.shader-studio-pw-bridge',
+        'teaqu.shader-studio',
+      ];
+      if (JSON.stringify(nonBuiltinExtensionIds) !== JSON.stringify(expectedNonBuiltinExtensionIds)) {
+        throw new Error(`unexpected non-builtin extensions: ${nonBuiltinExtensionIds.join(', ')}`);
+      }
+      recordE2ePhase('host-ready', hostStartedAt, { vscodeKey });
+      recordE2ePhase('fixture-setup', fixtureStartedAt, { vscodeKey });
+
+      const shaderFrame = async (timeout = 90_000) => waitFor(
+        () => findShownAppFrame(window.frames()),
+        { timeout, message: 'no frame hosting the Shader Studio app appeared' },
+      );
+
+      const testStartedAt = performance.now();
+      await use({ app, window, evaluateInHost, shaderFrame, workspacePath, extensionsDir });
+      recordE2ePhase('test-execution', testStartedAt, { vscodeKey });
+
+    } catch (error) {
+      fixtureError = error;
+      throw error;
+    } finally {
+      const teardownStartedAt = performance.now();
+      try {
+        if (!processTree) {
+          // No reliable process inventory: attempt graceful close, retain the
+          // profile and report the inspection failure instead of claiming exit.
+          let timeout;
+          try {
+            await Promise.race([
+              app.close(),
+              new Promise(resolve => {
+                timeout = setTimeout(resolve, 15000);
+              }),
+            ]);
+          } finally {
+            clearTimeout(timeout);
+          }
+          throw new Error(`Cannot verify owned Electron process exit (PID ${app.process().pid}); profile retained at ${userDataDir}`);
+        }
+        const result = await closeOwnedProcessTree(() => app.close(), processTree);
+        recordE2ePhase('process-tree-exit', teardownStartedAt, { vscodeKey, ...result });
+        if (result.forced || result.closeError || result.samplingErrors.length) {
+          console.warn(`E2E teardown recovered ${vscodeKey}: ${JSON.stringify(result)}`);
+        }
+        await windowDisplay.close();
+        rmSync(userDataDir, { recursive: true, force: true });
+        recordE2ePhase('fixture-teardown', teardownStartedAt, { vscodeKey, ...result });
+      } catch (error) {
+        // Retain the profile when exit is unverified. Report cleanup separately
+        // so a launch/test failure stays the primary failure.
+        console.error(`E2E teardown failed for ${vscodeKey}; profile ${userDataDir}: ${error.message}`);
+        if (fixtureError) {
+          fixtureError.cause ??= error;
+        } else {
+          throw error;
+        }
+      }
+    }
   }, { scope: 'worker' }],
 });
 
