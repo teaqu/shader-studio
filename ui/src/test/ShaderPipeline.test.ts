@@ -11,6 +11,11 @@ vi.mock('../lib/state/editorOverlayState.svelte', () => ({
 }));
 
 import { getEditorOverlayVisible } from '../lib/state/editorOverlayState.svelte';
+import { flushSync } from 'svelte';
+import { ShaderCompilationState } from '../lib/state/ShaderCompilationState.svelte';
+import { WgslTraceLaunchManager } from '../lib/WgslTraceLaunchManager.svelte';
+import { getWgslTraceState, resetWgslTraceState } from '../lib/state/wgslTraceState.svelte';
+import { getInspectorState, setInspectorState } from '../lib/state/pixelInspectorState.svelte';
 
 function makeMocks() {
   const transport: Transport = {
@@ -818,7 +823,7 @@ function makeConcurrentMocks() {
   };
 }
 
-describe('ShaderPipeline — concurrent shader messages', () => {
+describe('ShaderPipeline - concurrent shader messages', () => {
   let pipeline: ShaderPipeline;
   let mocks: ReturnType<typeof makeConcurrentMocks>;
 
@@ -831,6 +836,85 @@ describe('ShaderPipeline — concurrent shader messages', () => {
       mocks.shaderLocker,
       mocks.shaderDebugManager,
     );
+  });
+
+  it('disables trace launch while an unchanged preview recompiles and restores it after installation', async () => {
+    const state = new ShaderCompilationState();
+    pipeline.setCompilationState(state);
+    setInspectorState({ ...getInspectorState(), canvasPosition: { x: 1, y: 1 } });
+    const manager = new WgslTraceLaunchManager({
+      transport: mocks.transport,
+      getEngine: () => ({
+        getShaderLanguage: () => 'wgsl', getCaptureUniforms: () => ({ res: [16, 16] }),
+        getWgslTraceTargets: () => [{ passName: 'Image', stage: 'fragment', path: '/shader.wgsl', source: 'image', width: 16, height: 16 }],
+        captureWgslProjectTrace: vi.fn(),
+      }),
+      getViewerSession: () => ({ isCurrentPreviewSource: !pipeline.isCompiling() }),
+    });
+    try {
+      flushSync();
+      expect(getWgslTraceState().available).toBe(true);
+      const compile = pipeline.handleShaderMessage(makeShaderEvent('fn mainImage(p:vec2f)->vec4f{return vec4f(1);}', '/shader.wgsl'));
+      expect(pipeline.isCompiling()).toBe(true);
+      flushSync();
+      expect(getWgslTraceState().available).toBe(false);
+      expect(getWgslTraceState().reason).toContain('Refresh');
+      await manager.start();
+      expect(mocks.transport.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'startWgslTrace' }));
+      mocks.resolveCompile();
+      await compile;
+      flushSync();
+      expect(getWgslTraceState().available).toBe(true);
+    } finally {
+      manager.dispose(); resetWgslTraceState(); setInspectorState({ ...getInspectorState(), canvasPosition: null });
+    }
+  });
+
+  it.each(['failure', 'rejection', 'superseded'] as const)('settles reactive compilation readiness after %s', async outcome => {
+    const state = new ShaderCompilationState();
+    pipeline.setCompilationState(state);
+    if (outcome === 'rejection') {
+      mocks.compileShaderPipeline.mockRejectedValueOnce(new Error('Device lost'));
+    } else {
+      mocks.compileShaderPipeline.mockResolvedValueOnce({ success: false, ...(outcome === 'superseded' ? { superseded: true } : {}) });
+    }
+    const compiling = pipeline.handleShaderMessage(makeShaderEvent('void mainImage(out vec4 o,vec2 p){o=vec4(1);}'));
+    expect(state.isCompiling).toBe(true);
+    await compiling;
+    expect(state.isCompiling).toBe(false);
+    expect(pipeline.isCompiling()).toBe(false);
+  });
+
+  it('keeps readiness unavailable until overlapping debug and Image compilations both settle', async () => {
+    const state = new ShaderCompilationState();
+    pipeline.setCompilationState(state);
+    mocks.compileShaderPipeline.mockResolvedValueOnce({ success: true });
+    await pipeline.handleShaderMessage(makeShaderEvent('void mainImage(out vec4 o,vec2 p){o=vec4(1);}'));
+    const finishes: Array<() => void> = [];
+    mocks.compileShaderPipeline.mockImplementation(() => new Promise(resolve => finishes.push(() => resolve({ success: true }))));
+    pipeline.triggerDebugRecompile();
+    expect(state.isCompiling).toBe(true);
+    const main = pipeline.handleShaderMessage(makeShaderEvent('void mainImage(out vec4 o,vec2 p){o=vec4(0);}'));
+    expect(finishes).toHaveLength(2);
+    state.clear();
+    expect(state.isCompiling).toBe(true);
+    finishes[1]();
+    await main;
+    expect(state.isCompiling).toBe(true);
+    finishes[0]();
+    await vi.waitFor(() => expect(state.isCompiling).toBe(false));
+  });
+
+  it('synchronizes a replacement observer while a compilation is still pending', async () => {
+    const compile = pipeline.handleShaderMessage(makeShaderEvent('void mainImage(out vec4 o,vec2 p){o=vec4(1);}'));
+    const state = new ShaderCompilationState();
+    pipeline.setCompilationState(state);
+    expect(state.isCompiling).toBe(true);
+    mocks.resolveCompile();
+    await compile;
+    expect(state.isCompiling).toBe(false);
+    pipeline.setCompilationState(null);
+    expect(pipeline.isCompiling()).toBe(false);
   });
 
   it('compiles the latest shader after a message arrives while a compile is in flight', async () => {

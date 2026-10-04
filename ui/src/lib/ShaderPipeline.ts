@@ -19,6 +19,9 @@ import { getEditorOverlayVisible } from './state/editorOverlayState.svelte';
 import type { ShaderCompilationState } from './state/ShaderCompilationState.svelte';
 import type { ShaderConfig } from "@shader-studio/types";
 
+type CompilationStateObserver = Pick<ShaderCompilationState, 'setResult'>
+  & Partial<Pick<ShaderCompilationState, 'isCompiling' | 'setCompiling'>>;
+
 export type ShaderMessageTarget =
   | { kind: 'main' }
   | { kind: 'buffer'; passName: string }
@@ -79,7 +82,8 @@ export class ShaderPipeline {
     resolve: (result: CompilationResult | undefined) => void;
     cursorHandled: boolean;
   } | null = null;
-  private compilationState: Pick<ShaderCompilationState, 'setResult'> | null = null;
+  private compilationState: CompilationStateObserver | null = null;
+  private activeCompilations = 0;
   private debugCompileInFlight = false;
   private debugCompilePending = false;
 
@@ -88,7 +92,7 @@ export class ShaderPipeline {
     renderEngine: RenderingEngine,
     shaderLocker: ShaderLocker,
     shaderDebugManager: ShaderDebugManager,
-    compilationState?: Pick<ShaderCompilationState, 'setResult'>,
+    compilationState?: CompilationStateObserver,
   ) {
     this.transport = transport;
     this.renderEngine = renderEngine;
@@ -97,12 +101,12 @@ export class ShaderPipeline {
     this.bufferPathResolver = new BufferPathResolver(renderEngine);
     this.shaderDebugManager = shaderDebugManager;
     this.shaderProcessor = new ShaderProcessor(renderEngine, shaderDebugManager);
-    this.compilationState = compilationState ?? null;
-    this.bufferUpdater.setCompilationState(this.compilationState);
+    this.setCompilationState(compilationState ?? null);
   }
 
-  public setCompilationState(compilationState: Pick<ShaderCompilationState, 'setResult'> | null): void {
+  public setCompilationState(compilationState: CompilationStateObserver | null): void {
     this.compilationState = compilationState;
+    compilationState?.setCompiling?.(this.activeCompilations > 0);
     this.bufferUpdater.setCompilationState(compilationState);
   }
 
@@ -286,24 +290,28 @@ export class ShaderPipeline {
     this.lastEvent = event;
 
     this.setDebugShaderContext(message);
+    this.setCompiling(1);
+    try {
+      const result = await this.shaderProcessor.processMainShaderCompilation(
+        message,
+        message.reload || false,
+      );
+      this.handleCompilationResult(result, message);
 
-    const result = await this.shaderProcessor.processMainShaderCompilation(
-      message,
-      message.reload || false,
-    );
-    this.handleCompilationResult(result, message);
+      if (this.pendingShaderEvent) {
+        const pending = this.pendingShaderEvent;
+        this.pendingShaderEvent = null;
+        void this.processShaderMessage(pending.event, pending.cursorHandled).then(pending.resolve);
+      }
 
-    if (this.pendingShaderEvent) {
-      const pending = this.pendingShaderEvent;
-      this.pendingShaderEvent = null;
-      void this.processShaderMessage(pending.event, pending.cursorHandled).then(pending.resolve);
+      if (result.superseded) {
+        return undefined;
+      }
+
+      return result;
+    } finally {
+      this.setCompiling(-1);
     }
-
-    if (result.superseded) {
-      return undefined;
-    }
-
-    return result;
   }
 
   private handleCompilationResult(result: CompilationResult, message?: ShaderSourceMessage): void {
@@ -493,9 +501,14 @@ export class ShaderPipeline {
     return this.lastEvent;
   }
 
-  /** True while the latest Image source has not finished installing in the preview. */
+  /** Tracks installation of Image and debug programs, including overlapping compiles. */
   public isCompiling(): boolean {
-    return this.shaderProcessor.isCurrentlyProcessing();
+    return this.compilationState?.isCompiling || this.activeCompilations > 0;
+  }
+
+  private setCompiling(change: 1 | -1): void {
+    this.activeCompilations += change;
+    this.compilationState?.setCompiling?.(this.activeCompilations > 0);
   }
 
   public updateCurrentConfig(config: ShaderConfig): void {
@@ -568,6 +581,7 @@ export class ShaderPipeline {
     }
 
     this.debugCompileInFlight = true;
+    this.setCompiling(1);
     try {
       const message = this.lastEvent.data as ShaderSourceMessage;
       const result = await this.shaderProcessor.debugCompile(message);
@@ -575,6 +589,7 @@ export class ShaderPipeline {
       return result;
     } finally {
       this.debugCompileInFlight = false;
+      this.setCompiling(-1);
       if (this.debugCompilePending) {
         this.debugCompilePending = false;
         void this.debugCompile();
