@@ -358,4 +358,87 @@ describe('PixelInspectorManager async region readback', () => {
     manager.setEnabled(true);
     expect(rafCallbacks).toHaveLength(1);
   });
+  describe('touch pinning', () => {
+    it('pins the tapped pixel and reads it on the next frame without a prior hover', () => {
+      manager.setEnabled(true);
+      manager.handleTouchTap(200.7, 100.2);
+
+      expect(manager.getState()).toMatchObject({ isLocked: true, mouseX: 200.7, mouseY: 100.2 });
+      runFrame(0);
+      expect(queued).toEqual([[1, 200, 100]]);
+    });
+
+    it('moves an existing pin to a new tap instead of unpinning', () => {
+      manager.setEnabled(true);
+      manager.handleTouchTap(200, 100);
+      runFrame(0);
+      manager.handleTouchTap(600, 500);
+      runFrame(1);
+
+      expect(manager.getState().isLocked).toBe(true);
+      expect(queued).toEqual([[1, 200, 100], [2, 600, 500]]);
+    });
+
+    it('unpins and clears the readout when the pinned point is tapped again within finger tolerance', () => {
+      manager.setEnabled(true);
+      manager.handleTouchTap(200, 100);
+      runFrame(0);
+      requests.push(result(1, 200, 100));
+      runFrame(1);
+      expect(manager.getState().pixelRGB).not.toBeNull();
+
+      manager.handleTouchTap(210, 108);
+
+      expect(manager.getState()).toMatchObject({ isLocked: false, region: null, pixelRGB: null, canvasPosition: null });
+      expect(engine.cancelPixelRegionRequests).toHaveBeenCalled();
+      runFrame(100);
+      expect(queued).toHaveLength(1);
+    });
+
+    it('treats a tap just outside finger tolerance as a move', () => {
+      manager.setEnabled(true);
+      manager.handleTouchTap(200, 100);
+      manager.handleTouchTap(217, 100);
+
+      expect(manager.getState()).toMatchObject({ isLocked: true, mouseX: 217 });
+    });
+
+    it('scales the tapped point from CSS pixels into canvas pixels', () => {
+      manager.initialize(engine, timeManager, {
+        width: 800,
+        height: 600,
+        getBoundingClientRect: () => ({ left: 10, top: 20, width: 400, height: 300 }),
+      } as HTMLCanvasElement);
+      manager.setEnabled(true);
+      manager.handleTouchTap(110, 70);
+      runFrame(0);
+
+      expect(queued).toEqual([[1, 200, 100]]);
+    });
+
+    it('ignores taps outside the canvas and keeps an existing pin', () => {
+      manager.setEnabled(true);
+      manager.handleTouchTap(200, 100);
+      manager.handleTouchTap(-5, 100);
+      manager.handleTouchTap(200, 600);
+
+      expect(manager.getState()).toMatchObject({ isLocked: true, mouseX: 200, mouseY: 100 });
+    });
+
+    it('does nothing while the inspector is disabled', () => {
+      manager.handleTouchTap(200, 100);
+      runFrame(0);
+
+      expect(manager.getState().isLocked).toBe(false);
+      expect(queued).toEqual([]);
+    });
+
+    it('does nothing after the manager is disposed', () => {
+      manager.setEnabled(true);
+      manager.dispose();
+      manager.handleTouchTap(200, 100);
+
+      expect(manager.getState().isLocked).toBe(false);
+    });
+  });
 });

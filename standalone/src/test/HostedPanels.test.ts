@@ -7,6 +7,7 @@ type Renderer = ReturnType<HostedPanels['createRenderer']>;
 function createApi() {
   const panels = new Map<string, { id: string; api: { setActive: ReturnType<typeof vi.fn> } }>();
   let removed: (panel: { id: string }) => void = () => {};
+  let active: (panel: { id: string } | undefined) => void = () => {};
   const api = {
     addPanel: vi.fn((options: { id: string }) => {
       panels.set(options.id, { id: options.id, api: { setActive: vi.fn() } });
@@ -20,6 +21,10 @@ function createApi() {
       removed = listener;
       return { dispose: vi.fn() };
     }),
+    onDidActivePanelChange: vi.fn((listener: (panel: { id: string } | undefined) => void) => {
+      active = listener;
+      return { dispose: vi.fn() };
+    }),
     addExisting(id: string) {
       panels.set(id, { id, api: { setActive: vi.fn() } });
     },
@@ -29,6 +34,9 @@ function createApi() {
         panels.delete(id);
         removed(panel);
       }
+    },
+    activateAsUser(id: string) {
+      active(panels.get(id));
     },
   };
   return { api: api as unknown as DockviewApi, panels, ...api };
@@ -61,12 +69,12 @@ describe('HostedPanels', () => {
 
   it('restores registered panels already present in a saved Dockview layout', () => {
     dock.addExisting('debug');
-    const onRestore = vi.fn();
+    const onShow = vi.fn();
 
-    host.register('debug', { mount: vi.fn(), onClose: vi.fn(), onRestore });
+    host.register('debug', { mount: vi.fn(), onClose: vi.fn(), onShow });
     host.restoreVisiblePanels();
 
-    expect(onRestore).toHaveBeenCalledTimes(2);
+    expect(onShow).toHaveBeenCalledTimes(2);
     expect(dock.addPanel).not.toHaveBeenCalled();
   });
 
@@ -150,6 +158,35 @@ describe('HostedPanels', () => {
     expect(dock.addPanel).toHaveBeenCalledWith({
       id: 'preview', component: 'preview', title: 'Preview', renderer: 'always',
     });
+  });
+
+  it('opens a requested tool and remembers it for the mobile Tools destination', () => {
+    const onShow = vi.fn();
+    host.register('performance', { mount: vi.fn(), onClose: vi.fn(), onShow });
+
+    host.showTool('performance');
+    expect(dock.addPanel).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'performance' }));
+    expect(host.getLastSelectedTool()).toBe('performance');
+    expect(onShow).toHaveBeenCalledOnce();
+
+    host.showLastSelectedTool();
+    expect(dock.panels.get('performance')?.api.setActive).toHaveBeenCalledTimes(2);
+    expect(onShow).toHaveBeenCalledTimes(2);
+  });
+
+  it('synchronizes a tool selected before its viewer definition registers', () => {
+    const onShow = vi.fn();
+
+    host.showTool('config');
+    host.register('config', { mount: vi.fn(), onClose: vi.fn(), onShow });
+
+    expect(onShow).toHaveBeenCalledOnce();
+  });
+
+  it('tracks a tool selected from an existing Dockview tab for the phone Tools destination', () => {
+    dock.addExisting('debug');
+    dock.activateAsUser('debug');
+    expect(host.getLastSelectedTool()).toBe('debug');
   });
 
   it('delegates Preview menu reset to the workspace while preserving tool visibility', () => {
