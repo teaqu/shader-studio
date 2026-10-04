@@ -135,7 +135,7 @@ test('registry includes callbacks after Playwright transforms browser specs', ()
   function visit(node) {
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
       && node.expression.name.text === 'evaluateInHost'
-      && ts.isArrowFunction(node.arguments[0]) && node.arguments[0].parameters.length === 4) {
+      && ts.isArrowFunction(node.arguments[0]) && node.arguments[0].parameters.length === 5) {
       callback = node.arguments[0].getText(file);
     }
     ts.forEachChild(node, visit);

@@ -59,6 +59,10 @@ module.exports = Object.freeze({
       await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.One, preview: false });
       await vscode.commands.executeCommand('shader-studio.view');
     },
+  "060a3c63209882cdfc93622aec572721697a11bb2418fb2d5b938b8231748eb1": vscode => ({
+    path: vscode.window.activeTextEditor?.document.uri.fsPath,
+    text: vscode.window.activeTextEditor?.document.getText()
+  }),
   "060d60eb317da9c8a3e3a2ffe35687f2269aeacc9b3bd22f4545e080021d1c8d": (vscode, path) => vscode.languages.getDiagnostics(vscode.Uri.file(path)).filter(d => d.severity === vscode.DiagnosticSeverity.Error).map(d => ({
           line: d.range.start.line,
           column: d.range.start.character
@@ -153,8 +157,6 @@ module.exports = Object.freeze({
     await vscode.commands.executeCommand('shader-studio.view');
     return true;
   },
-  "101e8caa750435779f6315851d23cb7b4727f4f2b40872c97e77d180cdfc1e82": (vscode, target) =>
-    vscode.window.activeTextEditor?.document.uri.fsPath !== vscode.Uri.file(target).fsPath,
   "10933001bf8c381cc2dc791a142cd7f392a15a7d2b6fa276e850d932f47ea40c": async (vscode, p) => {
     const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(p));
     return folder ? folder.uri.fsPath : null;
@@ -310,17 +312,6 @@ module.exports = Object.freeze({
     await editor.edit(builder => builder.replace(new vscode.Range(document.positionAt(0), document.positionAt(document.getText().length)), text));
     await document.save();
   },
-  "151cc6212c822a8359cfcb2c3017a4e8dca9d0b1ac7c16802a3ddab12d535c15": async (vscode, path, lineNumber, openBeside) => {
-    const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
-    const editor = await vscode.window.showTextDocument(document, {
-      viewColumn: openBeside ? vscode.ViewColumn.Beside : vscode.ViewColumn.One,
-      preserveFocus: false,
-      preview: false
-    });
-    const position = new vscode.Position(lineNumber, 4);
-    editor.selection = new vscode.Selection(position, position);
-    editor.revealRange(new vscode.Range(position, position));
-  },
   "1523f02e6c6b06b0dd82f89e39103762101559d24bfe08a017ea6943f0317422": async (vscode, targetPath, line) => {
       const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
       const editor = await vscode.window.showTextDocument(document, {
@@ -335,6 +326,27 @@ module.exports = Object.freeze({
   "157c2c338aab5e662c38bade260b7ddbd9dd366ed3b1cfad2b0ff86e472baf78": vscode => {
     setTimeout(() => vscode.commands.executeCommand('workbench.action.reloadWindow'), 100);
   },
+  "1693552763d11d583f32d5d9bb4eb6f484f373e022afb39aef67c5e2b755f839": async (vscode, directory) => {
+      const prefix = vscode.Uri.file(directory).fsPath + (process.platform === 'win32' ? '\\' : '/');
+      // Closing a group's last tab can renumber the remaining viewColumns.
+      // Resolve the next exact fixture tab from the current group inventory.
+      for (const group of vscode.window.tabGroups.all) {
+        for (const tab of group.tabs) {
+          const path = tab.input?.uri?.fsPath;
+          const document = vscode.workspace.textDocuments.find(document => document.uri.fsPath === path);
+          if (!path?.startsWith(prefix) || !document) {
+            continue;
+          }
+          await vscode.window.showTextDocument(document, {
+            viewColumn: group.viewColumn,
+            preserveFocus: false,
+            preview: false
+          });
+          return path;
+        }
+      }
+      return null;
+    },
   "1711c99bd13c761bdec0230fd4ffe42140522122af45018f2f3b1532db6445e8": vscode => vscode.window.tabGroups.activeTabGroup.activeTab?.label,
   "179de6e3644ec2243ad866d2142fe411c33e1b599c932e788954b08cb273b4e0": async (vscode, documentUri, expected) => {
     const found = vscode.languages.getDiagnostics(vscode.Uri.parse(documentUri)).find(item => item.message.toLocaleLowerCase().includes(expected.toLocaleLowerCase()));
@@ -417,7 +429,6 @@ module.exports = Object.freeze({
   "23997a58eead2b1f2350cdbb0da2b962b7e82a7284f3e220bbea707ea8eea64a": async vscode => {
       await vscode.commands.executeCommand('notifications.clearAll');
     },
-  "2452e7465c7f5cc5516195b66cd0383e54046fc8f672d3dfbfd0ebbad74113a2": vscode => vscode.window.activeTextEditor?.document.eol,
   "247ab002b3611504e1a4c684730bc6d7a55c109b61de2cc756c52db55021f741": async (vscode, paths) => {
           const shaderUri = vscode.Uri.file(paths[0]);
           const shader = vscode.workspace.textDocuments.find((document) => document.uri.toString() === shaderUri.toString());
@@ -451,6 +462,8 @@ module.exports = Object.freeze({
     await api.commands.executeCommand('shader-studio.view');
     await api.commands.executeCommand('notifications.clearAll');
   },
+  "29174500b16e5d14b2e55aa374936c72ed000b3724c7452957b3721e23be8acb": (vscode, target) => vscode.window.tabGroups.all
+    .flatMap(group => group.tabs).filter(tab => tab.input?.uri?.fsPath === vscode.Uri.file(target).fsPath).length,
   "2b13118d34fd5b9f41da0457aae87139e502a0cc08b8a1551d3795124da65026": async (vscode) => {
         const editor = vscode.window.activeTextEditor;
         const text = editor.document.getText();
@@ -477,6 +490,22 @@ module.exports = Object.freeze({
       uri: vscode.Uri.file(root)
     });
   },
+  "2da18abc80fd9a1c016a210849e815eeaa76852835f2cb0301ee261268375047": async (vscode, root, outside) => {
+      const other = await vscode.workspace.openTextDocument(vscode.Uri.file(outside));
+      await vscode.window.showTextDocument(other, {
+        viewColumn: vscode.ViewColumn.One,
+        preview: false
+      });
+      const document = await vscode.workspace.openTextDocument(vscode.Uri.file(root));
+      await vscode.window.showTextDocument(document, {
+        viewColumn: vscode.ViewColumn.Two,
+        preview: false
+      });
+      await vscode.window.showTextDocument(document, {
+        viewColumn: vscode.ViewColumn.Three,
+        preview: false
+      });
+    },
   "2f5f0269417db35f077bfbabb00a24e418167295c777fb6332794e6ed3333026": async (vscode) => {
       await vscode.commands.executeCommand('notifications.clearAll');
     },
@@ -575,6 +604,17 @@ module.exports = Object.freeze({
       preview: false
     });
     await vscode.commands.executeCommand('shader-studio.view');
+  },
+  "37b0600262a91e95e3285a7831dc349bba13de59b82138a854f618da4479f57b": async (vscode, path, lineNumber, openBeside, column) => {
+    const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
+    const editor = await vscode.window.showTextDocument(document, {
+      viewColumn: openBeside ? vscode.ViewColumn.Beside : column,
+      preserveFocus: false,
+      preview: false
+    });
+    const position = new vscode.Position(lineNumber, 4);
+    editor.selection = new vscode.Selection(position, position);
+    editor.revealRange(new vscode.Range(position, position));
   },
   "392c47008f3d8b68451c09673024b8cd348387db280e16bbbf14758112d46253": async (vscode, targetPath) => {
       const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
@@ -934,6 +974,8 @@ module.exports = Object.freeze({
   "55fcee3673bded201fdd48bf48a9b875cf90d65cdcd95471aea5ecd832e4d2af": async (vscode, root) => {
     vscode.workspace.updateWorkspaceFolders(0, 0, { uri: vscode.Uri.file(root) });
   },
+  "588db7cd5df01e98fd4fd9bcc096f8ba90a801ad931252ca2e3ce245d68cc091": (vscode, target) =>
+    vscode.window.tabGroups.activeTabGroup.activeTab?.input?.uri?.fsPath === vscode.Uri.file(target).fsPath,
   "5942765ac4a811b6ff2cd80bd857266d493e51512f9c8aa493471e3140017606": async (vscode, targetPath, lineNumber, column) => {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
     const editor = await vscode.window.showTextDocument(document, {
@@ -959,6 +1001,10 @@ module.exports = Object.freeze({
       editor.selection = new vscode.Selection(position, position);
       await vscode.commands.executeCommand('shader-studio.view');
     },
+  "5b878190580221524eab315c03583213fd95ced32619f547997e9cd128f6d884": vscode => ({
+    path: vscode.window.activeTextEditor?.document.uri.fsPath,
+    text: vscode.window.activeTextEditor?.document.getText(),
+  }),
   "5cdf74281cd5e547a49458dcc10db3c99b05863a566112b78cbed041647911da": async (vscode, path) => {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
     await vscode.window.showTextDocument(document, {
@@ -975,15 +1021,7 @@ module.exports = Object.freeze({
         preview: false
       });
     },
-  "5d6e01e4422976a4eb452b92872c6044e455422940903c3b8c7ac9e0882ba9a7": async (vscode, path, lineNumber, openBeside) => {
-    const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
-    const editor = await vscode.window.showTextDocument(document, {
-      viewColumn: openBeside ? vscode.ViewColumn.Beside : vscode.ViewColumn.One, preserveFocus: false, preview: false,
-    });
-    const position = new vscode.Position(lineNumber, 4);
-    editor.selection = new vscode.Selection(position, position);
-    editor.revealRange(new vscode.Range(position, position));
-  },
+  "5d0d1410e9edb397e3ff76aa53224226f6966f91b53b4b95b36bf43baed7f51a": (vscode, target) => vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab => tab.input?.uri?.fsPath === vscode.Uri.file(target).fsPath).length,
   "5ed65250fa3ae491fe73c500f2796e61331685555ab6ac90195ae0868979c177": async (vscode, paths, text) => {
         await vscode.workspace.fs.writeFile(vscode.Uri.file(paths.config), Buffer.from(JSON.stringify({
           version: '1.0',
@@ -1027,7 +1065,6 @@ module.exports = Object.freeze({
         await vscode.commands.executeCommand('shader-studio.view');
       },
   "613f4bed5eb231738be0e47af3cbc121a67176149df82b264700c9a005bb9975": async (vscode) => vscode.commands.executeCommand('editor.action.showHover'),
-  "6184a76240984d456e0efd1cb46cb76c0f51b2eba45072fbf684d7be7ae14be5": vscode => vscode.window.activeTextEditor?.document.getText(),
   "61855d4b3ab49db557942686096d9f4bb213b8e133f55cf648289cf806c0197e": (vscode, path) => vscode.languages.getDiagnostics(vscode.Uri.file(path))
         .filter(d => d.severity === vscode.DiagnosticSeverity.Error).map(d => ({ line: d.range.start.line, column: d.range.start.character })),
   "62148dae8c7fb8353b88c6cb61218aefb69cb3f1ac196636a4d25fee19185d69": (vscode, path) => vscode.languages.getDiagnostics(vscode.Uri.file(path))
@@ -1089,6 +1126,10 @@ module.exports = Object.freeze({
       const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
       return document.languageId;
     },
+  "69cd2078e2a0bcbe5ac230f2869190332a80241455bf64dfc08abf49f288e3b7": vscode => ({
+    path: vscode.window.activeTextEditor?.document.uri.fsPath,
+    eol: vscode.window.activeTextEditor?.document.eol
+  }),
   "6aeda3fc3df5aea83c3544dcfbf2fda7b75198c210cc9e1adb7e3e87660e022f": () => {
         delete globalThis.__startupRefresh;
         delete globalThis.__releaseStartupRefresh;
@@ -1158,6 +1199,28 @@ module.exports = Object.freeze({
       const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
       await vscode.window.showTextDocument(document, { preview: true });
     },
+  "72bbbe6bb8d3d6a14a6308001e91bdaae9052e29138615648649aa29cc92a92e": async (vscode, directory) => {
+    // The webview may own focus. Revert each dirty fixture's text editor
+    // explicitly before deleting it, so the next test cannot open a save prompt.
+    const prefix = vscode.Uri.file(directory).fsPath + (process.platform === 'win32' ? '\\' : '/');
+    for (const document of vscode.workspace.textDocuments) {
+      if (!document.uri.fsPath.startsWith(prefix)) {
+        continue;
+      }
+      if (!document.isDirty) {
+        continue;
+      }
+      await vscode.window.showTextDocument(document, {
+        preserveFocus: false,
+        preview: false
+      });
+      await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
+    }
+    return vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab => {
+      const path = tab.input?.uri?.fsPath;
+      return path?.startsWith(prefix);
+    }).length;
+  },
   "73bea50305c39633f08d0a3f3e6601f69441b56aba03390e6237ccb90e4f4987": async (vscode, targetPath, vector) => {
         const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
         await vscode.window.showTextDocument(document, {
@@ -1183,6 +1246,25 @@ module.exports = Object.freeze({
           activeParameter: signature?.activeParameter
         };
       },
+  "752a8b088f946f93c0e692887413585d9a00023a8fb0e2e3d95466d95db14b43": async (vscode, directory) => {
+    // The webview may own focus. Revert each dirty fixture's text editor
+    // explicitly before deleting it, so the next test cannot open a save prompt.
+    const prefix = vscode.Uri.file(directory).fsPath + (process.platform === 'win32' ? '\\' : '/');
+    for (const document of vscode.workspace.textDocuments) {
+      if (!document.uri.fsPath.startsWith(prefix)) {
+        continue;
+      }
+      if (!document.isDirty) {
+        continue;
+      }
+      await vscode.window.showTextDocument(document, { preserveFocus: false, preview: false });
+      await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
+    }
+    return vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab => {
+      const path = tab.input?.uri?.fsPath;
+      return path?.startsWith(prefix);
+    }).length;
+  },
   "7551c50dc6a7db2df9b414a9c5ccabedc64f40bf14ff49bf0dc484d1d75d4da3": async (vscode, paths, text) => {
         await vscode.workspace.fs.writeFile(vscode.Uri.file(paths.config), Buffer.from(JSON.stringify({
           version: '1.0', passes: { Image: { path: `./${paths.name}` } },
@@ -1203,6 +1285,13 @@ module.exports = Object.freeze({
       preview: false
     });
   },
+  "79c3f69fe0e286e872a278fd125f0ea344f8967f245a74cc03dc8529903f5c1d": async (vscode, root, outside) => {
+      const other = await vscode.workspace.openTextDocument(vscode.Uri.file(outside));
+      await vscode.window.showTextDocument(other, { viewColumn: vscode.ViewColumn.One, preview: false });
+      const document = await vscode.workspace.openTextDocument(vscode.Uri.file(root));
+      await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.Two, preview: false });
+      await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.Three, preview: false });
+    },
   "7ac230dccefb6d08c0dbc933f65259c349013cfed4cde5d77c90859f7a6c4f71": async (vscode, target, at) => {
     const document = vscode.workspace.textDocuments.find((candidate) => candidate.uri.fsPath === target)
       ?? await vscode.workspace.openTextDocument(vscode.Uri.file(target));
@@ -1445,6 +1534,15 @@ module.exports = Object.freeze({
       editor.selection = new vscode.Selection(position, position);
       await vscode.commands.executeCommand('shader-studio.view');
     },
+  "9b6646a3899564272bfe7164768d0e641051ce4aeb542143572e2a3df04ea737": async (vscode, path, lineNumber, openBeside, column) => {
+    const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
+    const editor = await vscode.window.showTextDocument(document, {
+      viewColumn: openBeside ? vscode.ViewColumn.Beside : column, preserveFocus: false, preview: false,
+    });
+    const position = new vscode.Position(lineNumber, 4);
+    editor.selection = new vscode.Selection(position, position);
+    editor.revealRange(new vscode.Range(position, position));
+  },
   "9c05571757077f3f81e89ccd7907b0a94f0f8681af79fad45c33e5741cd82d7d": async (vscode, targetPath) => {
         const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
         await vscode.window.showTextDocument(document, {
@@ -1476,6 +1574,13 @@ module.exports = Object.freeze({
       variables
     };
   },
+  "a3325972e6f6198df9106ea2915dbfc68f8040290d88b5ffd3fd9a693b3f4897": (vscode, root, outside) => {
+      const tabs = vscode.window.tabGroups.all.flatMap(group => group.tabs);
+      return {
+        owned: tabs.filter(tab => tab.input?.uri?.fsPath === vscode.Uri.file(root).fsPath).length,
+        outside: tabs.filter(tab => tab.input?.uri?.fsPath === vscode.Uri.file(outside).fsPath).length,
+      };
+    },
   "a341dbe31bccb877c558b70a6e7eaf5e1eabb00fd12e8dbaa04c451dba4cea21": async (vscode, config, shader) => {
       await vscode.extensions.getExtension('teaqu.shader-studio')?.activate();
       await vscode.workspace.getConfiguration('shader-studio').update(
@@ -1533,6 +1638,13 @@ module.exports = Object.freeze({
   "a8d5a6d8735adc2faf4c24694c0d87e821927683d2a88dc13f09fd447d01b0f5": async (vscode, path) => {
       await vscode.workspace.fs.delete(vscode.Uri.file(path)).then(undefined, () => {});
     },
+  "a91045f0facde78edd0b9736111fabd10abe9f60b5bbee1b046fce21024f82ca": (vscode, root, outside) => {
+      const tabs = vscode.window.tabGroups.all.flatMap(group => group.tabs);
+      return {
+        owned: tabs.filter(tab => tab.input?.uri?.fsPath === vscode.Uri.file(root).fsPath).length,
+        outside: tabs.filter(tab => tab.input?.uri?.fsPath === vscode.Uri.file(outside).fsPath).length
+      };
+    },
   "ac1126e19d37b0bc4bb092e5234d613a32702f977ab2cbbeea708d5dc2de2ea7": async (vscode, documentUri, expected) => {
       const found = vscode.languages.getDiagnostics(vscode.Uri.parse(documentUri)).find(item => item.message.toLocaleLowerCase().includes(expected.toLocaleLowerCase()));
       return found ? {
@@ -1552,27 +1664,6 @@ module.exports = Object.freeze({
         await passDocument.save();
         return true;
       },
-  "afa494cb444db4e2adf355b0afb35eb9c0d53354e8ec21d03593e2c3e4e14b19": async (vscode, directory) => {
-    // The webview may own focus. Revert each dirty fixture's text editor
-    // explicitly before deleting it, so the next test cannot open a save prompt.
-    const cleanPaths = [];
-    for (const document of vscode.workspace.textDocuments) {
-      const prefix = vscode.Uri.file(directory).fsPath + (process.platform === 'win32' ? '\\' : '/');
-      if (!document.uri.fsPath.startsWith(prefix)) {
-        continue;
-      }
-      if (!document.isDirty) {
-        cleanPaths.push(document.uri.fsPath);
-        continue;
-      }
-      await vscode.window.showTextDocument(document, {
-        preserveFocus: false,
-        preview: false
-      });
-      await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
-    }
-    return cleanPaths;
-  },
   "b0f8f13686a98f3cdfe2e2fbf54db2314693fe1ab28eefeb0ed80ce2482f0999": async (vscode, targetPath, key) => {
         await vscode.workspace.getConfiguration('shader-studio').update(key, true, vscode.ConfigurationTarget.Global);
         const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
@@ -1723,6 +1814,7 @@ module.exports = Object.freeze({
         preview: false
       });
     },
+  "bac820659b1a4e24b17e0d38437f4dbeae390b7fef7f6fc2cbea1596d0e0ee4b": async (vscode, outside) => (await vscode.workspace.openTextDocument(vscode.Uri.file(outside))).getText(),
   "bac8baf0d7743015fc5e1c36ed865405d90a486f19780799241553a312f5fb2e": async vscode => {
       await vscode.commands.executeCommand('shader-studio.stopWebServer');
       await vscode.workspace.getConfiguration('shader-studio').update('webServerPort', undefined, vscode.ConfigurationTarget.Global);
@@ -1784,17 +1876,6 @@ module.exports = Object.freeze({
         );
         await vscode.workspace.applyEdit(edit);
       },
-  "c243d2bd4ba9eda3035381a11916731b83ab74c9a8769af939cddf8dcfc47227": async (vscode, path) => {
-      const document = vscode.workspace.textDocuments.find(document => document.uri.fsPath === path);
-      if (!document) {
-        return false;
-      }
-      await vscode.window.showTextDocument(document, {
-        preserveFocus: false,
-        preview: false
-      });
-      return true;
-    },
   "c28610b2742d6cb5218988f16c17c36aa111390f9b118778f64c8c2c9a37f7e1": vscode => vscode.commands.executeCommand('shader-studio.view'),
   "c4088d534d4f723024c235bd107def66182c836492dff9e23f0591be19d52506": async (vscode, path) => {
       const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
@@ -1901,26 +1982,11 @@ module.exports = Object.freeze({
     };
   },
   "cbce59ec22ed98989676a13701b3b99945cbffac73bfa339b82d7afe75288114": vscode => vscode.commands.executeCommand('shader-studio.toggleLock'),
+  "cd7b82e122a31eda816c2c4f5f438581ebafd94be8aa85d8099a3531286494af": async (vscode, outside) =>
+      (await vscode.workspace.openTextDocument(vscode.Uri.file(outside))).getText(),
   "ce5e295b30297d2eee67199d6203d23e1a0ad653e0ba66b41f8f375ac375985a": async vscode => {
       await vscode.extensions.getExtension('teaqu.shader-studio')?.activate();
     },
-  "cedac9112b17ee455cf56e31878562bca38276ab7648c6ec7e678c63c5121228": async (vscode, directory) => {
-    // The webview may own focus. Revert each dirty fixture's text editor
-    // explicitly before deleting it, so the next test cannot open a save prompt.
-    const cleanPaths = [];
-    for (const document of vscode.workspace.textDocuments) {
-      const prefix = vscode.Uri.file(directory).fsPath + (process.platform === 'win32' ? '\\' : '/');
-      if (!document.uri.fsPath.startsWith(prefix)) {
-        continue;
-      }
-      if (!document.isDirty) {
-        cleanPaths.push(document.uri.fsPath); continue;
-      }
-      await vscode.window.showTextDocument(document, { preserveFocus: false, preview: false });
-      await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
-    }
-    return cleanPaths;
-  },
   "cf7f0f7bb4d5d187e6cba312596917f3fda506d013a51f40391063679222ef4f": vscode => ({
       active: vscode.window.activeTextEditor?.document.uri.toString(),
       previews: vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab => tab.label === 'Shader Studio').length,
@@ -2013,10 +2079,26 @@ module.exports = Object.freeze({
     },
   "d9f7b48ee0dc2d757a67fb78d8a75491b9f925ee1de96758442b40680b09f182": (vscode, directory) => vscode.workspace.textDocuments.filter(document => document.isDirty && document.uri.fsPath.startsWith(directory + '/')).map(document => document.uri.fsPath),
   "da90153aafb51e15b0ca390151bd0670918277ea2f4c53a37f410c9934b36c14": async (vscode, path) => (await vscode.workspace.openTextDocument(vscode.Uri.file(path))).uri.toString(),
-  "dd90230101dd770003a644ccb60bd28fa76dc80dc00c1c6b00f767c2d6fda390": (vscode, target) => vscode.window.activeTextEditor?.document.uri.fsPath !== vscode.Uri.file(target).fsPath,
   "ddaef6aa5627eb34d7dae85e083edabeba170f19037784828a3ceb0d2ffddce3": async (vscode) => {
     await vscode.commands.executeCommand('workbench.action.closeAllEditors');
   },
+  "dfab40f69e2f388ad5d1087b61e7e13479b2a596103c5ea2123c241e45ffc07f": async (vscode, directory) => {
+      const prefix = vscode.Uri.file(directory).fsPath + (process.platform === 'win32' ? '\\' : '/');
+      // Closing a group's last tab can renumber the remaining viewColumns.
+      // Resolve the next exact fixture tab from the current group inventory.
+      for (const group of vscode.window.tabGroups.all) {
+        for (const tab of group.tabs) {
+          const path = tab.input?.uri?.fsPath;
+          const document = vscode.workspace.textDocuments.find(document => document.uri.fsPath === path);
+          if (!path?.startsWith(prefix) || !document) {
+            continue;
+          }
+          await vscode.window.showTextDocument(document, { viewColumn: group.viewColumn, preserveFocus: false, preview: false });
+          return path;
+        }
+      }
+      return null;
+    },
   "dfd7dddb4bdfd41c537c1af0b244e1067e9f11d53103c8ddbe95e51939844869": async (vscode, targetPath) => {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
     await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.One, preview: false, preserveFocus: false });
@@ -2045,14 +2127,6 @@ module.exports = Object.freeze({
             }).then(undefined, () => {});
           }
         },
-  "e373b73b5b3eb4f8ff55147aea6afbd52cfa04fa420503a6346a4250f14ec06b": async (vscode, path) => {
-      const document = vscode.workspace.textDocuments.find(document => document.uri.fsPath === path);
-      if (!document) {
-        return false;
-      }
-      await vscode.window.showTextDocument(document, { preserveFocus: false, preview: false });
-      return true;
-    },
   "e498ab435a10b8974c8f264f01aa9231ddaa5d77ab0e3d00443c34462a50803e": async (vscode, key) => {
         await vscode.workspace.getConfiguration('shader-studio').update(key, undefined, vscode.ConfigurationTarget.Global);
       },
@@ -2193,6 +2267,10 @@ module.exports = Object.freeze({
   "f0a1de2219b92cde25574d47615425ed7bde85243e10ee7c5cfc800fbb6bbe21": (vscode, path) => (
       vscode.workspace.textDocuments.find((document) => document.uri.fsPath === vscode.Uri.file(path).fsPath)?.getText() ?? ''
     ),
+  "f23aa877c0bdf5cbc592ab5681fd2281941746748a9d23e70c0b46350bb60502": vscode => ({
+    path: vscode.window.activeTextEditor?.document.uri.fsPath,
+    eol: vscode.window.activeTextEditor?.document.eol,
+  }),
   "f2c9c99a19ebd72c516169e345d52980664c0e13a258c71e7408c5eb03eb03b6": async vscode => {
       await vscode.commands.executeCommand('shader-studio.stopWebServer');
       await vscode.workspace.getConfiguration('shader-studio').update(
@@ -2238,6 +2316,7 @@ module.exports = Object.freeze({
         }]
       });
     },
+  "f6801237509975f1af385907b0ae8f8408973f58758b84d97ecf1c87f990cf4f": (vscode, target) => vscode.window.tabGroups.activeTabGroup.activeTab?.input?.uri?.fsPath === vscode.Uri.file(target).fsPath,
   "f74848473087f42d74ac02a0cad4e41da47ae85b253e363c1b39f4085ef250bf": async (vscode, path) => {
           const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
           await vscode.window.showTextDocument(document, { preview: false, preserveFocus: false });
@@ -2309,6 +2388,7 @@ module.exports = Object.freeze({
         }
       }
     },
+  "fa77c4cbb63388679b4fdb572015d4c57b3c19cdd87b8afceca3943ca597423c": vscode => vscode.window.activeTextEditor?.document.uri.fsPath,
   "fad5a366caf99ae8d0bcb976e7b72ffaa363aaf070cb81b20473ff033169b43a": async (vscode, targetPath) => (
     vscode.workspace.textDocuments.find((document) => document.uri.fsPath === vscode.Uri.file(targetPath).fsPath)?.getText() ?? ''
   ),

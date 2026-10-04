@@ -3,7 +3,13 @@ import { PNG } from 'pngjs';
 import { sourceForDocument } from './platform.mjs';
 
 export async function replaceSource(vscode, source) {
-  await vscode.window.locator('.monaco-editor .view-lines').filter({ visible: true }).first().click();
+  const target = await vscode.evaluateInHost(vscode => ({
+    path: vscode.window.activeTextEditor?.document.uri.fsPath,
+    eol: vscode.window.activeTextEditor?.document.eol,
+  }));
+  expect(target.path, 'source replacement requires an active native editor').toBeTruthy();
+  await vscode.window.locator('.editor-group-container.active .monaco-editor .view-lines').filter({ visible: true }).click();
+  await expect.poll(() => vscode.evaluateInHost(vscode => vscode.window.activeTextEditor?.document.uri.fsPath)).toBe(target.path);
   await vscode.window.keyboard.press('ControlOrMeta+A');
   // Exercise Monaco's paste handler without sharing the OS clipboard between
   // concurrent VS Code windows (including their clipboard-restoration steps).
@@ -12,9 +18,10 @@ export async function replaceSource(vscode, source) {
     clipboardData.setData('text/plain', text);
     document.activeElement.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
   }, source);
-  const eol = await vscode.evaluateInHost(vscode => vscode.window.activeTextEditor?.document.eol);
-  await expect.poll(() => vscode.evaluateInHost(vscode => vscode.window.activeTextEditor?.document.getText()))
-    .toBe(sourceForDocument(source, eol));
+  await expect.poll(() => vscode.evaluateInHost(vscode => ({
+    path: vscode.window.activeTextEditor?.document.uri.fsPath,
+    text: vscode.window.activeTextEditor?.document.getText(),
+  }))).toEqual({ path: target.path, text: sourceForDocument(source, target.eol) });
 }
 
 export async function expectCanvasPixels(frame, rgb) {
@@ -62,37 +69,49 @@ export async function unlockPreviewForCleanup(vscode, frame) {
 }
 
 export async function revertFixtureEditors(vscode, directory) {
-  const cleanPaths = await vscode.evaluateInHost(async (vscode, directory) => {
+  const fixtureTabCount = await vscode.evaluateInHost(async (vscode, directory) => {
     // The webview may own focus. Revert each dirty fixture's text editor
     // explicitly before deleting it, so the next test cannot open a save prompt.
-    const cleanPaths = [];
+    const prefix = vscode.Uri.file(directory).fsPath + (process.platform === 'win32' ? '\\' : '/');
     for (const document of vscode.workspace.textDocuments) {
-      const prefix = vscode.Uri.file(directory).fsPath + (process.platform === 'win32' ? '\\' : '/');
       if (!document.uri.fsPath.startsWith(prefix)) {
         continue;
       }
       if (!document.isDirty) {
-        cleanPaths.push(document.uri.fsPath); continue;
+        continue;
       }
       await vscode.window.showTextDocument(document, { preserveFocus: false, preview: false });
       await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
     }
-    return cleanPaths;
+    return vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab => {
+      const path = tab.input?.uri?.fsPath;
+      return path?.startsWith(prefix);
+    }).length;
   }, directory);
   // Close clean fixture tabs before removing their files. Use the exact active
   // tab rather than dispatching a close command into a focused preview.
-  for (const path of cleanPaths) {
-    const shown = await vscode.evaluateInHost(async (vscode, path) => {
-      const document = vscode.workspace.textDocuments.find(document => document.uri.fsPath === path);
-      if (!document) {
-        return false;
+  for (let index = 0; index < fixtureTabCount; index++) {
+    const path = await vscode.evaluateInHost(async (vscode, directory) => {
+      const prefix = vscode.Uri.file(directory).fsPath + (process.platform === 'win32' ? '\\' : '/');
+      // Closing a group's last tab can renumber the remaining viewColumns.
+      // Resolve the next exact fixture tab from the current group inventory.
+      for (const group of vscode.window.tabGroups.all) {
+        for (const tab of group.tabs) {
+          const path = tab.input?.uri?.fsPath;
+          const document = vscode.workspace.textDocuments.find(document => document.uri.fsPath === path);
+          if (!path?.startsWith(prefix) || !document) {
+            continue;
+          }
+          await vscode.window.showTextDocument(document, { viewColumn: group.viewColumn, preserveFocus: false, preview: false });
+          return path;
+        }
       }
-      await vscode.window.showTextDocument(document, { preserveFocus: false, preview: false });
-      return true;
-    }, path);
-    if (shown) {
-      await closeNativeEditor(vscode, path);
+      return null;
+    }, directory);
+    if (!path) {
+      break;
     }
+    await closeNativeEditor(vscode, path);
   }
 }
 
@@ -144,8 +163,13 @@ export async function focusNativeEditor(vscode, path, offset) {
  */
 export async function closeNativeEditor(vscode, path) {
   const name = path.split(/[\\/]/).at(-1);
-  await vscode.window.locator('.tab.active').filter({ hasText: name }).locator('.codicon-close').click();
-  await expect.poll(() => vscode.evaluateInHost((vscode, target) =>
-    vscode.window.activeTextEditor?.document.uri.fsPath !== vscode.Uri.file(target).fsPath, path),
-  { message: `native editor did not close: ${path}` }).toBe(true);
+  expect(await vscode.evaluateInHost((vscode, target) =>
+    vscode.window.tabGroups.activeTabGroup.activeTab?.input?.uri?.fsPath === vscode.Uri.file(target).fsPath, path),
+  `active editor does not match the requested close: ${path}`).toBe(true);
+  const tabCount = await vscode.evaluateInHost((vscode, target) => vscode.window.tabGroups.all
+    .flatMap(group => group.tabs).filter(tab => tab.input?.uri?.fsPath === vscode.Uri.file(target).fsPath).length, path);
+  await vscode.window.locator('.editor-group-container.active .tab.active').filter({ hasText: name }).locator('.codicon-close').click();
+  await expect.poll(() => vscode.evaluateInHost((vscode, target) => vscode.window.tabGroups.all
+    .flatMap(group => group.tabs).filter(tab => tab.input?.uri?.fsPath === vscode.Uri.file(target).fsPath).length, path),
+  { message: `native editor did not close: ${path}` }).toBe(tabCount - 1);
 }

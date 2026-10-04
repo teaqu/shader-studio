@@ -1,23 +1,23 @@
 import { test, expect, workspacePath } from './fixtures.mjs';
 import { join } from 'node:path';
-import { replaceSource, expectCanvasPixels, setPreviewLocked, revertFixtureEditors, setParameterExpression } from './editor-actions.mjs';
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { replaceSource, expectCanvasPixels, setPreviewLocked, revertFixtureEditors, setParameterExpression, closeNativeEditor } from './editor-actions.mjs';
+import { mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { openConfigPanel } from './config-panel.mjs';
 test.use({ vscodeKey: 'common-storage-debug' });
 const directory = join(workspacePath, 'common-storage-debug');
 test.beforeEach(async ({ vscode }) => {
   await vscode.evaluateInHost(vscode => vscode.commands.executeCommand('workbench.action.closeAllEditors'));
 });
-async function showFileAtLine(vscode, targetPath, line, { beside = false } = {}) {
-  await vscode.evaluateInHost(async (vscode, path, lineNumber, openBeside) => {
+async function showFileAtLine(vscode, targetPath, line, { beside = false, viewColumn = 1 } = {}) {
+  await vscode.evaluateInHost(async (vscode, path, lineNumber, openBeside, column) => {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
     const editor = await vscode.window.showTextDocument(document, {
-      viewColumn: openBeside ? vscode.ViewColumn.Beside : vscode.ViewColumn.One, preserveFocus: false, preview: false,
+      viewColumn: openBeside ? vscode.ViewColumn.Beside : column, preserveFocus: false, preview: false,
     });
     const position = new vscode.Position(lineNumber, 4);
     editor.selection = new vscode.Selection(position, position);
     editor.revealRange(new vscode.Range(position, position));
-  }, targetPath, line, beside);
+  }, targetPath, line, beside, viewColumn);
 }
 
 async function ensureShaderView(vscode) {
@@ -268,26 +268,52 @@ test('WGSL helper capture resolves array struct fields and shadowing @gpu', asyn
 test('WGSL unmatched brace reports an error and recovers without freezing @gpu', async ({ vscode }) => {
   mkdirSync(directory, { recursive: true });
   const root = join(directory, 'recovery.wgsl');
+  const outside = join(workspacePath, 'recovery.wgsl');
+  expect(existsSync(outside)).toBe(false);
   const source = 'fn mainImage(p: vec2f) -> vec4f {\n  let shade = 0.375;\n  return vec4f(shade,0,0,1);\n}';
   writeFileSync(root, source);
+  writeFileSync(outside, source);
   try {
-    await showFileAtLine(vscode, root, 1);
+    await vscode.evaluateInHost(async (vscode, root, outside) => {
+      const other = await vscode.workspace.openTextDocument(vscode.Uri.file(outside));
+      await vscode.window.showTextDocument(other, { viewColumn: vscode.ViewColumn.One, preview: false });
+      const document = await vscode.workspace.openTextDocument(vscode.Uri.file(root));
+      await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.Two, preview: false });
+      await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.Three, preview: false });
+    }, root, outside);
+    await showFileAtLine(vscode, root, 1, { viewColumn: 2 });
     await ensureShaderView(vscode);
     let frame = await vscode.shaderFrame();
     await setPreviewLocked(vscode, frame, false);
     await enableVariableInspector(vscode, frame);
-    await showFileAtLine(vscode, root, 1);
+    await showFileAtLine(vscode, root, 1, { viewColumn: 2 });
     await expect(row(frame, 'shade').locator('.var-value')).toHaveText('0.375');
     await replaceSource(vscode, source + '\n}');
+    expect(await vscode.evaluateInHost(async (vscode, outside) =>
+      (await vscode.workspace.openTextDocument(vscode.Uri.file(outside))).getText(), outside)).toBe(source);
     await expect(frame.getByLabel('Toggle pause', { exact: true })).toHaveClass(/error/);
     await replaceSource(vscode, source.replace('0.375', '0.625'));
-    await showFileAtLine(vscode, root, 1);
+    expect(await vscode.evaluateInHost(async (vscode, outside) =>
+      (await vscode.workspace.openTextDocument(vscode.Uri.file(outside))).getText(), outside)).toBe(source);
+    await showFileAtLine(vscode, root, 1, { viewColumn: 2 });
     frame = await vscode.shaderFrame();
     await expect(row(frame, 'shade').locator('.var-value')).toHaveText('0.625');
     await expect(frame.getByLabel('Toggle pause', { exact: true })).not.toHaveClass(/error/);
     await vscode.evaluateInHost(vscode => vscode.window.activeTextEditor.document.save());
+    expect(await vscode.evaluateInHost(async (vscode, outside) =>
+      (await vscode.workspace.openTextDocument(vscode.Uri.file(outside))).getText(), outside)).toBe(source);
   } finally {
     await revertFixtureEditors(vscode, directory);
+    expect(await vscode.evaluateInHost((vscode, root, outside) => {
+      const tabs = vscode.window.tabGroups.all.flatMap(group => group.tabs);
+      return {
+        owned: tabs.filter(tab => tab.input?.uri?.fsPath === vscode.Uri.file(root).fsPath).length,
+        outside: tabs.filter(tab => tab.input?.uri?.fsPath === vscode.Uri.file(outside).fsPath).length,
+      };
+    }, root, outside)).toEqual({ owned: 0, outside: 1 });
+    await showFileAtLine(vscode, outside, 1);
+    await closeNativeEditor(vscode, outside);
     rmSync(root, { force: true });
+    rmSync(outside, { force: true });
   }
 });
