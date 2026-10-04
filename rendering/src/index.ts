@@ -25,3 +25,4 @@ export * from './types';
 export * from './models';
 
 export type { RenderingEngine as RenderingEngineInterface } from './types/RenderingEngine';
+export type { LiveInputPreview, LiveInputType } from './resources/LiveInputTextureManager';

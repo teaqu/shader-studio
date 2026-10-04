@@ -741,6 +741,26 @@ describe('ShaderRecorder', () => {
 
   describe('Live video', () => {
     afterEach(() => vi.unstubAllGlobals());
+    it.each([true, false])('uses stable frame capture only for a WebGPU canvas (%s)', async webgpu => {
+      const { stream, MockMediaRecorder } = installMediaRecorder();
+      MockMediaRecorder.isTypeSupported.mockReturnValue(true);
+      vi.stubGlobal('VideoEncoder', class {});
+      const blob = new Blob(['quality']);
+      mockCreateLiveVideoCapture.mockResolvedValueOnce({ result: Promise.resolve(blob), stop: vi.fn() });
+      const canvas = { width: 816, height: 458, captureStream: () => stream, getContext: vi.fn(() => webgpu ? {} : null) };
+      const engine = { getCanvas: () => canvas, captureCurrentFrame: vi.fn(async () => new ImageData(816, 458)) };
+      await expect((recorder as any).recordLive({ mode: 'live', format: 'webm', duration: 5, startTime: 0, fps: 60, width: 816, height: 458 }, engine)).resolves.toBe(blob);
+      expect(canvas.getContext).toHaveBeenCalledWith('webgpu');
+      const argumentsUsed = mockCreateLiveVideoCapture.mock.calls.at(-1)!;
+      if (webgpu) {
+        expect(argumentsUsed).toHaveLength(5);
+        await argumentsUsed[4]();
+        expect(engine.captureCurrentFrame).toHaveBeenCalledOnce();
+      } else {
+        expect(argumentsUsed).toHaveLength(4);
+        expect(engine.captureCurrentFrame).not.toHaveBeenCalled();
+      }
+    });
     it.each(['mp4', 'webm'])('uses quality-controlled Live %s when WebCodecs is available', async format => {
       const { stream, MockMediaRecorder } = installMediaRecorder();
       MockMediaRecorder.isTypeSupported.mockReturnValue(true);

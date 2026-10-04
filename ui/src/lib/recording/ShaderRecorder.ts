@@ -96,7 +96,7 @@ export class ShaderRecorder {
     return this.encodeImageData(image, config.format);
   }
 
-  recordLive(config: RecordingConfig, engine: Pick<RenderingEngine, "getCanvas">): Promise<Blob> {
+  recordLive(config: RecordingConfig, engine: Pick<RenderingEngine, "getCanvas"> & Partial<Pick<RenderingEngine, "captureCurrentFrame">>): Promise<Blob> {
     this.outputNotice = null;
     if (config.format === "gif") {
       return Promise.reject(new Error("Live GIF recording is not supported"));
@@ -118,7 +118,9 @@ export class ShaderRecorder {
     }
 
     if (typeof globalThis.VideoEncoder !== "undefined") {
-      return this.recordQualityLiveVideo(canvas, config.fps, config.format);
+      const captureFrame = engine.captureCurrentFrame && canvas.getContext?.("webgpu")
+        ? () => engine.captureCurrentFrame!() : undefined;
+      return this.recordQualityLiveVideo(canvas, config.fps, config.format, captureFrame);
     }
 
     this.cancelled = false;
@@ -205,7 +207,7 @@ export class ShaderRecorder {
     }
   }
 
-  private async recordQualityLiveVideo(canvas: HTMLCanvasElement, fps: number, format: "mp4" | "webm"): Promise<Blob> {
+  private async recordQualityLiveVideo(canvas: HTMLCanvasElement, fps: number, format: "mp4" | "webm", captureFrame?: () => Promise<ImageData>): Promise<Blob> {
     this.cancelled = false;
     const controller = new AbortController();
     this.liveFinalization = controller;
@@ -213,7 +215,9 @@ export class ShaderRecorder {
     this.stopLiveVideoRequested = false;
     recordingStore.startLiveRecording(format);
     try {
-      this.activeLiveVideo = await createLiveVideoCapture(canvas, fps, format, controller.signal);
+      this.activeLiveVideo = captureFrame
+        ? await createLiveVideoCapture(canvas, fps, format, controller.signal, captureFrame)
+        : await createLiveVideoCapture(canvas, fps, format, controller.signal);
       this.startingLiveVideo = false;
       if (format === "mp4" && (canvas.width % 2 || canvas.height % 2)) {
         this.outputNotice = "MP4 dimensions were rounded up to even pixels for video encoding.";

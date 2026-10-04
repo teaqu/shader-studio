@@ -1,4 +1,5 @@
 import { automaticVideoBitrate } from "./VideoEncoder";
+import { createLivePreviewCanvas } from "./LivePreviewCanvas";
 
 export interface LiveVideoCapture {
   result: Promise<Blob>;
@@ -6,19 +7,22 @@ export interface LiveVideoCapture {
 }
 
 /** Encode the existing preview track with explicit quality instead of MediaRecorder's rate control. */
-export async function createLiveVideoCapture(canvas: HTMLCanvasElement, fps: number, format: "mp4" | "webm", signal: AbortSignal): Promise<LiveVideoCapture> {
+export async function createLiveVideoCapture(canvas: HTMLCanvasElement, fps: number, format: "mp4" | "webm", signal: AbortSignal, captureFrame?: () => Promise<ImageData>): Promise<LiveVideoCapture> {
   const { Output, Mp4OutputFormat, WebMOutputFormat, BufferTarget, MediaStreamVideoTrackSource, Quality, canEncodeVideo } = await import("mediabunny");
   signal.throwIfAborted();
   const width = canvas.width + (format === "mp4" ? canvas.width % 2 : 0);
   const height = canvas.height + (format === "mp4" ? canvas.height % 2 : 0);
-  // Native AVC frames already have the required YUV layout. Resampling an
-  // even-sized track through a canvas adds another YUV/RGB conversion.
-  // WebM keeps its existing RGB conversion; MP4 only needs it for resizing.
-  const needsTransform = format !== "mp4" || width !== canvas.width || height !== canvas.height;
   const quality = new Quality({ quantizer: 12, bitrate: automaticVideoBitrate({ width, height, fps }) });
   const codec = format === "mp4" ? "avc" : await canEncodeVideo("vp9", { width, height, quality, frameRate: fps }) ? "vp9" : "vp8";
   signal.throwIfAborted();
-  const stream = canvas.captureStream(fps);
+  const stable = captureFrame ? await createLivePreviewCanvas(canvas, captureFrame, fps, signal) : undefined;
+  let stream: MediaStream;
+  try {
+    stream = (stable?.canvas ?? canvas).captureStream(fps);
+  } catch (error) {
+    stable?.dispose();
+    throw error;
+  }
   const target = new BufferTarget();
   const output = new Output({ target, format: format === "mp4" ? new Mp4OutputFormat({ fastStart: "in-memory" }) : new WebMOutputFormat() });
   let resolve!: (blob: Blob) => void;
@@ -32,6 +36,7 @@ export async function createLiveVideoCapture(canvas: HTMLCanvasElement, fps: num
   let stopping = false;
   let packetCount = 0;
   const release = () => {
+    stable?.dispose();
     signal.removeEventListener("abort", abort);
     for (const track of stream.getTracks()) {
       track.stop();
@@ -54,6 +59,7 @@ export async function createLiveVideoCapture(canvas: HTMLCanvasElement, fps: num
     void fail(signal.reason);
   };
   signal.addEventListener("abort", abort, { once: true });
+  void stable?.error.catch(error => fail(error));
   try {
     const track = stream.getVideoTracks()[0];
     if (!track) {
@@ -67,7 +73,7 @@ export async function createLiveVideoCapture(canvas: HTMLCanvasElement, fps: num
       onEncodedPacket: () => {
         packetCount++;
       },
-      ...(needsTransform ? { transform: { width, height, fit: "fill" as const } } : {}),
+      transform: { width, height, fit: "fill" },
     }, { frameRate: fps, timestampBase: "zero" });
     output.addVideoTrack(source, { frameRate: fps });
     void source.errorPromise.catch(error => fail(error));

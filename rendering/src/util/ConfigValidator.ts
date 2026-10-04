@@ -360,6 +360,12 @@ export class ConfigValidator {
         return this.validateCubemapInput(input);
       case 'video':
         return this.validateVideoInput(input);
+      case 'system-audio':
+      case 'microphone':
+      case 'webcam':
+        return Object.keys(input).every(key => key === 'type');
+      case 'screen':
+        return this.validateScreenInput(input);
       case 'keyboard':
         return this.validateKeyboardInput(input);
       case 'audio':
@@ -367,6 +373,15 @@ export class ConfigValidator {
       default:
         return false;
     }
+  }
+
+  private static validateScreenInput(input: Record<string, unknown>): boolean {
+    if (!Object.keys(input).every(key => ['type', 'filter', 'wrap', 'vflip'].includes(key))) {
+      return false;
+    }
+    return (input.filter === undefined || (typeof input.filter === 'string' && ['linear', 'nearest', 'mipmap'].includes(input.filter))) &&
+      (input.wrap === undefined || (typeof input.wrap === 'string' && ['repeat', 'clamp'].includes(input.wrap))) &&
+      (input.vflip === undefined || typeof input.vflip === 'boolean');
   }
 
   private static validateBufferInput(input: Record<string, unknown>): boolean {
