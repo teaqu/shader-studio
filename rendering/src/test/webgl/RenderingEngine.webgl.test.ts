@@ -111,6 +111,30 @@ describe("RenderingEngine WebGL Initialization", () => {
       expect(() => engine.initialize(mockCanvas)).toThrow("WebGL2 not supported");
     });
 
+    it.each([
+      [{ name: "EXT_float_blend" }, true],
+      [null, false],
+    ])("tells the shader pipeline whether rgba32float can blend (EXT_float_blend %j)", async (extension, blendable) => {
+      const mockGL = {
+        getExtension: vi.fn((name: string) => (name === "EXT_float_blend" ? extension : null)),
+      } as unknown as WebGL2RenderingContext;
+      const mockCanvas = {
+        addEventListener: vi.fn(),
+        getContext: vi.fn(() => mockGL),
+        width: 320,
+        height: 180,
+      } as unknown as HTMLCanvasElement;
+      mockPiCreateGlContext.mockReturnValue(mockGL);
+      const { ShaderPipeline } = await import("../../webgl/ShaderPipeline");
+      const setFloat32Blendable = vi.spyOn(ShaderPipeline.prototype, "setFloat32Blendable");
+
+      const { RenderingEngine } = await import("../../webgl/RenderingEngine");
+      new RenderingEngine().initialize(mockCanvas);
+
+      expect(mockGL.getExtension).toHaveBeenCalledWith("EXT_float_blend");
+      expect(setFloat32Blendable).toHaveBeenCalledWith(blendable);
+    });
+
     it("registers a region capturer callback that uses the live canvas size", async () => {
       const mockGL = { getExtension: vi.fn() } as unknown as WebGL2RenderingContext;
       const mockCanvas = {

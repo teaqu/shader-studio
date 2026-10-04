@@ -59,6 +59,79 @@ describe("shaderStudioBuiltinUniformNames", () => {
     }
   });
 
+  it("exposes iVertexCount to every language with a per-language unsigned or int type", () => {
+    for (const language of ["glsl", "slang", "wgsl"] as const) {
+      expect(shaderStudioBuiltinUniformNames(language)).toContain("iVertexCount");
+    }
+    expect(SHADER_STUDIO_BUILTIN_UNIFORMS.find(({ name }) => name === "iVertexCount")).toMatchObject({
+      glslType: "int",
+      slangType: "uint",
+      wgslType: "u32",
+      slangDeclaration: "uint32_t iVertexCount;",
+      languages: ["glsl", "slang", "wgsl"],
+      stages: ["fragment", "vertex"],
+    });
+  });
+
+  it("exposes iInstanceCount and iInstanceIndex to fragment and vertex stages in every language", () => {
+    for (const language of ["glsl", "slang", "wgsl"] as const) {
+      expect(shaderStudioBuiltinUniformNames(language)).toContain("iInstanceCount");
+      expect(shaderStudioBuiltinUniformNames(language)).toContain("iInstanceIndex");
+    }
+    expect(SHADER_STUDIO_BUILTIN_UNIFORMS.find(({ name }) => name === "iInstanceCount")).toMatchObject({
+      glslType: "int",
+      slangType: "uint",
+      wgslType: "u32",
+      slangDeclaration: "uint32_t iInstanceCount;",
+      stages: ["fragment", "vertex"],
+    });
+    expect(SHADER_STUDIO_BUILTIN_UNIFORMS.find(({ name }) => name === "iInstanceIndex")).toMatchObject({
+      glslType: "int",
+      slangType: "uint",
+      wgslType: "u32",
+      glslDeclaration: "int iInstanceIndex;",
+      slangDeclaration: "uint32_t iInstanceIndex;",
+      stages: ["fragment", "vertex"],
+    });
+  });
+
+  it.each(["iViewMatrix", "iProjectionMatrix", "iViewProjection"])("exposes %s as a mat4 to fragment and vertex stages in every language", (name) => {
+    for (const language of ["glsl", "slang", "wgsl"] as const) {
+      expect(shaderStudioBuiltinUniformNames(language)).toContain(name);
+    }
+    expect(SHADER_STUDIO_BUILTIN_UNIFORMS.find((entry) => entry.name === name)).toMatchObject({
+      glslType: "mat4",
+      slangType: "float4x4",
+      wgslType: "mat4x4f",
+      slangDeclaration: `float4x4 ${name};`,
+      stages: ["fragment", "vertex"],
+    });
+  });
+
+  it("exposes iVertexUv as a fragment-only vec2 varying in every language", () => {
+    for (const language of ["glsl", "slang", "wgsl"] as const) {
+      expect(shaderStudioBuiltinUniformNames(language)).toContain("iVertexUv");
+    }
+    expect(SHADER_STUDIO_BUILTIN_UNIFORMS.find(({ name }) => name === "iVertexUv")).toMatchObject({
+      glslType: "vec2",
+      slangType: "float2",
+      wgslType: "vec2f",
+      stages: ["fragment"],
+    });
+  });
+
+  it("exposes iFrontFacing as a fragment-only bool in every language", () => {
+    for (const language of ["glsl", "slang", "wgsl"] as const) {
+      expect(shaderStudioBuiltinUniformNames(language)).toContain("iFrontFacing");
+    }
+    expect(SHADER_STUDIO_BUILTIN_UNIFORMS.find(({ name }) => name === "iFrontFacing")).toMatchObject({
+      glslType: "bool",
+      slangType: "bool",
+      wgslType: "bool",
+      stages: ["fragment"],
+    });
+  });
+
   it("keeps ShaderToy channel metadata accessors in GLSL only", () => {
     for (const name of ["iCh0", "iCh1", "iCh2", "iCh3"]) {
       expect(shaderStudioBuiltinUniformNames("glsl")).toContain(name);

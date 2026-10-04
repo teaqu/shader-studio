@@ -29,7 +29,7 @@ as injected globals in all three languages.
   `Sample` needs uniform control flow; compute stages (and vertex hooks)
   must use `SampleLevel`.
 - Vertex hooks take pointers:
-  `fn mainVertex(position: ptr<function, vec3<f32>>, …)` and edit through
+  `fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, …)` and edit through
   them. They can read render-stage storage and `SampleLevel` channels, like
   the Slang hooks they mirror.
 - Compute shaders declare `@compute @workgroup_size(x, y, z)` entries

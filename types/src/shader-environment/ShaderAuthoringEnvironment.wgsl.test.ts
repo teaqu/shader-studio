@@ -28,6 +28,14 @@ describe("ShaderAuthoringEnvironment WGSL reserved identifiers", () => {
     ["mainVertex", "the WGSL vertex hook"],
     ["vertexMain", "the WGSL vertex entry point"],
     ["fragmentMain", "the WGSL fragment entry point"],
+    ["iVertexCount", "the WGSL vertex-count built-in"],
+    ["iVertexUv", "the WGSL interpolated vertex UV built-in"],
+    ["iFrontFacing", "the WGSL primitive-facing built-in"],
+    ["iInstanceCount", "the WGSL instance-count built-in"],
+    ["iInstanceIndex", "the WGSL instance-index built-in"],
+    ["iViewMatrix", "the WGSL camera view matrix built-in"],
+    ["iProjectionMatrix", "the WGSL camera projection built-in"],
+    ["iViewProjection", "the WGSL camera view-projection built-in"],
   ])("rejects %s (%s) as a custom uniform name", (name) => {
     const environment: ShaderAuthoringEnvironment = {
       ...baseWgslEnvironment(),

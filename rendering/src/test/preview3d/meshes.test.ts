@@ -1,6 +1,40 @@
 import { describe, expect, it } from 'vitest';
 
-import { createCubeMesh, createPlaneMesh, createPreviewMesh, createSphereMesh } from '../../preview3d/meshes';
+import { createCubeMesh, createEdgeIndices, createPlaneMesh, createPreviewMesh, createSphereMesh } from '../../preview3d/meshes';
+
+describe('createEdgeIndices', () => {
+  it('lists the plane\'s four sides and its diagonal once each', () => {
+    // Triangles 0-2-1 and 0-3-2 share the 0-2 diagonal.
+    expect(Array.from(createEdgeIndices(createPlaneMesh().indices))).toEqual([0, 2, 2, 1, 1, 0, 0, 3, 3, 2]);
+  });
+
+  it('gives the cube five edges per face, since its faces do not share vertices', () => {
+    expect(createEdgeIndices(createCubeMesh().indices)).toHaveLength(6 * 5 * 2);
+  });
+
+  it('dedupes shared edges whichever way the triangles wind them', () => {
+    expect(Array.from(createEdgeIndices(new Uint16Array([0, 1, 2, 2, 1, 3])))).toEqual([0, 1, 1, 2, 2, 0, 1, 3, 3, 2]);
+  });
+
+  it('keeps the index type and skips degenerate edges and a trailing partial triangle', () => {
+    const edges = createEdgeIndices(new Uint32Array([70000, 70000, 70001, 5, 6]));
+    expect(edges).toBeInstanceOf(Uint32Array);
+    // 70000-70000 is degenerate and 70001-70000 repeats 70000-70001.
+    expect(Array.from(edges)).toEqual([70000, 70001]);
+    expect(createEdgeIndices(new Uint16Array([]))).toBeInstanceOf(Uint16Array);
+  });
+
+  it('gives a closed sphere fewer edges than its triangles have sides', () => {
+    const { indices } = createSphereMesh();
+    const edges = createEdgeIndices(indices);
+    expect(edges.length).toBeLessThan(indices.length * 2);
+    const keys = new Set<string>();
+    for (let index = 0; index < edges.length; index += 2) {
+      keys.add([edges[index], edges[index + 1]].sort((a, b) => a! - b!).join('-'));
+    }
+    expect(keys.size).toBe(edges.length / 2);
+  });
+});
 
 describe('preview meshes', () => {
   it('creates a plane with full-range UVs', () => {

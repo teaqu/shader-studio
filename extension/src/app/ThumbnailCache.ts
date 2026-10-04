@@ -79,24 +79,14 @@ export class ThumbnailCache {
   }
 
   /**
-     * Remove old/stale thumbnails that don't match current shader files
+     * Remove old/stale thumbnails that don't match a current shader version
      */
-  public async pruneCache(currentShaderPaths: string[]): Promise<void> {
+  public async pruneCache(currentShaders: { path: string; thumbnailVersion?: number }[]): Promise<void> {
     if (!fs.existsSync(this.cacheDir)) {
       return;
     }
 
-    // Build a set of valid cache keys
-    const validKeys = new Set<string>();
-    for (const shaderPath of currentShaderPaths) {
-      try {
-        const stats = fs.statSync(shaderPath);
-        const cacheKey = this.getCacheKey(shaderPath, stats.mtimeMs);
-        validKeys.add(cacheKey);
-      } catch (error) {
-        // Shader file doesn't exist anymore, skip
-      }
-    }
+    const validKeys = new Set(currentShaders.map(shader => this.getCacheKey(shader.path, shader.thumbnailVersion)));
 
     // Remove thumbnails that don't match any current shader
     const files = fs.readdirSync(this.cacheDir);

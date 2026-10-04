@@ -575,7 +575,8 @@ describe("WebGPURenderingEngine", () => {
       engine.initialize(canvas);
       await (engine as unknown as { ready: Promise<void> }).ready;
 
-      expect(ConfigValidator.getChannelLimit()).toBe(1363);
+      // (65536 bytes - 512-byte four-channel ShaderToy block) / 48 + 4.
+      expect(ConfigValidator.getChannelLimit()).toBe(1358);
 
       expect(adapter.requestDevice).toHaveBeenCalledWith({
         requiredLimits: {
@@ -2203,6 +2204,7 @@ describe("WebGPURenderingEngine", () => {
       ]);
       const captureUniforms = engine.getCaptureUniforms();
       expect(captureUniforms.res).toEqual([160, 90, 1]);
+      expect(captureUniforms.vertexCount).toBe(3);
       expect(captureUniforms.channelResolution?.slice(0, 3)).toEqual([64, 32, 1]);
     });
 

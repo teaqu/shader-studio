@@ -218,7 +218,7 @@ suite('Bundled WGSL syntax assets', () => {
   test('scopes every uniform the builtin catalog declares for WGSL', () => {
     const scoped = [
       'iResolution', 'iTime', 'iTimeDelta', 'iFrameRate', 'iMouse', 'iFrame',
-      'iDate', 'iSampleRate', 'iCameraPos', 'iCameraDir', 'iDispatch',
+      'iDate', 'iSampleRate', 'iCameraPos', 'iCameraDir', 'iVertexCount', 'iInstanceCount', 'iInstanceIndex', 'iViewMatrix', 'iProjectionMatrix', 'iViewProjection', 'iVertexUv', 'iFrontFacing', 'iDispatch',
       'iWorldPosition', 'iNormal', 'iCameraPosition',
     ];
     const unscoped = ['inputs', 'iChannel0', 'iTimeExtra', 'myiTime'];
