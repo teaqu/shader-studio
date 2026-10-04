@@ -1,5 +1,5 @@
 import type { ShaderConfig, ShaderLanguageId, SlangSourceModule } from "@shader-studio/types";
-import type { RenderingEngine } from "../../../../rendering/src/types/RenderingEngine";
+import type { RenderingEngineInterface as RenderingEngine } from "@shader-studio/rendering";
 import type { RenderCaptureSnapshot, ShaderInfo } from "./types";
 
 interface CaptureSourceContext {

@@ -1,7 +1,7 @@
 import { ShaderRecorder } from "./recording/ShaderRecorder";
 import type { RecordingConfig, ScreenshotConfig, ShaderInfo } from "./recording/types";
 import { recordingStore } from "./stores/recordingStore";
-import type { RenderingEngine } from "../../../rendering/src/types/RenderingEngine";
+import type { RenderingEngineInterface as RenderingEngine } from "@shader-studio/rendering";
 
 function buildCaptureFilename(shaderPath: string, extension: string, capturedAt = new Date()): string {
   const leaf = shaderPath.replaceAll("\\", "/").split("/").pop() ?? "";
