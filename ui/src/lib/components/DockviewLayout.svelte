@@ -653,10 +653,10 @@
   onMount(() => {
     if (panelHost) {
       hostedCleanups.push(
-        panelHost.register('debug', { mount: mountDebug, onClose: () => dispatch('debugClosed'), onRestore: () => dispatch('toolRestored', 'debug') }),
-        panelHost.register('config', { mount: mountConfig, onClose: () => dispatch('configClosed'), onRestore: () => dispatch('toolRestored', 'config') }),
-        panelHost.register('performance', { mount: mountPerformance, onClose: () => dispatch('performanceClosed'), onRestore: () => dispatch('toolRestored', 'performance') }),
-        panelHost.register('recording', { mount: mountRecording, onClose: () => dispatch('recordingClosed'), onRestore: () => dispatch('toolRestored', 'recording') }),
+        panelHost.register('debug', { mount: mountDebug, onClose: () => dispatch('debugClosed'), onShow: () => dispatch('toolRestored', 'debug') }),
+        panelHost.register('config', { mount: mountConfig, onClose: () => dispatch('configClosed'), onShow: () => dispatch('toolRestored', 'config') }),
+        panelHost.register('performance', { mount: mountPerformance, onClose: () => dispatch('performanceClosed'), onShow: () => dispatch('toolRestored', 'performance') }),
+        panelHost.register('recording', { mount: mountRecording, onClose: () => dispatch('recordingClosed'), onShow: () => dispatch('toolRestored', 'recording') }),
       );
       // The shell owns the Preview tab. Mount its content directly, without
       // creating a second dock inside the shell's panel.

@@ -33,6 +33,7 @@
   import { performancePanelStore } from "../stores/performancePanelStore";
   import { recordingPanelStore } from "../stores/recordingPanelStore";
   import RecordingPanel from "./recording/RecordingPanel.svelte";
+  import { isUsableCanvasSize, retainUsableCanvasSize } from "../util/canvasSize";
   import {
     getEditorOverlayVisible,
     getOverlayActiveFile,
@@ -59,6 +60,7 @@
   import type { AspectRatioMode, ShaderConfig, ShaderLanguageId, SlangSourceModule } from "@shader-studio/types";
   import { SHADER_LANGUAGES, isShaderLanguageId } from "@shader-studio/types";
   import { resolutionStore } from "../stores/resolutionStore";
+  import { PageRenderLifecycle } from "../rendering/PageRenderLifecycle";
   import { aspectRatioStore } from "../stores/aspectRatioStore";
   import { ResolutionSessionController } from "../resolution/ResolutionSessionController.svelte";
   import { FileProfileAdapter } from "../profiles/FileProfileAdapter";
@@ -410,6 +412,8 @@
   onMount(() => {
     setEditorOverlayLayoutSlot(layoutSlot);
 
+    const pageRenderLifecycle = new PageRenderLifecycle(document, () => initialized ? renderingEngine : null);
+
     const unsubConfig = configPanelStore.subscribe((state) => {
       void state;
     });
@@ -417,6 +421,7 @@
       void state;
     });
     return () => {
+      pageRenderLifecycle.dispose();
       unsubConfig();
       unsubPerf();
     };
@@ -591,13 +596,14 @@
   }
 
   function handleCanvasSizeChange(data: { width: number; height: number }) {
-    canvasWidth = Math.round(data.width);
-    canvasHeight = Math.round(data.height);
+    const retained = retainUsableCanvasSize({ width: canvasWidth, height: canvasHeight }, data);
+    canvasWidth = retained.width;
+    canvasHeight = retained.height;
   }
 
   function handleCanvasResize(data: { width: number; height: number }) {
     handleCanvasSizeChange(data);
-    if (!initialized) {
+    if (!initialized || !isUsableCanvasSize(data)) {
       return;
     }
     renderingEngine.handleCanvasResize(data.width, data.height);
@@ -605,7 +611,11 @@
     scriptRuntimeReporter?.sync();
   }
 
-  function handleCanvasClick() {
+  function handleCanvasClick(event: MouseEvent, pointerType?: string) {
+    if (pointerType === 'touch') {
+      pixelInspectorManager?.handleTouchTap(event.clientX, event.clientY);
+      return;
+    }
     pixelInspectorManager?.handleCanvasClick();
   }
 

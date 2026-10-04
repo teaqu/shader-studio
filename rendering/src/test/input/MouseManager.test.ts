@@ -61,7 +61,7 @@ describe("MouseManager", () => {
   });
 
   describe("setupEventListeners", () => {
-    it("should register pointerdown, pointerup, and pointermove on canvas", () => {
+    it("registers the complete pointer lifecycle on the canvas", () => {
       const canvas = createMockCanvas();
       const addSpy = vi.spyOn(canvas, "addEventListener");
 
@@ -70,6 +70,8 @@ describe("MouseManager", () => {
       expect(addSpy).toHaveBeenCalledWith("pointerdown", expect.any(Function));
       expect(addSpy).toHaveBeenCalledWith("pointerup", expect.any(Function));
       expect(addSpy).toHaveBeenCalledWith("pointermove", expect.any(Function));
+      expect(addSpy).toHaveBeenCalledWith("pointercancel", expect.any(Function));
+      expect(addSpy).toHaveBeenCalledWith("lostpointercapture", expect.any(Function));
     });
 
     it("removes the exact callbacks from the old canvas on re-entry", () => {
@@ -85,6 +87,8 @@ describe("MouseManager", () => {
       expect(removeSpy).toHaveBeenCalledWith("pointerdown", callbacks.get("pointerdown"));
       expect(removeSpy).toHaveBeenCalledWith("pointerup", callbacks.get("pointerup"));
       expect(removeSpy).toHaveBeenCalledWith("pointermove", callbacks.get("pointermove"));
+      expect(removeSpy).toHaveBeenCalledWith("pointercancel", callbacks.get("pointercancel"));
+      expect(removeSpy).toHaveBeenCalledWith("lostpointercapture", callbacks.get("lostpointercapture"));
     });
   });
 
@@ -99,7 +103,29 @@ describe("MouseManager", () => {
       canvas.dispatchEvent(new PointerEvent("pointerdown", { clientX: 20, clientY: 30, pointerId: 1 }));
 
       expect(Array.from(mouseManager.getMouse())).toEqual([0, 0, 0, 0]);
-      expect(removeSpy).toHaveBeenCalledTimes(3);
+      expect(removeSpy).toHaveBeenCalledTimes(5);
+    });
+  });
+
+  describe("touch cancellation", () => {
+    it.each(["pointercancel", "lostpointercapture"])("ends a drag on %s", (eventName) => {
+      const canvas = createMockCanvas();
+      mouseManager.setupEventListeners(canvas);
+      canvas.dispatchEvent(new PointerEvent("pointerdown", { clientX: 40, clientY: 50, pointerId: 7 }));
+
+      canvas.dispatchEvent(new PointerEvent(eventName, { pointerId: 7 }));
+      mouseManager.endFrame();
+
+      expect(mouseManager.getMouse()[2]).toBeLessThanOrEqual(0);
+      expect(mouseManager.getMouse()[3]).toBeLessThanOrEqual(0);
+    });
+
+    it("confines browser gesture suppression to the interactive canvas", () => {
+      const canvas = createMockCanvas();
+      mouseManager.setupEventListeners(canvas);
+      expect(canvas.style.touchAction).toBe("none");
+      mouseManager.dispose();
+      expect(canvas.style.touchAction).toBe("");
     });
   });
 

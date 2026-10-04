@@ -4,6 +4,7 @@ import { configureHost, resetHost } from '../../lib/state/hostState.svelte';
 import { tick } from 'svelte';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import ShaderViewer from '../../lib/components/ShaderViewer.svelte';
+import { PixelInspectorManager } from '../../lib/PixelInspectorManager';
 import shaderViewerSource from '../../lib/components/ShaderViewer.svelte?raw';
 import type { Transport } from '../../lib/transport/MessageTransport';
 import { configPanelStore } from '../../lib/stores/configPanelStore';
@@ -33,7 +34,7 @@ global.ResizeObserver = vi.fn().mockImplementation(function () {
 });
 
 // Mock RenderingEngine and transport - use vi.hoisted to define mock values before vi.mock hoisting
-const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop } = vi.hoisted(() => {
+const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop, mockStartRenderLoop, mockHandleCanvasResize } = vi.hoisted(() => {
   const mockTimeManager = {
     getCurrentTime: () => 0.0,
     isPaused: () => false,
@@ -64,7 +65,9 @@ const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio,
   // step of reset) runs, so tests can assert it precedes audio/video resume.
   const mockPipelineHandleShaderMessage = vi.fn();
   const mockStopRenderLoop = vi.fn();
-  return { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop };
+  const mockStartRenderLoop = vi.fn();
+  const mockHandleCanvasResize = vi.fn();
+  return { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop, mockStartRenderLoop, mockHandleCanvasResize };
 });
 
 vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
@@ -72,13 +75,16 @@ vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
     private _canvas = { width: 800, height: 600 };
     initialize() {}
     handleCanvasResize(width: number, height: number) {
+      mockHandleCanvasResize(width, height);
       this._canvas = { width: Math.round(width), height: Math.round(height) };
     }
     togglePause() {}
     stopRenderLoop() {
       mockStopRenderLoop();
     }
-    startRenderLoop() {}
+    startRenderLoop() {
+      mockStartRenderLoop();
+    }
     getCurrentFPS() {
       return 60.0;
     }
@@ -198,13 +204,16 @@ vi.mock('../../../../rendering/src/webgpu/WebGPURenderingEngine', () => {
     private _canvas = { width: 800, height: 600 };
     initialize() {}
     handleCanvasResize(width: number, height: number) {
+      mockHandleCanvasResize(width, height);
       this._canvas = { width: Math.round(width), height: Math.round(height) };
     }
     togglePause() {}
     stopRenderLoop() {
       mockStopRenderLoop();
     }
-    startRenderLoop() {}
+    startRenderLoop() {
+      mockStartRenderLoop();
+    }
     getCurrentFPS() {
       return 60.0;
     }
@@ -5515,6 +5524,55 @@ describe('ShaderViewer', () => {
     });
   });
 
+  describe('touch pixel pinning', () => {
+    // Restore only these spies: restoreAllMocks would also reset this file's module mocks.
+    let touchTap: ReturnType<typeof vi.spyOn>;
+    let click: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      touchTap = vi.spyOn(PixelInspectorManager.prototype, 'handleTouchTap');
+      click = vi.spyOn(PixelInspectorManager.prototype, 'handleCanvasClick');
+    });
+
+    afterEach(() => {
+      touchTap.mockRestore();
+      click.mockRestore();
+    });
+
+    const tapCanvas = async (container: HTMLElement, pointerType: string) => {
+      const canvas = container.querySelector('canvas') as HTMLCanvasElement;
+      const down = new MouseEvent('pointerdown', { bubbles: true, clientX: 40, clientY: 30 });
+      Object.defineProperty(down, 'pointerType', { value: pointerType });
+      await fireEvent(canvas, down);
+      await fireEvent.click(canvas, { clientX: 40, clientY: 30 });
+      await tick();
+    };
+
+    it('pins the tapped point for touch instead of toggling the hover lock', async () => {
+      const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+      await vi.waitFor(() => expect(container.querySelector('canvas')).toBeTruthy());
+      await tick();
+      await tick();
+
+      await tapCanvas(container, 'touch');
+
+      expect(touchTap).toHaveBeenCalledWith(40, 30);
+      expect(click).not.toHaveBeenCalled();
+    });
+
+    it.each(['mouse', 'pen'])('keeps the hover lock toggle for %s clicks', async (pointerType) => {
+      const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+      await vi.waitFor(() => expect(container.querySelector('canvas')).toBeTruthy());
+      await tick();
+      await tick();
+
+      await tapCanvas(container, pointerType);
+
+      expect(click).toHaveBeenCalledOnce();
+      expect(touchTap).not.toHaveBeenCalled();
+    });
+  });
+
   describe('handleCanvasMouseMove', () => {
     it('should delegate mouse move to pixel inspector manager', async () => {
       const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
@@ -5767,6 +5825,99 @@ describe('ShaderViewer', () => {
       const pauseButton = container.querySelector('[aria-label="Toggle pause"]');
       expect(pauseButton).toBeTruthy();
       expect((pauseButton as HTMLButtonElement).disabled).toBe(true);
+    });
+  });
+
+  describe('mobile page lifecycle', () => {
+    const setVisibility = (state: DocumentVisibilityState) => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
+      document.dispatchEvent(new Event('visibilitychange'));
+    };
+
+    afterEach(() => {
+      Reflect.deleteProperty(document, 'visibilityState');
+    });
+
+    it('stops rendering while the page is in the background and resumes when it returns', async () => {
+      const onInitialized = vi.fn();
+      render(ShaderViewer, { onInitialized });
+      await vi.waitFor(() => expect(onInitialized).toHaveBeenCalled());
+      mockStopRenderLoop.mockClear();
+      mockStartRenderLoop.mockClear();
+
+      setVisibility('hidden');
+      expect(mockStopRenderLoop).toHaveBeenCalledOnce();
+      expect(mockStartRenderLoop).not.toHaveBeenCalled();
+
+      setVisibility('visible');
+      expect(mockStartRenderLoop).toHaveBeenCalledOnce();
+    });
+
+    it('stops following page visibility once unmounted', async () => {
+      const onInitialized = vi.fn();
+      const { unmount } = render(ShaderViewer, { onInitialized });
+      await vi.waitFor(() => expect(onInitialized).toHaveBeenCalled());
+      unmount();
+      mockStopRenderLoop.mockClear();
+      mockStartRenderLoop.mockClear();
+
+      setVisibility('hidden');
+      setVisibility('visible');
+
+      expect(mockStopRenderLoop).not.toHaveBeenCalled();
+      expect(mockStartRenderLoop).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('zero-size resizes from hidden phone panels', () => {
+    let containerSize = { width: 0, height: 0 };
+    const descriptors = {
+      clientWidth: Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth'),
+      clientHeight: Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight'),
+    };
+
+    beforeEach(() => {
+      Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => containerSize.width });
+      Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => containerSize.height });
+    });
+
+    afterEach(() => {
+      for (const [name, descriptor] of Object.entries(descriptors)) {
+        if (descriptor) {
+          Object.defineProperty(HTMLElement.prototype, name, descriptor);
+        }
+      }
+      containerSize = { width: 0, height: 0 };
+    });
+
+    const resizeTo = async (host: HTMLElement, width: number, height: number) => {
+      // jsdom reports padding as '' (NaN once parsed); browsers report '0px'.
+      (host.querySelector('.canvas-container') as HTMLElement).style.padding = '0px';
+      containerSize = { width, height };
+      const entry = { target: document.createElement('div'), contentRect: { width, height } };
+      for (const [callback] of (global.ResizeObserver as ReturnType<typeof vi.fn>).mock.calls) {
+        callback([entry]);
+      }
+      // ShaderCanvas coalesces resizes into the next animation frame.
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
+      await tick();
+    };
+
+    it('passes a visible size to the engine but keeps a hidden panel\'s 0x0 away from it', async () => {
+      const onInitialized = vi.fn();
+      const { container } = render(ShaderViewer, { onInitialized });
+      await vi.waitFor(() => expect(onInitialized).toHaveBeenCalled());
+
+      await resizeTo(container, 800, 450);
+      await vi.waitFor(() => expect(mockHandleCanvasResize).toHaveBeenCalled());
+      const [width, height] = mockHandleCanvasResize.mock.calls.at(-1)!;
+      expect(width).toBeGreaterThan(0);
+      expect(height).toBeGreaterThan(0);
+      mockHandleCanvasResize.mockClear();
+
+      await resizeTo(container, 0, 0);
+
+      expect(mockHandleCanvasResize).not.toHaveBeenCalled();
     });
   });
 
