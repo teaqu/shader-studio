@@ -550,7 +550,7 @@ describe('BufferConfig', () => {
       expect(queryByText(/Create/)).toBeNull();
     });
 
-    it('should show select button when postMessage is provided', () => {
+    it('shows Browse after choosing a custom file', async () => {
       const config: BufferPass = { path: '', inputs: {} };
 
       const { container } = render(BufferConfig, {
@@ -561,6 +561,7 @@ describe('BufferConfig', () => {
         postMessage: mockPostMessage,
       });
 
+      await fireEvent.change(getMainPathConfig(container).querySelector('[aria-label="Shader file"]')!, { target: { value: 'custom' } });
       expect(getMainPathConfig(container).querySelector('.select-file-btn')).toBeTruthy();
     });
 
@@ -588,6 +589,7 @@ describe('BufferConfig', () => {
         postMessage: mockPostMessage,
       });
 
+      await fireEvent.change(getMainPathConfig(container).querySelector('[aria-label="Shader file"]')!, { target: { value: 'custom' } });
       await fireEvent.click(getMainPathConfig(container).querySelector('.select-file-btn')!);
       expect(mockPostMessage).toHaveBeenCalledOnce();
       expect(mockPostMessage.mock.calls[0][0].type).toBe('selectFile');
@@ -1702,13 +1704,14 @@ describe('BufferConfig', () => {
     it('should update config when path is changed', async () => {
       const config: BufferPass = { path: 'old.glsl', inputs: {} };
 
-      const { getByDisplayValue } = render(BufferConfig, {
+      const { getByDisplayValue, getByLabelText } = render(BufferConfig, {
         bufferName: 'BufferA',
         config,
         onUpdate: mockOnUpdate,
         getWebviewUri: mockGetWebviewUri,
       });
 
+      await fireEvent.change(getByLabelText('Shader file'), { target: { value: 'custom' } });
       const pathInput = getByDisplayValue('old.glsl');
       await fireEvent.input(pathInput, { target: { value: 'new.glsl' } });
 

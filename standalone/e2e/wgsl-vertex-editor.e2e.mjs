@@ -47,7 +47,7 @@ for (const language of ['wgsl', 'slang']) {
     await page.getByRole('button', { name: '+ New', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Buffer', exact: true }).click();
     const main = page.locator('.tab-content .buffer-details > .config-item').first();
-    await main.getByLabel('Use file from config').selectOption(sourcePath);
+    await main.getByLabel('Shader file').selectOption(sourcePath);
     await page.getByRole('group', { name: 'Fragment function controls' }).getByRole('button', { name: 'Add', exact: true }).click();
     await expect(page.getByLabel('Fragment function', { exact: true })).toHaveValue('BufferAFragment');
     await expect(page.getByLabel('Vertex function', { exact: true })).toHaveValue('');
@@ -89,8 +89,8 @@ for (const language of ['wgsl', 'slang']) {
     const main = page.locator('.tab-content .buffer-details > .config-item').first();
     page.once('dialog', dialog => dialog.accept(`owned.${language}`));
     await main.getByRole('button', { name: 'Create', exact: true }).click();
-    await expect(main.locator('.config-input')).toHaveValue(new RegExp(`\\.${language}$`));
-    const configured = await main.locator('.config-input').inputValue();
+    await expect(main.getByLabel('Shader file')).toHaveValue(new RegExp(`\\.${language}$`));
+    const configured = await main.getByLabel('Shader file').inputValue();
     const path = configured.startsWith('/') ? configured : `/shaders/${configured.replace(/^\.\//, '')}`;
     const vertex = page.locator('.config-item').filter({ has: page.getByRole('heading', { name: 'Vertex shader', exact: true }) });
     await vertex.getByLabel('Vertex source').selectOption('custom');
@@ -128,7 +128,8 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
     const vertex = page.locator('.config-item').filter({ has: page.getByRole('heading', { name: 'Vertex shader', exact: true }) });
     await vertex.getByLabel('Vertex source').selectOption('custom');
     await vertex.getByRole('button', { name: 'Insert', exact: true }).click();
-    await expect(vertex.locator('input')).toHaveValue(new RegExp(`${stem}\\.${language}$`));
+    await expect(vertex.getByLabel('Vertex source')).toHaveValue('same');
+    await expect(vertex.locator('.config-input')).toHaveCount(0);
     const canvas = page.getByTestId('web-preview').locator('.canvas-container canvas').first();
     const centerRed = () => canvas.evaluate(async element => {
       const image = await createImageBitmap(await (await fetch(element.toDataURL())).blob());
@@ -176,7 +177,8 @@ for (const { name, option, extension, vertexPattern } of [
     await vertex.getByRole('button', { name: 'Create', exact: true }).click();
     const vertexPath = await vertex.locator('input').inputValue();
     const absoluteVertexPath = vertexPath.startsWith('/') ? vertexPath : `/shaders/${vertexPath.replace(/^\.\//, '')}`;
-    await expect(vertex.locator('input')).toHaveValue(new RegExp(`\\.vert\\.${extension}$`));
+    await expect(vertex.getByLabel('Vertex source')).toHaveValue('same');
+    await expect(vertex.locator('.config-input')).toHaveCount(0);
 
     await vertex.getByRole('heading', { name: 'Vertex shader', exact: true }).dblclick();
     await expect(page.locator(`[data-testid="file-editor"][data-path="${absoluteVertexPath}"] .monaco-editor`)).toBeVisible();

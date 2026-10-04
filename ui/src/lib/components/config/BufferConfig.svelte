@@ -1058,6 +1058,7 @@ return;
     {/if}
     {#if passType === 'render' && isWebGpuLanguage}
       <RenderSourceControls pass={config as BufferPass | ImagePass} entryPoints={renderEntryPoints}
+        {vertexSource}
         {language} {fileType} sourcePath={ownedSourcePath} passName={bufferName}
         authoringMode={hasNativeTemplate ? 'native' : undefined} outputCount={renderOutputs.length}
         {isImagePass} {shaderPath} {postMessage} {onMessage} onCommit={updateConfig} />

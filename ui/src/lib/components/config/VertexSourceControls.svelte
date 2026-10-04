@@ -53,11 +53,12 @@
 {#if mode !== 'builtin'}
 
 <PathInput inputId={`vertex-source-${passName}`} value={pass.vertex ?? ''} {onPathChange} allowInsert={true}
-  existingModes={existingShaderModes(passSource + '\n' + vertexSource, language, 'vertex')}
+  hidePath={mode === 'same'} allowCreate={mode !== 'same'}
+  existingModes={existingShaderModes(pass.vertex && pass.vertex !== sourcePath ? vertexSource : passSource + '\n' + vertexSource, language, 'vertex')}
   clearEnabled={!!pass.vertex || !!pass.entryPoints?.vertex}
   onClear={clearSource}
   onCreated={(result) => onCommit(applyVertexSource(pass, result))}
-  {sourcePath} {passName} {vertexSpace} {geometryType} {fileType} {suggestedPath} {shaderPath} {postMessage} {onMessage} />
+  sourcePath={pass.vertex || sourcePath} {passName} {vertexSpace} {geometryType} {fileType} {suggestedPath} {shaderPath} {postMessage} {onMessage} />
 {/if}
 <style>
   .source-select { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; color: var(--vscode-foreground, #ccc); }

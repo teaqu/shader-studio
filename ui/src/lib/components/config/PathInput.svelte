@@ -17,6 +17,8 @@
     suggestedPath?: string;
     fileType?: FileDialogFileType;
     allowCreate?: boolean;
+    allowSelect?: boolean;
+    selectLabel?: string;
     allowInsert?: boolean;
     insertLabel?: string;
     hidePath?: boolean;
@@ -54,6 +56,8 @@
     suggestedPath = '',
     fileType = 'glsl-buffer',
     allowCreate = true,
+    allowSelect = true,
+    selectLabel = 'Select',
     allowInsert = false,
     insertLabel = 'Insert',
     hidePath = false,
@@ -205,7 +209,7 @@ onPathChange?.(event.data.payload.path);
   </div>{/if}
   {#if postMessage}
     <div class="input-actions">
-      {#if !hidePath}<button class="select-file-btn" onclick={handleSelect}>Select</button>{/if}
+      {#if !hidePath && allowSelect}<button class="select-file-btn" onclick={handleSelect}>{selectLabel}</button>{/if}
       {#if showCreate}
         <button class="create-file-btn" onclick={handleCreate}>Create</button>
       {/if}
