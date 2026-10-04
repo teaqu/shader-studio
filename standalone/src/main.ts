@@ -31,7 +31,7 @@ installSlangAssetMetadata();
 const transport = new WebTransport();
 const pwa = createPwaController();
 configureHost({
-  createTransport: () => transport,
+  createTransport: () => transport.createViewerTransport(),
   defaultAssets: defaultAssets(),
   capabilities: { compileOnSave: false },
 });

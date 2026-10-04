@@ -132,14 +132,56 @@ export class WebTransport implements Transport {
   }
 
   onMessage(handler: (event: MessageEvent) => void): void {
+    this.subscribeViewer(handler);
+  }
+
+  /** Each viewer owns its listeners, while the shell owns the workspace. */
+  createViewerTransport(): Transport {
+    let disposed = false;
+    const cleanups = new Set<() => void>();
+    return {
+      postMessage: message => {
+        if (!disposed) {
+          this.postMessage(message);
+        }
+      },
+      onMessage: handler => {
+        if (!disposed) {
+          cleanups.add(this.subscribeViewer(handler));
+        }
+      },
+      dispose: () => {
+        disposed = true;
+        for (const cleanup of cleanups) {
+          cleanup();
+        }
+        cleanups.clear();
+      },
+      getType: () => this.getType(),
+      isConnected: () => !disposed && this.isConnected(),
+      getWorkspaceDocuments: language => this.getWorkspaceDocuments(language),
+      applyWorkspaceEdit: (changes, isCurrent, commit, openTexts) =>
+        this.applyWorkspaceEdit(changes, () => !disposed && isCurrent(), commit, openTexts),
+    };
+  }
+
+  private subscribeViewer(handler: (event: MessageEvent) => void): () => void {
+    let disposed = false;
+    let cleanup: (() => void) | undefined;
+    const unsubscribe = () => {
+      disposed = true;
+      cleanup?.();
+      this.viewerCleanups.delete(unsubscribe);
+    };
     if (!this.connected) {
-      return;
+      return unsubscribe;
     }
+    this.viewerCleanups.add(unsubscribe);
     void this.host.then(async (host) => {
-      if (!this.connected) {
+      if (!this.connected || disposed) {
         return;
       }
-      this.viewerCleanups.add(host.onViewerMessage((message) => {
+      cleanup = host.onViewerMessage((message) => {
         if (message.type === 'showNewShaderModal') {
           setNewShaderVisible(true);
           return;
@@ -153,12 +195,13 @@ export class WebTransport implements Transport {
           return;
         }
         handler(new MessageEvent('message', { data: message }));
-      }));
+      });
       if (!this.started) {
         this.started = true;
         await host.start();
       }
     });
+    return unsubscribe;
   }
 
   async getWorkspaceDocuments(language: import('@shader-studio/types').ShaderLanguageId) {

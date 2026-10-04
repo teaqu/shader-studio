@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   interface Props {
     isVisible: boolean;
     shaderCode: string;
@@ -16,18 +17,26 @@
 
   let {
     isVisible,
-    shaderCode,
-    shaderPath,
+    shaderCode = '',
+    shaderPath = '',
     vimMode,
     errors = [],
     activeBufferName,
     commonPath = undefined,
     commonSource = undefined,
-    onCodeChange,
+    onCodeChange = () => {},
     onBufferSwitch,
     onCursorChange = () => {},
     onManualCompile = () => {},
   }: Props = $props();
+
+  // The real editor reads these props while saving its view and pending edits
+  // during destruction. Exercise that lifecycle contract in pane tests too.
+  onDestroy(() => {
+    document.dispatchEvent(new CustomEvent('editor-disposed', {
+      detail: { shaderPath, shaderCode, onCodeChange },
+    }));
+  });
 </script>
 
 <div
