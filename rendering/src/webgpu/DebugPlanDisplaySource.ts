@@ -1,4 +1,4 @@
-import { projectNativeRasterDisplay } from "@shader-studio/debug/native/NativeRasterDisplay";
+import { projectNativeRasterDisplay } from "@shader-studio/debug";
 import type { DebugInstrumentationPlan, DebugSourceUnit, ShaderConfig, ShaderLanguageId } from "@shader-studio/types";
 
 /** Buffer debug plans display one attachment on the canvas, leaving the plan intact for capture. */
