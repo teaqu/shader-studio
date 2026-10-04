@@ -4679,6 +4679,61 @@ describe("WebGPURenderingEngine", () => {
     );
   });
 
+  it.each(["current-frame", "previous-frame"] as const)("retains the %s buffer image when capturing after the feedback swap", (readFrom) => {
+    const engine = new WebGPURenderingEngine(assets);
+    stubDeviceAndContext(engine);
+    let swapped = false;
+    const bufferPipeline = renderablePipeline({
+      getCurrentOutputView: () => ({ label: swapped ? "older" : "latest" }),
+      getPreviousOutputView: () => ({ label: swapped ? "latest" : "older" }),
+      swap: vi.fn(() => {
+        swapped = !swapped;
+      }),
+    });
+    const imagePipeline = renderablePipeline();
+    // These are partial GPU pipeline fixtures; unused rendering operations are stubbed above.
+    Object.assign(engineOwners(engine).session, {
+      passGraph: [
+        { name: "BufferA", width: 320, height: 180, output: "texture", channels: [] },
+        { name: "Image", width: 320, height: 180, output: "canvas", channels: [
+          { kind: "buffer", slot: 0, key: "iChannel0", source: "BufferA", readFrom },
+        ] },
+      ],
+      passPipelines: new Map([["BufferA", bufferPipeline], ["Image", imagePipeline]]),
+    });
+    engine.renderForCapture();
+    const original = imagePipeline.rebuildBindGroup.mock.calls[0][0];
+    engineOwners(engine).frameRenderer.renderFrame(1000, true, true);
+    expect(imagePipeline.rebuildBindGroup.mock.calls[1][0]).toEqual(original);
+    expect(bufferPipeline.swap).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { readFrom: "current-frame" as const, dispatched: true },
+    { readFrom: "previous-frame" as const, dispatched: true },
+    { readFrom: "current-frame" as const, dispatched: false },
+    { readFrom: "previous-frame" as const, dispatched: false },
+  ])("keeps the $readFrom compute texture after a frame (dispatched: $dispatched)", ({ readFrom, dispatched }) => {
+    const engine = new WebGPURenderingEngine(assets);
+    const compute = {
+      getLayerOutputView: vi.fn(() => ({ label: "older" })),
+      getPreviousLayerOutputView: vi.fn(() => ({ label: "latest" })),
+    };
+    // Partial compute pipeline: this test only exercises channel texture selection.
+    Object.assign(engineOwners(engine).session, { computePipelines: new Map([["Compute", compute]]) });
+    const resources = engineOwners(engine).channels.getChannelResources({
+      name: "Image", width: 8, height: 8, output: "canvas", channels: [
+        { kind: "buffer", slot: 0, key: "iChannel0", source: "Compute", layer: 2, readFrom },
+      ],
+      source: "", language: "wgsl", geometry: "fullscreen", kind: "render", outputLayers: 1,
+      dispatchCount: 1, dispatchOnce: false, workgroupSize: [1, 1, 1],
+    }, false, new Set(dispatched ? ["Compute"] : []), true);
+    const latest = readFrom === "current-frame" || !dispatched;
+    expect(resources?.[0].textureView).toEqual({ label: latest ? "latest" : "older" });
+    expect(latest ? compute.getPreviousLayerOutputView : compute.getLayerOutputView)
+      .toHaveBeenCalledWith(2);
+  });
+
   it("attaches the requested sampler to a non-default buffer input", () => {
     const engine = new WebGPURenderingEngine(assets);
     stubDeviceAndContext(engine);

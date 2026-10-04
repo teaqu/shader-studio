@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import raySpheres from "../../../../tests/fixtures/capture/ray-spheres.glsl?raw";
 import { ShaderRecorder } from "../../lib/recording/ShaderRecorder";
 import type { ShaderInfo } from "../../lib/recording/types";
+import { createEngineForLanguage } from "../../lib/engineFactory";
 import { blobToImageData, decodeVideoFrames, glslInfo, lumaPsnr, renderReference } from "./captureMediaHelpers";
 
 // Saved media is decoded by the browser and compared with lossless Render
@@ -121,6 +122,33 @@ describe("Render video quality (#39)", () => {
 });
 
 describe.each(LANGUAGES)("Render preparation keeps feedback history (#11) — %s", (language) => {
+  it("captures the latest feedback image without advancing or rewinding it", async () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 8;
+    document.body.appendChild(canvas);
+    const engine = createEngineForLanguage(language);
+    engine.initialize(canvas, true);
+    const shader = frameCounter(language);
+    try {
+      const compiled = await engine.compileShaderPipeline(shader.code, shader.config, shader.path, shader.buffers);
+      expect(compiled?.success).toBe(true);
+      for (let frame = 0; frame < 3; frame++) {
+        engine.getTimeManager().setFrame(frame);
+        engine.renderForCapture();
+      }
+      const recorder = new ShaderRecorder();
+      for (let capture = 0; capture < 2; capture++) {
+        const png = await recorder.captureLiveScreenshot(
+          { mode: "live", format: "png", width: 8, height: 8 }, engine,
+        );
+        expect(centre(await blobToImageData(png))[0]).toBe(3);
+      }
+    } finally {
+      engine.dispose();
+      canvas.remove();
+    }
+  }, 60_000);
+
   it("renders every preceding frame before a screenshot", async () => {
     // 0.5 s at the 60 fps screenshot preparation rate is 30 frames, plus the captured one.
     const png = await new ShaderRecorder().captureScreenshot(
