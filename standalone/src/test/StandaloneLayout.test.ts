@@ -49,6 +49,12 @@ function source(name: string) {
 
 describe('StandaloneLayout', () => {
   beforeEach(() => {
+    const values = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+    });
     renderers = []; willDrop = null; resetMobileShellState();
   });
 

@@ -1,6 +1,29 @@
 import { expect, test } from '@playwright/test';
 import { readWorkspaceFiles } from './workspace-store.mjs';
 
+test('preview and explorer recover minimum widths after repeated window resizing', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.goto('/');
+  const explorer = page.getByTestId('web-shader-explorer');
+  const preview = page.getByTestId('web-preview');
+  await expect(explorer).toBeVisible();
+  const expectWidths = async () => {
+    await expect.poll(async () => (await explorer.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(220);
+    await expect.poll(async () => (await preview.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(320);
+  };
+  for (let cycle = 0; cycle < 3; cycle++) {
+    await page.setViewportSize({ width: 800, height: 700 });
+    await expectWidths();
+    await page.setViewportSize({ width: 390, height: 780 });
+    await expect(page.getByRole('navigation', { name: 'Workspace panels' })).toBeVisible();
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await expect(page.getByRole('navigation', { name: 'Workspace panels' })).toBeHidden();
+    await expectWidths();
+  }
+  await page.reload();
+  await expectWidths();
+});
+
 test('phone shell preserves the selected shader across Explorer, Preview, Editor, and Tools', async ({ page }) => {
   await page.goto('/');
   const workspaceNav = page.getByRole('navigation', { name: 'Workspace panels' });

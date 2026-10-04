@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import {
   STANDALONE_LAYOUT_STORAGE_KEY,
   StandaloneLayoutController,
@@ -12,16 +12,16 @@ function createApi(): StandaloneDockviewApi & { emitLayoutChange(): void; activa
   type TestPanel = {
     id: string;
     api: {
-      close: ReturnType<typeof vi.fn>;
+      close: Mock<() => void>;
       group: TestGroup;
-      setActive: ReturnType<typeof vi.fn>;
-      setTitle: ReturnType<typeof vi.fn>;
-      setSize: ReturnType<typeof vi.fn>;
+      setActive: Mock<() => void>;
+      setTitle: Mock<(title: string) => void>;
+      setSize: Mock<(size: { width: number }) => void>;
     };
   };
   type TestGroup = {
     panels: TestPanel[];
-    api: { isVisible: boolean; setVisible: ReturnType<typeof vi.fn> };
+    api: { isVisible: boolean; setVisible: Mock<(visible: boolean) => void> };
   };
   const panels = new Map<string, TestPanel>();
   const createGroup = (): TestGroup => {
@@ -107,6 +107,40 @@ describe('StandaloneLayoutController', () => {
     storage = createStorage();
   });
 
+  it('keeps useful minimum widths for new and reopened preview and explorer panels', () => {
+    const controller = new StandaloneLayoutController(api, storage);
+    controller.initialize();
+    for (const [id, minimumWidth] of [['explorer', 220], ['preview', 320]] as const) {
+      expect(api.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id, minimumWidth }));
+      api.remove(id);
+      controller.showPanel(id);
+      expect(api.addPanel).toHaveBeenLastCalledWith(expect.objectContaining({ id, minimumWidth }));
+    }
+  });
+
+  it('repairs minimum widths in restored layouts without resetting their arrangement', () => {
+    const saved = { panels: {
+      preview: { contentComponent: 'preview', minimumWidth: 40 },
+      explorer: { contentComponent: 'explorer' },
+      editor: { contentComponent: 'editor' },
+    }, grid: { width: 1600 } };
+    storage = createStorage({ [STANDALONE_LAYOUT_STORAGE_KEY]: JSON.stringify(saved) });
+    new StandaloneLayoutController(api, storage).initialize();
+    expect(api.fromJSON).toHaveBeenCalledWith({ ...saved, panels: {
+      ...saved.panels,
+      explorer: { ...saved.panels.explorer, minimumWidth: 220 },
+      preview: { ...saved.panels.preview, minimumWidth: 320 },
+    } });
+    expect(api.addPanel).not.toHaveBeenCalled();
+  });
+
+  it('preserves a stricter saved minimum and leaves missing panels closed', () => {
+    const saved = { panels: { preview: { contentComponent: 'preview', minimumWidth: 480 } } };
+    storage = createStorage({ [STANDALONE_LAYOUT_STORAGE_KEY]: JSON.stringify(saved) });
+    new StandaloneLayoutController(api, storage).initialize();
+    expect(api.fromJSON).toHaveBeenCalledWith(saved);
+    expect(api.addPanel).not.toHaveBeenCalled();
+  });
   it('creates the explorer, editor, and preview default outer layout', () => {
     new StandaloneLayoutController(api, storage).initialize();
     expect(api.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'preview', title: 'Preview' }));
@@ -182,8 +216,8 @@ describe('StandaloneLayoutController', () => {
         ],
       },
       panels: {
-        preview: { id: 'preview', contentComponent: 'preview', title: 'Preview' },
-        explorer: saved.panels.explorer,
+        preview: { id: 'preview', contentComponent: 'preview', title: 'Preview', minimumWidth: 320 },
+        explorer: { ...saved.panels.explorer, minimumWidth: 220 },
         editor: saved.panels.editor,
         config: saved.panels.config,
         debug: saved.panels.debug,
@@ -201,7 +235,11 @@ describe('StandaloneLayoutController', () => {
     ) };
     storage = createStorage({ [STANDALONE_LAYOUT_STORAGE_KEY]: JSON.stringify(saved) });
     new StandaloneLayoutController(api, storage).initialize();
-    expect(api.fromJSON).toHaveBeenCalledWith(saved);
+    expect(api.fromJSON).toHaveBeenCalledWith({ ...saved, panels: {
+      ...saved.panels,
+      preview: { ...saved.panels.preview, minimumWidth: 320 },
+      explorer: { ...saved.panels.explorer, minimumWidth: 220 },
+    } });
     expect(api.addPanel).not.toHaveBeenCalled();
   });
 

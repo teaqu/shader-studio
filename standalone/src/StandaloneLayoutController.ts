@@ -54,6 +54,25 @@ const panelDefinitions: Record<StandalonePanelId, { title: string; position?: Re
   editor: { title: 'No file open', position: { referencePanel: 'explorer', direction: 'right' }, initialWidth: 820 },
 };
 
+const minimumPanelWidths: Partial<Record<StandalonePanelId, number>> = { explorer: 220, preview: 320 };
+
+/** Apply panel constraints to older saved layouts without changing their splits. */
+function withMinimumPanelWidths(layout: unknown): unknown {
+  if (!isRecord(layout) || !isRecord(layout.panels)) {
+    return layout;
+  }
+  return {
+    ...layout,
+    panels: Object.fromEntries(Object.entries(layout.panels).map(([id, panel]) => {
+      const minimumWidth = Object.hasOwn(minimumPanelWidths, id)
+        ? minimumPanelWidths[id as StandalonePanelId] : undefined;
+      return [id, minimumWidth && isRecord(panel)
+        ? { ...panel, minimumWidth: Math.max(minimumWidth, typeof panel.minimumWidth === 'number' ? panel.minimumWidth : 0) }
+        : panel];
+    })),
+  };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value)
     && typeof value === 'object'
@@ -368,6 +387,7 @@ export class StandaloneLayoutController {
       renderer: 'always',
       ...(position ? { position } : {}),
       ...(definition.initialWidth ? { initialWidth: definition.initialWidth } : {}),
+      ...(minimumPanelWidths[panelId] ? { minimumWidth: minimumPanelWidths[panelId] } : {}),
     });
     this.panelRestorations.delete(panelId);
   }
@@ -388,9 +408,10 @@ export class StandaloneLayoutController {
         this.removeStoredLayout();
         return false;
       }
-      this.api.fromJSON(layout);
+      const constrainedLayout = withMinimumPanelWidths(layout);
+      this.api.fromJSON(constrainedLayout);
       if (migrated) {
-        this.writeLayout(layout);
+        this.writeLayout(constrainedLayout);
       }
       return true;
     } catch {
