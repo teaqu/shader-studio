@@ -57,6 +57,27 @@ it.each(["mp4", "webm"] as const)("encodes %s at explicit quality and releases t
   expect(mocks.finalize).toHaveBeenCalledOnce();
   expect(mocks.stopTrack).toHaveBeenCalledOnce();
 });
+it("preserves native MP4 frame pixels when no resizing is needed", async () => {
+  const preview = canvas();
+  preview.width = 816;
+  preview.height = 458;
+  const capture = await createLiveVideoCapture(preview, 60, "mp4", new AbortController().signal);
+  expect(mocks.config?.transform).toBeUndefined();
+  expect(mocks.config?.quality).toMatchObject({ options: { quantizer: 12 } });
+  expect(mocks.config?.hardwareAcceleration).toBeUndefined();
+  capture.stop();
+  await capture.result;
+});
+
+it("rounds an odd MP4 height when the width already matches", async () => {
+  const preview = canvas();
+  preview.width = 816;
+  const capture = await createLiveVideoCapture(preview, 60, "mp4", new AbortController().signal);
+  expect(mocks.config?.transform).toEqual({ width: 816, height: 460, fit: "fill" });
+  capture.stop();
+  await capture.result;
+});
+
 it("falls back to VP8 when VP9 encoding is unavailable", async () => {
   mocks.canEncode.mockResolvedValue(false);
   const capture = await createLiveVideoCapture(canvas(), 30, "webm", new AbortController().signal);
