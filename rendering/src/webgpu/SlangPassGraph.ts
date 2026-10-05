@@ -1,5 +1,5 @@
 import { normalizeLiveInput } from "../util/LiveInputConfig";
-import type { ComputePass, ConfigInput, RenderPassSettings, ShaderConfig, ShaderLanguageId, StorageBufferConfig } from "@shader-studio/types";
+import type { ComputePass, ConfigInput, ShaderConfig, ShaderLanguageId, StorageBufferConfig } from "@shader-studio/types";
 import { vertexPassKey, configuredStorageLayout, storageStructDeclaration, validateStorageOptions } from "@shader-studio/types";
 import type {
   DispatchSpec,
