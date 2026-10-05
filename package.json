@@ -44,10 +44,13 @@
     "watch:extension": "npm run watch -w extension",
     "postinstall": "node monaco/scripts/patch-word-highlighter.mjs",
     "prepare": "git config core.hooksPath .githooks || true",
+    "coverage:changes": "node .github/scripts/check-changed-coverage.mjs",
     "coverage:new-files": "node .github/scripts/check-new-file-coverage.mjs",
     "coverage:summary": "node .github/scripts/report-coverage.mjs"
   },
   "devDependencies": {
+    "@jridgewell/gen-mapping": "^0.3.13",
+    "@jridgewell/trace-mapping": "^0.3.31",
     "@tsconfig/svelte": "^5.0.4",
     "@types/jsdom": "^21.1.7",
     "@types/node": "^24.0.15",

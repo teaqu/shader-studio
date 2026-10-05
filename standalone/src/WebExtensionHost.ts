@@ -1,7 +1,12 @@
-import { configPathForShader, parseVertexPassKey, resolveConfiguredPath, shaderLanguageForPath, stageForPass, vertexPassKey } from '@shader-studio/types';
+import { selectWorkspaceFile } from './selectWorkspaceFile';
+import { requestFileSelection } from './state/fileSelectionState.svelte';
+import { insertShaderSource } from './insertShaderSource';
+import { configPathForShader, createNativeComputeSource, createNativeFragmentSource, parseVertexPassKey, resolveConfiguredPath, shaderLanguageForPath, stageForPass, vertexPassKey } from '@shader-studio/types';
 import type { ConfiguredPathHost, ProfileData, ProfileIndex, ShaderConfig, ShaderLanguageId } from '@shader-studio/types';
 import type { VirtualWorkspace } from './VirtualWorkspace';
 import { virtualConfiguredPathHost } from './passSources';
+import { StandaloneSettings } from './settings/StandaloneSettings';
+import { HostSettingsController } from './settings/HostSettingsController';
 
 type HostMessage = { type: string; [key: string]: unknown };
 type MessageHandler = (message: HostMessage) => void;
@@ -35,6 +40,10 @@ function resolveNewFilePath(shaderPath: string, requested: string): string | nul
     }
   }
   return `/${parts.join('/')}`;
+}
+
+function nativeOutputCount(value: unknown): number {
+  return typeof value === 'number' && Number.isInteger(value) ? Math.max(1, Math.min(8, value)) : 1;
 }
 
 const GLSL_STARTER_SHADER = `void mainImage( out vec4 fragColor, in vec2 fragCoord )
@@ -80,9 +89,12 @@ const LEGACY_SLANG_STARTER_SHADER = 'float4 mainImage(float2 fragCoord) { return
 const LEGACY_WGSL_STARTER_SHADER = 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(0.0, 0.0, 0.0, 1.0); }\n';
 
 interface WebExtensionHostOptions {
+  selectFile?: (paths: string[]) => Promise<string | null>;
   resolveDefaultAsset?: (path: string) => string | null;
   prompt?: (message: string, initialValue: string) => string | null;
   confirm?: (message: string) => boolean;
+  /** Shared browser preferences owned by the standalone transport. */
+  settings?: StandaloneSettings;
 }
 
 function profilePath(id: string): string {
@@ -123,14 +135,21 @@ export class WebExtensionHost {
   private readonly resolveDefaultAsset: (path: string) => string | null;
   private readonly prompt: (message: string, initialValue: string) => string | null;
   private readonly confirm: (message: string) => boolean;
+  private readonly selectFile: (paths: string[]) => Promise<string | null>;
+  private readonly settingsController: HostSettingsController;
 
   constructor(
     private readonly workspace: VirtualWorkspace,
     options: WebExtensionHostOptions = {},
   ) {
+    this.selectFile = options.selectFile ?? requestFileSelection;
     this.resolveDefaultAsset = options.resolveDefaultAsset ?? (() => null);
     this.prompt = options.prompt ?? ((message, initialValue) => window.prompt(message, initialValue));
     this.confirm = options.confirm ?? ((message) => window.confirm(message));
+    this.settingsController = new HostSettingsController(
+      options.settings ?? new StandaloneSettings(),
+      (message) => this.emitViewer(message),
+    );
     const restoredPath = this.workspace.exists(ACTIVE_SHADER_PATH)
       ? this.workspace.readText(ACTIVE_SHADER_PATH)
       : null;
@@ -186,6 +205,12 @@ export class WebExtensionHost {
     return () => this.explorerHandlers.delete(handler);
   }
 
+  dispose(): void {
+    this.settingsController.dispose();
+    this.viewerHandlers.clear();
+    this.explorerHandlers.clear();
+  }
+
   async start(): Promise<void> {
     if (this.activeShaderPath) {
       this.emitViewer(this.shaderSourceMessage(this.activeShaderPath));
@@ -196,6 +221,10 @@ export class WebExtensionHost {
     const payload = message.payload && typeof message.payload === 'object'
       ? message.payload as Record<string, unknown>
       : {};
+
+    if (this.settingsController.handleMessage(message.type, payload)) {
+      return;
+    }
 
     switch (message.type) {
       case 'saveFile': {
@@ -245,10 +274,7 @@ export class WebExtensionHost {
         return;
       }
       case 'languageServiceReady':
-        this.emitViewer({
-          type: 'languageServiceSettings',
-          payload: { glslEnabled: true, slangEnabled: true, wgslEnabled: true, colorDecorators: true, trace: 'off' },
-        });
+        this.settingsController.emitLanguageServiceSettings();
         return;
       case 'extensionCommand':
         if (payload.command === 'newShader') {
@@ -283,18 +309,36 @@ export class WebExtensionHost {
         if (this.workspace.exists(path)) {
           return;
         }
-        const source = language === 'slang' ? SLANG_STARTER_SHADER : language === 'wgsl' ? WGSL_STARTER_SHADER : GLSL_STARTER_SHADER;
+        const requestedMode = payload.authoringMode === 'hooks' || payload.authoringMode === 'native'
+          ? payload.authoringMode : this.settingsController.defaultShaderMode;
+        const authoringMode = requestedMode === 'native' && language !== 'glsl' ? 'native' : 'hooks';
+        const native = authoringMode === 'native'
+          ? createNativeFragmentSource(language === 'slang' ? 'slang' : 'wgsl', '', 'Image')
+          : null;
+        const source = native?.text.trimStart()
+          ?? (language === 'slang' ? SLANG_STARTER_SHADER : language === 'wgsl' ? WGSL_STARTER_SHADER : GLSL_STARTER_SHADER);
         this.workspace.writeText(path, source);
-        this.workspace.writeText(configPathForShader(path), DEFAULT_CONFIG_TEXT);
+        this.workspace.writeText(configPathForShader(path), native
+          ? JSON.stringify({
+            version: '1.0',
+            webgpu: { defaultRenderAuthoring: 'native' },
+            passes: { Image: { inputs: {}, entryPoints: native.entryPoints } },
+          }, null, 2)
+          : DEFAULT_CONFIG_TEXT);
         this.setActiveShader(path);
         this.emitViewer(this.shaderSourceMessage(path));
         return;
       }
+      case 'selectFile':
+        await selectWorkspaceFile(this.workspace, payload, this.selectFile, message => this.emitViewer(message));
+        return;
       case 'createFile': {
         const shaderPath = typeof payload.shaderPath === 'string' ? payload.shaderPath : this.activeShaderPath;
         if (!shaderPath || typeof payload.suggestedPath !== 'string' || typeof payload.fileType !== 'string') {
           return;
         }
+        const authoringMode = payload.authoringMode === 'native' ? 'native' : 'hooks';
+        const passName = typeof payload.passName === 'string' ? payload.passName : 'Buffer';
         const templates: Record<string, string> = {
           'glsl-buffer': GLSL_STARTER_SHADER,
           glsl: GLSL_STARTER_SHADER,
@@ -311,7 +355,7 @@ export class WebExtensionHost {
           'slang-compute': '[shader("compute")]\n[numthreads(8, 8, 1)]\nvoid compute(uint3 dispatchThreadID : SV_DispatchThreadID) {\n}\n',
           'wgsl-compute': '@compute @workgroup_size(8, 8, 1)\nfn compute(@builtin(global_invocation_id) dispatchThreadID: vec3u) {\n}\n',
         };
-        const template = templates[payload.fileType];
+        let template = templates[payload.fileType];
         if (template === undefined) {
           return;
         }
@@ -326,12 +370,41 @@ export class WebExtensionHost {
         if (!path) {
           return;
         }
+        let entryPoints: { vertex?: string; fragment?: string; compute?: string } | undefined;
+        let created = false;
         if (!this.workspace.exists(path)) {
+          if (authoringMode === 'native' && payload.fileType === 'wgsl-buffer') {
+            const native = createNativeFragmentSource('wgsl', '', passName, nativeOutputCount(payload.outputCount));
+            template = native.text.trimStart();
+            entryPoints = native.entryPoints;
+          } else if (authoringMode === 'native' && payload.fileType === 'slang-buffer') {
+            const native = createNativeFragmentSource('slang', '', passName, nativeOutputCount(payload.outputCount));
+            template = native.text.trimStart();
+            entryPoints = native.entryPoints;
+          } else if (authoringMode === 'native' && payload.fileType === 'wgsl-compute') {
+            const native = createNativeComputeSource('wgsl', '', passName);
+            template = native.text.trimStart();
+            entryPoints = native.entryPoints;
+          } else if (authoringMode === 'native' && payload.fileType === 'slang-compute') {
+            const native = createNativeComputeSource('slang', '', passName);
+            template = native.text.trimStart();
+            entryPoints = native.entryPoints;
+          }
           this.workspace.writeText(path, template);
+          created = true;
         }
-        this.emitViewer({ type: 'fileSelected', payload: { path: requested, requestId: payload.requestId } });
+        this.emitViewer({ type: 'fileSelected', payload: {
+          path: requested,
+          requestId: payload.requestId,
+          ...(created && authoringMode === 'native' && { authoringMode }),
+          ...(entryPoints && { entryPoints }),
+        } });
+        this.sendShaderList();
         return;
       }
+      case 'insertShaderSource':
+        insertShaderSource(this.workspace, this.activeShaderPath, payload, message => this.emitViewer(message), () => this.sendShaderList());
+        return;
       case 'requestFileContents': {
         const shaderPath = typeof payload.shaderPath === 'string' ? payload.shaderPath : this.activeShaderPath;
         if (!shaderPath || typeof payload.bufferName !== 'string') {

@@ -2,7 +2,18 @@
 
 Compute passes run Slang or WGSL compute shaders before the fragment passes in each frame. They can update persistent storage buffers, write textures for later passes to sample, and repeat work several times per frame. Compute is available for `.slang` and `.wgsl` shaders.
 
-Every compute pass uses a separate file. A relative `path` resolves from the main shader's directory, and an `@/` path resolves from the workspace root.
+A compute pass can share a source file with Image, render buffers, or other compute passes. Its `path` selects that file and `entryPoints.compute` selects the function. A relative `path` resolves from the main shader's directory, and an `@/` path resolves from the workspace root.
+
+## Configuring a Compute Pass
+
+1. Choose **+ New → Compute** in the config panel.
+2. Use the **File** row and **Change…** to reuse a file from the config, browse workspace files, or create a source file. Standalone browses files in its virtual workspace.
+3. Select one of the available `@compute` or `[shader("compute")]` function rows. **Add function…** appends a uniquely named native function to this pass's source and selects it. There is no Built-in/Native chooser for compute.
+4. Configure **Channels**, **Dispatch**, **Execution**, and **Output**. Output includes the floating-point format and **Output layers**. The consuming channel chooses a layer in **Misc**.
+
+The panel uses the same file and function controls as render passes, without fragment, vertex, or geometry settings. A source can contain several compute functions; adding one does not create another pass automatically.
+
+![Compute source and selectable function rows](../assets/images/compute-functions.png)
 
 ## Writing a Compute Shader
 
@@ -18,7 +29,7 @@ void simulateParticles(uint3 id : SV_DispatchThreadID)
 }
 ```
 
-If a source file has more than one `[shader("compute")]` entry point, set `entryPoint` in the pass config to select one.
+If a source file has more than one `[shader("compute")]` entry point, set `entryPoints.compute` in the pass config to select one. The older `entryPoint` field still loads for compatibility.
 
 The usual Slang built-ins and channel objects are available in compute passes. Use an explicit mip level when sampling a channel, for example `iChannel0.SampleLevel(uv, 0.0)`. Script-driven custom uniforms are also available.
 
@@ -32,7 +43,7 @@ fn simulate(@builtin(global_invocation_id) id: vec3u) {
 }
 ```
 
-If a WGSL file declares more than one `@compute` entry point, set `entryPoint` in the pass config to select one. Channel sampling needs an explicit mip level here too: `iChannel0SampleLevel(uv, 0.0)`.
+If a WGSL file declares more than one `@compute` entry point, set `entryPoints.compute` in the pass config to select one. The older `entryPoint` field still loads for compatibility. Channel sampling needs an explicit mip level here too: `iChannel0SampleLevel(uv, 0.0)`.
 
 ## Storage Buffers
 
@@ -96,7 +107,7 @@ void writeTexture(uint3 id : SV_DispatchThreadID)
 }
 ```
 
-Use the **Output layers** control in the compute pass settings for layered output, and pick the layer when configuring the buffer channel that consumes it.
+Use the **Output layers** control in the compute pass settings for layered output, and pick **Compute output layer** in that channel’s **Misc** tab. The layer defaults to zero and is saved as the input’s `layer` field.
 
 ## Frame Order
 

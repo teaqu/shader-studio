@@ -62,7 +62,7 @@ export class SlangHoverProvider {
       return {
         contents: {
           kind: MarkupKind.Markdown,
-          value: `\`\`\`slang\n${slangStorageBufferType(storage, state.environment.stage)} ${storage.name}\n\`\`\`\n\nConfigured storage buffer. Index it to read or write an element.`,
+          value: `\`\`\`slang\n${slangStorageBufferType(storage, state.environment)} ${storage.name}\n\`\`\`\n\nConfigured storage buffer. Index it to read or write an element.`,
         },
       };
     }

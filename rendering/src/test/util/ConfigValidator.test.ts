@@ -3,6 +3,18 @@ import { ConfigValidator, validatePassGeometry, validatePassRenderSettings } fro
 import type { ShaderConfig } from "@shader-studio/types";
 
 describe("ConfigValidator", () => {
+  it.each([undefined, true, false])("accepts viewer camera setting %s", useViewerCamera => {
+    expect(ConfigValidator.validateConfig({ version: "1.0", passes: {
+      Image: { useViewerCamera }, BufferA: { path: "a.wgsl", useViewerCamera },
+    } }).isValid).toBe(true);
+  });
+  it.each([null, 0, "false", {}, []])("rejects malformed viewer camera setting %s", useViewerCamera => {
+    const result = ConfigValidator.validateConfig({ version: "1.0", passes: {
+      Image: { useViewerCamera }, BufferA: { path: "a.wgsl", useViewerCamera },
+    } } as never);
+    expect(result.errors).toEqual(["useViewerCamera must be a boolean", "useViewerCamera must be a boolean"]);
+  });
+
   describe("validateConfig", () => {
     it("should return valid for null config", () => {
       const result = ConfigValidator.validateConfig(null);

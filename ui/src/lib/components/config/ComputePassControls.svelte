@@ -1,7 +1,8 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import type { ComputePass } from '@shader-studio/types';
+  import type { ComputePass, ShaderLanguageId } from '@shader-studio/types';
+  import type { Snippet } from 'svelte';
   import type { ConfigFieldErrors } from '../../config/ComputeConfigMutations';
 
   type DispatchMode = 'texel' | 'count' | 'workgroups' | 'storage' | 'channel';
@@ -11,10 +12,20 @@
     storageNames: string[];
     channelNames: string[];
     entryPointNames?: string[];
+    language?: ShaderLanguageId;
+    section?: 'all' | 'functions' | 'settings';
+    authoringControls?: Snippet;
+    outputControls?: Snippet;
     onCommit: (pass: ComputePass) => ConfigFieldErrors;
   }
 
-  let { pass, storageNames, channelNames, entryPointNames = [], onCommit }: Props = $props();
+  let { pass, storageNames, channelNames, entryPointNames = [], language = 'wgsl', section = 'all', authoringControls, outputControls, onCommit }: Props = $props();
+  const selectedFunction = $derived(pass.entryPoints?.compute ?? pass.entryPoint ?? '');
+
+  function selectFunction(name: string) {
+    const { entryPoint: _legacyEntryPoint, ...canonicalPass } = pass;
+    commit({ ...canonicalPass, entryPoints: { compute: name } });
+  }
   let localErrors = $state<ConfigFieldErrors>({});
   let externalErrors = $state<ConfigFieldErrors>({});
   let countDraft = $state('');
@@ -178,13 +189,20 @@
 </script>
 
 <section class="compute-controls" aria-label="Compute settings">
-  {#if entryPointNames.length > 1}
-    <label>Entrypoint
-      <select aria-label="Entrypoint" value={pass.entryPoint ?? ''} onchange={(event) => commit({ ...pass, entryPoint: event.currentTarget.value })}>
-        {#each entryPointNames as entryPoint}<option value={entryPoint}>{entryPoint}</option>{/each}
-      </select>
-    </label>
+  {#if section !== 'settings'}
+    <div class="function-row" role="group" aria-label="Compute function controls">
+      <fieldset><legend>Functions</legend>
+        {#if selectedFunction && !entryPointNames.includes(selectedFunction)}
+          <label class="active missing"><input type="radio" name="compute-function" checked />{selectedFunction} (missing)</label>
+        {/if}
+        {#each entryPointNames as name}
+          <label class:active={selectedFunction === name}><input type="radio" name="compute-function" checked={selectedFunction === name} onchange={() => selectFunction(name)} />{language === 'slang' ? '[shader("compute")]' : '@compute'} {name}</label>
+        {/each}
+      </fieldset>
+      {#if authoringControls}{@render authoringControls()}{/if}
+    </div>
   {/if}
+  {#if section !== 'functions'}
   <h3>Dispatch</h3>
   <label>
     Dispatch mode
@@ -222,12 +240,21 @@
   {#if errors.dispatchOnce}<p role="alert">{errors.dispatchOnce}</p>{/if}
 
   <h3>Output</h3>
+  {#if outputControls}{@render outputControls()}{/if}
   <label>Output layers<input aria-label="Output layers" value={layersDraft} oninput={(event) => updateLayers(event.currentTarget.value)} /></label>
   {#if errors.outputLayers}<p role="alert">{errors.outputLayers}</p>{/if}
+  {/if}
 </section>
 
 <style>
   .compute-controls { display: flex; flex-direction: column; gap: 8px; }
+  .function-row { display: flex; flex-direction: column; gap: 10px; }
+  fieldset { display: flex; flex-direction: column; gap: 5px; border: 0; padding: 0; margin: 0; min-width: 0; }
+  legend { font-size: 12px; color: var(--vscode-descriptionForeground); margin-bottom: 6px; }
+  .function-row label { padding: 7px 9px; border-radius: 3px; background: var(--vscode-input-background); font: 12px var(--vscode-editor-font-family, monospace); cursor: pointer; }
+  .function-row input { min-width: 0; margin: 0; accent-color: var(--vscode-focusBorder); }
+  label.active { background: var(--vscode-list-activeSelectionBackground); }
+  label.missing { color: var(--vscode-errorForeground); }
   h3 { margin: 8px 0 0; padding-bottom: 6px; font-size: 13px; border-bottom: 1px solid var(--vscode-panel-border, #3c3c3c); }
   label { display: flex; align-items: center; gap: 8px; font-size: 12px; }
   input, select { min-width: 72px; padding: 3px 6px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); }

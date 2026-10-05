@@ -15,6 +15,7 @@ export default defineConfig({
     // Loading core's CommonJS distribution directly leaves its named exports
     // unavailable to browser-native ESM imports from language analysis.
     alias: {
+      "@shader-studio/debug/native": path.resolve(directory, "../debug/src/native"),
       "@shader-studio/language-server-core": path.resolve(directory, "../language-servers/core/src"),
     },
   },

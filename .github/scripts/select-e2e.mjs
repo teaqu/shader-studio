@@ -23,6 +23,11 @@ export const taskNames = [...new Set(suites.map(suite => suite.task.split('#')[1
 /** A pull request carrying this label verifies everything. */
 export const FULL_RUN_LABEL = 'ci:full';
 
+/** Full audit on every tenth workflow run that is a pull request. */
+export const AUDIT_INTERVAL = 10;
+
+export const suiteOutput = suite => `${suite.job}_${suite.task.replace('@shader-studio/', '')}`.replaceAll(/[-:#]/g, '_');
+
 const everything = reason => ({ full: true, reason, affected: new Map() });
 
 /**
@@ -31,16 +36,23 @@ const everything = reason => ({ full: true, reason, affected: new Map() });
  *
  * @param {() => { name: string, fullName: string, reason: { __typename: string } }[]} queryAffected
  */
-export function decide({ eventName, labels, queryAffected }) {
+export function decide({ eventName, labels, runNumber, queryAffected }) {
   if (eventName !== 'pull_request') {
     return everything(`${eventName || 'unknown'} events verify everything`);
   }
   if (labels.includes(FULL_RUN_LABEL)) {
     return everything(`the pull request is labelled ${FULL_RUN_LABEL}`);
   }
+  if (Number.isSafeInteger(runNumber) && runNumber > 0 && runNumber % AUDIT_INTERVAL === 0) {
+    return everything(`periodic full audit (workflow run ${runNumber})`);
+  }
   let items;
   try {
     items = queryAffected();
+    if (!Array.isArray(items) || items.some(item => typeof item?.fullName !== 'string'
+      || typeof item?.reason?.__typename !== 'string')) {
+      throw new Error('invalid affected-task response');
+    }
   } catch (error) {
     return everything(`Turbo could not compare the change: ${error.message}`);
   }
@@ -60,8 +72,18 @@ export function selectedJobs(decision) {
   return jobs;
 }
 
+/** Job and suite outputs share one decision; only intentionally omitted jobs are allowed to skip. */
+export function selectionOutputs(decision) {
+  const jobs = selectedJobs(decision);
+  return {
+    ...Object.fromEntries(Object.entries(jobs).map(([job, selected]) => [job.replaceAll('-', '_'), selected])),
+    ...Object.fromEntries(suites.map(suite => [suiteOutput(suite), decision.full || decision.affected.has(suite.task)])),
+    allowed_skips: Object.keys(jobs).filter(job => !jobs[job]).join(','),
+  };
+}
+
 export function formatSummary(decision) {
-  const lines = ['## E2E selection (shadow mode: every suite still runs)', ''];
+  const lines = ['## E2E selection', '', 'Only selected suites run. Unit tests and coverage always run in full.', ''];
   if (decision.full) {
     lines.push(`Every suite selected: ${decision.reason}.`, '');
   }
@@ -97,10 +119,11 @@ function main() {
   const decision = decide({
     eventName: process.env.GITHUB_EVENT_NAME ?? '',
     labels: (event.pull_request?.labels ?? []).map(label => label.name),
+    runNumber: Number(process.env.GITHUB_RUN_NUMBER),
     queryAffected: () => turboAffected(),
   });
-  const outputs = Object.entries(selectedJobs(decision))
-    .map(([job, selected]) => `${job.replaceAll('-', '_')}=${selected}`)
+  const outputs = Object.entries(selectionOutputs(decision))
+    .map(([key, value]) => `${key}=${value}`)
     .join('\n');
   if (process.env.GITHUB_OUTPUT) {
     fs.appendFileSync(process.env.GITHUB_OUTPUT, `${outputs}\n`);

@@ -1,0 +1,2685 @@
+<!doctype html>
+<html lang="en" data-visualize-standalone>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Shader Configuration.fragment</title>
+<style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:1rem;background:inherit}iframe{display:block;width:100%;height:calc(100vh - 2rem);margin:0 auto;border:0}</style>
+</head>
+<body>
+<iframe id="codex-visualization" sandbox="allow-scripts" referrerpolicy="no-referrer" title="Shader Configuration.fragment" data-srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;en&quot; data-visualize-standalone&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;meta name=&quot;referrer&quot; content=&quot;no-referrer&quot;&gt;
+&lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;default-src &#x27;none&#x27;; script-src &#x27;unsafe-inline&#x27; &#x27;unsafe-eval&#x27; &#x27;wasm-unsafe-eval&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src &#x27;unsafe-inline&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src &#x27;none&#x27;; object-src &#x27;none&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;&quot;&gt;
+&lt;title&gt;Shader Configuration.fragment&lt;/title&gt;
+&lt;style&gt;:root {
+  color-scheme: light dark;
+  background-color: var(
+    --background,
+    var(--color-background-primary, light-dark(rgb(255 255 255), rgb(24 24 24)))
+  ) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: var(
+    --color-background-primary,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --card: color-mix(in oklab, var(--foreground) 5%, var(--background));
+  --card-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --popover: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255), rgb(45 45 45))
+  );
+  --popover-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --primary: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --primary-foreground: var(
+    --color-text-inverse,
+    light-dark(rgb(255 255 255), rgb(13 13 13))
+  );
+  --secondary: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%))
+  );
+  --secondary-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: var(
+    --color-text-secondary,
+    light-dark(rgb(26 28 31 / 49.4%), rgb(255 255 255 / 49.8%))
+  );
+  --accent: var(
+    --color-background-info,
+    light-dark(rgb(229 242 255), rgb(13 39 63))
+  );
+  --accent-foreground: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --destructive: var(
+    --color-text-warning,
+    light-dark(rgb(226 85 7), rgb(255 133 73))
+  );
+  --border: var(
+    --color-border-secondary,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+  --input: var(
+    --color-border-primary,
+    light-dark(
+      rgb(26 28 31 / 11.8%),
+      color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+    )
+  );
+  --ring: var(
+    --color-ring-primary,
+    light-dark(rgb(51 156 255), rgb(131 195 255 / 76%))
+  );
+  --font-size-base: var(--font-text-md-size, 14px);
+  --blue: light-dark(rgb(51 156 255), rgb(51 156 255));
+  --orange: light-dark(rgb(226 85 7), rgb(251 106 34));
+  --green: light-dark(rgb(0 162 64), rgb(64 201 119));
+  --red: light-dark(rgb(224 46 42), rgb(255 103 100));
+  --purple: light-dark(rgb(146 79 247), rgb(173 123 249));
+  --yellow: light-dark(rgb(255 195 0), rgb(255 210 64));
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, &quot;Segoe UI&quot;, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, &quot;SF Mono&quot;, Menlo, Consolas, &quot;Liberation Mono&quot;,
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --icon-size: 16px;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --corner-shape: round;
+  --radius: var(--border-radius-lg, 10px);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 17 17&#x27;%3E%3Cpath d=&#x27;M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z&#x27;/%3E%3C/svg%3E&quot;);
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+}
+
+:root[data-theme=&quot;light&quot;] {
+  color-scheme: light;
+}
+
+:root[data-theme=&quot;dark&quot;] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html &gt; body {
+  /* Preserve MCP aliases for older inline renderers without creating :root cycles. */
+  --color-background-primary: var(
+    --background,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --color-text-primary: var(
+    --foreground,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --color-border-secondary: var(
+    --border,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+
+  margin: 0;
+  padding: var(--visualize-paint-gutter, 0px);
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans) !important;
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+.cursor-interaction {
+  cursor: var(--cursor-interaction, pointer);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: var(--cursor-interaction, pointer);
+  font-weight: var(--font-weight-medium, 500);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: var(--corner-shape);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--foreground);
+  font: inherit;
+  text-align: start;
+}
+
+.table :is(th, td) {
+  padding-block: 10px;
+  padding-inline: 0 24px;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.table-responsive &gt; .table :is(th, td) {
+  overflow-wrap: break-word;
+}
+
+.table :is(th, td):last-child {
+  padding-inline-end: 0;
+}
+
+.table :is(caption, thead th) {
+  font-weight: 600;
+}
+
+.table thead th {
+  padding-block: 8px;
+  border-bottom-color: color-mix(in srgb, var(--foreground) 16%, transparent);
+}
+
+.table tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+
+.table.table-sm :is(th, td) {
+  padding-block: 6px;
+}
+
+.table.table-sm :is(th, td):not(:last-child) {
+  padding-inline-end: 16px;
+}
+
+.table :is(.text-end, [align=&quot;right&quot;]) {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.table :is(.text-center, [align=&quot;center&quot;]) {
+  text-align: center;
+}
+
+.table .text-nowrap {
+  white-space: nowrap;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: var(--corner-shape);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+.widget {
+  min-width: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  box-shadow: 0 0 0 0.5px var(--border-strong, var(--border));
+  color: var(--foreground);
+  background: var(--background);
+}
+
+#widget &gt; :not(.card, .widget, .progress) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+hr {
+  width: 100%;
+  height: 1px;
+  margin-block: 6px;
+  border: 0;
+  background: var(--border);
+}
+
+.nav {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.progress {
+  display: flex;
+  height: 8px;
+  margin-block: calc((var(--line-height-normal, 1.5em) - 8px) / 2);
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+}
+
+.progress-bar:only-child {
+  border-radius: var(--radius-full);
+}
+
+.progress-bar {
+  height: 100%;
+  flex-shrink: 0;
+  border: 0;
+  background: var(--viz-series-1);
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls &gt; .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls &gt; .form-label &gt; :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.nav-link,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn,
+.nav-link {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: var(--cursor-interaction, pointer);
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover,
+.nav-link:not(:disabled):not([aria-disabled=&quot;true&quot;]):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.nav-pills .nav-link {
+  min-width: 0;
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.nav-justified .nav-link {
+  flex: 1 1 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.nav-pills .nav-link.active {
+  color: var(--foreground);
+  background: var(--muted);
+}
+
+/* Shared preview chrome; product styles stay inside each variant. */
+.viz-dotted-background {
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--foreground) 14%, transparent) 0.8px,
+    transparent 0.8px
+  );
+  background-position: center;
+  background-size: 16px 16px;
+}
+
+.viz-carousel {
+  position: relative;
+  min-width: 0;
+}
+
+.viz-carousel:has(&gt; .viz-carousel-controls) {
+  min-height: calc(60px + var(--viz-carousel-picker-height, 0px));
+  padding-bottom: 60px;
+}
+
+.viz-carousel &gt; [data-variant][hidden] {
+  display: none !important;
+}
+
+.viz-carousel &gt; [data-variant] {
+  isolation: isolate;
+}
+
+.viz-carousel-controls {
+  --viz-carousel-hover: light-dark(
+    color-mix(in srgb, var(--foreground) 5.4%, transparent),
+    color-mix(in srgb, var(--foreground) 7.8%, transparent)
+  );
+  position: absolute;
+  z-index: 2;
+  bottom: 8px;
+  left: 50%;
+  display: flex;
+  width: max-content;
+  /* Leave room for the host&#x27;s design-controls launcher at the trailing edge. */
+  max-width: calc(100% - 96px);
+  align-items: center;
+  gap: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  color: var(--foreground);
+  background: var(--background);
+  font-family: var(--font-sans);
+  /* Match the settings dropdown chrome independently of the content font size. */
+  font-size: 13px;
+  font-weight: var(--font-weight-normal);
+  line-height: 18px;
+  transform: translateX(-50%);
+  user-select: none;
+}
+
+/* Keep authored mockup button styles out of the shared carousel chrome. */
+.viz-carousel-controls button,
+.viz-carousel-picker &gt; summary {
+  display: flex !important;
+  height: auto !important;
+  min-height: 30px;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px;
+  padding: 0 6px !important;
+  -webkit-app-region: no-drag;
+  border: 0 !important;
+  border-radius: 14px !important;
+  color: inherit !important;
+  background: transparent !important;
+  font: inherit !important;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.viz-carousel-controls &gt; button,
+.viz-carousel-picker &gt; summary {
+  position: relative;
+  isolation: isolate;
+}
+
+.viz-carousel-controls &gt; button {
+  --icon-size: 16px;
+  width: 30px !important;
+  padding: 0 !important;
+}
+
+.viz-carousel-picker &gt; summary {
+  padding-inline: 12px !important;
+}
+
+.viz-carousel-controls .viz-carousel-caret {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  margin: 0;
+  color: inherit;
+  transform: rotate(180deg);
+}
+
+.viz-carousel-controls &gt; button &gt; svg,
+.viz-carousel-controls .viz-carousel-caret,
+.viz-carousel-count {
+  opacity: 0.5;
+}
+
+.viz-carousel-controls &gt; button::before,
+.viz-carousel-picker &gt; summary::before {
+  position: absolute;
+  z-index: -1;
+  inset: 3px;
+  border-radius: 12px;
+  content: &quot;&quot;;
+  pointer-events: none;
+}
+
+.viz-carousel-controls &gt; button:hover::before,
+.viz-carousel-picker &gt; summary:hover::before {
+  background: var(--viz-carousel-hover);
+}
+
+.viz-carousel-controls &gt; button,
+.viz-carousel-controls [data-lucide],
+.viz-carousel-controls .lucide {
+  flex-shrink: 0;
+}
+
+.viz-carousel-picker {
+  min-width: 0;
+}
+
+.viz-carousel-picker &gt; summary {
+  min-width: 0;
+  list-style: none;
+}
+
+.viz-carousel-picker &gt; summary::-webkit-details-marker {
+  display: none;
+}
+
+.viz-carousel-count {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.viz-carousel-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viz-carousel-options {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 4px);
+  left: 0;
+  display: flex;
+  max-height: 240px;
+  flex-direction: column;
+  gap: 2px;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--background);
+  box-shadow: 0 4px 12px light-dark(rgb(0 0 0 / 6%), rgb(0 0 0 / 25%));
+}
+
+.viz-carousel-options &gt; button {
+  border-radius: max(0px, calc(var(--radius-lg) - 5px)) !important;
+  width: 100% !important;
+  min-height: 28px;
+  justify-content: flex-start !important;
+  padding: 4px 8px !important;
+  font-size: var(--font-size-small) !important;
+  text-align: start;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.viz-carousel-options &gt; [aria-current=&quot;true&quot;],
+.viz-carousel-options &gt; button:hover {
+  background: var(--viz-carousel-hover) !important;
+}
+
+.btn:disabled,
+.nav-link:disabled,
+.nav-link[aria-disabled=&quot;true&quot;] {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type=&quot;file&quot;] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type=&quot;file&quot;]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type=&quot;file&quot;]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type=&quot;color&quot;] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: var(--corner-shape);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  corner-shape: var(--corner-shape);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type=&quot;checkbox&quot;]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: &quot;&quot;;
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type=&quot;radio&quot;] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type=&quot;radio&quot;]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: &quot;&quot;;
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+  [aria-pressed=&quot;true&quot;],
+  [aria-selected=&quot;true&quot;],
+  .is-selected
+) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed=&quot;true&quot;], [aria-selected=&quot;true&quot;], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible,
+.nav-link:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.viz-carousel-controls :is(button, summary):focus-visible {
+  outline: 2px solid var(--ring) !important;
+  outline-offset: 2px !important;
+}
+
+@media (pointer: coarse) {
+  .viz-carousel:has(&gt; .viz-carousel-controls) {
+    min-height: calc(76px + var(--viz-carousel-picker-height, 0px));
+    padding-bottom: 76px;
+  }
+
+  .btn,
+  .nav-link,
+  .viz-carousel-controls button,
+  .viz-carousel-picker &gt; summary,
+  .form-control,
+  .form-select {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* Keep small-screen WebKit from zooming when a text field receives focus. */
+  .form-control,
+  .form-select {
+    font-size: max(16px, var(--font-size-normal));
+  }
+
+  .form-control[type=&quot;file&quot;]::file-selector-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .form-control-color[type=&quot;color&quot;] {
+    width: 44px;
+    height: 44px;
+  }
+
+  .form-control:is(
+    [type=&quot;date&quot;],
+    [type=&quot;datetime-local&quot;],
+    [type=&quot;month&quot;],
+    [type=&quot;time&quot;],
+    [type=&quot;week&quot;]
+  ) {
+    min-width: 0;
+    max-width: 100%;
+    padding-block: 8px;
+  }
+
+  .form-check {
+    min-height: 44px;
+    padding-inline: 15px;
+  }
+
+  .form-check-input {
+    position: relative;
+  }
+
+  .form-check-input::after {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    content: &quot;&quot;;
+    transform: translate(-50%, -50%);
+  }
+
+  .form-check-label {
+    display: inline-flex;
+    min-width: 44px;
+    min-height: 44px;
+    align-items: center;
+  }
+
+  .form-range {
+    height: 44px;
+    touch-action: pan-y;
+  }
+
+  .form-range::-webkit-slider-runnable-track {
+    height: 44px;
+  }
+
+  .form-range::-moz-range-track {
+    height: 44px;
+  }
+
+  .form-range::-webkit-slider-thumb {
+    margin-top: 12px;
+  }
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget &gt; svg {
+  width: 100%;
+}
+
+/* Model-authored chart rules can otherwise stretch icons after these styles load. */
+svg.lucide {
+  display: block;
+  width: var(--icon-size) !important;
+  height: var(--icon-size) !important;
+  flex: none;
+  margin: 0 !important;
+  stroke-width: 1.6;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+html&gt;body{padding:0}&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;script type=&quot;application/json&quot; id=&quot;codex-visualization-widget-state&quot;&gt;__CODEX_VISUALIZATION_WIDGET_STATE__&lt;/script&gt;
+&lt;script&gt;(() =&gt; {
+  const root = document.documentElement;
+  const mediaQuery = globalThis.matchMedia(&quot;(prefers-color-scheme: dark)&quot;);
+  const apply = Reflect.apply;
+  const isArray = Array.isArray;
+  const hasOwn = Object.hasOwn;
+  const parentWindow = globalThis.parent;
+  const stringify = JSON.stringify;
+  const parse = JSON.parse;
+  const encode = TextEncoder.prototype.encode.bind(new TextEncoder());
+  const initialStateElement = document.getElementById(
+    &quot;codex-visualization-widget-state&quot;,
+  );
+  const initialGlobals = parse(initialStateElement?.textContent ?? &quot;{}&quot;);
+  initialStateElement?.remove();
+  /** @type {Record&lt;string, unknown&gt; | null} */
+  let state = initialGlobals.widgetState ?? null;
+  const statePersistence = initialGlobals.statePersistence ?? &quot;none&quot;;
+  let nextStateRequestId = 0;
+  /** @type {Map&lt;number, { resolve: () =&gt; void; reject: (error: Error) =&gt; void; timeout: ReturnType&lt;typeof globalThis.setTimeout&gt;; serializedState: string }&gt;} */
+  const pendingStateWrites = new Map();
+  const persistenceError = () =&gt;
+    Object.assign(
+      new Error(&quot;The host could not persist the widget state update&quot;),
+      {
+        code: -32000,
+        data: { code: &quot;widget_state_persistence_failed&quot;, retryable: false },
+      },
+    );
+  /**
+   * @param {object} prototype
+   * @param {string} property
+   */
+  const getPrototypeGetter = (prototype, property) =&gt; {
+    // oxlint-disable-next-line typescript/unbound-method -- invoked through captured Reflect.apply
+    const getter = Object.getOwnPropertyDescriptor(prototype, property)?.get;
+    if (getter == null) {
+      throw new Error(`Missing ${property} getter`);
+    }
+    return getter;
+  };
+  const getMessageData = getPrototypeGetter(MessageEvent.prototype, &quot;data&quot;);
+  const getMessagePorts = getPrototypeGetter(MessageEvent.prototype, &quot;ports&quot;);
+  const getMessageSource = getPrototypeGetter(MessageEvent.prototype, &quot;source&quot;);
+  // oxlint-disable-next-line typescript/unbound-method -- captured before the untrusted fragment runs
+  const addHostMessageListener = MessagePort.prototype.addEventListener;
+  // oxlint-disable-next-line typescript/unbound-method -- captured before the untrusted fragment runs
+  const postHostMessage = MessagePort.prototype.postMessage;
+  // oxlint-disable-next-line typescript/unbound-method -- captured before the untrusted fragment runs
+  const startHostPort = MessagePort.prototype.start;
+  // oxlint-disable-next-line typescript/unbound-method -- captured before the untrusted fragment runs
+  const stopMessagePropagation = Event.prototype.stopImmediatePropagation;
+  /** @type {MessagePort | null} */
+  let hostPort = null;
+  const postToHost = (type, payload) =&gt; {
+    if (hostPort != null) {
+      apply(postHostMessage, hostPort, [{ type, ...payload }]);
+    }
+  };
+  const openExternal = ({ href }) =&gt; {
+    if (globalThis.navigator.userActivation?.isActive === true) {
+      postToHost(&quot;open-external&quot;, { href });
+    }
+  };
+  const sendFollowUpMessage = ({ context, prompt, title }) =&gt; {
+    if (globalThis.navigator.userActivation?.isActive === true) {
+      postToHost(&quot;follow-up&quot;, { context, prompt, title });
+    }
+    return Promise.resolve();
+  };
+  /**
+   * @param {Record&lt;string, unknown&gt; | ((previous: Record&lt;string, unknown&gt; | null) =&gt; Record&lt;string, unknown&gt;)} next
+   * @returns {Promise&lt;void&gt;}
+   */
+  const setWidgetState = async (next) =&gt; {
+    const nextState = typeof next === &quot;function&quot; ? next(state) : next;
+    if (
+      nextState == null ||
+      typeof nextState !== &quot;object&quot; ||
+      isArray(nextState)
+    ) {
+      throw new TypeError(&quot;Widget state must be a JSON object&quot;);
+    }
+    const inputState = stringify(
+      nextState,
+      (_key, /** @type {unknown} */ value) =&gt; {
+        if (
+          typeof value === &quot;undefined&quot; ||
+          typeof value === &quot;function&quot; ||
+          typeof value === &quot;symbol&quot; ||
+          (typeof value === &quot;number&quot; &amp;&amp; !Number.isFinite(value))
+        ) {
+          throw new TypeError(&quot;Widget state must be a JSON object&quot;);
+        }
+        return value;
+      },
+    );
+    const parsedState = parse(inputState);
+    if (
+      parsedState == null ||
+      typeof parsedState !== &quot;object&quot; ||
+      isArray(parsedState)
+    ) {
+      throw new TypeError(&quot;Widget state must be a JSON object&quot;);
+    }
+    const storedState = {
+      modelContent: null,
+      privateContent: null,
+      ...parsedState,
+    };
+    const serializedState = stringify(storedState);
+    if (encode(serializedState).length &gt; 16 * 1024) {
+      throw new TypeError(
+        &quot;Widget state must be a JSON object of at most 16 KiB&quot;,
+      );
+    }
+    if (
+      hasOwn(storedState, &quot;imageIds&quot;) &amp;&amp;
+      (!isArray(storedState.imageIds) ||
+        storedState.imageIds.some(
+          (/** @type {unknown} */ id) =&gt; typeof id !== &quot;string&quot;,
+        ))
+    ) {
+      throw new TypeError(&quot;Widget state imageIds must be an array of strings&quot;);
+    }
+    if (storedState.imageIds?.length &gt; 0) {
+      throw Object.assign(
+        new TypeError(&quot;Visualization state does not support image attachments&quot;),
+        { code: -32602, data: { code: &quot;images_unsupported&quot; } },
+      );
+    }
+    state = storedState;
+    globalThis.openai.widgetState = state;
+    globalThis.dispatchEvent(
+      new CustomEvent(&quot;openai:set_globals&quot;, {
+        detail: { globals: { widgetState: state } },
+      }),
+    );
+    if (statePersistence === &quot;none&quot;) {
+      throw persistenceError();
+    }
+    const id = ++nextStateRequestId;
+    return new Promise((resolve, reject) =&gt; {
+      const timeout = globalThis.setTimeout(() =&gt; {
+        pendingStateWrites.delete(id);
+        reject(persistenceError());
+      }, 30_000);
+      pendingStateWrites.set(id, { resolve, reject, timeout, serializedState });
+      postToHost(&quot;widget-state-write&quot;, { id, state: serializedState });
+    });
+  };
+  const syncTheme = () =&gt; {
+    const theme = mediaQuery.matches ? &quot;dark&quot; : &quot;light&quot;;
+    root.dataset.theme = theme;
+    globalThis.openai = {
+      ...globalThis.openai,
+      openExternal,
+      sendFollowUpMessage,
+      setWidgetState,
+      theme,
+      visualizationStyleVariables: {},
+      visualizationTheme: theme,
+      widgetState: state,
+      statePersistence,
+      stateModelContext: &quot;none&quot;,
+    };
+    globalThis.dispatchEvent(
+      new CustomEvent(&quot;openai:set_globals&quot;, {
+        detail: { globals: globalThis.openai },
+      }),
+    );
+  };
+  const sendHeight = () =&gt; {
+    postToHost(&quot;height&quot;, {
+      height: Math.ceil(
+        Math.max(
+          document.body.scrollHeight,
+          document.body.getBoundingClientRect().height,
+        ),
+      ),
+    });
+  };
+
+  globalThis.addEventListener(
+    &quot;message&quot;,
+    (event) =&gt; {
+      const data = apply(getMessageData, event, []);
+      const ports = apply(getMessagePorts, event, []);
+      const source = apply(getMessageSource, event, []);
+      if (
+        hostPort != null ||
+        source !== parentWindow ||
+        typeof data !== &quot;object&quot; ||
+        data?.type !== &quot;codex-visualization-initialize&quot; ||
+        !isArray(ports) ||
+        ports.length !== 1
+      ) {
+        return;
+      }
+      apply(stopMessagePropagation, event, []);
+      const nextHostPort = ports[0];
+      try {
+        apply(addHostMessageListener, nextHostPort, [
+          &quot;message&quot;,
+          (event) =&gt; {
+            const data = apply(getMessageData, event, []);
+            if (typeof data === &quot;object&quot; &amp;&amp; data?.type === &quot;measure&quot;) {
+              sendHeight();
+            } else if (
+              typeof data === &quot;object&quot; &amp;&amp;
+              data?.type === &quot;widget-state-result&quot;
+            ) {
+              /** @type {unknown} */
+              const id = data.id;
+              if (typeof id !== &quot;number&quot;) {
+                return;
+              }
+              const pending = pendingStateWrites.get(id);
+              if (pending != null) {
+                pendingStateWrites.delete(id);
+                globalThis.clearTimeout(pending.timeout);
+                if (data.ok === true) {
+                  pending.resolve();
+                } else {
+                  pending.reject(persistenceError());
+                }
+              }
+            }
+          },
+        ]);
+        apply(startHostPort, nextHostPort, []);
+      } catch {
+        return;
+      }
+      hostPort = nextHostPort;
+      for (const [id, { serializedState }] of pendingStateWrites) {
+        postToHost(&quot;widget-state-write&quot;, { id, state: serializedState });
+      }
+      sendHeight();
+    },
+    { capture: true },
+  );
+  document.currentScript?.remove();
+  mediaQuery.addEventListener(&quot;change&quot;, syncTheme);
+  globalThis.addEventListener(&quot;click&quot;, (event) =&gt; {
+    if (event.defaultPrevented) {
+      return;
+    }
+    let element = null;
+    if (event.target instanceof globalThis.Element) {
+      element = event.target;
+    } else if (event.target instanceof globalThis.Node) {
+      element = event.target.parentElement;
+    }
+    const link = element?.closest(&quot;a[href]&quot;);
+    const href = link?.getAttribute(&quot;href&quot;);
+    if (href == null) {
+      return;
+    }
+    if (href.startsWith(&quot;#&quot;)) {
+      let id;
+      try {
+        id = decodeURIComponent(href.slice(1));
+      } catch {
+        return;
+      }
+      const target = id.length === 0 ? root : document.getElementById(id);
+      if (
+        target == null ||
+        globalThis.navigator.userActivation?.isActive !== true
+      ) {
+        return;
+      }
+      event.preventDefault();
+      postToHost(&quot;scroll-to&quot;, {
+        top: target.getBoundingClientRect().top + globalThis.scrollY,
+      });
+      return;
+    }
+    event.preventDefault();
+    openExternal({ href });
+  });
+  new ResizeObserver(sendHeight).observe(document.body);
+  syncTheme();
+})();
+&lt;/script&gt;
+&lt;div id=&quot;shader-file-first&quot; class=&quot;viz-dotted-background&quot;&gt;
+  &lt;div class=&quot;sf-stage&quot;&gt;
+    &lt;div class=&quot;sf-panel&quot; aria-label=&quot;File-first shader controls&quot;&gt;
+      &lt;header&gt;&lt;span&gt;Shader configuration&lt;/span&gt;&lt;span class=&quot;sf-language&quot;&gt;WGSL&lt;/span&gt;&lt;/header&gt;
+      &lt;div class=&quot;sf-tabs&quot; role=&quot;group&quot; aria-label=&quot;Pass&quot;&gt;&lt;button type=&quot;button&quot; data-pass=&quot;Image&quot;&gt;Image&lt;/button&gt;&lt;button type=&quot;button&quot; data-pass=&quot;Buffer A&quot;&gt;Buffer A&lt;/button&gt;&lt;button type=&quot;button&quot; data-pass=&quot;Buffer B&quot;&gt;Buffer B&lt;/button&gt;&lt;/div&gt;
+      &lt;div class=&quot;sf-content&quot;&gt;
+        &lt;section data-stage=&quot;fragment&quot;&gt;
+          &lt;h3&gt;Fragment shader&lt;/h3&gt;
+          &lt;label class=&quot;sf-field&quot;&gt;File
+            &lt;div class=&quot;sf-file-row&quot;&gt;&lt;input aria-label=&quot;Fragment file path&quot; value=&quot;./buffers/feedback.wgsl&quot; spellcheck=&quot;false&quot;&gt;&lt;button type=&quot;button&quot; data-choose=&quot;fragment&quot;&gt;Change…&lt;/button&gt;&lt;/div&gt;
+          &lt;/label&gt;
+          &lt;div class=&quot;sf-function&quot; data-function=&quot;fragment&quot;&gt;&lt;/div&gt;
+        &lt;/section&gt;
+        &lt;section data-stage=&quot;vertex&quot;&gt;
+          &lt;h3&gt;Vertex shader&lt;/h3&gt;
+          &lt;div class=&quot;sf-source-options&quot; role=&quot;group&quot; aria-label=&quot;Vertex source&quot;&gt;
+            &lt;button type=&quot;button&quot; data-source=&quot;builtin&quot; aria-pressed=&quot;false&quot;&gt;Built-in&lt;/button&gt;
+            &lt;button type=&quot;button&quot; data-source=&quot;same&quot; aria-pressed=&quot;true&quot;&gt;Same file&lt;/button&gt;
+            &lt;button type=&quot;button&quot; data-source=&quot;separate&quot; aria-pressed=&quot;false&quot;&gt;Separate file&lt;/button&gt;
+          &lt;/div&gt;
+          &lt;div class=&quot;sf-vertex-file&quot; hidden&gt;
+            &lt;label class=&quot;sf-field&quot;&gt;File
+              &lt;div class=&quot;sf-file-row&quot;&gt;&lt;input aria-label=&quot;Vertex file path&quot; value=&quot;./mesh.wgsl&quot; spellcheck=&quot;false&quot;&gt;&lt;button type=&quot;button&quot; data-choose=&quot;vertex&quot;&gt;Change…&lt;/button&gt;&lt;/div&gt;
+            &lt;/label&gt;
+          &lt;/div&gt;
+          &lt;div class=&quot;sf-function&quot; data-function=&quot;vertex&quot;&gt;&lt;/div&gt;
+          &lt;div class=&quot;sf-builtin&quot; hidden&gt;Viewer vertex shader&lt;/div&gt;
+        &lt;/section&gt;
+        &lt;details class=&quot;sf-settings sf-channels&quot; open&gt;&lt;summary&gt;Channels &lt;span class=&quot;sf-summary-value&quot; data-channel-count&gt;2 inputs&lt;/span&gt;&lt;/summary&gt;
+          &lt;div class=&quot;sf-settings-body&quot;&gt;&lt;div class=&quot;sf-channel-list&quot;&gt;&lt;/div&gt;&lt;div class=&quot;sf-small-actions&quot;&gt;&lt;button type=&quot;button&quot; data-add-channel&gt;+ Add channel&lt;/button&gt;&lt;button type=&quot;button&quot; data-sort&gt;Sort A–Z&lt;/button&gt;&lt;/div&gt;&lt;/div&gt;
+        &lt;/details&gt;
+        &lt;details class=&quot;sf-settings&quot; open&gt;&lt;summary&gt;Geometry &lt;span class=&quot;sf-summary-value&quot; data-geometry-name&gt;Cube&lt;/span&gt;&lt;/summary&gt;
+          &lt;div class=&quot;sf-settings-body&quot;&gt;
+            &lt;label class=&quot;sf-field&quot;&gt;Type&lt;select aria-label=&quot;Geometry type&quot; data-setting=&quot;geometry&quot;&gt;&lt;option value=&quot;fullscreen&quot;&gt;Fullscreen&lt;/option&gt;&lt;option value=&quot;vertices&quot;&gt;Vertices&lt;/option&gt;&lt;option value=&quot;plane&quot;&gt;Plane&lt;/option&gt;&lt;option value=&quot;cube&quot; selected&gt;Cube&lt;/option&gt;&lt;option value=&quot;sphere&quot;&gt;Sphere&lt;/option&gt;&lt;option value=&quot;model&quot;&gt;Model&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;
+            &lt;div class=&quot;sf-model-fields&quot; hidden&gt;&lt;label class=&quot;sf-field&quot;&gt;Model file&lt;div class=&quot;sf-file-row&quot;&gt;&lt;input aria-label=&quot;Model file path&quot; data-setting=&quot;modelPath&quot; value=&quot;./models/scene.glb&quot;&gt;&lt;button type=&quot;button&quot; data-model-file&gt;Change…&lt;/button&gt;&lt;/div&gt;&lt;/label&gt;&lt;label class=&quot;sf-field&quot;&gt;Mesh&lt;select data-setting=&quot;modelMesh&quot; aria-label=&quot;Model mesh&quot;&gt;&lt;option&gt;All meshes&lt;/option&gt;&lt;option&gt;Body&lt;/option&gt;&lt;option&gt;Glass&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;&lt;/div&gt;
+            &lt;div class=&quot;sf-mesh-fields&quot;&gt;&lt;label class=&quot;sf-field&quot;&gt;Topology&lt;select aria-label=&quot;Mesh topology&quot; data-setting=&quot;meshTopology&quot;&gt;&lt;option&gt;Triangles&lt;/option&gt;&lt;option&gt;Wireframe&lt;/option&gt;&lt;option&gt;Points&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;&lt;/div&gt;
+            &lt;div class=&quot;sf-vertices-fields&quot; hidden&gt;&lt;div class=&quot;sf-two-col&quot;&gt;&lt;label class=&quot;sf-field&quot;&gt;Vertex count&lt;input type=&quot;number&quot; min=&quot;1&quot; value=&quot;36&quot; data-setting=&quot;vertexCount&quot; aria-label=&quot;Vertex count&quot;&gt;&lt;/label&gt;&lt;label class=&quot;sf-field&quot;&gt;Topology&lt;select data-setting=&quot;vertexTopology&quot; aria-label=&quot;Vertex topology&quot;&gt;&lt;option&gt;Triangle list&lt;/option&gt;&lt;option&gt;Triangle strip&lt;/option&gt;&lt;option&gt;Line list&lt;/option&gt;&lt;option&gt;Line strip&lt;/option&gt;&lt;option&gt;Point list&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;&lt;/div&gt;&lt;label class=&quot;sf-field&quot;&gt;Space&lt;select aria-label=&quot;Vertex space&quot; data-setting=&quot;space&quot;&gt;&lt;option value=&quot;world&quot;&gt;World&lt;/option&gt;&lt;option value=&quot;clip&quot;&gt;Clip&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;&lt;/div&gt;
+            &lt;label class=&quot;sf-field sf-instance-field&quot;&gt;Instances&lt;input type=&quot;number&quot; min=&quot;1&quot; value=&quot;1&quot; aria-label=&quot;Instance count&quot; data-setting=&quot;instances&quot;&gt;&lt;/label&gt;
+            &lt;label class=&quot;sf-check sf-camera-field&quot;&gt;&lt;input type=&quot;checkbox&quot; checked data-setting=&quot;camera&quot;&gt;Use viewer camera&lt;/label&gt;
+            &lt;div class=&quot;sf-camera-default sf-small-actions&quot;&gt;&lt;span&gt;Using global default&lt;/span&gt;&lt;button type=&quot;button&quot; data-camera-reset&gt;Use default&lt;/button&gt;&lt;/div&gt;
+          &lt;/div&gt;
+        &lt;/details&gt;
+        &lt;details class=&quot;sf-settings&quot; open&gt;&lt;summary&gt;Rendering&lt;/summary&gt;&lt;div class=&quot;sf-settings-body&quot;&gt;
+          &lt;div class=&quot;sf-two-col&quot;&gt;&lt;label class=&quot;sf-field&quot;&gt;Blending&lt;select aria-label=&quot;Blending&quot; data-setting=&quot;blend&quot;&gt;&lt;option&gt;None&lt;/option&gt;&lt;option&gt;Alpha&lt;/option&gt;&lt;option&gt;Premultiplied alpha&lt;/option&gt;&lt;option&gt;Additive&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;&lt;label class=&quot;sf-field sf-aa-field&quot;&gt;Antialiasing&lt;select aria-label=&quot;Antialiasing&quot; data-setting=&quot;samples&quot;&gt;&lt;option&gt;Off&lt;/option&gt;&lt;option&gt;4× MSAA&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;&lt;/div&gt;
+          &lt;div class=&quot;sf-two-col sf-clear-fields&quot;&gt;&lt;label class=&quot;sf-field&quot;&gt;Clear color&lt;input type=&quot;color&quot; value=&quot;#000000&quot; data-setting=&quot;clearColor&quot; aria-label=&quot;Clear color&quot;&gt;&lt;/label&gt;&lt;label class=&quot;sf-field&quot;&gt;Clear alpha&lt;input type=&quot;number&quot; min=&quot;0&quot; max=&quot;1&quot; step=&quot;0.05&quot; value=&quot;1&quot; data-setting=&quot;clearAlpha&quot; aria-label=&quot;Clear alpha&quot;&gt;&lt;/label&gt;&lt;/div&gt;
+          &lt;div class=&quot;sf-depth-fields&quot;&gt;&lt;label class=&quot;sf-field&quot;&gt;Cull faces&lt;select aria-label=&quot;Cull faces&quot; data-setting=&quot;cull&quot;&gt;&lt;option&gt;Back&lt;/option&gt;&lt;option&gt;Front&lt;/option&gt;&lt;option&gt;None&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;&lt;details class=&quot;sf-advanced&quot;&gt;&lt;summary&gt;Depth settings&lt;/summary&gt;&lt;div class=&quot;sf-settings-body&quot;&gt;&lt;label class=&quot;sf-check&quot;&gt;&lt;input type=&quot;checkbox&quot; checked data-setting=&quot;depth&quot;&gt;Depth testing&lt;/label&gt;&lt;label class=&quot;sf-check&quot;&gt;&lt;input type=&quot;checkbox&quot; checked data-setting=&quot;depthWrite&quot;&gt;Write depth&lt;/label&gt;&lt;label class=&quot;sf-field&quot;&gt;Compare&lt;select aria-label=&quot;Depth comparison&quot; data-setting=&quot;depthCompare&quot;&gt;&lt;option&gt;Less or equal&lt;/option&gt;&lt;option&gt;Less&lt;/option&gt;&lt;option&gt;Greater&lt;/option&gt;&lt;option&gt;Greater or equal&lt;/option&gt;&lt;option&gt;Equal&lt;/option&gt;&lt;option&gt;Not equal&lt;/option&gt;&lt;option&gt;Always&lt;/option&gt;&lt;option&gt;Never&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;&lt;/div&gt;&lt;/details&gt;&lt;/div&gt;
+        &lt;/div&gt;&lt;/details&gt;
+        &lt;details class=&quot;sf-settings sf-resolution&quot; open&gt;&lt;summary&gt;Resolution&lt;/summary&gt;&lt;div class=&quot;sf-settings-body&quot;&gt;
+          &lt;div class=&quot;sf-image-resolution sf-settings-body&quot; hidden&gt;&lt;label class=&quot;sf-field&quot;&gt;Scale&lt;select data-setting=&quot;imageScale&quot; aria-label=&quot;Image scale&quot;&gt;&lt;option&gt;0.25×&lt;/option&gt;&lt;option&gt;0.5×&lt;/option&gt;&lt;option selected&gt;1×&lt;/option&gt;&lt;option&gt;2×&lt;/option&gt;&lt;option&gt;4×&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;&lt;label class=&quot;sf-field&quot;&gt;Aspect&lt;select data-setting=&quot;aspect&quot; aria-label=&quot;Image aspect&quot;&gt;&lt;option&gt;16:9&lt;/option&gt;&lt;option&gt;4:3&lt;/option&gt;&lt;option&gt;1:1&lt;/option&gt;&lt;option&gt;fill&lt;/option&gt;&lt;option selected&gt;auto&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;&lt;div class=&quot;sf-two-col&quot;&gt;&lt;label class=&quot;sf-field&quot;&gt;Fixed width&lt;input type=&quot;number&quot; min=&quot;1&quot; data-setting=&quot;imageWidth&quot; aria-label=&quot;Image width&quot; placeholder=&quot;Auto&quot;&gt;&lt;/label&gt;&lt;label class=&quot;sf-field&quot;&gt;Fixed height&lt;input type=&quot;number&quot; min=&quot;1&quot; data-setting=&quot;imageHeight&quot; aria-label=&quot;Image height&quot; placeholder=&quot;Auto&quot;&gt;&lt;/label&gt;&lt;/div&gt;&lt;button type=&quot;button&quot; data-clear-size&gt;Clear fixed size&lt;/button&gt;&lt;/div&gt;
+          &lt;label class=&quot;sf-field&quot;&gt;Resolution&lt;select aria-label=&quot;Resolution&quot; data-setting=&quot;resolution&quot;&gt;&lt;option value=&quot;inherit&quot;&gt;Inherit&lt;/option&gt;&lt;option value=&quot;scale&quot;&gt;Scale&lt;/option&gt;&lt;option value=&quot;fixed&quot;&gt;Fixed size&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;
+          &lt;label class=&quot;sf-field sf-scale-fields&quot; hidden&gt;Scale&lt;select data-setting=&quot;scale&quot; aria-label=&quot;Resolution scale&quot;&gt;&lt;option&gt;0.25×&lt;/option&gt;&lt;option&gt;0.5×&lt;/option&gt;&lt;option selected&gt;1×&lt;/option&gt;&lt;option&gt;2×&lt;/option&gt;&lt;option&gt;4×&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;
+          &lt;div class=&quot;sf-two-col sf-fixed-fields&quot; hidden&gt;&lt;label class=&quot;sf-field&quot;&gt;Width&lt;input type=&quot;number&quot; min=&quot;1&quot; value=&quot;1920&quot; data-setting=&quot;width&quot; aria-label=&quot;Output width&quot;&gt;&lt;/label&gt;&lt;label class=&quot;sf-field&quot;&gt;Height&lt;input type=&quot;number&quot; min=&quot;1&quot; value=&quot;1080&quot; data-setting=&quot;height&quot; aria-label=&quot;Output height&quot;&gt;&lt;/label&gt;&lt;/div&gt;
+          &lt;button type=&quot;button&quot; data-reset-resolution&gt;Reset resolution&lt;/button&gt;
+        &lt;/div&gt;&lt;/details&gt;
+        &lt;details class=&quot;sf-settings sf-output&quot; open&gt;&lt;summary&gt;Output&lt;/summary&gt;&lt;div class=&quot;sf-settings-body&quot;&gt;
+          &lt;label class=&quot;sf-field&quot;&gt;Format&lt;select aria-label=&quot;Output format&quot; data-setting=&quot;format&quot;&gt;&lt;option&gt;Auto (32-bit preferred)&lt;/option&gt;&lt;option&gt;RGBA 16-bit float&lt;/option&gt;&lt;option&gt;RGBA 32-bit float&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;
+          &lt;div class=&quot;sf-native-outputs&quot;&gt;&lt;div class=&quot;sf-field&quot;&gt;Output textures · detected from function&lt;div class=&quot;sf-output-list&quot;&gt;&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;
+        &lt;/div&gt;&lt;/details&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;sf-overlay&quot; hidden&gt;
+        &lt;div class=&quot;sf-dialog&quot; role=&quot;dialog&quot; aria-modal=&quot;true&quot; aria-label=&quot;Choose shader file&quot;&gt;
+          &lt;div class=&quot;sf-dialog-heading&quot;&gt;&lt;h3&gt;Choose shader file&lt;/h3&gt;&lt;button type=&quot;button&quot; data-close aria-label=&quot;Close file chooser&quot;&gt;×&lt;/button&gt;&lt;/div&gt;
+          &lt;div class=&quot;sf-choose-body&quot;&gt;&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;sf-status&quot; aria-live=&quot;polite&quot;&gt;&lt;/div&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+&lt;style&gt;
+#shader-file-first .sf-stage{display:flex;justify-content:center;padding:22px 12px;min-height:510px;box-sizing:border-box}
+#shader-file-first .sf-panel{--sf-bg:light-dark(#fafafa,#202020);--sf-header:light-dark(#f0f0f0,#252526);--sf-text:light-dark(#252525,#d4d4d4);--sf-muted:light-dark(#626262,#ababab);--sf-border:light-dark(#d4d4d4,#414141);--sf-input:light-dark(#fff,#2d2d2d);--sf-hover:light-dark(#e8e8e8,#383838);--sf-blue:light-dark(#006cbe,#3794ff);--sf-selected:light-dark(#e3effa,#173a54);--sf-primary:light-dark(#0876c9,#0e639c);--sf-gap:14px;width:100%;max-width:500px;align-self:flex-start;position:relative;background:var(--sf-bg);color:var(--sf-text);border:1px solid var(--sf-border);border-radius:6px;font:13px/1.5 &quot;Segoe UI&quot;,Arial,sans-serif;box-shadow:0 8px 26px light-dark(#0000000c,#00000026)}
+#shader-file-first .sf-panel *{box-sizing:border-box}
+#shader-file-first .sf-panel [hidden]{display:none!important}
+#shader-file-first .sf-panel header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--sf-header);font-weight:500;border-radius:6px 6px 0 0}
+#shader-file-first .sf-language{font-weight:400;font-size:11px;color:var(--sf-muted);letter-spacing:.5px}
+#shader-file-first .sf-tabs{display:flex;gap:24px;padding:0 16px;border-bottom:1px solid var(--sf-border);color:var(--sf-muted)}
+#shader-file-first .sf-panel .sf-tabs button{padding:10px 0 8px;border:0;border-radius:0;background:none}
+#shader-file-first .sf-panel .sf-tabs button.sf-active{border-bottom:2px solid var(--sf-blue);color:var(--sf-text)}
+#shader-file-first .sf-content{padding:0 16px 16px}
+#shader-file-first .sf-content&gt;section{padding:18px 0;border-bottom:1px solid var(--sf-border)}
+#shader-file-first .sf-panel h3{font:500 13px/1.5 &quot;Segoe UI&quot;,Arial,sans-serif;margin:0 0 12px;color:var(--sf-text)}
+#shader-file-first .sf-field{display:flex;flex-direction:column;gap:5px;min-width:0;color:var(--sf-muted);font-size:12px}
+#shader-file-first .sf-panel button,#shader-file-first .sf-panel input,#shader-file-first .sf-panel select{font:400 13px/1.4 &quot;Segoe UI&quot;,Arial,sans-serif;min-height:33px;min-width:0;max-width:100%;border:1px solid var(--sf-border);border-radius:3px;padding:6px 9px;background:var(--sf-input);color:var(--sf-text)}
+#shader-file-first .sf-panel input{width:100%;font-family:Consolas,&quot;Courier New&quot;,monospace;font-size:12px}
+#shader-file-first .sf-panel button{background:transparent;flex-shrink:0}
+#shader-file-first .sf-panel button:hover{background:var(--sf-hover)}
+#shader-file-first .sf-panel button.sf-primary{background:var(--sf-primary);border-color:var(--sf-primary);color:#fff}
+#shader-file-first .sf-file-row,#shader-file-first .sf-function-row{display:flex;align-items:center;gap:8px}
+#shader-file-first .sf-file-row input,#shader-file-first .sf-function-row select{flex:1;width:100%}
+#shader-file-first .sf-function,#shader-file-first .sf-vertex-file{margin-top:var(--sf-gap)}
+#shader-file-first .sf-function-list{display:flex;flex-direction:column;gap:5px}
+#shader-file-first .sf-function-choice{display:flex;align-items:center;gap:9px;padding:8px;border-radius:3px;color:var(--sf-text);background:var(--sf-input);font:12px/1.5 Consolas,monospace;overflow-wrap:anywhere}
+#shader-file-first .sf-function-choice:has(input:checked){background:var(--sf-selected)}
+#shader-file-first .sf-panel .sf-function-choice input{width:14px;height:14px;min-height:14px;padding:0;margin:0;flex-shrink:0;accent-color:var(--sf-blue)}
+#shader-file-first .sf-function-add{margin-top:10px}
+#shader-file-first .sf-source-options{display:flex;gap:0}
+#shader-file-first .sf-source-options button{flex:1;border-radius:0;margin-left:-1px;white-space:normal}
+#shader-file-first .sf-function-value{display:flex;align-items:center;min-height:33px;flex:1;overflow-wrap:anywhere;color:var(--sf-text);font:12px/1.5 Consolas,&quot;Courier New&quot;,monospace}
+#shader-file-first .sf-source-options button:first-child{margin-left:0;border-radius:3px 0 0 3px}
+#shader-file-first .sf-source-options button:last-child{border-radius:0 3px 3px 0}
+#shader-file-first .sf-source-options button[aria-pressed=&quot;true&quot;]{background:var(--sf-selected);border-color:var(--sf-blue);position:relative}
+#shader-file-first .sf-builtin{margin-top:var(--sf-gap);color:var(--sf-muted);font-size:12px}
+#shader-file-first .sf-settings{padding:16px 0;border-bottom:1px solid var(--sf-border)}
+#shader-file-first .sf-settings:last-child{border-bottom:0;padding-bottom:0}
+#shader-file-first .sf-settings summary{font-weight:500}
+#shader-file-first .sf-summary-value{float:right;color:var(--sf-muted);font-weight:400;font-size:12px}
+#shader-file-first .sf-settings-body{display:flex;flex-direction:column;gap:var(--sf-gap);margin-top:14px}
+#shader-file-first .sf-two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+#shader-file-first .sf-check{display:flex;align-items:center;gap:8px;font-size:13px}
+#shader-file-first .sf-panel input[type=&quot;checkbox&quot;]{width:14px;height:14px;min-height:14px;flex-shrink:0;accent-color:var(--sf-blue);margin:0}
+#shader-file-first .sf-panel input[type=&quot;color&quot;]{padding:3px;height:33px}
+#shader-file-first .sf-instance-field input{max-width:150px}
+#shader-file-first .sf-model-fields,#shader-file-first .sf-vertices-fields,#shader-file-first .sf-depth-fields{display:flex;flex-direction:column;gap:var(--sf-gap)}
+#shader-file-first .sf-advanced{padding:8px 0 0}
+#shader-file-first .sf-advanced summary{color:var(--sf-muted);font-weight:400;font-size:12px}
+#shader-file-first .sf-channel-list,#shader-file-first .sf-output-list{display:flex;flex-direction:column;gap:8px}
+#shader-file-first .sf-channel-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#shader-file-first .sf-channel-row code{font:12px/1.5 Consolas,&quot;Courier New&quot;,monospace;min-width:75px}
+#shader-file-first .sf-channel-row .sf-channel-source{flex:1;text-align:left}
+#shader-file-first .sf-channel-row .sf-remove{min-width:30px;padding:4px}
+#shader-file-first .sf-small-actions{display:flex;gap:8px;flex-wrap:wrap}
+#shader-file-first .sf-native-outputs{display:flex;flex-direction:column;gap:12px}
+#shader-file-first .sf-output-entry{flex-wrap:wrap}
+#shader-file-first .sf-output-entry input{min-width:130px}
+#shader-file-first .sf-misc-tabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--sf-border);padding-bottom:10px}
+#shader-file-first .sf-panel .sf-misc-tabs button{padding:5px 7px;font-size:12px}
+#shader-file-first .sf-buffer-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+#shader-file-first .sf-buffer-choice{display:flex;flex-direction:column;align-items:center;gap:4px}
+#shader-file-first .sf-buffer-choice span{font-size:23px}
+#shader-file-first .sf-buffer-choice small{font-size:11px}
+#shader-file-first .sf-panel button[aria-pressed=&quot;true&quot;]{background:var(--sf-selected);border-color:var(--sf-blue)}
+#shader-file-first .sf-output-picker{display:flex;flex-direction:column;gap:8px}
+#shader-file-first .sf-output-entry{display:flex;align-items:center;gap:12px}
+#shader-file-first .sf-output-entry span{white-space:nowrap}
+#shader-file-first .sf-output-entry input{flex:1}
+#shader-file-first .sf-panel button:disabled{opacity:.45}
+#shader-file-first .sf-overlay{position:absolute;inset:0;z-index:4;padding:48px 16px 16px;background:light-dark(#00000024,#00000066);border-radius:6px}
+#shader-file-first .sf-dialog{background:var(--sf-header);border:1px solid var(--sf-border);border-radius:5px;padding:16px;box-shadow:0 8px 26px #0003}
+#shader-file-first .sf-dialog-heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px}
+#shader-file-first .sf-dialog-heading h3{margin:0}
+#shader-file-first .sf-dialog-heading button{min-width:32px;padding:0;font-size:20px}
+#shader-file-first .sf-picker-label{color:var(--sf-muted);font-size:11px;margin:0 0 6px}
+#shader-file-first .sf-file-list{display:flex;flex-direction:column;gap:4px}
+#shader-file-first .sf-file-list button{text-align:left;overflow-wrap:anywhere}
+#shader-file-first .sf-picker-actions{display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid var(--sf-border);padding-top:12px;margin-top:12px}
+#shader-file-first .sf-new-form{display:flex;flex-direction:column;gap:12px}
+#shader-file-first .sf-new-form .sf-picker-actions{margin-top:0;border:0;padding:0;justify-content:flex-end}
+#shader-file-first .sf-status{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+#shader-file-first .sf-code{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--sf-input);color:var(--sf-text);padding:10px;border-radius:3px;font:12px/1.5 Consolas,monospace;margin:8px 0 0}
+#shader-file-first .sf-added,#shader-file-first .sf-camera-default{font-size:12px;color:var(--sf-muted);margin-top:6px;align-items:center}
+#shader-file-first .sf-channel-row{flex-wrap:nowrap;padding:8px;border:1px solid var(--sf-border);border-radius:4px}
+#shader-file-first .sf-thumbnail{width:58px;height:48px;flex-shrink:0;border-radius:3px;background:var(--sf-input);object-fit:cover}
+#shader-file-first .sf-channel-info{flex:1;min-width:0;overflow-wrap:anywhere}
+#shader-file-first .sf-channel-info small{display:block;color:var(--sf-muted);font-size:11px}
+#shader-file-first .sf-channel-actions{display:flex;gap:4px;flex-wrap:wrap}
+#shader-file-first .sf-channel-actions{max-width:128px;justify-content:flex-end}
+#shader-file-first .sf-panel .sf-channel-actions button{padding:4px;min-height:28px;font-size:11px}
+#shader-file-first .sf-panel .sf-preview-button{padding:0;border:0;line-height:0}
+#shader-file-first .sf-panel .sf-channel-actions button{border:0;display:inline-flex;align-items:center;justify-content:center}
+#shader-file-first .sf-channel-preview-large{width:100%;height:100px;object-fit:cover}
+@media(max-width:420px){#shader-file-first .sf-stage{padding:12px 0}#shader-file-first .sf-content{padding-left:12px;padding-right:12px}#shader-file-first .sf-function-row{flex-wrap:wrap}#shader-file-first .sf-function-row select{flex-basis:100%}#shader-file-first .sf-overlay{padding:38px 8px 8px}#shader-file-first .sf-channel-actions{max-width:70px}#shader-file-first .sf-channel-info{min-width:70px}#shader-file-first .sf-channel-row{flex-wrap:wrap}}
+@media(pointer:coarse){#shader-file-first .sf-panel button,#shader-file-first .sf-panel input,#shader-file-first .sf-panel select{min-height:44px;font-size:16px}}
+&lt;/style&gt;
+&lt;script&gt;
+(() =&gt; {
+  const root=document.getElementById(&#x27;shader-file-first&#x27;);
+  const panel=root.querySelector(&#x27;.sf-panel&#x27;);
+  const state={fragmentPath:&#x27;./buffers/feedback.wgsl&#x27;,vertexPath:&#x27;./mesh.wgsl&#x27;,vertexMode:&#x27;same&#x27;,functions:{
+    &#x27;./image.wgsl&#x27;:{fragment:[&#x27;mainImage&#x27;],vertex:[]},
+    &#x27;./buffers/feedback.wgsl&#x27;:{fragment:[&#x27;@fragment BufferAFragment&#x27;],vertex:[]},
+    &#x27;./mesh.wgsl&#x27;:{fragment:[],vertex:[&#x27;@vertex MeshVertex&#x27;]},
+    &#x27;./effects/warp.wgsl&#x27;:{fragment:[],vertex:[&#x27;@vertex WarpVertex&#x27;]}
+  }};
+  const saved=window.openai?.widgetState?.privateContent;
+  if(saved?.version===2&amp;&amp;saved.state)Object.assign(state,saved.state);
+  state.activePass??=&#x27;Image&#x27;;state.passes??={};state.codes??={};
+  state.outputLabels??={};
+  const sampleFragment=&#x27;@fragment GBufferFragment&#x27;;
+  if(!state.functions[&#x27;./buffers/feedback.wgsl&#x27;].fragment.includes(sampleFragment))state.functions[&#x27;./buffers/feedback.wgsl&#x27;].fragment.push(sampleFragment);
+  if(!state.functions[&#x27;./effects/warp.wgsl&#x27;].fragment.length)state.functions[&#x27;./effects/warp.wgsl&#x27;].fragment.push(&#x27;@fragment WarpFragment&#x27;);
+  const reflectedOutputs={&#x27;@fragment GBufferFragment&#x27;:[{slot:0,name:&#x27;colour&#x27;},{slot:1,name:&#x27;normals&#x27;},{slot:2,name:&#x27;velocity&#x27;}],&#x27;@fragment WarpFragment&#x27;:[{slot:0,name:&#x27;colour&#x27;},{slot:1,name:&#x27;normals&#x27;},{slot:2,name:&#x27;velocity&#x27;}]};
+  if(!state.passes.Image){state.passes.Image={fragmentPath:&#x27;./image.wgsl&#x27;,vertexPath:&#x27;./mesh.wgsl&#x27;,vertexMode:&#x27;builtin&#x27;,settings:{geometry:&#x27;fullscreen&#x27;},channels:[{name:&#x27;iChannel0&#x27;,kind:&#x27;Buffer&#x27;,source:&#x27;Buffer A&#x27;,filter:&#x27;Linear&#x27;,wrap:&#x27;Clamp&#x27;},{name:&#x27;iChannel1&#x27;,kind:&#x27;Texture&#x27;,source:&#x27;Noise&#x27;,filter:&#x27;Linear&#x27;,wrap:&#x27;Repeat&#x27;}],outputs:[&#x27;color&#x27;]};state.passes[&#x27;Buffer A&#x27;]={fragmentPath:state.fragmentPath,vertexPath:state.vertexPath,vertexMode:&#x27;same&#x27;,settings:{geometry:&#x27;cube&#x27;},channels:[{name:&#x27;iChannel0&#x27;,kind:&#x27;Buffer&#x27;,source:&#x27;Buffer B&#x27;,filter:&#x27;Linear&#x27;,wrap:&#x27;Repeat&#x27;},{name:&#x27;iChannel1&#x27;,kind:&#x27;Texture&#x27;,source:&#x27;Noise&#x27;,filter:&#x27;Linear&#x27;,wrap:&#x27;Repeat&#x27;}],outputs:[&#x27;color&#x27;]};state.passes[&#x27;Buffer B&#x27;]={fragmentPath:&#x27;./effects/warp.wgsl&#x27;,vertexPath:&#x27;./mesh.wgsl&#x27;,vertexMode:&#x27;builtin&#x27;,settings:{geometry:&#x27;fullscreen&#x27;},channels:[],outputs:[&#x27;color&#x27;]};Object.assign(state,structuredClone(state.passes[state.activePass]));}
+  state.settings??={};
+  state.channels??=[{name:&#x27;iChannel0&#x27;,kind:&#x27;Buffer&#x27;,source:&#x27;Buffer B&#x27;,filter:&#x27;Linear&#x27;,wrap:&#x27;Repeat&#x27;},{name:&#x27;iChannel1&#x27;,kind:&#x27;Texture&#x27;,source:&#x27;Noise&#x27;,filter:&#x27;Linear&#x27;,wrap:&#x27;Repeat&#x27;}];
+  state.outputs??=[&#x27;color&#x27;];
+  const prefs={compact:false};
+  const overlay=panel.querySelector(&#x27;.sf-overlay&#x27;);
+  const dialog=overlay.querySelector(&#x27;[role=&quot;dialog&quot;]&#x27;);
+  const body=panel.querySelector(&#x27;.sf-choose-body&#x27;);
+  const heading=panel.querySelector(&#x27;.sf-dialog-heading h3&#x27;);
+  let choosing=&#x27;fragment&#x27;;
+  const configFiles=[&#x27;./image.wgsl&#x27;,&#x27;./buffers/feedback.wgsl&#x27;,&#x27;./mesh.wgsl&#x27;];
+  function snapshotPass(){state.passes[state.activePass]=structuredClone(Object.fromEntries([&#x27;fragmentPath&#x27;,&#x27;vertexPath&#x27;,&#x27;vertexMode&#x27;,&#x27;settings&#x27;,&#x27;channels&#x27;,&#x27;outputs&#x27;].map(key=&gt;[key,state[key]])));}
+  function persist(){snapshotPass();window.openai?.setWidgetState?.({modelContent:{proposal:&#x27;Full shader configuration&#x27;,activePass:state.activePass,passes:state.passes,functions:state.functions},privateContent:{version:2,state:structuredClone(state)}})?.catch(()=&gt;{});}
+  function pathFor(stage){return stage===&#x27;fragment&#x27;||state.vertexMode===&#x27;same&#x27;?state.fragmentPath:state.vertexPath;}
+  function button(label,action,primary=false){const b=document.createElement(&#x27;button&#x27;);b.type=&#x27;button&#x27;;b.textContent=label;b.onclick=action;if(primary)b.className=&#x27;sf-primary&#x27;;return b;}
+  function label(text,control){const l=document.createElement(control.tagName===&#x27;DIV&#x27;?&#x27;div&#x27;:&#x27;label&#x27;);l.className=&#x27;sf-field&#x27;;l.append(document.createTextNode(text),control);return l;}
+  function close(){overlay.hidden=true;}
+  function announce(text){panel.querySelector(&#x27;.sf-status&#x27;).textContent=text;}
+  function useFile(path){if(choosing===&#x27;fragment&#x27;)state.fragmentPath=path;else state.vertexPath=path;close();render();persist();}
+  function show(title){heading.textContent=title;dialog.setAttribute(&#x27;aria-label&#x27;,title);body.replaceChildren();overlay.hidden=false;dialog.scrollIntoView({block:&#x27;center&#x27;});}
+  function chooseFile(stage,all=false){
+    choosing=stage;show(all?&#x27;Browse workspace&#x27;:&#x27;Choose shader file&#x27;);
+    const caption=document.createElement(&#x27;div&#x27;);caption.className=&#x27;sf-picker-label&#x27;;caption.textContent=all?&#x27;WORKSPACE FILES&#x27;:&#x27;FILES IN THIS CONFIG&#x27;;body.append(caption);
+    const list=document.createElement(&#x27;div&#x27;);list.className=&#x27;sf-file-list&#x27;;
+    (all?Object.keys(state.functions):configFiles).forEach(path=&gt;list.append(button(path,()=&gt;useFile(path))));body.append(list);
+    const actions=document.createElement(&#x27;div&#x27;);actions.className=&#x27;sf-picker-actions&#x27;;
+    if(!all)actions.append(button(&#x27;Browse workspace…&#x27;,()=&gt;chooseFile(stage,true)));
+    actions.append(button(&#x27;Create new file…&#x27;,()=&gt;newFile(stage)));body.append(actions);
+  }
+  function newFile(stage){
+    choosing=stage;show(stage===&#x27;fragment&#x27;?&#x27;New fragment file&#x27;:&#x27;New vertex file&#x27;);
+    const form=document.createElement(&#x27;form&#x27;);form.className=&#x27;sf-new-form&#x27;;
+    const input=document.createElement(&#x27;input&#x27;);input.value=stage===&#x27;fragment&#x27;?&#x27;./buffers/new-buffer.wgsl&#x27;:&#x27;./new-vertex.wgsl&#x27;;input.setAttribute(&#x27;aria-label&#x27;,&#x27;New file path&#x27;);input.required=true;
+    const mode=document.createElement(&#x27;select&#x27;);mode.setAttribute(&#x27;aria-label&#x27;,&#x27;Starter style&#x27;);mode.add(new Option(&#x27;Native (default)&#x27;,&#x27;native&#x27;));mode.add(new Option(&#x27;Built-in&#x27;,&#x27;hooks&#x27;));
+    form.append(label(&#x27;File path&#x27;,input),label(&#x27;Starter&#x27;,mode));
+    const actions=document.createElement(&#x27;div&#x27;);actions.className=&#x27;sf-picker-actions&#x27;;actions.append(button(&#x27;Back&#x27;,()=&gt;chooseFile(stage)));
+    function createFile(){const path=input.value.trim();if(!path)return;const name=mode.value===&#x27;hooks&#x27;?(stage===&#x27;vertex&#x27;?&#x27;mainVertex&#x27;:&#x27;mainImage&#x27;):(stage===&#x27;vertex&#x27;?&#x27;@vertex BufferAVertex&#x27;:&#x27;@fragment BufferAFragment&#x27;);state.functions[path]={fragment:[],vertex:[]};state.functions[path][stage].push(name);if(!configFiles.includes(path))configFiles.push(path);useFile(path);announce(&#x27;Created &#x27;+path);}
+    actions.append(button(&#x27;Create file&#x27;,createFile,true));form.append(actions);
+    form.onsubmit=event=&gt;{event.preventDefault();createFile();};body.append(form);
+  }
+  function addFunction(stage){
+    show(&#x27;Add &#x27;+stage+&#x27; function&#x27;);const list=document.createElement(&#x27;div&#x27;);list.className=&#x27;sf-file-list&#x27;;
+    const path=pathFor(stage);const existing=state.functions[path]?.[stage]??[];
+    [[&#x27;Native (default)&#x27;,&#x27;@&#x27;+stage+&#x27; &#x27;+state.activePass.replaceAll(&#x27; &#x27;,&#x27;&#x27;)+(stage===&#x27;vertex&#x27;?&#x27;Vertex&#x27;:&#x27;Fragment&#x27;)],[&#x27;Built-in&#x27;,stage===&#x27;vertex&#x27;?&#x27;mainVertex&#x27;:&#x27;mainImage&#x27;]].forEach(([title,baseName])=&gt;{
+      const duplicateHook=title===&#x27;Built-in&#x27;&amp;&amp;existing.includes(baseName);
+      const action=button(duplicateHook?&#x27;Built-in (already exists)&#x27;:title,()=&gt;{
+        let name=baseName;let suffix=2;
+        while(existing.includes(name))name=baseName+suffix++;
+        state.functions[path]??={fragment:[],vertex:[]};state.functions[path][stage].push(name);
+        state.selected??={};state.selected[path+&#x27;|&#x27;+stage]=name;
+        state.codes[path+&#x27;|&#x27;+name]=stage===&#x27;vertex&#x27;?&#x27;@vertex\nfn &#x27;+name.replace(&#x27;@vertex &#x27;,&#x27;&#x27;)+&#x27;(@builtin(vertex_index) index: u32) -&gt; @builtin(position) vec4f {\n  let p = array(vec2f(-1, -1), vec2f(3, -1), vec2f(-1, 3));\n  return vec4f(p[index % 3u], 0.0, 1.0);\n}&#x27;:&#x27;@fragment\nfn &#x27;+name.replace(&#x27;@fragment &#x27;,&#x27;&#x27;)+&#x27;(@builtin(position) position: vec4f) -&gt; @location(0) vec4f {\n  let uv = position.xy / iResolution.xy;\n  let col = 0.5 + 0.5 * cos(iTime + uv.xyx + vec3f(0.0, 2.0, 4.0));\n  return vec4f(col, 1.0);\n}&#x27;;
+        if(title===&#x27;Built-in&#x27;)state.codes[path+&#x27;|&#x27;+name]=stage===&#x27;vertex&#x27;?&#x27;fn mainVertex(position: vec3f) -&gt; vec4f {\n  return vec4f(position, 1.0);\n}&#x27;:&#x27;fn mainImage(coord: vec2f) -&gt; vec4f {\n  let uv = coord / iResolution.xy;\n  let col = 0.5 + 0.5 * cos(iTime + uv.xyx + vec3f(0.0, 2.0, 4.0));\n  return vec4f(col, 1.0);\n}&#x27;;
+        state.lastAdded={path,name,stage};
+        close();render();persist();announce(&#x27;Added &#x27;+name+&#x27; to &#x27;+path);
+      });action.disabled=duplicateHook;list.append(action);
+    });body.append(list);
+  }
+  function renderFunction(stage){
+    const host=panel.querySelector(&#x27;[data-function=&quot;&#x27;+stage+&#x27;&quot;]&#x27;);host.replaceChildren();
+    host.hidden=stage===&#x27;vertex&#x27;&amp;&amp;state.vertexMode===&#x27;builtin&#x27;;if(host.hidden)return;
+    const functions=state.functions[pathFor(stage)]?.[stage]??[];
+    const row=document.createElement(&#x27;div&#x27;);row.className=&#x27;sf-function-list&#x27;;row.setAttribute(&#x27;role&#x27;,&#x27;radiogroup&#x27;);row.setAttribute(&#x27;aria-label&#x27;,stage===&#x27;fragment&#x27;?&#x27;Fragment functions&#x27;:&#x27;Vertex functions&#x27;);
+    if(functions.length&gt;0){const chosen=state.selected?.[pathFor(stage)+&#x27;|&#x27;+stage];const selected=functions.includes(chosen)?chosen:functions[0];functions.forEach(name=&gt;{const choice=document.createElement(&#x27;label&#x27;);choice.className=&#x27;sf-function-choice cursor-interaction&#x27;;const radio=document.createElement(&#x27;input&#x27;);radio.type=&#x27;radio&#x27;;radio.name=&#x27;sf-&#x27;+stage+&#x27;-function&#x27;;radio.value=name;radio.checked=name===selected;radio.onchange=()=&gt;{state.selected??={};state.selected[pathFor(stage)+&#x27;|&#x27;+stage]=name;renderSettings();persist();};const text=document.createElement(&#x27;span&#x27;);text.textContent=name;choice.append(radio,text);row.append(choice);});}
+    else{const value=document.createElement(&#x27;span&#x27;);value.className=&#x27;sf-function-value&#x27;;value.textContent=functions[0]||(stage===&#x27;vertex&#x27;?&#x27;Built-in · no function in file&#x27;:&#x27;No fragment function found&#x27;);row.append(value);}
+    host.append(label(&#x27;Functions&#x27;,row));const add=button(&#x27;Add function…&#x27;,()=&gt;addFunction(stage));add.className=&#x27;sf-function-add&#x27;;host.append(add);
+  }
+  function render(){
+    panel.style.setProperty(&#x27;--sf-gap&#x27;,prefs.compact?&#x27;9px&#x27;:&#x27;14px&#x27;);
+    panel.querySelector(&#x27;[aria-label=&quot;Fragment file path&quot;]&#x27;).closest(&#x27;.sf-field&#x27;).hidden=state.activePass===&#x27;Image&#x27;;
+    panel.querySelector(&#x27;[aria-label=&quot;Fragment file path&quot;]&#x27;).value=state.fragmentPath;
+    panel.querySelector(&#x27;[aria-label=&quot;Vertex file path&quot;]&#x27;).value=state.vertexPath;
+    panel.querySelector(&#x27;.sf-vertex-file&#x27;).hidden=state.vertexMode!==&#x27;separate&#x27;;panel.querySelector(&#x27;.sf-builtin&#x27;).hidden=state.vertexMode!==&#x27;builtin&#x27;;
+    panel.querySelectorAll(&#x27;[data-source]&#x27;).forEach(b=&gt;b.setAttribute(&#x27;aria-pressed&#x27;,String(b.dataset.source===state.vertexMode)));
+    renderFunction(&#x27;fragment&#x27;);renderFunction(&#x27;vertex&#x27;);renderSettings();renderChannels();renderOutputs();
+    panel.querySelectorAll(&#x27;[data-pass]&#x27;).forEach(b=&gt;{b.classList.toggle(&#x27;sf-active&#x27;,b.dataset.pass===state.activePass);b.setAttribute(&#x27;aria-pressed&#x27;,String(b.dataset.pass===state.activePass));});
+  }
+  function renderSettings(){
+    panel.querySelectorAll(&#x27;[data-setting]&#x27;).forEach(control=&gt;{const value=state.settings[control.dataset.setting];if(control.type===&#x27;checkbox&#x27;)control.checked=!!value;else if(value!==undefined)control.value=String(value);});
+    const geometry=state.settings.geometry;const vertices=geometry===&#x27;vertices&#x27;;const fullscreen=geometry===&#x27;fullscreen&#x27;;
+    panel.querySelector(&#x27;[data-geometry-name]&#x27;).textContent=geometry.charAt(0).toUpperCase()+geometry.slice(1);
+    panel.querySelector(&#x27;.sf-model-fields&#x27;).hidden=geometry!==&#x27;model&#x27;;panel.querySelector(&#x27;.sf-mesh-fields&#x27;).hidden=fullscreen||vertices;
+    panel.querySelector(&#x27;.sf-vertices-fields&#x27;).hidden=!vertices;panel.querySelector(&#x27;.sf-instance-field&#x27;).hidden=fullscreen;
+    panel.querySelector(&#x27;.sf-camera-field&#x27;).hidden=fullscreen||(vertices&amp;&amp;state.settings.space===&#x27;clip&#x27;);
+    panel.querySelector(&#x27;.sf-depth-fields&#x27;).hidden=fullscreen;panel.querySelector(&#x27;.sf-aa-field&#x27;).hidden=fullscreen;panel.querySelector(&#x27;[data-setting=&quot;depthCompare&quot;]&#x27;).disabled=!state.settings.depth;
+    panel.querySelector(&#x27;.sf-camera-default&#x27;).hidden=panel.querySelector(&#x27;.sf-camera-field&#x27;).hidden;panel.querySelector(&#x27;.sf-camera-default span&#x27;).textContent=state.settings.cameraOverride?&#x27;Pass override&#x27;:&#x27;Using global default&#x27;;
+    panel.querySelector(&#x27;.sf-scale-fields&#x27;).hidden=state.settings.resolution!==&#x27;scale&#x27;;panel.querySelector(&#x27;.sf-fixed-fields&#x27;).hidden=state.settings.resolution!==&#x27;fixed&#x27;;
+    const isImage=state.activePass===&#x27;Image&#x27;;panel.querySelector(&#x27;.sf-image-resolution&#x27;).hidden=!isImage;panel.querySelector(&#x27;[data-setting=&quot;resolution&quot;]&#x27;).parentElement.hidden=isImage;panel.querySelector(&#x27;[data-setting=&quot;format&quot;]&#x27;).parentElement.hidden=isImage;panel.querySelector(&#x27;.sf-scale-fields&#x27;).hidden=isImage||state.settings.resolution!==&#x27;scale&#x27;;panel.querySelector(&#x27;.sf-fixed-fields&#x27;).hidden=isImage||state.settings.resolution!==&#x27;fixed&#x27;;panel.querySelector(&#x27;[data-setting=&quot;aspect&quot;]&#x27;).disabled=!!(state.settings.imageWidth&amp;&amp;state.settings.imageHeight);
+    panel.querySelector(&#x27;.sf-output&#x27;).hidden=isImage;renderOutputs();
+  }
+  panel.querySelectorAll(&#x27;[data-setting]&#x27;).forEach(control=&gt;{
+    const key=control.dataset.setting;
+    if(state.settings[key]===undefined)state.settings[key]=control.type===&#x27;checkbox&#x27;?control.checked:control.value;
+    const update=()=&gt;{state.settings[key]=control.type===&#x27;checkbox&#x27;?control.checked:control.value;if(key===&#x27;camera&#x27;)state.settings.cameraOverride=true;renderSettings();persist();};
+    control.addEventListener(control.tagName===&#x27;INPUT&#x27;&amp;&amp;control.type!==&#x27;checkbox&#x27;?&#x27;input&#x27;:&#x27;change&#x27;,update);
+  });
+  panel.querySelector(&#x27;[data-model-file]&#x27;).onclick=()=&gt;{
+    show(&#x27;Choose model&#x27;);const list=document.createElement(&#x27;div&#x27;);list.className=&#x27;sf-file-list&#x27;;
+    [&#x27;./models/scene.glb&#x27;,&#x27;./models/sphere.glb&#x27;,&#x27;./models/character.glb&#x27;].forEach(path=&gt;list.append(button(path,()=&gt;{state.settings.modelPath=path;close();renderSettings();persist();})));body.append(list);
+  };
+  function changeChannel(index){
+    openMisc(index);
+    return;
+    const channel=structuredClone(state.channels[index]);show(channel.name);
+    const choices={Buffer:[&#x27;Buffer A&#x27;,&#x27;Buffer B&#x27;],Texture:[&#x27;Noise&#x27;,&#x27;./textures/albedo.png&#x27;],Cubemap:[&#x27;Environment&#x27;],Video:[&#x27;./media/clip.mp4&#x27;,&#x27;Webcam&#x27;],Audio:[&#x27;./media/music.mp3&#x27;,&#x27;Microphone&#x27;],Keyboard:[&#x27;Keyboard&#x27;]};
+    const type=document.createElement(&#x27;select&#x27;);type.setAttribute(&#x27;aria-label&#x27;,&#x27;Channel type&#x27;);Object.keys(choices).forEach(value=&gt;type.add(new Option(value,value)));type.value=channel.kind;
+    const source=document.createElement(&#x27;select&#x27;);source.setAttribute(&#x27;aria-label&#x27;,&#x27;Channel source&#x27;);
+    const fill=()=&gt;{source.replaceChildren(...choices[type.value].map(value=&gt;new Option(value,value)));if(choices[type.value].includes(channel.source))source.value=channel.source;};fill();type.onchange=fill;
+    const filter=document.createElement(&#x27;select&#x27;);filter.setAttribute(&#x27;aria-label&#x27;,&#x27;Channel filter&#x27;);[&#x27;Linear&#x27;,&#x27;Nearest&#x27;,&#x27;Mipmap&#x27;].forEach(value=&gt;filter.add(new Option(value,value)));filter.value=channel.filter;
+    const wrap=document.createElement(&#x27;select&#x27;);wrap.setAttribute(&#x27;aria-label&#x27;,&#x27;Channel wrap&#x27;);[&#x27;Repeat&#x27;,&#x27;Clamp&#x27;].forEach(value=&gt;wrap.add(new Option(value,value)));wrap.value=channel.wrap;
+    const fields=document.createElement(&#x27;div&#x27;);fields.className=&#x27;sf-new-form&#x27;;const name=document.createElement(&#x27;input&#x27;);name.value=channel.name;name.setAttribute(&#x27;aria-label&#x27;,&#x27;Channel name&#x27;);const preview=thumbnail(channel,true);fields.append(preview,label(&#x27;Name&#x27;,name),label(&#x27;Type&#x27;,type),label(&#x27;Source&#x27;,source),label(&#x27;Filter&#x27;,filter),label(&#x27;Wrap&#x27;,wrap));
+    const extras=document.createElement(&#x27;div&#x27;);extras.className=&#x27;sf-new-form&#x27;;fields.append(extras);const draft={...channel};
+    const extraFields=()=&gt;{extras.replaceChildren();const kind=type.value;const currentPreview=fields.querySelector(&#x27;canvas&#x27;);currentPreview.replaceWith(thumbnail({...channel,kind,source:source.value},true));if([&#x27;Texture&#x27;,&#x27;Video&#x27;,&#x27;Cubemap&#x27;].includes(kind)){for(const [key,title] of [[&#x27;vflip&#x27;,&#x27;Flip vertically&#x27;],...(kind===&#x27;Texture&#x27;?[[&#x27;grayscale&#x27;,&#x27;Grayscale&#x27;]]:[])]){const check=document.createElement(&#x27;input&#x27;);check.type=&#x27;checkbox&#x27;;check.checked=draft[key]??key===&#x27;vflip&#x27;;check.onchange=()=&gt;draft[key]=check.checked;const l=label(title,check);l.className=&#x27;sf-check&#x27;;extras.append(l);}}
+      if(kind===&#x27;Buffer&#x27;){const output=document.createElement(&#x27;select&#x27;);output.setAttribute(&#x27;aria-label&#x27;,&#x27;Buffer output&#x27;);const count=state.passes[source.value]?.outputs?.length??1;for(let n=0;n&lt;count;n++)output.add(new Option(&#x27;Output &#x27;+n,String(n)));output.value=String(draft.output??0);output.onchange=()=&gt;draft.output=Number(output.value);extras.append(label(&#x27;Output&#x27;,output));}
+      if(kind===&#x27;Audio&#x27;){for(const key of [&#x27;startTime&#x27;,&#x27;endTime&#x27;]){const input=document.createElement(&#x27;input&#x27;);input.type=&#x27;number&#x27;;input.min=0;input.value=draft[key]??0;input.oninput=()=&gt;draft[key]=Number(input.value);extras.append(label(key===&#x27;startTime&#x27;?&#x27;Start time (seconds)&#x27;:&#x27;End time (seconds)&#x27;,input));}}
+      if(kind===&#x27;Audio&#x27;||kind===&#x27;Video&#x27;){const controls=document.createElement(&#x27;div&#x27;);controls.className=&#x27;sf-small-actions&#x27;;const play=button(draft.paused?&#x27;Play&#x27;:&#x27;Pause&#x27;,()=&gt;{draft.paused=!draft.paused;play.textContent=draft.paused?&#x27;Play&#x27;:&#x27;Pause&#x27;;});const mute=button(draft.muted?&#x27;Unmute&#x27;:&#x27;Mute&#x27;,()=&gt;{draft.muted=!draft.muted;mute.textContent=draft.muted?&#x27;Unmute&#x27;:&#x27;Mute&#x27;;});controls.append(play,mute,button(&#x27;Reset&#x27;,()=&gt;{draft.paused=true;play.textContent=&#x27;Play&#x27;;}));extras.append(controls);}
+    };type.onchange=()=&gt;{fill();extraFields();};source.onchange=extraFields;extraFields();
+    fields.append(button(&#x27;Apply&#x27;,()=&gt;{state.channels[index]={...draft,name:name.value.trim()||channel.name,kind:type.value,source:source.value,filter:filter.value,wrap:wrap.value};close();renderChannels();persist();},true));body.append(fields);
+  }
+  function outputsForPass(passName){const pass=passName===state.activePass?state:state.passes[passName];if(!pass)return[];const entries=state.functions[pass.fragmentPath]?.fragment??[];const selected=state.selected?.[pass.fragmentPath+&#x27;|fragment&#x27;]??entries[0];return selected?(reflectedOutputs[selected]??[{slot:0,name:&#x27;colour&#x27;}]):[];}
+  function openMisc(index,previewSource){
+    const current=state.channels[index];const draft={...current};if(previewSource){draft.kind=&#x27;Buffer&#x27;;draft.source=previewSource;draft.output=0;}show(current.name);
+    const tabs=document.createElement(&#x27;div&#x27;);tabs.className=&#x27;sf-misc-tabs&#x27;;[&#x27;Misc&#x27;,&#x27;Textures&#x27;,&#x27;Cubemaps&#x27;,&#x27;Videos&#x27;,&#x27;Audio&#x27;].forEach(name=&gt;{const tab=button(name,()=&gt;{});tab.disabled=name!==&#x27;Misc&#x27;;tab.setAttribute(&#x27;aria-pressed&#x27;,String(name===&#x27;Misc&#x27;));tabs.append(tab);});body.append(tabs);
+    const section=document.createElement(&#x27;div&#x27;);section.className=&#x27;sf-settings-body&#x27;;body.append(section);
+    const title=document.createElement(&#x27;h3&#x27;);title.textContent=&#x27;Buffer&#x27;;section.append(title);
+    const buffers=document.createElement(&#x27;div&#x27;);buffers.className=&#x27;sf-buffer-grid&#x27;;section.append(buffers);
+    const outputHost=document.createElement(&#x27;div&#x27;);outputHost.className=&#x27;sf-output-picker&#x27;;section.append(outputHost);
+    const fields=document.createElement(&#x27;div&#x27;);fields.className=&#x27;sf-two-col&#x27;;const filter=document.createElement(&#x27;select&#x27;);filter.setAttribute(&#x27;aria-label&#x27;,&#x27;Channel filter&#x27;);[&#x27;Linear&#x27;,&#x27;Nearest&#x27;].forEach(s=&gt;filter.add(new Option(s,s)));filter.value=draft.filter??&#x27;Linear&#x27;;const wrap=document.createElement(&#x27;select&#x27;);wrap.setAttribute(&#x27;aria-label&#x27;,&#x27;Channel wrap&#x27;);[&#x27;Clamp&#x27;,&#x27;Repeat&#x27;].forEach(s=&gt;wrap.add(new Option(s,s)));wrap.value=draft.wrap??&#x27;Clamp&#x27;;fields.append(label(&#x27;Filter&#x27;,filter),label(&#x27;Wrap&#x27;,wrap));section.append(fields);
+    const other=document.createElement(&#x27;h3&#x27;);other.textContent=&#x27;Other&#x27;;section.append(other);const keyboard=button(&#x27;Keyboard&#x27;,()=&gt;{draft.kind=&#x27;Keyboard&#x27;;draft.source=&#x27;Keyboard&#x27;;draw();});section.append(keyboard);
+    const footer=document.createElement(&#x27;div&#x27;);footer.className=&#x27;sf-picker-actions&#x27;;footer.append(button(&#x27;Remove&#x27;,()=&gt;{state.channels.splice(index,1);close();renderChannels();persist();}),button(&#x27;Cancel&#x27;,close),button(&#x27;Apply&#x27;,()=&gt;{state.channels[index]={...draft,filter:filter.value,wrap:wrap.value};close();renderChannels();persist();},true));section.append(footer);
+    function draw(){buffers.replaceChildren();[&#x27;A&#x27;,&#x27;B&#x27;,&#x27;C&#x27;,&#x27;D&#x27;].forEach(letter=&gt;{const source=&#x27;Buffer &#x27;+letter;const b=button(&#x27;&#x27;,()=&gt;{draft.kind=&#x27;Buffer&#x27;;draft.source=source;draft.output=0;draw();});b.className=&#x27;sf-buffer-choice&#x27;;const big=document.createElement(&#x27;span&#x27;);big.textContent=letter;const small=document.createElement(&#x27;small&#x27;);small.textContent=&#x27;Buffer&#x27;+letter;b.append(big,small);b.disabled=!state.passes[source];b.setAttribute(&#x27;aria-label&#x27;,source+(b.disabled?&#x27; (not configured)&#x27;:&#x27;&#x27;));b.setAttribute(&#x27;aria-pressed&#x27;,String(draft.kind===&#x27;Buffer&#x27;&amp;&amp;draft.source===source));buffers.append(b);});keyboard.setAttribute(&#x27;aria-pressed&#x27;,String(draft.kind===&#x27;Keyboard&#x27;));fields.hidden=draft.kind===&#x27;Keyboard&#x27;;outputHost.replaceChildren();
+      if(draft.kind===&#x27;Buffer&#x27;){const outputs=outputsForPass(draft.source);const name=document.createElement(&#x27;div&#x27;);name.className=&#x27;sf-field&#x27;;name.textContent=outputs.length&gt;1?&#x27;Output texture&#x27;:&#x27;Output 0 · colour&#x27;;outputHost.append(name);if(outputs.length&gt;1){const choices=document.createElement(&#x27;div&#x27;);choices.className=&#x27;sf-function-list&#x27;;choices.setAttribute(&#x27;role&#x27;,&#x27;radiogroup&#x27;);choices.setAttribute(&#x27;aria-label&#x27;,&#x27;Buffer output&#x27;);outputs.forEach(output=&gt;{const l=document.createElement(&#x27;label&#x27;);l.className=&#x27;sf-function-choice&#x27;;const r=document.createElement(&#x27;input&#x27;);r.type=&#x27;radio&#x27;;r.name=&#x27;sf-channel-output&#x27;;r.value=String(output.slot);r.checked=(draft.output??0)===output.slot;r.onchange=()=&gt;draft.output=output.slot;const t=document.createElement(&#x27;span&#x27;);t.textContent=output.slot+&#x27; · &#x27;+(state.outputLabels[draft.source+&#x27;|&#x27;+output.slot]||output.name);l.append(r,t);choices.append(l);});outputHost.append(choices);}else draft.output=outputs[0]?.slot??0;}
+    }draw();
+  }
+  function renderChannels(){
+    const list=panel.querySelector(&#x27;.sf-channel-list&#x27;);list.replaceChildren();panel.querySelector(&#x27;[data-channel-count]&#x27;).textContent=state.channels.length+&#x27; inputs&#x27;;
+    state.channels.forEach((channel,index)=&gt;{
+      const row=document.createElement(&#x27;div&#x27;);row.className=&#x27;sf-channel-row&#x27;;
+      const preview=button(&#x27;&#x27;,()=&gt;changeChannel(index));preview.className=&#x27;sf-preview-button&#x27;;preview.setAttribute(&#x27;aria-label&#x27;,&#x27;Open &#x27;+channel.name);preview.append(thumbnail(channel));
+      const info=document.createElement(&#x27;div&#x27;);info.className=&#x27;sf-channel-info&#x27;;const name=document.createElement(&#x27;div&#x27;);name.textContent=channel.name;const detail=document.createElement(&#x27;small&#x27;);detail.textContent=channel.kind;if(channel.kind===&#x27;Buffer&#x27;){const slot=channel.output??0;const output=outputsForPass(channel.source).find(o=&gt;o.slot===slot);detail.textContent=channel.source+&#x27; · &#x27;+(output?(state.outputLabels[channel.source+&#x27;|&#x27;+slot]||output.name):&#x27;Output &#x27;+slot+&#x27; unavailable&#x27;);}info.append(name,detail);
+      const actions=document.createElement(&#x27;div&#x27;);actions.className=&#x27;sf-channel-actions&#x27;;
+      if([&#x27;Audio&#x27;,&#x27;Video&#x27;].includes(channel.kind)){actions.append(iconButton(channel.paused?&#x27;play&#x27;:&#x27;pause&#x27;,channel.paused?&#x27;Play&#x27;:&#x27;Pause&#x27;,()=&gt;{state.channels[index].paused=!channel.paused;renderChannels();persist();}),iconButton(channel.muted?&#x27;volume-x&#x27;:&#x27;volume-2&#x27;,channel.muted?&#x27;Unmute&#x27;:&#x27;Mute&#x27;,()=&gt;{state.channels[index].muted=!channel.muted;renderChannels();persist();}),iconButton(&#x27;rotate-ccw&#x27;,&#x27;Reset to beginning&#x27;,()=&gt;{state.channels[index].paused=true;renderChannels();persist();}));}
+      actions.append(iconButton(&#x27;settings&#x27;,&#x27;Configure &#x27;+channel.name,()=&gt;changeChannel(index)),iconButton(&#x27;trash-2&#x27;,&#x27;Remove &#x27;+channel.name,()=&gt;{state.channels.splice(index,1);renderChannels();persist();}));
+      row.append(preview,info,actions);list.append(row);
+    });
+    if(globalThis.lucide)lucide.createIcons({attrs:{width:16,height:16}});
+  }
+  function iconButton(icon,title,action){const b=button(&#x27;&#x27;,action);b.setAttribute(&#x27;aria-label&#x27;,title);b.setAttribute(&#x27;data-tooltip&#x27;,title);const i=document.createElement(&#x27;i&#x27;);i.setAttribute(&#x27;data-lucide&#x27;,icon);i.setAttribute(&#x27;aria-hidden&#x27;,&#x27;true&#x27;);b.append(i);return b;}
+  panel.querySelector(&#x27;[data-add-channel]&#x27;).onclick=()=&gt;{let n=0;while(state.channels.some(channel=&gt;channel.name===&#x27;iChannel&#x27;+n))n++;state.channels.push({name:&#x27;iChannel&#x27;+n,kind:&#x27;Texture&#x27;,source:&#x27;Noise&#x27;,filter:&#x27;Linear&#x27;,wrap:&#x27;Repeat&#x27;});renderChannels();changeChannel(state.channels.length-1);persist();};
+  function renderOutputs(){
+    const list=panel.querySelector(&#x27;.sf-output-list&#x27;);list.replaceChildren();
+    const names=state.functions[state.fragmentPath]?.fragment??[];const selected=state.selected?.[state.fragmentPath+&#x27;|fragment&#x27;]??names[0];
+    const detected=selected?(reflectedOutputs[selected]??[{slot:0,name:&#x27;colour&#x27;}]):[];
+    state.outputs=detected.map(output=&gt;output.name);
+    detected.forEach(({slot,name})=&gt;{const row=document.createElement(&#x27;div&#x27;);row.className=&#x27;sf-output-entry&#x27;;const number=document.createElement(&#x27;span&#x27;);number.textContent=&#x27;Output &#x27;+slot+&#x27; · &#x27;+name;row.append(number);list.append(row);});
+    if(!detected.length)list.textContent=&#x27;Select a fragment function to detect outputs.&#x27;;
+  }
+  panel.querySelectorAll(&#x27;[data-source]&#x27;).forEach(b=&gt;b.onclick=()=&gt;{state.vertexMode=b.dataset.source;render();persist();});
+  panel.querySelectorAll(&#x27;[data-choose]&#x27;).forEach(b=&gt;b.onclick=()=&gt;chooseFile(b.dataset.choose));
+  panel.querySelector(&#x27;[aria-label=&quot;Fragment file path&quot;]&#x27;).oninput=event=&gt;{state.fragmentPath=event.target.value;renderFunction(&#x27;fragment&#x27;);renderFunction(&#x27;vertex&#x27;);persist();};
+  panel.querySelector(&#x27;[aria-label=&quot;Vertex file path&quot;]&#x27;).oninput=event=&gt;{state.vertexPath=event.target.value;renderFunction(&#x27;vertex&#x27;);persist();};
+  panel.querySelector(&#x27;[data-close]&#x27;).onclick=close;overlay.onclick=event=&gt;{if(event.target===overlay)close();};panel.addEventListener(&#x27;keydown&#x27;,event=&gt;{if(event.key===&#x27;Escape&#x27;)close();});
+  const defaultSettings=structuredClone(state.settings);
+  function switchPass(name){snapshotPass();state.activePass=name;Object.assign(state,structuredClone(state.passes[name]));state.settings={...defaultSettings,...state.settings};close();render();persist();}
+  panel.querySelectorAll(&#x27;[data-pass]&#x27;).forEach(b=&gt;b.onclick=()=&gt;switchPass(b.dataset.pass));
+  panel.querySelector(&#x27;[data-sort]&#x27;).onclick=()=&gt;{state.channels.sort((a,b)=&gt;a.name.localeCompare(b.name,undefined,{numeric:true}));renderChannels();persist();};
+  panel.querySelector(&#x27;[data-camera-reset]&#x27;).onclick=()=&gt;{state.settings.camera=true;state.settings.cameraOverride=false;renderSettings();persist();};
+  panel.querySelector(&#x27;[data-clear-size]&#x27;).onclick=()=&gt;{state.settings.imageWidth=&#x27;&#x27;;state.settings.imageHeight=&#x27;&#x27;;renderSettings();persist();};
+  panel.querySelector(&#x27;[data-reset-resolution]&#x27;).onclick=()=&gt;{Object.assign(state.settings,{imageScale:&#x27;1×&#x27;,aspect:&#x27;auto&#x27;,imageWidth:&#x27;&#x27;,imageHeight:&#x27;&#x27;,resolution:&#x27;inherit&#x27;,scale:&#x27;1×&#x27;,width:512,height:512});renderSettings();persist();};
+  function thumbnail(channel,large=false){const canvas=document.createElement(&#x27;canvas&#x27;);canvas.width=large?320:116;canvas.height=large?100:96;canvas.className=large?&#x27;sf-channel-preview-large&#x27;:&#x27;sf-thumbnail&#x27;;canvas.setAttribute(&#x27;role&#x27;,&#x27;img&#x27;);canvas.setAttribute(&#x27;aria-label&#x27;,channel.kind+&#x27; preview for &#x27;+channel.name);const ctx=canvas.getContext(&#x27;2d&#x27;);const w=canvas.width,h=canvas.height;if(channel.kind===&#x27;Texture&#x27;){const pixels=ctx.createImageData(w,h);for(let i=0;i&lt;pixels.data.length;i+=4){const shade=((i*73+(i%137)*41)%150)+60;pixels.data.set([shade,shade,shade,255],i);}ctx.putImageData(pixels,0,0);}else if(channel.kind===&#x27;Buffer&#x27;||channel.kind===&#x27;Keyboard&#x27;){ctx.fillStyle=&#x27;#30343c&#x27;;ctx.fillRect(0,0,w,h);ctx.fillStyle=&#x27;#bdc8d7&#x27;;ctx.font=&#x27;28px Segoe UI&#x27;;ctx.textAlign=&#x27;center&#x27;;ctx.fillText(channel.kind===&#x27;Buffer&#x27;?channel.source.replace(&#x27;Buffer &#x27;,&#x27;&#x27;):&#x27;⌨&#x27;,w/2,h/2+10);}else if(channel.kind===&#x27;Audio&#x27;){ctx.fillStyle=&#x27;#182b35&#x27;;ctx.fillRect(0,0,w,h);ctx.fillStyle=&#x27;#65bacc&#x27;;for(let x=0;x&lt;w;x+=6){const height=(Math.sin(x*1.3)*.5+.5)*h*.8;ctx.fillRect(x,(h-height)/2,3,height);}}else{const g=ctx.createLinearGradient(0,0,w,h);g.addColorStop(0,&#x27;#498cbd&#x27;);g.addColorStop(.55,&#x27;#e5bb83&#x27;);g.addColorStop(1,&#x27;#304c49&#x27;);ctx.fillStyle=g;ctx.fillRect(0,0,w,h);}return canvas;}
+  render();
+  if(globalThis.Tweak){const tweak=new Tweak({container:panel,onChange:render});tweak.addToggle(prefs,&#x27;compact&#x27;,{label:&#x27;Compact spacing&#x27;});}
+  window.addEventListener(&#x27;openai:set_globals&#x27;,event=&gt;{const restored=event.detail?.globals?.widgetState?.privateContent;if(restored?.version===2&amp;&amp;restored.state){Object.assign(state,structuredClone(restored.state));state.settings={...defaultSettings,...state.settings};render();}});
+})();
+&lt;/script&gt;
+
+&lt;script src=&quot;https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script src=&quot;https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  if (window.FloatingUIDOM == null) {
+    return;
+  }
+  const { autoUpdate, computePosition, flip, offset, shift, size } =
+    window.FloatingUIDOM;
+  const tooltipPlacements = new Set([&quot;top&quot;, &quot;right&quot;, &quot;bottom&quot;, &quot;left&quot;]);
+  const tooltipId = `codex-visualization-tooltip-${
+    window.crypto?.randomUUID?.() ?? Date.now().toString(36)
+  }`;
+  const tooltipGap = 5;
+  const hoverDelay = 700;
+  const skipDelay = 300;
+  let activeTrigger = null;
+  let pendingTrigger = null;
+  let tooltip = null;
+  let openTimeout = null;
+  let autoUpdateCleanup = null;
+  let positionRequest = 0;
+  let skipDelayUntil = 0;
+  let lastPointerWasTouch = false;
+  let pinnedByTouch = false;
+
+  const getTrigger = (event) =&gt; {
+    for (const target of event.composedPath()) {
+      if (target?.nodeType === Node.ELEMENT_NODE) {
+        const trigger = target.closest(&quot;[data-tooltip]&quot;);
+        if (trigger) return trigger;
+      }
+    }
+    return null;
+  };
+  const containsTarget = (trigger, target) =&gt;
+    target?.nodeType != null &amp;&amp; trigger.contains(target);
+  const getContent = (trigger) =&gt;
+    trigger.getAttribute(&quot;data-tooltip&quot;)?.trim() ?? &quot;&quot;;
+  const getPlacement = (trigger) =&gt; {
+    const placement = trigger.getAttribute(&quot;data-tooltip-placement&quot;);
+    return tooltipPlacements.has(placement) ? placement : &quot;top&quot;;
+  };
+  const getTooltip = () =&gt; {
+    if (tooltip == null) {
+      tooltip = document.createElement(&quot;div&quot;);
+      tooltip.id = tooltipId;
+      tooltip.className = &quot;tooltip&quot;;
+      tooltip.setAttribute(&quot;role&quot;, &quot;tooltip&quot;);
+    }
+    return tooltip;
+  };
+  const setDescribedBy = (trigger, described) =&gt; {
+    const ids = new Set(
+      (trigger.getAttribute(&quot;aria-describedby&quot;) ?? &quot;&quot;)
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    if (described) {
+      ids.add(tooltipId);
+    } else {
+      ids.delete(tooltipId);
+    }
+    if (ids.size === 0) {
+      trigger.removeAttribute(&quot;aria-describedby&quot;);
+    } else {
+      trigger.setAttribute(&quot;aria-describedby&quot;, [...ids].join(&quot; &quot;));
+    }
+  };
+  const clearOpenTimeout = () =&gt; {
+    if (openTimeout != null) {
+      window.clearTimeout(openTimeout);
+      openTimeout = null;
+    }
+    pendingTrigger = null;
+  };
+  const closeTooltip = (activateSkipDelay = true) =&gt; {
+    clearOpenTimeout();
+    pinnedByTouch = false;
+    positionRequest += 1;
+    autoUpdateCleanup?.();
+    autoUpdateCleanup = null;
+    if (activeTrigger == null) {
+      return;
+    }
+    setDescribedBy(activeTrigger, false);
+    activeTrigger = null;
+    tooltip?.remove();
+    if (activateSkipDelay) {
+      skipDelayUntil = Date.now() + skipDelay;
+    }
+  };
+  const updatePosition = (trigger, floating) =&gt; {
+    const request = ++positionRequest;
+    void computePosition(trigger, floating, {
+      middleware: [
+        offset(tooltipGap),
+        flip({ padding: tooltipGap }),
+        shift({ padding: tooltipGap }),
+        size({
+          padding: tooltipGap,
+          apply({ availableHeight, availableWidth, elements }) {
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-width&quot;,
+              `${Math.max(0, availableWidth)}px`,
+            );
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-height&quot;,
+              `${Math.max(0, availableHeight)}px`,
+            );
+          },
+        }),
+      ],
+      placement: getPlacement(trigger),
+      strategy: &quot;fixed&quot;,
+    })
+      .then(({ x, y }) =&gt; {
+        if (activeTrigger !== trigger || request !== positionRequest) {
+          return;
+        }
+        const scale = window.devicePixelRatio || 1;
+        floating.style.transform = `translate(${Math.round(x * scale) / scale}px, ${Math.round(y * scale) / scale}px)`;
+        floating.style.visibility = &quot;visible&quot;;
+      })
+      .catch(() =&gt; {
+        if (activeTrigger === trigger &amp;&amp; request === positionRequest) {
+          closeTooltip(false);
+        }
+      });
+  };
+  const openTooltip = (trigger) =&gt; {
+    const content = getContent(trigger);
+    if (!trigger.isConnected || content.length === 0) {
+      return;
+    }
+    clearOpenTimeout();
+    if (activeTrigger === trigger) {
+      return;
+    }
+    closeTooltip();
+    const floating = getTooltip();
+    floating.textContent = content;
+    floating.style.visibility = &quot;hidden&quot;;
+    floating.style.transform = &quot;translate(0, 0)&quot;;
+    document.body.appendChild(floating);
+    activeTrigger = trigger;
+    setDescribedBy(trigger, true);
+    autoUpdateCleanup = autoUpdate(trigger, floating, () =&gt; {
+      updatePosition(trigger, floating);
+    });
+  };
+  const requestOpen = (trigger, immediate = false) =&gt; {
+    if (
+      getContent(trigger).length === 0 ||
+      activeTrigger === trigger ||
+      pendingTrigger === trigger
+    ) {
+      return;
+    }
+    clearOpenTimeout();
+    pendingTrigger = trigger;
+    const delay =
+      immediate || activeTrigger != null || Date.now() &lt; skipDelayUntil
+        ? 0
+        : hoverDelay;
+    if (delay === 0) {
+      openTooltip(trigger);
+      return;
+    }
+    openTimeout = window.setTimeout(() =&gt; {
+      openTimeout = null;
+      pendingTrigger = null;
+      openTooltip(trigger);
+    }, delay);
+  };
+  const handlePointerOpen = (event) =&gt; {
+    if (event.pointerType === &quot;touch&quot;) {
+      return;
+    }
+    const trigger = getTrigger(event);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    requestOpen(trigger);
+  };
+  const handlePointer = (event) =&gt; {
+    lastPointerWasTouch =
+      event.type === &quot;pointerdown&quot; &amp;&amp; event.pointerType === &quot;touch&quot;;
+  };
+  const handleTouchClick = (event) =&gt; {
+    const isTouch = event.pointerType === &quot;touch&quot; || lastPointerWasTouch;
+    lastPointerWasTouch = false;
+    if (!isTouch || event.detail === 0) {
+      return;
+    }
+    const trigger = getTrigger(event);
+    if (
+      trigger == null ||
+      !trigger.isConnected ||
+      getContent(trigger).length === 0 ||
+      (pinnedByTouch &amp;&amp; activeTrigger === trigger)
+    ) {
+      if (pinnedByTouch) {
+        closeTooltip();
+      }
+      return;
+    }
+    openTooltip(trigger);
+    pinnedByTouch = activeTrigger === trigger;
+    window.setTimeout(() =&gt; {
+      if (activeTrigger === trigger &amp;&amp; !trigger.isConnected) {
+        closeTooltip(false);
+      }
+    }, 0);
+  };
+  const handleLeave = (event) =&gt; {
+    if (pinnedByTouch) {
+      return;
+    }
+    const trigger = getTrigger(event);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handleFocusIn = (event) =&gt; {
+    const trigger = getTrigger(event);
+    if (trigger?.matches(&quot;:focus-visible&quot;)) {
+      requestOpen(trigger, true);
+    }
+  };
+  const handleKeyDown = (event) =&gt; {
+    if (event.key === &quot;Escape&quot;) {
+      closeTooltip();
+    }
+  };
+  const handleContextMenu = (event) =&gt; {
+    lastPointerWasTouch = false;
+    const trigger = getTrigger(event);
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handlers = {
+    pointerover: handlePointerOpen,
+    pointerdown: handlePointer,
+    pointercancel: handlePointer,
+    click: handleTouchClick,
+    pointerout: handleLeave,
+    focusin: handleFocusIn,
+    focusout: handleLeave,
+    keydown: handleKeyDown,
+    contextmenu: handleContextMenu,
+  };
+  const roots = new Map();
+  const handledEvents = new WeakSet();
+  const handleEvent = (event) =&gt; {
+    if (handledEvents.has(event)) return;
+    handledEvents.add(event);
+    handlers[event.type](event);
+  };
+  const discoverRoots = (node) =&gt; {
+    if (node.shadowRoot) listen(node.shadowRoot);
+    for (const element of node.querySelectorAll(&quot;*&quot;)) {
+      if (element.shadowRoot) listen(element.shadowRoot);
+    }
+  };
+  const listen = (root) =&gt; {
+    if (roots.has(root)) return;
+    for (const type of Object.keys(handlers)) root.addEventListener(type, handleEvent);
+    const observer = new window.MutationObserver((records) =&gt; {
+      for (const { addedNodes } of records) {
+        for (const node of addedNodes) {
+          if (node.nodeType === Node.ELEMENT_NODE) discoverRoots(node);
+        }
+      }
+      for (const [root, cleanup] of roots) {
+        if (root.host &amp;&amp; !root.host.isConnected) {
+          cleanup();
+          roots.delete(root);
+        }
+      }
+      if (activeTrigger &amp;&amp; !activeTrigger.isConnected) closeTooltip(false);
+    });
+    observer.observe(root, { childList: true, subtree: true });
+    roots.set(root, () =&gt; {
+      observer.disconnect();
+      for (const type of Object.keys(handlers)) root.removeEventListener(type, handleEvent);
+    });
+    discoverRoots(root);
+  };
+  const destroy = () =&gt; {
+    closeTooltip(false);
+    lastPointerWasTouch = false;
+    for (const cleanup of roots.values()) cleanup();
+    roots.clear();
+    tooltip = null;
+  };
+
+  // Events between children of one shadow root never reach the document.
+  listen(document);
+  window.addEventListener(&quot;pagehide&quot;, destroy, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-tabs&quot;&gt;
+(() =&gt; {
+  const selector = &#x27;.nav[role=&quot;tablist&quot;] [role=&quot;tab&quot;]&#x27;;
+  const disabled = &#x27;:disabled,[aria-disabled=&quot;true&quot;]&#x27;;
+  const selectTab = (selected) =&gt; {
+    const panelId = selected.getAttribute(&quot;aria-controls&quot;);
+    for (const tab of selected.closest(&#x27;[role=&quot;tablist&quot;]&#x27;).querySelectorAll(&#x27;[role=&quot;tab&quot;]&#x27;)) {
+      const active = tab === selected;
+      tab.classList.toggle(&quot;active&quot;, active);
+      tab.setAttribute(&quot;aria-selected&quot;, String(active));
+      const id = tab.getAttribute(&quot;aria-controls&quot;);
+      const panel = id &amp;&amp; document.getElementById(id);
+      if (panel != null) {
+        panel.hidden = id !== panelId;
+        if (!panel.hidden &amp;&amp; selected.id) {
+          panel.setAttribute(&quot;aria-labelledby&quot;, selected.id);
+        }
+      }
+    }
+  };
+  const interact = (event) =&gt; {
+    const tab = event.target?.closest?.(selector);
+    if (event.defaultPrevented || tab == null || tab.matches(disabled)) {
+      return;
+    }
+    if (event.type === &quot;click&quot;) {
+      selectTab(tab);
+      return;
+    }
+    const tabs = Array.from(
+      tab.closest(&#x27;[role=&quot;tablist&quot;]&#x27;).querySelectorAll(&#x27;[role=&quot;tab&quot;]&#x27;),
+    ).filter((candidate) =&gt; !candidate.matches(disabled));
+    const current = tabs.indexOf(tab);
+    let next;
+    if (event.key === &quot;ArrowRight&quot; || event.key === &quot;ArrowDown&quot;) {
+      next = (current + 1) % tabs.length;
+    } else if (event.key === &quot;ArrowLeft&quot; || event.key === &quot;ArrowUp&quot;) {
+      next = (current + tabs.length - 1) % tabs.length;
+    } else if (event.key === &quot;Home&quot;) {
+      next = 0;
+    } else if (event.key === &quot;End&quot;) {
+      next = tabs.length - 1;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    tabs[next].focus();
+    selectTab(tabs[next]);
+  };
+
+  for (const list of document.querySelectorAll(&#x27;.nav[role=&quot;tablist&quot;]&#x27;)) {
+    const selected =
+      list.querySelector(&#x27;[role=&quot;tab&quot;][aria-selected=&quot;true&quot;]&#x27;) ??
+      list.querySelector(&#x27;[role=&quot;tab&quot;].active&#x27;) ??
+      list.querySelector(&#x27;[role=&quot;tab&quot;]&#x27;);
+    if (selected != null) {
+      selectTab(selected);
+    }
+  }
+  document.addEventListener(&quot;click&quot;, interact);
+  document.addEventListener(&quot;keydown&quot;, interact);
+  window.addEventListener(&quot;pagehide&quot;, () =&gt; {
+    document.removeEventListener(&quot;click&quot;, interact);
+    document.removeEventListener(&quot;keydown&quot;, interact);
+  }, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-carousel&quot;&gt;
+  (() =&gt; {
+    for (const root of document.querySelectorAll(&quot;.viz-carousel&quot;)) {
+      const panels = Array.from(
+        root.querySelectorAll(&quot;:scope &gt; [data-variant]&quot;),
+      );
+      if (panels.length === 0) {
+        continue;
+      }
+      root.setAttribute(&quot;role&quot;, &quot;group&quot;);
+      panels.forEach((panel, index) =&gt; {
+        panel.hidden = index !== 0;
+        panel.setAttribute(&quot;role&quot;, &quot;group&quot;);
+        if (!panel.hasAttribute(&quot;aria-label&quot;)) {
+          panel.setAttribute(&quot;aria-label&quot;, panel.dataset.variant);
+        }
+      });
+      root.dataset.activeVariant = panels[0].dataset.variant;
+      if (panels.length === 1) {
+        continue;
+      }
+
+      const controls = document.createElement(&quot;div&quot;);
+      controls.className = &quot;viz-carousel-controls&quot;;
+      // Portable copy of the settings dropdown&#x27;s legacy glyph; no 14px icon-package preset matches it.
+      // https://github.com/openai/openai/blob/master/codex/codex-apps/webview/src/icons/chevron.svg
+      controls.innerHTML = `
+      &lt;button type=&quot;button&quot; class=&quot;viz-carousel-previous cursor-interaction&quot;&gt;&lt;i data-lucide=&quot;chevron-left&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;
+      &lt;details class=&quot;viz-carousel-picker&quot;&gt;
+        &lt;summary class=&quot;cursor-interaction&quot;&gt;
+          &lt;span class=&quot;viz-carousel-count tabular-nums&quot;&gt;&lt;/span&gt;
+          &lt;span class=&quot;viz-carousel-name&quot;&gt;&lt;/span&gt;
+          &lt;svg class=&quot;viz-carousel-caret&quot; width=&quot;14&quot; height=&quot;14&quot; viewBox=&quot;0 0 20 21&quot; fill=&quot;none&quot; aria-hidden=&quot;true&quot; focusable=&quot;false&quot;&gt;
+            &lt;path d=&quot;M15.2793 7.71101C15.539 7.45131 15.961 7.45131 16.2207 7.71101C16.4804 7.97071 16.4804 8.39272 16.2207 8.65242L10.4707 14.4024C10.211 14.6621 9.78902 14.6621 9.52932 14.4024L3.77932 8.65242L3.69436 8.54792C3.52385 8.28979 3.55205 7.93828 3.77932 7.71101C4.00659 7.48374 4.3581 7.45554 4.61623 7.62605L4.72073 7.71101L10 12.9903L15.2793 7.71101Z&quot; fill=&quot;currentColor&quot; stroke=&quot;currentColor&quot; stroke-width=&quot;0.6&quot; /&gt;
+          &lt;/svg&gt;
+        &lt;/summary&gt;
+        &lt;div class=&quot;viz-carousel-options&quot;&gt;&lt;/div&gt;
+      &lt;/details&gt;
+      &lt;button type=&quot;button&quot; class=&quot;viz-carousel-next cursor-interaction&quot;&gt;&lt;i data-lucide=&quot;chevron-right&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;`;
+      const previous = controls.querySelector(&quot;.viz-carousel-previous&quot;);
+      const next = controls.querySelector(&quot;.viz-carousel-next&quot;);
+      const picker = controls.querySelector(&quot;.viz-carousel-picker&quot;);
+      const summary = picker.querySelector(&quot;summary&quot;);
+      const count = controls.querySelector(&quot;.viz-carousel-count&quot;);
+      const name = controls.querySelector(&quot;.viz-carousel-name&quot;);
+      const options = controls.querySelector(&quot;.viz-carousel-options&quot;);
+      const status = document.createElement(&quot;span&quot;);
+      status.className = &quot;sr-only&quot;;
+      status.setAttribute(&quot;role&quot;, &quot;status&quot;);
+      status.setAttribute(&quot;aria-live&quot;, &quot;polite&quot;);
+      status.setAttribute(&quot;aria-atomic&quot;, &quot;true&quot;);
+      previous.setAttribute(
+        &quot;aria-label&quot;,
+        root.dataset.previousLabel ?? &quot;Previous variant&quot;,
+      );
+      next.setAttribute(&quot;aria-label&quot;, root.dataset.nextLabel ?? &quot;Next variant&quot;);
+
+      let active = 0;
+      let mousePointerId = null;
+      let summaryPointerHandled = false;
+      summary.addEventListener(&quot;pointerdown&quot;, (event) =&gt; {
+        summaryPointerHandled =
+          event.pointerType === &quot;mouse&quot; &amp;&amp; event.button === 0 &amp;&amp; !event.ctrlKey;
+        if (!summaryPointerHandled) {
+          return;
+        }
+        event.preventDefault();
+        summary.focus({ preventScroll: true });
+        picker.open = !picker.open;
+        mousePointerId = picker.open ? event.pointerId : null;
+      });
+      summary.addEventListener(&quot;click&quot;, (event) =&gt; {
+        if (summaryPointerHandled &amp;&amp; event.detail &gt; 0) {
+          event.preventDefault();
+        }
+      });
+      const choices = panels.map((panel, index) =&gt; {
+        const choice = document.createElement(&quot;button&quot;);
+        choice.type = &quot;button&quot;;
+        choice.className = &quot;cursor-interaction&quot;;
+        choice.textContent = panel.dataset.variant;
+        choice.addEventListener(&quot;click&quot;, () =&gt; {
+          select(index);
+          summary.focus();
+        });
+        choice.addEventListener(&quot;pointerup&quot;, (event) =&gt; {
+          if (
+            picker.open &amp;&amp;
+            event.pointerType === &quot;mouse&quot; &amp;&amp;
+            event.button === 0 &amp;&amp;
+            event.pointerId === mousePointerId
+          ) {
+            choice.click();
+          }
+        });
+        options.appendChild(choice);
+        return choice;
+      });
+      const select = (index) =&gt; {
+        const changed = active !== index;
+        active = index;
+        panels.forEach((panel, position) =&gt; {
+          panel.hidden = position !== active;
+          choices[position].setAttribute(
+            &quot;aria-current&quot;,
+            String(position === active),
+          );
+        });
+        root.dataset.activeVariant = panels[active].dataset.variant;
+        count.textContent = `${active + 1} / ${panels.length}`;
+        name.textContent = panels[active].dataset.variant;
+        picker.open = false;
+        mousePointerId = null;
+        if (changed) {
+          status.textContent = `${count.textContent}: ${name.textContent}`;
+        }
+      };
+      previous.addEventListener(&quot;click&quot;, () =&gt;
+        select((active + panels.length - 1) % panels.length),
+      );
+      next.addEventListener(&quot;click&quot;, () =&gt;
+        select((active + 1) % panels.length),
+      );
+      picker.addEventListener(&quot;keydown&quot;, (event) =&gt; {
+        if (event.key === &quot;Escape&quot; &amp;&amp; picker.open) {
+          event.preventDefault();
+          picker.open = false;
+          mousePointerId = null;
+          summary.focus();
+          return;
+        }
+        if (event.altKey || event.ctrlKey || event.metaKey) {
+          return;
+        }
+        const index = choices.indexOf(document.activeElement);
+        let nextIndex;
+        if (event.key === &quot;ArrowDown&quot;) {
+          nextIndex = index &lt; 0 ? active : (index + 1) % choices.length;
+        } else if (event.key === &quot;ArrowUp&quot;) {
+          nextIndex = index &lt; 0 ? active : (index + choices.length - 1) % choices.length;
+        } else if (picker.open &amp;&amp; event.key === &quot;Home&quot;) {
+          nextIndex = 0;
+        } else if (picker.open &amp;&amp; event.key === &quot;End&quot;) {
+          nextIndex = choices.length - 1;
+        } else {
+          return;
+        }
+        event.preventDefault();
+        picker.open = true;
+        choices[nextIndex].focus();
+      });
+      picker.addEventListener(&quot;focusout&quot;, (event) =&gt; {
+        if (!picker.contains(event.relatedTarget)) {
+          picker.open = false;
+          mousePointerId = null;
+        }
+      });
+      const dismiss = (event) =&gt; {
+        if (!summary.contains(event.target)) {
+          mousePointerId = null;
+        }
+        if (!picker.contains(event.target)) {
+          picker.open = false;
+        }
+      };
+      const endPointerSelection = () =&gt; {
+        mousePointerId = null;
+      };
+      const sizePicker = () =&gt; {
+        root.style.setProperty(
+          &quot;--viz-carousel-picker-height&quot;,
+          `${picker.open ? options.offsetHeight : 0}px`,
+        );
+      };
+      picker.addEventListener(&quot;toggle&quot;, sizePicker);
+      window.addEventListener(&quot;resize&quot;, sizePicker);
+      document.addEventListener(&quot;pointerdown&quot;, dismiss);
+      document.addEventListener(&quot;pointerup&quot;, endPointerSelection);
+      document.addEventListener(&quot;pointercancel&quot;, endPointerSelection);
+      window.addEventListener(&quot;blur&quot;, endPointerSelection);
+      window.addEventListener(
+        &quot;pagehide&quot;,
+        () =&gt; {
+          document.removeEventListener(&quot;pointerdown&quot;, dismiss);
+          document.removeEventListener(&quot;pointerup&quot;, endPointerSelection);
+          document.removeEventListener(&quot;pointercancel&quot;, endPointerSelection);
+          window.removeEventListener(&quot;blur&quot;, endPointerSelection);
+          window.removeEventListener(&quot;resize&quot;, sizePicker);
+        },
+        { once: true },
+      );
+      root.append(controls, status);
+      select(0);
+    }
+  })();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-lucide&quot; async src=&quot;https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  const initialize = () =&gt; {
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  };
+  if (globalThis.lucide != null) {
+    initialize();
+    return;
+  }
+  document
+    .getElementById(&quot;codex-visualization-lucide&quot;)
+    ?.addEventListener(&quot;load&quot;, initialize, { once: true });
+})();
+&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+<script>(() => {
+  const frame = document.getElementById("codex-visualization");
+  if (!(frame instanceof HTMLIFrameElement)) {
+    return;
+  }
+  let viewportHeight = globalThis.innerHeight;
+  const storageKey = `codex:visualization-widget-state-v2:${JSON.stringify([
+    globalThis.location.pathname,
+    globalThis.location.search,
+  ])}`;
+  const parseState = (serializedState) => {
+    if (
+      typeof serializedState !== "string" ||
+      new TextEncoder().encode(serializedState).length > 16 * 1024
+    ) {
+      throw new TypeError(
+        "Widget state must be a JSON object of at most 16 KiB",
+      );
+    }
+    /** @type {unknown} */
+    const state = JSON.parse(serializedState);
+    if (
+      state == null ||
+      typeof state !== "object" ||
+      Array.isArray(state) ||
+      ("imageIds" in state &&
+        (!Array.isArray(state.imageIds) || state.imageIds.length > 0))
+    ) {
+      throw new TypeError("Widget state must be a JSON object");
+    }
+    const storedState = { modelContent: null, privateContent: null, ...state };
+    const canonicalState = JSON.stringify(
+      storedState,
+      (_key, /** @type {unknown} */ value) => {
+        if (typeof value === "number" && !Number.isFinite(value)) {
+          throw new TypeError("Widget state must contain finite numbers");
+        }
+        return value;
+      },
+    );
+    if (new TextEncoder().encode(canonicalState).length > 16 * 1024) {
+      throw new TypeError(
+        "Widget state must be a JSON object of at most 16 KiB",
+      );
+    }
+    return storedState;
+  };
+  let storage = null;
+  let state = null;
+  try {
+    const localStorage = globalThis.localStorage;
+    const probeKey = `${storageKey}:probe`;
+    localStorage.setItem(probeKey, "1");
+    localStorage.removeItem(probeKey);
+    storage = localStorage;
+    const savedState = storage.getItem(storageKey);
+    if (savedState != null) {
+      try {
+        state = parseState(savedState);
+      } catch {
+        // Invalid saved state does not disable future writes.
+      }
+    }
+  } catch {
+    storage = null;
+  }
+  const initialGlobals = {
+    widgetState: state,
+    statePersistence: storage == null ? "none" : "local",
+  };
+
+  const channel = new MessageChannel();
+  channel.port1.addEventListener("message", (event) => {
+    const data = event.data;
+    if (typeof data !== "object" || data == null) {
+      return;
+    }
+    if (data.type === "widget-state-write") {
+      if (!Number.isSafeInteger(data.id) || data.id <= 0) {
+        return;
+      }
+      let ok = false;
+      try {
+        if (storage != null) {
+          const state = parseState(data.state);
+          storage.setItem(storageKey, JSON.stringify(state));
+          ok = true;
+        }
+      } catch {
+        // Storage denial, quota limits, and invalid state return a failed receipt.
+      }
+      channel.port1.postMessage({
+        type: "widget-state-result",
+        id: data.id,
+        ok,
+      });
+      return;
+    }
+    if (data.type === "height") {
+      const height = data.height;
+      if (
+        typeof height === "number" &&
+        Number.isFinite(height) &&
+        height >= 0 &&
+        height <= 10_000
+      ) {
+        frame.style.height = Math.ceil(height) + "px";
+      }
+      return;
+    }
+    if (data.type === "scroll-to") {
+      const top = data.top;
+      if (
+        typeof top === "number" &&
+        Number.isFinite(top) &&
+        top >= 0 &&
+        globalThis.navigator.userActivation?.isActive === true
+      ) {
+        globalThis.scrollTo({
+          top: Math.ceil(
+            globalThis.scrollY + frame.getBoundingClientRect().top + top,
+          ),
+        });
+      }
+      return;
+    }
+    if (data.type === "open-external") {
+      const rawHref = data.href;
+      if (typeof rawHref !== "string") {
+        return;
+      }
+      let href;
+      try {
+        const url = new URL(rawHref, document.baseURI);
+        if (url.protocol !== "https:") {
+          return;
+        }
+        href = url.href;
+      } catch {
+        return;
+      }
+      if (globalThis.navigator.userActivation?.isActive === true) {
+        const anchor = document.createElement("a");
+        anchor.href = href;
+        anchor.rel = "noopener noreferrer";
+        anchor.target = "_blank";
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      }
+      return;
+    }
+    if (data.type === "follow-up") {
+      const prompt = data.prompt;
+      if (
+        typeof prompt !== "string" ||
+        globalThis.navigator.userActivation?.isActive !== true
+      ) {
+        return;
+      }
+      const title = data.title;
+      globalThis.prompt(typeof title === "string" ? title : prompt, prompt);
+    }
+  });
+  channel.port1.start();
+  const srcdoc = frame.dataset.srcdoc;
+  if (srcdoc == null) {
+    return;
+  }
+  globalThis.addEventListener("resize", () => {
+    const height = Number.parseFloat(frame.style.height);
+    if (!Number.isFinite(height) || height <= viewportHeight) {
+      frame.style.removeProperty("height");
+    }
+    viewportHeight = globalThis.innerHeight;
+    channel.port1.postMessage({ type: "measure" });
+  });
+  frame.addEventListener(
+    "load",
+    () => {
+      frame.contentWindow?.postMessage(
+        { type: "codex-visualization-initialize" },
+        "*",
+        [channel.port2],
+      );
+    },
+    { once: true },
+  );
+  // Match the trusted bootstrap element, not the same text in an authored title.
+  frame.srcdoc = srcdoc.replace(
+    '<script type="application/json" id="codex-visualization-widget-state">__CODEX_VISUALIZATION_WIDGET_STATE__<\/script>',
+    () =>
+      '<script type="application/json" id="codex-visualization-widget-state">' +
+      JSON.stringify(initialGlobals).replaceAll("<", "\\u003c") +
+      "<\/script>",
+  );
+  delete frame.dataset.srcdoc;
+})();
+</script>
+</body>
+</html>

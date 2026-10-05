@@ -72,6 +72,7 @@ nav:
       - Compute Passes: features/compute.md
       - GPU Storage: features/storage.md
       - Channels: features/channels.md
+      - Multiple Render Targets: features/multiple-render-targets.md
       - Uniforms: features/uniforms.md
       - Time And Playback Controls: features/time-controls.md
       - Resolution: features/resolution.md

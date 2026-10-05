@@ -43,8 +43,8 @@ export class WebGPUChannels {
             ? computeSource.getPreviousLayerOutputView(layer)
             : computeSource.getLayerOutputView(layer)
           : channel.readFrom === "previous-frame"
-            ? renderSource?.getPreviousOutputView()
-            : renderSource?.getCurrentOutputView();
+            ? renderSource?.getPreviousOutputView(channel.output ?? 0)
+            : renderSource?.getCurrentOutputView(channel.output ?? 0);
         if (!textureView) {
           return null;
         }
@@ -167,8 +167,8 @@ export class WebGPUChannels {
       } else if (channel.kind === "buffer") {
         const source = this.host.session.passPipelines.get(channel.source);
         const view = channel.readFrom === "previous-frame"
-          ? source?.getPreviousOutputView()
-          : source?.getCurrentOutputView();
+          ? source?.getPreviousOutputView(channel.output ?? 0)
+          : source?.getCurrentOutputView(channel.output ?? 0);
         channelLoaded[channel.slot] = view ? 1 : 0;
         const sourcePass = this.host.session.passGraph.find((candidate) => candidate.name === channel.source);
         this.setChannelResolution(channelResolution, channel.slot, sourcePass?.width, sourcePass?.height);

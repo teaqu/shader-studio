@@ -17,12 +17,22 @@ When **Update ready** appears, Shader Studio has downloaded a complete compatibl
 
 1. Open the standalone app and select an example in **Shader Explorer**.
 2. Edit the shader in the **Editor** pane and watch the **Preview** update. The default **Hot** compile mode recompiles as you type.
-3. To start your own shader, click **New Shader** in Shader Explorer, enter a unique name, choose **GLSL**, **Slang**, or **WGSL**, and click **Create Shader**.
+3. To start your own shader, click **New Shader** in Shader Explorer, enter a unique name, choose **GLSL**, **Slang**, or **WGSL**, and click **Create Shader**. WGSL/Slang start in the configured **Default shader mode**; you can choose Built-in or Native for this shader.
 4. Open **Config** in the preview toolbar to add buffer passes, channels, or uniforms.
 
 Slang and WGSL require WebGPU support in your browser and device. The examples include all three languages, shaders using the bundled texture and cubemap, and **particle-swarm.wgsl**, which drives 16384 particles from WGSL [compute passes](features/compute.md) and storage buffers. Drag in its preview to pull the swarm towards the pointer.
 
 See the [Quick Start](quick-start.md#step-3-write-your-shader) for example shader code and [Configure Buffers and Inputs](features/config-buffers.md) for pass configuration. Instructions that refer to VS Code commands or workspace files apply to the extension.
+
+## Configure Sources and Outputs
+
+Image always uses the main shader file. Buffer and compute tabs show an editable **File** path with **Change…**: choose another file already used by the config, browse the virtual workspace, or create a source. Function rows show the available native entry points. **Add function…** writes to the file belonging to that stage and saves the selected function.
+
+Vertex sources use **Built-in**, **Same file**, or **Separate file**. Same file hides the duplicate path; Separate file shows it and reads vertex functions from there. Native render templates start with a fragment and use the generated vertex stage. Compute has native function rows and no Built-in/Native chooser.
+
+A native WGSL/Slang buffer's **Output** section reads attachment slots and field names from its fragment code. To connect a particular output, configure a channel, open **Misc**, select the buffer, and choose its output row. Compute sources use **Compute output layer** instead. File paths, function choices, and channel selections survive reloads with the workspace.
+
+See [Configure Passes and Inputs](features/config-buffers.md), [Compute Passes](features/compute.md), and the [two-output WGSL example](features/multiple-render-targets.md#try-two-wgsl-outputs).
 
 ## Arrange Your Workspace
 
@@ -38,7 +48,15 @@ Shader edits and configuration changes are saved in this browser. Reloading the 
 
 If browser storage is unavailable, changes in that session will not survive a reload. Keep a separate copy of important shader source and configuration before clearing site data or changing browsers.
 
-**Workspace → Clear Workspace** asks for confirmation, removes the standalone workspace and its saved settings, then reloads the app with the starter examples. This cannot be undone. Resetting the workspace layout only changes the panel arrangement.
+**Workspace → Clear Workspace** asks for confirmation, removes the standalone workspace and its saved layout, then reloads the app with the starter examples. This cannot be undone. Resetting the workspace layout only changes the panel arrangement.
+
+Global preferences are kept when clearing the workspace. Use **Settings → Reset all settings** to reset them.
+
+## Global Settings
+
+Open **Settings** in the top toolbar to search and change browser-wide preferences. Changes apply immediately, synchronize between open tabs, and survive reloads. The panel includes **Default shader mode** (Built-in hooks or Native WGSL/Slang entry points), viewer camera defaults for GLSL/WGSL/Slang meshes, opening the editor on buffer switches, GLSL/Slang/WGSL language services, color swatches, font size, indentation, word wrap, minimap, and line numbers. Shader and pass camera settings override the global camera preference.
+
+These preferences are stored in this browser, separately from shader files. VS Code user settings and standalone preferences are independent. Settings specific to VS Code, such as its web server port and editor group locking, stay in VS Code.
 
 Screenshots and recordings are saved as browser downloads.
 

@@ -144,7 +144,12 @@ export function createShaderCanvasHarness(language: ShaderLanguage): ShaderCanva
       throw new Error(`Could not queue ${language} canvas readback`);
     }
     if (shaderTime !== currentShaderTime) {
-      engine.getTimeManager().setTime(shaderTime);
+      const timeManager = engine.getTimeManager();
+      timeManager.setTime(shaderTime);
+      // setTime anchors frame timing to performance.now(), but this harness
+      // drives a synthetic clock. Keep its last frame on that same timeline
+      // so a wall-clock coincidence cannot trigger the duplicate-frame guard.
+      timeManager.updateFrame(nextRenderTimestamp);
       currentShaderTime = shaderTime;
     }
     nextRenderTimestamp += 1000 / 60;

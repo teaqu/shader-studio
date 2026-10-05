@@ -512,6 +512,22 @@ describe("ShaderPipeline", () => {
       expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
     });
 
+    it("preserves a configured screen capture through a structural reload without browser audio", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        version: "1",
+        passes: { Image: { inputs: { iChannel0: { type: "screen" } } } },
+      } as const;
+
+      await shaderPipeline.compileShaderPipeline(shaderCode, config, "shader.glsl", {});
+      mockResourceManager.cleanup.mockClear();
+
+      shaderPipeline.flagReloadOnNextApply();
+      await shaderPipeline.compileShaderPipeline(shaderCode, config, "shader.glsl", {});
+
+      expect(mockResourceManager.cleanup).toHaveBeenCalledWith(false, true);
+    });
+
     it("should not force cleanup on second compile if neither resetTime nor flagReloadOnNextApply was called", async () => {
       const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
       const shaderPath = "shader.glsl";
@@ -1135,6 +1151,7 @@ describe("ShaderPipeline", () => {
         shaderSrc: buffers.BufferA,
         inputs: {},
         geometry: "fullscreen",
+        useViewerCamera: true,
         path: undefined,
         resolution: undefined,
       });
@@ -1143,6 +1160,7 @@ describe("ShaderPipeline", () => {
         shaderSrc: buffers.BufferB,
         inputs: { iChannel0: { type: "buffer", source: "BufferA" } },
         geometry: "fullscreen",
+        useViewerCamera: true,
         path: undefined,
         resolution: undefined,
       });
@@ -1169,6 +1187,7 @@ describe("ShaderPipeline", () => {
         shaderSrc: shaderCode,
         inputs: {},
         geometry: "fullscreen",
+        useViewerCamera: true,
         path: undefined,
         resolution: undefined,
       });
@@ -1177,6 +1196,7 @@ describe("ShaderPipeline", () => {
         shaderSrc: buffers.BufferA,
         inputs: {},
         geometry: "fullscreen",
+        useViewerCamera: true,
         path: undefined,
         resolution: undefined,
       });
@@ -1391,10 +1411,21 @@ describe("ShaderPipeline", () => {
       );
 
       expect(result).toEqual({ success: true });
-      expect(shaderPipeline.getPasses().map(({ name }) => name)).toEqual(["ComputeSim", "Image"]);
-      expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledTimes(2);
-      expect(mockShaderCompiler.compileShaderAsync.mock.calls[0][0]).toBe("compute source");
-      expect(mockShaderCompiler.compileShaderAsync.mock.calls[1][0]).toBe("image source");
+      expect(shaderPipeline.getPasses().map(({ name }) => name)).toEqual(["Image"]);
+      expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledTimes(1);
+      expect(mockShaderCompiler.compileShaderAsync.mock.calls[0][0]).toBe("image source");
+    });
+
+    it("rejects WebGPU-native entry points instead of ignoring them", async () => {
+      const result = await shaderPipeline.compileShaderPipeline("image source", {
+        version: "1.0",
+        passes: { Image: { entryPoints: { vertex: "mainVertex", fragment: "mainFragment" } } },
+      }, "shader.glsl");
+      expect(result).toEqual({
+        success: false,
+        errors: ["Image: native entryPoints are only supported by WebGPU"],
+      });
+      expect(mockShaderCompiler.compileShaderAsync).not.toHaveBeenCalled();
     });
 
     it("warns once when storage is configured without a Compute pass", async () => {
@@ -1479,13 +1510,10 @@ describe("ShaderPipeline", () => {
       );
 
       expect(result).toEqual({ success: true });
-      expect(shaderPipeline.getPasses().map(({ name }) => name)).toEqual(["Compute", "Flow", "Compute_splat", "Image", "ComputeLater"]);
+      expect(shaderPipeline.getPasses().map(({ name }) => name)).toEqual(["Flow", "Image"]);
       expect(mockShaderCompiler.compileShaderAsync.mock.calls.map(([source]) => source)).toEqual([
-        "compute source",
         "flow source",
-        "splat source",
         "image source",
-        "later source",
       ]);
     });
 
@@ -1883,6 +1911,20 @@ describe("ShaderPipeline", () => {
   });
 
   describe("video input handling", () => {
+    it("loads a screen capture through the live video binding", async () => {
+      await shaderPipeline.compileShaderPipeline(
+        "void mainImage() { gl_FragColor = vec4(1.0); }",
+        { passes: { Image: { inputs: { iChannel0: { type: "screen" } } } } } as any,
+        "shader.glsl",
+        {},
+      );
+
+      expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
+        "shader-studio-live://screen",
+        { filter: undefined, wrap: undefined, vflip: undefined, muted: true },
+      );
+    });
+
     it("should load video texture when pass has video input", async () => {
       const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
       const config = {

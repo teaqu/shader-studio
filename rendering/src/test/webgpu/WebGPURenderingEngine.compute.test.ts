@@ -477,7 +477,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
         label: "ComputeSim compute output",
         size: { width: 320, height: 180, depthOrArrayLayers: 3 },
         format: "rgba32float",
-        usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+        usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
       });
     }
     expect(device.createBindGroupLayout).toHaveBeenCalledWith({

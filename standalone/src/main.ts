@@ -7,6 +7,7 @@ import {
 import { configureHost } from '@shader-studio/ui';
 import '@shader-studio/ui/app.css';
 import '@vscode/codicons/dist/codicon.css';
+import { getEditorPreferences } from './settings/settingsState.svelte';
 import App from './App.svelte';
 import { WebTransport } from './WebTransport';
 import { installSlangAssetMetadata } from './slangAssets';
@@ -32,6 +33,7 @@ const transport = new WebTransport();
 const pwa = createPwaController();
 configureHost({
   createTransport: () => transport,
+  getEditorPreferences,
   defaultAssets: defaultAssets(),
   capabilities: { compileOnSave: false },
 });

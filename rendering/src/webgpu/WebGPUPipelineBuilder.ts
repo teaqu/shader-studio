@@ -139,6 +139,7 @@ export async function buildWebGPUPipelines(
             ? { outputImageFormat: dependencies.constraints.wgslImageFormat(pass.resolvedOutputFormat ?? dependencies.bufferTextureFormat) }
             : {}),
           ...(pass.kind === "compute" ? { entryPoint: pass.entryPoint } : {}),
+          ...(pass.kind === "render" && pass.entryPoints ? { renderEntryPoints: pass.entryPoints } : {}),
           ...(passModules.length > 0 ? { modules: passModules } : {}),
           ...(slangSourcePaths?.[pass.name]
             ? { sourcePath: slangSourcePaths[pass.name] }

@@ -25,5 +25,23 @@
   "devDependencies": {
     "typescript": "*",
     "vitest": "*"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/index.js"
+    },
+    "./native/*": {
+      "types": "./dist/native/*.d.ts",
+      "default": "./dist/native/*.js"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "native/*": [
+        "dist/native/*"
+      ]
+    }
   }
 }
