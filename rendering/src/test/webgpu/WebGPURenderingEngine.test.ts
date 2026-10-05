@@ -4797,6 +4797,55 @@ describe("WebGPURenderingEngine", () => {
     (engine as any).canvas = { width: 320, height: 180 };
   }
 
+  it("forwards the canvas capture callback through frame encoding before submission", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    stubDeviceAndContext(engine);
+    const owners = engineOwners(engine);
+    Object.assign(owners.session, {
+      passGraph: [{ name: "Image", width: 320, height: 180, output: "canvas", channels: [] }],
+      passPipelines: new Map([["Image", renderablePipeline()]]),
+    });
+    const device = (engine as unknown as { device: GPUDevice }).device;
+    const submit = vi.spyOn(device.queue, "submit");
+    const copy = vi.fn();
+
+    owners.frameRenderer.renderFrame(1000, true, true, copy);
+
+    expect(copy).toHaveBeenCalledOnce();
+    expect(copy).toHaveBeenCalledWith(expect.any(Object), expect.objectContaining({ createView: expect.any(Function) }));
+    expect(copy.mock.invocationCallOrder[0]).toBeLessThan(submit.mock.invocationCallOrder[0]);
+  });
+
+  it.each(["canvas copy", "submission"])("cancels storage captures when %s fails during canvas capture", (failureStage) => {
+    const engine = new WebGPURenderingEngine(assets);
+    stubDeviceAndContext(engine);
+    const owners = engineOwners(engine);
+    Object.assign(owners.session, {
+      passGraph: [{ name: "Image", width: 320, height: 180, output: "canvas", channels: [] }],
+      passPipelines: new Map([["Image", renderablePipeline()]]),
+    });
+    const device = (engine as unknown as { device: GPUDevice }).device;
+    const failure = new Error(`${failureStage} failed`);
+    const copy = vi.fn(() => {
+      if (failureStage === "canvas copy") {
+        throw failure;
+      }
+    });
+    const submit = vi.spyOn(device.queue, "submit").mockImplementation(() => {
+      throw failure;
+    });
+    const cancel = vi.spyOn(owners.storage.captures, "cancel");
+    const mappings = vi.spyOn(owners.storage.captures, "beginMappings");
+
+    expect(() => owners.frameRenderer.renderFrame(1000, true, true, copy)).toThrow(failure);
+
+    expect(copy).toHaveBeenCalledOnce();
+    expect(submit).toHaveBeenCalledTimes(failureStage === "submission" ? 1 : 0);
+    expect(cancel).toHaveBeenCalledWith("Storage capture cancelled because the frame could not be submitted");
+    expect(mappings).not.toHaveBeenCalled();
+    expect(owners.session.hasSubmittedFrameForInstalledGeneration).toBe(false);
+  });
+
   it("copies every queued screenshot from the canvas frame before submitting it", () => {
     const engine = new WebGPURenderingEngine(assets);
     stubDeviceAndContext(engine);

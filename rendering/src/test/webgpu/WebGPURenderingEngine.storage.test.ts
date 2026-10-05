@@ -145,6 +145,86 @@ describe("WebGPURenderingEngine storage buffers", () => {
     );
   });
 
+  it("publishes compiled custom storage fields on the installed pass graph", async () => {
+    const { engine, compiler } = engineHarness();
+    compiler.compile.mockResolvedValue({
+      success: true,
+      wgsl: `struct Particle {
+        position: vec4<f32>,
+        lifetime: f32,
+      }
+      @group(0) @binding(4) var<storage, read_write> particles: array<Particle>;`,
+    });
+
+    const result = await engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      storageConfig({ particles: { count: 2, elementType: "Particle" } }),
+      "/particles.slang",
+      { common: "struct Particle { float4 position; float lifetime; };" },
+    );
+
+    expect(result?.success).toBe(true);
+    const storage = (engineOwners(engine).storage as unknown as {
+      storageLayouts: Map<string, { fields?: Array<{ name: string; type: string }> }>;
+    }).storageLayouts.get("particles");
+    expect(storage?.fields).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "position" }),
+      expect.objectContaining({ name: "lifetime" }),
+    ]));
+  });
+
+  it("warns when the compiled storage struct stride differs from the source declaration", async () => {
+    const { engine, compiler } = engineHarness();
+    compiler.compile.mockResolvedValue({
+      success: true,
+      wgsl: "struct Particle { lifetime: f32, }\n@group(0) @binding(4) var<storage, read_write> particles: array<Particle>;",
+    });
+
+    const result = await engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      storageConfig({ particles: { count: 2, elementType: "Particle" } }),
+      "/particles.slang",
+      { common: "struct Particle { float4 position; float lifetime; };" },
+    );
+
+    expect(result?.warnings).toContain('Storage "particles": stride 32 does not match the compiled size of Particle (4 bytes from WGSL layout)');
+  });
+
+  it("keeps configured fields when generated WGSL has no matching storage declaration", async () => {
+    const { engine, compiler } = engineHarness();
+    compiler.compile.mockResolvedValue({
+      success: true,
+      wgsl: "struct Other { value: f32, }",
+    });
+    const fields = [{ name: "position", type: "float4" }, { name: "lifetime", type: "float" }];
+
+    const result = await engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      storageConfig({ particles: { count: 2, elementType: "Particle", fields } }),
+      "/particles.slang",
+      { common: "struct Particle { float4 position; float lifetime; };" },
+    );
+
+    expect(result?.success).toBe(true);
+    expect((engineOwners(engine).storage as unknown as {
+      storageLayouts: Map<string, { fields?: Array<{ name: string }> }>;
+    }).storageLayouts.get("particles")?.fields).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "position" }),
+      expect.objectContaining({ name: "lifetime" }),
+    ]));
+  });
+
+  it("continues when a successful compiler result has no WGSL layout to validate", async () => {
+    const { engine, compiler } = engineHarness();
+    compiler.compile.mockResolvedValue({ success: true, wgsl: "" });
+
+    await expect(engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      storageConfig({ values: { count: 1, elementType: "float4" } }),
+      "/no-layout.slang",
+    )).resolves.toMatchObject({ success: true });
+  });
+
   it("draws a storage-only render pass with a vertex-and-fragment read-only layout and complete bind group", async () => {
     const { engine, device } = engineHarness();
     const renderPass = enableRendering(engine, device);

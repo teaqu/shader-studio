@@ -26,6 +26,18 @@ import { setInspectorState } from '../../lib/state/pixelInspectorState.svelte';
 import type { PixelInspectorState } from '../../lib/types/PixelInspectorState';
 import { get } from 'svelte/store';
 
+const mockConfigPanelStorageReset = vi.hoisted(() => vi.fn());
+vi.mock('../../lib/components/config/ConfigPanel.svelte', async importOriginal => {
+  const { default: ConfigPanel } = await importOriginal<typeof import('../../lib/components/config/ConfigPanel.svelte')>();
+  return {
+    default: (...args: Parameters<typeof ConfigPanel>) => {
+      // Inspect the public callback contract even when GLSL's storage UI is hidden.
+      mockConfigPanelStorageReset(args[1].onResetStorage);
+      return ConfigPanel(...args);
+    },
+  };
+});
+
 // Mock ResizeObserver
 global.ResizeObserver = vi.fn().mockImplementation(function () {
   return {
@@ -343,6 +355,12 @@ vi.mock('../../../../rendering/src/webgpu/WebGPURenderingEngine', () => {
     updateCustomUniformValues() {}
     getShaderLanguage() {
       return 'slang';
+    }
+    readStorageBuffer(_name: string, _start: number, _count: number, _point?: unknown) {
+      return Promise.resolve({ name: 'counter', elementType: 'u32', stride: 4, start: 0, count: 1, data: new Uint32Array([3]).buffer });
+    }
+    resetStorageBuffer(_name: string) {
+      return Promise.resolve();
     }
   };
 
@@ -823,6 +841,41 @@ describe('ShaderViewer', () => {
     });
 
     expect(container).toBeTruthy();
+  });
+
+  it('forwards WebGPU storage inspection and reset commands from the config panel', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await sendMessage({
+      type: 'shaderSource',
+      path: '/test/shader.wgsl',
+      language: 'wgsl',
+      code: '@fragment fn main() -> @location(0) vec4f { return vec4f(1); }',
+      config: { version: '1.0', storage: { counter: { count: 1, elementType: 'u32' } }, passes: { Image: {} } },
+      pathMap: { Image: '/test/shader.wgsl' },
+    });
+    configPanelStore.setVisible(true);
+    await tick();
+    await fireEvent.click(screen.getByRole('button', { name: 'Storage' }));
+    await fireEvent.click(screen.getByRole('tab', { name: 'Inspect' }));
+    await vi.waitFor(() => expect(screen.getByLabelText('Element 0 value')).toHaveTextContent('3'));
+    await fireEvent.click(screen.getByRole('tab', { name: 'Settings' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Reset data now' }));
+  });
+
+  it('does not offer WebGPU storage commands for a WebGL shader', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await sendMessage({
+      type: 'shaderSource', path: '/test/shader.glsl',
+      code: 'void mainImage(out vec4 color, vec2 uv) { color = vec4(1.0); }',
+      config: { version: '1.0', storage: { counter: { count: 1, elementType: 'uint' } }, passes: { Image: {} } },
+      pathMap: { Image: '/test/shader.glsl' },
+    });
+    configPanelStore.setVisible(true);
+    await tick();
+    expect(screen.queryByRole('button', { name: 'Storage' })).not.toBeInTheDocument();
+    expect(mockConfigPanelStorageReset).toHaveBeenLastCalledWith(undefined);
   });
 
   it('requests initial shader delivery without a destructive resource refresh', async () => {

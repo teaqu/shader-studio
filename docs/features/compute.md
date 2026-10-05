@@ -64,7 +64,7 @@ WGSL configs may use WGSL spellings for the same types; Slang spellings still re
 | `Atomic<uint>` / `Atomic<int>` | `atomic<u32>` / `atomic<i32>` |
 | `float2x2` / `float3x3` / `float4x4` | `mat2x2<f32>` / `mat3x3<f32>` / `mat4x4<f32>` (`mat2x2f` / `mat3x3f` / `mat4x4f` also work) |
 
-Storage survives across frames and recompiles when its declaration is unchanged. **Reset** recreates every buffer with zeroed contents.
+Storage survives across frames and recompiles when its declaration is unchanged. The storage workspace has **Settings** and read-only **Inspect** tabs, binary initialization, numeric struct fields, and configurable reset behavior. See [GPU Storage](storage.md) for the layout, lifecycle options and pass capture points.
 
 Compute passes can read and write storage; vertex and fragment shaders can only read it. Access buffers by name without declaring them in your shader:
 

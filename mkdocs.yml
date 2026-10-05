@@ -70,6 +70,7 @@ nav:
   - Features:
       - Configure Buffers And Inputs: features/config-buffers.md
       - Compute Passes: features/compute.md
+      - GPU Storage: features/storage.md
       - Channels: features/channels.md
       - Multiple Render Targets: features/multiple-render-targets.md
       - Uniforms: features/uniforms.md

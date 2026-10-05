@@ -29,8 +29,8 @@
     bufferPathMap?: Record<string, string>;
     bufferSources?: Record<string, string>;
     shaderSource?: string;
-    onReadStorage?: (name: string, start: number, count: number) => Promise<StorageBufferSnapshot>;
-    onWriteStorage?: (name: string, start: number, data: ArrayBuffer) => Promise<void>;
+    onReadStorage?: (name: string, start: number, count: number, point?: import('@shader-studio/types').StorageCapturePoint) => Promise<StorageBufferSnapshot>;
+    onResetStorage?: (name: string) => Promise<void>;
     transport: Transport;
     shaderPath?: string;
     isVisible?: boolean;
@@ -56,7 +56,7 @@
     bufferSources = {},
     shaderSource = '',
     onReadStorage,
-    onWriteStorage,
+    onResetStorage,
     transport,
     shaderPath = "",
     isVisible = true,
@@ -832,7 +832,10 @@
           onApply={applyStorageBuffer}
           onDelete={removeStorageBuffer}
           onRead={onReadStorage}
-          onWrite={onWriteStorage}
+          onReset={onResetStorage}
+          scope={shaderPath}
+          {language}
+          passes={Object.entries(config?.passes ?? {}).filter(([name, pass]) => name !== 'common' && !!pass).map(([name, pass]) => ({ name, compute: !!pass && 'type' in pass && pass.type === 'compute', dispatchOnce: !!pass && 'type' in pass && pass.type === 'compute' && !!pass.dispatchOnce }))}
         />
       {:else if activeTab === "Image"}
         <BufferConfig

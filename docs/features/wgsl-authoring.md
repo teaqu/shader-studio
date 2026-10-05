@@ -148,13 +148,13 @@ fn mainCompute(@builtin(global_invocation_id) id: vec3u) {
 }
 ```
 
-Storage buffers configured on the pass are declared for you; sampling and uniform built-ins work as in image shaders, except implicit derivative sampling is unavailable — use `sample2DLevel` or `sample2DGrad` with explicit gradients. See [Compute Passes](compute.md).
+Storage buffers configured on the shader are declared for you; sampling and uniform built-ins work as in image shaders, except implicit derivative sampling is unavailable — use `sample2DLevel` or `sample2DGrad` with explicit gradients. See [Compute Passes](compute.md).
 
 ## Storage Buffers
 
 Use native WGSL types in the storage configuration, such as `f32`, `vec3f`, `atomic<u32>`, or a struct declared in your shader or Common code. Buffer sizes are calculated automatically, including padding, nested arrays and structs, and `@align` / `@size` attributes. Half-precision types require `enable f16;` and GPU support for `shader-f16`. For buffers of `f16` scalars, use an even element count if your shader relies on `arrayLength`; an odd count includes an extra padding element.
 
-The Storage inspector can read and edit scalar and vector values using either WGSL or Slang type names, including `f16`. Custom structs and matrices still require shader code to inspect their fields.
+The [GPU Storage workspace](storage.md) has Settings and read-only Inspect tabs. Inspect scalar and vector values using WGSL or Slang type names, including `f16`, and select one numeric struct field at a time. Matrix, nested struct and array fields are not displayed as numeric fields.
 
 ## Language Support in the Editor
 

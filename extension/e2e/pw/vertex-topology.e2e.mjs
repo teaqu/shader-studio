@@ -341,7 +341,11 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
       await expect(frame.getByLabel('Depth test')).toBeHidden();
     });
 
-    test('sets the instance count in the config panel, draws every instance, and keeps it after reload', async ({ vscode }) => {
+    test('sets the instance count in the config panel, draws every instance, and keeps it after reload', async ({ vscode }, testInfo) => {
+      // Reload includes a fresh webview and shader compilation before the GPU
+      // readback assertions. Use the suite's budget for this multi-phase flow:
+      // the file's shorter budget can expire during valid reload/readback waits.
+      test.setTimeout(testInfo.project.timeout);
       rmSync(fixtureDir, { recursive: true, force: true });
       mkdirSync(fixtureDir, { recursive: true });
       writeFileSync(shaderPath, IMAGE[language]);

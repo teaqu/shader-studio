@@ -260,6 +260,14 @@ export interface CommonPass {
 export interface StorageBufferConfig {
     count: number;
     elementType: string;
+    /** Optional config-owned struct. Omit to use a type declared in shader source. */
+    fields?: Array<{ name: string; type: string }>;
+    /** Base64 bytes loaded from a binary file; missing bytes start at zero. */
+    initialData?: string;
+    initialDataName?: string;
+    clearEachFrame?: boolean;
+    /** Defaults to true, preserving the existing restart behaviour. */
+    resetOnRestart?: boolean;
 }
 
 /** Exactly one compute dispatch mode: a 1D count, explicit dimensions, or a named output to cover. */

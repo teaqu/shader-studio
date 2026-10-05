@@ -342,3 +342,43 @@ order; WebGPU runs compute passes first, and `Image` always runs last. See
 ## File Paths
 
 Paths in the config are relative to the config file's directory. Keep all referenced files (buffer `.glsl` files, textures, videos, audio) in the same directory or subdirectories.
+
+## Storage Declarations
+
+Declare WebGPU storage at the top level of the config, alongside `passes`. The visual [Storage workspace](../features/storage.md) edits these declarations.
+
+```json
+{
+  "version": "1.0",
+  "storage": {
+    "particles": {
+      "count": 1024,
+      "elementType": "ParticleData",
+      "fields": [
+        { "name": "position", "type": "float4" },
+        { "name": "velocity", "type": "float4" }
+      ],
+      "resetOnRestart": false
+    },
+    "counter": {
+      "count": 1,
+      "elementType": "u32",
+      "initialData": "AQAAAA==",
+      "initialDataName": "counter.bin"
+    }
+  },
+  "passes": { "Image": {} }
+}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `count` | Positive integer element count. |
+| `elementType` | Numeric Slang/WGSL type or struct name. |
+| `fields` | Optional 1-64 named numeric fields. When supplied, generates the named struct; omit for a type defined in shader source. Field names must be unique shader identifiers. |
+| `initialData` | Optional base64-encoded raw binary bytes, at most 256 KiB decoded and no larger than the buffer. Missing bytes are zero. |
+| `initialDataName` | Optional display name of the uploaded file; not a path loaded at runtime. |
+| `clearEachFrame` | Optional boolean, default `false`. Zeros storage before each normal simulation frame. |
+| `resetOnRestart` | Optional boolean, default `true`. Set `false` to preserve compatible existing storage during a shader restart. |
+
+The example initializes `counter[0]` to `1u`. Binary data must match the actual GPU element stride and field offsets, including padding. Changing a declaration's layout, size or initial data can recreate its buffer. Capture settings and the selected inspector field are UI choices, not storage declaration fields.

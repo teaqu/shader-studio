@@ -300,7 +300,7 @@ const notInputs = new Set([
   '.githooks', '.gitignore', '.vscode', 'AGENTS.md', 'CLAUDE.md', 'LICENSE', 'README.md',
   'THIRD-PARTY-NOTICES.md', 'assets', 'docs', 'mkdocs.yml',
   // Browser-only design references are not consumed by a build or test suite.
-  'mockups',
+  'mockups', 'wireframes',
   // Static dead-code policy is always checked in CI; it does not change an E2E runtime.
   'knip.jsonc',
 ]);

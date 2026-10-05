@@ -55,6 +55,46 @@ describe('WebGPURenderingEngine storage inspection', () => {
     await expect(engine.readStorageBuffer('particles', 8, 1)).rejects.toThrow('invalid element range');
   });
 
+  it('rejects a capture point for a pass that is no longer installed', async () => {
+    const { engine, device } = engineWithStorage();
+
+    await expect(engine.readStorageBuffer('particles', 0, 1, { pass: 'BufferA', timing: 'before' }))
+      .rejects.toThrow('Capture pass is not available');
+    expect(device.createCommandEncoder).not.toHaveBeenCalled();
+  });
+
+  it('adds the current frame when a storage readback has no captured frame', async () => {
+    const { engine } = engineWithStorage();
+    Object.assign(engine as unknown as Record<string, unknown>, {
+      timeManager: { getFrame: () => 17 },
+    });
+
+    await expect(engine.readStorageBuffer('particles', 0, 1)).resolves.toMatchObject({ frame: 17 });
+  });
+
+  it('forwards a capture point when its pass remains installed', async () => {
+    const { engine } = engineWithStorage();
+    const point = { pass: 'BufferA', timing: 'after' } as const;
+    (engineOwners(engine).session as unknown as { passGraph: Array<{ name: string }> }).passGraph = [{ name: 'BufferA' }];
+    const readStorageBuffer = vi.fn(async () => ({
+      name: 'particles', elementType: 'float4', stride: 16, start: 0, count: 1, data: new ArrayBuffer(16), frame: 12,
+    }));
+    (engineOwners(engine).storage as unknown as { readStorageBuffer: typeof readStorageBuffer }).readStorageBuffer = readStorageBuffer;
+
+    await expect(engine.readStorageBuffer('particles', 0, 1, point)).resolves.toMatchObject({ frame: 12 });
+    expect(readStorageBuffer).toHaveBeenCalledWith('particles', 0, 1, point);
+  });
+
+  it('delegates resetting a WebGPU storage buffer to storage ownership', async () => {
+    const { engine } = engineWithStorage();
+    const resetStorageBuffer = vi.fn();
+    (engineOwners(engine).storage as unknown as { resetStorageBuffer: typeof resetStorageBuffer }).resetStorageBuffer = resetStorageBuffer;
+
+    await engine.resetStorageBuffer('particles');
+
+    expect(resetStorageBuffer).toHaveBeenCalledWith('particles');
+  });
+
   it('copies an aligned envelope and trims it for an unaligned f16 element read', async () => {
     const { engine, source, copyBufferToBuffer, readback } = engineWithStorage();
     (engineOwners(engine).storage as unknown as { storageLayouts: Map<string, unknown> }).storageLayouts.set(
