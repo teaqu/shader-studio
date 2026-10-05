@@ -57,4 +57,24 @@ describe('StoragePanel', () => {
     const ui = render(StoragePanel, { storage: {}, ...commands() });
     expect(ui.getByText('No storage buffers are configured.')).toBeInTheDocument();
   });
+  it('forwards reset commands to the selected buffer editor', async () => {
+    const onReset = vi.fn(async () => {});
+    const ui = render(StoragePanel, { scope: 'panel-reset', storage: { counter: { count: 1, elementType: 'u32' } }, ...commands(), onReset });
+    await fireEvent.click(ui.getByRole('button', { name: 'Reset data now' }));
+    await waitFor(() => expect(onReset).toHaveBeenCalledWith('counter'));
+  });
+  it('keeps selection after a rename and focuses Add after removing the selected buffer', async () => {
+    const actions = commands();
+    const props = { scope: 'panel-rename-delete', storage: { counter: { count: 1, elementType: 'u32' } }, ...actions };
+    const ui = render(StoragePanel, props);
+    await fireEvent.input(ui.getByLabelText('Storage name'), { target: { value: 'renamed' } });
+    await fireEvent.click(await ui.findByRole('button', { name: 'Apply pending storage changes' }));
+    expect(actions.onApply).toHaveBeenCalledWith('counter', 'renamed', expect.objectContaining({ count: 1 }));
+    await ui.rerender({ ...props, storage: { renamed: { count: 1, elementType: 'u32' } } });
+    expect(ui.getByLabelText('Storage name')).toHaveValue('renamed');
+    await fireEvent.click(ui.getByLabelText('Delete renamed'));
+    expect(actions.onDelete).toHaveBeenCalledWith('renamed');
+    expect(ui.getByRole('button', { name: 'Add storage buffer' })).toHaveFocus();
+  });
+
 });

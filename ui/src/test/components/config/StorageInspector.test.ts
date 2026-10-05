@@ -84,4 +84,21 @@ describe('StorageInspector', () => {
     await Promise.resolve();
     expect(ui.getByLabelText('Element 0 component 0')).toHaveTextContent('9');
   });
+  it('leaves an empty buffer uncaptured and reports non-Error read failures', async () => {
+    const onRead = vi.fn(async () => snapshot());
+    const ui = render(StorageInspector, { name: 'empty', count: 0, onRead });
+    await Promise.resolve();
+    expect(onRead).not.toHaveBeenCalled();
+    await ui.rerender({ name: 'data', count: 1, onRead: async () => Promise.reject('unavailable') });
+    await waitFor(() => expect(ui.getByRole('alert')).toHaveTextContent('unavailable'));
+  });
+  it.each(['before', 'after'] as const)('labels a %s pass snapshot without a frame counter', async timing => {
+    const ui = render(StorageInspector, { name: 'counter', scope: `metadata-${timing}`, count: 1,
+      onRead: async () => ({ ...snapshot('u32', 4), frame: undefined, data: new Uint32Array([7]).buffer,
+        capturePoint: { pass: 'Simulate', timing } }),
+    });
+    await waitFor(() => expect(ui.getByLabelText('Element 0 value')).toHaveTextContent('7'));
+    expect(ui.getByText(`Snapshot · ${timing === 'before' ? 'Before' : 'After'} Simulate`)).toBeInTheDocument();
+  });
+
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ComputePass, ShaderConfig } from '@shader-studio/types';
+import type { ComputePass, ShaderConfig, StorageBufferConfig } from '@shader-studio/types';
 import {
   addStorageBuffer,
   applyStorageBuffer,
@@ -68,6 +68,21 @@ describe('compute config mutations', () => {
     expect(original.storage?.storageB).toBeUndefined();
   });
 
+  it('continues past alphabetic storage names and preserves trimmed declarations on edit', () => {
+    const storage = Object.fromEntries(Array.from({ length: 26 }, (_, index) => [
+      `storage${String.fromCharCode(65 + index)}`, { count: 1, elementType: 'uint' },
+    ]));
+    expect(addStorageBuffer(config({ storage })).name).toBe('storage1');
+
+    const result = applyStorageBuffer(config({ storage: { values: { count: 1, elementType: 'uint' } } }), 'values', 'values', {
+      count: 2, elementType: ' float4 ',
+    });
+    expect(result).toEqual(expect.objectContaining({ ok: true }));
+    if (result.ok) {
+      expect(result.config.storage?.values).toEqual({ count: 2, elementType: 'float4' });
+    }
+  });
+
   it('renames storage and rewrites compute cover references immutably', () => {
     const original = config({
       storage: { particles: { count: 4, elementType: 'float4' } },
@@ -114,6 +129,16 @@ describe('compute config mutations', () => {
     })).toEqual({ ok: false, errors: { count: 'Total storage allocation must not exceed 256 MiB' } });
   });
 
+  it('reports invalid configured layouts and counts other known storage allocations', () => {
+    // Persisted configuration can contain invalid option types before validation.
+    expect(applyStorageBuffer(config(), null, 'structured', {
+      count: 1, elementType: 'float4', clearEachFrame: 1,
+    } as unknown as StorageBufferConfig)).toEqual(expect.objectContaining({ ok: false }));
+    const existing = config({ storage: { used: { count: 256 * 1024 * 1024 / 4, elementType: 'uint' } } });
+    expect(applyStorageBuffer(existing, null, 'extra', { count: 1, elementType: 'uint' }))
+      .toEqual({ ok: false, errors: { count: 'Total storage allocation must not exceed 256 MiB' } });
+  });
+
   it('finds cover references and blocks referenced deletion', () => {
     const source = config({
       storage: { particles: { count: 1, elementType: 'uint' } },
@@ -136,4 +161,22 @@ describe('compute config mutations', () => {
     expect(result).toEqual({ ok: true, config: { ...original, storage: undefined } });
     expect(original.storage?.values).toBeDefined();
   });
+
+  it('reports missing storage and ignores non-compute cover lookalikes', () => {
+    const source = config({ passes: { Image: { inputs: {} }, BufferA: { path: 'buffer.wgsl', inputs: {} } } });
+    expect(getStorageCoverReferences(source, 'missing')).toEqual([]);
+    expect(removeStorageBuffer(source, 'missing')).toEqual({ ok: false, errors: { name: 'Storage buffer was not found' } });
+  });
+  it('defers source-defined struct sizes to compilation while retaining known matrix allocation bounds', () => {
+    const source = config({ storage: {
+      matrices: { count: 1, elementType: 'float4x4' },
+      external: { count: 1, elementType: 'Particle' },
+    } });
+    const added = applyStorageBuffer(source, null, 'positions', { count: 1, elementType: 'float4' });
+    expect(added.ok).toBe(true);
+    expect(applyStorageBuffer(source, null, 'particles', { count: 2, elementType: 'Particle' }).ok).toBe(true);
+    expect(applyStorageBuffer(source, null, 'oversized', { count: 256 * 1024 * 1024 / 64, elementType: 'float4x4' }))
+      .toEqual({ ok: false, errors: { count: 'Total storage allocation must not exceed 256 MiB' } });
+  });
+
 });

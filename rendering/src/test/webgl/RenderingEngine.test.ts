@@ -1845,6 +1845,12 @@ describe("RenderingEngine", () => {
     });
   });
 
+  describe("WebGL storage API", () => {
+    it("rejects storage resets because WebGL has no storage buffers", async () => {
+      await expect(renderingEngine.resetStorageBuffer("particles")).rejects.toThrow("Storage buffers require WebGPU");
+    });
+  });
+
   describe("dispose()", () => {
     it("continues input and pipeline teardown after an earlier stage throws", () => {
       const stopError = new Error("stop failed");
