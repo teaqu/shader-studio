@@ -1142,6 +1142,36 @@ describe("RenderingEngine", () => {
         "Cannot capture the current frame before WebGL is initialized",
       );
     });
+
+    it("rejects if the renderer loses its canvas after capture was scheduled", async () => {
+      Object.defineProperty(renderingEngine, "glCanvas", { value: document.createElement("canvas"), configurable: true });
+      Object.defineProperty(renderingEngine, "gl", { value: {}, configurable: true });
+      mockFrameRenderer.readNextDisplayedFrame = vi.fn((read: () => ImageData) => {
+        Object.defineProperty(renderingEngine, "gl", { value: null, configurable: true });
+        return Promise.resolve(read());
+      });
+
+      await expect(renderingEngine.captureCurrentFrame()).rejects.toThrow("Cannot read the WebGL canvas after disposal");
+    });
+  });
+
+  describe("displayed custom uniforms", () => {
+    it("uses frozen frame values when the renderer has them", () => {
+      mockFrameRenderer.getPausedCustomUniforms = vi.fn(() => [{ name: "uColour", type: "vec3", value: [1, 2, 3] }]);
+
+      const values = renderingEngine.getDisplayedCustomUniforms();
+
+      expect(values).toEqual([{ name: "uColour", type: "vec3", value: [1, 2, 3] }]);
+      expect(values[0].value).not.toBe(mockFrameRenderer.getPausedCustomUniforms.mock.results[0].value[0].value);
+    });
+
+    it("uses the live manager values when no paused frame is available", () => {
+      mockFrameRenderer.getPausedCustomUniforms = vi.fn(() => null);
+      const manager = { getCurrentValues: vi.fn(() => [{ name: "uValue", type: "float", value: 4 }]) };
+      Object.defineProperty(renderingEngine, "customUniformManager", { value: manager, configurable: true });
+
+      expect(renderingEngine.getDisplayedCustomUniforms()).toEqual([{ name: "uValue", type: "float", value: 4 }]);
+    });
   });
 
   describe("pixel region capture", () => {

@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { appendFileSync, readFileSync, realpathSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 import { isRuntimeSource, NEW_FILE_THRESHOLDS } from './check-new-file-coverage.mjs';
 export function changedLines(diff) {
   const lines = new Set();
@@ -21,12 +22,37 @@ export function changedLines(diff) {
 const hitsValid = (hits) => Number.isInteger(hits) && hits >= 0;
 const touches = (location, lines) => location?.start && location?.end
   && [...lines].some((line) => line >= location.start.line && line <= location.end.line);
+/** Explicit type declarations are erased even when the same file exports runtime values. */
+function runtimeChangedLines(file, source, lines) {
+  if (!file.endsWith('.ts')) {
+    return lines;
+  }
+  const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
+  const erased = new Set();
+  const runtime = new Set();
+  for (const statement of ast.statements) {
+    const typeOnly = ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement)
+      || (ts.isExportDeclaration(statement) && statement.isTypeOnly)
+      || (ts.isImportDeclaration(statement) && statement.importClause?.isTypeOnly);
+    const target = typeOnly ? erased : runtime;
+    const start = ast.getLineAndCharacterOfPosition(statement.getStart(ast)).line + 1;
+    const end = ast.getLineAndCharacterOfPosition(statement.end).line + 1;
+    for (const line of lines) {
+      if (line >= start && line <= end) {
+        target.add(line);
+      }
+    }
+  }
+  return new Set([...lines].filter(line => !erased.has(line) || runtime.has(line)));
+}
 export function checkChangedCoverage(report, changes, root, readSource) {
   const normalized = new Map(Object.entries(report).map(([file, coverage]) => [relative(root, file).replaceAll('\\', '/'), coverage]));
   const errors = [];
   const files = [];
-  for (const [file, lines] of changes) {
-    if (!lines.size || !isRuntimeSource(file, readSource(file))) {
+  for (const [file, changed] of changes) {
+    const source = readSource(file);
+    const lines = runtimeChangedLines(file, source, changed);
+    if (!lines.size || !isRuntimeSource(file, source)) {
       continue;
     }
     const coverage = normalized.get(file);

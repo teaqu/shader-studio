@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { ViewerSession } from '@shader-studio/ui';
   import { onDestroy } from 'svelte';
   interface Props {
     isVisible: boolean;
@@ -7,6 +8,11 @@
     vimMode: boolean;
     errors: string[];
     activeBufferName: string;
+    bufferNames?: string[];
+    compileMode?: string;
+    config?: ViewerSession['config'];
+    customUniformInfo?: ViewerSession['customUniformInfo'];
+    slangModules?: ViewerSession['slangModules'];
     commonPath?: string;
     commonSource?: string;
     onCodeChange: (code: string) => void;
@@ -22,6 +28,11 @@
     vimMode,
     errors = [],
     activeBufferName,
+    bufferNames = [],
+    compileMode,
+    config,
+    customUniformInfo = [],
+    slangModules = [],
     commonPath = undefined,
     commonSource = undefined,
     onCodeChange = () => {},
@@ -41,6 +52,11 @@
 
 <div
   data-testid="shader-editor"
+  data-buffers={bufferNames.join("|")}
+  data-compile-mode={compileMode}
+  data-config={JSON.stringify(config)}
+  data-uniforms={JSON.stringify(customUniformInfo)}
+  data-modules={JSON.stringify(slangModules)}
   data-visible={isVisible}
   data-code={shaderCode}
   data-path={shaderPath}

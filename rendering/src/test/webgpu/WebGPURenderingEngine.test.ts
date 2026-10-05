@@ -214,12 +214,160 @@ describe("WebGPURenderingEngine", () => {
     expect(buffer.destroy).toHaveBeenCalledOnce();
   });
 
+  it("redraws and captures after the running-frame wait expires", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("ImageData", class {
+      constructor(
+        public data: Uint8ClampedArray,
+        public width: number,
+        public height: number,
+      ) {}
+    });
+    try {
+      const engine = new WebGPURenderingEngine(assets);
+      const buffer = {
+        mapAsync: vi.fn().mockResolvedValue(undefined),
+        getMappedRange: vi.fn(() => new Uint8Array(256).buffer),
+        unmap: vi.fn(), destroy: vi.fn(),
+      };
+      Object.assign(engine as unknown as Record<string, unknown>, {
+        device: { createBuffer: vi.fn(() => buffer) }, context: {}, canvas: { width: 1, height: 1 }, format: "rgba8unorm", running: true,
+        timeManager: { isPaused: () => false }, diagnostics: { now: () => 42 },
+      });
+      const renderer = engineOwners(engine).frameRenderer as unknown as { renderFrame: ReturnType<typeof vi.fn>; pendingScreenshotCopies: unknown[] };
+      renderer.renderFrame = vi.fn((_time, capture, imageOnly, captureCanvas) => {
+        expect(capture).toBe(true);
+        expect(imageOnly).toBe(true);
+        captureCanvas({ copyTextureToBuffer: vi.fn() } as unknown as GPUCommandEncoder, { width: 1, height: 1 } as GPUTexture);
+      });
+
+      const capture = engine.captureCurrentFrame();
+      await vi.advanceTimersByTimeAsync(1000);
+
+      await expect(capture).resolves.toMatchObject({ width: 1, height: 1 });
+      expect(renderer.pendingScreenshotCopies).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("rejects current-frame capture before WebGPU is initialized", async () => {
     const engine = new WebGPURenderingEngine(assets);
 
     await expect(engine.captureCurrentFrame()).rejects.toThrow(
       "Cannot capture the current frame before WebGPU is initialized",
     );
+  });
+
+  it("rejects an empty WebGPU canvas before allocating a readback buffer", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const createBuffer = vi.fn();
+    Object.assign(engine as unknown as Record<string, unknown>, {
+      device: { createBuffer }, context: {}, canvas: { width: 0, height: 1 },
+    });
+
+    await expect(engine.captureCurrentFrame()).rejects.toThrow("Cannot capture an empty WebGPU canvas");
+    expect(createBuffer).not.toHaveBeenCalled();
+  });
+
+  it("cleans up the readback buffer when mapping fails", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const buffer = {
+      mapAsync: vi.fn().mockRejectedValue(new Error("device lost")),
+      getMappedRange: vi.fn(), unmap: vi.fn(), destroy: vi.fn(),
+    };
+    Object.assign(engine as unknown as Record<string, unknown>, {
+      device: { createBuffer: vi.fn(() => buffer) }, context: {}, canvas: { width: 1, height: 1 }, format: "rgba8unorm",
+    });
+    const renderer = engineOwners(engine).frameRenderer as unknown as { renderFrame: ReturnType<typeof vi.fn> };
+    renderer.renderFrame = vi.fn((_time, _capture, _imageOnly, captureCanvas) => {
+      captureCanvas({ copyTextureToBuffer: vi.fn() } as unknown as GPUCommandEncoder, { width: 1, height: 1 } as GPUTexture);
+    });
+
+    await expect(engine.captureCurrentFrame()).rejects.toThrow("device lost");
+    expect(buffer.unmap).toHaveBeenCalledOnce();
+    expect(buffer.destroy).toHaveBeenCalledOnce();
+  });
+
+  it("still destroys the readback buffer when unmapping reports it is already unmapped", async () => {
+    vi.stubGlobal("ImageData", class {
+      constructor(
+        public data: Uint8ClampedArray,
+        public width: number,
+        public height: number,
+      ) {}
+    });
+    const engine = new WebGPURenderingEngine(assets);
+    const buffer = {
+      mapAsync: vi.fn().mockResolvedValue(undefined),
+      getMappedRange: vi.fn(() => new Uint8Array(256).buffer),
+      unmap: vi.fn(() => {
+        throw new Error("already unmapped");
+      }),
+      destroy: vi.fn(),
+    };
+    Object.assign(engine as unknown as Record<string, unknown>, {
+      device: { createBuffer: vi.fn(() => buffer) }, context: {}, canvas: { width: 1, height: 1 }, format: "rgba8unorm",
+    });
+    const renderer = engineOwners(engine).frameRenderer as unknown as { renderFrame: ReturnType<typeof vi.fn> };
+    renderer.renderFrame = vi.fn((_time, _capture, _imageOnly, captureCanvas) => {
+      captureCanvas({ copyTextureToBuffer: vi.fn() } as unknown as GPUCommandEncoder, { width: 1, height: 1 } as GPUTexture);
+    });
+
+    await expect(engine.captureCurrentFrame()).resolves.toMatchObject({ width: 1, height: 1 });
+    expect(buffer.destroy).toHaveBeenCalledOnce();
+  });
+
+  it("rejects when a redraw does not produce a matching canvas texture", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const buffer = { unmap: vi.fn(), destroy: vi.fn() };
+    Object.assign(engine as unknown as Record<string, unknown>, {
+      device: { createBuffer: vi.fn(() => buffer) }, context: {}, canvas: { width: 2, height: 2 }, format: "rgba8unorm",
+    });
+    const renderer = engineOwners(engine).frameRenderer as unknown as { renderFrame: ReturnType<typeof vi.fn> };
+    renderer.renderFrame = vi.fn((_time, _capture, _imageOnly, captureCanvas) => {
+      captureCanvas({ copyTextureToBuffer: vi.fn() } as unknown as GPUCommandEncoder, { width: 1, height: 1 } as GPUTexture);
+    });
+
+    await expect(engine.captureCurrentFrame()).rejects.toThrow("did not produce a canvas frame");
+    expect(buffer.destroy).toHaveBeenCalledOnce();
+  });
+
+  it("returns cloned frozen custom uniforms while paused", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const original = [{ name: "uColour", type: "float3", value: [0.1, 0.2, 0.3] }];
+    (engineOwners(engine).frameRenderer as unknown as { pausedCustomUniformValues: typeof original }).pausedCustomUniformValues = original;
+    Object.assign(engine as unknown as Record<string, unknown>, {
+      timeManager: { isPaused: () => true },
+    });
+
+    const displayed = engine.getDisplayedCustomUniforms();
+
+    expect(displayed).toEqual(original);
+    expect(displayed).not.toBe(original);
+    expect(displayed[0].value).not.toBe(original[0].value);
+  });
+
+  it("returns live custom uniforms when playback is not paused", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const live = [{ name: "uValue", type: "float", value: 8 }];
+    Object.assign(engine as unknown as Record<string, unknown>, {
+      timeManager: { isPaused: () => false },
+    });
+    vi.spyOn(engine, "getCurrentCustomUniforms").mockReturnValue(live);
+
+    expect(engine.getDisplayedCustomUniforms()).toEqual(live);
+  });
+
+  it("uses live custom uniforms if a paused frame has not been rendered yet", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const live = [{ name: "uValue", type: "float", value: 8 }];
+    Object.assign(engine as unknown as Record<string, unknown>, {
+      timeManager: { isPaused: () => true },
+    });
+    vi.spyOn(engine, "getCurrentCustomUniforms").mockReturnValue(live);
+
+    expect(engine.getDisplayedCustomUniforms()).toEqual(live);
   });
 
   it("compiles a structured Slang debug plan through the normal image/module pipeline", async () => {
@@ -4648,6 +4796,27 @@ describe("WebGPURenderingEngine", () => {
     };
     (engine as any).canvas = { width: 320, height: 180 };
   }
+
+  it("copies every queued screenshot from the canvas frame before submitting it", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    stubDeviceAndContext(engine);
+    const pipeline = renderablePipeline();
+    Object.assign(engineOwners(engine).session, {
+      passGraph: [{ name: "Image", width: 320, height: 180, output: "canvas", channels: [] }],
+      passPipelines: new Map([["Image", pipeline]]),
+    });
+    const copy = vi.fn();
+    (engineOwners(engine).frameRenderer as unknown as {
+      pendingScreenshotCopies: Array<typeof copy>;
+    }).pendingScreenshotCopies = [copy];
+
+    engine.render(1000);
+
+    expect(copy).toHaveBeenCalledOnce();
+    expect((engineOwners(engine).frameRenderer as unknown as {
+      pendingScreenshotCopies: unknown[];
+    }).pendingScreenshotCopies).toEqual([]);
+  });
 
   it("passes the source pipeline's previous-frame view for a self-feedback buffer channel", () => {
     const engine = new WebGPURenderingEngine(assets);

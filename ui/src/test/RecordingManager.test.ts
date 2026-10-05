@@ -177,6 +177,14 @@ describe('RecordingManager', () => {
       expect(mockSetError).toHaveBeenCalledWith('Readback failed');
     });
 
+    it('stringifies non-Error screenshot failures for the recording panel', async () => {
+      mockCaptureScreenshot.mockRejectedValueOnce('readback unavailable');
+
+      await manager.screenshot({ format: 'png', width: 800, height: 600 });
+
+      expect(mockSetError).toHaveBeenCalledWith('readback unavailable');
+    });
+
     it('shows saving state until the host confirms the file was saved', async () => {
       const save = Promise.withResolvers<void>();
       sendFile.mockReturnValueOnce(save.promise);
@@ -199,6 +207,17 @@ describe('RecordingManager', () => {
     });
   });
 
+  it('reports a clear error when Live screenshots are requested before the viewer engine exists', async () => {
+    await new RecordingManager(getContext, sendFile).screenshot({
+      mode: 'live', format: 'png', width: 800, height: 600,
+    });
+
+    expect(mockCaptureLiveScreenshot).not.toHaveBeenCalled();
+    expect(mockSetError).toHaveBeenCalledWith(
+      'Live capture is unavailable because the shader viewer is not ready',
+    );
+  });
+
   describe('record', () => {
     const baseConfig = {
       format: 'webm' as const,
@@ -214,6 +233,27 @@ describe('RecordingManager', () => {
 
       expect(getContext).toHaveBeenCalled();
       expect(mockRecord).toHaveBeenCalledWith(baseConfig, defaultContext);
+    });
+
+    it('uses the current engine for Live recordings', async () => {
+      // The manager only forwards this engine; renderer behaviour has its own tests.
+      const liveEngine = { captureCurrentFrame: vi.fn(), getCanvas: vi.fn() } as any;
+      const liveManager = new RecordingManager(getContext, sendFile, onStateChanged, () => liveEngine);
+      const config = { ...baseConfig, mode: 'live' as const };
+
+      await liveManager.record(config);
+
+      expect(mockRecordLive).toHaveBeenCalledWith(config, liveEngine);
+      expect(mockRecord).not.toHaveBeenCalled();
+    });
+
+    it('reports a clear error when Live video is requested before the viewer engine exists', async () => {
+      await manager.record({ ...baseConfig, mode: 'live' });
+
+      expect(mockRecordLive).not.toHaveBeenCalled();
+      expect(mockSetError).toHaveBeenCalledWith(
+        'Live capture is unavailable because the shader viewer is not ready',
+      );
     });
 
     it('should call sendFile with webm blob', async () => {
@@ -306,6 +346,11 @@ describe('RecordingManager', () => {
     it('should call recorder cancel', () => {
       manager.cancel();
       expect(mockCancel).toHaveBeenCalled();
+    });
+
+    it('forwards a user stop request for a Live recording', () => {
+      manager.stopLiveRecording();
+      expect(mockStopLiveRecording).toHaveBeenCalledOnce();
     });
   });
 

@@ -266,6 +266,19 @@ describe('RecordingPanel', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  it('dismisses notices and errors through the recording store', async () => {
+    getMockStore().set({ ...makeDefaultState(), notice: 'Saved with a warning.' });
+    const { unmount } = render(RecordingPanel, { props: defaultProps });
+    await fireEvent.click(screen.getByText('Dismiss'));
+    unmount();
+
+    getMockStore().set({ ...makeDefaultState(), error: 'Disk full' });
+    render(RecordingPanel, { props: defaultProps });
+    await fireEvent.click(screen.getByText('Dismiss'));
+    const module = await import('../../../lib/stores/recordingStore');
+    expect(module.recordingStore.reset).toHaveBeenCalledTimes(2);
+  });
+
   it('shows capture failures in the panel', () => {
     getMockStore().set({ ...makeDefaultState(), phase: 'error', error: 'Disk full' });
 
@@ -282,6 +295,34 @@ describe('RecordingPanel', () => {
     const fill = container.querySelector('.recording-progress-fill:not(.recording-progress-indeterminate)') as HTMLElement;
     expect(fill).toBeInTheDocument();
     expect(fill.style.width).toBe('50%');
+  });
+
+  it('mirrors a render preview canvas while recording', () => {
+    const source = document.createElement('canvas');
+    source.width = 640;
+    source.height = 360;
+    const drawImage = vi.fn();
+    const getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
+      () => ({ drawImage } as never),
+    );
+    const raf = vi.fn()
+      .mockImplementationOnce((callback: FrameRequestCallback) => {
+        callback(0);
+        return 1;
+      })
+      .mockReturnValue(2);
+    vi.stubGlobal('requestAnimationFrame', raf);
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    getMockStore().set({ ...makeDefaultState(), isRecording: true, format: 'webm', previewCanvas: source });
+
+    const { container, unmount } = render(RecordingPanel, { props: defaultProps });
+
+    expect(container.querySelector('.recording-preview-canvas')).toHaveAttribute('width', '640');
+    expect(raf).toHaveBeenCalled();
+    expect(drawImage).toHaveBeenCalledWith(source, 0, 0);
+    unmount();
+    getContext.mockRestore();
+    vi.unstubAllGlobals();
   });
 
   it('should not show tab content when recording (only progress)', () => {

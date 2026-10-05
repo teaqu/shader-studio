@@ -196,6 +196,27 @@ describe('VideoTab', () => {
     expect(call.height).toBe(1080);
   });
 
+  it('uses the 720p render preset and can return to the saved MP4 format', async () => {
+    render(VideoTab, { props: defaultProps });
+    await fireEvent.click(screen.getByText('WebM'));
+    await fireEvent.click(screen.getByText('MP4'));
+    await selectRenderMode();
+    await fireEvent.click(screen.getByText('720p'));
+    await fireEvent.click(screen.getByText('Render video'));
+
+    expect(defaultProps.onRecord).toHaveBeenCalledWith(expect.objectContaining({
+      format: 'mp4', width: 1280, height: 720,
+    }));
+  });
+
+  it('selects the 4K render preset', async () => {
+    render(VideoTab, { props: defaultProps });
+    await selectRenderMode();
+    await fireEvent.click(screen.getByText('4K'));
+    await fireEvent.click(screen.getByText('Render video'));
+    expect(defaultProps.onRecord).toHaveBeenCalledWith(expect.objectContaining({ width: 3840, height: 2160 }));
+  });
+
   it('should show custom start time input', async () => {
     const { container } = render(VideoTab, { props: defaultProps });
     await selectRenderMode();
@@ -252,6 +273,25 @@ describe('VideoTab', () => {
     expect(call.fps).toBe(45);
   });
 
+  it('returns from a custom FPS to a preset when the preset is selected', async () => {
+    const { container } = render(VideoTab, { props: defaultProps });
+    const fpsInput = container.querySelector('input[placeholder="fps"]') as HTMLInputElement;
+    await fireEvent.input(fpsInput, { target: { value: '45' } });
+    await fireEvent.click(screen.getByText('30'));
+    await fireEvent.click(screen.getByText('Start recording'));
+
+    expect(defaultProps.onRecord).toHaveBeenCalledWith(expect.objectContaining({ fps: 30 }));
+  });
+
+  it('falls back to the screen frame rate for an invalid custom FPS', async () => {
+    const { container } = render(VideoTab, { props: defaultProps });
+    const fpsInput = container.querySelector('input[placeholder="fps"]') as HTMLInputElement;
+    await fireEvent.input(fpsInput, { target: { value: 'not-a-number' } });
+    await fireEvent.click(screen.getByText('Start recording'));
+
+    expect(defaultProps.onRecord).toHaveBeenCalledWith(expect.objectContaining({ fps: 75 }));
+  });
+
   it('should call onRecord with custom resolution when custom preset selected', async () => {
     const { container } = render(VideoTab, { props: defaultProps });
     await selectRenderMode();
@@ -287,4 +327,15 @@ describe('VideoTab', () => {
     const call = defaultProps.onRecord.mock.calls[0][0];
     expect(call.duration).toBe(15);
   });
+  it.each([['2π', 2 * Math.PI], ['5s', 5], ['30s', 30], ['60s', 60]])('exports the selected %s duration and can return to Live recording', async (label, duration) => {
+    render(VideoTab, { props: defaultProps });
+    await selectRenderMode();
+    await fireEvent.click(screen.getByText(label));
+    await fireEvent.click(screen.getByText('Render video'));
+    expect(defaultProps.onRecord).toHaveBeenLastCalledWith(expect.objectContaining({ mode: 'render', duration }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Live' }));
+    await fireEvent.click(screen.getByText('Start recording'));
+    expect(defaultProps.onRecord).toHaveBeenLastCalledWith(expect.objectContaining({ mode: 'live', startTime: 0 }));
+  });
+
 });

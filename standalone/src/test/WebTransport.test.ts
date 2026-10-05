@@ -447,3 +447,25 @@ it('keeps manual edits out of the preview until a compile is requested', async (
   })));
   transport.dispose();
 });
+
+it('delegates viewer document indexing and atomic edits while guarding disposed viewers', async () => {
+  const transport = new WebTransport();
+  const viewer = transport.createViewerTransport();
+  expect(viewer.getType()).toBe('web');
+  const documents = await viewer.getWorkspaceDocuments!('glsl');
+  const document = documents.find(file => file.uri.endsWith('/aurora.glsl'))!;
+  expect(document).toBeDefined();
+  const change = { uri: document.uri, before: document.text, after: `${document.text}\n// renamed` };
+  const commit = vi.fn();
+  await viewer.applyWorkspaceEdit!([change], () => true, commit, new Map([[document.uri, document.text]]));
+  expect(commit).toHaveBeenCalledOnce();
+  expect(await transport.readEditorFile('/shaders/aurora.glsl')).toBe(change.after);
+  expect(getEditorDocument('/shaders/aurora.glsl')).toBe(change.after);
+  viewer.dispose();
+  await expect(viewer.applyWorkspaceEdit!([{ ...change, before: change.after, after: document.text }], () => true, commit)).rejects.toThrow();
+  expect(commit).toHaveBeenCalledOnce();
+  const receive = vi.fn();
+  transport.dispose();
+  transport.onMessage(receive);
+  expect(receive).not.toHaveBeenCalled();
+});

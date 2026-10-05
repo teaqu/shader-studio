@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import '@testing-library/jest-dom';
 import ScreenshotTab from '../../../lib/components/recording/ScreenshotTab.svelte';
-import { resetCapturePreferences } from '../../../lib/state/capturePreferences.svelte';
+import { resetCapturePreferences, updateScreenshotCapturePreferences } from '../../../lib/state/capturePreferences.svelte';
 
 describe('ScreenshotTab', () => {
   let defaultProps: any;
@@ -155,6 +155,40 @@ describe('ScreenshotTab', () => {
     expect(call.height).toBe(720);
   });
 
+  it('honours a saved 480p render preference even though it is not a visible preset', async () => {
+    updateScreenshotCapturePreferences({
+      format: 'png', mode: 'render', startMode: 'zero', customTime: '',
+      resolution: '480p', customWidth: '', customHeight: '',
+    });
+    render(ScreenshotTab, { props: defaultProps });
+    await fireEvent.click(screen.getByText('Capture screenshot'));
+
+    expect(defaultProps.onScreenshot).toHaveBeenCalledWith(expect.objectContaining({
+      mode: 'render', width: 854, height: 480,
+    }));
+  });
+
+  it('uses a custom render resolution and falls back independently for invalid dimensions', async () => {
+    const { container } = render(ScreenshotTab, { props: defaultProps });
+    await selectRenderMode();
+    const [width, height] = container.querySelectorAll('.recording-custom-res-input') as NodeListOf<HTMLInputElement>;
+    await fireEvent.focus(width);
+    await fireEvent.input(width, { target: { value: '1600' } });
+    await fireEvent.input(height, { target: { value: 'not-a-number' } });
+    await fireEvent.click(screen.getByText('Capture screenshot'));
+
+    expect(defaultProps.onScreenshot).toHaveBeenCalledWith(expect.objectContaining({
+      mode: 'render', width: 1600, height: 600,
+    }));
+  });
+
+  it('selects custom resolution with the keyboard', async () => {
+    const { container } = render(ScreenshotTab, { props: defaultProps });
+    await selectRenderMode();
+    await fireEvent.keyDown(container.querySelector('.recording-custom-res')!);
+    expect(container.querySelector('.recording-custom-res')).toHaveClass('active');
+  });
+
   it('should call onScreenshot with time 0 when zero mode selected', async () => {
     render(ScreenshotTab, { props: defaultProps });
     await selectRenderMode();
@@ -176,4 +210,15 @@ describe('ScreenshotTab', () => {
     const call = defaultProps.onScreenshot.mock.calls[0][0];
     expect(call.time).toBe(3.7);
   });
+  it.each([['800×600', 800, 600], ['1080p', 1920, 1080], ['4K', 3840, 2160]])('exports the selected %s resolution and returns to Live size', async (label, width, height) => {
+    render(ScreenshotTab, { props: defaultProps });
+    await selectRenderMode();
+    await fireEvent.click(screen.getByText(label));
+    await fireEvent.click(screen.getByText('Capture screenshot'));
+    expect(defaultProps.onScreenshot).toHaveBeenLastCalledWith(expect.objectContaining({ mode: 'render', width, height }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Live' }));
+    await fireEvent.click(screen.getByText('Capture screenshot'));
+    expect(defaultProps.onScreenshot).toHaveBeenLastCalledWith(expect.objectContaining({ mode: 'live', width: 800, height: 600, time: undefined }));
+  });
+
 });

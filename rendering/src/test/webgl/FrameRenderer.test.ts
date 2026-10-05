@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FrameRenderer } from "../../webgl/FrameRenderer";
+import type { CustomUniformManager } from "../../webgl/CustomUniformManager";
 
 // Mock dependencies
 vi.mock("../../util/TimeManager");
@@ -363,6 +364,50 @@ describe("FrameRenderer", () => {
       await expect(pending).resolves.toBe("redrawn");
       expect(mockPassRenderer.renderPass).toHaveBeenCalledOnce();
       expect(read).toHaveBeenCalledOnce();
+    });
+
+    it("returns a rejected promise when the immediate redraw read fails", async () => {
+      singleImagePass();
+      const failure = new Error("readback failed");
+
+      await expect(frameRenderer.readNextDisplayedFrame(() => {
+        throw failure;
+      })).rejects.toBe(failure);
+      expect(mockPassRenderer.renderPass).toHaveBeenCalledOnce();
+    });
+
+    it("rejects one failed queued read without preventing another request from reading the same frame", async () => {
+      singleImagePass();
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(3);
+      const failure = new Error("first read failed");
+
+      const failed = frameRenderer.readNextDisplayedFrame(() => {
+        throw failure;
+      });
+      const succeeded = frameRenderer.readNextDisplayedFrame(() => "pixels");
+      frameRenderer.render(1000);
+
+      await expect(failed).rejects.toBe(failure);
+      await expect(succeeded).resolves.toBe("pixels");
+    });
+
+    it("exposes frozen custom uniforms only while a paused frame exists", () => {
+      singleImagePass();
+      frameRenderer.setCustomUniformManager({
+        hasUniforms: () => true,
+        getValues: () => [{ name: "uFast", type: "float", value: 7 }],
+      } as unknown as CustomUniformManager);
+      expect(frameRenderer.getPausedCustomUniforms()).toBeNull();
+
+      frameRenderer.setRunning(true);
+      mockTimeManager.isPaused = vi.fn(() => true);
+      frameRenderer.render(0);
+      expect(frameRenderer.getPausedCustomUniforms()).toEqual([{ name: "uFast", type: "float", value: 7 }]);
+
+      mockTimeManager.isPaused = vi.fn(() => false);
+      expect(frameRenderer.getPausedCustomUniforms()).toBeNull();
     });
   });
 

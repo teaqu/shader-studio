@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { recordingStore, type RecordingState } from '../../lib/stores/recordingStore';
 
@@ -52,6 +52,13 @@ describe('recordingStore', () => {
       expect(state.progress).toBe(0);
       expect(state.currentFrame).toBe(0);
       expect(state.preparationFrame).toBe(10);
+    });
+
+    it('keeps preparation progress at zero when there are no preceding frames', () => {
+      recordingStore.startPreparing('webm', 30, 0);
+      recordingStore.updatePreparation(0, 0);
+
+      expect(getState().progress).toBe(0);
     });
   });
 
@@ -145,6 +152,20 @@ describe('recordingStore', () => {
       expect(getState().isFinalizing).toBe(true);
       expect(getState().phase).toBe('finalizing');
     });
+
+    it('records the finalization start time and exits preparation', () => {
+      vi.spyOn(performance, 'now').mockReturnValue(1234);
+      recordingStore.startPreparing('webm', 30, 10);
+      recordingStore.setFinalizing();
+
+      expect(getState()).toMatchObject({
+        phase: 'finalizing',
+        isPreparing: false,
+        isFinalizing: true,
+        finalizingStartTime: 1234,
+      });
+      vi.restoreAllMocks();
+    });
   });
 
   describe('setSaving', () => {
@@ -158,6 +179,13 @@ describe('recordingStore', () => {
       expect(state.isPreparing).toBe(false);
       expect(state.isFinalizing).toBe(false);
       expect(state.format).toBe('png');
+    });
+
+    it('clears a prior error and notice when saving begins', () => {
+      recordingStore.setError('old error');
+      recordingStore.setSaving('gif');
+
+      expect(getState()).toMatchObject({ error: null, notice: null, format: 'gif' });
     });
   });
 
