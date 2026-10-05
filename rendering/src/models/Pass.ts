@@ -5,6 +5,7 @@ export type Pass = VerticesDrawConfig & InstanceDrawConfig & RenderPassSettings 
   name: string;
   shaderSrc: string;
   vertexSrc?: string;
+  useViewerCamera?: boolean;
   inputs: Record<string, ConfigInput>;
   geometry: GeometryType;
   modelPath?: string;

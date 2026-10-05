@@ -13,6 +13,7 @@ import {
   buildWgslStorageDeclarations,
   getWgslComputeEntryPoints,
   injectComputeInit,
+  isolateWgslEntryPoints,
   wrapWgslComputeSource,
   wrapWgslImageSource,
 } from "../../webgpu/WgslPrelude";
@@ -91,6 +92,57 @@ function storageNode(name: string, binding: number, elementType: string, builtin
 }
 
 describe("wrapWgslImageSource uniform block", () => {
+  it.each(['fullscreen', 'vertices', 'cube'] as const)('includes a shared %s hook source only once', geometry => {
+    const source = 'fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {}\nfn mainImage(coord: vec2f) -> vec4f { return vec4f(1); }';
+    const wrapped = wrapWgslImageSource(source, { geometry, vertexCode: source }).source;
+    expect(wrapped.match(/fn mainVertex\s*\(/g)).toHaveLength(1);
+    expect(wrapped.match(/fn mainImage\s*\(/g)).toHaveLength(1);
+  });
+  it("keeps selected native stages, removes unrelated entries, and initializes both", () => {
+    const source = `@vertex fn full() -> @builtin(position) vec4f { return vec4f(); }
+@fragment fn paint() -> @location(0) vec4f { return vec4f(iTime); }
+@compute @workgroup_size(1) fn update() { writeOutput(vec2u(), vec4f()); }`;
+    const wrapped = wrapWgslImageSource(source, {
+      renderEntryPoints: { vertex: "full", fragment: "paint" },
+    }).source;
+
+    expect(wrapped).toContain("@vertex fn full() -> @builtin(position) vec4f { _ss_initGlobals();");
+    expect(wrapped).toContain("@fragment fn paint() -> @location(0) vec4f { _ss_initGlobals();");
+    expect(wrapped).not.toContain("fn update()");
+  });
+
+  it("blanks an inactive entry but retains its source line count", () => {
+    const source = "@compute @workgroup_size(1) fn compute() {\n  writeOutput(vec2u(), vec4f());\n}\n@fragment fn paint() -> @location(0) vec4f { return vec4f(); }";
+    const isolated = isolateWgslEntryPoints(source, ["paint"]);
+
+    expect(isolated.split("\n")).toHaveLength(source.split("\n").length);
+    expect(isolated).not.toContain("writeOutput");
+    expect(isolated).toContain("fn paint");
+  });
+
+  it("keeps helpers reachable from selected stages and removes inactive-stage helpers", () => {
+    const source = `fn renderHelper() -> vec4f { return vec4f(); }
+fn computeHelper() { writeOutput(vec2u(), vec4f()); }
+@fragment fn paint() -> @location(0) vec4f { return renderHelper(); }
+@compute @workgroup_size(1) fn update() { computeHelper(); }`;
+    const isolated = isolateWgslEntryPoints(source, ["paint"]);
+    expect(isolated).toContain("fn renderHelper");
+    expect(isolated).not.toContain("fn computeHelper");
+    expect(isolated).not.toContain("fn update");
+  });
+
+  it("uses an authored same-file mainVertex hook without adding a duplicate stub", () => {
+    const source = `fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {}
+fn mainImage(coord: vec2f) -> vec4f { return vec4f(); }`;
+    const wrapped = wrapWgslImageSource(source).source;
+    expect(wrapped.match(/fn mainVertex\(/g)).toHaveLength(1);
+  });
+
+  it("uses a Common-defined mainVertex hook without adding a duplicate stub", () => {
+    const common = `fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {}`;
+    const wrapped = wrapWgslImageSource("fn mainImage(coord: vec2f) -> vec4f { return vec4f(); }", { commonCode: common }).source;
+    expect(wrapped.match(/fn mainVertex\(/g)).toHaveLength(1);
+  });
   it("provides the editor-advertised channel Load helper with ShaderToy coordinates", () => {
     const { source } = wrapWgslImageSource("fn mainImage(coord: vec2f) -> vec4f { return stateLoad(vec2i(0)); }", {
       channels: [channel("state", 0)],
@@ -935,5 +987,42 @@ describe("wrapWgslImageSource golden module", () => {
       }
       "
     `);
+  });
+});
+
+describe("native mesh matrix builtins", () => {
+  it("binds public matrix aliases to the existing mesh uniform for selected native stages", () => {
+    const source = `@vertex fn vertex(@location(0) p: vec3f) -> @builtin(position) vec4f { return iViewProjectionMatrix * iModelMatrix * vec4f(p, 1); }
+@fragment fn fragment() -> @location(0) vec4f { return vec4f(iNormalMatrix[0].xyz, 1); }`;
+    const wrapped = wrapWgslImageSource(source, {
+      geometry: "cube",
+      renderEntryPoints: { vertex: "vertex", fragment: "fragment" },
+    }).source;
+    expect(wrapped).toContain("var<private> iModelMatrix: mat4x4<f32>;");
+    expect(wrapped).toContain("iViewProjectionMatrix = _ss_mesh.viewProjection;");
+    expect(wrapped).toContain("iNormalMatrix = _ss_mesh.normalMatrix;");
+    expect(wrapped).toContain("@group(0) @binding(1) var<uniform> _ss_mesh");
+  });
+});
+
+describe("mixed native and hook render stages", () => {
+  it("generates the omitted mesh stage while retaining the explicit native fragment", () => {
+    const source = `struct Input { @location(0) uv: vec2f, @location(1) worldPosition: vec3f, @location(2) normal: vec3f, }
+@fragment fn paint(input: Input) -> @location(0) vec4f { return vec4f(input.uv, 0, 1); }`;
+    const wrapped = wrapWgslImageSource(source, { geometry: "cube", renderEntryPoints: { fragment: "paint" } }).source;
+    expect(wrapped).toContain("@vertex fn vertexMain");
+    expect(wrapped).toContain("@fragment fn paint");
+    expect(wrapped).not.toContain("@fragment fn fragmentMain");
+  });
+  it("generates the omitted hook fragment while retaining the explicit native vertex", () => {
+    const source = `struct Output { @builtin(position) position: vec4f, @location(0) uv: vec2f, @location(1) worldPosition: vec3f, @location(2) normal: vec3f, }
+@vertex fn vertices(@location(0) p: vec3f, @location(1) n: vec3f, @location(2) uv: vec2f) -> Output { return Output(vec4f(p, 1), uv, p, n); }
+fn mainImage(coord: vec2f) -> vec4f { return vec4f(coord, 0, 1); }`;
+    const wrapped = wrapWgslImageSource(source, { geometry: "cube", renderEntryPoints: { vertex: "vertices" } }).source;
+    expect(wrapped).toContain("@vertex fn vertices");
+    expect(wrapped).toContain("@fragment fn fragmentMain");
+    expect(wrapped).not.toContain("@vertex fn vertexMain");
+    expect(wrapped).toContain("@location(1) worldPos: vec3<f32>");
+    expect(wrapped).toContain("@location(2) normal: vec3<f32>");
   });
 });

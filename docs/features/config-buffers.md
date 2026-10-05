@@ -23,7 +23,7 @@ The tab bar at the top shows every pass in your shader. Click **+ New** to add a
 
 | Tab | Description |
 |-----|-------------|
-| **Image** | Always present. The final rendered output. No file path — this is your `mainImage` shader. |
+| **Image** | Always present. The final rendered output from the main shader file. Supports `mainImage` or a selected native WGSL/Slang fragment. No file chooser. |
 | **Named buffer pass** | An intermediate fragment render pass backed by a `.glsl`, `.slang`, or `.wgsl` file. Names and pass counts are unrestricted. |
 | **Compute pass** | A Slang or WGSL compute pass declared with `"type": "compute"` and backed by a `.slang` or `.wgsl` file. |
 | **Common** | Shared functions, constants, and types used by other passes. |
@@ -61,7 +61,9 @@ See [Resolution](resolution.md) for how these settings interact with the toolbar
 
 Each buffer pass uses a `.glsl`, `.slang`, or `.wgsl` file to produce an image that other passes can sample. Buffer pass names are ordinary identifiers such as `Flow`, `BloomHorizontal`, or `BufferA`; there is no `BufferA`–`BufferD` name set or four-pass limit. Every pass can configure its own channels: GLSL uses `iChannelN` and `iChN`, Slang uses direct globals such as `iChannelN`, and WGSL uses free functions such as `iChannelNSample(uv)`. See [Channels](channels.md) for how to bind textures, video, audio, and more.
 
-**Path field** — points to the shader file for this buffer. Three path forms are supported:
+The **File** row shows an editable path. **Change…** opens a chooser with files already used by the config, **Browse workspace…**, and **Create**. Several passes can use the same source file, each selecting a different function. Standalone’s Browse action selects files from its virtual workspace.
+
+Three path forms are supported:
 
 | Form | Example | Resolves relative to |
 |------|---------|----------------------|
@@ -69,7 +71,9 @@ Each buffer pass uses a `.glsl`, `.slang`, or `.wgsl` file to produce an image t
 | Absolute | `/Users/me/project/flow.glsl` | Filesystem root |
 | Workspace-root | `@/src/flow.glsl` | VS Code workspace root (`/` of the virtual workspace in the standalone browser host) |
 
-If the file doesn't exist yet, the editor shows a **Create File** button that generates it with a `mainImage` stub.
+**Create** generates a source template using the shader mode preference. WGSL/Slang function rows appear under **Fragment shader**; choose the function this pass should run. **Add function…** inserts a hook or native entry point into that file, using the adjacent mode chooser. A native fragment can run without `mainImage`, and native templates use the generated vertex stage until you request a custom one. GLSL has no fragment function selector or Built-in/Native chooser because it uses the fixed `mainImage` hook.
+
+The pass sections are arranged as Fragment source/functions, Vertex shader, Channels, Geometry, Rendering, Resolution, and Output. Image omits the file chooser. **Output** holds the buffer format and read-only [inferred output slots and names](multiple-render-targets.md); it does not add code or create attachments.
 
 **Resolution** (optional) — by default a buffer inherits the Image pass resolution exactly. You can override this in two ways:
 
@@ -93,13 +97,13 @@ Each buffer and Image pass can render with 2D or 3D geometry. Open the **Geometr
 | **Sphere** | A UV-mapped sphere. |
 | **Model** | A custom GLB mesh. |
 
-When a 3D geometry type is selected, a **Vertex shader** section appears below the dropdown. Set a path to a `.vert.glsl`, `.vert.slang`, or `.vert.wgsl` file, or click **Create File** to generate a stub. See [Vertex Shaders](vertex-shaders.md) for details on writing vertex shaders and the `mainVertex` API, and [Vertices geometry](vertex-shaders.md#vertices-geometry) for `vertexCount`, `topology` and `space`.
+The **Vertex shader** section appears before Channels and Geometry. Choose **Built-in**, **Same file**, or **Separate file**. Separate file shows its path and **Change…** chooser; Same file hides the duplicate path. Vertex function rows come from the selected vertex source. **Add function…** inserts into that source. GLSL shows only Add when `mainVertex` is missing, without a function selector or mode chooser. See [Vertex Shaders](vertex-shaders.md) for details on writing vertex shaders and the `mainVertex` API, and [Vertices geometry](vertex-shaders.md#vertices-geometry) for `vertexCount`, `topology` and `space`.
 
-The **Rendering** section below it sets the pass's **Blend** mode, and for every geometry but fullscreen its **Depth test**, **Depth write**, **Compare** and **Cull**. See [Render settings](vertex-shaders.md#render-settings).
+The **Rendering** section after Geometry sets the pass's **Blend** mode, and for every geometry but fullscreen its **Depth test**, **Depth write**, **Compare** and **Cull**. See [Render settings](vertex-shaders.md#render-settings).
 
 ## Compute Passes
 
-Use **+ Compute** to add a compute pass, then select its `.slang` or `.wgsl` file.
+Use **+ New → Compute** to add a compute pass, then use **File → Change…** to select, reuse, or create its `.slang` or `.wgsl` source. Choose a compute function row or use **Add function…**. Compute has Channels, Dispatch, Execution, and Output settings, with no Built-in mode, vertex stage, or geometry section.
 See [Compute Passes](compute.md) for shader examples, storage buffers, and dispatch settings.
 
 ---

@@ -27,6 +27,8 @@ export interface RenderingEngine {
   setInputEnabled(enabled: boolean): void;
   updateBufferAndRecompile(bufferName: string, bufferContent: string): Promise<CompilationResult | undefined>;
   getPasses(): (Pass | RenderPassNode)[];
+  /** Effective colour-attachment limits of the installed WebGPU device. */
+  getRenderOutputLimits?(): { maxColorAttachments: number; maxColorAttachmentBytesPerSample: number } | null;
   togglePause(): void;
   getTimeManager(): TimeManager;
   resetTime(): void;

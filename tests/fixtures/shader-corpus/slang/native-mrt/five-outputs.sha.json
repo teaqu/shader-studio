@@ -1,0 +1,59 @@
+{
+  "version": "1.0",
+  "passes": {
+    "BufferA": {
+      "path": "./five-outputs.slang",
+      "entryPoints": {
+        "vertex": "vertex",
+        "fragment": "fragment"
+      },
+      "outputFormat": "rgba16float",
+      "outputs": [
+        {
+          "name": "Colour"
+        },
+        {
+          "name": "Normals"
+        },
+        {
+          "name": "Position"
+        },
+        {
+          "name": "Velocity"
+        },
+        {
+          "name": "Material"
+        }
+      ]
+    },
+    "Image": {
+      "inputs": {
+        "iChannel0": {
+          "type": "buffer",
+          "source": "BufferA",
+          "output": 0
+        },
+        "iChannel1": {
+          "type": "buffer",
+          "source": "BufferA",
+          "output": 1
+        },
+        "iChannel2": {
+          "type": "buffer",
+          "source": "BufferA",
+          "output": 2
+        },
+        "iChannel3": {
+          "type": "buffer",
+          "source": "BufferA",
+          "output": 3
+        },
+        "iChannel4": {
+          "type": "buffer",
+          "source": "BufferA",
+          "output": 4
+        }
+      }
+    }
+  }
+}

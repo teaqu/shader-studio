@@ -405,12 +405,28 @@ describe('ShaderPipeline — overlay cursor gate', () => {
       );
     });
 
-    it('skips updateDebugLine when overlay is visible', () => {
+    it('accepts a configured Buffer cursor while the editor overlay is visible', () => {
       vi.mocked(getEditorOverlayVisible).mockReturnValue(true);
+      const config = {
+        passes: {
+          Image: { inputs: [] },
+          BufferA: { path: '/project/bufferA.glsl', inputs: [] },
+        },
+      };
+      (pipeline as any).lastEvent = {
+        data: {
+          type: 'shaderSource',
+          path: '/project/current.glsl',
+          config,
+          buffers: { BufferA: 'void mainImage() {}' },
+        },
+      } as MessageEvent;
 
-      pipeline.handleCursorPositionMessage(cursorMsg());
+      pipeline.handleCursorPositionMessage(cursorMsg('/project/bufferA.glsl'));
 
-      expect(mocks.shaderDebugManager.updateDebugLine).not.toHaveBeenCalled();
+      expect(mocks.shaderDebugManager.updateDebugLine).toHaveBeenCalledWith(
+        5, 'float x = 1.0;', '/project/bufferA.glsl',
+      );
     });
 
     it('ignores cursor updates from files outside the current shader when unlocked', () => {
@@ -996,6 +1012,13 @@ describe('ShaderPipeline — unlocked vertex-source routing', () => {
       data: { type: 'shaderSource', code, path, config: null, buffers: {} },
     } as unknown as MessageEvent;
   }
+
+  it.each(["glsl", "slang", "wgsl"])("routes a shared %s root as main after a config update", (language) => {
+    const path = "/project/shared." + language;
+    lastEventWith({ type: "shaderSource", path, code: fragmentCode,
+      bufferPathMap: { Image: path, "__shader_studio_vertex__:Image": path } });
+    expect(pipeline.getShaderMessageTarget({ path, code: fragmentCode + vertexCode })).toEqual({ kind: "main" });
+  });
 
   it('routes a linked vertex source as vertex when unlocked', () => {
     const ownerPath = '/project/main.wgsl';

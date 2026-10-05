@@ -1,3 +1,7 @@
+import type { CaptureUniforms } from "../capture/VariableCapturer";
+import { meshUniformData } from "./MeshUniformData";
+import { renderedBufferInputs } from "./RenderedBufferInputs";
+import type { RenderedCaptureState } from "./RenderedCaptureState";
 import { FULLSCREEN_VERTEX_COUNT } from "@shader-studio/types";
 import { depthClearValue, geometryInstanceCount, meshTopology, resolveRenderState, verticesVertexCount } from "../types/Geometry";
 import type { WebGPUGeometry } from "./WebGPUGeometry";
@@ -8,7 +12,6 @@ import { CameraManager } from "../input/CameraManager";
 import { KeyboardManager } from "../input/KeyboardManager";
 import { MouseManager } from "../input/MouseManager";
 import { OrbitCamera } from "../preview3d/OrbitCamera";
-import { createModelMatrix,createNormalMatrix3 } from "../preview3d/math";
 import { FPSCalculator } from "../util/FPSCalculator";
 import { TimeManager } from "../util/TimeManager";
 import { getShaderToyChannelCount } from "./SlangPrelude";
@@ -25,6 +28,7 @@ import {
 } from "./uniforms";
 
 interface WebGPUFrameRendererHost {
+  renderedCaptureState: RenderedCaptureState;
   timing: Pick<WebGPUFrameTiming, "probeGpuFrameTime" | "recordFrameTime" | "shouldRenderFrame" | "trackFrameInFlight">;
   session: Pick<WebGPUShaderSession, "computePipelines" | "customUniformManager" | "dispatchOnceRan" | "hasSubmittedFrameForInstalledGeneration" | "passGraph" | "passPipelines" | "resourceManager" | "shaderPath">;
   channels: Pick<WebGPUChannels, "getChannelResources" | "getChannelUniforms">;
@@ -231,15 +235,8 @@ export class WebGPUFrameRenderer {
       }, this.host.session.customUniformManager.getUniformInfo(), frameCustomUniformValues);
       this.host.device.queue.writeBuffer(pipeline.getUniformBuffer()!, 0, data);
       if (pass.geometry && pass.geometry !== "fullscreen" && pipeline.getMeshUniformBuffer?.()) {
-        const model = createModelMatrix({ position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] });
-        const viewProjection = camera.viewProjection;
-        const normal = createNormalMatrix3(model);
-        const meshData = new Float32Array(64);
-        meshData.set(model, 0);
-        meshData.set(viewProjection, 16);
-        meshData.set([normal[0], normal[1], normal[2], 0, normal[3], normal[4], normal[5], 0, normal[6], normal[7], normal[8], 0, 0, 0, 0, 1], 32);
-        meshData.set([...this.host.meshCamera.getPosition(), 1], 48);
-        this.host.device.queue.writeBuffer(pipeline.getMeshUniformBuffer()!, 0, meshData);
+        this.host.device.queue.writeBuffer(pipeline.getMeshUniformBuffer()!, 0,
+          meshUniformData(this.host.meshCamera, pass.width, pass.height, pass.useViewerCamera));
       }
 
       const targetView = pass.output === "canvas"
@@ -249,18 +246,32 @@ export class WebGPUFrameRenderer {
         continue;
       }
 
+      const meshData = pass.geometry && pass.geometry !== "fullscreen"
+        ? meshUniformData(this.host.meshCamera, pass.width, pass.height, pass.useViewerCamera)
+        : undefined;
+      const captureUniforms: CaptureUniforms = {
+        time: frameInput.time, timeDelta: frameInput.timeDelta, frameRate: frameInput.frameRate, frame: frameInput.frame,
+        res: [pass.width, pass.height, 1], mouse: Array.from(frameInput.mouse), date: Array.from(frameInput.date),
+        cameraPos: Array.from(frameInput.cameraPos), cameraDir: Array.from(frameInput.cameraDir), ...this.host.channels.getChannelUniforms(pass),
+      };
+      const bufferInputs = renderedBufferInputs(pass.channels, this.host.session.passPipelines, this.host.session.computePipelines, encodedComputePasses);
+      this.host.renderedCaptureState.record(pass.name, captureUniforms, meshData, channelResources, bufferInputs);
+
       const renderState = resolveRenderState(pass);
       const [clearR, clearG, clearB, clearA] = renderState.clear;
       // With MSAA the pass draws into the multisampled texture and resolves into
       // its output; the samples themselves are not needed after the pass.
-      const msaaView = pipeline.getMsaaView?.() ?? null;
+      const outputViews = pass.output === "canvas" ? [targetView] : pipeline.getCurrentOutputViews();
       const renderPass = encoder.beginRenderPass({
-        colorAttachments: [{
-          ...(msaaView ? { view: msaaView, resolveTarget: targetView, storeOp: "discard" as const } : { view: targetView, storeOp: "store" as const }),
-          clearValue: { r: clearR, g: clearG, b: clearB, a: clearA },
-          loadOp: "clear",
-        }],
-        ...(pass.geometry && pass.geometry !== "fullscreen" && pipeline.getDepthView?.() ? {
+        colorAttachments: outputViews.map((targetView, index) => {
+          const msaaView = pipeline.getMsaaView?.(index) ?? null;
+          return {
+            ...(msaaView ? { view: msaaView, resolveTarget: targetView, storeOp: "discard" as const } : { view: targetView, storeOp: "store" as const }),
+            clearValue: { r: clearR, g: clearG, b: clearB, a: clearA },
+            loadOp: "clear",
+          };
+        }),
+        ...(pipeline.getDepthView?.() ? {
           depthStencilAttachment: { view: pipeline.getDepthView()!, depthClearValue: depthClearValue(renderState), depthLoadOp: "clear", depthStoreOp: "store" },
         } : {}),
       });

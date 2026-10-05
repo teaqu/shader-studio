@@ -1,3 +1,5 @@
+import { ShaderCameraSession } from "../preview3d/ShaderCameraSession";
+import { RenderedCaptureState } from "./RenderedCaptureState";
 import { audioPreviewData, livePreviewData, controlSystemAudio, controlAudioInput } from "../resources/MediaPreview";
 import type { LiveInputType, LiveInputPreview } from "../resources/LiveInputTextureManager";
 import type { DebugInstrumentationPlan,ShaderConfig,ShaderLanguageId,SlangSourceModule,StorageBufferSnapshot } from "@shader-studio/types";
@@ -58,6 +60,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   private meshResources: WebGPUMeshResources | null = null;
   private meshCamera = new OrbitCamera();
+  private readonly meshCameraSession = new ShaderCameraSession(this.meshCamera);
+  private readonly renderedCaptureState = new RenderedCaptureState();
 
   private disposed = false;
 
@@ -180,6 +184,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
       constraints: this.constraints,
       passFactory: this.passFactory,
       resetPausedFrame: () => this.frameRenderer.resetPausedFrame(),
+      onShaderInstalled: (path) => {
+        this.renderedCaptureState.clear();
+        this.meshCameraSession.install(path);
+      },
       get disposed() {
         return engine.disposed;
       },
@@ -237,6 +245,13 @@ export class WebGPURenderingEngine implements RenderingEngine {
       },
     });
     this.capture = new WebGPUCapture({
+      renderedCaptureState: this.renderedCaptureState,
+      get meshResources() {
+        return engine.meshResources;
+      },
+      get meshCamera() {
+        return engine.meshCamera;
+      },
       session: this.session,
       geometry: this.geometry,
       channels: this.channels,
@@ -263,6 +278,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       getUniforms: () => this.getUniforms(),
     });
     this.frameRenderer = new WebGPUFrameRenderer({
+      renderedCaptureState: this.renderedCaptureState,
       timing: this.timing,
       session: this.session,
       channels: this.channels,
@@ -531,6 +547,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const w = this.constraints.clampDimensionToTextureLimit(width);
     const h = this.constraints.clampDimensionToTextureLimit(height);
     if (this.canvas.width !== w || this.canvas.height !== h) {
+      this.renderedCaptureState.clear();
       this.canvas.width = w;
       this.canvas.height = h;
       this.passFactory.applyPassResolutions();
@@ -593,6 +610,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   resetTime(): void {
+    this.renderedCaptureState.clear();
     // Allocate the complete storage replacement before invalidating any live
     // compile state. Until a matching compilation publishes, the installed
     // pipeline, feedback, storage, clock, and pause snapshot remain untouched.
@@ -654,6 +672,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   dispose(): void {
     this.disposed = true;
+    this.renderedCaptureState.clear();
 
     let firstError: unknown;
     let hasError = false;
@@ -762,6 +781,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
     sourcePath?: string | null,
   ): CaptureCompileContext {
     return this.capture.getVariableCaptureCompileContext(code, passName, sourcePath);
+  }
+
+  public getRenderOutputLimits(): { maxColorAttachments: number; maxColorAttachmentBytesPerSample: number } | null {
+    const limits = this.device?.limits;
+    return limits ? { maxColorAttachments: limits.maxColorAttachments, maxColorAttachmentBytesPerSample: limits.maxColorAttachmentBytesPerSample } : null;
   }
 
   getShaderLanguage(): ShaderLanguageId {

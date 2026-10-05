@@ -1,3 +1,4 @@
+import { viewerCameraRuntimeConfig } from "../state/viewerCameraState.svelte";
 import type { RenderingEngine } from "../../../../rendering/src/types/RenderingEngine";
 import { assertGifMemoryBudget, GifEncoderWrapper } from "./GifEncoder";
 import { automaticVideoBitrate, VideoEncoderWrapper } from "./VideoEncoder";
@@ -248,7 +249,7 @@ export class ShaderRecorder {
   ): Promise<void> {
     const args: Parameters<RenderingEngine["compileShaderPipeline"]> = [
       snapshot.code,
-      snapshot.config,
+      viewerCameraRuntimeConfig(snapshot.config),
       snapshot.path,
       snapshot.buffers,
     ];

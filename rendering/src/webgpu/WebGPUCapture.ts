@@ -1,3 +1,9 @@
+import { nativeRasterCaptureContext } from "./NativeRasterCaptureContext";
+import { captureFeedbackChannels } from "./CaptureFeedbackChannels";
+import { meshUniformData } from "./MeshUniformData";
+import type { RenderedCaptureState } from "./RenderedCaptureState";
+import type { OrbitCamera } from "../preview3d/OrbitCamera";
+import type { WebGPUMeshResources } from "./WebGPUMeshResources";
 import { geometryInstanceCount } from "../types/Geometry";
 import type { WebGPUGeometry } from "./WebGPUGeometry";
 import type { ShaderLanguageId } from "@shader-studio/types";
@@ -23,7 +29,10 @@ import type { WebGPUStorage } from "./WebGPUStorage";
 import { WebGPUVariableCapturer } from "./WebGPUVariableCapturer";
 
 interface WebGPUCaptureHost {
-  session: Pick<WebGPUShaderSession, "installedCompile" | "lastCompile" | "passGraph">;
+  session: Pick<WebGPUShaderSession, "installedCompile" | "lastCompile" | "passGraph" | "passPipelines">;
+  renderedCaptureState: RenderedCaptureState;
+  meshCamera: OrbitCamera;
+  meshResources: WebGPUMeshResources | null;
   geometry: Pick<WebGPUGeometry, "passCameraMatrices" | "resolvePassVertexCount">;
   channels: Pick<WebGPUChannels, "getChannelResources" | "getChannelUniforms">;
   storage: Pick<WebGPUStorage, "storageBuffers" | "storageLayouts">;
@@ -100,6 +109,14 @@ export class WebGPUCapture {
       slangStorage: graph.storage,
       slangStorageBuffers: this.host.storage.storageBuffers,
       slangModules,
+      captureChannelSnapshot: () => this.host.device && targetPass
+        ? captureFeedbackChannels(this.host.device, targetPass, this.host.session.passPipelines,
+          this.host.renderedCaptureState.get(targetPass.name)?.channelResources ?? this.host.channels.getChannelResources(targetPass, true),
+          this.host.renderedCaptureState.get(targetPass.name)?.bufferInputs) : null,
+      nativeRender: nativeRasterCaptureContext(targetPass, () => this.host.meshResources, () =>
+        this.host.renderedCaptureState.get(targetPass?.name ?? "")?.meshData
+          ?? meshUniformData(this.host.meshCamera, targetPass?.width ?? 1, targetPass?.height ?? 1, targetPass?.useViewerCamera),
+      Boolean(targetPass && this.host.session.passPipelines.get(targetPass.name)?.getDepthView())),
       ...(sourcePath ? { slangSourcePath: sourcePath } : {}),
     };
   }
@@ -140,6 +157,10 @@ export class WebGPUCapture {
   }
 
   getCaptureUniforms(): CaptureUniforms {
+    const rendered = this.capturePassName ? this.host.renderedCaptureState.get(this.capturePassName) : undefined;
+    if (rendered) {
+      return rendered.uniforms;
+    }
     const u = this.host.getUniforms();
     const pass = this.host.session.passGraph.find((candidate) => candidate.name === this.capturePassName)
       ?? this.host.session.passGraph.find((candidate) => candidate.name === "Image")

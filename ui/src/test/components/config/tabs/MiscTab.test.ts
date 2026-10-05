@@ -4,6 +4,7 @@ import MiscTab from '../../../../lib/components/config/tabs/MiscTab.svelte';
 import type { AudioVideoController } from '../../../../lib/AudioVideoController';
 import { tick } from 'svelte';
 import type { ConfigInput } from '@shader-studio/types';
+import { setRenderOutputMetadata } from '../../../../lib/state/renderOutputMetadata.svelte';
 
 describe('MiscTab', () => {
   beforeEach(() => vi.stubGlobal('acquireVsCodeApi', undefined));
@@ -91,6 +92,47 @@ describe('MiscTab', () => {
   });
 
   describe('Selection', () => {
+    it('shows inferred names and an unavailable selected slot without redirecting it', async () => {
+      setRenderOutputMetadata('mrt', { BufferA: { outputs: [{ slot: 0, name: 'colour' }, { slot: 1, name: 'normal' }] } });
+      const props = { ...defaultProps(), shaderPath: 'mrt', tempInput: { type: 'buffer', source: 'BufferA', output: 2 } as ConfigInput };
+      const view = render(MiscTab, props);
+      expect(view.getByRole('alert')).toHaveTextContent('Output 2 is unavailable');
+      expect(props.onSelect).not.toHaveBeenCalled();
+      await fireEvent.click(view.getByRole('radio', { name: 'Output 1 · normal' }));
+      expect(props.onSelect).toHaveBeenCalledWith({ type: 'buffer', source: 'BufferA', output: 1 });
+    });
+    it('selects a colour attachment only when the selected render buffer has multiple outputs', async () => {
+      const props = {
+        ...defaultProps(),
+        tempInput: { type: 'buffer', source: 'BufferA' } as ConfigInput,
+        renderOutputCounts: { BufferA: 2, BufferB: 1 },
+      };
+      render(MiscTab, props);
+
+      const output = document.body.querySelectorAll('input[name="buffer-output"]')[1] as HTMLInputElement;
+      expect(output).not.toBeNull();
+      await fireEvent.click(output);
+      expect(props.onSelect).toHaveBeenCalledWith({ type: 'buffer', source: 'BufferA', output: 1 });
+    });
+
+    it('keeps compute layers separate from render colour attachments', async () => {
+      const props = {
+        ...defaultProps(),
+        tempInput: { type: 'buffer', source: 'BufferCompute' } as ConfigInput,
+        availableBufferNames: ['BufferCompute'],
+        computeOutputLayerCounts: { BufferCompute: 3 },
+        renderOutputCounts: { BufferCompute: 4 },
+      };
+      render(MiscTab, props);
+
+      expect(document.body.querySelector('#buffer-output')).toBeNull();
+      const layer = document.body.querySelector('#buffer-layer') as HTMLSelectElement;
+      expect(layer).not.toBeNull();
+      expect(layer).toHaveClass('input-select');
+      await fireEvent.change(layer, { target: { value: '2' } });
+      expect(props.onSelect).toHaveBeenCalledWith({ type: 'buffer', source: 'BufferCompute', layer: 2 });
+  });
+
     it('emits screen sampling changes', async () => {
       const props = { ...defaultProps(), tempInput: { type: 'screen' } as ConfigInput };
       render(MiscTab, props);
@@ -114,6 +156,8 @@ describe('MiscTab', () => {
 
       const filter = document.body.querySelector('#buffer-filter') as HTMLSelectElement;
       const wrap = document.body.querySelector('#buffer-wrap') as HTMLSelectElement;
+      expect(filter).toHaveClass('input-select');
+      expect(wrap).toHaveClass('input-select');
       expect(filter.value).toBe('linear');
       expect(wrap.value).toBe('clamp');
 
@@ -128,7 +172,7 @@ describe('MiscTab', () => {
       });
     });
 
-    it('preserves sampling and layer when changing buffer source', async () => {
+    it('preserves sampling and resets source-specific output and layer when changing buffer source', async () => {
       const props = {
         ...defaultProps(),
         tempInput: {
@@ -141,7 +185,7 @@ describe('MiscTab', () => {
       await fireEvent.click(label!.closest('button')!);
 
       expect(props.onSelect).toHaveBeenCalledWith({
-        type: 'buffer', source: 'BufferB', layer: 2, filter: 'nearest', wrap: 'repeat',
+        type: 'buffer', source: 'BufferB', layer: undefined, output: undefined, filter: 'nearest', wrap: 'repeat',
       });
     });
 

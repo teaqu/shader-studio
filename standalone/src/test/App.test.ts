@@ -15,6 +15,7 @@ vi.mock('@shader-studio/ui', async () => {
 });
 
 import App from '../App.svelte';
+import { StandaloneSettings } from '../settings/StandaloneSettings';
 afterEach(() => vi.unstubAllGlobals());
 import type { WebTransport } from '../WebTransport';
 import type { PwaController, PwaStatus } from '../pwa';
@@ -41,6 +42,7 @@ type TestTransport = WebTransport & {
 
 function createTransport(): TestTransport {
   return {
+    settings: new StandaloneSettings(),
     postMessage: vi.fn(),
     getShaderExplorerHostApi: vi.fn(() => ({ getShaders: vi.fn() })),
     clearWorkspace: vi.fn().mockResolvedValue(undefined),
@@ -87,6 +89,17 @@ function createStorage(): Storage {
 }
 
 describe('standalone App', () => {
+  it('uses the global Native mode when opening a new shader', async () => {
+    const transport = createTransport();
+    transport.settings.update('webgpu.defaultRenderAuthoring', 'native');
+    render(App, { props: { transport } });
+    setNewShaderVisible(true);
+    await tick();
+    await fireEvent.change(screen.getByLabelText('Shader language'), { target: { value: 'wgsl' } });
+    expect((screen.getByLabelText('Shader functions') as HTMLSelectElement).value).toBe('native');
+    await fireEvent.click(screen.getByRole('button', { name: 'Create Shader' }));
+    expect(transport.postMessage).toHaveBeenCalledWith({ type: 'createShader', payload: { name: 'untitled', language: 'wgsl', authoringMode: 'native' } });
+  });
   beforeEach(() => {
     vi.restoreAllMocks();
     layoutStub.selectEditor.mockReset();
@@ -561,7 +574,7 @@ describe('standalone App', () => {
     await fireEvent.change(screen.getByLabelText('Shader language'), { target: { value: 'slang' } });
     await fireEvent.click(screen.getByRole('button', { name: 'Create Shader' }));
 
-    expect(transport.postMessage).toHaveBeenCalledWith({ type: 'createShader', payload: { name: 'aurora', language: 'slang' } });
+    expect(transport.postMessage).toHaveBeenCalledWith({ type: 'createShader', payload: { name: 'aurora', language: 'slang', authoringMode: 'hooks' } });
     expect(screen.queryByRole('dialog', { name: 'New Shader' })).toBeNull();
 
     setNewShaderVisible(true);

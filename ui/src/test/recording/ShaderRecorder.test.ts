@@ -135,6 +135,7 @@ vi.mock('../../lib/slangAssets', () => ({
 }));
 
 import { ShaderRecorder, type RecordingConfig, type ShaderInfo, type ScreenshotConfig } from '../../lib/recording/ShaderRecorder';
+import { setGlobalViewerCamera } from '../../lib/state/viewerCameraState.svelte';
 import { VideoEncoderWrapper } from '../../lib/recording/VideoEncoder';
 import { GifEncoderWrapper } from '../../lib/recording/GifEncoder';
 
@@ -206,6 +207,7 @@ describe('ShaderRecorder', () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     recorder = new ShaderRecorder();
+    setGlobalViewerCamera(true);
     // Mock document.createElement to return a canvas-like object
     vi.spyOn(document, 'createElement').mockReturnValue({
       width: 0,
@@ -226,8 +228,44 @@ describe('ShaderRecorder', () => {
   });
 
   afterEach(() => {
+    setGlobalViewerCamera(true);
     vi.useRealTimers();
   });
+
+  it.each([
+    { format: 'png' as const, language: 'glsl' as const },
+    { format: 'webm' as const, language: 'glsl' as const },
+    { format: 'gif' as const, language: 'glsl' as const },
+    { format: 'png' as const, language: 'wgsl' as const },
+    { format: 'webm' as const, language: 'wgsl' as const },
+    { format: 'gif' as const, language: 'wgsl' as const },
+    { format: 'png' as const, language: 'slang' as const },
+    { format: 'webm' as const, language: 'slang' as const },
+    { format: 'gif' as const, language: 'slang' as const },
+  ])(
+    'preserves the runtime camera preference and frozen uniforms for $language $format exports',
+    async ({ format, language }) => {
+      setGlobalViewerCamera(false);
+      const info = { ...structuredClone(shaderInfoWithCaptureContext), language };
+      const compile = language === 'glsl' ? mockCompileShaderPipeline : mockWebGPUCompileShaderPipeline;
+      const setUniforms = language === 'glsl' ? mockSetCustomUniformValues : mockWebGPUSetCustomUniformValues;
+      const capture = format === 'png'
+        ? recorder.captureScreenshot({ format, width: 64, height: 64 }, info)
+        : recorder.record({ format, width: 64, height: 64, fps: 1, duration: 1, startTime: 0 }, info);
+      await vi.runAllTimersAsync();
+      await capture;
+      expect(compile).toHaveBeenCalledWith(
+        info.code,
+        { ...info.config, webgpu: { useViewerCamera: false } },
+        info.path,
+        info.buffers,
+        info.customUniformDeclarations,
+        info.customUniformInfo,
+      );
+      expect(setUniforms).toHaveBeenCalledWith(info.customUniformValues);
+      expect(info.config).not.toHaveProperty('webgpu');
+    },
+  );
 
   describe('captureScreenshot', () => {
     it('captures Live pixels through the owning engine without compiling or advancing simulation', async () => {

@@ -665,7 +665,10 @@ describe("WebGPURenderingEngine", () => {
     const engine = new WebGPURenderingEngine(assets);
     stubDeviceAndContext(engine);
     const imagePipeline = renderablePipeline({
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => null,
+      getCurrentOutputViews: () => [{}],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => null,
     });
     (engineOwners(engine).session as any).passGraph = [
@@ -725,11 +728,17 @@ describe("WebGPURenderingEngine", () => {
     stubDeviceAndContext(engine);
 
     const bufferPipeline = renderablePipeline({
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => ({ label: "bufferA-current" }),
+      getCurrentOutputViews: () => [{ label: "bufferA-current" }],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => ({ label: "bufferA-previous" }),
     });
     const imagePipeline = renderablePipeline({
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => null,
+      getCurrentOutputViews: () => [{}],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => null,
     });
 
@@ -1594,7 +1603,10 @@ describe("WebGPURenderingEngine", () => {
       getPipeline: () => ({ label: "buffer-pipeline" }),
       getBindGroup: () => ({ label: "buffer-bind-group" }),
       getUniformBuffer: () => ({ label: "buffer-uniform" }),
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => ({ label: "buffer-current-view" }),
+      getCurrentOutputViews: () => [{ label: "buffer-current-view" }],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => ({ label: "buffer-previous-view" }),
       rebuildBindGroup: vi.fn(),
       swap: vi.fn(() => calls.push("swap:BufferA")),
@@ -1603,7 +1615,10 @@ describe("WebGPURenderingEngine", () => {
       getPipeline: () => ({ label: "image-pipeline" }),
       getBindGroup: () => ({ label: "image-bind-group" }),
       getUniformBuffer: () => ({ label: "image-uniform" }),
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => null,
+      getCurrentOutputViews: () => [{}],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => null,
       rebuildBindGroup: vi.fn(),
       swap: vi.fn(),
@@ -1652,7 +1667,10 @@ describe("WebGPURenderingEngine", () => {
       getPipeline: () => ({ label: "buffer-pipeline" }),
       getBindGroup: () => ({ label: "buffer-bind-group" }),
       getUniformBuffer: () => ({ label: "buffer-uniform" }),
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => ({ label: "buffer-current-view" }),
+      getCurrentOutputViews: () => [{ label: "buffer-current-view" }],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => ({ label: "buffer-previous-view" }),
       rebuildBindGroup: vi.fn(),
       swap: vi.fn(),
@@ -1661,7 +1679,10 @@ describe("WebGPURenderingEngine", () => {
       getPipeline: () => ({ label: "image-pipeline" }),
       getBindGroup: () => ({ label: "image-bind-group" }),
       getUniformBuffer: () => ({ label: "image-uniform" }),
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => null,
+      getCurrentOutputViews: () => [{}],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => null,
       rebuildBindGroup: vi.fn(),
       swap: vi.fn(),
@@ -1737,7 +1758,10 @@ describe("WebGPURenderingEngine", () => {
       getPipeline: () => ({ label: "buffer-pipeline" }),
       getBindGroup: () => ({ label: "buffer-bind-group" }),
       getUniformBuffer: () => bufferUniform,
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => ({ label: "buffer-current-view" }),
+      getCurrentOutputViews: () => [{ label: "buffer-current-view" }],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => ({ label: "buffer-previous-view" }),
       rebuildBindGroup: vi.fn(),
       swap: vi.fn(),
@@ -1746,7 +1770,10 @@ describe("WebGPURenderingEngine", () => {
       getPipeline: () => ({ label: "image-pipeline" }),
       getBindGroup: () => ({ label: "image-bind-group" }),
       getUniformBuffer: () => imageUniform,
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => null,
+      getCurrentOutputViews: () => [{}],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => null,
       rebuildBindGroup: vi.fn(),
       swap: vi.fn(),
@@ -2127,7 +2154,10 @@ describe("WebGPURenderingEngine", () => {
         Float32Array.from([2026, 7, 19, 12345]),
       );
       const imagePipeline = renderablePipeline({
+        getCurrentOutputTexture: () => null,
         getCurrentOutputView: () => null,
+        getCurrentOutputViews: () => [{}],
+        getPreviousOutputTexture: () => null,
         getPreviousOutputView: () => null,
       });
       (engineOwners(engine).session as any).passGraph = [{
@@ -4112,6 +4142,8 @@ describe("WebGPURenderingEngine", () => {
       expect(enumerations).toBe(1);
       expect((engineOwners(engine).session as any).passPipelines).not.toBe(predecessors);
       expect(engine.getVariableCaptureCompileContext()).toEqual({
+        captureChannelSnapshot: expect.any(Function),
+        nativeRender: undefined,
         commonCode: "",
         slangPassName: "Image",
         slangChannels: [expect.objectContaining({ slot: 0, key: "iChannel0", kind: "buffer" })],
@@ -4450,6 +4482,8 @@ describe("WebGPURenderingEngine", () => {
       ));
 
       expect(engine.getVariableCaptureCompileContext("candidate image")).toEqual({
+        captureChannelSnapshot: expect.any(Function),
+        nativeRender: undefined,
         commonCode: "float commonA() { return 1.0; }",
         slangPassName: "Image",
         slangChannels: [expect.objectContaining({ slot: 0, key: "iChannel0", kind: "buffer" })],
@@ -4461,6 +4495,8 @@ describe("WebGPURenderingEngine", () => {
       rejectCandidate();
       expect((await pending)?.success).toBe(false);
       expect(engine.getVariableCaptureCompileContext("candidate image")).toEqual({
+        captureChannelSnapshot: expect.any(Function),
+        nativeRender: undefined,
         commonCode: "float commonB() { return 2.0; }",
         slangPassName: "Image",
         slangChannels: [expect.objectContaining({ slot: 0, key: "iChannel1", kind: "buffer" })],
@@ -4482,6 +4518,8 @@ describe("WebGPURenderingEngine", () => {
 
       expect(failedSamePath?.success).toBe(false);
       expect(engine.getVariableCaptureCompileContext("same-path candidate image")).toEqual({
+        captureChannelSnapshot: expect.any(Function),
+        nativeRender: undefined,
         commonCode: "float commonC() { return 3.0; }",
         slangPassName: "Image",
         slangChannels: [expect.objectContaining({ slot: 0, key: "iChannel0", kind: "buffer" })],
@@ -4517,6 +4555,8 @@ describe("WebGPURenderingEngine", () => {
 
       expect(result?.success).toBe(true);
       expect(engine.getVariableCaptureCompileContext("candidate image")).toEqual({
+        captureChannelSnapshot: expect.any(Function),
+        nativeRender: undefined,
         commonCode: "float commonB() { return 2.0; }",
         slangPassName: "Image",
         slangChannels: [expect.objectContaining({ slot: 0, key: "iChannel1", kind: "buffer" })],
@@ -4578,7 +4618,10 @@ describe("WebGPURenderingEngine", () => {
       getPipeline: () => ({ label: "pipeline" }),
       getBindGroup: () => ({ label: "bind-group" }),
       getUniformBuffer: () => ({ label: "uniform" }),
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => ({ label: "current-view" }),
+      getCurrentOutputViews: () => [{ label: "current-view" }],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => ({ label: "previous-view" }),
       rebuildBindGroup: vi.fn(),
       swap: vi.fn(),
@@ -4611,11 +4654,17 @@ describe("WebGPURenderingEngine", () => {
     stubDeviceAndContext(engine);
 
     const bufferPipeline = renderablePipeline({
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => ({ label: "bufferA-current" }),
+      getCurrentOutputViews: () => [{ label: "bufferA-current" }],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => ({ label: "bufferA-previous" }),
     });
     const imagePipeline = renderablePipeline({
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => null,
+      getCurrentOutputViews: () => [{}],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => null,
     });
 
@@ -4648,11 +4697,17 @@ describe("WebGPURenderingEngine", () => {
     stubDeviceAndContext(engine);
 
     const bufferPipeline = renderablePipeline({
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => ({ label: "bufferA-current" }),
+      getCurrentOutputViews: () => [{ label: "bufferA-current" }],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => ({ label: "bufferA-previous" }),
     });
     const imagePipeline = renderablePipeline({
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => null,
+      getCurrentOutputViews: () => [{}],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => null,
     });
 
@@ -4679,13 +4734,18 @@ describe("WebGPURenderingEngine", () => {
     );
   });
 
-  it.each(["current-frame", "previous-frame"] as const)("retains the %s buffer image when capturing after the feedback swap", (readFrom) => {
+  it.each([
+    { readFrom: "current-frame" as const, output: 0 },
+    { readFrom: "previous-frame" as const, output: 0 },
+    { readFrom: "current-frame" as const, output: 1 },
+    { readFrom: "previous-frame" as const, output: 1 },
+  ])("retains the $readFrom buffer output $output when capturing after the feedback swap", ({ readFrom, output }) => {
     const engine = new WebGPURenderingEngine(assets);
     stubDeviceAndContext(engine);
     let swapped = false;
     const bufferPipeline = renderablePipeline({
-      getCurrentOutputView: () => ({ label: swapped ? "older" : "latest" }),
-      getPreviousOutputView: () => ({ label: swapped ? "latest" : "older" }),
+      getCurrentOutputView: vi.fn((index = 0) => ({ label: `${swapped ? "older" : "latest"}-${index}` })),
+      getPreviousOutputView: vi.fn((index = 0) => ({ label: `${swapped ? "latest" : "older"}-${index}` })),
       swap: vi.fn(() => {
         swapped = !swapped;
       }),
@@ -4696,13 +4756,14 @@ describe("WebGPURenderingEngine", () => {
       passGraph: [
         { name: "BufferA", width: 320, height: 180, output: "texture", channels: [] },
         { name: "Image", width: 320, height: 180, output: "canvas", channels: [
-          { kind: "buffer", slot: 0, key: "iChannel0", source: "BufferA", readFrom },
+          { kind: "buffer", slot: 0, key: "iChannel0", source: "BufferA", readFrom, output },
         ] },
       ],
       passPipelines: new Map([["BufferA", bufferPipeline], ["Image", imagePipeline]]),
     });
     engine.renderForCapture();
     const original = imagePipeline.rebuildBindGroup.mock.calls[0][0];
+    expect(original[0].textureView).toEqual({ label: `${readFrom === "current-frame" ? "latest" : "older"}-${output}` });
     engineOwners(engine).frameRenderer.renderFrame(1000, true, true);
     expect(imagePipeline.rebuildBindGroup.mock.calls[1][0]).toEqual(original);
     expect(bufferPipeline.swap).toHaveBeenCalledTimes(1);
@@ -4742,7 +4803,9 @@ describe("WebGPURenderingEngine", () => {
     vi.mocked(device.createSampler).mockReturnValue(sampler);
 
     const bufferPipeline = renderablePipeline({
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => ({ label: "bufferA-current" }),
+      getCurrentOutputViews: () => [{ label: "bufferA-current" }],
     });
     const imagePipeline = renderablePipeline();
     (engineOwners(engine).session as any).passGraph = [
@@ -4779,11 +4842,17 @@ describe("WebGPURenderingEngine", () => {
     const positions = { label: "positions" } as unknown as GPUBuffer;
     const installedStorage = new Map([["positions", positions]]);
     const bufferPipeline = renderablePipeline({
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => ({ label: "bufferA-current" }),
+      getCurrentOutputViews: () => [{ label: "bufferA-current" }],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => ({ label: "bufferA-previous" }),
     });
     const imagePipeline = renderablePipeline({
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => null,
+      getCurrentOutputViews: () => [{}],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => null,
     });
     (engineOwners(engine).storage as any).storageBuffers = installedStorage;
@@ -4822,11 +4891,17 @@ describe("WebGPURenderingEngine", () => {
     const writeBuffer = (engine as any).device.queue.writeBuffer as ReturnType<typeof vi.fn>;
 
     const bufferPipeline = renderablePipeline({
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => ({ label: "bufferA-current" }),
+      getCurrentOutputViews: () => [{ label: "bufferA-current" }],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => ({ label: "bufferA-previous" }),
     });
     const imagePipeline = renderablePipeline({
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => null,
+      getCurrentOutputViews: () => [{}],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => null,
     });
 
@@ -4870,7 +4945,10 @@ describe("WebGPURenderingEngine", () => {
 
     const bufferPipeline = renderablePipeline();
     const imagePipeline = renderablePipeline({
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => null,
+      getCurrentOutputViews: () => [{}],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => null,
     });
 
@@ -4905,7 +4983,10 @@ describe("WebGPURenderingEngine", () => {
       rebuildBindGroup: vi.fn(() => {
         imageBindGroup = { label: "image-bind-group" };
       }),
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => null,
+      getCurrentOutputViews: () => [{}],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => null,
     });
 
@@ -4938,10 +5019,14 @@ describe("WebGPURenderingEngine", () => {
 
     let bufferViewToggle = false;
     const bufferPipeline = renderablePipeline({
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => (bufferViewToggle ? { label: "swapped-view" } : { label: "initial-view" }),
     });
     const imagePipeline = renderablePipeline({
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => null,
+      getCurrentOutputViews: () => [{}],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => null,
     });
 
@@ -6021,11 +6106,17 @@ describe("WebGPURenderingEngine", () => {
       };
 
       const bufferPipeline = renderablePipeline({
+        getCurrentOutputTexture: () => null,
         getCurrentOutputView: () => ({ label: "bufferA-current" }),
+        getCurrentOutputViews: () => [{ label: "bufferA-current" }],
+        getPreviousOutputTexture: () => null,
         getPreviousOutputView: () => ({ label: "bufferA-previous" }),
       });
       const imagePipeline = renderablePipeline({
+        getCurrentOutputTexture: () => null,
         getCurrentOutputView: () => null,
+        getCurrentOutputViews: () => [{}],
+        getPreviousOutputTexture: () => null,
         getPreviousOutputView: () => null,
       });
 

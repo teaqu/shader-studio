@@ -54,6 +54,18 @@ describe('VSCodeTransport', () => {
       expect(removeSpy).toHaveBeenCalledWith('message', handler);
       removeSpy.mockRestore();
     });
+
+    it('delivers messages to every subscriber', () => {
+      const first = vi.fn();
+      const second = vi.fn();
+      transport.onMessage(first);
+      transport.onMessage(second);
+
+      window.dispatchEvent(new MessageEvent('message', { data: { type: 'viewerCameraSettings' } }));
+
+      expect(first).toHaveBeenCalledOnce();
+      expect(second).toHaveBeenCalledOnce();
+    });
   });
 
   describe('dispose', () => {
@@ -79,6 +91,23 @@ describe('VSCodeTransport', () => {
       // removeEventListener should only be called once
       expect(removeSpy).toHaveBeenCalledTimes(1);
       removeSpy.mockRestore();
+    });
+
+    it('removes every listener and can be reused afterwards', () => {
+      const first = vi.fn();
+      const second = vi.fn();
+      transport.onMessage(first);
+      transport.onMessage(second);
+
+      transport.dispose();
+      window.dispatchEvent(new MessageEvent('message', { data: { type: 'after-dispose' } }));
+      expect(first).not.toHaveBeenCalled();
+      expect(second).not.toHaveBeenCalled();
+
+      const reused = vi.fn();
+      transport.onMessage(reused);
+      window.dispatchEvent(new MessageEvent('message', { data: { type: 'after-reuse' } }));
+      expect(reused).toHaveBeenCalledOnce();
     });
   });
 

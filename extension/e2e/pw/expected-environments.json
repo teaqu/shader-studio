@@ -295,6 +295,16 @@
     "environment": "gpu"
   },
   {
+    "id": "8a72ad960f83d725c00c-b63c2f02bc0f72ad95ef:",
+    "title": "native-mrt.e2e.mjs › renders and persists selected wgsl MRT attachments in VS Code @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "8a72ad960f83d725c00c-a8033ae74292b172b35a:",
+    "title": "native-mrt.e2e.mjs › renders and persists selected slang MRT attachments in VS Code @gpu",
+    "environment": "gpu"
+  },
+  {
     "id": "7c3d273c727d8e292d2b-34fb77566000a11da7ca:",
     "title": "open-config-shows-shader.e2e.mjs › opening a config file shows its own shader immediately, with no edit required",
     "environment": "non-gpu"
@@ -752,6 +762,11 @@
   {
     "id": "7357a8aa70c3fba65bd7-94c198c79cd62eff1da7:",
     "title": "wgsl-entrypoint.e2e.mjs › opens a WGSL entry point with a return type before and after reloading VS Code @gpu",
+    "environment": "gpu"
+  },
+  {
+    "id": "7357a8aa70c3fba65bd7-1888a6108fcdbbbb8dd9:",
+    "title": "wgsl-entrypoint.e2e.mjs › persists per-pass viewer camera overrides and follows VS Code settings through reload @gpu",
     "environment": "gpu"
   },
   {

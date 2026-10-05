@@ -1,5 +1,7 @@
 <svelte:options runes={true} />
 <script lang="ts">
+  import { sharedSourcePassNames, shaderPathsEqual } from "../editor/sharedSourcePassNames";
+  import { clearCurrentEditorSource, setCurrentEditorSource } from "../state/currentEditorSourceState.svelte";
   import { onMount, onDestroy, tick, setContext, untrack } from "svelte";
   import { get } from "svelte/store";
   import { ShaderPipeline } from "../ShaderPipeline";
@@ -67,7 +69,7 @@
   import { resolutionStore } from "../stores/resolutionStore";
   import { PageRenderLifecycle } from "../rendering/PageRenderLifecycle";
   import { aspectRatioStore } from "../stores/aspectRatioStore";
-  import { ResolutionSessionController } from "../resolution/ResolutionSessionController.svelte";
+  import { createResolutionSessionController } from "../resolution/createResolutionSessionController";
   import { FileProfileAdapter } from "../profiles/FileProfileAdapter";
   import { init as initProfiles } from "../state/profileStore.svelte";
   import { setLanguageServiceSettings } from "../state/languageServiceState.svelte";
@@ -173,6 +175,7 @@
   let pipeline: ShaderPipeline;
   let shaderLocker: ShaderLocker;
   let renderingEngine = $state<IRenderingEngine>(undefined!);
+  let renderOutputLimits = $state<{ maxColorAttachments: number; maxColorAttachmentBytesPerSample: number } | null>(null);
   // Uniform scripts run in the extension host, which has no clock of the
   // shader's own; this keeps it told what the viewer is showing.
   let scriptRuntimeReporter: ScriptRuntimeReporter | null = null;
@@ -252,14 +255,30 @@
   let editorVimMode = $derived(getVimMode());
   let currentShaderCode = $state('');
   let originalShaderCode = $state('');
+
+  // A WebGPU device initializes asynchronously. Source and config updates occur
+  // after compilation, so a short retry sequence keeps the visible limit current.
+  $effect(() => {
+    const engine = renderingEngine;
+    currentConfig;
+    currentShaderCode;
+    const refresh = () => {
+      renderOutputLimits = engine?.getRenderOutputLimits?.() ?? null;
+    };
+    refresh();
+    const retries = [50, 250].map((delay) => setTimeout(refresh, delay));
+    return () => retries.forEach(clearTimeout);
+  });
+
   let editorBufferName = $state('Image');
   let editorFilePath = $state('');
+  const editorSourcePassNames = $derived(sharedSourcePassNames(editorFilePath, shaderPath, bufferPathMap));
   let editorFileCode = $state('');
   let editorBufferNames = $state<string[]>(['Image']);
   let configSelectedBuffer = $state('Image');
 
   // Resolution controller — created at component level so setContext works synchronously
-  const resolutionController = new ResolutionSessionController({
+  const resolutionController = createResolutionSessionController({
     get currentConfig() {
       return currentConfig;
     },
@@ -761,6 +780,7 @@
     }
 
     if (bufferPath) {
+      setCurrentEditorSource(shaderPath, bufferPath);
       transport.postMessage({
         type: "navigateToBuffer",
         payload: { bufferPath, shaderPath, mode },
@@ -1067,10 +1087,6 @@
     return renderingEngine.getUniforms();
   }
 
-  function shaderPathsEqual(firstPath: string, secondPath: string) {
-    return firstPath.replace(/\\/g, '/') === secondPath.replace(/\\/g, '/');
-  }
-
   /**
    * Publish the common pass for the in-app editor's language service.
    *
@@ -1113,6 +1129,9 @@
       }
       const prevShaderPath = shaderPath;
       const nextShaderPath = event.data.path || "";
+      if (prevShaderPath && !shaderPathsEqual(nextShaderPath, prevShaderPath)) {
+        clearCurrentEditorSource(prevShaderPath);
+      }
       const isSameShader = nextShaderPath !== ""
         && shaderPathsEqual(nextShaderPath, prevShaderPath);
       currentConfig = event.data.config || null;
@@ -1454,6 +1473,9 @@
   const editorOverlayCallbacks: EditorOverlayCallbacks = {
     onStateChanged: (state) => {
       editorFilePath = state.filePath;
+      if (getEditorOverlayVisible()) {
+        setCurrentEditorSource(shaderPath, state.filePath);
+      }
       editorFileCode = state.fileCode;
       editorBufferName = state.bufferName;
       editorBufferNames = state.bufferNames;
@@ -1690,6 +1712,7 @@
           {slangModules}
           commonPath={authoringCommonPath}
           commonSource={authoringCommonSource}
+          sourcePassNames={editorSourcePassNames}
           vimMode={editorVimMode}
           bufferNames={editorBufferNames}
           activeBufferName={editorBufferName}
@@ -1727,6 +1750,7 @@
         {pathMap}
         {bufferPathMap}
         {bufferSources}
+        shaderSource={currentShaderCode}
         onReadStorage={SHADER_LANGUAGES[engineLanguage].engine === 'webgpu' ? readStorageBuffer : undefined}
         onWriteStorage={SHADER_LANGUAGES[engineLanguage].engine === 'webgpu' ? writeStorageBuffer : undefined}
         {transport}
@@ -1742,6 +1766,7 @@
         {customUniformValues}
         {actualPollFps}
         {uniformActualFps}
+        {renderOutputLimits}
         onConfigChange={handleConfigPanelConfigChange}
       />
     {/if}

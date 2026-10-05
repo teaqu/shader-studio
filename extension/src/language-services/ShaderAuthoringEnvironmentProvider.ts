@@ -4,18 +4,20 @@ import * as vscode from "vscode";
 import {
   SHADER_LANGUAGES,
   configPathForShader,
+  getShaderEntryPoints,
   isAuthoringValueType,
   isCommonPassName,
   resolveConfiguredPath,
   type ConfiguredPathHost,
   isShaderLanguageId,
-  resourcesForPass,
+  resourcesForSharedSource,
   stageForPass,
   type AuthoringResource,
   type CustomUniformDeclaration,
   type ShaderAuthoringEnvironment,
   type ShaderConfig,
   type ShaderLanguageId,
+  type RenderEntryPoints,
   type ShaderStage,
 } from "@shader-studio/types";
 import { collectSlangDependencies, resolveSlangIncludes } from "@shader-studio/utils";
@@ -94,19 +96,22 @@ export class ShaderAuthoringEnvironmentProvider {
     const loadedConfig = readConfig(document.uri.fsPath);
     const config = loadedConfig?.config ?? null;
     const pass = findPass(config, document.uri.fsPath, loadedConfig?.path);
-    const stage = pass && "vertex" in pass && pass.vertex ? "vertex" : stageForPass(config, pass?.name ?? "Image", document.uri.fsPath);
-    const resources = resourcesForPass(config, pass?.name ?? "Image");
+    const stage = selectedStage(pass, config, document.uri.fsPath);
+    const entryPoint = selectedEntryPoint(pass?.value);
+    const storageWritable = languageId === "slang"
+      && getShaderEntryPoints(document.getText(), "slang").some((entry) => entry.stage === "compute");
+    const passName = pass?.name ?? "Image";
+    const resources = resourcesForSharedSource(config, passName, sharedSourcePassNames(config, document.uri.fsPath, languageId, loadedConfig?.path));
     const uniforms = customUniforms.get(path.resolve(mainShaderPath(document.uri.fsPath, languageId, loadedConfig?.path))) ?? [];
     const outputLayers = pass?.value && "type" in pass.value && pass.value.type === "compute"
       ? pass.value.outputLayers ?? 1
       : undefined;
-    const passName = pass?.name ?? "Image";
     const commonFile = configuredCommonFile(config, loadedConfig?.path, passName);
     const virtualFiles = mergeVirtualFiles(
       collectVirtualFiles(document.getText(), document.uri.fsPath, languageId, passName),
       commonFile ? collectVirtualFiles(commonFile.text, vscode.Uri.parse(commonFile.uri).fsPath, languageId, "common") : [],
     );
-    const semantic = { languageId, passName, stage, outputLayers, resources, uniforms, commonFile, virtualFiles };
+    const semantic = { languageId, passName, stage, entryPoint, storageWritable, outputLayers, resources, uniforms, commonFile, virtualFiles };
     const fingerprint = JSON.stringify(semantic);
     const current = this.generations.get(document.uri.toString());
     const generation = current?.fingerprint === fingerprint ? current.generation : (current?.generation ?? 0) + 1;
@@ -117,6 +122,8 @@ export class ShaderAuthoringEnvironmentProvider {
       generation,
       passName: semantic.passName,
       stage,
+      entryPoint,
+      storageWritable,
       outputLayers,
       customUniforms: uniforms,
       resources,
@@ -165,6 +172,38 @@ export class ShaderAuthoringEnvironmentProvider {
     }
     return result;
   }
+}
+
+function selectedStage(
+  pass: ReturnType<typeof findPass>,
+  config: ShaderConfig | null,
+  documentPath: string,
+): ShaderStage {
+  if (pass && "vertex" in pass && pass.vertex) {
+    return "vertex";
+  }
+  const entryPoints = pass?.value && "entryPoints" in pass.value ? pass.value.entryPoints : undefined;
+  if (entryPoints && "compute" in entryPoints && entryPoints.compute) {
+    return "compute";
+  }
+  if (entryPoints && "fragment" in entryPoints && entryPoints.fragment) {
+    return "fragment";
+  }
+  if (entryPoints && "vertex" in entryPoints && entryPoints.vertex) {
+    return "vertex";
+  }
+  return stageForPass(config, pass?.name ?? "Image", documentPath);
+}
+
+function selectedEntryPoint(pass: ShaderConfig["passes"][string] | undefined): string | undefined {
+  if (!pass) {
+    return undefined;
+  }
+  if ("type" in pass && pass.type === "compute") {
+    return pass.entryPoints?.compute ?? pass.entryPoint;
+  }
+  const entryPoints = "entryPoints" in pass ? pass.entryPoints as RenderEntryPoints | undefined : undefined;
+  return entryPoints?.fragment ?? entryPoints?.vertex;
 }
 
 export function workspaceShaderGlob(languageId: ShaderLanguageId): string {
@@ -286,7 +325,33 @@ function findPass(config: ShaderConfig | null, shaderPath: string, configPath?: 
   if (!config) {
     return undefined;
   }
+  // The companion config's root shader is the implicit Image source. It may
+  // also be reused by Buffer/Compute passes, but authoring that root must keep
+  // Image semantics instead of depending on pass object insertion order.
+  const rootStem = configPath?.replace(/\.sha\.json$/i, "");
+  const resolvedShaderPath = path.resolve(shaderPath);
+  if (rootStem
+    && path.dirname(resolvedShaderPath) === path.dirname(path.resolve(rootStem))
+    && path.basename(resolvedShaderPath, path.extname(resolvedShaderPath)) === path.basename(rootStem)) {
+    return { name: "Image", value: config.passes.Image };
+  }
   return findExplicitPass(config, shaderPath, configPath) ?? { name: "Image", value: config.passes.Image };
+}
+
+function sharedSourcePassNames(config: ShaderConfig | null, shaderPath: string, languageId: ShaderLanguageId, configPath?: string): string[] {
+  if (!config) {
+    return ["Image"];
+  }
+  const resolved = path.resolve(shaderPath);
+  const owningConfigPath = configPath ?? shaderPath;
+  const names = Object.entries(config.passes)
+    .filter(([, value]) => value && "path" in value && value.path
+      && resolveConfiguredPath(configuredPathHost, owningConfigPath, value.path) === resolved)
+    .map(([name]) => name);
+  if (path.resolve(mainShaderPath(shaderPath, languageId, configPath)) === resolved) {
+    names.push("Image");
+  }
+  return names;
 }
 
 function findExplicitPass(config: ShaderConfig, shaderPath: string, configPath?: string) {

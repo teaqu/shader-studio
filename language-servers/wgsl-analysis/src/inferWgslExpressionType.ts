@@ -190,6 +190,12 @@ function inferBinary(
     if (leftMatrix && scalarMatchesComponent(expression.right, right, leftMatrix.componentType)) {
       return left;
     }
+    const rightVector = vectorType(right);
+    if (leftMatrix && rightVector
+      && rightVector.componentType === leftMatrix.componentType
+      && rightVector.size === leftMatrix.columns) {
+      return vectorTypeName(leftMatrix.componentType, leftMatrix.rows);
+    }
     if (rightMatrix && scalarMatchesComponent(expression.left, left, rightMatrix.componentType)) {
       return right;
     }
