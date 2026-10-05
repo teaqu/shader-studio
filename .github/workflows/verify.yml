@@ -173,6 +173,12 @@ jobs:
           COVERAGE_BASE_REF: ${{ github.event_name == 'push' && github.ref_type == 'branch' && github.event.before || 'HEAD^' }}
         run: npm run coverage:new-files -- "$COVERAGE_BASE_REF"
 
+      - name: Check coverage of changes to existing runtime source files
+        if: ${{ always() && (steps.unit-tests.outcome == 'success' || steps.unit-tests.outcome == 'failure') }}
+        env:
+          COVERAGE_BASE_REF: ${{ github.event_name == 'push' && github.ref_type == 'branch' && github.event.before || 'HEAD^' }}
+        run: npm run coverage:changes -- "$COVERAGE_BASE_REF"
+
       - name: Report package coverage
         if: ${{ always() && (steps.unit-tests.outcome == 'success' || steps.unit-tests.outcome == 'failure') }}
         run: npm run coverage:summary
