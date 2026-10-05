@@ -113,6 +113,26 @@ describe('ConfigPanel', () => {
   }
 
   describe('rendering', () => {
+    it.each(['slang', 'wgsl'] as const)('shows transient first %s stages and preserves the other stage on selection', async language => {
+      const source = language === 'slang'
+        ? '[shader("vertex")] float4 firstVertex() { return float4(0); } [shader("fragment")] float4 firstFragment() { return float4(1); } [shader("fragment")] float4 secondFragment() { return float4(0); }'
+        : '@vertex fn firstVertex() -> vec4f { return vec4f(0); } @fragment fn firstFragment() -> vec4f { return vec4f(1); } @fragment fn secondFragment() -> vec4f { return vec4f(0); }';
+      const onConfigChange = vi.fn();
+      const { getByLabelText } = render(ConfigPanel, {
+        config: null, language, transport: mockTransport, shaderPath: `/shader/image.${language}`, shaderSource: source, onConfigChange,
+      });
+      await tick();
+      const label = (stage: string, name: string) => `${language === 'slang' ? `[shader("${stage}")]` : `@${stage}`} ${name}`;
+      expect(getByLabelText(label('vertex', 'firstVertex'))).toBeChecked();
+      expect(getByLabelText(label('fragment', 'firstFragment'))).toBeChecked();
+      const manager = getLatestConfigManagerInstance();
+      expect(manager.setConfig).toHaveBeenCalledWith({ version: '1.0', passes: { Image: { inputs: {}, entryPoints: { vertex: 'firstVertex', fragment: 'firstFragment' } } } });
+      expect(mockTransport.postMessage).not.toHaveBeenCalled();
+      expect(onConfigChange).not.toHaveBeenCalled();
+      await fireEvent.click(getByLabelText(label('fragment', 'secondFragment')));
+      expect(manager.updateImagePass).toHaveBeenCalledWith(expect.objectContaining({ entryPoints: { vertex: 'firstVertex', fragment: 'secondFragment' } }));
+    });
+
     it.each(['wgsl', 'slang'] as const)('uses the saved %s render-function preference through one Buffer menu item', async (language) => {
       const config: ShaderConfig = { version: '1.0', webgpu: { defaultRenderAuthoring: 'native' }, passes: { Image: {} } };
       const { getByRole, queryByLabelText } = render(ConfigPanel, {

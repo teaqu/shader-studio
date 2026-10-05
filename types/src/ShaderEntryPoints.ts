@@ -1,3 +1,4 @@
+import type { ShaderConfig } from "./ShaderConfig";
 import type { ShaderLanguageId } from "./shader-environment/ShaderLanguages";
 
 export type NativeShaderStage = "vertex" | "fragment" | "compute";
@@ -162,4 +163,25 @@ export function getShaderEntryPoints(source: string, language: ShaderLanguageId)
   return getShaderSourceFunctions(source, language)
     .filter((fn): fn is ShaderSourceFunction & { stage: NativeShaderStage } => fn.stage !== undefined)
     .map(({ name, stage }) => ({ name, stage }));
+}
+
+/** Viewer defaults are transient: callers persist them only after a user edit. */
+export function withDefaultRenderEntryPoints(
+  config: ShaderConfig | null,
+  source: string,
+  language: ShaderLanguageId,
+): ShaderConfig | null {
+  if (config !== null) {
+    return config;
+  }
+  const entryPoints: { vertex?: string; fragment?: string } = {};
+  for (const entry of getShaderEntryPoints(source, language)) {
+    if (entry.stage !== "compute" && entryPoints[entry.stage] === undefined) {
+      entryPoints[entry.stage] = entry.name;
+    }
+  }
+  if (!entryPoints.vertex && !entryPoints.fragment) {
+    return null;
+  }
+  return { version: "1.0", passes: { Image: { inputs: {}, entryPoints } } };
 }

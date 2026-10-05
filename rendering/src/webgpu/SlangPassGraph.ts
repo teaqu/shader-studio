@@ -1,6 +1,6 @@
 import { normalizeLiveInput } from "../util/LiveInputConfig";
 import type { ComputePass, ConfigInput, ShaderConfig, ShaderLanguageId, StorageBufferConfig } from "@shader-studio/types";
-import { vertexPassKey, configuredStorageLayout, storageStructDeclaration, validateStorageOptions } from "@shader-studio/types";
+import { withDefaultRenderEntryPoints, vertexPassKey, configuredStorageLayout, storageStructDeclaration, validateStorageOptions } from "@shader-studio/types";
 import type {
   DispatchSpec,
   RenderPassChannel,
@@ -121,8 +121,8 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
   const canvasHeight = Math.max(1, Math.round(options.canvasHeight));
   const warnings: string[] = [];
   const errors: string[] = [];
-  const config = options.config;
   const language = options.language ?? "slang";
+  const config = withDefaultRenderEntryPoints(options.config, options.imageCode, language);
 
   if (!config?.passes) {
     return {
