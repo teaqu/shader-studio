@@ -85,3 +85,24 @@ test('CLI gates an existing-file edit across the whole branch, and writes a summ
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('a type-only export added to a runtime barrel does not need a coverage map', () => {
+  const source = "export { Renderer } from './Renderer';\nexport type { RenderingEngine } from './types';";
+  assert.deepEqual(run(null, [2], source), { files: [], errors: [] });
+});
+test('erased declarations are exempt but executable edits still fail closed', () => {
+  const source = "export const value = 1;\nimport type { Value } from './types';\ninterface Settings { value: Value }\ntype Options = Settings;";
+  assert.deepEqual(run(null, [2, 3, 4], source), { files: [], errors: [] });
+  assert.match(run(null, [1, 2], source).errors.join('\n'), /missing unit coverage/);
+  assert.match(run(null, [1], "export type { Value } from './types'; export const value = 1;").errors.join('\n'), /missing unit coverage/);
+});
+test('multiline type exports are exempt while value re-exports require instrumentation', () => {
+  assert.deepEqual(run(null, [2, 3], "export const value = 1;\nexport type {\n  Value,\n} from './types';").errors, []);
+  assert.match(run(null, [2], "export const value = 1;\nexport { Renderer } from './Renderer';").errors.join('\n'), /missing unit coverage/);
+});
+
+test('barrel re-export changes are exempt but runtime statements in a barrel still require maps', () => {
+  const barrel = "export * from './StorageLayout';";
+  assert.deepEqual(run(null, [1], barrel), { files: [], errors: [] });
+  assert.match(run(null, [2], barrel + '\nexport const value = 1;').errors.join('\n'), /missing unit coverage/);
+});

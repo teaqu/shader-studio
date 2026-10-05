@@ -5,6 +5,7 @@ export * from './ShaderSourceTemplates';
 export * from './ShaderStageIsolation';
 export * from './MessageTypes';
 export * from './StorageInspection';
+export * from './StorageLayout';
 export * from './assetExtensions';
 export * from './DefaultAssets';
 export * from './ProfileTypes';

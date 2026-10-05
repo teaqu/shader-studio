@@ -1579,12 +1579,12 @@
     await tick();
   }
 
-  async function readStorageBuffer(name: string, start: number, count: number) {
-    return renderingEngine.readStorageBuffer(name, start, count);
+  async function readStorageBuffer(name: string, start: number, count: number, point?: import('@shader-studio/types').StorageCapturePoint) {
+    return renderingEngine.readStorageBuffer(name, start, count, point);
   }
 
-  async function writeStorageBuffer(name: string, start: number, data: ArrayBuffer) {
-    await renderingEngine.writeStorageBuffer(name, start, data);
+  async function resetStorageBuffer(name: string) {
+    await renderingEngine.resetStorageBuffer(name);
   }
 
   // DOM teleport refs
@@ -1717,7 +1717,7 @@
         {bufferSources}
         shaderSource={currentShaderCode}
         onReadStorage={SHADER_LANGUAGES[engineLanguage].engine === 'webgpu' ? readStorageBuffer : undefined}
-        onWriteStorage={SHADER_LANGUAGES[engineLanguage].engine === 'webgpu' ? writeStorageBuffer : undefined}
+        onResetStorage={SHADER_LANGUAGES[engineLanguage].engine === 'webgpu' ? resetStorageBuffer : undefined}
         {transport}
         {shaderPath}
         isVisible={$configPanelStore.isVisible}

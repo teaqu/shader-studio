@@ -101,6 +101,10 @@ The **Vertex shader** section appears before Channels and Geometry. Choose **Bui
 
 The **Rendering** section after Geometry sets the pass's **Blend** mode, and for every geometry but fullscreen its **Depth test**, **Depth write**, **Compare** and **Cull**. See [Render settings](vertex-shaders.md#render-settings).
 
+## GPU Storage
+
+The **Storage** tab opens a workspace with a buffer list and **Settings** / **Inspect** tabs. Apply pending settings from the header or below the form. See [GPU Storage](storage.md) for layouts, binary initial data, resets and read-only inspection.
+
 ## Compute Passes
 
 Use **+ New → Compute** to add a compute pass, then use **File → Change…** to select, reuse, or create its `.slang` or `.wgsl` source. Choose a compute function row or use **Add function…**. Compute has Channels, Dispatch, Execution, and Output settings, with no Built-in mode, vertex stage, or geometry section.

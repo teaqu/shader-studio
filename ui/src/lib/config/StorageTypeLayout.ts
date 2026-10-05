@@ -1,4 +1,5 @@
 /** Returns the WebGPU storage-array stride for a built-in Slang element type. */
+import { storageValueLayout } from '@shader-studio/types';
 export function getBuiltinStorageStride(elementType: string): number | null {
   const type = elementType.trim();
   const strides: Record<string, number> = {
@@ -7,5 +8,5 @@ export function getBuiltinStorageStride(elementType: string): number | null {
     float3: 16, float4: 16, int3: 16, int4: 16, uint3: 16, uint4: 16,
     float2x2: 16, float3x3: 48, float4x4: 64,
   };
-  return strides[type] ?? null;
+  return storageValueLayout(type)?.stride ?? strides[type] ?? null;
 }

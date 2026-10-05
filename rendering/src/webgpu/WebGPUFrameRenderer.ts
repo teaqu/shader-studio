@@ -32,7 +32,7 @@ interface WebGPUFrameRendererHost {
   timing: Pick<WebGPUFrameTiming, "probeGpuFrameTime" | "recordFrameTime" | "shouldRenderFrame" | "trackFrameInFlight">;
   session: Pick<WebGPUShaderSession, "computePipelines" | "customUniformManager" | "dispatchOnceRan" | "hasSubmittedFrameForInstalledGeneration" | "passGraph" | "passPipelines" | "resourceManager" | "shaderPath">;
   channels: Pick<WebGPUChannels, "getChannelResources" | "getChannelUniforms">;
-  storage: Pick<WebGPUStorage, "storageBuffers" | "storageLayouts">;
+  storage: Pick<WebGPUStorage, "storageBuffers" | "storageLayouts" | "clearFrame" | "captureAt" | "captures">;
   constraints: Pick<WebGPUDeviceConstraints, "resolveComputeWorkgroupLimit">;
   device: GPUDevice | null;
   context: GPUCanvasContext | null;
@@ -72,6 +72,15 @@ export class WebGPUFrameRenderer {
   }
 
   renderFrame(time: number, capture: boolean, imageOnly = false): void {
+    try {
+      this.encodeFrame(time, capture, imageOnly);
+    } catch (error) {
+      this.host.storage.captures.cancel('Storage capture cancelled because the frame could not be submitted');
+      throw error;
+    }
+  }
+
+  private encodeFrame(time: number, capture: boolean, imageOnly: boolean): void {
     if (!this.host.device || !this.host.context) {
       return;
     }
@@ -106,6 +115,9 @@ export class WebGPUFrameRenderer {
     const skipBufferPasses = isPaused && this.host.session.hasSubmittedFrameForInstalledGeneration;
 
     const encoder = this.host.device.createCommandEncoder();
+    if (!skipBufferPasses && !imageOnly && !capture) {
+      this.host.storage.clearFrame(encoder);
+    }
     let canvasTexture: GPUTexture | null = null;
     const encodedComputePasses = new Set<string>();
     const pendingDispatchOnce = new Set<string>();
@@ -156,6 +168,7 @@ export class WebGPUFrameRenderer {
       }, this.host.session.customUniformManager.getUniformInfo(), frameCustomUniformValues);
       this.host.device.queue.writeBuffer(uniformBuffer, 0, data);
 
+      this.host.storage.captureAt(encoder, pass.name, 'before', frameInput.frame);
       const computePass = encoder.beginComputePass();
       let operationFailed = false;
       try {
@@ -176,6 +189,7 @@ export class WebGPUFrameRenderer {
           }
         }
       }
+      this.host.storage.captureAt(encoder, pass.name, 'after', frameInput.frame);
       if (pass.dispatchOnce) {
         pendingDispatchOnce.add(pass.name);
       }
@@ -257,6 +271,7 @@ export class WebGPUFrameRenderer {
       // With MSAA the pass draws into the multisampled texture and resolves into
       // its output; the samples themselves are not needed after the pass.
       const outputViews = pass.output === "canvas" ? [targetView] : pipeline.getCurrentOutputViews();
+      this.host.storage.captureAt(encoder, pass.name, 'before', frameInput.frame);
       const renderPass = encoder.beginRenderPass({
         colorAttachments: outputViews.map((targetView, index) => {
           const msaaView = pipeline.getMsaaView?.(index) ?? null;
@@ -292,12 +307,14 @@ export class WebGPUFrameRenderer {
         }
       }
       renderPass.end();
+      this.host.storage.captureAt(encoder, pass.name, 'after', frameInput.frame);
     }
 
     if (canvasTexture && this.host.canvas) {
       this.host.pixelRegionCapturer?.encodeAfterRender(encoder, canvasTexture, this.host.canvas.width, this.host.canvas.height);
     }
     this.host.device.queue.submit([encoder.finish()]);
+    this.host.storage.captures.beginMappings();
     this.host.session.hasSubmittedFrameForInstalledGeneration = true;
     this.host.timing.probeGpuFrameTime();
     this.host.timing.trackFrameInFlight();

@@ -1370,7 +1370,7 @@ float4 mainImage(float2 fragCoord) {
       expect.objectContaining({ slot: 0, key: "iChannel0", kind: "buffer" }),
       expect.objectContaining({ slot: 1, key: "iChannel1", kind: "buffer" }),
     ]);
-    expect(context.slangStorage).toEqual([storageA]);
+    expect(context.slangStorage).toEqual([{ ...storageA, fields: [{ name: 'value', type: 'float4', offset: 0 }] }]);
   });
 
   it("keeps capture on installed storage until reset publication, then binds the replacement", async () => {

@@ -1,5 +1,5 @@
 import type { FunctionMock } from '../../FunctionMock';
-import { render, fireEvent } from '@testing-library/svelte';
+import { render, fireEvent, waitFor } from '@testing-library/svelte';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { tick } from 'svelte';
@@ -275,7 +275,7 @@ describe('ConfigPanel', () => {
       await tick();
       await fireEvent.click(getByRole('button', { name: 'Storage' }));
 
-      expect(getByRole('heading', { name: 'Storage' })).toBeInTheDocument();
+      expect(getByRole('heading', { name: 'GPU storage' })).toBeInTheDocument();
       expect(mockOnFileSelect).not.toHaveBeenCalled();
     });
 
@@ -300,8 +300,25 @@ describe('ConfigPanel', () => {
       await tick();
       await fireEvent.click(getByRole('button', { name: 'Storage' }));
 
-      expect(getByRole('heading', { name: 'Storage' })).toBeInTheDocument();
+      expect(getByRole('heading', { name: 'GPU storage' })).toBeInTheDocument();
       expect(mockOnFileSelect).not.toHaveBeenCalled();
+    });
+
+    it('forwards WebGPU inspection callbacks and omits one-shot compute capture points', async () => {
+      const onReadStorage = vi.fn(async () => ({ name: 'particles', elementType: 'u32', stride: 4, start: 0, count: 1, data: new Uint32Array([7]).buffer }));
+      const onResetStorage = vi.fn(async () => {});
+      const { getByRole, getByLabelText, queryByRole } = render(ConfigPanel, {
+        config: { version: '1.0', storage: { particles: { count: 1, elementType: 'u32' } }, passes: { Image: {}, Seed: { type: 'compute', path: 'seed.wgsl', dispatchOnce: true }, Simulate: { type: 'compute', path: 'simulate.wgsl' } } },
+        language: 'wgsl', transport: mockTransport, shaderPath: '/test/image.wgsl', onReadStorage, onResetStorage,
+      });
+      await fireEvent.click(getByRole('button', { name: 'Storage' }));
+      await fireEvent.click(getByRole('tab', { name: 'Inspect' }));
+      await waitFor(() => expect(getByLabelText('Element 0 value')).toHaveTextContent('7'));
+      expect(queryByRole('option', { name: 'Before Seed' })).not.toBeInTheDocument();
+      expect(getByRole('option', { name: 'Before Simulate' })).toBeInTheDocument();
+      await fireEvent.click(getByRole('tab', { name: 'Settings' }));
+      await fireEvent.click(getByRole('button', { name: 'Reset data now' }));
+      await waitFor(() => expect(onResetStorage).toHaveBeenCalledWith('particles'));
     });
 
     it('reacts when a compute pass is added to the config prop', async () => {

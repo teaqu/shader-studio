@@ -1,6 +1,6 @@
 import { normalizeLiveInput } from "../util/LiveInputConfig";
-import type { ComputePass, ConfigInput, ShaderConfig, ShaderLanguageId } from "@shader-studio/types";
-import { vertexPassKey } from "@shader-studio/types";
+import type { ComputePass, ConfigInput, ShaderConfig, ShaderLanguageId, StorageBufferConfig } from "@shader-studio/types";
+import { vertexPassKey, configuredStorageLayout, storageStructDeclaration, validateStorageOptions } from "@shader-studio/types";
 import type {
   DispatchSpec,
   RenderPassChannel,
@@ -356,6 +356,33 @@ function resolveOutputLayersByPass(
   return outputLayers;
 }
 
+function validateStorageStructDefinition(declaration: StorageBufferConfig, definitions: Map<string, string>): string | undefined {
+  if (!declaration.fields) {
+    return undefined;
+  }
+  const definition = storageStructDeclaration(declaration, 'wgsl');
+  const existing = definitions.get(declaration.elementType);
+  if (existing && existing !== definition) {
+    return `struct ${declaration.elementType} has conflicting field definitions`;
+  }
+  definitions.set(declaration.elementType, definition);
+  return undefined;
+}
+
+function storageHasAtomic(declaration: StorageBufferConfig): boolean {
+  const atomic = /^(?:atomic|Atomic)\s*</;
+  return /^atomic\s*</.test(declaration.elementType) || declaration.fields?.some(field => atomic.test(field.type)) === true;
+}
+
+function resolveStorageType(declaration: StorageBufferConfig, elementType: string, parsedStructs: Map<string, { size: number }>): { stride: number | undefined; builtin: boolean; fields: StorageBindingNode['fields'] } {
+  const configured = configuredStorageLayout(declaration);
+  return {
+    stride: configured?.stride ?? BUILTIN_STORAGE_SIZES.get(elementType) ?? BUILTIN_STORAGE_SIZES_WGSL.get(elementType) ?? parsedStructs.get(elementType)?.size,
+    builtin: BUILTIN_STORAGE_TYPES.has(elementType) || BUILTIN_STORAGE_TYPES_WGSL.has(elementType),
+    fields: configured?.fields,
+  };
+}
+
 function resolveStorage(
   storageConfig: ShaderConfig["storage"],
   warnings: string[],
@@ -365,9 +392,15 @@ function resolveStorage(
 ): StorageBindingNode[] {
   const storage: StorageBindingNode[] = [];
   let totalBytes = 0;
+  const structDefinitions = new Map<string, string>();
 
   for (const [name, declaration] of Object.entries(storageConfig ?? {})) {
     let valid = true;
+    const optionErrors = validateStorageOptions(declaration);
+    if (optionErrors.length) {
+      errors.push(...optionErrors.map(error => `Storage ${name}: ${error}`));
+      continue;
+    }
     if (!isPositiveInteger(declaration?.count)) {
       errors.push(`Storage ${name}: count must be a positive integer`);
       valid = false;
@@ -377,14 +410,10 @@ function resolveStorage(
       errors.push(`Storage ${name}: elementType is required`);
       valid = false;
     }
-    // Configs authored before WGSL support use Slang spellings, so both tables hit builtin.
-    const builtinSize = BUILTIN_STORAGE_SIZES.get(elementType) ?? BUILTIN_STORAGE_SIZES_WGSL.get(elementType);
-    const isBuiltin = BUILTIN_STORAGE_TYPES.has(elementType) || BUILTIN_STORAGE_TYPES_WGSL.has(elementType);
-
-    // Stride is always auto-inferred: from the built-in table for known
-    // Slang types, or from parsed struct definitions in source files.
+    // Config-owned layouts, legacy aliases and source-defined types share the same resolution path.
+    const resolvedType = resolveStorageType(declaration, elementType, parsedStructs);
+    const parsedSize = resolvedType.stride;
     let stride: number;
-    const parsedSize = builtinSize ?? parsedStructs.get(elementType)?.size;
     if (parsedSize !== undefined) {
       stride = parsedSize;
     } else {
@@ -397,14 +426,28 @@ function resolveStorage(
       continue;
     }
 
+    const definitionError = validateStorageStructDefinition(declaration, structDefinitions);
+    if (definitionError) {
+      errors.push(`Storage ${name}: ${definitionError}`);
+      continue;
+    }
+
     storage.push({
       name,
       binding: storage.length,
       elementType,
-      builtin: isBuiltin,
-      containsAtomic: /^atomic\s*<\s*(?:i32|u32)\s*>$/.test(elementType) || parsedStructs.get(elementType)?.containsAtomic,
+      builtin: resolvedType.builtin,
+      containsAtomic: storageHasAtomic(declaration) || parsedStructs.get(elementType)?.containsAtomic,
       count: declaration.count,
       stride,
+      fields: resolvedType.fields,
+      structDeclarations: declaration.fields ? {
+        wgsl: storageStructDeclaration(declaration, 'wgsl'),
+        slang: storageStructDeclaration(declaration, 'slang'),
+      } : undefined,
+      initialData: declaration.initialData,
+      clearEachFrame: declaration.clearEachFrame,
+      resetOnRestart: declaration.resetOnRestart,
     });
     totalBytes += declaration.count * stride;
   }

@@ -1373,6 +1373,17 @@ describe("Slang compute passes", () => {
 });
 
 describe("Slang storage graph", () => {
+  it('builds config-owned fields and rejects conflicting generated struct definitions', () => {
+    const declaration = { count: 2, elementType: 'Configured', fields: [{ name: 'p', type: 'float3' }, { name: 'age', type: 'float' }], initialData: 'AQIDBA==', clearEachFrame: true, resetOnRestart: false };
+    const graph = build({ first: declaration, second: declaration });
+    expect(graph.errors).toEqual([]);
+    expect(graph.storage[0]).toMatchObject({ stride: 16, fields: [{ name: 'p', type: 'float3', offset: 0 }, { name: 'age', type: 'float', offset: 12 }], initialData: 'AQIDBA==', clearEachFrame: true, resetOnRestart: false });
+    expect(graph.storage[0]!.structDeclarations?.wgsl).toContain('p: vec3<f32>');
+    const invalid = build({ first: declaration, second: { ...declaration, fields: [{ name: 'different', type: 'float4' }] } });
+    expect(invalid.errors[0]).toContain('conflicting field definitions');
+    expect(build({ invalid: { ...declaration, fields: [] } }).errors[0]).toContain('between 1 and 64');
+    expect(build({ atomic: { count: 1, elementType: 'Counters', fields: [{ name: 'counter', type: 'atomic<u32>' }] } }).storage[0]!.containsAtomic).toBe(true);
+  });
   function build(storage: ShaderConfig["storage"], commonCode = "") {
     // Define any custom struct types referenced in storage config so stride
     // can be auto-inferred from them.
@@ -1402,7 +1413,7 @@ describe("Slang storage graph", () => {
     });
 
     expect(graph.errors).toEqual([]);
-    expect(graph.storage).toEqual([
+    expect(graph.storage).toMatchObject([
       { name: "positions", binding: 0, elementType: "float4", builtin: true, count: 4, stride: 16 },
       { name: "custom", binding: 1, elementType: "Particle", builtin: false, count: 2, stride: 32 },
       { name: "counter", binding: 2, elementType: "Atomic<uint>", builtin: true, count: 1, stride: 4 },

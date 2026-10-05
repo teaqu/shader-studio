@@ -96,3 +96,12 @@ test("CLI compares the whole branch against its supplied base and fails on an un
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('pure re-export barrels have no executable statements for Istanbul to instrument', () => {
+  const barrel = "export * from './StorageLayout';\nexport { validateStorageOptions } from './StorageLayout';";
+  assert.equal(isRuntimeSource('types/src/index.ts', barrel), false);
+  assert.deepEqual(checkNewFileCoverage({}, ['types/src/index.ts'], '/repo', () => barrel), { files: [], errors: [] });
+  for (const source of [barrel + '\nexport const limit = 4;', barrel + '\nvalidateStorageOptions({});', "import './setup';\n" + barrel]) {
+    assert.equal(isRuntimeSource('types/src/index.ts', source), true);
+  }
+});
