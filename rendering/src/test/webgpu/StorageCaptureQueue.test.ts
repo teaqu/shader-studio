@@ -70,7 +70,7 @@ describe('Storage captures and lifecycle', () => {
     queue.encode(f.device, f.encoder, f.buffers, f.layouts, point, 0); await failed;
     expect(f.readback.destroy).toHaveBeenCalledOnce();
     vi.mocked(f.device.createBuffer).mockImplementationOnce(() => {
-      throw new Error('allocation failed'); 
+      throw new Error('allocation failed');
     });
     const allocation = queue.request('data', 0, 1, point);
     const rejected = expect(allocation).rejects.toThrow('allocation failed');
@@ -81,7 +81,7 @@ describe('Storage captures and lifecycle', () => {
     const queue = new StorageCaptureQueue(), f = fixture(), point = { pass: 'Image', timing: 'after' as const };
     let complete!: () => void;
     f.readback.mapAsync.mockImplementationOnce(() => new Promise<void>(resolve => {
-      complete = resolve; 
+      complete = resolve;
     }));
     const request = queue.request('data', 0, 1, point);
     const rejected = expect(request).rejects.toThrow('cancelled');

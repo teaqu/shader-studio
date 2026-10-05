@@ -154,7 +154,7 @@ test('storage inspector focuses one struct field and captures scalar values befo
   await expect(config.locator('.capture-meta')).toContainText('Before Simulate');
   await config.getByLabel('Capture point').selectOption(JSON.stringify({ pass: 'Simulate', timing: 'after' }));
   await expect(config.getByLabel('Element 0 value')).toHaveText('42');
-  await config.getByLabel('Number display').selectOption({ label: 'Hex � integers' });
+  await config.getByLabel('Number display').selectOption({ label: 'Hex · integers' });
   await expect(config.getByLabel('Element 0 value')).toHaveText('0x0000002a');
   await config.getByRole('button', { name: 'Start live' }).click();
   await expect(config.getByRole('button', { name: 'Pause live' })).toHaveAttribute('aria-pressed', 'true');

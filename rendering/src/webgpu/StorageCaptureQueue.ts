@@ -85,11 +85,11 @@ export class StorageCaptureQueue {
 
   cancel(reason = 'Storage capture cancelled because the shader changed'): void {
     for (const request of this.pending) {
-      clearTimeout(request.timeout); request.reject(new Error(reason)); 
+      clearTimeout(request.timeout); request.reject(new Error(reason));
     }
     this.pending.clear();
     for (const item of [...this.encoded, ...this.mapping]) {
-      item.request.reject(new Error(reason)); item.buffer.destroy(); 
+      item.request.reject(new Error(reason)); item.buffer.destroy();
     }
     this.encoded.clear();
     this.mapping.clear();

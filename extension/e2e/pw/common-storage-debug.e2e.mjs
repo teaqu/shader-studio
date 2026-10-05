@@ -114,26 +114,25 @@ for (const [language, compute] of [['slang', false], ['slang', true], ['wgsl', f
         ? '@compute @workgroup_size(1) fn update(@builtin(global_invocation_id) id: vec3u) {\n  let shade = values[0];\n  writeOutput(id.xy, vec4f(shade,1,0,1));\n}'
         : '[shader("compute")] [numthreads(1,1,1)] void update(uint3 id : SV_DispatchThreadID) {\n  float shade = values[0];\n  writeOutput(id.xy, float4(shade,1,0,1));\n}');
     }
-    writeFileSync(config, JSON.stringify({ version: '1', storage: { values: { count: 1, elementType: language === 'wgsl' ? 'f32' : 'float' } }, passes: compute ? {
+    const storageConfig = { version: '1', storage: { values: { count: 1, elementType: language === 'wgsl' ? 'f32' : 'float', initialData: Buffer.from(new Float32Array([0.375]).buffer).toString('base64') } }, passes: compute ? {
       Image: { inputs: { result: { type: 'buffer', source: 'Compute' } } },
       Compute: { type: 'compute', path: `storage.compute.${language}`, entryPoint: 'update' },
-    } : { Image: {} } }));
+    } : { Image: {} } };
+    writeFileSync(config, JSON.stringify(storageConfig));
     try {
       await showFileAtLine(vscode, root, 1);
       await ensureShaderView(vscode);
       let frame = await vscode.shaderFrame();
-      await expectCanvasPixels(frame, [0, 255, 0]);
+      await expectCanvasPixels(frame, [96, 255, 0]);
       await vscode.evaluateInHost(vscode => vscode.commands.executeCommand('notifications.clearAll'));
       await expect(frame.getByLabel('Toggle debug mode', { exact: true }).first()).toBeEnabled();
       await openConfigPanel(frame);
       await frame.locator('.config-panel').getByRole('button', { name: 'Storage', exact: true }).click();
-      await frame.getByLabel('Inspect values', { exact: true }).click();
+      await frame.locator('.config-panel').getByRole('tab', { name: 'Inspect', exact: true }).click();
       const inspector = frame.getByLabel('Inspect values', { exact: true });
-      const input = inspector.getByLabel('Element 0 component 0', { exact: true });
-      await input.fill('0.375');
-      await input.press('Tab');
-      await inspector.getByRole('button', { name: 'Refresh', exact: true }).click();
-      await expect(input).toHaveValue('0.375');
+      const value = inspector.getByLabel('Element 0 value', { exact: true });
+      await expect(value).toHaveText('0.375');
+      await expect(inspector.getByRole('list', { name: 'values values', exact: true }).locator('input')).toHaveCount(0);
       await enableVariableInspector(vscode, frame);
       await setPreviewLocked(vscode, frame, true);
       await showFileAtLine(vscode, compute ? computePath : root, 1);
@@ -141,11 +140,20 @@ for (const [language, compute] of [['slang', false], ['slang', true], ['wgsl', f
       await expect(frame.locator('.header-info:not(.fn-name):not(.fn-type)')).toContainText('L2');
       await expect(frame.locator('.fn-name', { hasText: compute ? 'update' : 'mainImage' })).toBeVisible();
       await expect(row(frame, 'shade').locator('.var-value')).toHaveText('0.375');
-      await frame.getByText('Config', { exact: true }).click();
-      await input.fill('0.625');
-      await input.press('Tab');
-      await frame.getByText('Debug', { exact: true }).click();
+      // Edit and save the initialization through the real config editor. Recompilation
+      // must update both GPU storage and debug captures without an editable inspector.
+      storageConfig.storage.values.initialData = Buffer.from(new Float32Array([0.625]).buffer).toString('base64');
+      await showFileAtLine(vscode, config, 0);
+      await replaceSource(vscode, JSON.stringify(storageConfig));
+      await vscode.evaluateInHost(vscode => vscode.window.activeTextEditor.document.save());
+      await showFileAtLine(vscode, compute ? computePath : root, 1);
+      frame = await vscode.shaderFrame();
       await expect(row(frame, 'shade').locator('.var-value')).toHaveText('0.625');
+      await frame.getByText('Config', { exact: true }).click();
+      // Snapshot mode retains the previous capture until the user requests another.
+      await inspector.getByRole('button', { name: 'Capture snapshot', exact: true }).click();
+      await expect(value).toHaveText('0.625');
+      await frame.getByText('Debug', { exact: true }).click();
       await expect(frame.getByLabel('Show capture errors')).toHaveCount(0);
     } catch (error) {
       const frame = await vscode.shaderFrame();
