@@ -67,7 +67,7 @@ suite('Packaged extension CI gates', () => {
     ] as const) {
       const job = verify.jobs[name];
       assert.strictEqual(job['runs-on'], runner);
-      assert.strictEqual(job.needs, 'package');
+      assert.deepStrictEqual(job.needs, ['select', 'package']);
       const run = job.steps?.find(step => step.id === 'vsix-e2e');
       assert.ok(run);
       assert.ok(run.run?.includes('npm run test:e2e:vsix'));
