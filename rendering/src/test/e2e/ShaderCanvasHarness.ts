@@ -67,7 +67,7 @@ function readbackStage(engine: RenderingEngineContract, requestId: number): stri
     : "not tracked";
 }
 
-async function waitForPixelRegion(
+export async function waitForPixelRegion(
   engine: RenderingEngineContract,
   requestId: number,
 ): Promise<ReturnType<RenderingEngineContract["collectPixelRegionResults"]>[number]> {
@@ -79,6 +79,13 @@ async function waitForPixelRegion(
       return result;
     }
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
+  // A busy main thread can delay the timer past the deadline while the GPU
+  // finishes its copy. Check the current result before reporting stale state;
+  // this adds no wait, frame or extension of the existing deadline.
+  const finalResult = engine.collectPixelRegionResults().find((candidate) => candidate.requestId === requestId);
+  if (finalResult) {
+    return finalResult;
   }
   // "mapping" (WebGPU) or "pending" (WebGL) means the copy was issued,
   // but its GPU/driver readback has not completed.
