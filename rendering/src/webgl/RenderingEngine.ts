@@ -865,6 +865,10 @@ export class RenderingEngine implements RenderingEngineInterface {
     return this.pixelRegionCapturer?.collectResults() ?? [];
   }
 
+  public getPixelRegionRequestStage(requestId: number): ReturnType<WebGLPixelRegionCapturer["getRequestStage"]> {
+    return this.pixelRegionCapturer?.getRequestStage(requestId) ?? null;
+  }
+
   public cancelPixelRegionRequests(): void {
     this.pixelRegionCapturer?.cancelPendingCaptures();
   }

@@ -1178,6 +1178,7 @@ describe("RenderingEngine", () => {
     it("returns safe fallbacks before initialization", () => {
       expect(renderingEngine.requestPixelRegion(1, 20, 30)).toBe(false);
       expect(renderingEngine.collectPixelRegionResults()).toEqual([]);
+      expect(renderingEngine.getPixelRegionRequestStage(1)).toBeNull();
       expect(() => renderingEngine.cancelPixelRegionRequests()).not.toThrow();
     });
 
@@ -1193,6 +1194,7 @@ describe("RenderingEngine", () => {
       const capturer = {
         queue: vi.fn(() => true),
         collectResults: vi.fn(() => [result]),
+        getRequestStage: vi.fn(() => "pending"),
         cancelPendingCaptures: vi.fn(),
         dispose: vi.fn(),
       };
@@ -1204,10 +1206,12 @@ describe("RenderingEngine", () => {
 
       expect(renderingEngine.requestPixelRegion(3, 20, 30)).toBe(true);
       expect(renderingEngine.collectPixelRegionResults()).toEqual([result]);
+      expect(renderingEngine.getPixelRegionRequestStage(3)).toBe("pending");
       renderingEngine.cancelPixelRegionRequests();
 
       expect(capturer.queue).toHaveBeenCalledWith({ requestId: 3, centerX: 20, centerY: 30 });
       expect(capturer.collectResults).toHaveBeenCalledOnce();
+      expect(capturer.getRequestStage).toHaveBeenCalledWith(3);
       expect(capturer.cancelPendingCaptures).toHaveBeenCalledOnce();
     });
 

@@ -60,9 +60,9 @@ function createEngine(language: ShaderLanguage): RenderingEngineContract {
     : new WebGPURenderingEngine({ scriptUrl: slangScriptUrl, wasmUrl: slangWasmUrl });
 }
 
-/** WebGPU readback stage, for failures that must say whether a request was lost or slow. */
+/** Readback stage, for failures that must say whether a request was lost or slow. */
 function readbackStage(engine: RenderingEngineContract, requestId: number): string {
-  return engine instanceof WebGPURenderingEngine
+  return engine instanceof WebGPURenderingEngine || engine instanceof RenderingEngine
     ? engine.getPixelRegionRequestStage(requestId) ?? "not held"
     : "not tracked";
 }
@@ -80,12 +80,12 @@ async function waitForPixelRegion(
     }
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
   }
-  // "mapping" means the GPU had not finished the frame (slow, not lost).
-  // "queued" here means the frame did encode the copy (renderAndReadRegion
-  // checks that first) but mapping it failed, so the capturer re-queued it
-  // for a next frame this harness never renders: lost, and no wait helps.
+  // "mapping" (WebGPU) or "pending" (WebGL) means the copy was issued,
+  // but its GPU/driver readback has not completed.
+  // "queued" means a copy or mapping failure left the request waiting for
+  // another frame. This harness never renders that frame, so no wait helps.
   const stage = readbackStage(engine, requestId);
-  const meaning = stage === "queued" ? " (its mapping failed and it was re-queued for a frame that never came)" : "";
+  const meaning = stage === "queued" ? " (its copy was not issued or was re-queued for a frame that never came)" : "";
   throw new Error(
     `Timed out waiting for canvas pixel readback: request ${requestId} still `
     + `${stage}${meaning} after ${Math.round(performance.now() - startedAt)}ms`,

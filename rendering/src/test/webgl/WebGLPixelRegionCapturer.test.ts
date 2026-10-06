@@ -76,6 +76,37 @@ describe("WebGLPixelRegionCapturer", () => {
     capturer = new WebGLPixelRegionCapturer(gl);
   });
 
+  it("distinguishes a queued readback from a pending GPU fence and a drained result", () => {
+    expect(capturer.getRequestStage(1)).toBeNull();
+    capturer.queue(request(1));
+    expect(capturer.getRequestStage(1)).toBe("queued");
+    capturer.captureAfterRender(100, 100);
+    expect(capturer.getRequestStage(1)).toBe("pending");
+    expect(capturer.getRequestStage(99)).toBeNull();
+    expect(capturer.collectResults()).toEqual([]);
+    expect(capturer.getRequestStage(1)).toBe("pending");
+    vi.mocked(gl.getSyncParameter).mockReturnValue(gl.SIGNALED);
+    expect(capturer.collectResults()).toMatchObject([{ requestId: 1 }]);
+    expect(capturer.getRequestStage(1)).toBeNull();
+  });
+
+  it("reports retries, immediately completed regions, cancellation and unavailable contexts", () => {
+    capturer.queue(request(1));
+    vi.mocked(gl.fenceSync).mockReturnValueOnce(null);
+    capturer.captureAfterRender(100, 100);
+    expect(capturer.getRequestStage(1)).toBe("queued");
+    capturer.queue(request(2, -100, -100));
+    capturer.captureAfterRender(100, 100);
+    expect(capturer.getRequestStage(2)).toBe("completed");
+    expect(capturer.getRequestStage(99)).toBeNull();
+    capturer.cancelPendingCaptures();
+    expect(capturer.getRequestStage(2)).toBeNull();
+    vi.mocked(gl.isContextLost).mockReturnValue(true);
+    expect(capturer.getRequestStage(2)).toBe("context lost");
+    capturer.dispose();
+    expect(capturer.getRequestStage(2)).toBe("disposed");
+  });
+
   it("issues PBO readback after render and waits for its fence before CPU readback", () => {
     capturer.queue(request(1));
     capturer.captureAfterRender(100, 100);
