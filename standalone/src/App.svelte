@@ -207,6 +207,7 @@
         return;
       }
       updateLocked = true;
+      let finalSaveFailed = false;
       const prepareReload = async () => {
         try {
           if (!shellMounted) {
@@ -214,6 +215,7 @@
           }
           await transport.flush();
         } catch (error) {
+          finalSaveFailed = true;
           updateLocked = false;
           updateApplied = false;
           workspaceError = 'Could not save pending work, so the update was not applied.';
@@ -224,7 +226,8 @@
       if (!shellMounted) {
         return;
       }
-      updateApplied = await pwa?.applyUpdate(prepareReload) ?? false;
+      const activated = await pwa?.applyUpdate(prepareReload) ?? false;
+      updateApplied = activated && !finalSaveFailed;
     } catch {
       workspaceError = 'Could not save pending work, so the update was not applied.';
     } finally {

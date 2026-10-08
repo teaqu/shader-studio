@@ -561,6 +561,28 @@ describe('standalone App', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('Could not save pending work');
   });
 
+  it('allows another update attempt if the final save fails before activation acknowledgement', async () => {
+    const transport = createTransport();
+    transport.flush.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('quota'));
+    const pwa = createPwa();
+    let announce!: (status: PwaStatus) => void;
+    pwa.subscribe = listener => {
+      announce = listener; return vi.fn();
+    };
+    pwa.applyUpdate.mockImplementationOnce(async guard => {
+      await guard().catch(() => {});
+      return true;
+    });
+    const view = render(App, { props: { transport, pwa } });
+    const ready: PwaStatus = { supported: true, online: true, updateAvailable: true, buildId: 'new', offlinePreparation: { state: 'idle' } };
+    announce(ready);
+    await screen.findByRole('alert');
+    await tick();
+    expect((view.container.querySelector('.standalone-app') as HTMLElement).inert).toBe(false);
+    announce(ready);
+    await waitFor(() => expect(pwa.applyUpdate).toHaveBeenCalledTimes(2));
+  });
+
   it('retries an automatic update after a failed save recovers', async () => {
     const transport = createTransport();
     transport.flush.mockRejectedValueOnce(new Error('quota'));

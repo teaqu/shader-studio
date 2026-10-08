@@ -3,6 +3,7 @@ import { getSelectedEditor, getRequestedEditor, getNewShaderVisible, getRequeste
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDefaultWorkspaceFiles } from '../defaultWorkspace';
 import { VirtualWorkspace } from '../VirtualWorkspace';
+import { WebExtensionHost } from '../WebExtensionHost';
 import { inspectWorkspaceStorage, WebTransport } from '../WebTransport';
 
 async function eventually(assertion: () => void): Promise<void> {
@@ -104,6 +105,99 @@ describe('WebTransport', () => {
     detach(); detach();
     await transport.flush();
     transport.dispose();
+  });
+
+  it('waits for an editor save that arrives while workspace persistence is in progress', async () => {
+    const transport = new WebTransport();
+    await transport.readEditorFile('/shaders/aurora.glsl');
+    const originalFlush = VirtualWorkspace.prototype.flush;
+    let releaseFirstFlush!: () => void;
+    let firstFlushStarted!: () => void;
+    const firstFlush = new Promise<void>(resolve => {
+      releaseFirstFlush = resolve;
+    });
+    const flushStarted = new Promise<void>(resolve => {
+      firstFlushStarted = resolve;
+    });
+    let calls = 0;
+    vi.spyOn(VirtualWorkspace.prototype, 'flush').mockImplementation(function(this: VirtualWorkspace) {
+      calls += 1;
+      if (calls === 1) {
+        firstFlushStarted();
+        return firstFlush;
+      }
+      return originalFlush.call(this);
+    });
+    let saveArrived = false;
+    const detach = transport.registerPendingSave(() => {
+      if (saveArrived) {
+        transport.postMessage({ type: 'updateShaderSource', payload: { path: '/shaders/aurora.glsl', code: 'saved during IO' } });
+        saveArrived = false;
+      }
+    });
+
+    const saving = transport.flush();
+    await flushStarted;
+    saveArrived = true;
+    releaseFirstFlush();
+    await saving;
+
+    expect(await transport.readEditorFile('/shaders/aurora.glsl')).toBe('saved during IO');
+    expect(calls).toBeGreaterThanOrEqual(2);
+    detach();
+    transport.dispose();
+  });
+
+  it('surfaces a tracked viewer-message failure when flushing', async () => {
+    const handling = vi.spyOn(WebExtensionHost.prototype, 'handleViewerMessage')
+      .mockRejectedValueOnce(new Error('write failed'));
+    const transport = new WebTransport();
+    transport.postMessage({ type: 'updateShaderSource', payload: { path: '/shaders/aurora.glsl', code: 'lost' } });
+
+    await expect(transport.flush()).rejects.toThrow('write failed');
+    expect(handling).toHaveBeenCalledOnce();
+    transport.dispose();
+  });
+
+  it('waits for in-flight workspace edits and clears before flushing', async () => {
+    let finishEdit!: () => void;
+    let finishClear!: () => void;
+    const editing = vi.spyOn(WebExtensionHost.prototype, 'applyWorkspaceEdit').mockImplementation(() => new Promise<void>(resolve => {
+      finishEdit = resolve;
+    }));
+    const clearing = vi.spyOn(WebExtensionHost.prototype, 'clearWorkspace').mockImplementation(() => new Promise<void>(resolve => {
+      finishClear = resolve;
+    }));
+    const transport = new WebTransport();
+    const edit = transport.applyWorkspaceEdit([], () => true, vi.fn());
+    const clear = transport.clearWorkspace();
+    await vi.waitFor(() => {
+      expect(editing).toHaveBeenCalledOnce();
+      expect(clearing).toHaveBeenCalledOnce();
+    });
+    let flushed = false;
+    const barrier = transport.flush().then(() => {
+      flushed = true;
+    });
+    await Promise.resolve();
+    expect(flushed).toBe(false);
+
+    finishEdit();
+    finishClear();
+    await Promise.all([edit, clear, barrier]);
+    expect(flushed).toBe(true);
+    transport.dispose();
+  });
+
+  it('unregisters pending editor saves when disposed', async () => {
+    const transport = new WebTransport();
+    const save = vi.fn();
+    transport.registerPendingSave(save);
+
+    transport.dispose();
+    await transport.flush();
+
+    expect(save).not.toHaveBeenCalled();
   });
 
   it('waits for an in-flight backup import before allowing reload', async () => {
