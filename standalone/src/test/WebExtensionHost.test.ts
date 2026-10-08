@@ -715,7 +715,7 @@ describe('WebExtensionHost', () => {
       type: 'shaderCode',
       path: '/shaders/new.wgsl',
       requestId: 14,
-      code: expect.stringContaining('fn mainImage(coord: vec2f) -> vec4f'),
+      code: expect.stringContaining('fn mainImage(fragCoord: vec2f) -> vec4f\n{'),
     }));
   });
 

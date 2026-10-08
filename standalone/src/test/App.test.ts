@@ -95,10 +95,11 @@ describe('standalone App', () => {
     render(App, { props: { transport } });
     setNewShaderVisible(true);
     await tick();
+    await fireEvent.input(screen.getByLabelText('Shader name'), { target: { value: 'aurora' } });
     await fireEvent.change(screen.getByLabelText('Shader language'), { target: { value: 'wgsl' } });
     expect((screen.getByLabelText('Shader functions') as HTMLSelectElement).value).toBe('native');
     await fireEvent.click(screen.getByRole('button', { name: 'Create Shader' }));
-    expect(transport.postMessage).toHaveBeenCalledWith({ type: 'createShader', payload: { name: 'untitled', language: 'wgsl', authoringMode: 'native' } });
+    expect(transport.postMessage).toHaveBeenCalledWith({ type: 'createShader', payload: { name: 'aurora', language: 'wgsl', authoringMode: 'native' } });
   });
   beforeEach(() => {
     vi.restoreAllMocks();

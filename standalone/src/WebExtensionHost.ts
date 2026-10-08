@@ -1,7 +1,7 @@
 import { selectWorkspaceFile } from './selectWorkspaceFile';
 import { requestFileSelection } from './state/fileSelectionState.svelte';
 import { insertShaderSource } from './insertShaderSource';
-import { configPathForShader, createNativeComputeSource, createNativeFragmentSource, parseVertexPassKey, resolveConfiguredPath, shaderLanguageForPath, stageForPass, vertexPassKey } from '@shader-studio/types';
+import { configPathForShader, shaderStarterTemplate, createNativeComputeSource, createNativeFragmentSource, parseVertexPassKey, resolveConfiguredPath, shaderLanguageForPath, stageForPass, vertexPassKey } from '@shader-studio/types';
 import type { ConfiguredPathHost, ProfileData, ProfileIndex, ShaderConfig, ShaderLanguageId } from '@shader-studio/types';
 import type { VirtualWorkspace } from './VirtualWorkspace';
 import { virtualConfiguredPathHost } from './passSources';
@@ -46,43 +46,9 @@ function nativeOutputCount(value: unknown): number {
   return typeof value === 'number' && Number.isInteger(value) ? Math.max(1, Math.min(8, value)) : 1;
 }
 
-const GLSL_STARTER_SHADER = `void mainImage( out vec4 fragColor, in vec2 fragCoord )
-{
-    // Normalized pixel coordinates (from 0 to 1)
-    vec2 uv = fragCoord / iResolution.xy;
-
-    // Time varying pixel color
-    vec3 col = 0.5 + 0.5 * cos(iTime + uv.xyx + vec3(0, 2, 4));
-
-    // Output to screen
-    fragColor = vec4(col, 1.0);
-}
-`;
-
-const SLANG_STARTER_SHADER = `float4 mainImage(float2 fragCoord)
-{
-    // Normalized pixel coordinates (from 0 to 1)
-    float2 uv = fragCoord / iResolution.xy;
-
-    // Time varying pixel color
-    float3 col = 0.5 + 0.5 * cos(iTime + uv.xyx + float3(0, 2, 4));
-
-    // Output to screen
-    return float4(col, 1.0);
-}
-`;
-
-const WGSL_STARTER_SHADER = `fn mainImage(coord: vec2f) -> vec4f {
-    let st = coord / vec2f(iResolution.x, iResolution.y);
-    let uv = vec2f(st.x * iResolution.x / iResolution.y, st.y);
-
-    // Time varying pixel color
-    let col = vec3f(0.5) + vec3f(0.5) * cos(iTime + vec3f(uv.x, uv.y, uv.x) + vec3f(0.0, 2.0, 4.0));
-
-    // Output to screen
-    return vec4f(col, 1.0);
-}
-`;
+const GLSL_STARTER_SHADER = shaderStarterTemplate('glsl');
+const SLANG_STARTER_SHADER = shaderStarterTemplate('slang');
+const WGSL_STARTER_SHADER = shaderStarterTemplate('wgsl');
 
 const LEGACY_GLSL_STARTER_SHADER = 'void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(0, 0, 0, 1); }\n';
 const LEGACY_SLANG_STARTER_SHADER = 'float4 mainImage(float2 fragCoord) { return float4(0, 0, 0, 1); }\n';
