@@ -207,6 +207,40 @@ describe('PWA controller lifecycle branches', () => {
     expect(states.map((state) => state.online).slice(-2)).toEqual([false, true]);
   });
 
+  it('observes a worker already installing when registration resolves', async () => {
+    const setup = environment();
+    (setup.registration as { waiting: unknown }).waiting = null;
+    const stateListeners: EventListener[] = [];
+    const installing = { state: 'installing', addEventListener: (_type: string, listener: EventListener) => stateListeners.push(listener) };
+    (setup.registration as { installing: unknown }).installing = installing;
+    const controller = createPwaController(setup.environment);
+    const states: { updateAvailable: boolean }[] = [];
+    controller.subscribe(state => states.push(state));
+    await controller.start();
+    installing.state = 'installed';
+    (setup.registration as { waiting: unknown }).waiting = { postMessage: vi.fn() };
+    stateListeners.forEach(listener => listener(new Event('statechange')));
+    expect(states.at(-1)?.updateAvailable).toBe(true);
+    dispose(controller);
+  });
+
+  it('checks for updates on focus and reconnection without interrupting the app on network errors', async () => {
+    const setup = environment();
+    const controller = createPwaController(setup.environment);
+    await controller.start();
+    setup.listeners.get('focus')?.(new Event('focus'));
+    await Promise.resolve();
+    expect(setup.registration.update).toHaveBeenCalledOnce();
+    vi.mocked(setup.registration.update).mockRejectedValueOnce(new Error('offline'));
+    setup.listeners.get('online')?.(new Event('online'));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(setup.registration.update).toHaveBeenCalledTimes(2);
+    setup.environment.online = () => false;
+    setup.listeners.get('focus')?.(new Event('focus'));
+    expect(setup.registration.update).toHaveBeenCalledTimes(2);
+    dispose(controller);
+  });
+
   it('offers an update that finishes installing while the app is open', async () => {
     const setup = environment();
     (setup.registration as { waiting: ServiceWorker | null }).waiting = null;

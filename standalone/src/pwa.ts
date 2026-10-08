@@ -37,8 +37,8 @@ interface ServiceWorkerContainerLike {
 export interface PwaEnvironment {
   serviceWorker?: ServiceWorkerContainerLike;
   online: () => boolean;
-  addEventListener(type: 'online' | 'offline', listener: EventListener): void;
-  removeEventListener(type: 'online' | 'offline', listener: EventListener): void;
+  addEventListener(type: 'online' | 'offline' | 'focus', listener: EventListener): void;
+  removeEventListener(type: 'online' | 'offline' | 'focus', listener: EventListener): void;
   fetchBuildIdentity?: () => Promise<string | null>;
   reload(): void;
   baseUrl: string;
@@ -88,6 +88,12 @@ export function createPwaController(environment: PwaEnvironment = browserPwaEnvi
   const onConnectivity = () => {
     status = { ...status, online: environment.online() };
     emit();
+    checkInBackground();
+  };
+  const checkInBackground = () => {
+    if (!disposed && environment.online()) {
+      void checkForUpdate().catch(() => { /* A network failure must not interrupt editing. */ });
+    }
   };
   const onControllerChange = () => {
     if (applyingUpdate) {
@@ -102,6 +108,24 @@ export function createPwaController(environment: PwaEnvironment = browserPwaEnvi
       emit();
     }
   };
+  const observeInstallingWorker = () => {
+    const installing = registration?.installing;
+    installing?.addEventListener('statechange', () => {
+      if (installing.state === 'installed' && !disposed) {
+        inspect();
+      }
+    });
+  };
+  async function checkForUpdate(): Promise<void> {
+    await registration?.update();
+    if (disposed) {
+      return;
+    }
+    const buildId = await environment.fetchBuildIdentity?.() ?? status.buildId;
+    status = { ...status, buildId };
+    inspect();
+    emit();
+  }
   let preparationPort: MessagePort | undefined;
   let offlineStatusPort: MessagePort | undefined;
 
@@ -166,6 +190,7 @@ export function createPwaController(environment: PwaEnvironment = browserPwaEnvi
       }
       environment.addEventListener('online', onConnectivity);
       environment.addEventListener('offline', onConnectivity);
+      environment.addEventListener('focus', checkInBackground);
       environment.serviceWorker.addEventListener('controllerchange', onControllerChange);
       try {
         registration = await environment.serviceWorker.register(new URL('sw.js', environment.baseUrl).toString()) ?? undefined;
@@ -180,14 +205,8 @@ export function createPwaController(environment: PwaEnvironment = browserPwaEnvi
         emit();
         return;
       }
-      registration.addEventListener('updatefound', () => {
-        const installing = registration?.installing;
-        installing?.addEventListener('statechange', () => {
-          if (installing.state === 'installed') {
-            inspect();
-          }
-        });
-      });
+      registration.addEventListener('updatefound', observeInstallingWorker);
+      observeInstallingWorker();
       inspect();
       inspectOfflinePreparation();
       const buildId = await environment.fetchBuildIdentity?.() ?? null;
@@ -206,13 +225,7 @@ export function createPwaController(environment: PwaEnvironment = browserPwaEnvi
       applyingUpdate = true;
       registration.waiting.postMessage({ type: 'SKIP_WAITING' });
     },
-    async checkForUpdate(): Promise<void> {
-      await registration?.update();
-      const buildId = await environment.fetchBuildIdentity?.() ?? status.buildId;
-      status = { ...status, buildId };
-      inspect();
-      emit();
-    },
+    checkForUpdate,
     prepareOffline,
     async retryOfflinePreparation(): Promise<void> {
       await prepareOffline();
@@ -227,6 +240,7 @@ export function createPwaController(environment: PwaEnvironment = browserPwaEnvi
       disposed = true;
       environment.removeEventListener('online', onConnectivity);
       environment.removeEventListener('offline', onConnectivity);
+      environment.removeEventListener('focus', checkInBackground);
       environment.serviceWorker?.removeEventListener('controllerchange', onControllerChange);
       preparationPort?.close();
       preparationPort = undefined;

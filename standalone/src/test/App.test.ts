@@ -17,6 +17,7 @@ vi.mock('@shader-studio/ui', async () => {
 import App from '../App.svelte';
 import { StandaloneSettings } from '../settings/StandaloneSettings';
 afterEach(() => vi.unstubAllGlobals());
+import type { WorkspacePersistenceStatus } from '../VirtualWorkspace';
 import type { WebTransport } from '../WebTransport';
 import type { PwaController, PwaStatus } from '../pwa';
 import {
@@ -223,9 +224,9 @@ describe('standalone App', () => {
     expect(status.getAttribute('title')).toBe('Offline · Save failed · Build mobile-42');
     expect(status.querySelector('.codicon-debug-disconnect')).toBeTruthy();
     expect(status.querySelector('.codicon-error')).toBeTruthy();
-    await fireEvent.click(screen.getByRole('button', { name: 'Update ready' }));
+    expect(screen.queryByRole('button', { name: 'Update ready' })).toBeNull();
+    await waitFor(() => expect(pwa.applyUpdate).toHaveBeenCalledOnce());
     expect(transport.flush).toHaveBeenCalledOnce();
-    expect(pwa.applyUpdate).toHaveBeenCalledOnce();
   });
 
   it('reports session-only storage and exposes explicit offline preparation', async () => {
@@ -500,13 +501,64 @@ describe('standalone App', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('Could not import the workspace. Your current work was not changed.');
   });
 
+  it('waits for pending saves and handles duplicate update announcements once', async () => {
+    const transport = createTransport();
+    let finishSave!: () => void;
+    transport.flush.mockImplementation(() => new Promise<void>(resolve => {
+      finishSave = resolve;
+    }));
+    const pwa = createPwa();
+    let announce!: (status: PwaStatus) => void;
+    pwa.subscribe = listener => {
+      announce = listener; return vi.fn();
+    };
+    render(App, { props: { transport, pwa } });
+    const ready: PwaStatus = { supported: true, online: true, updateAvailable: true, buildId: 'new', offlinePreparation: { state: 'idle' } };
+    announce(ready); announce(ready);
+    expect(transport.flush).toHaveBeenCalledOnce();
+    expect(pwa.applyUpdate).not.toHaveBeenCalled();
+    finishSave();
+    await waitFor(() => expect(pwa.applyUpdate).toHaveBeenCalledOnce());
+    announce(ready);
+    expect(transport.flush).toHaveBeenCalledOnce();
+  });
+
+  it('retries an automatic update after a failed save recovers', async () => {
+    const transport = createTransport();
+    transport.flush.mockRejectedValueOnce(new Error('quota'));
+    let persist!: (status: WorkspacePersistenceStatus) => void;
+    transport.onPersistenceStatus.mockImplementation(listener => {
+      persist = listener; return vi.fn();
+    });
+    const pwa = createPwa({ updateAvailable: true });
+    render(App, { props: { transport, pwa } });
+    await screen.findByRole('alert');
+    expect(pwa.applyUpdate).not.toHaveBeenCalled();
+    persist({ state: 'saved' });
+    await waitFor(() => expect(pwa.applyUpdate).toHaveBeenCalledOnce());
+    expect(transport.flush).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('does not activate an update after the shell has unmounted while saving', async () => {
+    const transport = createTransport();
+    let finishSave!: () => void;
+    transport.flush.mockImplementation(() => new Promise<void>(resolve => {
+      finishSave = resolve;
+    }));
+    const pwa = createPwa({ updateAvailable: true });
+    const view = render(App, { props: { transport, pwa } });
+    view.unmount(); finishSave(); await tick();
+    expect(pwa.applyUpdate).not.toHaveBeenCalled();
+  });
+
   it('does not apply an update when pending work cannot be saved first', async () => {
     const transport = createTransport();
     transport.flush.mockRejectedValueOnce(new Error('quota'));
     const pwa = createPwa({ updateAvailable: true });
     render(App, { props: { transport, pwa } });
 
-    await fireEvent.click(screen.getByRole('button', { name: 'Update ready' }));
+    expect(screen.queryByRole('button', { name: 'Update ready' })).toBeNull();
 
     expect((await screen.findByRole('alert')).textContent).toContain('Could not save pending work, so the update was not applied.');
     expect(pwa.applyUpdate).not.toHaveBeenCalled();

@@ -170,7 +170,8 @@ test('a first install does not offer an update', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Update ready' })).toHaveCount(0);
 });
 
-test('accepting a newer build keeps an edit made just before the update', async ({ page, baseURL }) => {
+for (const mobile of [false, true]) {
+test(`automatically installing a newer build keeps pending edits (${mobile ? 'mobile' : 'desktop'})`, async ({ page, baseURL }) => {
   const builds = await startTwoBuildServer(baseURL);
   try {
     await page.goto(`${builds.origin}/`);
@@ -182,22 +183,16 @@ test('accepting a newer build keeps an edit made just before the update', async 
     await expect(page.getByRole('button', { name: 'Update ready' })).toHaveCount(0);
     await page.getByTestId('shader-option-aurora-glsl').click();
 
-    builds.publishNextBuild();
-    await page.getByRole('button', { name: 'Workspace' }).click();
-    await page.getByRole('button', { name: 'Check for Updates' }).click();
-    const updateReady = page.getByRole('button', { name: 'Update ready' });
-    // The offer appears only once the new worker has fetched and precached the
-    // app shell; that measured 4.2-5.6s here, past the default 5s assertion.
-    await expect(updateReady).toBeVisible({ timeout: 30_000 });
-    await page.keyboard.press('Escape');
-
-    // Typed while the update waits; the shell must save it before reloading.
+    // Edit before requesting the update; activation must flush pending saves.
     const editor = page.getByTestId('web-editor');
     await editor.locator('.view-lines').click({ position: { x: 80, y: 20 } });
     await editor.locator('.inputarea').press('ControlOrMeta+A');
     await page.keyboard.insertText('void mainImage(out vec4 color, in vec2 coord) { color = vec4(0.75); } // before update');
+    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+    builds.publishNextBuild();
+    await page.getByRole('button', { name: 'Workspace' }).click();
     const reloaded = page.waitForEvent('load');
-    await updateReady.click();
+    await page.getByRole('button', { name: 'Check for Updates' }).click();
     await reloaded;
 
     await expect(page.getByRole('status')).toHaveAttribute('title', /Build next-build/);
@@ -209,3 +204,4 @@ test('accepting a newer build keeps an edit made just before the update', async 
     await builds.close();
   }
 });
+}
