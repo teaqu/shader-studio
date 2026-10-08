@@ -188,11 +188,14 @@ test(`automatically installing a newer build keeps pending edits (${mobile ? 'mo
     await editor.locator('.view-lines').click({ position: { x: 80, y: 20 } });
     await editor.locator('.inputarea').press('ControlOrMeta+A');
     await page.keyboard.insertText('void mainImage(out vec4 color, in vec2 coord) { color = vec4(0.75); } // before update');
-    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+    if (mobile) {
+      await page.setViewportSize({ width: 390, height: 844 });
+    }
     builds.publishNextBuild();
-    await page.getByRole('button', { name: 'Workspace' }).click();
+    // Returning to the app discovers and applies the build without an update action.
     const reloaded = page.waitForEvent('load');
-    await page.getByRole('button', { name: 'Check for Updates' }).click();
+    // Headless tabs do not emit focus when brought to front; deliver the foreground event.
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await reloaded;
 
     await expect(page.getByRole('status')).toHaveAttribute('title', /Build next-build/);
