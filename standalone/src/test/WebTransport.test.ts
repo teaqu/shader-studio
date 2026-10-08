@@ -154,6 +154,8 @@ describe('WebTransport', () => {
     const transport = new WebTransport();
     transport.postMessage({ type: 'updateShaderSource', payload: { path: '/shaders/aurora.glsl', code: 'lost' } });
 
+    await eventually(() => expect(handling).toHaveBeenCalledOnce());
+    await Promise.resolve();
     await expect(transport.flush()).rejects.toThrow('write failed');
     expect(handling).toHaveBeenCalledOnce();
     transport.dispose();

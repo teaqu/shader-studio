@@ -544,6 +544,16 @@ describe('standalone App', () => {
     expect((view.container.querySelector('.standalone-app') as HTMLElement).inert).toBe(false);
   });
 
+  it('keeps editing available when activation does not return an acknowledgement', async () => {
+    const transport = createTransport();
+    const pwa = createPwa({ updateAvailable: true });
+    pwa.applyUpdate.mockResolvedValue(undefined);
+    const view = render(App, { props: { transport, pwa } });
+    await waitFor(() => expect(pwa.applyUpdate).toHaveBeenCalledOnce());
+    await tick();
+    expect((view.container.querySelector('.standalone-app') as HTMLElement).inert).toBe(false);
+  });
+
   it('saves again before reloading and unlocks if that final save fails', async () => {
     const transport = createTransport();
     const pwa = createPwa({ updateAvailable: true });
