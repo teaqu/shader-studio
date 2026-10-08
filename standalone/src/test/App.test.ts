@@ -66,7 +66,7 @@ function createPwa(status: Partial<PwaStatus> = {}): PwaController & { applyUpda
       listener({ supported: true, online: true, updateAvailable: false, buildId: 'abc123', offlinePreparation: { state: 'idle' }, ...status });
       return vi.fn();
     }),
-    applyUpdate: vi.fn().mockResolvedValue(undefined),
+    applyUpdate: vi.fn().mockResolvedValue(true),
     checkForUpdate: vi.fn().mockResolvedValue(undefined),
     prepareOffline: vi.fn().mockResolvedValue(undefined),
     retryOfflinePreparation: vi.fn().mockResolvedValue(undefined),
@@ -501,6 +501,16 @@ describe('standalone App', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('Could not import the workspace. Your current work was not changed.');
   });
 
+  it('keeps a session-only workspace open instead of reloading for an update', async () => {
+    const transport = createTransport();
+    transport.getStorageStatus.mockResolvedValue({ backend: 'session', persisted: false, persistSupported: false });
+    const pwa = createPwa({ updateAvailable: true });
+    render(App, { props: { transport, pwa } });
+    await tick(); await tick();
+    expect(pwa.applyUpdate).not.toHaveBeenCalled();
+    expect(transport.flush).not.toHaveBeenCalled();
+  });
+
   it('waits for pending saves and handles duplicate update announcements once', async () => {
     const transport = createTransport();
     let finishSave!: () => void;
@@ -515,12 +525,40 @@ describe('standalone App', () => {
     render(App, { props: { transport, pwa } });
     const ready: PwaStatus = { supported: true, online: true, updateAvailable: true, buildId: 'new', offlinePreparation: { state: 'idle' } };
     announce(ready); announce(ready);
+    await waitFor(() => expect(transport.flush).toHaveBeenCalledOnce());
     expect(transport.flush).toHaveBeenCalledOnce();
     expect(pwa.applyUpdate).not.toHaveBeenCalled();
     finishSave();
     await waitFor(() => expect(pwa.applyUpdate).toHaveBeenCalledOnce());
     announce(ready);
     expect(transport.flush).toHaveBeenCalledOnce();
+  });
+
+  it('unlocks editing when another app tab defers activation', async () => {
+    const transport = createTransport();
+    const pwa = createPwa({ updateAvailable: true });
+    pwa.applyUpdate.mockResolvedValue(false);
+    const view = render(App, { props: { transport, pwa } });
+    await waitFor(() => expect(pwa.applyUpdate).toHaveBeenCalledOnce());
+    await tick();
+    expect((view.container.querySelector('.standalone-app') as HTMLElement).inert).toBe(false);
+  });
+
+  it('saves again before reloading and unlocks if that final save fails', async () => {
+    const transport = createTransport();
+    const pwa = createPwa({ updateAvailable: true });
+    const view = render(App, { props: { transport, pwa } });
+    await waitFor(() => expect(pwa.applyUpdate).toHaveBeenCalledOnce());
+    await tick();
+    expect((view.container.querySelector('.standalone-app') as HTMLElement).inert).toBe(true);
+    const guard = pwa.applyUpdate.mock.calls[0][0];
+    await guard();
+    expect(transport.flush).toHaveBeenCalledTimes(2);
+    transport.flush.mockRejectedValueOnce(new Error('quota'));
+    await expect(guard()).rejects.toThrow('quota');
+    await tick();
+    expect((view.container.querySelector('.standalone-app') as HTMLElement).inert).toBe(false);
+    expect((await screen.findByRole('alert')).textContent).toContain('Could not save pending work');
   });
 
   it('retries an automatic update after a failed save recovers', async () => {
@@ -548,6 +586,7 @@ describe('standalone App', () => {
     }));
     const pwa = createPwa({ updateAvailable: true });
     const view = render(App, { props: { transport, pwa } });
+    await waitFor(() => expect(transport.flush).toHaveBeenCalledOnce());
     view.unmount(); finishSave(); await tick();
     expect(pwa.applyUpdate).not.toHaveBeenCalled();
   });

@@ -81,6 +81,7 @@
   let shellMounted = false;
   let updateInProgress = false;
   let updateApplied = false;
+  let updateLocked = $state(false);
 
   onMount(() => {
     shellMounted = true;
@@ -201,16 +202,36 @@
     updateInProgress = true;
     workspaceError = '';
     try {
-      await transport.flush();
+      const storage = await transport.getStorageStatus();
+      if (!shellMounted || storage.backend !== 'indexeddb') {
+        return;
+      }
+      updateLocked = true;
+      const prepareReload = async () => {
+        try {
+          if (!shellMounted) {
+            throw new Error('App closed before the update was ready.');
+          }
+          await transport.flush();
+        } catch (error) {
+          updateLocked = false;
+          updateApplied = false;
+          workspaceError = 'Could not save pending work, so the update was not applied.';
+          throw error;
+        }
+      };
+      await prepareReload();
       if (!shellMounted) {
         return;
       }
-      await pwa?.applyUpdate();
-      updateApplied = true;
+      updateApplied = await pwa?.applyUpdate(prepareReload) ?? false;
     } catch {
       workspaceError = 'Could not save pending work, so the update was not applied.';
     } finally {
       updateInProgress = false;
+      if (!updateApplied) {
+        updateLocked = false;
+      }
     }
   }
 
@@ -314,7 +335,7 @@
 <WorkspaceFilePicker />
 
 <svelte:window onclick={closeMenusOnOutsideClick} onkeydown={closeMenusOnEscape} />
-<div class="standalone-app">
+<div class="standalone-app" inert={updateLocked} aria-busy={updateLocked}>
   <header class="standalone-toolbar" aria-label="Standalone workspace">
     <strong>Shader Studio</strong>
     <div class="toolbar-menu">

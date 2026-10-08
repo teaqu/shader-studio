@@ -2,6 +2,7 @@ import { getEditorDocument } from '../state/editorDocuments.svelte';
 import { getSelectedEditor, getRequestedEditor, getNewShaderVisible, getRequestedPanel, resetShellState, setNewShaderVisible } from '../state/shellState.svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDefaultWorkspaceFiles } from '../defaultWorkspace';
+import { VirtualWorkspace } from '../VirtualWorkspace';
 import { inspectWorkspaceStorage, WebTransport } from '../WebTransport';
 
 async function eventually(assertion: () => void): Promise<void> {
@@ -85,6 +86,45 @@ describe('WebTransport', () => {
     const transport = new WebTransport();
     expect(transport.getType()).toBe('web');
     expect(transport.getShaderExplorerHostApi()).toBeDefined();
+    transport.dispose();
+  });
+
+  it('flushes pending editor text through the host before reporting persistence complete', async () => {
+    const transport = new WebTransport();
+    const path = '/shaders/aurora.glsl';
+    let pending = true;
+    const detach = transport.registerPendingSave(() => {
+      if (pending) {
+        pending = false;
+        transport.postMessage({ type: 'updateShaderSource', payload: { path, code: 'latest text' } });
+      }
+    });
+    await transport.flush();
+    expect(await transport.readEditorFile(path)).toBe('latest text');
+    detach(); detach();
+    await transport.flush();
+    transport.dispose();
+  });
+
+  it('waits for an in-flight backup import before allowing reload', async () => {
+    let complete!: () => void;
+    const importing = vi.spyOn(VirtualWorkspace.prototype, 'importBackup').mockImplementation(() =>
+      new Promise<void>(resolve => {
+        complete = resolve;
+      }));
+    const transport = new WebTransport();
+    const imported = transport.importWorkspaceBackup({}, { replace: true });
+    await vi.waitFor(() => expect(importing).toHaveBeenCalledOnce());
+    let saved = false;
+    const barrier = transport.flush().then(() => {
+      saved = true;
+    });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(saved).toBe(false);
+    complete();
+    await imported;
+    await barrier;
+    expect(saved).toBe(true);
     transport.dispose();
   });
 

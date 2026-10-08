@@ -208,3 +208,62 @@ test(`automatically installing a newer build keeps pending edits (${mobile ? 'mo
   }
 });
 }
+
+test('defers an automatic update while another app tab is open, then applies it after that tab closes', async ({ page, context, baseURL }) => {
+  const builds = await startTwoBuildServer(baseURL);
+  try {
+    await page.goto(`${builds.origin}/`);
+    await controlledByWorker(page);
+    await page.getByTestId('shader-option-aurora-glsl').click();
+    await replaceShader(page, 'void mainImage(out vec4 color, in vec2 coord) { color = vec4(0.25); } // deferred update edit', 'deferred update edit');
+
+    const otherTab = await context.newPage();
+    await otherTab.goto(`${builds.origin}/`);
+    await controlledByWorker(otherTab);
+
+    builds.publishNextBuild();
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect.poll(() => page.evaluate(() => navigator.serviceWorker.getRegistration()
+      .then(registration => Boolean(registration?.waiting)))).toBe(true);
+    await expect(page.getByTestId('web-editor').locator('.view-lines')).toContainText('deferred update edit');
+
+    await otherTab.close();
+    const reloaded = page.waitForEvent('load');
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await reloaded;
+
+    await expect(page.getByRole('status')).toHaveAttribute('title', /Build next-build/);
+    await expect(page.getByTestId('web-editor').locator('.view-lines')).toContainText('deferred update edit');
+  } finally {
+    await builds.close();
+  }
+});
+
+test('a session-only workspace refuses automatic activation and retains the live edit', async ({ page, baseURL }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'indexedDB', { configurable: true, value: undefined });
+    sessionStorage.setItem('pwa-load-count', String(Number(sessionStorage.getItem('pwa-load-count') ?? '0') + 1));
+  });
+  const builds = await startTwoBuildServer(baseURL);
+  try {
+    await page.goto(`${builds.origin}/`);
+    await controlledByWorker(page);
+    await expect(page.getByRole('status')).toHaveAttribute('aria-label', /Session-only/);
+    await page.getByTestId('shader-option-aurora-glsl').click();
+    const editor = page.getByTestId('web-editor');
+    await editor.locator('.view-lines').click({ position: { x: 80, y: 20 } });
+    await editor.locator('.inputarea').press('ControlOrMeta+A');
+    await page.keyboard.insertText('void mainImage(out vec4 color, in vec2 coord) { color = vec4(0.5); } // session update edit');
+    await expect(editor.locator('.view-lines')).toContainText('session update edit');
+
+    builds.publishNextBuild();
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect.poll(() => page.evaluate(() => navigator.serviceWorker.getRegistration()
+      .then(registration => Boolean(registration?.waiting)))).toBe(true);
+
+    expect(await page.evaluate(() => sessionStorage.getItem('pwa-load-count'))).toBe('1');
+    await expect(editor.locator('.view-lines')).toContainText('session update edit');
+  } finally {
+    await builds.close();
+  }
+});

@@ -18,7 +18,7 @@ export type OfflinePreparationStatus =
 export interface PwaController {
   start(): Promise<void>;
   subscribe(listener: (status: PwaStatus) => void): () => void;
-  applyUpdate(): Promise<void>;
+  applyUpdate(beforeReload?: () => Promise<void>): Promise<boolean>;
   checkForUpdate(): Promise<void>;
   prepareOffline(): Promise<void>;
   retryOfflinePreparation(): Promise<void>;
@@ -75,6 +75,8 @@ export function createPwaController(environment: PwaEnvironment = browserPwaEnvi
   let registration: ServiceWorkerRegistration | undefined;
   let disposed = false;
   let applyingUpdate = false;
+  let beforeReload: (() => Promise<void>) | undefined;
+  let reloadInProgress = false;
   const listeners = new Set<(status: PwaStatus) => void>();
   let status: PwaStatus = {
     supported: !!environment.serviceWorker,
@@ -96,8 +98,19 @@ export function createPwaController(environment: PwaEnvironment = browserPwaEnvi
     }
   };
   const onControllerChange = () => {
-    if (applyingUpdate) {
-      environment.reload();
+    if (applyingUpdate && !reloadInProgress && !disposed) {
+      reloadInProgress = true;
+      void (async () => {
+        try {
+          await beforeReload?.();
+          if (!disposed) {
+            environment.reload();
+          }
+        } catch {
+          // The shell reports the save failure. Keep its live workspace open.
+          reloadInProgress = false;
+        }
+      })();
     }
   };
   const inspect = () => {
@@ -218,12 +231,38 @@ export function createPwaController(environment: PwaEnvironment = browserPwaEnvi
       listener({ ...status });
       return () => listeners.delete(listener);
     },
-    async applyUpdate(): Promise<void> {
-      if (!registration?.waiting) {
-        return;
+    async applyUpdate(prepareReload?: () => Promise<void>): Promise<boolean> {
+      if (disposed || !registration?.waiting) {
+        return false;
       }
+      beforeReload = prepareReload;
       applyingUpdate = true;
-      registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+      // The waiting worker decides whether other app tabs make activation unsafe.
+      const channel = environment.createMessageChannel();
+      const ready = await new Promise<boolean>(resolve => {
+        const finish = (value: boolean) => {
+          clearTimeout(timer);
+          channel.port1.close();
+          channel.port2.close();
+          resolve(value);
+        };
+        const timer = setTimeout(() => finish(false), 2000);
+        channel.port1.onmessage = event => {
+          if (event.data?.type === 'update-ready' || event.data?.type === 'update-deferred') {
+            finish(event.data.type === 'update-ready');
+          }
+        };
+        channel.port1.start();
+        try {
+          registration!.waiting!.postMessage({ type: 'SKIP_WAITING' }, [channel.port2]);
+        } catch {
+          finish(false);
+        }
+      });
+      if (!ready) {
+        applyingUpdate = false;
+      }
+      return ready;
     },
     checkForUpdate,
     prepareOffline,
