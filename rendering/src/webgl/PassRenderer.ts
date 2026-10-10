@@ -1,3 +1,7 @@
+import { WebXrPassState } from "../webxr/WebXrPassState";
+import { withVrViewport } from "../webxr/VrViewport";
+import type { VrEyeView } from "../webxr/WebXrFrameData";
+import { VrPreview } from "./VrPreview";
 import type { ResourceManager } from "../resources/ResourceManager";
 import type { BufferManager } from "./BufferManager";
 import type { Pass, PassUniforms } from "../models";
@@ -37,6 +41,8 @@ const WEBGL_PRIMITIVES = {
 } as const satisfies Record<VertexTopology, keyof PiRenderer["PRIMTYPE"]>;
 
 export class PassRenderer {
+  readonly vrPreview = new VrPreview();
+  readonly xr = new WebXrPassState();
   private canvas: HTMLCanvasElement;
   private resourceManager: ResourceManager<PiTexture>;
   private bufferManager: BufferManager;
@@ -147,6 +153,7 @@ export class PassRenderer {
     uniforms: PassUniforms,
     customUniforms?: CustomUniform[],
     skipInputUpdates: boolean = false,
+    output?: { framebuffer: WebGLFramebuffer; view: VrEyeView },
   ): void {
     if (!shader) {
       return;
@@ -155,19 +162,29 @@ export class PassRenderer {
     const slotAssignments = assignInputSlots(passConfig.inputs);
     const textureBindings = this.getTextureBindings(passConfig, slotAssignments, skipInputUpdates);
 
-    if (target?.mTex0) {
+    if (output) {
+      const { x, y, width, height } = output.view.viewport;
+      this.renderer.SetViewport([x, y, width, height]);
+    } else if (target?.mTex0) {
       this.renderer.SetViewport([0, 0, target.mTex0.mXres, target.mTex0.mYres]);
     } else if (this.canvas) {
       this.renderer.SetViewport([0, 0, this.canvas.width, this.canvas.height]);
     }
 
-    const resolveMultisample = this.beginMultisample(passConfig, target);
+    const resolveMultisample = output ? null : this.beginMultisample(passConfig, target);
     if (!resolveMultisample) {
-      this.renderer.SetRenderTarget(target);
+      this.renderer.SetRenderTarget(output ? { mObjectID: output.framebuffer } : target);
     }
     try {
-      this.drawPass(passConfig, shader, uniforms, slotAssignments, textureBindings, customUniforms);
+      this.xr.view = output?.view ?? null;
+      const draw = () => this.drawPass(passConfig, shader, uniforms, slotAssignments, textureBindings, customUniforms);
+      if (output) {
+        withVrViewport(this.gl, output.view, draw);
+      } else {
+        draw();
+      }
     } finally {
+      this.xr.view = null;
       resolveMultisample?.();
     }
   }
@@ -217,6 +234,8 @@ export class PassRenderer {
     this.renderer.SetShaderConstant1F("iSampleRate", uniforms.sampleRate);
     this.renderer.SetShaderConstant3FV("iCameraPos", uniforms.cameraPos);
     this.renderer.SetShaderConstant3FV("iCameraDir", uniforms.cameraDir);
+    this.xr.bind(this.renderer);
+    this.renderer.SetShaderConstant1I("_ssVrPreview", passConfig.name === "Image" && this.vrPreview.enabled ? 1 : 0);
 
     const fullscreen = this.drawsFullscreen(passConfig);
     const mesh = this.resolveMesh(passConfig);

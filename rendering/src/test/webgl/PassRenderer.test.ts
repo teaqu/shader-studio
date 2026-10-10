@@ -80,6 +80,11 @@ const createMockGl = () => ({
   LINEAR: 0x2601,
   REPEAT: 0x2901,
   CLAMP_TO_EDGE: 0x812f,
+  SCISSOR_TEST: 0x0c11,
+  SCISSOR_BOX: 0x0c10,
+  isEnabled: vi.fn(() => false),
+  getParameter: vi.fn(() => new Int32Array([0, 0, 800, 600])),
+  scissor: vi.fn(),
   DEPTH_TEST: 0x0b71,
   BLEND: 0x0be2,
   CULL_FACE: 0x0b44,
@@ -170,6 +175,19 @@ describe("PassRenderer", () => {
     );
   });
 
+  it("binds the VR preview switch only for Image and keeps buffers in mainImage mode", () => {
+    const image: Pass = { name: "Image", geometry: "fullscreen", inputs: {}, shaderSrc: "void mainVR(out vec4 c, vec2 p, vec3 o, vec3 d) {}" };
+    passRenderer.vrPreview.update("a", [image]);
+    passRenderer.renderPass(image, null, createMockShader(), defaultUniforms);
+    expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("_ssVrPreview", 0);
+    passRenderer.vrPreview.setEnabled(true);
+    passRenderer.renderPass(image, null, createMockShader(), defaultUniforms);
+    expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("_ssVrPreview", 1);
+    vi.mocked(mockRenderer.SetShaderConstant1I).mockClear();
+    passRenderer.renderPass({ ...image, name: "BufferA" }, null, createMockShader(), defaultUniforms);
+    expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("_ssVrPreview", 0);
+  });
+
   const defaultUniforms = {
     res: [800, 600, 1],
     time: 1.0,
@@ -184,6 +202,26 @@ describe("PassRenderer", () => {
     cameraPos: [0, 0, 0],
     cameraDir: [0, 0, -1]
   };
+
+
+  it("draws headset Image into its eye framebuffer and clears XR state after errors", () => {
+    const image: Pass = { name: "Image", geometry: "fullscreen", inputs: {}, shaderSrc: "mainVR" };
+    const framebuffer = {} as WebGLFramebuffer;
+    const view = { viewport: { x: 400, y: 0, width: 400, height: 300 }, rayTransform: new Float32Array(16) };
+    passRenderer.xr.active = true;
+    passRenderer.renderPass(image, null, createMockShader(), defaultUniforms, [], true, { framebuffer, view });
+    expect(mockRenderer.SetRenderTarget).toHaveBeenCalledWith({ mObjectID: framebuffer });
+    expect(mockRenderer.SetViewport).toHaveBeenCalledWith([400, 0, 400, 300]);
+    expect(mockGl.scissor).toHaveBeenCalledWith(400, 0, 400, 300);
+    expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("_ssVrImmersive", 1);
+    expect(passRenderer.xr.view).toBeNull();
+    vi.mocked(mockRenderer.DrawPrimitive).mockImplementationOnce(() => {
+      throw new Error("draw failed");
+    });
+    expect(() => passRenderer.renderPass(image, null, createMockShader(), defaultUniforms, [], true, { framebuffer, view })).toThrow("draw failed");
+    expect(passRenderer.xr.view).toBeNull();
+    expect(mockGl.scissor).toHaveBeenLastCalledWith(0, 0, 800, 600);
+  });
 
   describe("renderPass", () => {
     /** Order of every recorded GL/renderer call, for "state set before draw, restored after" checks. */

@@ -67,6 +67,11 @@ export const GLSL_STABLE_DECLARATION_LINES = Object.freeze([
   "uniform float iSampleRate;",
   "uniform vec3 iCameraPos;",
   "uniform vec3 iCameraDir;",
+  "uniform bool iVRActive;",
+  "uniform vec4 iVRControllerPosition[2];",
+  "uniform vec4 iVRControllerDirection[2];",
+  "uniform vec4 iVRControllerButtons[2];",
+  "uniform vec4 iVRControllerAxes[2];",
   "uniform int iVertexCount;",
   "uniform int iInstanceCount;",
   "uniform mat4 iViewMatrix;",
@@ -79,6 +84,7 @@ export const GLSL_STABLE_NAMES: ReadonlySet<string> = new Set([
   "iFrameRate", "iMouse", "iFrame", "iDate", "iChannelTime",
   "iSampleRate", "iCameraPos", "iCameraDir", "iVertexCount", "iInstanceCount",
   "iViewMatrix", "iProjectionMatrix", "iViewProjection",
+  "iVRActive", "iVRControllerPosition", "iVRControllerDirection", "iVRControllerButtons", "iVRControllerAxes",
 ]);
 
 /** Renderer-compatible baseline channel declarations for editor analysis. */
@@ -200,6 +206,11 @@ export const SHADER_STUDIO_BUILTIN_UNIFORMS: readonly Readonly<ShaderStudioBuilt
   { name: "iSampleRate", glslType: "float", slangType: "float", wgslType: "f32", slangDeclaration: "float iSampleRate;", languages: ["glsl", "slang", "wgsl"], description: "Audio sample rate in hertz." },
   { name: "iCameraPos", glslType: "vec3", slangType: "float3", wgslType: "vec3f", slangDeclaration: "float3 iCameraPos;", languages: ["glsl", "slang", "wgsl"], description: "Camera position in world space." },
   { name: "iCameraDir", glslType: "vec3", slangType: "float3", wgslType: "vec3f", slangDeclaration: "float3 iCameraDir;", languages: ["glsl", "slang", "wgsl"], description: "Normalised camera look direction." },
+  { name: "iVRActive", glslType: "bool", slangType: "bool", languages: ["glsl"], description: "True during an immersive WebXR session." },
+  { name: "iVRControllerPosition", glslType: "vec4[2]", slangType: "float4[2]", languages: ["glsl"], description: "Tracked aim-ray origin in reference-space metres; w is 1 when tracked, otherwise 0. Slots are left (0) and right (1)." },
+  { name: "iVRControllerDirection", glslType: "vec4[2]", slangType: "float4[2]", languages: ["glsl"], description: "Tracked aim-ray direction; w is 1 when tracked, otherwise 0." },
+  { name: "iVRControllerButtons", glslType: "vec4[2]", slangType: "float4[2]", languages: ["glsl"], description: "First four controller button values, from 0 to 1." },
+  { name: "iVRControllerAxes", glslType: "vec4[2]", slangType: "float4[2]", languages: ["glsl"], description: "First four controller axis values, from -1 to 1." },
   { name: "iVertexCount", glslType: "int", slangType: "uint", wgslType: "u32", slangDeclaration: "uint32_t iVertexCount;", languages: ["glsl", "slang", "wgsl"], stages: ["fragment", "vertex"], description: "Vertices drawn by this pass: the configured vertexCount for vertices geometry (default 3), 3 for fullscreen, or the mesh vertex count for plane, cube, sphere, and model geometry. vertexIndex ranges from 0 to iVertexCount - 1." },
   { name: "iInstanceCount", glslType: "int", slangType: "uint", wgslType: "u32", slangDeclaration: "uint32_t iInstanceCount;", languages: ["glsl", "slang", "wgsl"], stages: ["fragment", "vertex"], description: "Instances drawn by this pass: the configured instanceCount (default 1), or 1 for fullscreen geometry. iInstanceIndex ranges from 0 to iInstanceCount - 1." },
   { name: "iViewMatrix", glslType: "mat4", slangType: "float4x4", wgslType: "mat4x4f", slangDeclaration: "float4x4 iViewMatrix;", languages: ["glsl", "slang", "wgsl"], stages: ["fragment", "vertex"], description: "The orbit camera's view matrix: world space to view space, the camera looking down -z. The model matrix is the identity, so world space is the space mainVertex writes for meshes and world-space vertices." },

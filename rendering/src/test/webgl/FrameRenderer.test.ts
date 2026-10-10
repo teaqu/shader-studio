@@ -115,6 +115,86 @@ describe("FrameRenderer", () => {
     });
   });
 
+  describe("XR frame handoff", () => {
+    it("does not revive a stale desktop RAF after stop and restart", () => {
+      const queued: Array<(time: number) => void> = [];
+      vi.stubGlobal("requestAnimationFrame", vi.fn((callback: (time: number) => void) => {
+        queued.push(callback);
+        return queued.length;
+      }));
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      frameRenderer.startRenderLoop();
+      const stale = queued[0]!;
+      frameRenderer.stopRenderLoop();
+      frameRenderer.startRenderLoop();
+      const current = queued[1]!;
+
+      stale(10);
+      expect(mockTimeManager.updateFrame).not.toHaveBeenCalled();
+      expect(queued).toHaveLength(2);
+      current(20);
+      expect(mockTimeManager.updateFrame).toHaveBeenCalledOnce();
+      expect(queued).toHaveLength(3);
+      vi.unstubAllGlobals();
+    });
+
+    it("shares one rendered frame snapshot across both eye draws", () => {
+      const buffer = { name: "BufferA", inputs: {} } as any;
+      const image = { name: "Image", inputs: {} } as any;
+      mockShaderPipeline.getPasses.mockReturnValue([buffer, image]);
+      mockShaderPipeline.getPassShaders.mockReturnValue({ BufferA: { mProgram: {} }, Image: { mProgram: {} } });
+      mockBufferManager.getPassBuffers.mockReturnValue({ BufferA: { front: { mTex0: {} }, back: { mTex0: {} } } });
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(7);
+      const custom = [{ name: "uFrame", type: "float", value: 3 }];
+      const uniformManager = { hasUniforms: vi.fn(() => true), getValues: vi.fn(() => custom) };
+      frameRenderer.setCustomUniformManager(uniformManager as unknown as CustomUniformManager);
+      frameRenderer.setRunning(true);
+
+      frameRenderer.render(100);
+      const eye = (x: number) => ({ viewport: { x, y: 0, width: 400, height: 300 }, rayTransform: new Float32Array(16) });
+      frameRenderer.renderVrView({} as WebGLFramebuffer, eye(0));
+      frameRenderer.renderVrView({} as WebGLFramebuffer, eye(400));
+
+      // One buffer pass + desktop mirror Image + two eyes; never one buffer per eye.
+      expect(mockPassRenderer.renderPass).toHaveBeenCalledTimes(4);
+      expect(uniformManager.getValues).toHaveBeenCalledOnce();
+      const calls = mockPassRenderer.renderPass.mock.calls;
+      expect(calls[2][4]).toBe(custom);
+      expect(calls[3][4]).toBe(custom);
+      expect(calls[2][3].frame).toBe(7);
+      expect(calls[3][3].frame).toBe(7);
+      expect(calls[2][6]).toEqual(expect.objectContaining({ view: eye(0) }));
+      expect(calls[3][6]).toEqual(expect.objectContaining({ view: eye(400) }));
+    });
+
+    it("keeps the paused snapshot for both eyes", () => {
+      const image = { name: "Image", inputs: {} } as any;
+      mockShaderPipeline.getPasses.mockReturnValue([image]);
+      mockShaderPipeline.getPassShaders.mockReturnValue({ Image: { mProgram: {} } });
+      mockTimeManager.isPaused.mockReturnValue(true);
+      mockTimeManager.getFrame.mockReturnValue(0);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      const custom = [{ name: "uFrozen", type: "float", value: 1 }];
+      const uniformManager = { hasUniforms: vi.fn(() => true), getValues: vi.fn(() => custom) };
+      frameRenderer.setCustomUniformManager(uniformManager as unknown as CustomUniformManager);
+      frameRenderer.setRunning(true);
+
+      frameRenderer.render(10);
+      const eye = { viewport: { x: 0, y: 0, width: 100, height: 100 }, rayTransform: new Float32Array(16) };
+      frameRenderer.renderVrView({} as WebGLFramebuffer, eye);
+      frameRenderer.renderVrView({} as WebGLFramebuffer, eye);
+
+      expect(uniformManager.getValues).toHaveBeenCalledOnce();
+      const calls = mockPassRenderer.renderPass.mock.calls;
+      expect(calls[calls.length - 1][4]).toBe(custom);
+      expect(calls[calls.length - 2][4]).toBe(custom);
+      expect(calls[calls.length - 1][5]).toBe(true);
+    });
+  });
+
   describe("post-image callback", () => {
     const configureImagePass = (): void => {
       mockShaderPipeline.getPasses.mockReturnValue([

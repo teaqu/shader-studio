@@ -1,3 +1,4 @@
+import type { VrEyeView } from "../webxr/WebXrFrameData";
 import type { ShaderPipeline } from "./ShaderPipeline";
 import type { BufferManager } from "./BufferManager";
 import type { PassRenderer } from "./PassRenderer";
@@ -14,6 +15,7 @@ import { assignInputSlots } from "../util/InputSlotAssigner";
 
 export class FrameRenderer {
   private running = false;
+  private loopGeneration = 0;
   private currentFrameTime = 0;
   private fpsLimit = 0;
   private lastRenderedAt: number | null = null;
@@ -27,6 +29,8 @@ export class FrameRenderer {
   private frameTimeCount = 0;  // total frames ever recorded
   private static MAX_HISTORY = 3600;
   private previousFrameTimestamp: number | null = null;
+  private latestUniforms: PassUniforms | null = null;
+  private latestCustomUniforms: CustomUniform[] | undefined;
   private pausedUniforms: PassUniforms | null = null;
   private pausedCustomUniforms: CustomUniform[] | undefined = undefined;
 
@@ -294,8 +298,9 @@ export class FrameRenderer {
 
     this.running = true;
 
+    const generation = ++this.loopGeneration;
     const render = (time: number) => {
-      if (!this.running || !this.glCanvas) {
+      if (!this.running || generation !== this.loopGeneration || !this.glCanvas) {
         return;
       }
 
@@ -306,7 +311,7 @@ export class FrameRenderer {
         this.render(time);
       }
 
-      if (this.running) {
+      if (this.running && generation === this.loopGeneration) {
         requestAnimationFrame(render);
       }
     };
@@ -316,6 +321,7 @@ export class FrameRenderer {
 
   public stopRenderLoop(): void {
     this.running = false;
+    this.loopGeneration++;
   }
 
   /**
@@ -407,6 +413,9 @@ export class FrameRenderer {
     const customUniforms = isPaused
       ? this.pausedCustomUniforms
       : this.evaluateCustomUniforms();
+
+    this.latestUniforms = uniforms;
+    this.latestCustomUniforms = customUniforms;
 
     if (!isPaused || currentFrame === 0) {
       this.renderBufferPasses(uniforms, customUniforms);
@@ -512,6 +521,19 @@ export class FrameRenderer {
     } else {
       this.passRenderer.clearCanvas();
     }
+  }
+
+  /** Reuses this frame's buffer/custom-uniform snapshot; headset poses stay live while paused. */
+  public renderVrView(framebuffer: WebGLFramebuffer, view: VrEyeView): void {
+    const image = this.shaderPipeline.getPasses().find(pass => pass.name === "Image");
+    if (!image) {
+      return;
+    }
+    const shader = this.shaderPipeline.getPassShaders().Image;
+    const uniforms = this.getPassUniforms(image, this.latestUniforms ?? this.getUniforms());
+    uniforms.res = [view.viewport.width, view.viewport.height, 1];
+    const custom = this.latestCustomUniforms;
+    this.passRenderer.renderPass(image, null, shader, uniforms, custom, true, { framebuffer, view });
   }
 
   public getFrameTimeHistory(): number[] {

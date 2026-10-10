@@ -214,8 +214,8 @@ describe("ShaderCompiler", () => {
 
       it("declares iVertexCount as an int uniform in fragment and hook vertex sources", () => {
         const { wrappedCode, vertexSource } = shaderCompiler.wrapShaderToyCode(image, { vertexCode: hook });
-        expect(wrappedCode).toContain("uniform vec3 iCameraDir;\nuniform int iVertexCount;\n");
-        expect(vertexSource).toContain("uniform vec3 iCameraDir;\nuniform int iVertexCount;\n");
+        expect(wrappedCode).toContain("uniform int iVertexCount;\n");
+        expect(vertexSource).toContain("uniform int iVertexCount;\n");
         expect(shaderCompiler.wrapShaderToyCode(image, { geometry: "cube", vertexCode: hook }).vertexSource)
           .toContain("uniform int iVertexCount;");
       });

@@ -97,6 +97,16 @@ describe("ShaderPipeline", () => {
     vi.spyOn(console, "error").mockImplementation(() => { });
   });
 
+  it("adds the optional VR branch only to Image when mainVR exists", async () => {
+    const source = "void mainImage(out vec4 c, vec2 p) {} void mainVR(out vec4 c, vec2 p, vec3 o, vec3 d) {}";
+    await shaderPipeline.compileShaderPipeline(source, { version: "1", passes: {
+      Image: {}, BufferA: { path: "a.glsl" },
+    } }, "image.glsl", { BufferA: `// buffer\n${source}` });
+    const calls = mockShaderCompiler.compileShaderAsync.mock.calls;
+    expect(calls.find(call => call[0].startsWith("// buffer"))?.[1]).not.toHaveProperty("vrPreview");
+    expect(calls.find(call => call[0] === source)?.[1]).toHaveProperty("vrPreview", true);
+  });
+
   it("cleans resources again and aborts when disposed during an awaited input load", async () => {
     let resolveLoad!: (value: unknown) => void;
     mockResourceManager.loadImageTexture.mockReturnValue(new Promise(resolve => {

@@ -1,13 +1,63 @@
 # Shadertoy Compatibility
 
 
-Shader Studio is built around Shadertoy-style fragment shaders. Your shader must define a `mainImage` function:
+Shader Studio is built around Shadertoy-style fragment shaders. For a conventional image shader, define a `mainImage` function:
 
 ```glsl
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     // your shader code
 }
 ```
+
+## Desktop VR shader previews
+
+Fullscreen GLSL passes can define Shadertoy's VR entry point:
+
+```glsl
+void mainVR(out vec4 fragColor, in vec2 fragCoord, in vec3 rayOrigin, in vec3 rayDirection) {
+    fragColor = vec4(rayDirection * 0.5 + 0.5, 1.0);
+}
+```
+
+The **VR** toggle appears in the toolbar only when the fullscreen Image pass
+defines `mainVR`. Keep `mainImage` for the normal preview: VR is off by default,
+and enabling the toggle calls `mainVR` instead. It resets when switching shaders.
+Move with WASD/QE and look by dragging the mouse or pressing IJKL. Dragging also
+updates `iMouse`, so shaders that read it continue to receive mouse input.
+The ray origin is `iCameraPos`; the normalized world-space ray direction uses
+`iCameraDir`, the canvas aspect ratio, and a 90° vertical field of view.
+This desktop preview uses one camera view with world-Y up. Mesh passes continue
+to use `mainImage`.
+
+### Headsets and controllers
+
+When the browser supports an immersive WebXR session, **Enter VR** appears next
+to the desktop toggle for fullscreen GLSL Image shaders defining `mainVR`.
+Click it to request a headset session; **Exit VR** returns to desktop rendering.
+WebXR requires a secure context and a compatible browser/device. Hosts without
+WebXR keep the desktop preview.
+
+Each eye receives its tracked ray origin and projection in `mainVR`. Ray origins
+use metres in the WebXR reference space (floor-relative when available); rays
+are normalized. `fragCoord` and `iResolution.xy` are local to the current eye.
+Buffer passes advance once per headset frame. Pausing freezes shader time and
+buffers while head tracking continues. Desktop camera controls do not move the
+headset view.
+
+These additional GLSL inputs are supplied during the session and reset on exit:
+
+| Uniform | Type | Description |
+|---------|------|-------------|
+| `iVRActive` | `bool` | Immersive session active |
+| `iVRControllerPosition[2]` | `vec4` | Aim-ray origin in metres; w = 1 when tracked, 0 otherwise |
+| `iVRControllerDirection[2]` | `vec4` | Normalized aim-ray direction; w = 1 when tracked |
+| `iVRControllerButtons[2]` | `vec4` | First four gamepad button values (0–1) |
+| `iVRControllerAxes[2]` | `vec4` | First four gamepad axes (-1–1) |
+
+Slot 0 is left and slot 1 right. Unhanded sources use the first free slot.
+Absent or untracked controllers supply zeroes. Button/axis order follows the
+controller's WebXR gamepad mapping; these inputs are Shader Studio additions.
+Slang and WGSL entry points remain unchanged.
 
 ## Supported Uniforms
 
