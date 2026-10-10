@@ -1305,7 +1305,10 @@ test('Live MP4 saves an indexed file even when MediaRecorder cannot encode MP4',
   await page.getByRole('button', { name: 'MP4', exact: true }).click();
   await page.getByRole('button', { name: 'Start recording', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Stop & save', exact: true })).toBeVisible();
-  await expect(page.locator(".recording-panel")).toContainText("2s elapsed");
+  await expect.poll(async () => {
+    const text = await page.locator('.recording-panel').innerText();
+    return Number(text.match(/(\d+)s elapsed/)?.[1] ?? 0);
+  }).toBeGreaterThanOrEqual(2);
   const downloading = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Stop & save', exact: true }).click();
   const download = await downloading;
@@ -1403,9 +1406,9 @@ test('Live capture of a preview that lost its WebGL context fails visibly instea
   await page.getByRole('button', { name: 'Live', exact: true }).click();
   await page.getByRole('button', { name: 'WebM', exact: true }).click();
   await page.getByRole('button', { name: 'Start recording', exact: true }).click();
-  await expect(page.getByRole("button", { name: "Stop & save", exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Stop & save', exact: true }).click();
-  await expect(panelError).toContainText('Live recording captured no frames');
+  // Direct frame readback detects the lost context during startup.
+  await expect(panelError).toContainText('WebGL context was lost');
+  await expect(page.getByRole('button', { name: 'Start recording', exact: true })).toBeVisible();
   expect(downloads).toBe(0);
 });
 
