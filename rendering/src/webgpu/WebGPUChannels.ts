@@ -31,6 +31,7 @@ export class WebGPUChannels {
     pass: RenderPassNode,
     skipInputUpdates = false,
     encodedComputePasses: ReadonlySet<string> = new Set(),
+    completedFrame = false,
   ): SlangChannelResource[] | null {
     const resources: SlangChannelResource[] = [];
     for (const channel of pass.channels) {
@@ -38,11 +39,19 @@ export class WebGPUChannels {
         const renderSource = this.host.session.passPipelines.get(channel.source);
         const computeSource = this.host.session.computePipelines.get(channel.source);
         const layer = channel.layer ?? 0;
+        // Image-only capture redraws after the feedback targets have swapped.
+        // Reverse their roles to reproduce the picture that was submitted.
+        const previousRenderOutput = completedFrame
+          ? channel.readFrom !== "previous-frame"
+          : channel.readFrom === "previous-frame";
+        const previousComputeOutput = completedFrame
+          ? channel.readFrom !== "previous-frame" || !encodedComputePasses.has(channel.source)
+          : channel.readFrom === "previous-frame" || !encodedComputePasses.has(channel.source);
         const textureView = computeSource
-          ? channel.readFrom === "previous-frame" || !encodedComputePasses.has(channel.source)
+          ? previousComputeOutput
             ? computeSource.getPreviousLayerOutputView(layer)
             : computeSource.getLayerOutputView(layer)
-          : channel.readFrom === "previous-frame"
+          : previousRenderOutput
             ? renderSource?.getPreviousOutputView(channel.output ?? 0)
             : renderSource?.getCurrentOutputView(channel.output ?? 0);
         if (!textureView) {

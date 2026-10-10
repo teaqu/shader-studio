@@ -84,7 +84,7 @@ describe('EditorPane', () => {
   });
 
   it('passes the current editing state to the shared editor and delegates its commands', async () => {
-    const session = createSession({ commonPath: '/shaders/common.wgsl', commonSource: 'fn shared() {}' });
+    const session = createSession({ commonPath: '/shaders/common.wgsl', commonSource: 'fn shared() {}', config: { version: '1.0', passes: { Image: {} } } });
     setViewerSession(session);
     const { getByTestId, getByRole } = render(EditorPane);
 
@@ -95,6 +95,11 @@ describe('EditorPane', () => {
     expect(editor.getAttribute('data-buffer')).toBe('Image');
     expect(editor.getAttribute('data-common-path')).toBe('/shaders/common.wgsl');
     expect(editor.getAttribute('data-common-source')).toBe('fn shared() {}');
+    expect(editor.getAttribute('data-buffers')).toBe('Image|Buffer B');
+    expect(editor.getAttribute('data-compile-mode')).toBe('hot');
+    expect(editor.getAttribute('data-config')).toBe(JSON.stringify(session.config));
+    expect(editor.getAttribute('data-uniforms')).toBe('[]');
+    expect(editor.getAttribute('data-modules')).toBe('[]');
 
     await getByRole('button', { name: 'Edit' }).click();
     await getByRole('button', { name: 'Switch buffer' }).click();
@@ -143,6 +148,32 @@ describe('EditorPane', () => {
 
     expect(toggle.getAttribute('aria-pressed')).toBe('false');
     expect(getByTestId('shader-editor').getAttribute('data-vim')).toBe('false');
+  });
+
+  it('finishes editor teardown when a viewer session disappears and mounts its replacement', async () => {
+    const disposed = vi.fn();
+    document.addEventListener('editor-disposed', disposed, { once: true });
+    setViewerSession(createSession());
+    const { getByTestId, queryByTestId } = render(EditorPane);
+    expect(getByTestId('shader-editor').getAttribute('data-path')).toBe('/shaders/image.glsl');
+
+    setViewerSession(null);
+    await tick();
+    expect(queryByTestId('shader-editor')).toBeNull();
+    expect(disposed).toHaveBeenCalledWith(expect.objectContaining({
+      detail: expect.objectContaining({ shaderPath: '/shaders/image.glsl', shaderCode: 'initial source' }),
+    }));
+
+    setViewerSession(createSession({ shaderPath: '/replacement.glsl' }));
+    await tick();
+    expect(getByTestId('shader-editor').getAttribute('data-path')).toBe('/replacement.glsl');
+  });
+
+  it('retains editor props when teardown starts before the cleared session has flushed', () => {
+    setViewerSession(createSession());
+    const pane = render(EditorPane);
+    setViewerSession(null);
+    expect(() => pane.unmount()).not.toThrow();
   });
 });
 

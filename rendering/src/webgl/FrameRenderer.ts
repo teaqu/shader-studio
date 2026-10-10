@@ -44,6 +44,11 @@ export class FrameRenderer {
   private lastWallTime: number | null = null;
   private customUniformManager: CustomUniformManager | null = null;
   private postImageCallback: (() => void) | null = null;
+  /**
+   * Live screenshot requests waiting for the next frame the render loop draws.
+   * Each reads that exact frame instead of drawing an extra one.
+   */
+  private pendingScreenshotReads: Array<() => void> = [];
 
   constructor(
     timeManager: TimeManager,
@@ -225,6 +230,63 @@ export class FrameRenderer {
     this.postImageCallback?.();
   }
 
+  /**
+   * Redraw only Image with the uniforms the displayed frame used. While
+   * paused that is the frozen cache (mouse and script values keep changing
+   * underneath a paused picture); otherwise the live values at this moment.
+   */
+  public renderCurrentImageForCapture(): void {
+    const isPaused = this.timeManager.isPaused();
+    const frozen = isPaused ? this.pausedUniforms : null;
+    if (!frozen) {
+      this.currentFrameTime = performance.now();
+    }
+    const uniforms = frozen ?? this.getUniforms();
+    const customUniforms = frozen ? this.pausedCustomUniforms : this.evaluateCustomUniforms();
+    this.renderImagePass(uniforms, customUniforms, isPaused);
+    this.postImageCallback?.();
+  }
+
+  /**
+   * Read the frame the user sees, for Live screenshots. While the loop is
+   * running, `read` runs immediately after the next loop frame's Image pass
+   * (same task, so the WebGL drawing buffer still holds that frame). While paused or stopped,
+   * or if no loop frame arrives within `timeoutMs`, the displayed Image is
+   * redrawn from the frozen/live uniforms and read instead.
+   */
+  public readNextDisplayedFrame<T>(read: () => T, timeoutMs = 1000): Promise<T> {
+    const redrawAndRead = (): T => {
+      this.renderCurrentImageForCapture();
+      return read();
+    };
+    if (!this.running || this.timeManager.isPaused()) {
+      try {
+        return Promise.resolve(redrawAndRead());
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    }
+    return new Promise<T>((resolve, reject) => {
+      let settled = false;
+      const settle = (produce: () => T) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timer);
+        this.pendingScreenshotReads = this.pendingScreenshotReads.filter((candidate) => candidate !== hook);
+        try {
+          resolve(produce());
+        } catch (error) {
+          reject(error);
+        }
+      };
+      const hook = () => settle(read);
+      const timer = setTimeout(() => settle(redrawAndRead), timeoutMs);
+      this.pendingScreenshotReads.push(hook);
+    });
+  }
+
   public startRenderLoop(): void {
     if (this.running) {
       return;
@@ -268,6 +330,11 @@ export class FrameRenderer {
   /** GPU latency lives on RenderingEngine; this pulls the current value in at push time. */
   public setGpuFrameTimeSource(source: (() => number | null) | null): void {
     this.gpuFrameTimeSource = source;
+  }
+
+  /** Frozen script/custom uniform values while paused, or null when not frozen. */
+  public getPausedCustomUniforms(): CustomUniform[] | null {
+    return this.timeManager.isPaused() && this.pausedUniforms ? (this.pausedCustomUniforms ?? []) : null;
   }
 
   /** Rebuild paused uniforms after an atomic reset publishes frame zero. */
@@ -347,6 +414,13 @@ export class FrameRenderer {
 
     this.renderImagePass(uniforms, customUniforms, isPaused);
     this.postImageCallback?.();
+    if (this.pendingScreenshotReads.length > 0) {
+      const hooks = this.pendingScreenshotReads;
+      this.pendingScreenshotReads = [];
+      for (const hook of hooks) {
+        hook();
+      }
+    }
 
     // Track actual frame-to-frame wall time (RAF delta) only when running
     if (!isPaused) {

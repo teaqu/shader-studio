@@ -37,7 +37,7 @@ vi.stubGlobal('Blob', class MockBlob {
 });
 afterAll(() => vi.unstubAllGlobals());
 
-import { GifEncoderWrapper } from '../../lib/recording/GifEncoder';
+import { assertGifMemoryBudget, GifEncoderWrapper } from '../../lib/recording/GifEncoder';
 
 // Polyfill ImageData
 if (typeof globalThis.ImageData === 'undefined') {
@@ -72,6 +72,13 @@ describe('GifEncoderWrapper', () => {
   });
 
   describe('constructor', () => {
+    it('rejects captures whose raw frames exceed the safe memory budget', () => {
+      expect(() => assertGifMemoryBudget(3840, 2160, 30)).toThrow(
+        'GIF settings require',
+      );
+      expect(() => assertGifMemoryBudget(800, 600, 45)).not.toThrow();
+    });
+
     it('should set default quality to 100', () => {
       const enc = new GifEncoderWrapper({ width: 10, height: 10, fps: 15 });
       // Quality is private, but we can verify it's passed to the worker later
@@ -84,7 +91,7 @@ describe('GifEncoderWrapper', () => {
     });
 
     it('should accept custom repeat', () => {
-      const enc = new GifEncoderWrapper({ width: 10, height: 10, fps: 15, repeat: -1 });
+      const enc = new GifEncoderWrapper({ width: 10, height: 10, fps: 15, repeat: 0 });
       expect(enc).toBeDefined();
     });
   });
@@ -135,7 +142,7 @@ describe('GifEncoderWrapper', () => {
       expect(msg.height).toBe(10);
       expect(msg.fps).toBe(15);
       expect(msg.quality).toBe(100);
-      expect(msg.repeat).toBe(0);
+      expect(msg.repeat).toBeUndefined();
       expect(msg.framesBuffer).toBeInstanceOf(Uint8Array);
       expect(msg.framesBuffer.length).toBe(2 * 10 * 10 * 4);
       expect(msg.wasmBytes).toBeInstanceOf(ArrayBuffer);
@@ -149,7 +156,7 @@ describe('GifEncoderWrapper', () => {
     });
 
     it('should pass custom quality and repeat to worker', async () => {
-      const enc = new GifEncoderWrapper({ width: 5, height: 5, fps: 10, quality: 50, repeat: -1 });
+      const enc = new GifEncoderWrapper({ width: 5, height: 5, fps: 10, quality: 50, repeat: 0 });
       enc.addFrame(makeImageData(5, 5));
       enc.addFrame(makeImageData(5, 5));
 
@@ -158,7 +165,7 @@ describe('GifEncoderWrapper', () => {
       
       const msg = mockPostMessage.mock.calls[0][0];
       expect(msg.quality).toBe(50);
-      expect(msg.repeat).toBe(-1);
+      expect(msg.repeat).toBe(0);
 
       
       workerOnMessage!({ data: { type: 'done', data: new Uint8Array([1]) } } as any);

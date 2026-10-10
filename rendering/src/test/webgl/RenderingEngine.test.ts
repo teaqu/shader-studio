@@ -1085,10 +1085,100 @@ describe("RenderingEngine", () => {
     });
   });
 
+  describe("captureCurrentFrame", () => {
+    it("reads the displayed frame through the frame renderer and returns top-to-bottom RGBA pixels", async () => {
+      vi.stubGlobal("ImageData", class {
+        constructor(
+          public data: Uint8ClampedArray,
+          public width: number,
+          public height: number,
+        ) {}
+      });
+      const canvas = document.createElement("canvas");
+      canvas.width = 2;
+      canvas.height = 2;
+      const bottomRow = [1, 2, 3, 4, 5, 6, 7, 8];
+      const topRow = [9, 10, 11, 12, 13, 14, 15, 16];
+      const gl = {
+        RGBA: 0x1908,
+        UNSIGNED_BYTE: 0x1401,
+        isContextLost: () => false,
+        readPixels: vi.fn((
+          _x: number,
+          _y: number,
+          _width: number,
+          _height: number,
+          _format: number,
+          _type: number,
+          pixels: Uint8Array,
+        ) => pixels.set([...bottomRow, ...topRow])),
+      };
+      Object.defineProperty(renderingEngine, "glCanvas", { value: canvas, configurable: true });
+      Object.defineProperty(renderingEngine, "gl", { value: gl, configurable: true });
+      mockFrameRenderer.readNextDisplayedFrame = vi.fn((read: () => ImageData) => Promise.resolve(read()));
+
+      const image = await renderingEngine.captureCurrentFrame();
+
+      expect(mockFrameRenderer.readNextDisplayedFrame).toHaveBeenCalledOnce();
+      expect(gl.readPixels).toHaveBeenCalledOnce();
+      expect(Array.from(image.data)).toEqual([...topRow, ...bottomRow]);
+      expect(image.width).toBe(2);
+      expect(image.height).toBe(2);
+    });
+
+    it("refuses to capture a preview whose WebGL context was lost", async () => {
+      const readPixels = vi.fn();
+      const canvas = document.createElement("canvas");
+      Object.defineProperty(renderingEngine, "glCanvas", { value: canvas, configurable: true });
+      Object.defineProperty(renderingEngine, "gl", { value: { isContextLost: () => true, readPixels }, configurable: true });
+      mockFrameRenderer.readNextDisplayedFrame = vi.fn((read: () => ImageData) => Promise.resolve(read()));
+
+      await expect(renderingEngine.captureCurrentFrame()).rejects.toThrow("WebGL context was lost");
+      expect(readPixels).not.toHaveBeenCalled();
+    });
+
+    it("rejects before WebGL is initialized", async () => {
+      await expect(renderingEngine.captureCurrentFrame()).rejects.toThrow(
+        "Cannot capture the current frame before WebGL is initialized",
+      );
+    });
+
+    it("rejects if the renderer loses its canvas after capture was scheduled", async () => {
+      Object.defineProperty(renderingEngine, "glCanvas", { value: document.createElement("canvas"), configurable: true });
+      Object.defineProperty(renderingEngine, "gl", { value: {}, configurable: true });
+      mockFrameRenderer.readNextDisplayedFrame = vi.fn((read: () => ImageData) => {
+        Object.defineProperty(renderingEngine, "gl", { value: null, configurable: true });
+        return Promise.resolve(read());
+      });
+
+      await expect(renderingEngine.captureCurrentFrame()).rejects.toThrow("Cannot read the WebGL canvas after disposal");
+    });
+  });
+
+  describe("displayed custom uniforms", () => {
+    it("uses frozen frame values when the renderer has them", () => {
+      mockFrameRenderer.getPausedCustomUniforms = vi.fn(() => [{ name: "uColour", type: "vec3", value: [1, 2, 3] }]);
+
+      const values = renderingEngine.getDisplayedCustomUniforms();
+
+      expect(values).toEqual([{ name: "uColour", type: "vec3", value: [1, 2, 3] }]);
+      expect(values[0].value).not.toBe(mockFrameRenderer.getPausedCustomUniforms.mock.results[0].value[0].value);
+    });
+
+    it("uses the live manager values when no paused frame is available", () => {
+      mockFrameRenderer.getPausedCustomUniforms = vi.fn(() => null);
+      const manager = { getCurrentValues: vi.fn(() => [{ name: "uValue", type: "float", value: 4 }]) };
+      Object.defineProperty(renderingEngine, "customUniformManager", { value: manager, configurable: true });
+
+      expect(renderingEngine.getDisplayedCustomUniforms()).toEqual([{ name: "uValue", type: "float", value: 4 }]);
+    });
+  });
+
   describe("pixel region capture", () => {
     it("returns safe fallbacks before initialization", () => {
       expect(renderingEngine.requestPixelRegion(1, 20, 30)).toBe(false);
       expect(renderingEngine.collectPixelRegionResults()).toEqual([]);
+      expect(renderingEngine.getPixelRegionRequestStage(1)).toBeNull();
       expect(() => renderingEngine.cancelPixelRegionRequests()).not.toThrow();
     });
 
@@ -1104,6 +1194,7 @@ describe("RenderingEngine", () => {
       const capturer = {
         queue: vi.fn(() => true),
         collectResults: vi.fn(() => [result]),
+        getRequestStage: vi.fn(() => "pending"),
         cancelPendingCaptures: vi.fn(),
         dispose: vi.fn(),
       };
@@ -1115,10 +1206,12 @@ describe("RenderingEngine", () => {
 
       expect(renderingEngine.requestPixelRegion(3, 20, 30)).toBe(true);
       expect(renderingEngine.collectPixelRegionResults()).toEqual([result]);
+      expect(renderingEngine.getPixelRegionRequestStage(3)).toBe("pending");
       renderingEngine.cancelPixelRegionRequests();
 
       expect(capturer.queue).toHaveBeenCalledWith({ requestId: 3, centerX: 20, centerY: 30 });
       expect(capturer.collectResults).toHaveBeenCalledOnce();
+      expect(capturer.getRequestStage).toHaveBeenCalledWith(3);
       expect(capturer.cancelPendingCaptures).toHaveBeenCalledOnce();
     });
 

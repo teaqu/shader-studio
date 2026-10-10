@@ -286,6 +286,8 @@ export interface SaveFileMessage extends BaseMessage {
     data: string;
     defaultName: string;
     filters: Record<string, string[]>;
+    /** Echoed on the matching saveFileResult. */
+    requestId?: string;
   };
 }
 
@@ -295,6 +297,9 @@ export interface SaveFileResultMessage extends BaseMessage {
     success: boolean;
     path?: string;
     error?: string;
+    /** The user dismissed the save dialog; not a failure. */
+    cancelled?: boolean;
+    requestId?: string;
   };
 }
 

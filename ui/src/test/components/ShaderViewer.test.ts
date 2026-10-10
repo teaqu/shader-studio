@@ -19,6 +19,8 @@ import { audioStore } from '../../lib/stores/audioStore';
 import { compileModeStore } from '../../lib/stores/compileModeStore';
 import { resolutionStore } from '../../lib/stores/resolutionStore';
 import { aspectRatioStore } from '../../lib/stores/aspectRatioStore';
+import { recordingStore } from '../../lib/stores/recordingStore';
+import { recordingPanelStore } from '../../lib/stores/recordingPanelStore';
 import { clearCommonShaderSource, getCommonShaderSource } from '../../lib/state/commonSourceState.svelte';
 import { setInspectorState } from '../../lib/state/pixelInspectorState.svelte';
 import type { PixelInspectorState } from '../../lib/types/PixelInspectorState';
@@ -46,7 +48,7 @@ global.ResizeObserver = vi.fn().mockImplementation(function () {
 });
 
 // Mock RenderingEngine and transport - use vi.hoisted to define mock values before vi.mock hoisting
-const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop, mockStartRenderLoop, mockHandleCanvasResize } = vi.hoisted(() => {
+const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop, mockStartRenderLoop, mockHandleCanvasResize, mockScreenshot, mockRecord, mockCancelRecording, mockStopLiveRecording, mockRecordingConstructor, mockEndLiveRecording, mockIsLiveRecording } = vi.hoisted(() => {
   const mockTimeManager = {
     getCurrentTime: () => 0.0,
     isPaused: () => false,
@@ -79,8 +81,32 @@ const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio,
   const mockStopRenderLoop = vi.fn();
   const mockStartRenderLoop = vi.fn();
   const mockHandleCanvasResize = vi.fn();
-  return { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop, mockStartRenderLoop, mockHandleCanvasResize };
+  const mockScreenshot = vi.fn();
+  const mockRecord = vi.fn();
+  const mockCancelRecording = vi.fn();
+  const mockStopLiveRecording = vi.fn();
+  const mockRecordingConstructor = vi.fn();
+  const mockEndLiveRecording = vi.fn();
+  const mockIsLiveRecording = vi.fn(() => false);
+  return { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop, mockStartRenderLoop, mockHandleCanvasResize, mockScreenshot, mockRecord, mockCancelRecording, mockStopLiveRecording, mockRecordingConstructor, mockEndLiveRecording, mockIsLiveRecording };
 });
+
+vi.mock('../../lib/RecordingManager', () => ({
+  RecordingManager: class {
+    constructor(...args: ConstructorParameters<typeof import('../../lib/RecordingManager').RecordingManager>) {
+      mockRecordingConstructor(...args);
+    }
+    screenshot = mockScreenshot;
+    record = mockRecord;
+    cancel = mockCancelRecording;
+    stopLiveRecording = mockStopLiveRecording;
+    endLiveRecording = mockEndLiveRecording;
+    dispose = vi.fn();
+    get isLiveRecording() {
+      return mockIsLiveRecording();
+    }
+  },
+}));
 
 vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
   const MockRenderingEngine = class {
@@ -599,6 +625,9 @@ describe('ShaderViewer', () => {
     resolutionStore.reset();
     aspectRatioStore.reset();
     configPanelStore.setVisible(false);
+    recordingPanelStore.setVisible(false);
+    recordingStore.reset();
+    mockIsLiveRecording.mockReturnValue(false);
     debugPanelStore.setVisible(false);
     debugPanelStore.setVariableInspectorEnabled(false);
     debugPanelStore.setInlineRenderingEnabled(true);
@@ -630,6 +659,94 @@ describe('ShaderViewer', () => {
 
     expect(mockCreateTransport).toHaveBeenCalledTimes(1);
     expect(mockTransport.onMessage).toHaveBeenCalled();
+  });
+
+  it('wires recording-panel capture actions to the initialized recording manager', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    recordingPanelStore.setVisible(true);
+    await tick();
+
+    await fireEvent.click(screen.getByText('Capture screenshot'));
+    expect(mockScreenshot).toHaveBeenCalledWith({
+      mode: 'live', format: 'png', time: undefined, width: 0, height: 0,
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Video' }));
+    await fireEvent.click(screen.getByText('Start recording'));
+    expect(mockRecord).toHaveBeenCalledWith(expect.objectContaining({
+      mode: 'live', format: 'mp4', duration: 5, startTime: 0, fps: 60, width: 0, height: 0,
+    }));
+  });
+
+  it('routes Live stop and discard actions and reports the recording state', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    recordingPanelStore.setVisible(true);
+    recordingStore.startLiveRecording('mp4');
+    const stateChanged = mockRecordingConstructor.mock.calls[0][2];
+    stateChanged(true);
+    await tick();
+    await fireEvent.click(screen.getByText('Stop & save'));
+    expect(mockStopLiveRecording).toHaveBeenCalledOnce();
+    await fireEvent.click(screen.getByText('Discard'));
+    expect(mockCancelRecording).toHaveBeenCalledOnce();
+    stateChanged(false);
+    recordingStore.reset();
+  });
+
+  it.each(['glsl', 'wgsl', 'slang'])('snapshots the active %s shader and returns its live engine to capture', async language => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await sendMessage({ type: 'shaderSource', path: `/test/shader.${language}`, language,
+      code: 'shader source', config: { passes: { Image: {} } },
+      buffers: { BufferA: 'buffer source' }, bufferPathMap: { BufferA: `/test/buffer.${language}` },
+      customUniformDeclarations: 'uniform float gain;', customUniformInfo: [{ name: 'gain', type: 'float' }],
+    });
+    const [getContext, , , getEngine] = mockRecordingConstructor.mock.calls.at(-1)!;
+    expect(getContext()).toEqual(expect.objectContaining({ code: 'shader source', path: `/test/shader.${language}`,
+      language, buffers: { BufferA: 'buffer source' }, customUniformDeclarations: 'uniform float gain;' }));
+    expect(getEngine()).toEqual(expect.objectContaining({ getUniforms: expect.any(Function) }));
+  });
+
+  it('saves exact capture bytes in chunks and waits for its matching host acknowledgement', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    const save = mockRecordingConstructor.mock.calls[0][1];
+    const bytes = Uint8Array.from({ length: 70_000 }, (_, index) => index % 256);
+    // The save callback only consumes Blob.arrayBuffer; jsdom's Blob lacks that API.
+    const blob = { arrayBuffer: async () => bytes.buffer } as Blob;
+    const saved = save(blob, 'capture.png', { Images: ['png'] });
+    await vi.waitFor(() => expect(mockTransport.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'saveFile' })));
+    const request = mockTransport.postMessage.mock.calls.find(([message]) => message.type === 'saveFile')![0].payload;
+    expect(Uint8Array.from(atob(request.data), char => char.charCodeAt(0))).toEqual(bytes);
+    expect(request.defaultName).toBe('capture.png');
+    expect(request.filters).toEqual({ Images: ['png'] });
+    await sendMessage({ type: 'saveFileResult', payload: { success: true, requestId: request.requestId } });
+    await expect(saved).resolves.toBeUndefined();
+  });
+
+  it('rejects a capture that finishes reading its bytes after the viewer closes', async () => {
+    const { unmount } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    const save = mockRecordingConstructor.mock.calls[0][1];
+    const bytes = Promise.withResolvers<ArrayBuffer>();
+    // Deferred byte IO models destruction during Blob.arrayBuffer.
+    const saving = save({ arrayBuffer: () => bytes.promise } as Blob, 'capture.png', {});
+    unmount();
+    bytes.resolve(new ArrayBuffer(0));
+    await expect(saving).rejects.toThrow('The viewer closed before the capture was saved');
+  });
+
+  it('ends a Live capture only on main shader switches', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await loadShader();
+    mockEndLiveRecording.mockClear();
+    await loadShader();
+    expect(mockEndLiveRecording).not.toHaveBeenCalled();
+    await sendMessage({ type: 'shaderSource', path: '/test/other.glsl', code: 'new source' });
+    expect(mockEndLiveRecording).toHaveBeenCalledExactlyOnceWith('Live recording stopped because a different shader was opened.');
   });
 
   it('publishes the active shader session and releases it when the viewer unmounts', async () => {

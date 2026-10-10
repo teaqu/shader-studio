@@ -43,9 +43,8 @@
     "codejar": "^4.3.0",
     "dockview-core": "^5.0.0",
     "gifski-wasm": "^2.2.0",
+    "mediabunny": "^1.61.1",
     "monaco-editor": "^0.57.0",
-    "monaco-vim": "^0.4.4",
-    "mp4-muxer": "^5.2.2",
-    "webm-muxer": "^5.1.4"
+    "monaco-vim": "^0.4.4"
   }
 }

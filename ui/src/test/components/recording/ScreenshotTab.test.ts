@@ -2,11 +2,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import '@testing-library/jest-dom';
 import ScreenshotTab from '../../../lib/components/recording/ScreenshotTab.svelte';
+import { resetCapturePreferences, updateScreenshotCapturePreferences } from '../../../lib/state/capturePreferences.svelte';
 
 describe('ScreenshotTab', () => {
   let defaultProps: any;
 
+  async function selectRenderMode() {
+    await fireEvent.click(screen.getByRole('button', { name: 'Render' }));
+  }
+
   beforeEach(() => {
+    resetCapturePreferences();
     defaultProps = {
       canvasWidth: 800,
       canvasHeight: 600,
@@ -37,38 +43,44 @@ describe('ScreenshotTab', () => {
     expect(screen.getByText('PNG')).not.toHaveClass('active');
   });
 
-  it('should render Time section with current time, 0, and custom input', () => {
+  it('defaults to live mode and hides render-only controls', () => {
+    render(ScreenshotTab, { props: defaultProps });
+    expect(screen.getByRole('button', { name: 'Live' })).toHaveClass('active');
+    expect(screen.queryByText('Capture frame at:')).not.toBeInTheDocument();
+    expect(screen.queryByText('Resolution')).not.toBeInTheDocument();
+  });
+
+  it('should render Time section with zero and custom input only', async () => {
     const { container } = render(ScreenshotTab, { props: defaultProps });
-    expect(screen.getByText('Time')).toBeInTheDocument();
-    expect(screen.getByText('5.5s')).toBeInTheDocument();
+    await selectRenderMode();
+    expect(screen.getByText('Capture frame at:')).toBeInTheDocument();
+    expect(screen.getByText('Renders preceding frames before capturing this frame.')).toBeInTheDocument();
+    expect(screen.queryByText('5.5s')).not.toBeInTheDocument();
     expect(screen.getByText('0')).toBeInTheDocument();
     // Custom time input
     const customInput = container.querySelector('.recording-duration-input');
     expect(customInput).toBeInTheDocument();
   });
 
-  it('current time button should be active by default', () => {
+  it('zero should be active by default', async () => {
     render(ScreenshotTab, { props: defaultProps });
-    const currentTimeBtn = screen.getByText('5.5s');
-    expect(currentTimeBtn).toHaveClass('active');
-  });
-
-  it('should show current time value on button', () => {
-    render(ScreenshotTab, { props: { ...defaultProps, currentTime: 12.3 } });
-    expect(screen.getByText('12.3s')).toBeInTheDocument();
+    await selectRenderMode();
+    const zeroBtn = screen.getByText('0');
+    expect(zeroBtn).toHaveClass('active');
   });
 
   it('should switch to zero time mode', async () => {
     render(ScreenshotTab, { props: defaultProps });
+    await selectRenderMode();
     const zeroBtn = screen.getByText('0');
     await fireEvent.click(zeroBtn);
 
     expect(zeroBtn).toHaveClass('active');
-    expect(screen.getByText('5.5s')).not.toHaveClass('active');
   });
 
   it('custom time input should activate custom mode on focus', async () => {
     const { container } = render(ScreenshotTab, { props: defaultProps });
+    await selectRenderMode();
     const customInput = container.querySelector('.recording-duration-input') as HTMLInputElement;
     await fireEvent.focus(customInput);
 
@@ -77,16 +89,18 @@ describe('ScreenshotTab', () => {
     expect(customContainer).toHaveClass('active');
   });
 
-  it('should render Resolution section with presets', () => {
+  it('should render Resolution section with presets', async () => {
     render(ScreenshotTab, { props: defaultProps });
+    await selectRenderMode();
     expect(screen.getByText('Resolution')).toBeInTheDocument();
     expect(screen.getByText('720p')).toBeInTheDocument();
     expect(screen.getByText('1080p')).toBeInTheDocument();
     expect(screen.getByText('4K')).toBeInTheDocument();
   });
 
-  it('current resolution should be active by default and show canvas dimensions', () => {
+  it('current resolution should be active by default and show canvas dimensions', async () => {
     render(ScreenshotTab, { props: defaultProps });
+    await selectRenderMode();
     // The \u00d7 is the rendered entity for &times;
     const currentResBtn = screen.getByText('800\u00d7600');
     expect(currentResBtn).toHaveClass('active');
@@ -94,25 +108,37 @@ describe('ScreenshotTab', () => {
 
   it('should render Capture button', () => {
     render(ScreenshotTab, { props: defaultProps });
-    expect(screen.getByText('Capture')).toBeInTheDocument();
+    expect(screen.getByText('Capture screenshot')).toBeInTheDocument();
   });
 
-  it('should call onScreenshot with PNG format and current time', async () => {
+  it('captures the live canvas by default', async () => {
     render(ScreenshotTab, { props: defaultProps });
-    await fireEvent.click(screen.getByText('Capture'));
+    await fireEvent.click(screen.getByText('Capture screenshot'));
 
     expect(defaultProps.onScreenshot).toHaveBeenCalledTimes(1);
     const call = defaultProps.onScreenshot.mock.calls[0][0];
+    expect(call.mode).toBe('live');
     expect(call.format).toBe('png');
-    expect(call.time).toBe(5.5);
+    expect(call.time).toBeUndefined();
     expect(call.width).toBe(800);
     expect(call.height).toBe(600);
+  });
+
+  it('should call onScreenshot with PNG format and zero time in render mode', async () => {
+    render(ScreenshotTab, { props: defaultProps });
+    await selectRenderMode();
+    await fireEvent.click(screen.getByText('Capture screenshot'));
+
+    const call = defaultProps.onScreenshot.mock.calls[0][0];
+    expect(call.mode).toBe('render');
+    expect(call.format).toBe('png');
+    expect(call.time).toBe(0);
   });
 
   it('should call onScreenshot with JPEG format', async () => {
     render(ScreenshotTab, { props: defaultProps });
     await fireEvent.click(screen.getByText('JPEG'));
-    await fireEvent.click(screen.getByText('Capture'));
+    await fireEvent.click(screen.getByText('Capture screenshot'));
 
     const call = defaultProps.onScreenshot.mock.calls[0][0];
     expect(call.format).toBe('jpeg');
@@ -120,18 +146,54 @@ describe('ScreenshotTab', () => {
 
   it('should call onScreenshot with correct resolution when 720p selected', async () => {
     render(ScreenshotTab, { props: defaultProps });
+    await selectRenderMode();
     await fireEvent.click(screen.getByText('720p'));
-    await fireEvent.click(screen.getByText('Capture'));
+    await fireEvent.click(screen.getByText('Capture screenshot'));
 
     const call = defaultProps.onScreenshot.mock.calls[0][0];
     expect(call.width).toBe(1280);
     expect(call.height).toBe(720);
   });
 
+  it('honours a saved 480p render preference even though it is not a visible preset', async () => {
+    updateScreenshotCapturePreferences({
+      format: 'png', mode: 'render', startMode: 'zero', customTime: '',
+      resolution: '480p', customWidth: '', customHeight: '',
+    });
+    render(ScreenshotTab, { props: defaultProps });
+    await fireEvent.click(screen.getByText('Capture screenshot'));
+
+    expect(defaultProps.onScreenshot).toHaveBeenCalledWith(expect.objectContaining({
+      mode: 'render', width: 854, height: 480,
+    }));
+  });
+
+  it('uses a custom render resolution and falls back independently for invalid dimensions', async () => {
+    const { container } = render(ScreenshotTab, { props: defaultProps });
+    await selectRenderMode();
+    const [width, height] = container.querySelectorAll('.recording-custom-res-input') as NodeListOf<HTMLInputElement>;
+    await fireEvent.focus(width);
+    await fireEvent.input(width, { target: { value: '1600' } });
+    await fireEvent.input(height, { target: { value: 'not-a-number' } });
+    await fireEvent.click(screen.getByText('Capture screenshot'));
+
+    expect(defaultProps.onScreenshot).toHaveBeenCalledWith(expect.objectContaining({
+      mode: 'render', width: 1600, height: 600,
+    }));
+  });
+
+  it('selects custom resolution with the keyboard', async () => {
+    const { container } = render(ScreenshotTab, { props: defaultProps });
+    await selectRenderMode();
+    await fireEvent.keyDown(container.querySelector('.recording-custom-res')!);
+    expect(container.querySelector('.recording-custom-res')).toHaveClass('active');
+  });
+
   it('should call onScreenshot with time 0 when zero mode selected', async () => {
     render(ScreenshotTab, { props: defaultProps });
+    await selectRenderMode();
     await fireEvent.click(screen.getByText('0'));
-    await fireEvent.click(screen.getByText('Capture'));
+    await fireEvent.click(screen.getByText('Capture screenshot'));
 
     const call = defaultProps.onScreenshot.mock.calls[0][0];
     expect(call.time).toBe(0);
@@ -139,12 +201,24 @@ describe('ScreenshotTab', () => {
 
   it('should call onScreenshot with custom time when custom mode used', async () => {
     const { container } = render(ScreenshotTab, { props: defaultProps });
+    await selectRenderMode();
     const customInput = container.querySelector('.recording-duration-input') as HTMLInputElement;
     await fireEvent.focus(customInput);
     await fireEvent.input(customInput, { target: { value: '3.7' } });
-    await fireEvent.click(screen.getByText('Capture'));
+    await fireEvent.click(screen.getByText('Capture screenshot'));
 
     const call = defaultProps.onScreenshot.mock.calls[0][0];
     expect(call.time).toBe(3.7);
   });
+  it.each([['800×600', 800, 600], ['1080p', 1920, 1080], ['4K', 3840, 2160]])('exports the selected %s resolution and returns to Live size', async (label, width, height) => {
+    render(ScreenshotTab, { props: defaultProps });
+    await selectRenderMode();
+    await fireEvent.click(screen.getByText(label));
+    await fireEvent.click(screen.getByText('Capture screenshot'));
+    expect(defaultProps.onScreenshot).toHaveBeenLastCalledWith(expect.objectContaining({ mode: 'render', width, height }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Live' }));
+    await fireEvent.click(screen.getByText('Capture screenshot'));
+    expect(defaultProps.onScreenshot).toHaveBeenLastCalledWith(expect.objectContaining({ mode: 'live', width: 800, height: 600, time: undefined }));
+  });
+
 });

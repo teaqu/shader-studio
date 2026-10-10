@@ -71,16 +71,19 @@ export class WebGPUFrameRenderer {
     this.pausedCustomUniformValues = null;
   }
 
-  renderFrame(time: number, capture: boolean, imageOnly = false): void {
+  pendingScreenshotCopies: Array<(encoder: GPUCommandEncoder, texture: GPUTexture) => void> = [];
+  private completedComputePasses: ReadonlySet<string> = new Set();
+
+  renderFrame(time: number, capture: boolean, imageOnly = false, captureCanvas?: (encoder: GPUCommandEncoder, texture: GPUTexture) => void): void {
     try {
-      this.encodeFrame(time, capture, imageOnly);
+      this.encodeFrame(time, capture, imageOnly, captureCanvas);
     } catch (error) {
       this.host.storage.captures.cancel('Storage capture cancelled because the frame could not be submitted');
       throw error;
     }
   }
 
-  private encodeFrame(time: number, capture: boolean, imageOnly: boolean): void {
+  private encodeFrame(time: number, capture: boolean, imageOnly: boolean, captureCanvas?: (encoder: GPUCommandEncoder, texture: GPUTexture) => void): void {
     if (!this.host.device || !this.host.context) {
       return;
     }
@@ -211,7 +214,9 @@ export class WebGPUFrameRenderer {
       // All-or-nothing: the pass's WGSL was compiled against its full channel
       // list, so if any channel source is unresolvable this frame, binding the
       // survivors positionally would mis-bind them. Skip the pass entirely.
-      const channelResources = this.host.channels.getChannelResources(pass, isPaused, encodedComputePasses);
+      const channelResources = this.host.channels.getChannelResources(
+        pass, isPaused, imageOnly ? this.completedComputePasses : encodedComputePasses, imageOnly,
+      );
       if (channelResources === null) {
         continue;
       }
@@ -311,6 +316,14 @@ export class WebGPUFrameRenderer {
     }
 
     if (canvasTexture && this.host.canvas) {
+      captureCanvas?.(encoder, canvasTexture);
+      if (!capture && this.pendingScreenshotCopies.length > 0) {
+        const captures = this.pendingScreenshotCopies;
+        this.pendingScreenshotCopies = [];
+        for (const copy of captures) {
+          copy(encoder, canvasTexture);
+        }
+      }
       this.host.pixelRegionCapturer?.encodeAfterRender(encoder, canvasTexture, this.host.canvas.width, this.host.canvas.height);
     }
     this.host.device.queue.submit([encoder.finish()]);
@@ -325,6 +338,9 @@ export class WebGPUFrameRenderer {
     }
     for (const passName of encodedComputePasses) {
       this.host.session.computePipelines.get(passName)?.swap();
+    }
+    if (!imageOnly) {
+      this.completedComputePasses = encodedComputePasses;
     }
 
     if (!skipBufferPasses && !imageOnly) {

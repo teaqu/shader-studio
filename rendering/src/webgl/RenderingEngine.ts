@@ -742,6 +742,42 @@ export class RenderingEngine implements RenderingEngineInterface {
     this.frameRenderer.renderForCapture();
   }
 
+  public async captureCurrentFrame(): Promise<ImageData> {
+    if (!this.glCanvas || !this.gl) {
+      throw new Error("Cannot capture the current frame before WebGL is initialized");
+    }
+    return this.frameRenderer.readNextDisplayedFrame(() => this.readCanvasImage());
+  }
+
+  /** Read the default framebuffer as top-down RGBA. Call in the task that drew it. */
+  private readCanvasImage(): ImageData {
+    if (!this.glCanvas || !this.gl) {
+      throw new Error("Cannot read the WebGL canvas after disposal");
+    }
+    if (this.gl.isContextLost()) {
+      // A lost context reads back as transparent black; don't save that as the preview.
+      throw new Error("Cannot capture the preview: its WebGL context was lost. Reload the preview and try again.");
+    }
+    const { width, height } = this.glCanvas;
+    const source = new Uint8Array(width * height * 4);
+    this.gl.readPixels(
+      0,
+      0,
+      width,
+      height,
+      this.gl.RGBA,
+      this.gl.UNSIGNED_BYTE,
+      source,
+    );
+    const rgba = new Uint8ClampedArray(source.length);
+    const rowBytes = width * 4;
+    for (let row = 0; row < height; row += 1) {
+      const sourceOffset = (height - row - 1) * rowBytes;
+      rgba.set(source.subarray(sourceOffset, sourceOffset + rowBytes), row * rowBytes);
+    }
+    return new ImageData(rgba, width, height);
+  }
+
   private getVariableCaptureTextureBindings(inputConfig: Record<string, ConfigInput>): (PiTexture | null)[] {
     return resolveTextureBindings({
       inputs: inputConfig,
@@ -771,6 +807,11 @@ export class RenderingEngine implements RenderingEngineInterface {
 
   public getCurrentCustomUniforms(): { name: string; type: string; value: number | number[] | boolean }[] {
     return this.customUniformManager?.getCurrentValues() || [];
+  }
+
+  public getDisplayedCustomUniforms(): { name: string; type: string; value: number | number[] | boolean }[] {
+    const frozen = this.frameRenderer?.getPausedCustomUniforms();
+    return frozen ? frozen.map((value) => this.copyCustomUniform(value)) : this.getCurrentCustomUniforms();
   }
 
   public setCustomUniformValues(values: { name: string; type: string; value: number | number[] | boolean }[]): void {
@@ -822,6 +863,10 @@ export class RenderingEngine implements RenderingEngineInterface {
 
   public collectPixelRegionResults(): PixelRegionResult[] {
     return this.pixelRegionCapturer?.collectResults() ?? [];
+  }
+
+  public getPixelRegionRequestStage(requestId: number): ReturnType<WebGLPixelRegionCapturer["getRequestStage"]> {
+    return this.pixelRegionCapturer?.getRequestStage(requestId) ?? null;
   }
 
   public cancelPixelRegionRequests(): void {

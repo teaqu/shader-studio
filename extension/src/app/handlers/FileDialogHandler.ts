@@ -222,9 +222,10 @@ export class FileDialogHandler {
   }
 
   async handleSaveFile(
-    payload: { data: string; defaultName: string; filters: Record<string, string[]> },
+    payload: { data: string; defaultName: string; filters: Record<string, string[]>; requestId?: string },
     respondFn: ResponseSender,
   ): Promise<void> {
+    const requestId = payload.requestId;
     try {
       const saveFilters: Record<string, string[]> = {};
       for (const [label, exts] of Object.entries(payload.filters)) {
@@ -237,16 +238,16 @@ export class FileDialogHandler {
       });
 
       if (!result) {
-        respondFn({ type: 'saveFileResult', payload: { success: false, error: 'Cancelled' } });
+        respondFn({ type: 'saveFileResult', payload: { success: false, cancelled: true, error: 'Cancelled', requestId } });
         return;
       }
 
       const buffer = Buffer.from(payload.data, 'base64');
       fs.writeFileSync(result.fsPath, buffer);
-      respondFn({ type: 'saveFileResult', payload: { success: true, path: result.fsPath } });
+      respondFn({ type: 'saveFileResult', payload: { success: true, path: result.fsPath, requestId } });
       this.logger.info(`File saved: ${result.fsPath}`);
     } catch (error) {
-      respondFn({ type: 'saveFileResult', payload: { success: false, error: String(error) } });
+      respondFn({ type: 'saveFileResult', payload: { success: false, error: String(error), requestId } });
       this.logger.error(`Failed to save file: ${error}`);
     }
   }

@@ -4,16 +4,32 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const {
   mockSubscribe,
   mockCaptureScreenshot,
+  mockCaptureLiveScreenshot,
+  mockRecordLive,
+  mockStopLiveRecording,
   mockRecord,
   mockCancel,
+  mockSetSaving,
+  mockSetError,
+  mockSetNotice,
+  mockConsumeOutputNotice,
+  mockReset,
 } = vi.hoisted(() => ({
   mockSubscribe: vi.fn((cb: any) => {
     cb({ isRecording: false });
     return () => {};
   }),
   mockCaptureScreenshot: vi.fn(() => Promise.resolve(new Blob(['img'], { type: 'image/png' }))),
+  mockCaptureLiveScreenshot: vi.fn(() => Promise.resolve(new Blob(['live'], { type: 'image/png' }))),
+  mockRecordLive: vi.fn(() => Promise.resolve(new Blob(['live-video'], { type: 'video/webm' }))),
+  mockStopLiveRecording: vi.fn(),
   mockRecord: vi.fn(() => Promise.resolve(new Blob(['vid'], { type: 'video/webm' }))),
   mockCancel: vi.fn(),
+  mockSetSaving: vi.fn(),
+  mockSetError: vi.fn(),
+  mockSetNotice: vi.fn(),
+  mockConsumeOutputNotice: vi.fn((): string | null => null),
+  mockReset: vi.fn(),
 }));
 
 vi.mock('../lib/stores/recordingStore', () => ({
@@ -22,9 +38,11 @@ vi.mock('../lib/stores/recordingStore', () => ({
     startRecording: vi.fn(),
     updateProgress: vi.fn(),
     setFinalizing: vi.fn(),
-    setError: vi.fn(),
+    setSaving: mockSetSaving,
+    setError: mockSetError,
+    setNotice: mockSetNotice,
     setPreviewCanvas: vi.fn(),
-    reset: vi.fn(),
+    reset: mockReset,
   },
 }));
 
@@ -32,8 +50,12 @@ vi.mock('../lib/recording/ShaderRecorder', () => ({
   ShaderRecorder: vi.fn(function () {
     return ({
       captureScreenshot: mockCaptureScreenshot,
+      captureLiveScreenshot: mockCaptureLiveScreenshot,
+      recordLive: mockRecordLive,
+      stopLiveRecording: mockStopLiveRecording,
       record: mockRecord,
       cancel: mockCancel,
+      consumeOutputNotice: mockConsumeOutputNotice,
     });
   }),
 }));
@@ -83,6 +105,20 @@ describe('RecordingManager', () => {
   });
 
   describe('screenshot', () => {
+    it('uses the current engine for Live screenshots instead of building Render context', async () => {
+      const liveEngine = { captureCurrentFrame: vi.fn() } as any;
+      const liveManager = new RecordingManager(getContext, sendFile, onStateChanged, () => liveEngine);
+
+      await liveManager.screenshot({ mode: 'live', format: 'png', width: 800, height: 600 });
+
+      expect(mockCaptureLiveScreenshot).toHaveBeenCalledWith(
+        { mode: 'live', format: 'png', width: 800, height: 600 },
+        liveEngine,
+      );
+      expect(mockCaptureScreenshot).not.toHaveBeenCalled();
+      expect(getContext).toHaveBeenCalledOnce();
+    });
+
     it('should call captureScreenshot with shader context', async () => {
       await manager.screenshot({ format: 'png', width: 800, height: 600 });
 
@@ -132,6 +168,54 @@ describe('RecordingManager', () => {
       await manager.screenshot({ format: 'png', width: 800, height: 600 });
       expect(sendFile).not.toHaveBeenCalled();
     });
+
+    it('surfaces screenshot failures in the recording panel', async () => {
+      mockCaptureScreenshot.mockRejectedValueOnce(new Error('Readback failed'));
+
+      await manager.screenshot({ format: 'png', width: 800, height: 600 });
+
+      expect(mockSetError).toHaveBeenCalledWith('Readback failed');
+    });
+
+    it('stringifies non-Error screenshot failures for the recording panel', async () => {
+      mockCaptureScreenshot.mockRejectedValueOnce('readback unavailable');
+
+      await manager.screenshot({ format: 'png', width: 800, height: 600 });
+
+      expect(mockSetError).toHaveBeenCalledWith('readback unavailable');
+    });
+
+    it('shows saving state until the host confirms the file was saved', async () => {
+      const save = Promise.withResolvers<void>();
+      sendFile.mockReturnValueOnce(save.promise);
+      const screenshot = manager.screenshot({ format: 'png', width: 800, height: 600 });
+      await vi.waitFor(() => expect(mockSetSaving).toHaveBeenCalledWith('png'));
+      expect(mockReset).not.toHaveBeenCalled();
+
+      save.resolve();
+      await screenshot;
+
+      expect(mockReset).toHaveBeenCalled();
+    });
+
+    it('surfaces host save failures', async () => {
+      sendFile.mockRejectedValueOnce(new Error('Disk full'));
+
+      await manager.screenshot({ format: 'png', width: 800, height: 600 });
+
+      expect(mockSetError).toHaveBeenCalledWith('Disk full');
+    });
+  });
+
+  it('reports a clear error when Live screenshots are requested before the viewer engine exists', async () => {
+    await new RecordingManager(getContext, sendFile).screenshot({
+      mode: 'live', format: 'png', width: 800, height: 600,
+    });
+
+    expect(mockCaptureLiveScreenshot).not.toHaveBeenCalled();
+    expect(mockSetError).toHaveBeenCalledWith(
+      'Live capture is unavailable because the shader viewer is not ready',
+    );
   });
 
   describe('record', () => {
@@ -149,6 +233,27 @@ describe('RecordingManager', () => {
 
       expect(getContext).toHaveBeenCalled();
       expect(mockRecord).toHaveBeenCalledWith(baseConfig, defaultContext);
+    });
+
+    it('uses the current engine for Live recordings', async () => {
+      // The manager only forwards this engine; renderer behaviour has its own tests.
+      const liveEngine = { captureCurrentFrame: vi.fn(), getCanvas: vi.fn() } as any;
+      const liveManager = new RecordingManager(getContext, sendFile, onStateChanged, () => liveEngine);
+      const config = { ...baseConfig, mode: 'live' as const };
+
+      await liveManager.record(config);
+
+      expect(mockRecordLive).toHaveBeenCalledWith(config, liveEngine);
+      expect(mockRecord).not.toHaveBeenCalled();
+    });
+
+    it('reports a clear error when Live video is requested before the viewer engine exists', async () => {
+      await manager.record({ ...baseConfig, mode: 'live' });
+
+      expect(mockRecordLive).not.toHaveBeenCalled();
+      expect(mockSetError).toHaveBeenCalledWith(
+        'Live capture is unavailable because the shader viewer is not ready',
+      );
     });
 
     it('should call sendFile with webm blob', async () => {
@@ -207,12 +312,85 @@ describe('RecordingManager', () => {
       await manager.record(baseConfig);
       expect(sendFile).not.toHaveBeenCalled();
     });
+
+    it('surfaces video encoder failures in the recording panel', async () => {
+      mockRecord.mockRejectedValueOnce(new Error('Encoder crashed'));
+
+      await manager.record(baseConfig);
+
+      expect(mockSetError).toHaveBeenCalledWith('Encoder crashed');
+    });
+
+    it('resets panel state after user cancellation', async () => {
+      mockRecord.mockRejectedValueOnce(new Error('Recording cancelled'));
+
+      await manager.record(baseConfig);
+
+      expect(mockReset).toHaveBeenCalled();
+      expect(mockSetError).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('output notices', () => {
+    it('shows the recorder notice after a successful save', async () => {
+      mockConsumeOutputNotice.mockReturnValueOnce('Saved at 802 × 602: MP4 needs even dimensions, so 801 × 601 was rounded up.');
+      await manager.record({ format: 'mp4', duration: 1, startTime: 0, fps: 30, width: 801, height: 601 });
+
+      expect(sendFile).toHaveBeenCalledOnce();
+      expect(mockSetNotice).toHaveBeenCalledWith(expect.stringContaining('802 × 602'));
+      expect(mockReset).not.toHaveBeenCalled();
+    });
   });
 
   describe('cancel', () => {
     it('should call recorder cancel', () => {
       manager.cancel();
       expect(mockCancel).toHaveBeenCalled();
+    });
+
+    it('forwards a user stop request for a Live recording', () => {
+      manager.stopLiveRecording();
+      expect(mockStopLiveRecording).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('Live lifecycle', () => {
+    it('stops and saves a Live recording the app has to end, then explains why', async () => {
+      let finishRecording!: (blob: Blob) => void;
+      mockRecordLive.mockImplementationOnce(() => new Promise<Blob>((resolve) => {
+        finishRecording = resolve;
+      }));
+      mockStopLiveRecording.mockImplementationOnce(() => finishRecording(new Blob(['kept'], { type: 'video/webm' })));
+      const liveManager = new RecordingManager(getContext, sendFile, onStateChanged, () => ({}) as any);
+      (liveManager as any)._isLive = true;
+      const recording = liveManager.record({
+        mode: 'live', format: 'webm', duration: 5, startTime: 0, fps: 30, width: 800, height: 600,
+      });
+      liveManager.endLiveRecording('Live recording stopped because a different shader was opened.');
+      await recording;
+
+      expect(mockStopLiveRecording).toHaveBeenCalledOnce();
+      expect(mockCancel).not.toHaveBeenCalled();
+      expect(sendFile).toHaveBeenCalledOnce();
+      expect(mockSetNotice).toHaveBeenCalledWith('Live recording stopped because a different shader was opened.');
+      expect(mockSetError).not.toHaveBeenCalled();
+    });
+
+    it('still discards when the user chooses Discard', async () => {
+      mockRecordLive.mockRejectedValueOnce(new Error('Recording cancelled'));
+      const liveManager = new RecordingManager(getContext, sendFile, onStateChanged, () => ({}) as any);
+      await liveManager.record({
+        mode: 'live', format: 'webm', duration: 5, startTime: 0, fps: 30, width: 800, height: 600,
+      });
+
+      expect(sendFile).not.toHaveBeenCalled();
+      expect(mockReset).toHaveBeenCalled();
+      expect(mockSetNotice).not.toHaveBeenCalled();
+    });
+
+    it('ignores endLiveRecording when no Live recording is running', () => {
+      manager.endLiveRecording('ignored');
+      expect(mockStopLiveRecording).not.toHaveBeenCalled();
     });
   });
 
@@ -223,6 +401,7 @@ describe('RecordingManager', () => {
       const m = new RecordingManager(getContext, sendFile);
       m.dispose();
       expect(unsub).toHaveBeenCalled();
+      expect(mockCancel).toHaveBeenCalled();
     });
 
     it('should not throw if called twice', () => {
@@ -232,18 +411,24 @@ describe('RecordingManager', () => {
   });
 
   describe('default filename', () => {
-    it('should include current date in screenshot filename', async () => {
+    it('uses the main shader filename and capture time for screenshots', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2026, 8, 27, 13, 45, 2, 123));
+      getContext.mockReturnValue({ ...defaultContext, path: '/shaders/aurora.glsl' });
       await manager.screenshot({ format: 'png', width: 100, height: 100 });
       const filename = sendFile.mock.calls[0][1];
-      const today = new Date().toISOString().slice(0, 10);
-      expect(filename).toContain(today);
+      expect(filename).toBe('aurora-2026-09-27_13-45-02-123.png');
+      vi.useRealTimers();
     });
 
-    it('should include current date in recording filename', async () => {
+    it('uses the main shader filename and capture time for recordings', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2026, 8, 27, 13, 45, 2, 123));
+      getContext.mockReturnValue({ ...defaultContext, path: String.raw`C:\shaders\ocean.slang` });
       await manager.record({ format: 'webm', duration: 1, startTime: 0, fps: 30, width: 100, height: 100 });
       const filename = sendFile.mock.calls[0][1];
-      const today = new Date().toISOString().slice(0, 10);
-      expect(filename).toContain(today);
+      expect(filename).toBe('ocean-2026-09-27_13-45-02-123.webm');
+      vi.useRealTimers();
     });
   });
 });

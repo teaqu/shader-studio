@@ -194,6 +194,7 @@ export class WebExtensionHost {
 
     switch (message.type) {
       case 'saveFile': {
+        const saveRequestId = typeof payload.requestId === 'string' ? payload.requestId : undefined;
         try {
           if (typeof payload.data !== 'string' || typeof payload.defaultName !== 'string' || !payload.defaultName.trim()) {
             throw new Error('Invalid export payload');
@@ -212,9 +213,9 @@ export class WebExtensionHost {
             // Give the browser time to consume the URL before releasing it.
             setTimeout(() => URL.revokeObjectURL(url), 1000);
           }
-          this.emitViewer({ type: 'saveFileResult', payload: { success: true } });
+          this.emitViewer({ type: 'saveFileResult', payload: { success: true, requestId: saveRequestId } });
         } catch (error) {
-          this.emitViewer({ type: 'saveFileResult', payload: { success: false, error: String(error) } });
+          this.emitViewer({ type: 'saveFileResult', payload: { success: false, error: String(error), requestId: saveRequestId } });
         }
         return;
       }

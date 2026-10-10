@@ -1,35 +1,48 @@
-import { afterEach, expect, it, vi } from 'vitest';
 import type { HostConfig } from '@shader-studio/ui';
-
-const mocks = vi.hoisted(() => ({
-  configureHost: vi.fn(), mount: vi.fn(), update: vi.fn(),
-  install: vi.fn(), start: vi.fn(),
-}));
-vi.mock('svelte', () => ({ mount: mocks.mount }));
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+const mocks = vi.hoisted(() => ({ mount: vi.fn(), configureHost: vi.fn(), createViewerTransport: vi.fn(), start: vi.fn(), metadata: vi.fn(), update: vi.fn(), preferences: vi.fn() }));
+vi.mock('svelte', async importOriginal => ({ ...await importOriginal<typeof import('svelte')>(), mount: mocks.mount }));
 vi.mock('@shader-studio/ui', () => ({ configureHost: mocks.configureHost }));
-vi.mock('../App.svelte', () => ({ default: {} }));
+vi.mock('../App.svelte', () => ({ default: 'App' }));
 vi.mock('../WebTransport', () => ({ WebTransport: class {
+  createViewerTransport = mocks.createViewerTransport;
   settings = { update: mocks.update };
 } }));
-vi.mock('../slangAssets', () => ({ installSlangAssetMetadata: mocks.install }));
+vi.mock('../settings/settingsState.svelte', () => ({ getEditorPreferences: mocks.preferences }));
 vi.mock('../pwa', () => ({ createPwaController: () => ({ start: mocks.start }) }));
-vi.mock('../settings/settingsState.svelte', () => ({ getEditorPreferences: vi.fn() }));
+vi.mock('../slangAssets', () => ({ installSlangAssetMetadata: mocks.metadata }));
 
-afterEach(() => {
-  document.body.innerHTML = '';
-});
-it('connects persisted wrap commands to the mobile host before mounting the app', async () => {
-  document.body.innerHTML = '<div id="app"></div>';
-  await import('../main');
-  const config = mocks.configureHost.mock.calls[0][0] as HostConfig;
-  expect(config.createTransport?.()).toHaveProperty('settings');
-  config.setEditorWordWrap?.('on');
-  config.setEditorWordWrap?.('off');
-  expect(mocks.update.mock.calls).toEqual([['editor.wordWrap', 'on'], ['editor.wordWrap', 'off']]);
-  expect(config.defaultAssets).toHaveLength(2);
-  expect(config.defaultAssets?.every(asset => asset.thumbnailUri?.startsWith(document.baseURI))).toBe(true);
-  expect(config.capabilities).toEqual({ compileOnSave: false });
-  expect(mocks.install).toHaveBeenCalledOnce();
-  expect(mocks.mount).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ target: document.getElementById('app') }));
-  expect(mocks.start).toHaveBeenCalledOnce();
+describe('standalone host bootstrap', () => {
+  beforeEach(() => {
+    vi.resetModules(); vi.clearAllMocks(); document.body.innerHTML = '<div id="app"></div>';
+  });
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+  it('gives each mounted viewer a transport and configures web capabilities and default assets', async () => {
+    const first = { id: 'first' }, second = { id: 'second' };
+    mocks.createViewerTransport.mockReturnValueOnce(first).mockReturnValueOnce(second);
+    const app = { mounted: true };
+    mocks.mount.mockReturnValue(app);
+    const result = await import('../main');
+    expect(result.default).toBe(app);
+    const config = mocks.configureHost.mock.calls[0][0] as HostConfig;
+    expect(config.createTransport?.()).toBe(first);
+    expect(config.createTransport?.()).toBe(second);
+    expect(config.capabilities).toEqual({ compileOnSave: false });
+    expect(config.defaultAssets).toHaveLength(2);
+    expect(config.defaultAssets).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'Nebula Texture.png', isSameDirectory: false, thumbnailUri: expect.stringMatching(/^http/) })]));
+    expect(mocks.mount).toHaveBeenCalledWith('App', { target: document.getElementById('app'), props: { transport: expect.any(Object), pwa: { start: mocks.start } } });
+    expect(mocks.metadata).toHaveBeenCalledOnce();
+    expect(mocks.start).toHaveBeenCalledOnce();
+  });
+  it('connects persisted wrap commands and preferences to the host', async () => {
+    await import('../main');
+    const config = mocks.configureHost.mock.calls[0][0] as HostConfig;
+    expect(config.getEditorPreferences).toBe(mocks.preferences);
+    config.setEditorWordWrap?.('on');
+    config.setEditorWordWrap?.('off');
+    expect(mocks.update.mock.calls).toEqual([['editor.wordWrap', 'on'], ['editor.wordWrap', 'off']]);
+    expect(config.defaultAssets?.every(asset => asset.thumbnailUri?.startsWith(document.baseURI))).toBe(true);
+  });
 });

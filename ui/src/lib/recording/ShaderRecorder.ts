@@ -1,17 +1,47 @@
 import { viewerCameraRuntimeConfig } from "../state/viewerCameraState.svelte";
 import type { RenderingEngine } from "../../../../rendering/src/types/RenderingEngine";
-import { GifEncoderWrapper } from "./GifEncoder";
-import { VideoEncoderWrapper } from "./VideoEncoder";
+import { assertGifMemoryBudget, GifEncoderWrapper } from "./GifEncoder";
+import { automaticVideoBitrate, VideoEncoderWrapper } from "./VideoEncoder";
 import { recordingStore } from "../stores/recordingStore";
 import { createEngineForLanguage } from "../engineFactory";
-import type { ScreenshotConfig, RecordingConfig, ShaderInfo } from "./types";
+import {
+  createRenderCaptureSnapshot,
+  type RenderCaptureSnapshot,
+  type ScreenshotConfig,
+  type RecordingConfig,
+  type ShaderInfo,
+} from "./types";
+import { createRenderTimeline, type RenderFrameStep, type RenderTimeline } from "./renderTimeline";
+import { liveVideoMimeType } from "./liveVideoFormats";
+import { finalizeLiveMp4 } from "./finalizeLiveMp4";
+import { createLiveVideoCapture, type LiveVideoCapture } from "./LiveVideoCapture";
+import { describeRenderInputLimitations, renderInputLimitations } from "./captureSnapshot";
 
 export type { ScreenshotConfig, RecordingConfig, ShaderInfo };
 
 export class ShaderRecorder {
+  private static readonly SCREENSHOT_HISTORY_FPS = 60;
   private cancelled = false;
   private offscreenEngine: RenderingEngine | null = null;
   private activeGifEncoder: GifEncoderWrapper | null = null;
+  private activeMediaRecorder: MediaRecorder | null = null;
+  private liveStream: MediaStream | null = null;
+  private liveFinalization: AbortController | null = null;
+  private activeLiveVideo: LiveVideoCapture | null = null;
+  private startingLiveVideo = false;
+  private stopLiveVideoRequested = false;
+  private rejectLiveRecording: ((reason?: unknown) => void) | null = null;
+  private outputNotice: string | null = null;
+
+  /**
+   * Something the user should know about the last saved output, e.g. that
+   * MP4 dimensions were rounded to even numbers. Cleared once read.
+   */
+  consumeOutputNotice(): string | null {
+    const notice = this.outputNotice;
+    this.outputNotice = null;
+    return notice;
+  }
 
   private createOffscreenEngine(width: number, height: number, language: ShaderInfo["language"]): { canvas: HTMLCanvasElement; engine: RenderingEngine } {
     const canvas = document.createElement("canvas");
@@ -37,29 +67,281 @@ export class ShaderRecorder {
     recordingStore.setPreviewCanvas(null);
   }
 
+  private encodeImageData(image: ImageData, format: ScreenshotConfig["format"]): Promise<Blob> {
+    const canvas = document.createElement("canvas");
+    canvas.width = image.width;
+    canvas.height = image.height;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      throw new Error("Failed to create an image encoder for the captured frame");
+    }
+    context.putImageData(image, 0, 0);
+    const type = format === "jpeg" ? "image/jpeg" : "image/png";
+    return new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) {
+          resolve(blob);
+        } else {
+          reject(new Error("Failed to encode the captured frame"));
+        }
+      }, type, format === "jpeg" ? 0.95 : undefined);
+    });
+  }
+
+  async captureLiveScreenshot(
+    config: ScreenshotConfig,
+    engine: Pick<RenderingEngine, "captureCurrentFrame">,
+  ): Promise<Blob> {
+    this.outputNotice = null;
+    const image = await engine.captureCurrentFrame();
+    return this.encodeImageData(image, config.format);
+  }
+
+  recordLive(config: RecordingConfig, engine: Pick<RenderingEngine, "getCanvas"> & Partial<Pick<RenderingEngine, "captureCurrentFrame">>): Promise<Blob> {
+    this.outputNotice = null;
+    if (config.format === "gif") {
+      return Promise.reject(new Error("Live GIF recording is not supported"));
+    }
+    if (this.activeMediaRecorder || this.liveFinalization) {
+      return Promise.reject(new Error("A Live recording is already active"));
+    }
+    const canvas = engine.getCanvas();
+    if (!canvas || typeof canvas.captureStream !== "function") {
+      return Promise.reject(new Error("Live video capture is not supported by this host"));
+    }
+    if (typeof globalThis.VideoEncoder !== "undefined") {
+      const captureFrame = engine.captureCurrentFrame && (config.format === "mp4" || canvas.getContext?.("webgpu"))
+        ? () => engine.captureCurrentFrame!() : undefined;
+      return this.recordQualityLiveVideo(canvas, config.fps, config.format, captureFrame);
+    }
+
+    if (typeof MediaRecorder === "undefined") {
+      return Promise.reject(new Error("Live video recording is not supported by this host"));
+    }
+
+    const mimeType = liveVideoMimeType(config.format);
+    if (!mimeType) {
+      return Promise.reject(new Error(`${config.format.toUpperCase()} Live recording is not supported by this host`));
+    }
+
+    this.cancelled = false;
+    const stream = canvas.captureStream(config.fps);
+    let mediaRecorder: MediaRecorder;
+    try {
+      mediaRecorder = new MediaRecorder(stream, {
+        mimeType,
+        videoBitsPerSecond: automaticVideoBitrate({
+          width: canvas.width,
+          height: canvas.height,
+          fps: config.fps,
+        }),
+      });
+    } catch (error) {
+      for (const track of stream.getTracks()) {
+        track.stop();
+      }
+      return Promise.reject(error);
+    }
+    this.activeMediaRecorder = mediaRecorder;
+    this.liveStream = stream;
+    recordingStore.startLiveRecording(config.format);
+
+    return new Promise<Blob>((resolve, reject) => {
+      const chunks: Blob[] = [];
+      this.rejectLiveRecording = reject;
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+        }
+      };
+      mediaRecorder.onerror = () => {
+        this.cleanupLiveRecording();
+        reject(new Error("Live video encoding failed"));
+      };
+      mediaRecorder.onstop = () => {
+        const cancelled = this.cancelled;
+        this.cleanupLiveRecording();
+        if (cancelled) {
+          reject(new Error("Recording cancelled"));
+        } else if (chunks.length === 0) {
+          // The canvas never produced a frame, e.g. because the preview lost
+          // its GPU context. Saving would write an empty, unplayable file.
+          reject(new Error(
+            "Live recording captured no frames from the preview. If the preview is blank, reload it and try again.",
+          ));
+        } else {
+          const blob = new Blob(chunks, { type: mediaRecorder.mimeType || mimeType });
+          if (config.format === "mp4") {
+            const controller = new AbortController();
+            this.liveFinalization = controller;
+            void finalizeLiveMp4(blob, controller.signal).then(resolve, reject).finally(() => {
+              this.liveFinalization = null;
+            });
+          } else {
+            resolve(blob);
+          }
+        }
+      };
+      try {
+        mediaRecorder.start(1000);
+      } catch (error) {
+        this.cleanupLiveRecording();
+        reject(error);
+      }
+    });
+  }
+
+  stopLiveRecording(): void {
+    if (this.startingLiveVideo) {
+      this.stopLiveVideoRequested = true;
+      recordingStore.setFinalizing();
+      return;
+    }
+    if (this.activeLiveVideo) {
+      recordingStore.setFinalizing();
+      this.activeLiveVideo.stop();
+      return;
+    }
+    if (this.activeMediaRecorder?.state === "recording") {
+      recordingStore.setFinalizing();
+      this.activeMediaRecorder.stop();
+    }
+  }
+
+  private async recordQualityLiveVideo(canvas: HTMLCanvasElement, fps: number, format: "mp4" | "webm", captureFrame?: () => Promise<ImageData>): Promise<Blob> {
+    this.cancelled = false;
+    const controller = new AbortController();
+    this.liveFinalization = controller;
+    this.startingLiveVideo = true;
+    this.stopLiveVideoRequested = false;
+    recordingStore.startLiveRecording(format);
+    try {
+      this.activeLiveVideo = captureFrame
+        ? await createLiveVideoCapture(canvas, fps, format, controller.signal, captureFrame)
+        : await createLiveVideoCapture(canvas, fps, format, controller.signal);
+      this.startingLiveVideo = false;
+      if (format === "mp4" && (canvas.width % 2 || canvas.height % 2)) {
+        this.outputNotice = "MP4 dimensions were rounded up to even pixels for video encoding.";
+      }
+      if (this.stopLiveVideoRequested) {
+        this.activeLiveVideo.stop();
+      }
+      return await this.activeLiveVideo.result;
+    } finally {
+      this.activeLiveVideo = null;
+      this.startingLiveVideo = false;
+      this.liveFinalization = null;
+    }
+  }
+
+  private cleanupLiveRecording(): void {
+    for (const track of this.liveStream?.getTracks() ?? []) {
+      track.stop();
+    }
+    this.liveStream = null;
+    this.activeMediaRecorder = null;
+    this.rejectLiveRecording = null;
+  }
+
+  private async initializeCaptureEngine(
+    engine: RenderingEngine,
+    snapshot: RenderCaptureSnapshot,
+  ): Promise<void> {
+    const args: Parameters<RenderingEngine["compileShaderPipeline"]> = [
+      snapshot.code,
+      viewerCameraRuntimeConfig(snapshot.config),
+      snapshot.path,
+      snapshot.buffers,
+    ];
+    if (
+      snapshot.customUniformDeclarations !== undefined
+      || snapshot.customUniformInfo.length > 0
+      || snapshot.slangModules !== undefined
+      || snapshot.slangSourcePath !== undefined
+      || snapshot.slangSourcePaths !== undefined
+    ) {
+      args.push(snapshot.customUniformDeclarations, snapshot.customUniformInfo);
+    }
+    if (
+      snapshot.slangModules !== undefined
+      || snapshot.slangSourcePath !== undefined
+      || snapshot.slangSourcePaths !== undefined
+    ) {
+      args.push(snapshot.slangModules);
+    }
+    if (snapshot.slangSourcePath !== undefined || snapshot.slangSourcePaths !== undefined) {
+      args.push(snapshot.slangSourcePath);
+    }
+    if (snapshot.slangSourcePaths !== undefined) {
+      args.push(snapshot.slangSourcePaths);
+    }
+
+    const result = await engine.compileShaderPipeline(...args);
+    if (result && !result.success) {
+      throw new Error(`Shader compilation failed: ${result.errors?.join(", ")}`);
+    }
+    engine.setCustomUniformValues(snapshot.customUniformValues);
+  }
+
+  private async renderStep(
+    engine: RenderingEngine,
+    tm: ReturnType<RenderingEngine["getTimeManager"]>,
+    step: RenderFrameStep,
+  ): Promise<void> {
+    tm.setTime(step.time);
+    tm.setFrame(step.frame);
+    tm.setDeltaTime(step.delta);
+    await engine.renderForCapture();
+  }
+
+  private async prepareTimeline(
+    engine: RenderingEngine,
+    tm: ReturnType<RenderingEngine["getTimeManager"]>,
+    timeline: RenderTimeline,
+  ): Promise<void> {
+    for (let index = 0; index < timeline.preparationCount; index++) {
+      if (this.cancelled) {
+        throw new Error("Recording cancelled");
+      }
+      await this.renderStep(engine, tm, timeline.preparationStep(index));
+      recordingStore.updatePreparation(index + 1, timeline.preparationCount);
+      if (this.cancelled) {
+        throw new Error("Recording cancelled");
+      }
+      if (index % 4 === 3) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    }
+  }
+
   async captureScreenshot(
     config: ScreenshotConfig,
     shaderInfo: ShaderInfo,
   ): Promise<Blob> {
-    const { canvas, engine } = this.createOffscreenEngine(config.width, config.height, shaderInfo.language);
+    this.cancelled = false;
+    const snapshot = createRenderCaptureSnapshot(shaderInfo);
+    this.outputNotice = describeRenderInputLimitations(renderInputLimitations(snapshot));
+    const { canvas, engine } = this.createOffscreenEngine(config.width, config.height, snapshot.language);
 
     try {
-      const result = await engine.compileShaderPipeline(
-        shaderInfo.code,
-        viewerCameraRuntimeConfig(shaderInfo.config),
-        shaderInfo.path,
-        shaderInfo.buffers,
-      );
-      if (result && !result.success) {
-        throw new Error(`Shader compilation failed: ${result.errors?.join(", ")}`);
-      }
+      await this.initializeCaptureEngine(engine, snapshot);
 
       const tm = engine.getTimeManager();
       const time = config.time ?? 0;
-      tm.setTime(time);
-      tm.setFrame(0);
-      tm.setDeltaTime(0);
-      engine.renderForCapture();
+      const timeline = createRenderTimeline(time, ShaderRecorder.SCREENSHOT_HISTORY_FPS);
+      if (timeline.preparationCount > 0) {
+        recordingStore.setPreviewCanvas(canvas);
+        recordingStore.startPreparing(config.format, 1, timeline.preparationCount);
+      }
+      await this.prepareTimeline(engine, tm, timeline);
+      if (timeline.preparationCount > 0) {
+        recordingStore.startRecording(config.format, 1);
+      }
+      await this.renderStep(engine, tm, timeline.outputStep(0));
+      if (timeline.preparationCount > 0) {
+        recordingStore.updateProgress(1, 1);
+        recordingStore.setFinalizing();
+      }
 
       const type = config.format === "jpeg" ? "image/jpeg" : "image/png";
       return new Promise<Blob>((resolve, reject) => {
@@ -77,6 +359,7 @@ export class ShaderRecorder {
       });
     } finally {
       this.disposeOffscreen(canvas, engine);
+      recordingStore.reset();
     }
   }
 
@@ -85,6 +368,7 @@ export class ShaderRecorder {
     shaderInfo: ShaderInfo,
   ): Promise<Blob> {
     this.cancelled = false;
+    const snapshot = createRenderCaptureSnapshot(shaderInfo);
 
     // H.264 (MP4) requires even dimensions
     let width = config.width;
@@ -93,35 +377,48 @@ export class ShaderRecorder {
       width = width % 2 === 0 ? width : width + 1;
       height = height % 2 === 0 ? height : height + 1;
     }
+    const notices = [
+      width !== config.width || height !== config.height
+        ? `Saved at ${width} × ${height}: MP4 needs even dimensions, so ${config.width} × ${config.height} was rounded up.`
+        : null,
+      describeRenderInputLimitations(renderInputLimitations(snapshot)),
+    ].filter((notice): notice is string => notice !== null);
+    this.outputNotice = notices.length > 0 ? notices.join(" ") : null;
 
-    const { canvas, engine } = this.createOffscreenEngine(width, height, shaderInfo.language);
+    const { canvas, engine } = this.createOffscreenEngine(width, height, snapshot.language);
     this.offscreenEngine = engine;
 
     try {
-      const result = await engine.compileShaderPipeline(
-        shaderInfo.code,
-        viewerCameraRuntimeConfig(shaderInfo.config),
-        shaderInfo.path,
-        shaderInfo.buffers,
-      );
-      if (result && !result.success) {
-        throw new Error(`Shader compilation failed: ${result.errors?.join(", ")}`);
-      }
+      await this.initializeCaptureEngine(engine, snapshot);
 
       recordingStore.setPreviewCanvas(canvas);
 
       const tm = engine.getTimeManager();
       const totalFrames = Math.ceil(config.duration * config.fps);
-      const dt = 1 / config.fps;
+      let videoEncoding: { codec: "avc" | "vp8" | "vp9"; bitrate: number } | undefined;
+      if (config.format === "gif") {
+        assertGifMemoryBudget(width, height, totalFrames);
+      } else {
+        videoEncoding = await VideoEncoderWrapper.supportedEncoding({ width, height, fps: config.fps, format: config.format });
+      }
+      const timeline = createRenderTimeline(config.startTime, config.fps);
 
-      recordingStore.startRecording(config.format, totalFrames);
+      if (timeline.preparationCount > 0) {
+        recordingStore.startPreparing(config.format, totalFrames, timeline.preparationCount);
+      } else {
+        recordingStore.startRecording(config.format, totalFrames);
+      }
+      await this.prepareTimeline(engine, tm, timeline);
+      if (timeline.preparationCount > 0) {
+        recordingStore.startRecording(config.format, totalFrames);
+      }
 
       let blob: Blob;
 
       if (config.format === "gif") {
-        blob = await this.recordGif(canvas, engine, tm, config, totalFrames, dt, width, height);
+        blob = await this.recordGif(canvas, engine, tm, config, totalFrames, width, height, timeline, snapshot.language);
       } else {
-        blob = await this.recordVideo(canvas, engine, tm, config, totalFrames, dt, width, height);
+        blob = await this.recordVideo(canvas, engine, tm, config, totalFrames, width, height, timeline, videoEncoding, snapshot.language);
       }
 
       return blob;
@@ -134,9 +431,16 @@ export class ShaderRecorder {
 
   cancel(): void {
     this.cancelled = true;
+    this.liveFinalization?.abort(new Error("Recording cancelled"));
     if (this.activeGifEncoder) {
       this.activeGifEncoder.cancel();
       this.activeGifEncoder = null;
+    }
+    if (this.activeMediaRecorder?.state === "recording") {
+      this.activeMediaRecorder.stop();
+    } else if (this.rejectLiveRecording) {
+      this.rejectLiveRecording(new Error("Recording cancelled"));
+      this.cleanupLiveRecording();
     }
   }
 
@@ -146,16 +450,19 @@ export class ShaderRecorder {
     tm: ReturnType<RenderingEngine["getTimeManager"]>,
     config: RecordingConfig,
     totalFrames: number,
-    dt: number,
     width: number,
     height: number,
+    timeline: RenderTimeline,
+    language?: ShaderInfo["language"],
   ): Promise<Blob> {
     const encoder = new GifEncoderWrapper({
       width,
       height,
       fps: config.fps,
       quality: config.quality ?? 100,
-      repeat: config.loopCount ?? 0,
+      repeat: config.loopCount === 0 || config.loopCount === undefined
+        ? undefined
+        : Math.max(0, config.loopCount),
     });
     this.activeGifEncoder = encoder;
 
@@ -164,13 +471,11 @@ export class ShaderRecorder {
         throw new Error("Recording cancelled");
       }
 
-      const time = config.startTime + i * dt;
-      tm.setTime(time);
-      tm.setFrame(i);
-      tm.setDeltaTime(dt);
-      renderingEngine.renderForCapture();
+      await this.renderStep(renderingEngine, tm, timeline.outputStep(i));
 
-      const imageData = this.captureGifFrame(canvas, width, height);
+      const imageData = language === "wgsl" || language === "slang"
+        ? await renderingEngine.captureCurrentFrame()
+        : this.captureGifFrame(canvas, width, height);
       encoder.addFrame(imageData);
 
       recordingStore.updateProgress(i + 1, totalFrames);
@@ -224,46 +529,58 @@ export class ShaderRecorder {
     tm: ReturnType<RenderingEngine["getTimeManager"]>,
     config: RecordingConfig,
     totalFrames: number,
-    dt: number,
     width: number,
     height: number,
+    timeline: RenderTimeline,
+    encoding?: { codec: "avc" | "vp8" | "vp9"; bitrate: number },
+    language?: ShaderInfo["language"],
   ): Promise<Blob> {
     const encoder = new VideoEncoderWrapper({
       width,
       height,
       fps: config.fps,
+      ...encoding,
       format: config.format as "webm" | "mp4",
     });
 
-    // Flush every N frames so encoding runs in parallel with rendering
-    // instead of building up a massive backlog for finish().
-    const flushInterval = Math.max(4, Math.ceil(config.fps / 2));
-
-    for (let i = 0; i < totalFrames; i++) {
-      if (this.cancelled) {
-        throw new Error("Recording cancelled");
-      }
-
-      const time = config.startTime + i * dt;
-      tm.setTime(time);
-      tm.setFrame(i);
-      tm.setDeltaTime(dt);
-      renderingEngine.renderForCapture();
-
-      const timestampUs = Math.round((i / config.fps) * 1_000_000);
-      encoder.addFrame(canvas, timestampUs);
-
-      recordingStore.updateProgress(i + 1, totalFrames);
-
-      // Flush encoder periodically to keep queue short and UI responsive
-      if (i % flushInterval === flushInterval - 1) {
-        await encoder.flush();
-      }
+    // WebGPU drawing buffers are transient. Read back into a stable 2D canvas
+    // before handing pixels to the encoder.
+    const gpuFrames = language === "wgsl" || language === "slang";
+    const encodingCanvas = gpuFrames ? document.createElement("canvas") : canvas;
+    if (gpuFrames) {
+      encodingCanvas.width = width;
+      encodingCanvas.height = height;
     }
+    const encodingContext = gpuFrames ? encodingCanvas.getContext("2d") : null;
 
-    recordingStore.setFinalizing();
-    await new Promise((r) => setTimeout(r, 0));
+    try {
+      for (let i = 0; i < totalFrames; i++) {
+        if (this.cancelled) {
+          throw new Error("Recording cancelled");
+        }
 
-    return encoder.finish();
+        await this.renderStep(renderingEngine, tm, timeline.outputStep(i));
+
+        const timestampUs = Math.round((i / config.fps) * 1_000_000);
+        if (gpuFrames) {
+          if (!encodingContext) {
+            throw new Error("Failed to create a video frame canvas");
+          }
+          encodingContext.putImageData(await renderingEngine.captureCurrentFrame(), 0, 0);
+        }
+        await encoder.addFrame(encodingCanvas, timestampUs);
+
+        recordingStore.updateProgress(i + 1, totalFrames);
+
+      }
+
+      recordingStore.setFinalizing();
+      await new Promise((r) => setTimeout(r, 0));
+
+      return await encoder.finish();
+    } finally {
+      // finish() closes on success; this releases the encoder on cancel/error.
+      await encoder.close();
+    }
   }
 }

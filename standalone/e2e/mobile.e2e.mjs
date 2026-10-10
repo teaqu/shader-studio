@@ -261,12 +261,13 @@ test('mobile Export tabs stay inside their bar and video recording downloads', a
   }
 
   await page.getByRole('button', { name: 'Video', exact: true }).click();
+  await page.getByRole('button', { name: 'Render', exact: true }).click();
   await page.getByRole('button', { name: 'WebM', exact: true }).click();
   await page.locator('input[min="0.5"][step="0.5"]').fill('0.5');
   const downloadPromise = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Record', exact: true }).click();
+  await page.getByRole('button', { name: 'Render video', exact: true }).click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toMatch(/^shader-.*\.webm$/);
+  expect(download.suggestedFilename()).toMatch(/^aurora-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}-\d{3}\.webm$/);
   expect(await download.failure()).toBeNull();
   expect(pageErrors).toEqual([]);
 });
