@@ -11,6 +11,7 @@
   import { createTransport } from "../transport/TransportFactory";
   import type { Transport } from "../transport/MessageTransport";
   import ShaderCanvas from "./ShaderCanvas.svelte";
+  import { updateVrPreviewContext } from "../state/vrPreviewState.svelte";
   import MenuBar from "./MenuBar.svelte";
   import EditorOverlay from "./EditorOverlay.svelte";
   import ConfigPanel from "./config/ConfigPanel.svelte";
@@ -566,6 +567,7 @@
     variableCaptureManager = undefined;
     try {
       renderingEngine?.stopRenderLoop?.();
+      updateVrPreviewContext(null, "");
       renderingEngine?.dispose?.();
     } catch { /* prior engine already gone */ }
 
@@ -1201,6 +1203,9 @@
   }
 
   function applyCompilationResult(result: CompilationResult) {
+    const vrEngine = renderingEngine;
+    const vrPath = shaderPath;
+    untrack(() => updateVrPreviewContext(vrEngine, vrPath, result.success));
     errors = result.success ? [] : (result.errors && result.errors.length > 0 ? result.errors : []);
     warnings = result.warnings ?? [];
   }
@@ -1673,6 +1678,7 @@
       pixelInspectorManager.dispose();
     }
     if (renderingEngine) {
+      updateVrPreviewContext(null, "");
       renderingEngine.dispose();
     }
     if (transport) {

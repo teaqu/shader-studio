@@ -383,6 +383,7 @@ export class RenderingEngine implements RenderingEngineInterface {
         return { success: false, errors: [error instanceof Error ? error.message : String(error)] };
       }
       this.passRenderer.installShaderCamera(path);
+      this.passRenderer.vrPreview.update(path, this.shaderPipeline.getPasses());
       const shaderTime = this.timeManager.getCurrentTime(performance.now());
       const paused = this.timeManager.isPaused();
       this.resourceManager.syncAllVideosToTime(shaderTime);
@@ -474,6 +475,14 @@ export class RenderingEngine implements RenderingEngineInterface {
 
   public async resetStorageBuffer(_name: string): Promise<void> {
     throw new Error('Storage buffers require WebGPU');
+  }
+
+  public isVrPreviewAvailable(): boolean {
+    return this.passRenderer.vrPreview.available;
+  }
+
+  public setVrPreviewEnabled(enabled: boolean): void {
+    this.passRenderer.vrPreview.setEnabled(enabled);
   }
 
   public setInputEnabled(enabled: boolean): void {

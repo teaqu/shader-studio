@@ -1,13 +1,34 @@
 # Shadertoy Compatibility
 
 
-Shader Studio is built around Shadertoy-style fragment shaders. Your shader must define a `mainImage` function:
+Shader Studio is built around Shadertoy-style fragment shaders. For a conventional image shader, define a `mainImage` function:
 
 ```glsl
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     // your shader code
 }
 ```
+
+## Desktop VR shader previews
+
+Fullscreen GLSL passes can define Shadertoy's VR entry point:
+
+```glsl
+void mainVR(out vec4 fragColor, in vec2 fragCoord, in vec3 rayOrigin, in vec3 rayDirection) {
+    fragColor = vec4(rayDirection * 0.5 + 0.5, 1.0);
+}
+```
+
+The **VR** toggle appears in the toolbar only when the fullscreen Image pass
+defines `mainVR`. Keep `mainImage` for the normal preview: VR is off by default,
+and enabling the toggle calls `mainVR` instead. It resets when switching shaders.
+Move with WASD/QE and look by dragging the mouse or pressing IJKL. Dragging also
+updates `iMouse`, so shaders that read it continue to receive mouse input.
+The ray origin is `iCameraPos`; the normalized world-space ray direction uses
+`iCameraDir`, the canvas aspect ratio, and a 90° vertical field of view.
+This preview uses one camera view with world-Y up. It does not connect to a
+headset or controllers. Mesh passes continue to use `mainImage`.
+Slang and WGSL entry points remain unchanged.
 
 ## Supported Uniforms
 

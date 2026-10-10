@@ -170,6 +170,19 @@ describe("PassRenderer", () => {
     );
   });
 
+  it("binds the VR preview switch only for Image and keeps buffers in mainImage mode", () => {
+    const image: Pass = { name: "Image", geometry: "fullscreen", inputs: {}, shaderSrc: "void mainVR(out vec4 c, vec2 p, vec3 o, vec3 d) {}" };
+    passRenderer.vrPreview.update("a", [image]);
+    passRenderer.renderPass(image, null, createMockShader(), defaultUniforms);
+    expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("_ssVrPreview", 0);
+    passRenderer.vrPreview.setEnabled(true);
+    passRenderer.renderPass(image, null, createMockShader(), defaultUniforms);
+    expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("_ssVrPreview", 1);
+    vi.mocked(mockRenderer.SetShaderConstant1I).mockClear();
+    passRenderer.renderPass({ ...image, name: "BufferA" }, null, createMockShader(), defaultUniforms);
+    expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("_ssVrPreview", 0);
+  });
+
   const defaultUniforms = {
     res: [800, 600, 1],
     time: 1.0,

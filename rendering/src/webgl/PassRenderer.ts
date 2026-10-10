@@ -1,3 +1,4 @@
+import { VrPreview } from "./VrPreview";
 import type { ResourceManager } from "../resources/ResourceManager";
 import type { BufferManager } from "./BufferManager";
 import type { Pass, PassUniforms } from "../models";
@@ -37,6 +38,7 @@ const WEBGL_PRIMITIVES = {
 } as const satisfies Record<VertexTopology, keyof PiRenderer["PRIMTYPE"]>;
 
 export class PassRenderer {
+  readonly vrPreview = new VrPreview();
   private canvas: HTMLCanvasElement;
   private resourceManager: ResourceManager<PiTexture>;
   private bufferManager: BufferManager;
@@ -217,6 +219,7 @@ export class PassRenderer {
     this.renderer.SetShaderConstant1F("iSampleRate", uniforms.sampleRate);
     this.renderer.SetShaderConstant3FV("iCameraPos", uniforms.cameraPos);
     this.renderer.SetShaderConstant3FV("iCameraDir", uniforms.cameraDir);
+    this.renderer.SetShaderConstant1I("_ssVrPreview", passConfig.name === "Image" && this.vrPreview.enabled ? 1 : 0);
 
     const fullscreen = this.drawsFullscreen(passConfig);
     const mesh = this.resolveMesh(passConfig);

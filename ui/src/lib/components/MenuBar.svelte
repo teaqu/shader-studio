@@ -32,6 +32,7 @@
   import type { AudioVideoController } from "../AudioVideoController";
   import { MenuOverlay } from './menu/MenuOverlay.svelte';
   import MenuOptions from './menu/MenuOptions.svelte';
+  import VrPreviewButton from "./menu/VrPreviewButton.svelte";
   import DisplayControls from './menu/DisplayControls.svelte';
 
   interface Props {
@@ -427,6 +428,7 @@
         <i class="codicon codicon-run-all"></i>
       </button>
     {/if}
+    <VrPreviewButton />
     <button class="toolbar-icon-button" onclick={onReset} aria-label="Reset shader" disabled={!hasShader}>
       <i class="codicon codicon-debug-restart"></i>
     </button>

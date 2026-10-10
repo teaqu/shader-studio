@@ -1,3 +1,4 @@
+import { hasMainVr } from "./VrShaderEntry";
 import { audioLoadWarning, liveInputPaths, normalizeLiveInputs, SCREEN_PATH, SYSTEM_AUDIO_PATH } from "../util/LiveInputConfig";
 import type { ShaderCompiler, ChannelSamplerType } from "./ShaderCompiler";
 import type { ResourceManager } from "../resources/ResourceManager";
@@ -284,6 +285,8 @@ export class ShaderPipeline {
       const channelTypes = this.getChannelTypes(pass, slotAssignments);
 
       const customDecl = this.customUniformManager?.getDeclarations() || undefined;
+      const vrOptions = pass.name === "Image" && hasMainVr(`${commonCode ?? ""}\n${pass.shaderSrc}`)
+        ? { vrPreview: true } : {};
       let svelteHeaderLines: number;
       let commonCodeLineCount: number;
       let vertexRange: { startLine: number; lineCount: number } | undefined;
@@ -292,6 +295,7 @@ export class ShaderPipeline {
         ({ headerLineCount: svelteHeaderLines, commonCodeLineCount, vertexRange } = this.shaderCompiler
           .wrapShaderToyCode(pass.shaderSrc, {
             geometry: pass.geometry,
+            ...vrOptions,
             commonCode,
             slotAssignments,
             channelTypes,
@@ -302,6 +306,7 @@ export class ShaderPipeline {
           }));
         shader = await this.shaderCompiler.compileShaderAsync(pass.shaderSrc, {
           geometry: pass.geometry,
+          ...vrOptions,
           commonCode,
           slotAssignments,
           channelTypes,

@@ -1,3 +1,4 @@
+import { VrPreview } from "../../webgl/VrPreview";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RenderingEngine } from "../../webgl/RenderingEngine";
 import { CustomUniformManager } from "../../webgl/CustomUniformManager";
@@ -19,7 +20,7 @@ describe("RenderingEngine", () => {
   beforeEach(() => {
     renderingEngine = new RenderingEngine();
     Object.defineProperty(renderingEngine, 'passRenderer', {
-      value: { installShaderCamera: vi.fn(), dispose: vi.fn() }, writable: true, configurable: true,
+      value: { installShaderCamera: vi.fn(), dispose: vi.fn(), vrPreview: new VrPreview() }, writable: true, configurable: true,
     });
     vi.spyOn(console, "log").mockImplementation(() => { });
 
@@ -43,6 +44,19 @@ describe("RenderingEngine", () => {
       writable: true,
       configurable: true
     });
+  });
+
+  it("exposes VR availability and accepts only an available preview", () => {
+    const preview = (renderingEngine as unknown as { passRenderer: { vrPreview: VrPreview } }).passRenderer.vrPreview;
+    expect(renderingEngine.isVrPreviewAvailable()).toBe(false);
+    renderingEngine.setVrPreviewEnabled(true);
+    expect(preview.enabled).toBe(false);
+    preview.update("a", [{ name: "Image", geometry: "fullscreen", inputs: {}, shaderSrc: "void mainVR(out vec4 c, vec2 p, vec3 o, vec3 d) {}" }]);
+    expect(renderingEngine.isVrPreviewAvailable()).toBe(true);
+    renderingEngine.setVrPreviewEnabled(true);
+    expect(preview.enabled).toBe(true);
+    renderingEngine.setVrPreviewEnabled(false);
+    expect(preview.enabled).toBe(false);
   });
 
   describe("config validation", () => {

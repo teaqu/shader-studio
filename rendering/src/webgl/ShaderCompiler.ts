@@ -1,3 +1,4 @@
+import { buildFragmentEntry } from "./VrShaderEntry";
 import { buildGlslNamedChannelDeclarations, type GeometryType, type MeshTopology, type VertexSpace, type VertexTopology } from "@shader-studio/types";
 import {
   INSTANCE_INDEX,
@@ -12,6 +13,8 @@ export type ChannelSamplerType = '2D' | 'Cube' | '3D';
 
 export interface ShaderWrapOptions {
   geometry?: GeometryType;
+  /** Generate the optional desktop VR branch for the Image pass. */
+  vrPreview?: boolean;
   commonCode?: string;
   slotAssignments?: SlotAssignment[];
   channelTypes?: ChannelSamplerType[];
@@ -183,7 +186,8 @@ ${this.buildChannelMetadataDeclarations(types, channelCount)}
     const coordinate = mesh || worldVertices
       ? `${MESH_FRAGMENT_CONTEXT.uv} * iResolution.xy`
       : "gl_FragCoord.xy";
-    const shaderCode = header + code + `\nvoid main() {\n mainImage(fragColor, ${coordinate});\n}`;
+    const fullscreen = options.geometry === undefined || options.geometry === "fullscreen";
+    const shaderCode = header + code + buildFragmentEntry(`${options.commonCode ?? ""}\n${code}`, coordinate, fullscreen && options.vrPreview === true);
     const headerLineCount = (header.match(/\n/g) || []).length;
     const vertexBuilt = this.buildVertexSource(mesh, options);
     return {
