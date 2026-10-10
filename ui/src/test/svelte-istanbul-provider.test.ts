@@ -33,10 +33,12 @@ it('preserves the source mappings for reactive branches and event handlers', () 
     throw new Error('Expected the compiled source map');
   }
   const repaired = new TraceMap(map);
-  eachMapping(new TraceMap(JSON.parse(output.map.toString()) as EncodedSourceMap), (mapping) => {
-    expect(originalPositionFor(repaired, { line: mapping.generatedLine, column: mapping.generatedColumn })).toEqual({
-      source: mapping.source, line: mapping.originalLine, column: mapping.originalColumn, name: mapping.name,
-    });
+  const original = new TraceMap(JSON.parse(output.map.toString()) as EncodedSourceMap);
+  eachMapping(original, (mapping) => {
+    const position = { line: mapping.generatedLine, column: mapping.generatedColumn };
+    // Multiple segments can share a generated position in newer Svelte output.
+    // Preserve the mapping a consumer resolves, rather than each raw segment.
+    expect(originalPositionFor(repaired, position)).toEqual(originalPositionFor(original, position));
   });
 });
 

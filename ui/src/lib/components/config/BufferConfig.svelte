@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { untrack } from "svelte";
   import { getCommonShaderSource } from "../../state/commonSourceState.svelte";
   import type { MessageEvent as ShaderMessage } from "@shader-studio/types";
   import { applyRenderSource, bufferInsertionTarget } from '../../config/PassSourceAuthoring';
@@ -217,7 +218,7 @@
   const showViewerCamera = $derived(selectedGeometry !== 'fullscreen' && selectedGeometry !== 'vertices');
   const modelUrl = $derived(modelGeometry?.resolved_path ?? (modelGeometry ? getWebviewUri(modelGeometry.path) : undefined));
 
-  let currentPath = $state("path" in config ? config.path : "");
+  let currentPath = $state(untrack(() => "path" in config ? config.path : ""));
   let activeModalChannel = $state<string | null>(null);
   let tempChannelInput = $state<ConfigInput | undefined>(undefined);
   let widthInput = $state<number | null>(null);

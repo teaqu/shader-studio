@@ -123,6 +123,8 @@
 
   let containerEl = $state<HTMLDivElement | null>(null);
   let statusBarEl = $state<HTMLDivElement | null>(null);
+  // Svelte can detach the conditional bar before the Vim toggle effect runs.
+  let vimStatusElement: HTMLDivElement | null = null;
   let editor: monaco.editor.IStandaloneCodeEditor | null = null;
   let languageServiceController = $state<LanguageServiceController | null>(null);
   let environmentGeneration = 0;
@@ -433,7 +435,8 @@
       return;
     }
     registerVimCommands();
-    vimModeInstance = initVimMode(editor as any, statusBarEl ?? null);
+    vimStatusElement = statusBarEl;
+    vimModeInstance = initVimMode(editor as any, vimStatusElement);
     vimModeInstance.on?.("vim-mode-change", ({ mode }: { mode?: string }) => {
       syncVimStatus(mode);
       syncCursorForMode(mode);
@@ -460,9 +463,11 @@
       vimModeInstance = null;
     }
     vimStatusAttached = false;
-    if (statusBarEl) {
-      statusBarEl.textContent = "";
+    const statusBar = vimStatusElement ?? statusBarEl;
+    if (statusBar) {
+      statusBar.textContent = "";
     }
+    vimStatusElement = null;
   }
 
   function fallbackEnterInsertMode(key: string) {

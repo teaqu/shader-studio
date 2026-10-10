@@ -2,6 +2,7 @@
 
 <script lang="ts">
   import type { ComputePass, ShaderLanguageId } from '@shader-studio/types';
+  import { untrack } from 'svelte';
   import type { Snippet } from 'svelte';
   import type { ConfigFieldErrors } from '../../config/ComputeConfigMutations';
 
@@ -32,8 +33,8 @@
   let rawWorkgroupDraft = $state(['1', '1', '1']);
   let repeatsDraft = $state('1');
   let layersDraft = $state('1');
-  let runOnce = $state(pass.dispatchOnce === true);
-  let activeMode = $state<DispatchMode>(getMode(pass));
+  let runOnce = $state(untrack(() => pass.dispatchOnce === true));
+  let activeMode = $state<DispatchMode>(untrack(() => getMode(pass)));
 
   const errors = $derived({ ...localErrors, ...externalErrors });
   const mode = $derived(activeMode);
