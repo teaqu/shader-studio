@@ -17,7 +17,7 @@ describe("liveVideoFormats", () => {
     vi.stubGlobal("VideoEncoder", {});
     vi.mocked(canEncodeVideo).mockImplementation(async codec => {
       if (codec === "vp9") {
-        throw new Error("unsupported"); 
+        throw new Error("unsupported");
       }
       return codec === "vp8";
     });

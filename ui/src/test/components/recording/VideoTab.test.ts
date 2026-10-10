@@ -7,7 +7,7 @@ import { resetCapturePreferences } from '../../../lib/state/capturePreferences.s
 
 describe('VideoTab', () => {
   afterEach(() => {
-    vi.restoreAllMocks(); 
+    vi.restoreAllMocks();
   });
   it('enables WebCodecs MP4 when MediaRecorder only offers WebM', async () => {
     vi.stubGlobal('MediaRecorder', { isTypeSupported: (mime: string) => mime.startsWith('video/webm') });
