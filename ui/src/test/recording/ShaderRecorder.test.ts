@@ -1,6 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
-const { mockFinalizeLiveMp4 } = vi.hoisted(() => ({ mockFinalizeLiveMp4: vi.fn() }));
-vi.mock('../../lib/recording/finalizeLiveMp4', () => ({ finalizeLiveMp4: mockFinalizeLiveMp4 }));
 const { mockCreateLiveVideoCapture } = vi.hoisted(() => ({ mockCreateLiveVideoCapture: vi.fn() }));
 vi.mock('../../lib/recording/LiveVideoCapture', () => ({ createLiveVideoCapture: mockCreateLiveVideoCapture }));
 
@@ -787,213 +785,87 @@ describe('ShaderRecorder', () => {
 
   describe('Live video', () => {
     afterEach(() => vi.unstubAllGlobals());
-    it('uses completed frame readback for direct MP4 samples from WebGL', async () => {
-      const { stream, MockMediaRecorder } = installMediaRecorder();
-      MockMediaRecorder.isTypeSupported.mockReturnValue(true);
-      vi.stubGlobal('VideoEncoder', class {});
-      const blob = new Blob(['quality']);
-      mockCreateLiveVideoCapture.mockResolvedValueOnce({ result: Promise.resolve(blob), stop: vi.fn() });
-      const canvas = { width: 816, height: 458, captureStream: () => stream, getContext: vi.fn(() => null) };
-      const engine = { getCanvas: () => canvas, captureCurrentFrame: vi.fn(async () => new ImageData(816, 458)) };
-      await expect((recorder as any).recordLive({ mode: 'live', format: 'mp4', duration: 5, startTime: 0, fps: 60, width: 816, height: 458 }, engine)).resolves.toBe(blob);
-      const argumentsUsed = mockCreateLiveVideoCapture.mock.calls.at(-1)!;
-      expect(argumentsUsed).toHaveLength(5);
-      await argumentsUsed[4]();
-      expect(engine.captureCurrentFrame).toHaveBeenCalledOnce();
-    });
-    it('records WebCodecs MP4 when MediaRecorder does not support it', async () => {
-      vi.stubGlobal('MediaRecorder', undefined);
-      vi.stubGlobal('VideoEncoder', class {});
-      const blob = new Blob(['quality']);
-      mockCreateLiveVideoCapture.mockResolvedValueOnce({ result: Promise.resolve(blob), stop: vi.fn() });
-      const canvas = { width: 816, height: 458, captureStream: vi.fn() };
-      await expect(recorder.recordLive({ mode: 'live', format: 'mp4', duration: 5, startTime: 0, fps: 60, width: 816, height: 458 }, { getCanvas: () => canvas as unknown as HTMLCanvasElement })).resolves.toBe(blob);
-    });
-    it.each([true, false])('uses stable frame capture for both WebGL and WebGPU canvases (%s)', async webgpu => {
-      const { stream, MockMediaRecorder } = installMediaRecorder();
-      MockMediaRecorder.isTypeSupported.mockReturnValue(true);
-      vi.stubGlobal('VideoEncoder', class {});
-      const blob = new Blob(['quality']);
-      mockCreateLiveVideoCapture.mockResolvedValueOnce({ result: Promise.resolve(blob), stop: vi.fn() });
-      const canvas = { width: 816, height: 458, captureStream: () => stream, getContext: vi.fn(() => webgpu ? {} : null) };
-      const engine = { getCanvas: () => canvas, captureCurrentFrame: vi.fn(async () => new ImageData(816, 458)) };
-      await expect((recorder as any).recordLive({ mode: 'live', format: 'webm', duration: 5, startTime: 0, fps: 60, width: 816, height: 458 }, engine)).resolves.toBe(blob);
-      const argumentsUsed = mockCreateLiveVideoCapture.mock.calls.at(-1)!;
-      expect(argumentsUsed).toHaveLength(5);
-      await argumentsUsed[4]();
-      expect(engine.captureCurrentFrame).toHaveBeenCalledOnce();
-    });
-    it.each(['mp4', 'webm'])('uses quality-controlled Live %s when WebCodecs is available', async format => {
-      const { stream, MockMediaRecorder } = installMediaRecorder();
-      MockMediaRecorder.isTypeSupported.mockReturnValue(true);
-      vi.stubGlobal('VideoEncoder', class {});
-      const blob = new Blob(['quality'], { type: `video/${format}` });
-      let finish!: (blob: Blob) => void;
-      const stop = vi.fn(() => finish(blob));
-      mockCreateLiveVideoCapture.mockResolvedValueOnce({ result: new Promise<Blob>(resolve => {
-        finish = resolve;
-      }), stop });
-      const canvas = { width: 815, height: 459, captureStream: () => stream };
-      const recording = (recorder as any).recordLive({ mode: 'live', format, duration: 5, startTime: 0, fps: 60, width: 815, height: 459 }, { getCanvas: () => canvas });
-      await Promise.resolve();
-      (recorder as any).stopLiveRecording();
-      expect(await recording).toBe(blob);
-      expect(mockCreateLiveVideoCapture).toHaveBeenCalledWith(canvas, 60, format, expect.any(AbortSignal));
+
+
+    function installNativeSupport() {
+      vi.stubGlobal('MediaRecorder', { isTypeSupported: vi.fn(() => true) });
+    }
+
+    it.each(['mp4', 'webm'] as const)('delegates Live %s to the native capture helper with completed-frame capture', async format => {
+      installNativeSupport();
+      const blob = new Blob(['native'], { type: `video/${format}` });
+      const stop = vi.fn();
+      mockCreateLiveVideoCapture.mockResolvedValueOnce({ result: Promise.resolve(blob), stop });
+      const canvas = { width: 800, height: 600, captureStream: vi.fn() } as unknown as HTMLCanvasElement;
+      const captureCurrentFrame = vi.fn(async () => new ImageData(800, 600));
+
+      await expect(recorder.recordLive(
+        { mode: 'live', format, duration: 5, startTime: 0, fps: 60, width: 800, height: 600 },
+        { getCanvas: () => canvas, captureCurrentFrame },
+      )).resolves.toBe(blob);
+
+      expect(mockCreateLiveVideoCapture).toHaveBeenCalledWith(canvas, format, expect.any(AbortSignal), expect.any(Function));
+      await mockCreateLiveVideoCapture.mock.calls.at(-1)![3]!();
+      expect(captureCurrentFrame).toHaveBeenCalledOnce();
       expect(mockStartLiveRecording).toHaveBeenCalledWith(format);
-      expect(stop).toHaveBeenCalledOnce();
-      expect(recorder.consumeOutputNotice()).toBe(format === 'mp4' ? 'MP4 dimensions were rounded up to even pixels for video encoding.' : null);
+      expect(stop).not.toHaveBeenCalled();
     });
 
-    it('honours Stop while the quality encoder is still initializing', async () => {
-      const { MockMediaRecorder } = installMediaRecorder();
-      MockMediaRecorder.isTypeSupported.mockReturnValue(true);
-      vi.stubGlobal('VideoEncoder', class {});
+    it('does not require WebCodecs for native Live video', async () => {
+      installNativeSupport();
+      vi.stubGlobal('VideoEncoder', undefined);
+      const blob = new Blob(['native']);
+      mockCreateLiveVideoCapture.mockResolvedValueOnce({ result: Promise.resolve(blob), stop: vi.fn() });
+      const canvas = { width: 800, height: 600, captureStream: vi.fn() } as unknown as HTMLCanvasElement;
+      await expect(recorder.recordLive(
+        { mode: 'live', format: 'webm', duration: 5, startTime: 0, fps: 30, width: 800, height: 600 },
+        { getCanvas: () => canvas },
+      )).resolves.toBe(blob);
+      expect(mockCreateLiveVideoCapture).toHaveBeenCalledWith(canvas, 'webm', expect.any(AbortSignal));
+    });
+
+    it('rejects unavailable native Live formats without creating a helper', async () => {
+      vi.stubGlobal('MediaRecorder', { isTypeSupported: vi.fn(() => false) });
+      const canvas = { width: 800, height: 600, captureStream: vi.fn() } as unknown as HTMLCanvasElement;
+      await expect(recorder.recordLive(
+        { mode: 'live', format: 'mp4', duration: 5, startTime: 0, fps: 30, width: 800, height: 600 },
+        { getCanvas: () => canvas },
+      )).rejects.toThrow('MP4 Live recording is not supported');
+      expect(mockCreateLiveVideoCapture).not.toHaveBeenCalled();
+    });
+
+    it('stops the helper after initialization when Stop was requested early', async () => {
+      installNativeSupport();
       let ready!: (capture: { result: Promise<Blob>; stop: ReturnType<typeof vi.fn> }) => void;
       mockCreateLiveVideoCapture.mockImplementationOnce(() => new Promise(resolve => {
         ready = resolve;
       }));
-      const blob = new Blob(['quality']);
-      let finish!: (blob: Blob) => void;
-      const result = new Promise<Blob>(resolve => {
-        finish = resolve;
-      });
-      const stop = vi.fn(() => finish(blob));
-      const recording = (recorder as any).recordLive({ mode: 'live', format: 'mp4', duration: 1, startTime: 0, fps: 30, width: 800, height: 600 },
-        { getCanvas: () => ({ width: 800, height: 600, captureStream: vi.fn() }) });
-      (recorder as any).stopLiveRecording();
-      ready({ result, stop });
-      expect(await recording).toBe(blob);
+      const recording = recorder.recordLive(
+        { mode: 'live', format: 'mp4', duration: 1, startTime: 0, fps: 30, width: 800, height: 600 },
+        { getCanvas: () => ({ width: 800, height: 600, captureStream: vi.fn() } as unknown as HTMLCanvasElement) },
+      );
+      recorder.stopLiveRecording();
+      const blob = new Blob(['native']);
+      const stop = vi.fn();
+      ready({ result: Promise.resolve(blob), stop });
+      await expect(recording).resolves.toBe(blob);
       expect(stop).toHaveBeenCalledOnce();
     });
-    it('finalizes MP4 before saving and prevents a second recording during finalization', async () => {
-      const { stream, MockMediaRecorder } = installMediaRecorder();
-      MockMediaRecorder.isTypeSupported.mockReturnValue(true);
-      const canvas = { width: 800, height: 600, captureStream: vi.fn(() => stream) } as any;
-      const config = { mode: 'live', format: 'mp4', duration: 5, startTime: 0, fps: 30, width: 800, height: 600 };
-      let finish!: (blob: Blob) => void;
-      mockFinalizeLiveMp4.mockImplementationOnce(() => new Promise<Blob>(resolve => {
-        finish = resolve;
-      }));
-      const recording = (recorder as any).recordLive(config, { getCanvas: () => canvas });
-      (recorder as any).stopLiveRecording();
-      expect(mockFinalizeLiveMp4).toHaveBeenCalledWith(expect.any(Blob), expect.any(AbortSignal));
-      await expect((recorder as any).recordLive(config, { getCanvas: () => canvas })).rejects.toThrow('already active');
-      const indexed = new Blob(['indexed'], { type: 'video/mp4' });
-      finish(indexed);
-      expect(await recording).toBe(indexed);
-    });
 
-    it('aborts MP4 finalization when the recording is discarded', async () => {
-      const { stream, MockMediaRecorder } = installMediaRecorder();
-      MockMediaRecorder.isTypeSupported.mockReturnValue(true);
-      mockFinalizeLiveMp4.mockImplementationOnce((_blob: Blob, signal: AbortSignal) => new Promise((_resolve, reject) => {
-        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
-      }));
-      const recording = (recorder as any).recordLive({ mode: 'live', format: 'mp4', duration: 5, startTime: 0, fps: 30, width: 800, height: 600 },
-        { getCanvas: () => ({ width: 800, height: 600, captureStream: () => stream }) });
-      (recorder as any).stopLiveRecording();
-      recorder.cancel();
-      await expect(recording).rejects.toThrow('Recording cancelled');
-    });
-    function installMediaRecorder() {
-      const tracks = [{ stop: vi.fn() }];
-      const stream = { getTracks: () => tracks } as unknown as MediaStream;
-      const instances: Array<{
-        start: ReturnType<typeof vi.fn>;
-        stop: ReturnType<typeof vi.fn>;
-        state: RecordingState;
-        ondataavailable: ((event: BlobEvent) => void) | null;
-        onstop: (() => void) | null;
-        onerror: ((event: Event) => void) | null;
-      }> = [];
-      class MockMediaRecorder {
-        static isTypeSupported = vi.fn((type: string) => type === 'video/webm;codecs=vp9');
-        state: RecordingState = 'inactive';
-        mimeType = 'video/webm;codecs=vp9';
-        ondataavailable: ((event: BlobEvent) => void) | null = null;
-        onstop: (() => void) | null = null;
-        onerror: ((event: Event) => void) | null = null;
-        start = vi.fn(() => {
-          this.state = 'recording';
-        });
-        stop = vi.fn(() => {
-          this.state = 'inactive';
-          this.ondataavailable?.({ data: new Blob(['video']) } as BlobEvent);
-          this.onstop?.();
-        });
-        constructor(_stream: MediaStream, _options?: MediaRecorderOptions) {
-          instances.push(this);
-        }
-      }
-      vi.stubGlobal('MediaRecorder', MockMediaRecorder);
-      return { tracks, stream, instances, MockMediaRecorder };
-    }
-
-    it('records the existing canvas without compiling or rendering another engine', async () => {
-      const { tracks, stream, instances, MockMediaRecorder } = installMediaRecorder();
-      const canvas = { width: 800, height: 600, captureStream: vi.fn(() => stream) } as any;
-      const liveEngine = { getCanvas: () => canvas } as any;
-
-      const recording = (recorder as any).recordLive({
-        mode: 'live', format: 'webm', duration: 5, startTime: 0, fps: 30, width: 800, height: 600,
-      }, liveEngine) as Promise<Blob>;
-
-      expect(canvas.captureStream).toHaveBeenCalledWith(30);
-      expect(MockMediaRecorder.isTypeSupported).toHaveBeenCalled();
-      expect(mockCompileShaderPipeline).not.toHaveBeenCalled();
-      expect(mockRenderForCapture).not.toHaveBeenCalled();
-      (recorder as any).stopLiveRecording();
-      const blob = await recording;
-
-      expect(blob.type).toBe('video/webm;codecs=vp9');
-      expect(instances[0].stop).toHaveBeenCalledTimes(1);
-      expect(tracks[0].stop).toHaveBeenCalledTimes(1);
-    });
-
-    it('fails visibly instead of saving an empty file when the canvas delivered no frames', async () => {
-      const { tracks, stream, instances } = installMediaRecorder();
-      const canvas = { width: 800, height: 600, captureStream: vi.fn(() => stream) } as any;
-      const recording = (recorder as any).recordLive({
-        mode: 'live', format: 'webm', duration: 5, startTime: 0, fps: 30, width: 800, height: 600,
-      }, { getCanvas: () => canvas }) as Promise<Blob>;
-      recording.catch(() => {});
-      // A canvas whose GPU context was lost never produces a frame; MediaRecorder
-      // then hands back a single empty chunk on stop.
-      instances[0].stop = vi.fn(() => {
-        instances[0].state = 'inactive';
-        instances[0].ondataavailable?.({ data: new Blob([]) } as BlobEvent);
-        instances[0].onstop?.();
+    it('cancels the helper through its abort signal', async () => {
+      installNativeSupport();
+      let signal!: AbortSignal;
+      mockCreateLiveVideoCapture.mockImplementationOnce((_canvas, _format, nextSignal) => {
+        signal = nextSignal;
+        return Promise.reject(nextSignal.reason);
       });
-
-      (recorder as any).stopLiveRecording();
-
-      await expect(recording).rejects.toThrow('Live recording captured no frames');
-      expect(tracks[0].stop).toHaveBeenCalledTimes(1);
-    });
-
-    it('rejects unsupported Live formats without opening a stream', async () => {
-      const { stream, MockMediaRecorder } = installMediaRecorder();
-      MockMediaRecorder.isTypeSupported.mockReturnValue(false);
-      const canvas = { width: 800, height: 600, captureStream: vi.fn(() => stream) } as any;
-
-      await expect((recorder as any).recordLive({
-        mode: 'live', format: 'mp4', duration: 5, startTime: 0, fps: 30, width: 800, height: 600,
-      }, { getCanvas: () => canvas })).rejects.toThrow('not supported');
-      expect(canvas.captureStream).not.toHaveBeenCalled();
-    });
-
-    it('discards a Live recording and releases every track', async () => {
-      const { tracks, stream } = installMediaRecorder();
-      const canvas = { width: 800, height: 600, captureStream: vi.fn(() => stream) } as any;
-      const recording = (recorder as any).recordLive({
-        mode: 'live', format: 'webm', duration: 5, startTime: 0, fps: 30, width: 800, height: 600,
-      }, { getCanvas: () => canvas }) as Promise<Blob>;
-      recording.catch(() => {});
-
+      const recording = recorder.recordLive(
+        { mode: 'live', format: 'webm', duration: 1, startTime: 0, fps: 30, width: 800, height: 600 },
+        { getCanvas: () => ({ width: 800, height: 600, captureStream: vi.fn() } as unknown as HTMLCanvasElement) },
+      );
       recorder.cancel();
-
       await expect(recording).rejects.toThrow('Recording cancelled');
-      expect(tracks[0].stop).toHaveBeenCalledTimes(1);
+      expect(signal.aborted).toBe(true);
     });
   });
 

@@ -38,21 +38,20 @@ clip at a chosen time, duration, and resolution.
 | **Mode** | Live preview recording, or a separate Render recording |
 | **Start recording at** | Shader time for Render mode: `0` or a time you enter. Preceding frames are rendered first. |
 | **Duration** | Render presets: 2π (≈6.3s), 5s, 10s, 30s, 60s, or custom |
-| **FPS** | Screen, 24, 30, 60, or custom. In Render mode, Screen rounds to 24, 30, 60 or 120 fps |
+| **FPS** | Render only: Screen, 24, 30, 60, or custom. Screen rounds to 24, 30, 60 or 120 fps |
 | **Resolution** | Current, 720p, 1080p, 4K, or custom in Render mode |
 
-Live recording uses WebCodecs when available, with direct canvas samples and
-explicit per-frame quality to preserve smooth shader gradients. Capture refresh
-and encoding share one clock: the selected FPS is a ceiling, and a slow preview
-produces fewer fresh frames while keeping real elapsed time. MP4 dimensions are rounded up to even
-pixels to avoid encoder edge artifacts. WebM prefers VP9, with a VP8 fallback.
-Hosts without WebCodecs use MediaRecorder, so the formats offered depend
-on the host: a format it can't record is disabled, and a saved choice it can't
-record falls back to one it can, with a note in the panel. MP4 needs even
-dimensions; an odd custom size is rounded up and the panel tells you the saved
-size. Video quality is automatic. Live recordings and VP9 WebM Render exports
-request quantizer 12 to preserve detail; complex shaders can therefore produce
-larger files. WebM Render prefers VP9 and falls back to VP8 when needed.
+Live MP4 and WebM use the browser's MediaRecorder with an 8 Mbps video bitrate
+request and no audio. WebM follows Shadertoy's codec order: H.264, then VP9,
+then VP8 according to browser support. MP4 uses H.264. Live follows the running
+preview with no separate frame-rate setting. A stable canvas holds completed
+shader frames so WebGPU/Slang pictures remain available to the browser recorder.
+The browser controls the final bitrate, so file size depends on the content and
+encoder. Unsupported formats are disabled; a saved unsupported choice falls
+back with a note in the panel. Live recordings are saved directly, without a
+separate encoder or remuxing step.
+VP9 WebM Render exports request quantizer 12. WebM Render prefers VP9 and falls
+back to VP8 when needed.
 MP4 Render and bitrate fallback encoders use variable bitrate with a
 high ceiling (5 bits per pixel), so detailed, fast-changing shaders keep their
 detail while simple shaders stay small, because the encoder only spends what the

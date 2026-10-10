@@ -1292,11 +1292,7 @@ for (const format of ['PNG', 'JPEG', 'WebM', 'MP4', 'GIF']) {
   });
 }
 
-test('Live MP4 saves an indexed file even when MediaRecorder cannot encode MP4', async ({ page }) => {
-  await page.addInitScript(() => {
-    const supported = MediaRecorder.isTypeSupported.bind(MediaRecorder);
-    MediaRecorder.isTypeSupported = mime => !mime.startsWith('video/mp4') && supported(mime);
-  });
+test('Live MP4 saves a playable native recording', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('shader-option-aurora-glsl').click();
   await page.getByLabel('Toggle export panel').click();
@@ -1317,28 +1313,27 @@ test('Live MP4 saves an indexed file even when MediaRecorder cannot encode MP4',
 chunks.push(chunk);
 }
   const bytes = Buffer.concat(chunks);
-  const boxes = [];
-  function walk(start, end) {
-    for (let offset = start; offset + 8 <= end;) {
-      const size = bytes.readUInt32BE(offset);
-      const type = bytes.toString('ascii', offset + 4, offset + 8);
-      expect(size).toBeGreaterThanOrEqual(8);
-      boxes.push({ type, offset });
-      if (['moov', 'trak', 'mdia', 'minf', 'stbl'].includes(type)) {
-walk(offset + 8, offset + size);
-}
-      offset += size;
+  expect(bytes.length).toBeGreaterThan(100);
+  const playback = await page.evaluate(async (base64) => {
+    const data = Uint8Array.from(atob(base64), char => char.charCodeAt(0));
+    const url = URL.createObjectURL(new Blob([data], { type: 'video/mp4' }));
+    const video = document.createElement('video');
+    video.src = url;
+    try {
+      await new Promise((resolve, reject) => {
+        video.onloadeddata = resolve;
+        video.onerror = reject;
+      });
+      return { duration: video.duration, width: video.videoWidth, height: video.videoHeight };
+    } finally {
+      video.removeAttribute('src');
+      video.load();
+      URL.revokeObjectURL(url);
     }
-  }
-  walk(0, bytes.length);
-  expect(boxes.some(box => box.type === 'moof')).toBe(false);
-  const mvhd = boxes.find(box => box.type === 'mvhd').offset;
-  const duration = bytes[mvhd + 8] === 1
-    ? Number(bytes.readBigUInt64BE(mvhd + 32)) / bytes.readUInt32BE(mvhd + 28)
-    : bytes.readUInt32BE(mvhd + 24) / bytes.readUInt32BE(mvhd + 20);
-  expect(duration).toBeGreaterThan(0.5);
-  const stsz = boxes.find(box => box.type === 'stsz').offset;
-  expect(bytes.readUInt32BE(stsz + 16)).toBeGreaterThan(1);
+  }, bytes.toString('base64'));
+  expect(playback.duration).toBeGreaterThan(0.5);
+  expect(playback.width).toBeGreaterThan(0);
+  expect(playback.height).toBeGreaterThan(0);
 });
 
 test('records the live preview to WebM and remembers capture settings after reload', async ({ page }) => {
@@ -1347,7 +1342,7 @@ test('records the live preview to WebM and remembers capture settings after relo
   await page.getByLabel('Toggle export panel').click();
   await page.getByRole('button', { name: 'Video', exact: true }).click();
   await page.getByRole('button', { name: 'WebM', exact: true }).click();
-  await page.getByRole('button', { name: '60', exact: true }).click();
+  await expect(page.locator('.recording-panel h4', { hasText: 'Frame Rate' })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Start recording', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Stop & save', exact: true })).toBeVisible();
@@ -1372,7 +1367,7 @@ test('records the live preview to WebM and remembers capture settings after relo
   await videoTab.click();
   await expect(page.getByRole('button', { name: 'Live', exact: true })).toHaveClass(/active/);
   await expect(page.getByRole('button', { name: 'WebM', exact: true })).toHaveClass(/active/);
-  await expect(page.getByRole('button', { name: '60', exact: true })).toHaveClass(/active/);
+  await expect(page.locator('.recording-panel h4', { hasText: 'Frame Rate' })).toHaveCount(0);
 });
 
 
@@ -1406,7 +1401,7 @@ test('Live capture of a preview that lost its WebGL context fails visibly instea
   await page.getByRole('button', { name: 'Live', exact: true }).click();
   await page.getByRole('button', { name: 'WebM', exact: true }).click();
   await page.getByRole('button', { name: 'Start recording', exact: true }).click();
-  // Direct frame readback detects the lost context during startup.
+  // Stable readback detects the lost context while setting up native capture.
   await expect(panelError).toContainText('WebGL context was lost');
   await expect(page.getByRole('button', { name: 'Start recording', exact: true })).toBeVisible();
   expect(downloads).toBe(0);

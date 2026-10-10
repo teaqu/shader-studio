@@ -86,7 +86,7 @@
     return format === "mp4" ? "MP4" : "WebM";
   }
 
-  let activeVideoFps = $derived(videoCustomFps
+  let activeVideoFps = $derived(captureMode === "live" ? displayFrameRate : videoCustomFps
     ? (parseInt(videoCustomFps) || screenFrameRate)
     : videoFps === 0 ? screenFrameRate : videoFps);
 
@@ -184,19 +184,19 @@
     <p class="recording-info-text">Renders preceding frames before recording begins.</p>
   </div>
 {/if}
-<div class="resolution-section">
-  <h4>Frame Rate</h4>
-  <div class="scale-buttons">
-    <button class="resolution-option" class:active={!videoCustomFps && videoFps === 0} onclick={() => selectVideoFps(0)}>Screen ({screenFrameRate})</button>
-    <button class="resolution-option" class:active={!videoCustomFps && videoFps === 24} onclick={() => selectVideoFps(24)}>24</button>
-    <button class="resolution-option" class:active={!videoCustomFps && videoFps === 30} onclick={() => selectVideoFps(30)}>30</button>
-    <button class="resolution-option" class:active={!videoCustomFps && videoFps === 60} onclick={() => selectVideoFps(60)}>60</button>
-    <div class="recording-custom-fps" class:active={!!videoCustomFps}>
-      <input type="number" class="recording-custom-fps-input" bind:value={videoCustomFps} placeholder="fps" min="1" max="120" step="1" />
+{#if captureMode === "render"}
+  <div class="resolution-section">
+    <h4>Frame Rate</h4>
+    <div class="scale-buttons">
+      <button class="resolution-option" class:active={!videoCustomFps && videoFps === 0} onclick={() => selectVideoFps(0)}>Screen ({screenFrameRate})</button>
+      <button class="resolution-option" class:active={!videoCustomFps && videoFps === 24} onclick={() => selectVideoFps(24)}>24</button>
+      <button class="resolution-option" class:active={!videoCustomFps && videoFps === 30} onclick={() => selectVideoFps(30)}>30</button>
+      <button class="resolution-option" class:active={!videoCustomFps && videoFps === 60} onclick={() => selectVideoFps(60)}>60</button>
+      <div class="recording-custom-fps" class:active={!!videoCustomFps}>
+        <input type="number" class="recording-custom-fps-input" bind:value={videoCustomFps} placeholder="fps" min="1" max="120" step="1" />
+      </div>
     </div>
   </div>
-</div>
-{#if captureMode === "render"}
   <div class="resolution-section">
     <h4>Resolution</h4>
     <div class="scale-buttons">

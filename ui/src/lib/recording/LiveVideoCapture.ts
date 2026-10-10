@@ -1,132 +1,121 @@
-import { automaticVideoBitrate } from "./VideoEncoder";
 import { createLivePreviewCanvas } from "./LivePreviewCanvas";
-import type { VideoEncodingConfig } from "mediabunny";
+import { liveVideoMimeType } from "./liveVideoFormats";
 
 export interface LiveVideoCapture {
   result: Promise<Blob>;
   stop(): void;
 }
 
-/** Encode the existing preview with explicit quality instead of MediaRecorder's rate control. */
-export async function createLiveVideoCapture(canvas: HTMLCanvasElement, fps: number, format: "mp4" | "webm", signal: AbortSignal, captureFrame?: () => Promise<ImageData>): Promise<LiveVideoCapture> {
-  const { Output, Mp4OutputFormat, WebMOutputFormat, BufferTarget, CanvasSource, Quality, canEncodeVideo } = await import("mediabunny");
+/** Browser-native Live recording, with Shadertoy's 8 Mbps bitrate request. */
+export async function createLiveVideoCapture(canvas: HTMLCanvasElement, format: "mp4" | "webm", signal: AbortSignal, captureFrame?: () => Promise<ImageData>): Promise<LiveVideoCapture> {
   signal.throwIfAborted();
-  const width = canvas.width + (format === "mp4" ? canvas.width % 2 : 0);
-  const height = canvas.height + (format === "mp4" ? canvas.height % 2 : 0);
-  const quality = new Quality({ quantizer: 12, bitrate: automaticVideoBitrate({ width, height, fps }) });
-  const codec = format === "mp4" ? "avc" : await canEncodeVideo("vp9", { width, height, quality, frameRate: fps }) ? "vp9" : "vp8";
-  signal.throwIfAborted();
+  const mimeType = liveVideoMimeType(format);
+  if (!mimeType) {
+    throw new Error(`${format.toUpperCase()} Live recording is not supported by this host`);
+  }
   const stable = captureFrame ? await createLivePreviewCanvas(canvas, captureFrame, signal) : undefined;
-  const target = new BufferTarget();
-  const output = new Output({ target, format: format === "mp4" ? new Mp4OutputFormat({ fastStart: "in-memory" }) : new WebMOutputFormat() });
-  let resolve!: (blob: Blob) => void;
-  let reject!: (reason: unknown) => void;
-  const result = new Promise<Blob>((res, rej) => {
-    resolve = res; reject = rej;
-  });
-  // Setup can fail before the caller receives result.
-  void result.catch(() => {});
+  let stream: MediaStream | undefined;
+  let recorder: MediaRecorder | undefined;
+  let frame: number | undefined;
   let settled = false;
   let stopping = false;
-  let packetCount = 0;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let pending: Promise<void> = Promise.resolve();
+  let resolve!: (blob: Blob) => void;
+  let reject!: (error: unknown) => void;
+  const result = new Promise<Blob>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  void result.catch(() => {});
   const release = () => {
-    clearTimeout(timer);
+    if (frame !== undefined) {
+      cancelAnimationFrame(frame);
+    }
     stable?.dispose();
     signal.removeEventListener("abort", abort);
+    if (recorder) {
+      recorder.ondataavailable = null;
+      recorder.onstop = null;
+      recorder.onerror = null;
+    }
+    for (const track of stream?.getTracks() ?? []) {
+      track.stop();
+    }
   };
-  const fail = async (error: unknown) => {
+  const fail = (error: unknown) => {
     if (settled) {
       return;
     }
     settled = true;
     release();
     try {
-      if (output.state !== "finalized") {
-        await output.cancel();
+      if (recorder && recorder.state !== "inactive") {
+        recorder.stop();
       }
     } catch { /* Preserve the original capture error. */ }
     reject(error);
   };
-  const abort = () => {
-    void fail(signal.reason);
-  };
-  signal.addEventListener("abort", abort, { once: true });
+  const abort = () => fail(signal.reason);
   try {
-    const encoding: VideoEncodingConfig = {
-      codec,
-      quality,
-      latencyMode: "quality",
-      contentHint: "detail",
-      onEncodedPacket: () => {
-        packetCount++;
-      },
-      transform: { width, height, fit: "fill" as const },
-    };
-    // Direct samples keep quality latency and avoid browser-stream RGB-to-YUV conversion.
-    const source = new CanvasSource(stable?.canvas ?? canvas, encoding);
-    // Live samples use real elapsed time; a fixed frameRate would snap timestamps.
-    output.addVideoTrack(source);
-    await output.start();
     signal.throwIfAborted();
-    const began = performance.now();
-    let first = true;
-    let nextFrame = 0;
-    const add = () => {
-      // Stay on the requested clock, skipping missed slots when capture is slow.
-      nextFrame = Math.max(nextFrame + 1, Math.floor((performance.now() - began) * fps / 1000) + 1);
-      const deadline = began + nextFrame * 1000 / fps;
-      pending = (async () => {
-        if (!first) {
-          await stable?.update();
-        }
-        const timestamp = first ? 0 : (performance.now() - began) / 1000;
-        first = false;
-        if (settled) {
-          return;
-        }
-        await source.add(timestamp, 1 / fps);
-      })();
-      void pending.then(() => {
-        if (!settled && !stopping) {
-          // Readback and encoding are part of the frame budget, not extra delay.
-          timer = setTimeout(add, Math.max(0, deadline - performance.now()));
-        }
-      }, error => fail(error));
+    stream = (stable?.canvas ?? canvas).captureStream();
+    recorder = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 0, videoBitsPerSecond: 8_000_000 });
+    const chunks: Blob[] = [];
+    recorder.ondataavailable = event => {
+      if (event.data.size > 0) {
+        chunks.push(event.data);
+      }
     };
-    add();
+    recorder.onerror = () => fail(new Error("Live video encoding failed"));
+    recorder.onstop = () => {
+      if (chunks.length === 0) {
+        fail(new Error("Live recording captured no frames from the preview. If the preview is blank, reload it and try again."));
+        return;
+      }
+      settled = true;
+      const blob = new Blob(chunks, { type: recorder!.mimeType || mimeType });
+      release();
+      resolve(blob);
+    };
+    signal.addEventListener("abort", abort, { once: true });
+    recorder.start();
+    // WebGPU swap-chain canvases may be cleared before captureStream reads them.
+    // Refresh one stable canvas from completed frames, with one readback at a time.
+    let updating = false;
+    const refresh = async () => {
+      if (settled || stopping) {
+        return;
+      }
+      frame = requestAnimationFrame(() => void refresh());
+      if (updating) {
+        return;
+      }
+      updating = true;
+      try {
+        await stable?.update();
+      } catch (error) {
+        fail(error);
+      } finally {
+        updating = false;
+      }
+    };
+    if (stable) {
+      frame = requestAnimationFrame(() => void refresh());
+    }
     return {
       result,
       stop() {
-        if (settled || stopping) {
-          return;
-        }
-        stopping = true;
-        clearTimeout(timer);
-        void (async () => {
+        if (!settled && !stopping) {
+          stopping = true;
           try {
-            await pending;
-            if (settled) {
-              return;
-            }
-            source.close();
-            await output.finalize();
-            signal.throwIfAborted();
-            if (!packetCount || !target.buffer?.byteLength) {
-              throw new Error("Live recording captured no frames from the preview");
-            }
-            settled = true;
-            release();
-            resolve(new Blob([target.buffer], { type: `video/${format}` }));
+            recorder!.stop();
           } catch (error) {
-            await fail(error);
+            fail(error);
           }
-        })();
+        }
       },
     };
   } catch (error) {
-    await fail(error);
+    fail(error);
     throw error;
   }
 }

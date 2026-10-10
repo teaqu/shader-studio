@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import '@testing-library/jest-dom';
 import VideoTab from '../../../lib/components/recording/VideoTab.svelte';
-import { resetCapturePreferences } from '../../../lib/state/capturePreferences.svelte';
+import { getVideoCapturePreferences, resetCapturePreferences } from '../../../lib/state/capturePreferences.svelte';
 
 describe('VideoTab', () => {
   afterEach(() => {
@@ -59,6 +59,7 @@ describe('VideoTab', () => {
     expect(screen.getByRole('button', { name: 'Live' })).toHaveClass('active');
     expect(screen.queryByText('Duration')).not.toBeInTheDocument();
     expect(screen.queryByText('Resolution')).not.toBeInTheDocument();
+    expect(screen.queryByText('Frame Rate')).not.toBeInTheDocument();
   });
 
   it('should render Duration presets (2pi, 5s, 10s, 30s, 60s, custom)', async () => {
@@ -90,17 +91,19 @@ describe('VideoTab', () => {
     expect(screen.getByText('0')).toBeInTheDocument();
   });
 
-  it('should render Frame Rate presets (24, 30, 60, custom)', () => {
+  it('renders Frame Rate presets only for Render (24, 30, 60, custom)', async () => {
     render(VideoTab, { props: defaultProps });
+    await selectRenderMode();
     expect(screen.getByText('Frame Rate')).toBeInTheDocument();
     expect(screen.getByText('24')).toBeInTheDocument();
     expect(screen.getByText('30')).toBeInTheDocument();
     expect(screen.getByText('60')).toBeInTheDocument();
   });
 
-  it('screen frame rate should be active by default', () => {
+  it('uses the nearest standard screen frame rate by default for Render', async () => {
     render(VideoTab, { props: defaultProps });
-    expect(screen.getByRole('button', { name: 'Screen (75)' })).toHaveClass('active');
+    await selectRenderMode();
+    expect(screen.getByRole('button', { name: 'Screen (60)' })).toHaveClass('active');
   });
 
   it('should render Resolution presets', async () => {
@@ -133,13 +136,14 @@ describe('VideoTab', () => {
 
   it('snaps the measured Screen rate to a standard rate for Render exports only', async () => {
     render(VideoTab, { props: { ...defaultProps, displayFrameRate: 23 } });
-    expect(screen.getByRole('button', { name: 'Screen (23)' })).toHaveClass('active');
+    await fireEvent.click(screen.getByText('Start recording'));
+    expect(defaultProps.onRecord.mock.calls[0][0]).toMatchObject({ mode: 'live', fps: 23 });
 
     await selectRenderMode();
     expect(screen.getByRole('button', { name: 'Screen (24)' })).toHaveClass('active');
     await fireEvent.click(screen.getByText('Render video'));
 
-    expect(defaultProps.onRecord.mock.calls[0][0]).toMatchObject({ mode: 'render', fps: 24 });
+    expect(defaultProps.onRecord).toHaveBeenLastCalledWith(expect.objectContaining({ mode: 'render', fps: 24 }));
   });
 
   it('falls back visibly when the saved format cannot be recorded Live on this host', async () => {
@@ -186,8 +190,9 @@ describe('VideoTab', () => {
 
   it('should call onRecord with correct fps when 60 selected', async () => {
     render(VideoTab, { props: defaultProps });
+    await selectRenderMode();
     await fireEvent.click(screen.getByText('60'));
-    await fireEvent.click(screen.getByText('Start recording'));
+    await fireEvent.click(screen.getByText('Render video'));
 
     const call = defaultProps.onRecord.mock.calls[0][0];
     expect(call.fps).toBe(60);
@@ -281,11 +286,12 @@ describe('VideoTab', () => {
 
   it('custom fps input should work', async () => {
     const { container } = render(VideoTab, { props: defaultProps });
+    await selectRenderMode();
     const fpsInput = container.querySelector('input[placeholder="fps"]') as HTMLInputElement;
     expect(fpsInput).not.toBeNull();
 
     await fireEvent.input(fpsInput, { target: { value: '45' } });
-    await fireEvent.click(screen.getByText('Start recording'));
+    await fireEvent.click(screen.getByText('Render video'));
 
     const call = defaultProps.onRecord.mock.calls[0][0];
     expect(call.fps).toBe(45);
@@ -293,21 +299,61 @@ describe('VideoTab', () => {
 
   it('returns from a custom FPS to a preset when the preset is selected', async () => {
     const { container } = render(VideoTab, { props: defaultProps });
+    await selectRenderMode();
     const fpsInput = container.querySelector('input[placeholder="fps"]') as HTMLInputElement;
     await fireEvent.input(fpsInput, { target: { value: '45' } });
     await fireEvent.click(screen.getByText('30'));
-    await fireEvent.click(screen.getByText('Start recording'));
+    await fireEvent.click(screen.getByText('Render video'));
 
     expect(defaultProps.onRecord).toHaveBeenCalledWith(expect.objectContaining({ fps: 30 }));
   });
 
   it('falls back to the screen frame rate for an invalid custom FPS', async () => {
     const { container } = render(VideoTab, { props: defaultProps });
+    await selectRenderMode();
     const fpsInput = container.querySelector('input[placeholder="fps"]') as HTMLInputElement;
     await fireEvent.input(fpsInput, { target: { value: 'not-a-number' } });
-    await fireEvent.click(screen.getByText('Start recording'));
+    await fireEvent.click(screen.getByText('Render video'));
 
-    expect(defaultProps.onRecord).toHaveBeenCalledWith(expect.objectContaining({ fps: 75 }));
+    expect(defaultProps.onRecord).toHaveBeenCalledWith(expect.objectContaining({ fps: 60 }));
+  });
+
+  it.each([
+    ['24', '24'],
+    ['custom', '45'],
+  ])('uses the display rate in Live then restores the selected Render %s frame rate', async (selection, expected) => {
+    const { container } = render(VideoTab, { props: defaultProps });
+    await selectRenderMode();
+    if (selection === 'custom') {
+      await fireEvent.input(container.querySelector('input[placeholder="fps"]')!, { target: { value: expected } });
+    } else {
+      await fireEvent.click(screen.getByRole('button', { name: expected }));
+    }
+    await fireEvent.click(screen.getByRole('button', { name: 'Live' }));
+    expect(screen.queryByText('Frame Rate')).not.toBeInTheDocument();
+    await fireEvent.click(screen.getByText('Start recording'));
+    expect(defaultProps.onRecord).toHaveBeenLastCalledWith(expect.objectContaining({ mode: 'live', fps: 75 }));
+
+    await selectRenderMode();
+    if (selection === 'custom') {
+      expect(container.querySelector('input[placeholder="fps"]')).toHaveValue(Number(expected));
+    } else {
+      expect(screen.getByRole('button', { name: expected })).toHaveClass('active');
+    }
+    await fireEvent.click(screen.getByText('Render video'));
+    expect(defaultProps.onRecord).toHaveBeenLastCalledWith(expect.objectContaining({ mode: 'render', fps: Number(expected) }));
+  });
+
+  it('persists a Render FPS selection while Live continues to follow the display rate', async () => {
+    render(VideoTab, { props: defaultProps });
+    await selectRenderMode();
+    await fireEvent.click(screen.getByRole('button', { name: '24' }));
+    expect(getVideoCapturePreferences()).toMatchObject({ mode: 'render', fps: 24, customFps: '' });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Live' }));
+    await fireEvent.click(screen.getByText('Start recording'));
+    expect(defaultProps.onRecord).toHaveBeenLastCalledWith(expect.objectContaining({ mode: 'live', fps: 75 }));
+    expect(getVideoCapturePreferences()).toMatchObject({ mode: 'live', fps: 24, customFps: '' });
   });
 
   it('should call onRecord with custom resolution when custom preset selected', async () => {

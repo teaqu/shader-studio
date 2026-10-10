@@ -1,7 +1,7 @@
 import { viewerCameraRuntimeConfig } from "../state/viewerCameraState.svelte";
 import type { RenderingEngine } from "../../../../rendering/src/types/RenderingEngine";
 import { assertGifMemoryBudget, GifEncoderWrapper } from "./GifEncoder";
-import { automaticVideoBitrate, VideoEncoderWrapper } from "./VideoEncoder";
+import { VideoEncoderWrapper } from "./VideoEncoder";
 import { recordingStore } from "../stores/recordingStore";
 import { createEngineForLanguage } from "../engineFactory";
 import {
@@ -13,7 +13,6 @@ import {
 } from "./types";
 import { createRenderTimeline, type RenderFrameStep, type RenderTimeline } from "./renderTimeline";
 import { liveVideoMimeType } from "./liveVideoFormats";
-import { finalizeLiveMp4 } from "./finalizeLiveMp4";
 import { createLiveVideoCapture, type LiveVideoCapture } from "./LiveVideoCapture";
 import { describeRenderInputLimitations, renderInputLimitations } from "./captureSnapshot";
 
@@ -24,13 +23,10 @@ export class ShaderRecorder {
   private cancelled = false;
   private offscreenEngine: RenderingEngine | null = null;
   private activeGifEncoder: GifEncoderWrapper | null = null;
-  private activeMediaRecorder: MediaRecorder | null = null;
-  private liveStream: MediaStream | null = null;
   private liveFinalization: AbortController | null = null;
   private activeLiveVideo: LiveVideoCapture | null = null;
   private startingLiveVideo = false;
   private stopLiveVideoRequested = false;
-  private rejectLiveRecording: ((reason?: unknown) => void) | null = null;
   private outputNotice: string | null = null;
 
   /**
@@ -102,113 +98,31 @@ export class ShaderRecorder {
     if (config.format === "gif") {
       return Promise.reject(new Error("Live GIF recording is not supported"));
     }
-    if (this.activeMediaRecorder || this.liveFinalization) {
+    if (this.liveFinalization) {
       return Promise.reject(new Error("A Live recording is already active"));
     }
     const canvas = engine.getCanvas();
-    if (!canvas || typeof canvas.captureStream !== "function") {
-      return Promise.reject(new Error("Live video capture is not supported by this host"));
-    }
-    if (typeof globalThis.VideoEncoder !== "undefined") {
-      const captureFrame = engine.captureCurrentFrame
-        ? () => engine.captureCurrentFrame!() : undefined;
-      return this.recordQualityLiveVideo(canvas, config.fps, config.format, captureFrame);
-    }
-
-    if (typeof MediaRecorder === "undefined") {
+    if (!canvas || typeof canvas.captureStream !== "function" || typeof MediaRecorder === "undefined") {
       return Promise.reject(new Error("Live video recording is not supported by this host"));
     }
-
-    const mimeType = liveVideoMimeType(config.format);
-    if (!mimeType) {
+    if (!liveVideoMimeType(config.format)) {
       return Promise.reject(new Error(`${config.format.toUpperCase()} Live recording is not supported by this host`));
     }
-
-    this.cancelled = false;
-    const stream = canvas.captureStream(config.fps);
-    let mediaRecorder: MediaRecorder;
-    try {
-      mediaRecorder = new MediaRecorder(stream, {
-        mimeType,
-        videoBitsPerSecond: automaticVideoBitrate({
-          width: canvas.width,
-          height: canvas.height,
-          fps: config.fps,
-        }),
-      });
-    } catch (error) {
-      for (const track of stream.getTracks()) {
-        track.stop();
-      }
-      return Promise.reject(error);
-    }
-    this.activeMediaRecorder = mediaRecorder;
-    this.liveStream = stream;
-    recordingStore.startLiveRecording(config.format);
-
-    return new Promise<Blob>((resolve, reject) => {
-      const chunks: Blob[] = [];
-      this.rejectLiveRecording = reject;
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunks.push(event.data);
-        }
-      };
-      mediaRecorder.onerror = () => {
-        this.cleanupLiveRecording();
-        reject(new Error("Live video encoding failed"));
-      };
-      mediaRecorder.onstop = () => {
-        const cancelled = this.cancelled;
-        this.cleanupLiveRecording();
-        if (cancelled) {
-          reject(new Error("Recording cancelled"));
-        } else if (chunks.length === 0) {
-          // The canvas never produced a frame, e.g. because the preview lost
-          // its GPU context. Saving would write an empty, unplayable file.
-          reject(new Error(
-            "Live recording captured no frames from the preview. If the preview is blank, reload it and try again.",
-          ));
-        } else {
-          const blob = new Blob(chunks, { type: mediaRecorder.mimeType || mimeType });
-          if (config.format === "mp4") {
-            const controller = new AbortController();
-            this.liveFinalization = controller;
-            void finalizeLiveMp4(blob, controller.signal).then(resolve, reject).finally(() => {
-              this.liveFinalization = null;
-            });
-          } else {
-            resolve(blob);
-          }
-        }
-      };
-      try {
-        mediaRecorder.start(1000);
-      } catch (error) {
-        this.cleanupLiveRecording();
-        reject(error);
-      }
-    });
+    const captureFrame = engine.captureCurrentFrame ? () => engine.captureCurrentFrame!() : undefined;
+    return this.recordLiveVideo(canvas, config.format, captureFrame);
   }
 
   stopLiveRecording(): void {
     if (this.startingLiveVideo) {
       this.stopLiveVideoRequested = true;
       recordingStore.setFinalizing();
-      return;
-    }
-    if (this.activeLiveVideo) {
+    } else if (this.activeLiveVideo) {
       recordingStore.setFinalizing();
       this.activeLiveVideo.stop();
-      return;
-    }
-    if (this.activeMediaRecorder?.state === "recording") {
-      recordingStore.setFinalizing();
-      this.activeMediaRecorder.stop();
     }
   }
 
-  private async recordQualityLiveVideo(canvas: HTMLCanvasElement, fps: number, format: "mp4" | "webm", captureFrame?: () => Promise<ImageData>): Promise<Blob> {
+  private async recordLiveVideo(canvas: HTMLCanvasElement, format: "mp4" | "webm", captureFrame?: () => Promise<ImageData>): Promise<Blob> {
     this.cancelled = false;
     const controller = new AbortController();
     this.liveFinalization = controller;
@@ -217,12 +131,9 @@ export class ShaderRecorder {
     recordingStore.startLiveRecording(format);
     try {
       this.activeLiveVideo = captureFrame
-        ? await createLiveVideoCapture(canvas, fps, format, controller.signal, captureFrame)
-        : await createLiveVideoCapture(canvas, fps, format, controller.signal);
+        ? await createLiveVideoCapture(canvas, format, controller.signal, captureFrame)
+        : await createLiveVideoCapture(canvas, format, controller.signal);
       this.startingLiveVideo = false;
-      if (format === "mp4" && (canvas.width % 2 || canvas.height % 2)) {
-        this.outputNotice = "MP4 dimensions were rounded up to even pixels for video encoding.";
-      }
       if (this.stopLiveVideoRequested) {
         this.activeLiveVideo.stop();
       }
@@ -232,15 +143,6 @@ export class ShaderRecorder {
       this.startingLiveVideo = false;
       this.liveFinalization = null;
     }
-  }
-
-  private cleanupLiveRecording(): void {
-    for (const track of this.liveStream?.getTracks() ?? []) {
-      track.stop();
-    }
-    this.liveStream = null;
-    this.activeMediaRecorder = null;
-    this.rejectLiveRecording = null;
   }
 
   private async initializeCaptureEngine(
@@ -436,12 +338,7 @@ export class ShaderRecorder {
       this.activeGifEncoder.cancel();
       this.activeGifEncoder = null;
     }
-    if (this.activeMediaRecorder?.state === "recording") {
-      this.activeMediaRecorder.stop();
-    } else if (this.rejectLiveRecording) {
-      this.rejectLiveRecording(new Error("Recording cancelled"));
-      this.cleanupLiveRecording();
-    }
+
   }
 
   private async recordGif(
