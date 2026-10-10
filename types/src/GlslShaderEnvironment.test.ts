@@ -27,6 +27,11 @@ describe("GLSL shader environment", () => {
       "uniform float iSampleRate;",
       "uniform vec3 iCameraPos;",
       "uniform vec3 iCameraDir;",
+      "uniform bool iVRActive;",
+      "uniform vec4 iVRControllerPosition[2];",
+      "uniform vec4 iVRControllerDirection[2];",
+      "uniform vec4 iVRControllerButtons[2];",
+      "uniform vec4 iVRControllerAxes[2];",
       "uniform int iVertexCount;",
       "uniform int iInstanceCount;",
       "uniform mat4 iViewMatrix;",
@@ -38,6 +43,7 @@ describe("GLSL shader environment", () => {
       "iFrameRate", "iMouse", "iFrame", "iDate", "iChannelTime",
       "iSampleRate", "iCameraPos", "iCameraDir", "iVertexCount", "iInstanceCount",
       "iViewMatrix", "iProjectionMatrix", "iViewProjection",
+      "iVRActive", "iVRControllerPosition", "iVRControllerDirection", "iVRControllerButtons", "iVRControllerAxes",
     ]));
   });
 

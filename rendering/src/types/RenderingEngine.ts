@@ -28,6 +28,9 @@ export interface RenderingEngine {
   setInputEnabled(enabled: boolean): void;
   isVrPreviewAvailable?(): boolean;
   setVrPreviewEnabled?(enabled: boolean): void;
+  isImmersiveVrSupported?(): Promise<boolean>;
+  enterVr?(onEnded?: (error?: string) => void): Promise<void>;
+  exitVr?(): Promise<void>;
   updateBufferAndRecompile(bufferName: string, bufferContent: string): Promise<CompilationResult | undefined>;
   getPasses(): (Pass | RenderPassNode)[];
   /** Effective colour-attachment limits of the installed WebGPU device. */

@@ -2009,4 +2009,42 @@ describe("RenderingEngine", () => {
       expect(calls).toEqual(["callback", "capturer", "buffers", "frame"]);
     });
   });
+  describe("immersive VR engine commands", () => {
+    it("reports browser headset support", async () => {
+      vi.stubGlobal("navigator", { xr: { isSessionSupported: vi.fn(async () => true) } });
+      try {
+        await expect(renderingEngine.isImmersiveVrSupported()).resolves.toBe(true);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+    it("rejects headset entry before initialization", async () => {
+      await expect(renderingEngine.enterVr()).rejects.toThrow("not initialized");
+      await expect(renderingEngine.exitVr()).resolves.toBeUndefined();
+    });
+    it("restores frame-loop state when an explicit render fails", () => {
+      const frame = { isRunning: vi.fn(() => false), setRunning: vi.fn(), render: vi.fn(() => {
+        throw new Error("render failed");
+      }) };
+      Object.assign(renderingEngine, { frameRenderer: frame });
+      expect(() => renderingEngine.render(10)).toThrow("render failed");
+      expect(frame.setRunning).toHaveBeenLastCalledWith(false);
+    });
+    it("delegates entry and exit and suppresses the desktop loop while immersive", async () => {
+      const xr = { active: true, start: vi.fn(async () => {}), end: vi.fn(async () => {}), dispose: vi.fn() };
+      const frame = { startRenderLoop: vi.fn() };
+      Object.assign(renderingEngine, { immersiveVr: xr, frameRenderer: frame });
+      const ended = vi.fn();
+      await renderingEngine.enterVr(ended);
+      expect(xr.start).toHaveBeenCalledWith(ended);
+      renderingEngine.startRenderLoop();
+      expect(frame.startRenderLoop).not.toHaveBeenCalled();
+      await renderingEngine.exitVr();
+      expect(xr.end).toHaveBeenCalledOnce();
+      xr.active = false;
+      renderingEngine.startRenderLoop();
+      expect(frame.startRenderLoop).toHaveBeenCalledOnce();
+    });
+  });
+
 });

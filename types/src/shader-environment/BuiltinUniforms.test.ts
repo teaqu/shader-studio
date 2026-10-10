@@ -212,3 +212,12 @@ describe("SHADER_STUDIO_INDEXED_CHANNEL_METADATA_PATTERN_SOURCE", () => {
     expect(pattern.test("iCh4Extra")).toBe(false);
   });
 });
+
+
+it("exposes tracked VR inputs only to GLSL authoring", () => {
+  for (const name of ["iVRActive", "iVRControllerPosition", "iVRControllerDirection", "iVRControllerButtons", "iVRControllerAxes"]) {
+    expect(shaderStudioBuiltinUniformNames("glsl")).toContain(name);
+    expect(shaderStudioBuiltinUniformNames("slang")).not.toContain(name);
+    expect(shaderStudioBuiltinUniformNames("wgsl")).not.toContain(name);
+  }
+});
