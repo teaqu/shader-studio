@@ -1,3 +1,5 @@
+import { automaticVideoBitrate } from "./VideoEncoder";
+
 export type LiveVideoFormat = "mp4" | "webm";
 
 const LIVE_MIME_CANDIDATES: Record<LiveVideoFormat, string[]> = {
@@ -28,4 +30,29 @@ export function liveVideoMimeType(format: LiveVideoFormat): string | null {
 /** Live video formats this host can record, in the order they are offered. */
 export function supportedLiveVideoFormats(): LiveVideoFormat[] {
   return (["mp4", "webm"] as const).filter((format) => liveVideoMimeType(format) !== null);
+}
+
+/** Probe the encoder used for Live capture, independent of MediaRecorder. */
+export async function probeLiveVideoFormats(width: number, height: number, fps: number): Promise<LiveVideoFormat[]> {
+  if (typeof globalThis.VideoEncoder === "undefined") {
+    return supportedLiveVideoFormats();
+  }
+  const { canEncodeVideo, Quality } = await import("mediabunny");
+  const formats: LiveVideoFormat[] = [];
+  for (const format of ["mp4", "webm"] as const) {
+    const w = width + (format === "mp4" ? width % 2 : 0);
+    const h = height + (format === "mp4" ? height % 2 : 0);
+    const bitrate = automaticVideoBitrate({ width: w, height: h, fps });
+    for (const codec of format === "mp4" ? ["avc"] as const : ["vp9", "vp8"] as const) {
+      try {
+        if (await canEncodeVideo(codec, { width: w, height: h, frameRate: fps, quality: new Quality(codec === "vp8" ? { bitrate } : { quantizer: 12, bitrate }) })) {
+          formats.push(format);
+          break;
+        }
+      } catch {
+        // Unsupported encoder configuration; try the next codec.
+      }
+    }
+  }
+  return formats;
 }

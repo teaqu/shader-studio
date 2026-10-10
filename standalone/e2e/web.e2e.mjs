@@ -1292,11 +1292,16 @@ for (const format of ['PNG', 'JPEG', 'WebM', 'MP4', 'GIF']) {
   });
 }
 
-test('Live MP4 saves an indexed file with a duration for desktop players', async ({ page }) => {
+test('Live MP4 saves an indexed file even when MediaRecorder cannot encode MP4', async ({ page }) => {
+  await page.addInitScript(() => {
+    const supported = MediaRecorder.isTypeSupported.bind(MediaRecorder);
+    MediaRecorder.isTypeSupported = mime => !mime.startsWith('video/mp4') && supported(mime);
+  });
   await page.goto('/');
   await page.getByTestId('shader-option-aurora-glsl').click();
   await page.getByLabel('Toggle export panel').click();
   await page.getByRole('button', { name: 'Video', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'MP4', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'MP4', exact: true }).click();
   await page.getByRole('button', { name: 'Start recording', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Stop & save', exact: true })).toBeVisible();

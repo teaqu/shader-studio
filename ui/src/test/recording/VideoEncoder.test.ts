@@ -177,32 +177,43 @@ describe('Mediabunny Render exports', () => {
 });
 
 describe('Render quality preflight', () => {
+  it('prefers VP9 with explicit quality for WebM and retains the supported codec', async () => {
+    const encoding = await VideoEncoderWrapper.supportedEncoding(options);
+    expect(encoding).toEqual({ codec: 'vp9', bitrate: automaticVideoBitrate(options) });
+    const wrapper = new VideoEncoderWrapper({ ...options, ...encoding });
+    await wrapper.addFrame(document.createElement('canvas'), 0);
+    expect(mocks.config).toMatchObject({ codec: 'vp9', latencyMode: 'quality', contentHint: 'detail', quality: { options: { quantizer: 12, bitrate: automaticVideoBitrate(options) } } });
+  });
   it('budgets high-detail video and caps unsafe bitrates', () => {
     expect(automaticVideoBitrate(options)).toBe(34_560_000);
     expect(automaticVideoBitrate({ width: 16, height: 16, fps: 1 })).toBe(MIN_VIDEO_BITRATE);
     expect(automaticVideoBitrate({ width: 7680, height: 4320, fps: 120 })).toBe(MAX_VIDEO_BITRATE);
   });
   it.each(['mp4', 'webm'] as const)('checks %s with the same Mediabunny configuration used to encode', async format => {
-    await expect(VideoEncoderWrapper.supportedBitrate({ ...options, format })).resolves.toBe(automaticVideoBitrate(options));
-    expect(mocks.canEncode).toHaveBeenCalledWith(format === 'mp4' ? 'avc' : 'vp8', {
-      width: 640, height: 360, frameRate: 30,
-      quality: expect.objectContaining({ options: { bitrate: 34_560_000, bitrateMode: 'variable' } }),
+    await expect(VideoEncoderWrapper.supportedEncoding({ ...options, format })).resolves.toEqual({ codec: format === 'mp4' ? 'avc' : 'vp9', bitrate: automaticVideoBitrate(options) });
+    expect(mocks.canEncode).toHaveBeenCalledWith(format === 'mp4' ? 'avc' : 'vp9', {
+      width: 640, height: 360, frameRate: 30, latencyMode: 'quality', contentHint: 'detail',
+      quality: expect.objectContaining({ options: format === 'mp4' ? { bitrate: 34_560_000, bitrateMode: 'variable' } : { quantizer: 12, bitrate: 34_560_000 } }),
     });
+  });
+  it('falls back to VP8 when VP9 is unsupported', async () => {
+    mocks.canEncode.mockImplementation(async codec => codec === 'vp8');
+    expect(await VideoEncoderWrapper.supportedEncoding(options)).toEqual({ codec: 'vp8', bitrate: automaticVideoBitrate(options) });
   });
   it('halves bitrate until supported', async () => {
     mocks.canEncode.mockResolvedValueOnce(false).mockResolvedValueOnce(false).mockResolvedValue(true);
-    await expect(VideoEncoderWrapper.supportedBitrate(options)).resolves.toBe(8_640_000);
+    await expect(VideoEncoderWrapper.supportedEncoding({ ...options, format: 'mp4' })).resolves.toEqual({ codec: 'avc', bitrate: 8_640_000 });
     expect(mocks.canEncode).toHaveBeenCalledTimes(3);
   });
   it('rejects when every bitrate is unsupported or the support check throws', async () => {
     for (const check of [() => Promise.resolve(false), () => Promise.reject(new Error('invalid config'))]) {
       mocks.canEncode.mockImplementation(check);
-      await expect(VideoEncoderWrapper.supportedBitrate(options)).rejects.toThrow('WEBM export at 640×360, 30 fps is not supported');
+      await expect(VideoEncoderWrapper.supportedEncoding(options)).rejects.toThrow('WEBM export at 640×360, 30 fps is not supported');
     }
   });
   it('rejects missing WebCodecs', async () => {
     vi.stubGlobal('VideoEncoder', undefined);
-    await expect(VideoEncoderWrapper.supportedBitrate(options)).rejects.toThrow('WebCodecs unavailable');
+    await expect(VideoEncoderWrapper.supportedEncoding(options)).rejects.toThrow('WebCodecs unavailable');
     expect(mocks.canEncode).not.toHaveBeenCalled();
   });
 });

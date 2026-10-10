@@ -1,10 +1,28 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/svelte';
+import * as liveFormats from '../../../lib/recording/liveVideoFormats';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import '@testing-library/jest-dom';
 import VideoTab from '../../../lib/components/recording/VideoTab.svelte';
 import { resetCapturePreferences } from '../../../lib/state/capturePreferences.svelte';
 
 describe('VideoTab', () => {
+  afterEach(() => {
+    vi.restoreAllMocks(); 
+  });
+  it('enables WebCodecs MP4 when MediaRecorder only offers WebM', async () => {
+    vi.stubGlobal('MediaRecorder', { isTypeSupported: (mime: string) => mime.startsWith('video/webm') });
+    vi.spyOn(liveFormats, 'probeLiveVideoFormats').mockResolvedValue(['mp4', 'webm']);
+    render(VideoTab, { props: defaultProps });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'MP4' })).toBeEnabled());
+    await fireEvent.click(screen.getByRole('button', { name: 'Start recording' }));
+    expect(defaultProps.onRecord).toHaveBeenCalledWith(expect.objectContaining({ mode: 'live', format: 'mp4' }));
+  });
+  it('disables recording if encoder probing fails', async () => {
+    vi.spyOn(liveFormats, 'probeLiveVideoFormats').mockRejectedValue(new Error('encoder unavailable'));
+    render(VideoTab, { props: defaultProps });
+    await waitFor(() => expect(screen.getByText(/Live video recording isn't supported here/)).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Start recording' })).toBeDisabled();
+  });
   let defaultProps: any;
 
   async function selectRenderMode() {

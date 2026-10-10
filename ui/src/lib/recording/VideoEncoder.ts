@@ -8,6 +8,7 @@ export interface VideoEncoderOptions {
   height: number;
   fps: number;
   bitrate?: number;
+  codec?: "avc" | "vp8" | "vp9";
   format: "webm" | "mp4";
 }
 
@@ -35,11 +36,14 @@ export function automaticVideoBitrate(options: Pick<VideoEncoderOptions, "width"
 }
 
 function videoQuality(options: VideoEncoderOptions): Quality {
+  if (options.codec === "vp9") {
+    return new Quality({ quantizer: 12, bitrate: options.bitrate ?? automaticVideoBitrate(options) });
+  }
   return new Quality({ bitrate: options.bitrate ?? automaticVideoBitrate(options), bitrateMode: "variable" });
 }
 
-function videoCodec(options: VideoEncoderOptions): "avc" | "vp8" {
-  return options.format === "mp4" ? "avc" : "vp8";
+function videoCodec(options: VideoEncoderOptions): "avc" | "vp8" | "vp9" {
+  return options.codec ?? (options.format === "mp4" ? "avc" : "vp8");
 }
 
 export class VideoEncoderWrapper {
@@ -59,6 +63,8 @@ export class VideoEncoderWrapper {
       codec: videoCodec(options),
       quality: videoQuality(options),
       keyFrameInterval: 2,
+      latencyMode: "quality",
+      contentHint: "detail",
     });
     this.output.addVideoTrack(this.source, { frameRate: options.fps });
     this.ready = this.output.start();
@@ -67,26 +73,30 @@ export class VideoEncoderWrapper {
   }
 
   /** Lower the quality ceiling until this host supports the exact encoding parameters. */
-  static async supportedBitrate(options: VideoEncoderOptions): Promise<number> {
+  static async supportedEncoding(options: VideoEncoderOptions): Promise<{ codec: "avc" | "vp8" | "vp9"; bitrate: number }> {
     if (typeof globalThis.VideoEncoder === "undefined") {
       throw new Error("Video export is not supported by this host (WebCodecs unavailable)");
     }
-    for (
-      let bitrate = options.bitrate ?? automaticVideoBitrate(options);
-      bitrate >= MIN_VIDEO_BITRATE;
-      bitrate = Math.floor(bitrate / 2)
-    ) {
-      try {
-        if (await canEncodeVideo(videoCodec(options), {
-          width: options.width,
-          height: options.height,
-          frameRate: options.fps,
-          quality: videoQuality({ ...options, bitrate }),
-        })) {
-          return bitrate;
+    for (const codec of options.format === "mp4" ? ["avc"] as const : ["vp9", "vp8"] as const) {
+      for (
+        let bitrate = options.bitrate ?? automaticVideoBitrate(options);
+        bitrate >= MIN_VIDEO_BITRATE;
+        bitrate = Math.floor(bitrate / 2)
+      ) {
+        try {
+          if (await canEncodeVideo(codec, {
+            width: options.width,
+            height: options.height,
+            frameRate: options.fps,
+            quality: videoQuality({ ...options, codec, bitrate }),
+            latencyMode: "quality",
+            contentHint: "detail",
+          })) {
+            return { codec, bitrate };
+          }
+        } catch {
+          // Invalid host configuration; try a lower bitrate or the next codec.
         }
-      } catch {
-        // An invalid configuration for this host; try a lower bitrate.
       }
     }
     throw new Error(

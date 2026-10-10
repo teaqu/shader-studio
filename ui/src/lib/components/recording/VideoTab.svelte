@@ -4,7 +4,7 @@
     getVideoCapturePreferences,
     updateVideoCapturePreferences,
   } from "../../state/capturePreferences.svelte";
-  import { supportedLiveVideoFormats } from "../../recording/liveVideoFormats";
+  import { probeLiveVideoFormats, supportedLiveVideoFormats } from "../../recording/liveVideoFormats";
 
   interface Props {
     canvasWidth: number;
@@ -57,11 +57,27 @@
       Math.abs(rate - measured) < Math.abs(best - measured) ? rate : best);
   }
   let screenFrameRate = $derived(captureMode === "render" ? standardFrameRate(displayFrameRate) : displayFrameRate);
-  // Probe once: MediaRecorder support is fixed for the host. A saved format the
-  // host can't record Live falls back visibly without overwriting the saved
-  // preference, which Render (WebCodecs) may still support.
-  const liveFormats = supportedLiveVideoFormats();
-  const liveUnavailable = liveFormats.length === 0;
+  let liveFormats = $state(supportedLiveVideoFormats());
+  let probing = $state(false);
+  $effect(() => {
+    let disposed = false;
+    probing = true;
+    void probeLiveVideoFormats(canvasWidth, canvasHeight, activeVideoFps).then(formats => {
+      if (!disposed) {
+        liveFormats = formats;
+        probing = false;
+      }
+    }, () => {
+      if (!disposed) {
+        liveFormats = [];
+        probing = false;
+      }
+    });
+    return () => {
+      disposed = true;
+    };
+  });
+  const liveUnavailable = $derived(liveFormats.length === 0);
   let liveFallbackFormat = $derived(
     captureMode === "live" && !liveUnavailable && !liveFormats.includes(videoFormat) ? liveFormats[0] : null,
   );
@@ -200,7 +216,7 @@
   <div class="scale-buttons">
     <button
       class="export-action-btn"
-      disabled={captureMode === "live" && liveUnavailable}
+      disabled={captureMode === "live" && (liveUnavailable || probing)}
       onclick={handleVideoRecord}
     >{captureMode === "live" ? "Start recording" : "Render video"}</button>
   </div>

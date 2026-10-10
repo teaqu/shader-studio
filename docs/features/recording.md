@@ -48,10 +48,10 @@ Hosts without WebCodecs use MediaRecorder, so the formats offered depend
 on the host: a format it can't record is disabled, and a saved choice it can't
 record falls back to one it can, with a note in the panel. MP4 needs even
 dimensions; an odd custom size is rounded up and the panel tells you the saved
-size. Video quality is automatic. Live recordings request minimum quantization
-and prefer software encoding for fidelity over hardware speed or compression;
-complex shaders can therefore produce larger files. Render and bitrate fallback
-encoders use variable bitrate with a
+size. Video quality is automatic. Live recordings and VP9 WebM Render exports
+request quantizer 12 to preserve detail; complex shaders can therefore produce
+larger files. WebM Render prefers VP9 and falls back to VP8 when needed.
+MP4 Render and bitrate fallback encoders use variable bitrate with a
 high ceiling (5 bits per pixel), so detailed, fast-changing shaders keep their
 detail while simple shaders stay small, because the encoder only spends what the
 content needs. Video stores colour at half resolution (4:2:0), so single-pixel

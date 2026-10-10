@@ -61,8 +61,8 @@ vi.mock('../../lib/recording/GifEncoder', () => ({
 const mockVideoAddFrame = vi.fn();
 const mockVideoFinish = vi.fn(() => Promise.resolve(new Blob(['video'], { type: 'video/webm' })));
 
-const { mockVideoSupportedBitrate, mockVideoClose } = vi.hoisted(() => ({
-  mockVideoSupportedBitrate: vi.fn(() => Promise.resolve(12_000_000)),
+const { mockVideoSupportedEncoding, mockVideoClose } = vi.hoisted(() => ({
+  mockVideoSupportedEncoding: vi.fn((options: { format: string }) => Promise.resolve({ codec: options.format === "mp4" ? "avc" : "vp9", bitrate: 12_000_000 })),
   mockVideoClose: vi.fn(),
 }));
 
@@ -74,7 +74,7 @@ vi.mock('../../lib/recording/VideoEncoder', () => ({
       finish: mockVideoFinish,
       close: mockVideoClose,
     });
-  }), { supportedBitrate: mockVideoSupportedBitrate }),
+  }), { supportedEncoding: mockVideoSupportedEncoding }),
 }));
 
 // Mock RenderingEngine
@@ -801,6 +801,14 @@ describe('ShaderRecorder', () => {
       await argumentsUsed[4]();
       expect(engine.captureCurrentFrame).toHaveBeenCalledOnce();
     });
+    it('records WebCodecs MP4 when MediaRecorder does not support it', async () => {
+      vi.stubGlobal('MediaRecorder', undefined);
+      vi.stubGlobal('VideoEncoder', class {});
+      const blob = new Blob(['quality']);
+      mockCreateLiveVideoCapture.mockResolvedValueOnce({ result: Promise.resolve(blob), stop: vi.fn() });
+      const canvas = { width: 816, height: 458, captureStream: vi.fn() };
+      await expect(recorder.recordLive({ mode: 'live', format: 'mp4', duration: 5, startTime: 0, fps: 60, width: 816, height: 458 }, { getCanvas: () => canvas as unknown as HTMLCanvasElement })).resolves.toBe(blob);
+    });
     it.each([true, false])('uses stable frame capture only for a WebGPU canvas (%s)', async webgpu => {
       const { stream, MockMediaRecorder } = installMediaRecorder();
       MockMediaRecorder.isTypeSupported.mockReturnValue(true);
@@ -1050,12 +1058,12 @@ describe('ShaderRecorder', () => {
       const p = recorder.record({ format: 'webm', duration: 0.1, startTime: 0, fps: 10, width: 64, height: 64 }, shaderInfo);
       await vi.runAllTimersAsync();
       await p;
-      expect(mockVideoSupportedBitrate).toHaveBeenCalledWith({ width: 64, height: 64, fps: 10, format: 'webm' });
-      expect(VideoEncoderWrapper).toHaveBeenCalledWith(expect.objectContaining({ bitrate: 12_000_000 }));
+      expect(mockVideoSupportedEncoding).toHaveBeenCalledWith({ width: 64, height: 64, fps: 10, format: 'webm' });
+      expect(VideoEncoderWrapper).toHaveBeenCalledWith(expect.objectContaining({ codec: "vp9", bitrate: 12_000_000 }));
     });
 
     it('rejects an unsupported video configuration before rendering any frame', async () => {
-      mockVideoSupportedBitrate.mockRejectedValueOnce(new Error('MP4 export at 800×600, 30 fps is not supported by this host'));
+      mockVideoSupportedEncoding.mockRejectedValueOnce(new Error('MP4 export at 800×600, 30 fps is not supported by this host'));
       const config: RecordingConfig = {
         format: 'mp4',
         duration: 1,
