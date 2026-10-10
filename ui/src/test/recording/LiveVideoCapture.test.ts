@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createLiveVideoCapture } from "../../lib/recording/LiveVideoCapture";
 
 const mocks = vi.hoisted(() => ({
-  start: vi.fn(), finalize: vi.fn(), cancel: vi.fn(), close: vi.fn(), add: vi.fn(), stopTrack: vi.fn(), canEncode: vi.fn(), bridge: vi.fn(),
+  addTrack: vi.fn(), start: vi.fn(), finalize: vi.fn(), cancel: vi.fn(), close: vi.fn(), add: vi.fn(), stopTrack: vi.fn(), canEncode: vi.fn(), bridge: vi.fn(),
   config: null as Record<string, unknown> | null,
   target: { buffer: new ArrayBuffer(4) as ArrayBuffer | null },
   error: (_error: unknown) => {},
@@ -20,7 +20,7 @@ vi.mock("mediabunny", () => ({
   },
   Output: class {
     start = mocks.start; finalize = mocks.finalize; cancel = mocks.cancel;
-    addVideoTrack() {}
+    addVideoTrack = mocks.addTrack;
   },
   MediaStreamVideoTrackSource: class {
     close = mocks.close;
@@ -56,6 +56,27 @@ function canvas() {
   const track = { stop: mocks.stopTrack };
   return { width: 815, height: 459, captureStream: vi.fn(() => ({ getVideoTracks: () => [track], getTracks: () => [track] })) } as unknown as HTMLCanvasElement;
 }
+it("feeds WebM directly so the browser stream cannot force realtime quality", async () => {
+  const preview = canvas();
+  const capture = await createLiveVideoCapture(preview, 60, "webm", new AbortController().signal);
+  expect(preview.captureStream).not.toHaveBeenCalled();
+  expect(mocks.add).toHaveBeenCalledExactlyOnceWith(0, 1 / 60);
+  expect(mocks.config?.latencyMode).toBe("quality");
+  expect(mocks.addTrack).toHaveBeenCalledExactlyOnceWith(expect.anything());
+  capture.stop();
+  await capture.result;
+});
+it("keeps the requested cadence without adding encoding time to every frame", async () => {
+  vi.useFakeTimers();
+  mocks.add.mockImplementation(() => new Promise<void>(resolve => setTimeout(resolve, 8)));
+  const capture = await createLiveVideoCapture(canvas(), 60, "mp4", new AbortController().signal);
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(mocks.add.mock.calls.length).toBeGreaterThanOrEqual(60);
+  expect(mocks.add.mock.calls.length).toBeLessThanOrEqual(61);
+  capture.stop();
+  await vi.advanceTimersByTimeAsync(20);
+  await capture.result;
+});
 it("feeds MP4 directly with elapsed timestamps and one pending sample", async () => {
   vi.useFakeTimers();
   let complete!: () => void;
@@ -70,7 +91,7 @@ it("feeds MP4 directly with elapsed timestamps and one pending sample", async ()
   await vi.advanceTimersByTimeAsync(500);
   expect(mocks.add).toHaveBeenCalledOnce();
   complete();
-  await vi.advanceTimersByTimeAsync(1000 / 60);
+  await vi.advanceTimersByTimeAsync(0);
   expect(mocks.add).toHaveBeenCalledTimes(2);
   expect(mocks.add.mock.calls[1][0]).toBeGreaterThanOrEqual(.5);
   capture.stop();
@@ -123,8 +144,8 @@ it("uses stable GPU frames and disposes the bridge after finalization", async ()
   const captureFrame = vi.fn();
   mocks.bridge.mockResolvedValue({ canvas: stableCanvas, dispose, error: new Promise(() => {}) });
   const capture = await createLiveVideoCapture(canvas(), 60, "webm", new AbortController().signal, captureFrame);
-  expect(mocks.bridge).toHaveBeenCalledWith(expect.anything(), captureFrame, 60, expect.any(AbortSignal));
-  expect(stableCanvas.captureStream).toHaveBeenCalledWith(60);
+  expect(mocks.bridge).toHaveBeenCalledWith(expect.anything(), captureFrame, expect.any(AbortSignal));
+  expect(stableCanvas.captureStream).not.toHaveBeenCalled();
   capture.stop();
   await capture.result;
   expect(dispose).toHaveBeenCalledOnce();
@@ -139,25 +160,20 @@ it("disposes the stable MP4 canvas after direct samples finish", async () => {
   await capture.result;
   expect(dispose).toHaveBeenCalledOnce();
 });
-it("disposes stable GPU capture when creating the browser stream fails", async () => {
-  const stableCanvas = canvas();
-  vi.mocked(stableCanvas.captureStream).mockImplementation(() => {
-    throw new Error("stream unavailable");
-  });
+it("disposes stable GPU capture when encoder initialization fails", async () => {
   const dispose = vi.fn();
-  mocks.bridge.mockResolvedValue({ canvas: stableCanvas, dispose, error: new Promise(() => {}) });
-  await expect(createLiveVideoCapture(canvas(), 60, "webm", new AbortController().signal, vi.fn())).rejects.toThrow("stream unavailable");
+  mocks.bridge.mockResolvedValue({ canvas: canvas(), dispose, update: vi.fn() });
+  mocks.start.mockRejectedValueOnce(new Error("startup failed"));
+  await expect(createLiveVideoCapture(canvas(), 60, "webm", new AbortController().signal, vi.fn())).rejects.toThrow("startup failed");
   expect(dispose).toHaveBeenCalledOnce();
 });
 it("propagates a later stable frame readback failure and releases the encoder", async () => {
-  let reject!: (reason: Error) => void;
+  vi.useFakeTimers();
   const dispose = vi.fn();
-  mocks.bridge.mockResolvedValue({ canvas: canvas(), dispose, error: new Promise((_resolve, fail) => {
-    reject = fail;
-  }) });
+  mocks.bridge.mockResolvedValue({ canvas: canvas(), dispose, update: vi.fn().mockRejectedValue(new Error("GPU lost")) });
   const capture = await createLiveVideoCapture(canvas(), 60, "webm", new AbortController().signal, vi.fn());
   const rejected = expect(capture.result).rejects.toThrow("GPU lost");
-  reject(new Error("GPU lost"));
+  await vi.advanceTimersByTimeAsync(17);
   await rejected;
   expect(dispose).toHaveBeenCalledOnce();
   expect(mocks.cancel).toHaveBeenCalledOnce();
@@ -171,7 +187,7 @@ it.each(["mp4", "webm"] as const)("encodes %s at explicit quality and releases t
   capture.stop(); capture.stop();
   expect((await capture.result).type).toBe(`video/${format}`);
   expect(mocks.finalize).toHaveBeenCalledOnce();
-  expect(mocks.stopTrack).toHaveBeenCalledTimes(format === "webm" ? 1 : 0);
+  expect(mocks.stopTrack).not.toHaveBeenCalled();
 });
 it("retains the original MP4 pixel preprocessing at even preview dimensions", async () => {
   const preview = canvas();
@@ -216,10 +232,10 @@ it("discards media and releases tracks when cancelled", async () => {
   expect(mocks.stopTrack).not.toHaveBeenCalled();
 });
 it("propagates encoder errors and cleans up", async () => {
+  mocks.add.mockRejectedValueOnce(new Error("encoder failed"));
   const capture = await createLiveVideoCapture(canvas(), 30, "webm", new AbortController().signal);
-  mocks.error(new Error("encoder failed"));
   await expect(capture.result).rejects.toThrow("encoder failed");
-  expect(mocks.stopTrack).toHaveBeenCalledOnce();
+  expect(mocks.cancel).toHaveBeenCalledOnce();
 });
 it("cleans up when initialization fails", async () => {
   mocks.start.mockRejectedValueOnce(new Error("setup failed"));

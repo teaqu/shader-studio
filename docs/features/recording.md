@@ -41,8 +41,10 @@ clip at a chosen time, duration, and resolution.
 | **FPS** | Screen, 24, 30, 60, or custom. In Render mode, Screen rounds to 24, 30, 60 or 120 fps |
 | **Resolution** | Current, 720p, 1080p, 4K, or custom in Render mode |
 
-Live recording uses WebCodecs when available, with explicit per-frame quality
-to preserve smooth shader gradients. MP4 dimensions are rounded up to even
+Live recording uses WebCodecs when available, with direct canvas samples and
+explicit per-frame quality to preserve smooth shader gradients. Capture refresh
+and encoding share one clock: the selected FPS is a ceiling, and a slow preview
+produces fewer fresh frames while keeping real elapsed time. MP4 dimensions are rounded up to even
 pixels to avoid encoder edge artifacts. WebM prefers VP9, with a VP8 fallback.
 Hosts without WebCodecs use MediaRecorder, so the formats offered depend
 on the host: a format it can't record is disabled, and a saved choice it can't

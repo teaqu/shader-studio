@@ -110,7 +110,7 @@ export class ShaderRecorder {
       return Promise.reject(new Error("Live video capture is not supported by this host"));
     }
     if (typeof globalThis.VideoEncoder !== "undefined") {
-      const captureFrame = engine.captureCurrentFrame && (config.format === "mp4" || canvas.getContext?.("webgpu"))
+      const captureFrame = engine.captureCurrentFrame
         ? () => engine.captureCurrentFrame!() : undefined;
       return this.recordQualityLiveVideo(canvas, config.fps, config.format, captureFrame);
     }

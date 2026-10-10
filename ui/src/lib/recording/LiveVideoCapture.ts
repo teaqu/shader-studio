@@ -9,23 +9,14 @@ export interface LiveVideoCapture {
 
 /** Encode the existing preview with explicit quality instead of MediaRecorder's rate control. */
 export async function createLiveVideoCapture(canvas: HTMLCanvasElement, fps: number, format: "mp4" | "webm", signal: AbortSignal, captureFrame?: () => Promise<ImageData>): Promise<LiveVideoCapture> {
-  const { Output, Mp4OutputFormat, WebMOutputFormat, BufferTarget, CanvasSource, MediaStreamVideoTrackSource, Quality, canEncodeVideo } = await import("mediabunny");
+  const { Output, Mp4OutputFormat, WebMOutputFormat, BufferTarget, CanvasSource, Quality, canEncodeVideo } = await import("mediabunny");
   signal.throwIfAborted();
   const width = canvas.width + (format === "mp4" ? canvas.width % 2 : 0);
   const height = canvas.height + (format === "mp4" ? canvas.height % 2 : 0);
   const quality = new Quality({ quantizer: 12, bitrate: automaticVideoBitrate({ width, height, fps }) });
   const codec = format === "mp4" ? "avc" : await canEncodeVideo("vp9", { width, height, quality, frameRate: fps }) ? "vp9" : "vp8";
   signal.throwIfAborted();
-  const stable = captureFrame ? await createLivePreviewCanvas(canvas, captureFrame, fps, signal) : undefined;
-  let stream: MediaStream | undefined;
-  try {
-    if (format === "webm") {
-      stream = (stable?.canvas ?? canvas).captureStream(fps);
-    }
-  } catch (error) {
-    stable?.dispose();
-    throw error;
-  }
+  const stable = captureFrame ? await createLivePreviewCanvas(canvas, captureFrame, signal) : undefined;
   const target = new BufferTarget();
   const output = new Output({ target, format: format === "mp4" ? new Mp4OutputFormat({ fastStart: "in-memory" }) : new WebMOutputFormat() });
   let resolve!: (blob: Blob) => void;
@@ -44,9 +35,6 @@ export async function createLiveVideoCapture(canvas: HTMLCanvasElement, fps: num
     clearTimeout(timer);
     stable?.dispose();
     signal.removeEventListener("abort", abort);
-    for (const track of stream?.getTracks() ?? []) {
-      track.stop();
-    }
   };
   const fail = async (error: unknown) => {
     if (settled) {
@@ -65,12 +53,7 @@ export async function createLiveVideoCapture(canvas: HTMLCanvasElement, fps: num
     void fail(signal.reason);
   };
   signal.addEventListener("abort", abort, { once: true });
-  void stable?.error.catch(error => fail(error));
   try {
-    const track = stream?.getVideoTracks()[0];
-    if (stream && !track) {
-      throw new Error("Live recording captured no video track");
-    }
     const encoding: VideoEncodingConfig = {
       codec,
       quality,
@@ -81,31 +64,38 @@ export async function createLiveVideoCapture(canvas: HTMLCanvasElement, fps: num
       },
       transform: { width, height, fit: "fill" as const },
     };
-    // A browser video track first converts RGB to YUV and forces realtime
-    // latency. Direct canvas samples retain the requested quality latency.
-    const source = stream
-      ? new MediaStreamVideoTrackSource(track!, encoding, { frameRate: fps, timestampBase: "zero" })
-      : new CanvasSource(stable?.canvas ?? canvas, encoding);
-    output.addVideoTrack(source, { frameRate: fps });
-    if (source instanceof MediaStreamVideoTrackSource) {
-      void source.errorPromise.catch(error => fail(error));
-    }
+    // Direct samples keep quality latency and avoid browser-stream RGB-to-YUV conversion.
+    const source = new CanvasSource(stable?.canvas ?? canvas, encoding);
+    // Live samples use real elapsed time; a fixed frameRate would snap timestamps.
+    output.addVideoTrack(source);
     await output.start();
     signal.throwIfAborted();
-    if (source instanceof CanvasSource) {
-      const began = performance.now();
-      const add = () => {
-        // Await each sample before scheduling another: encoder backpressure
-        // cannot accumulate a queue or overlap additions.
-        pending = source.add((performance.now() - began) / 1000, 1 / fps);
-        void pending.then(() => {
-          if (!settled && !stopping) {
-            timer = setTimeout(add, 1000 / fps);
-          }
-        }, error => fail(error));
-      };
-      add();
-    }
+    const began = performance.now();
+    let first = true;
+    let nextFrame = 0;
+    const add = () => {
+      // Stay on the requested clock, skipping missed slots when capture is slow.
+      nextFrame = Math.max(nextFrame + 1, Math.floor((performance.now() - began) * fps / 1000) + 1);
+      const deadline = began + nextFrame * 1000 / fps;
+      pending = (async () => {
+        if (!first) {
+          await stable?.update();
+        }
+        const timestamp = first ? 0 : (performance.now() - began) / 1000;
+        first = false;
+        if (settled) {
+          return;
+        }
+        await source.add(timestamp, 1 / fps);
+      })();
+      void pending.then(() => {
+        if (!settled && !stopping) {
+          // Readback and encoding are part of the frame budget, not extra delay.
+          timer = setTimeout(add, Math.max(0, deadline - performance.now()));
+        }
+      }, error => fail(error));
+    };
+    add();
     return {
       result,
       stop() {
