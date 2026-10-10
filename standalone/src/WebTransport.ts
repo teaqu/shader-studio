@@ -102,6 +102,29 @@ export class WebTransport implements Transport {
   }));
   private readonly viewerCleanups = new Set<() => void>();
   private readonly persistenceCleanups = new Set<() => void>();
+  private readonly pendingEditorSaves = new Set<() => void>();
+  private readonly pendingMessages = new Set<Promise<void>>();
+  private messageFailure: unknown;
+
+  registerPendingSave(save: () => void): () => void {
+    this.pendingEditorSaves.add(save);
+    return () => {
+      this.pendingEditorSaves.delete(save);
+    };
+  }
+
+  private trackMessage(operation: Promise<void>, retainFailure = true): Promise<void> {
+    this.pendingMessages.add(operation);
+    void operation.then(() => {
+      this.pendingMessages.delete(operation);
+    }, error => {
+      if (retainFailure) {
+        this.messageFailure = error;
+      }
+      this.pendingMessages.delete(operation);
+    });
+    return operation;
+  }
 
   postMessage<const TMessage extends BaseMessage>(message: TransportMessage<TMessage>): void {
     if (this.connected) {
@@ -110,7 +133,7 @@ export class WebTransport implements Transport {
         requestPanel('explorer');
         return;
       }
-      void this.host.then(async (host) => {
+      this.trackMessage(this.host.then(async (host) => {
         if (!this.connected) {
           return;
         }
@@ -136,7 +159,7 @@ export class WebTransport implements Transport {
             setEditorDocument(payload.path, host.readEditorFile(payload.path));
           }
         }
-      });
+      }));
     }
   }
 
@@ -226,12 +249,12 @@ export class WebTransport implements Transport {
     if (!this.connected) {
       throw new Error('Editor disconnected. No files were changed.');
     }
-    await (await this.host).applyWorkspaceEdit(changes, () => this.connected && isCurrent(), () => {
+    await this.trackMessage(this.host.then(host => host.applyWorkspaceEdit(changes, () => this.connected && isCurrent(), () => {
       commit();
       for (const change of changes) {
         setEditorDocument(decodeURIComponent(new URL(change.uri).pathname), change.after);
       }
-    }, openTexts);
+    }, openTexts)), false);
   }
 
   async readEditorFile(path: string): Promise<string | null> {
@@ -251,7 +274,7 @@ export class WebTransport implements Transport {
               // Restricted/quota-limited storage retains the workspace fallback.
             }
           }
-          void this.host.then(async (host) => {
+          this.trackMessage(this.host.then(async (host) => {
             await host.handleExplorerMessage(message);
             if (typeof message.path === 'string') {
               setEditorDocument(message.path, host.readEditorFile(message.path));
@@ -260,7 +283,7 @@ export class WebTransport implements Transport {
               && host.readEditorFile(message.path) !== null) {
               selectEditor(message.path);
             }
-          });
+          }));
         }
       },
       onMessage: (handler) => {
@@ -294,17 +317,36 @@ export class WebTransport implements Transport {
       cleanup();
     }
     this.persistenceCleanups.clear();
+    this.pendingEditorSaves.clear();
   }
 
   async clearWorkspace(): Promise<void> {
-    const host = await this.host;
-    await host.clearWorkspace();
-    clearEditorDocuments();
+    await this.trackMessage(this.host.then(async host => {
+      await host.clearWorkspace();
+      clearEditorDocuments();
+    }), false);
   }
 
   /** Wait until every queued workspace write has either committed or failed. */
   async flush(): Promise<void> {
-    await (await this.workspace).flush();
+    const workspace = await this.workspace;
+    for (;;) {
+      for (const save of this.pendingEditorSaves) {
+        save();
+      }
+      await Promise.all([...this.pendingMessages]);
+      if (this.messageFailure !== undefined) {
+        throw this.messageFailure;
+      }
+      await workspace.flush();
+      // Editors can acquire another keystroke while database writes await IO.
+      for (const save of this.pendingEditorSaves) {
+        save();
+      }
+      if (this.pendingMessages.size === 0) {
+        return;
+      }
+    }
   }
 
   /** A portable snapshot for user-initiated download; it includes pending edits. */
@@ -314,7 +356,7 @@ export class WebTransport implements Transport {
 
   /** Import requires `{ replace: true }` whenever there are existing files. */
   async importWorkspaceBackup(backup: unknown, options?: WorkspaceImportOptions): Promise<void> {
-    await (await this.workspace).importBackup(backup, options);
+    await this.trackMessage(this.workspace.then(workspace => workspace.importBackup(backup, options)), false);
   }
 
   async getPersistenceStatus(): Promise<WorkspacePersistenceStatus> {

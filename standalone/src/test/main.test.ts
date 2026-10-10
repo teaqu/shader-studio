@@ -1,17 +1,23 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ mount: vi.fn(), configureHost: vi.fn(), createViewerTransport: vi.fn(), start: vi.fn(), metadata: vi.fn() }));
+import type { HostConfig } from '@shader-studio/ui';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+const mocks = vi.hoisted(() => ({ mount: vi.fn(), configureHost: vi.fn(), createViewerTransport: vi.fn(), start: vi.fn(), metadata: vi.fn(), update: vi.fn(), preferences: vi.fn() }));
 vi.mock('svelte', async importOriginal => ({ ...await importOriginal<typeof import('svelte')>(), mount: mocks.mount }));
 vi.mock('@shader-studio/ui', () => ({ configureHost: mocks.configureHost }));
 vi.mock('../App.svelte', () => ({ default: 'App' }));
 vi.mock('../WebTransport', () => ({ WebTransport: class {
   createViewerTransport = mocks.createViewerTransport;
+  settings = { update: mocks.update };
 } }));
+vi.mock('../settings/settingsState.svelte', () => ({ getEditorPreferences: mocks.preferences }));
 vi.mock('../pwa', () => ({ createPwaController: () => ({ start: mocks.start }) }));
 vi.mock('../slangAssets', () => ({ installSlangAssetMetadata: mocks.metadata }));
 
 describe('standalone host bootstrap', () => {
   beforeEach(() => {
     vi.resetModules(); vi.clearAllMocks(); document.body.innerHTML = '<div id="app"></div>';
+  });
+  afterEach(() => {
+    document.body.innerHTML = '';
   });
   it('gives each mounted viewer a transport and configures web capabilities and default assets', async () => {
     const first = { id: 'first' }, second = { id: 'second' };
@@ -20,14 +26,23 @@ describe('standalone host bootstrap', () => {
     mocks.mount.mockReturnValue(app);
     const result = await import('../main');
     expect(result.default).toBe(app);
-    const config = mocks.configureHost.mock.calls[0][0];
-    expect(config.createTransport()).toBe(first);
-    expect(config.createTransport()).toBe(second);
+    const config = mocks.configureHost.mock.calls[0][0] as HostConfig;
+    expect(config.createTransport?.()).toBe(first);
+    expect(config.createTransport?.()).toBe(second);
     expect(config.capabilities).toEqual({ compileOnSave: false });
     expect(config.defaultAssets).toHaveLength(2);
     expect(config.defaultAssets).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'Nebula Texture.png', isSameDirectory: false, thumbnailUri: expect.stringMatching(/^http/) })]));
     expect(mocks.mount).toHaveBeenCalledWith('App', { target: document.getElementById('app'), props: { transport: expect.any(Object), pwa: { start: mocks.start } } });
     expect(mocks.metadata).toHaveBeenCalledOnce();
     expect(mocks.start).toHaveBeenCalledOnce();
+  });
+  it('connects persisted wrap commands and preferences to the host', async () => {
+    await import('../main');
+    const config = mocks.configureHost.mock.calls[0][0] as HostConfig;
+    expect(config.getEditorPreferences).toBe(mocks.preferences);
+    config.setEditorWordWrap?.('on');
+    config.setEditorWordWrap?.('off');
+    expect(mocks.update.mock.calls).toEqual([['editor.wordWrap', 'on'], ['editor.wordWrap', 'off']]);
+    expect(config.defaultAssets?.every(asset => asset.thumbnailUri?.startsWith(document.baseURI))).toBe(true);
   });
 });

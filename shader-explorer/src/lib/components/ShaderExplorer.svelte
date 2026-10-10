@@ -39,6 +39,7 @@
   let showOptions = $state(false);
   let hideFailedShaders = $state(false);
   let hideBufferShaders = $state(true);
+  let hideVertexShaders = $state(true);
   let openFilesOnSelect = $state(true);
   let failedShaders = $state(new Set<string>()); // Track failed shader paths
   let refreshKey = $state(0); // Only incremented on explicit refresh
@@ -49,7 +50,7 @@
 
   // Persist state changes by sending to extension
   $effect(() => {
-    const state = { sortBy, sortOrder, pageSize, cardSize, hideFailedShaders, hideBufferShaders, openFilesOnSelect, layoutMode, showOptions };
+    const state = { sortBy, sortOrder, pageSize, cardSize, hideFailedShaders, hideBufferShaders, hideVertexShaders, openFilesOnSelect, layoutMode, showOptions };
     if (vscode && stateRestored) {
       vscode.postMessage({ type: 'saveState', state });
     }
@@ -62,6 +63,7 @@
     searchResultPaths,
     hideFailedShaders,
     hideBufferShaders,
+    hideVertexShaders,
     failedShaderPaths: failedShaders,
     sortBy,
     sortOrder,
@@ -82,6 +84,7 @@
     sortOrder;
     pageSize;
     hideBufferShaders;
+    hideVertexShaders;
     currentPage = 1;
   });
 
@@ -199,6 +202,9 @@
           }
           if (typeof message.savedState.hideBufferShaders === 'boolean') {
             hideBufferShaders = message.savedState.hideBufferShaders;
+          }
+          if (typeof message.savedState.hideVertexShaders === 'boolean') {
+            hideVertexShaders = message.savedState.hideVertexShaders;
           }
           if (typeof message.savedState.openFilesOnSelect === 'boolean') {
             openFilesOnSelect = message.savedState.openFilesOnSelect;
@@ -361,6 +367,10 @@
         <label class="checkbox-control">
           <input type="checkbox" bind:checked={hideBufferShaders} />
           <span class="checkbox-label">Hide Buffers</span>
+        </label>
+        <label class="checkbox-control">
+          <input type="checkbox" bind:checked={hideVertexShaders} />
+          <span class="checkbox-label">Hide Vertex</span>
         </label>
         <label class="checkbox-control">
           <input type="checkbox" bind:checked={hideFailedShaders} />

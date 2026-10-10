@@ -2685,6 +2685,26 @@ describe('EditorOverlay', () => {
       expect(mockEditor.setScrollTop).toHaveBeenCalledWith(42);
     });
 
+    it('flushes debounced editor text before the host checks durable storage', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor, getContentChangeCallback } = createMockEditorWithCallbacks();
+      mockEditor.getValue.mockReturnValue('last typed character');
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as unknown as ReturnType<typeof monaco.editor.create>);
+      let savePending: (() => void) | undefined;
+      const detach = vi.fn();
+      const transport = { registerPendingSave: (save: () => void) => {
+        savePending = save; return detach;
+      }, postMessage: vi.fn(), onMessage: vi.fn(), dispose: vi.fn(), getType: () => 'web' as const, isConnected: () => true } as Transport;
+      const view = render(EditorOverlay, { props: { ...defaultProps, transport } });
+      getContentChangeCallback()!();
+      expect(transport.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'updateShaderSource' }));
+      expect(savePending).toBeDefined();
+      savePending!();
+      expect(transport.postMessage).toHaveBeenCalledWith({ type: 'updateShaderSource', payload: { path: '/test.glsl', code: 'last typed character' } });
+      view.unmount();
+      expect(detach).toHaveBeenCalledOnce();
+    });
+
     it('should ignore echo-back when shaderCode matches lastSentCode', async () => {
       const monaco = await import('monaco-editor');
       const { mockEditor, getContentChangeCallback } = createMockEditorWithCallbacks();

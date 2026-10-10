@@ -78,8 +78,13 @@
   let workspaceFileInput: HTMLInputElement;
   const session = $derived(getViewerSession());
   const explorerApi = transport.getShaderExplorerHostApi();
+  let shellMounted = false;
+  let updateInProgress = false;
+  let updateApplied = false;
+  let updateLocked = $state(false);
 
   onMount(() => {
+    shellMounted = true;
     void transport.getStorageStatus?.().then(async (status) => {
       storageStatus = status;
       if (status.backend === 'indexeddb' && status.persistSupported && !status.persisted && claimAutomaticStorageRequest()) {
@@ -88,11 +93,18 @@
     }).catch(() => { /* Storage inspection must not interrupt editing. */ });
     const stopPersistence = transport.onPersistenceStatus?.((status) => {
       persistenceStatus = status;
+      if (status.state === 'saved' && pwaStatus.updateAvailable) {
+        void applyAutomaticUpdate();
+      }
     }) ?? (() => {});
     const stopPwa = pwa?.subscribe((status) => {
       pwaStatus = status;
+      if (status.updateAvailable) {
+        void applyAutomaticUpdate();
+      }
     }) ?? (() => {});
     return () => {
+      shellMounted = false;
       stopPersistence();
       stopPwa();
       pwa?.dispose();
@@ -183,13 +195,46 @@
     }
   }
 
-  async function applyUpdate() {
+  async function applyAutomaticUpdate() {
+    if (!shellMounted || updateInProgress || updateApplied) {
+      return;
+    }
+    updateInProgress = true;
     workspaceError = '';
     try {
-      await transport.flush();
-      await pwa?.applyUpdate();
+      const storage = await transport.getStorageStatus();
+      if (!shellMounted || storage.backend !== 'indexeddb') {
+        return;
+      }
+      updateLocked = true;
+      let finalSaveFailed = false;
+      const prepareReload = async () => {
+        try {
+          if (!shellMounted) {
+            throw new Error('App closed before the update was ready.');
+          }
+          await transport.flush();
+        } catch (error) {
+          finalSaveFailed = true;
+          updateLocked = false;
+          updateApplied = false;
+          workspaceError = 'Could not save pending work, so the update was not applied.';
+          throw error;
+        }
+      };
+      await prepareReload();
+      if (!shellMounted) {
+        return;
+      }
+      const activated = await pwa?.applyUpdate(prepareReload) ?? false;
+      updateApplied = activated && !finalSaveFailed;
     } catch {
       workspaceError = 'Could not save pending work, so the update was not applied.';
+    } finally {
+      updateInProgress = false;
+      if (!updateApplied) {
+        updateLocked = false;
+      }
     }
   }
 
@@ -293,7 +338,7 @@
 <WorkspaceFilePicker />
 
 <svelte:window onclick={closeMenusOnOutsideClick} onkeydown={closeMenusOnEscape} />
-<div class="standalone-app">
+<div class="standalone-app" inert={updateLocked} aria-busy={updateLocked}>
   <header class="standalone-toolbar" aria-label="Standalone workspace">
     <strong>Shader Studio</strong>
     <div class="toolbar-menu">
@@ -387,7 +432,6 @@
         <i class="codicon codicon-package" aria-hidden="true"></i>
       {/if}
     </span>
-    {#if pwaStatus.updateAvailable}<button class="update-action" onclick={applyUpdate}>Update ready</button>{/if}
   </header>
   <input class="visually-hidden" bind:this={workspaceFileInput} type="file" accept="application/json,.json" onchange={importWorkspace} />
   {#if alphaNoticeVisible}
@@ -448,7 +492,6 @@
   .build-status { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; color: var(--vscode-descriptionForeground); font-size: 16px; }
   .build-status .spinning { animation: status-spin 1s linear infinite; }
   @keyframes status-spin { to { transform: rotate(360deg); } }
-  .standalone-toolbar .update-action { border: 1px solid var(--vscode-focusBorder); }
   .visually-hidden { position: fixed; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
   @media (max-width: 767px) {

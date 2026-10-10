@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render } from '@testing-library/svelte';
+import { fireEvent, render } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import ShaderEditorStub from './ShaderEditorStub.svelte';
 
 vi.mock('@shader-studio/ui', async () => {
   const { getViewerSession } = await import('@shader-studio/ui/lib/state/viewerSession.svelte');
-  return { getViewerSession, ShaderEditor: ShaderEditorStub };
+  const { getHostEditorWordWrap, toggleHostEditorWordWrap } = await import('@shader-studio/ui/lib/state/hostState.svelte');
+  return { getViewerSession, getHostEditorWordWrap, toggleHostEditorWordWrap, ShaderEditor: ShaderEditorStub };
 });
 
 import { clearEditorDocuments } from '../state/editorDocuments.svelte';
@@ -43,7 +44,33 @@ function createSession(overrides: Partial<ViewerSession> = {}): ViewerSession {
   };
 }
 
+import { configureHost, resetHost } from '@shader-studio/ui/lib/state/hostState.svelte';
+import { StandaloneSettings } from '../settings/StandaloneSettings';
+import { connectSettings, getEditorPreferences } from '../settings/settingsState.svelte';
+
 describe('EditorPane', () => {
+  it('toggles the shared word-wrap preference and persists it for future editors', async () => {
+    const values = new Map<string, string>();
+    const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => {
+      values.set(key, value);
+    } };
+    const settings = new StandaloneSettings(storage);
+    const disconnect = connectSettings(settings);
+    configureHost({ getEditorPreferences, setEditorWordWrap: value => settings.update('editor.wordWrap', value) });
+    setViewerSession(createSession());
+    const view = render(EditorPane);
+    try {
+      expect(view.getByRole('button', { name: 'Wrap text' }).getAttribute('aria-pressed')).toBe('false');
+      await fireEvent.click(view.getByRole('button', { name: 'Wrap text' }));
+      expect(settings.snapshot['editor.wordWrap']).toBe('on');
+      expect(view.getByRole('button', { name: 'Wrap text' }).getAttribute('aria-pressed')).toBe('true');
+      expect(new StandaloneSettings(storage).snapshot['editor.wordWrap']).toBe('on');
+      await fireEvent.click(view.getByRole('button', { name: 'Wrap text' }));
+      expect(settings.snapshot['editor.wordWrap']).toBe('off');
+    } finally {
+      view.unmount(); disconnect(); resetHost();
+    }
+  });
   beforeEach(() => {
     setViewerSession(null);
   });

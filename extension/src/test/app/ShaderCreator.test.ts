@@ -259,7 +259,9 @@ suite('ShaderCreator Test Suite', () => {
     await shaderCreator.create();
 
     const content = fs.readFileSync(filePath, 'utf-8');
-    assert.ok(content.includes('fn mainImage'));
+    assert.ok(content.includes('fn mainImage(fragCoord: vec2f) -> vec4f\n{'));
+    assert.ok(content.includes('let uv = fragCoord / iResolution.xy;'));
+    assert.ok(content.includes('cos(iTime + uv.xyx + vec3f(0, 2, 4))'));
     assert.ok(content.includes('-> vec4f'));
     assert.ok(!content.includes('out vec4 fragColor'));
 

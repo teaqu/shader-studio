@@ -34,6 +34,9 @@ const pwa = createPwaController();
 configureHost({
   createTransport: () => transport.createViewerTransport(),
   getEditorPreferences,
+  setEditorWordWrap: value => {
+    transport.settings.update('editor.wordWrap', value);
+  },
   defaultAssets: defaultAssets(),
   capabilities: { compileOnSave: false },
 });

@@ -3,14 +3,41 @@ import { describe, expect, it, vi } from 'vitest';
 import NewShaderModal from '../NewShaderModal.svelte';
 
 describe('NewShaderModal', () => {
+  it('opens with a blank, focused name field', () => {
+    render(NewShaderModal, { props: { onCreate: vi.fn(), onClose: vi.fn() } });
+    const input = screen.getByLabelText('Shader name') as HTMLInputElement;
+    expect(input.value).toBe('');
+    expect(document.activeElement).toBe(input);
+  });
+
+  it.each(['', '   '])('rejects a blank name %j and clears its error when typing', async (name) => {
+    const onCreate = vi.fn();
+    render(NewShaderModal, { props: { onCreate, onClose: vi.fn() } });
+    const input = screen.getByLabelText('Shader name');
+    await fireEvent.input(input, { target: { value: name } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Create Shader' }));
+    expect(onCreate).not.toHaveBeenCalled();
+    const error = screen.getByRole('alert');
+    expect(error.textContent).toBe('Enter a shader name.');
+    expect(input.getAttribute('aria-invalid')).toBe('true');
+    expect(input.getAttribute('aria-describedby')).toBe(error.id);
+    await fireEvent.input(input, { target: { value: ' aurora ' } });
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(input.hasAttribute('aria-invalid')).toBe(false);
+    expect(input.hasAttribute('aria-describedby')).toBe(false);
+    await fireEvent.click(screen.getByRole('button', { name: 'Create Shader' }));
+    expect(onCreate).toHaveBeenCalledExactlyOnceWith('aurora', 'glsl');
+  });
+
   it('defaults to the global mode and allows an explicit override', async () => {
     const onCreate = vi.fn();
     render(NewShaderModal, { props: { onCreate, onClose: vi.fn(), defaultAuthoringMode: 'native' } });
+    await fireEvent.input(screen.getByLabelText('Shader name'), { target: { value: 'aurora' } });
     await fireEvent.change(screen.getByLabelText('Shader language'), { target: { value: 'wgsl' } });
     expect((screen.getByLabelText('Shader functions') as HTMLSelectElement).value).toBe('native');
     await fireEvent.change(screen.getByLabelText('Shader functions'), { target: { value: 'hooks' } });
     await fireEvent.click(screen.getByRole('button', { name: 'Create Shader' }));
-    expect(onCreate).toHaveBeenCalledWith('untitled', 'wgsl', 'hooks');
+    expect(onCreate).toHaveBeenCalledWith('aurora', 'wgsl', 'hooks');
   });
   it('defaults new shaders to GLSL', async () => {
     const onCreate = vi.fn();
