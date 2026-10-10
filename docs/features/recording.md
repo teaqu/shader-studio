@@ -44,12 +44,15 @@ clip at a chosen time, duration, and resolution.
 Live MP4 and WebM use the browser's MediaRecorder with an 8 Mbps video bitrate
 request and no audio. WebM follows Shadertoy's codec order: H.264, then VP9,
 then VP8 according to browser support. MP4 uses H.264. Live follows the running
-preview with no separate frame-rate setting. A stable canvas holds completed
-shader frames so WebGPU/Slang pictures remain available to the browser recorder.
+preview with no separate frame-rate setting. GLSL records the preview canvas directly. WebGPU/Slang frames are copied to
+a stable canvas immediately after rendering, without per-frame CPU pixel
+readback, so pictures remain available to the browser recorder.
 The browser controls the final bitrate, so file size depends on the content and
 encoder. Unsupported formats are disabled; a saved unsupported choice falls
-back with a note in the panel. Live recordings are saved directly, without a
-separate encoder or remuxing step.
+back with a note in the panel. Native Live recordings are saved directly, without a separate encoder or
+remuxing step. Hosts without native MP4 recording can use an AVC fallback at
+the same 8 Mbps bitrate; it records real elapsed time with default encoder
+settings and requires WebCodecs AVC support.
 VP9 WebM Render exports request quantizer 12. WebM Render prefers VP9 and falls
 back to VP8 when needed.
 MP4 Render and bitrate fallback encoders use variable bitrate with a

@@ -804,11 +804,24 @@ describe('ShaderRecorder', () => {
         { getCanvas: () => canvas, captureCurrentFrame },
       )).resolves.toBe(blob);
 
-      expect(mockCreateLiveVideoCapture).toHaveBeenCalledWith(canvas, format, expect.any(AbortSignal), expect.any(Function));
+      expect(mockCreateLiveVideoCapture).toHaveBeenCalledWith(canvas, format, expect.any(AbortSignal), expect.any(Function), undefined);
       await mockCreateLiveVideoCapture.mock.calls.at(-1)![3]!();
       expect(captureCurrentFrame).toHaveBeenCalledOnce();
       expect(mockStartLiveRecording).toHaveBeenCalledWith(format);
       expect(stop).not.toHaveBeenCalled();
+    });
+
+    it('records GLSL canvas directly without CPU screenshot readbacks', async () => {
+      installNativeSupport();
+      mockCreateLiveVideoCapture.mockResolvedValueOnce({ result: Promise.resolve(new Blob(['video'])), stop: vi.fn() });
+      const canvas = { captureStream: vi.fn() } as unknown as HTMLCanvasElement;
+      const captureCurrentFrame = vi.fn();
+      await recorder.recordLive(
+        { mode: 'live', format: 'webm', duration: 5, startTime: 0, fps: 60, width: 800, height: 600 },
+        { getCanvas: () => canvas, captureCurrentFrame, getShaderLanguage: () => 'glsl' },
+      );
+      expect(mockCreateLiveVideoCapture).toHaveBeenCalledWith(canvas, 'webm', expect.any(AbortSignal));
+      expect(captureCurrentFrame).not.toHaveBeenCalled();
     });
 
     it('does not require WebCodecs for native Live video', async () => {
@@ -828,9 +841,9 @@ describe('ShaderRecorder', () => {
       vi.stubGlobal('MediaRecorder', { isTypeSupported: vi.fn(() => false) });
       const canvas = { width: 800, height: 600, captureStream: vi.fn() } as unknown as HTMLCanvasElement;
       await expect(recorder.recordLive(
-        { mode: 'live', format: 'mp4', duration: 5, startTime: 0, fps: 30, width: 800, height: 600 },
+        { mode: 'live', format: 'webm', duration: 5, startTime: 0, fps: 30, width: 800, height: 600 },
         { getCanvas: () => canvas },
-      )).rejects.toThrow('MP4 Live recording is not supported');
+      )).rejects.toThrow('WEBM Live recording is not supported');
       expect(mockCreateLiveVideoCapture).not.toHaveBeenCalled();
     });
 

@@ -34,6 +34,7 @@
     "@shader-studio/utils": "*",
     "monaco-vim": "^0.4.4",
     "@playwright/test": "^1.60.0",
-    "playwright": "^1.60.0"
+    "playwright": "^1.60.0",
+    "mediabunny": "^1.61.1"
   }
 }

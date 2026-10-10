@@ -1155,6 +1155,25 @@ describe("RenderingEngine", () => {
     });
   });
 
+  describe("attachLiveCapture", () => {
+    it("copies completed frames to the attached 2D canvas and stops after disposal", () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 320;
+      canvas.height = 180;
+      const drawImage = vi.fn();
+      const context = { canvas: { width: 640, height: 360 }, drawImage } as unknown as CanvasRenderingContext2D;
+      Object.defineProperty(renderingEngine, "glCanvas", { value: canvas, configurable: true });
+
+      const detach = renderingEngine.attachLiveCapture(context);
+      (renderingEngine as any).copyLiveCaptureFrame();
+      detach();
+      (renderingEngine as any).copyLiveCaptureFrame();
+
+      expect(drawImage).toHaveBeenCalledTimes(2);
+      expect(drawImage).toHaveBeenLastCalledWith(canvas, 0, 0, 640, 360);
+    });
+  });
+
   describe("displayed custom uniforms", () => {
     it("uses frozen frame values when the renderer has them", () => {
       mockFrameRenderer.getPausedCustomUniforms = vi.fn(() => [{ name: "uColour", type: "vec3", value: [1, 2, 3] }]);

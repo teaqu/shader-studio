@@ -73,6 +73,12 @@ export class WebGPUFrameRenderer {
 
   pendingScreenshotCopies: Array<(encoder: GPUCommandEncoder, texture: GPUTexture) => void> = [];
   private completedComputePasses: ReadonlySet<string> = new Set();
+  private postCanvasRender: (() => void) | null = null;
+
+  /** Runs immediately after a canvas frame has been submitted. */
+  setPostCanvasRender(callback: (() => void) | null): void {
+    this.postCanvasRender = callback;
+  }
 
   renderFrame(time: number, capture: boolean, imageOnly = false, captureCanvas?: (encoder: GPUCommandEncoder, texture: GPUTexture) => void): void {
     try {
@@ -327,6 +333,9 @@ export class WebGPUFrameRenderer {
       this.host.pixelRegionCapturer?.encodeAfterRender(encoder, canvasTexture, this.host.canvas.width, this.host.canvas.height);
     }
     this.host.device.queue.submit([encoder.finish()]);
+    if (canvasTexture) {
+      this.postCanvasRender?.();
+    }
     this.host.storage.captures.beginMappings();
     this.host.session.hasSubmittedFrameForInstalledGeneration = true;
     this.host.timing.probeGpuFrameTime();

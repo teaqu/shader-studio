@@ -70,6 +70,7 @@ export class RenderingEngine implements RenderingEngineInterface {
   private gpuFence: { sync: WebGLSync; startedAt: number } | null = null;
   private inFlightFences: WebGLSync[] = [];
   private gpuStallStartMs: number | null = null;
+  private liveCaptureContext: CanvasRenderingContext2D | null = null;
 
   initialize(glCanvas: HTMLCanvasElement, preserveDrawingBuffer: boolean = false) {
     this.frameRenderer?.setPostImageCallback?.(null);
@@ -152,6 +153,7 @@ export class RenderingEngine implements RenderingEngineInterface {
     this.pixelRegionCapturer = pixelRegionCapturer;
     this.frameRenderer.setPostImageCallback(() => {
       pixelRegionCapturer.captureAfterRender(glCanvas.width, glCanvas.height);
+      this.copyLiveCaptureFrame();
       this.probeGpuFrameTime();
       this.trackFrameInFlight();
     });
@@ -749,6 +751,30 @@ export class RenderingEngine implements RenderingEngineInterface {
     return this.frameRenderer.readNextDisplayedFrame(() => this.readCanvasImage());
   }
 
+  public attachLiveCapture(context: CanvasRenderingContext2D): () => void {
+    this.liveCaptureContext = context;
+    this.copyLiveCaptureFrame();
+    return () => {
+      if (this.liveCaptureContext === context) {
+        this.liveCaptureContext = null;
+      }
+    };
+  }
+
+  /** Copy the displayed GPU canvas after its Image pass without reading pixels back to CPU memory. */
+  private copyLiveCaptureFrame(): void {
+    const context = this.liveCaptureContext;
+    const canvas = this.glCanvas;
+    if (!context || !canvas) {
+      return;
+    }
+    try {
+      context.drawImage(canvas, 0, 0, context.canvas.width, context.canvas.height);
+    } catch {
+      // A lost or replaced canvas must not interrupt the render loop.
+    }
+  }
+
   /** Read the default framebuffer as top-down RGBA. Call in the task that drew it. */
   private readCanvasImage(): ImageData {
     if (!this.glCanvas || !this.gl) {
@@ -913,6 +939,7 @@ export class RenderingEngine implements RenderingEngineInterface {
     };
 
     attempt(() => this.frameRenderer?.setPostImageCallback?.(null));
+    this.liveCaptureContext = null;
     attempt(() => this.frameRenderer?.setFramePacer?.(null));
     attempt(() => {
       if (this.gpuFence) {

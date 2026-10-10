@@ -74,6 +74,19 @@ for (const shader of ['aurora-glsl', 'aurora-wgsl-wgsl', 'aurora-slang-slang']) 
         globalThis.captureEncoderConfigs = [];
         globalThis.captureFrameTimes = [];
         globalThis.captureMediaRecorderOptions = [];
+        globalThis.captureReadbacks = { readPixels: 0, mapAsync: 0 };
+        const readPixels = WebGL2RenderingContext.prototype.readPixels;
+        WebGL2RenderingContext.prototype.readPixels = function(...args) {
+          globalThis.captureReadbacks.readPixels++;
+          return readPixels.call(this, ...args);
+        };
+        if (globalThis.GPUBuffer) {
+          const mapAsync = GPUBuffer.prototype.mapAsync;
+          GPUBuffer.prototype.mapAsync = function(...args) {
+            globalThis.captureReadbacks.mapAsync++;
+            return mapAsync.call(this, ...args);
+          };
+        }
         const NativeMediaRecorder = MediaRecorder;
         globalThis.NativeMediaRecorder = NativeMediaRecorder;
         globalThis.MediaRecorder = class extends NativeMediaRecorder {
@@ -123,6 +136,9 @@ for (const shader of ['aurora-glsl', 'aurora-wgsl-wgsl', 'aurora-slang-slang']) 
       await page.getByRole('button', { name: 'Video', exact: true }).click();
       await page.getByRole('button', { name: format, exact: true }).click();
       await expect(page.locator('.recording-panel h4', { hasText: 'Frame Rate' })).toHaveCount(0);
+      await page.evaluate(() => {
+        globalThis.captureReadbacks = { readPixels: 0, mapAsync: 0 };
+      });
       await page.getByRole('button', { name: 'Start recording', exact: true }).click();
       await expect(page.getByRole('button', { name: 'Stop & save', exact: true })).toBeVisible();
       await expect.poll(() => page.evaluate(() => globalThis.captureMediaRecorderOptions.length)).toBe(1);
@@ -169,6 +185,12 @@ for (const shader of ['aurora-glsl', 'aurora-wgsl-wgsl', 'aurora-slang-slang']) 
         return btoa(binary);
       });
       const productBytes = Buffer.concat(chunks);
+      const readbacks = await page.evaluate(() => globalThis.captureReadbacks);
+      if (shader === 'aurora-glsl') {
+        expect(readbacks.readPixels + readbacks.mapAsync).toBe(0);
+      } else {
+        expect(readbacks.readPixels + readbacks.mapAsync).toBeLessThanOrEqual(1);
+      }
       const referenceBytes = Buffer.from(nativeReferenceBase64, 'base64');
       let containerDuration;
       const input = new Input({ source: new BufferSource(productBytes), formats: ALL_FORMATS });

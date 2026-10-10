@@ -79,6 +79,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   private running = false;
   private rafId: number | null = null;
+  private liveCaptureContext: CanvasRenderingContext2D | null = null;
 
 
   private readonly diagnostics: WebGPUCompileDiagnostics;
@@ -317,6 +318,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         return engine.keyboardManager;
       },
     });
+    this.frameRenderer.setPostCanvasRender(() => this.copyLiveCaptureFrame());
   }
 
   initialize(glCanvas: HTMLCanvasElement, _preserveDrawingBuffer = false): void {
@@ -681,6 +683,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   dispose(): void {
     this.disposed = true;
+    this.liveCaptureContext = null;
+    this.frameRenderer.setPostCanvasRender(null);
     this.renderedCaptureState.clear();
 
     let firstError: unknown;
@@ -888,6 +892,29 @@ export class WebGPURenderingEngine implements RenderingEngine {
         // A failed map may leave the buffer unmapped already.
       }
       buffer.destroy();
+    }
+  }
+
+  attachLiveCapture(context: CanvasRenderingContext2D): () => void {
+    this.liveCaptureContext = context;
+    return () => {
+      if (this.liveCaptureContext === context) {
+        this.liveCaptureContext = null;
+      }
+    };
+  }
+
+  /** Copy the browser canvas after submit without WebGPU texture readback or mapping. */
+  private copyLiveCaptureFrame(): void {
+    const context = this.liveCaptureContext;
+    const canvas = this.canvas;
+    if (!context || !canvas) {
+      return;
+    }
+    try {
+      context.drawImage(canvas, 0, 0, context.canvas.width, context.canvas.height);
+    } catch {
+      // Capture must not stop the preview if the canvas is replaced mid-frame.
     }
   }
 

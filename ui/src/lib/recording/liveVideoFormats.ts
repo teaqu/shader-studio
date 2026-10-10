@@ -28,7 +28,29 @@ export function supportedLiveVideoFormats(): LiveVideoFormat[] {
   return (["mp4", "webm"] as const).filter((format) => liveVideoMimeType(format) !== null);
 }
 
-/** Live recording uses the browser's native recorder for both formats. */
-export async function probeLiveVideoFormats(_width: number, _height: number, _fps: number): Promise<LiveVideoFormat[]> {
-  return supportedLiveVideoFormats();
+/** Check the minimal AVC configuration used if this host lacks native MP4 recording. */
+export async function canCaptureLiveMp4(width: number, height: number, frameRate: number): Promise<boolean> {
+  if (typeof globalThis.VideoEncoder === "undefined") {
+    return false;
+  }
+  try {
+    const { canEncodeVideo } = await import("mediabunny");
+    return await canEncodeVideo("avc", {
+      width: width + width % 2,
+      height: height + height % 2,
+      frameRate,
+      bitrate: 8_000_000,
+    });
+  } catch {
+    return false;
+  }
+}
+
+/** Native recording is preferred; AVC encoding fills MP4-only capability gaps. */
+export async function probeLiveVideoFormats(width: number, height: number, frameRate: number): Promise<LiveVideoFormat[]> {
+  const formats = supportedLiveVideoFormats();
+  if (!formats.includes("mp4") && await canCaptureLiveMp4(width, height, frameRate)) {
+    formats.unshift("mp4");
+  }
+  return formats;
 }

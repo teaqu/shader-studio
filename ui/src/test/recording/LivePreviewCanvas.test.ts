@@ -24,11 +24,11 @@ it("copies a stable picture before recording and retains the original dimensions
   expect([canvas.width, canvas.height]).toEqual([816, 458]);
   expect(context.putImageData).toHaveBeenCalledWith(image, 0, 0);
   source.width = 400;
-  await stable.update();
+  await stable.update!();
   expect(capture).toHaveBeenCalledTimes(2);
   expect([canvas.width, canvas.height]).toEqual([816, 458]);
   stable.dispose();
-  await stable.update();
+  await stable.update!();
   await vi.advanceTimersByTimeAsync(1000);
   expect(capture).toHaveBeenCalledTimes(2);
 });
@@ -39,7 +39,7 @@ it("keeps one pending readback and ignores it after disposal", async () => {
     resolve = done;
   }));
   const stable = await createLivePreviewCanvas(preview(), capture, new AbortController().signal);
-  const pending = stable.update();
+  const pending = stable.update!();
   expect(capture).toHaveBeenCalledTimes(2);
   stable.dispose();
   resolve(image);
@@ -78,7 +78,7 @@ it("reports an initial readback failure and schedules no further capture", async
 it("surfaces later readback errors and stops the bounded capture loop", async () => {
   const capture = vi.fn().mockResolvedValueOnce(image).mockRejectedValueOnce(new Error("GPU lost"));
   const stable = await createLivePreviewCanvas(preview(), capture, new AbortController().signal);
-  await expect(stable.update()).rejects.toThrow("GPU lost");
+  await expect(stable.update!()).rejects.toThrow("GPU lost");
   expect(vi.getTimerCount()).toBe(0);
   expect(context.putImageData).toHaveBeenCalledOnce();
 });
@@ -87,3 +87,16 @@ it("reports a host that cannot create the stable canvas", async () => {
   vi.mocked(canvas.getContext).mockReturnValue(null);
   await expect(createLivePreviewCanvas(preview(), vi.fn(), new AbortController().signal)).rejects.toThrow("could not create a stable preview canvas");
 });
+
+ it("uses renderer frame copies after one startup readback instead of repeated CPU readbacks", async () => {
+  const capture = vi.fn(async () => image);
+  const detach = vi.fn();
+  const attach = vi.fn(() => detach);
+  const stable = await createLivePreviewCanvas(preview(), capture, new AbortController().signal, attach);
+  expect(attach).toHaveBeenCalledWith(context);
+  expect(stable.update).toBeUndefined();
+  expect(capture).toHaveBeenCalledOnce();
+  stable.dispose();
+  stable.dispose();
+  expect(detach).toHaveBeenCalledOnce();
+ });

@@ -48,8 +48,7 @@
     untrack(() => updateVideoCapturePreferences(next));
   });
 
-  // Live treats the rate as a capture ceiling, so the measured display rate is
-  // right there. A Render export must not inherit a momentary slowdown
+  // A Render export must not inherit a momentary slowdown
   // (a heavy shader measuring 23 fps), so snap it to a standard rate.
   const STANDARD_FRAME_RATES = [24, 30, 60, 120];
   function standardFrameRate(measured: number): number {
@@ -62,7 +61,7 @@
   $effect(() => {
     let disposed = false;
     probing = true;
-    void probeLiveVideoFormats(canvasWidth, canvasHeight, activeVideoFps).then(formats => {
+    void probeLiveVideoFormats(canvasWidth, canvasHeight, 60).then(formats => {
       if (!disposed) {
         liveFormats = formats;
         probing = false;

@@ -1,5 +1,5 @@
 import { createLivePreviewCanvas } from "./LivePreviewCanvas";
-import { liveVideoMimeType } from "./liveVideoFormats";
+import { canCaptureLiveMp4, liveVideoMimeType } from "./liveVideoFormats";
 
 export interface LiveVideoCapture {
   result: Promise<Blob>;
@@ -7,13 +7,29 @@ export interface LiveVideoCapture {
 }
 
 /** Browser-native Live recording, with Shadertoy's 8 Mbps bitrate request. */
-export async function createLiveVideoCapture(canvas: HTMLCanvasElement, format: "mp4" | "webm", signal: AbortSignal, captureFrame?: () => Promise<ImageData>): Promise<LiveVideoCapture> {
+export async function createLiveVideoCapture(canvas: HTMLCanvasElement, format: "mp4" | "webm", signal: AbortSignal, captureFrame?: () => Promise<ImageData>, attach?: (context: CanvasRenderingContext2D) => () => void): Promise<LiveVideoCapture> {
   signal.throwIfAborted();
+  const gl = canvas.getContext?.("webgl2");
+  if (gl?.isContextLost()) {
+    throw new Error("Cannot capture the preview: its WebGL context was lost. Reload the preview and try again.");
+  }
   const mimeType = liveVideoMimeType(format);
-  if (!mimeType) {
+  if (!mimeType && (format !== "mp4" || !await canCaptureLiveMp4(canvas.width, canvas.height, 60))) {
     throw new Error(`${format.toUpperCase()} Live recording is not supported by this host`);
   }
-  const stable = captureFrame ? await createLivePreviewCanvas(canvas, captureFrame, signal) : undefined;
+  const stable = captureFrame ? await createLivePreviewCanvas(canvas, captureFrame, signal, attach) : undefined;
+  if (!mimeType) {
+    try {
+      const { createLiveMp4Capture } = await import("./LiveMp4Capture");
+      const capture = await createLiveMp4Capture(stable?.canvas ?? canvas, signal);
+      const result = capture.result.finally(() => stable?.dispose());
+      void result.catch(() => {});
+      return { stop: () => capture.stop(), result };
+    } catch (error) {
+      stable?.dispose();
+      throw error;
+    }
+  }
   let stream: MediaStream | undefined;
   let recorder: MediaRecorder | undefined;
   let frame: number | undefined;
@@ -91,14 +107,14 @@ export async function createLiveVideoCapture(canvas: HTMLCanvasElement, format: 
       }
       updating = true;
       try {
-        await stable?.update();
+        await stable?.update?.();
       } catch (error) {
         fail(error);
       } finally {
         updating = false;
       }
     };
-    if (stable) {
+    if (stable?.update) {
       frame = requestAnimationFrame(() => void refresh());
     }
     return {

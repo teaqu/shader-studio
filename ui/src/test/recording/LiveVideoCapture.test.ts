@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createLiveVideoCapture } from "../../lib/recording/LiveVideoCapture";
 
-const mocks = vi.hoisted(() => ({ bridge: vi.fn(), mimeType: vi.fn<(format: "mp4" | "webm") => string | null>() }));
+const mocks = vi.hoisted(() => ({ bridge: vi.fn(), mp4: vi.fn(), canMp4: vi.fn(), mimeType: vi.fn<(format: "mp4" | "webm") => string | null>() }));
 vi.mock("../../lib/recording/LivePreviewCanvas", () => ({ createLivePreviewCanvas: mocks.bridge }));
-vi.mock("../../lib/recording/liveVideoFormats", () => ({ liveVideoMimeType: mocks.mimeType }));
+vi.mock("../../lib/recording/liveVideoFormats", () => ({ liveVideoMimeType: mocks.mimeType, canCaptureLiveMp4: mocks.canMp4 }));
+
+vi.mock("../../lib/recording/LiveMp4Capture", () => ({ createLiveMp4Capture: mocks.mp4 }));
 
 type NativeRecorder = {
   options: MediaRecorderOptions; state: RecordingState; mimeType: string;
@@ -69,6 +71,68 @@ describe("native Live video capture", () => {
     await expect(capture.result).resolves.toMatchObject({ type: `video/${format};codecs=test` });
   });
 
+  it("rejects an already lost WebGL context without reading its pixels", async () => {
+    const native = installMediaRecorder();
+    const preview = canvas(native.stream);
+    preview.getContext = vi.fn(() => ({ isContextLost: () => true })) as unknown as HTMLCanvasElement["getContext"];
+    await expect(createLiveVideoCapture(preview, "webm", new AbortController().signal)).rejects.toThrow("WebGL context was lost");
+    expect(preview.captureStream).not.toHaveBeenCalled();
+  });
+
+  it("uses renderer copies without scheduling CPU readback animation frames", async () => {
+    const native = installMediaRecorder();
+    const dispose = vi.fn();
+    mocks.bridge.mockResolvedValue({ canvas: canvas(native.stream), update: undefined, dispose });
+    const request = vi.fn();
+    vi.stubGlobal("requestAnimationFrame", request);
+    const attach = vi.fn();
+    const captureFrame = vi.fn();
+    const capture = await createLiveVideoCapture(canvas(native.stream), "webm", new AbortController().signal, captureFrame, attach);
+    expect(mocks.bridge).toHaveBeenCalledWith(expect.anything(), captureFrame, expect.any(AbortSignal), attach);
+    expect(request).not.toHaveBeenCalled();
+    capture.stop();
+    await capture.result;
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+
+  it("uses simple AVC fallback when native MP4 is unavailable and releases renderer copies", async () => {
+    mocks.mimeType.mockReturnValue(null);
+    mocks.canMp4.mockResolvedValue(true);
+    const native = installMediaRecorder();
+    const stableCanvas = canvas(native.stream);
+    const dispose = vi.fn();
+    mocks.bridge.mockResolvedValue({ canvas: stableCanvas, dispose });
+    const stop = vi.fn();
+    const blob = new Blob(["mp4"], { type: "video/mp4" });
+    mocks.mp4.mockResolvedValue({ stop, result: Promise.resolve(blob) });
+    const capture = await createLiveVideoCapture(canvas(native.stream), "mp4", new AbortController().signal, vi.fn(), vi.fn());
+    capture.stop();
+    await expect(capture.result).resolves.toBe(blob);
+    expect(mocks.mp4).toHaveBeenCalledWith(stableCanvas, expect.any(AbortSignal));
+    expect(stop).toHaveBeenCalledOnce();
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(native.recorders).toHaveLength(0);
+  });
+
+  it("rejects MP4 when both native recording and AVC fallback are unsupported", async () => {
+    mocks.mimeType.mockReturnValue(null);
+    mocks.canMp4.mockResolvedValue(false);
+    const native = installMediaRecorder();
+    await expect(createLiveVideoCapture(canvas(native.stream), "mp4", new AbortController().signal)).rejects.toThrow("MP4 Live recording is not supported");
+    expect(mocks.mp4).not.toHaveBeenCalled();
+  });
+
+  it("releases renderer copies if fallback startup fails", async () => {
+    mocks.mimeType.mockReturnValue(null);
+    mocks.canMp4.mockResolvedValue(true);
+    const native = installMediaRecorder();
+    const dispose = vi.fn();
+    mocks.bridge.mockResolvedValue({ canvas: canvas(native.stream), dispose });
+    mocks.mp4.mockRejectedValue(new Error("AVC failed"));
+    await expect(createLiveVideoCapture(canvas(native.stream), "mp4", new AbortController().signal, vi.fn(), vi.fn())).rejects.toThrow("AVC failed");
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+
   it("rejects an unsupported native format before opening a stream", async () => {
     mocks.mimeType.mockReturnValue(null);
     const native = installMediaRecorder();
@@ -131,7 +195,7 @@ describe("native Live video capture", () => {
     vi.stubGlobal("cancelAnimationFrame", cancel);
     const captureFrame = vi.fn();
     const capture = await createLiveVideoCapture(canvas(native.stream), "webm", new AbortController().signal, captureFrame);
-    expect(mocks.bridge).toHaveBeenCalledWith(expect.anything(), captureFrame, expect.any(AbortSignal));
+    expect(mocks.bridge).toHaveBeenCalledWith(expect.anything(), captureFrame, expect.any(AbortSignal), undefined);
     expect(stableCanvas.captureStream).toHaveBeenCalledExactlyOnceWith();
     expect(request).toHaveBeenCalledOnce();
     capture.stop();

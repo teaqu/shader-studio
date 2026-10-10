@@ -111,6 +111,24 @@ describe("WebGPURenderingEngine", () => {
     pixelRegionCapturerMock.constructor.mockClear();
   });
 
+  it("waits for a submitted frame before copying to an attached live capture context", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const canvas = { width: 320, height: 180 } as HTMLCanvasElement;
+    const drawImage = vi.fn();
+    const context = { canvas: { width: 640, height: 360 }, drawImage } as unknown as CanvasRenderingContext2D;
+    Object.assign(engine as unknown as Record<string, unknown>, { canvas });
+
+    const detach = engine.attachLiveCapture(context);
+    expect(drawImage).not.toHaveBeenCalled();
+
+    (engine as any).copyLiveCaptureFrame();
+    detach();
+    (engine as any).copyLiveCaptureFrame();
+
+    expect(drawImage).toHaveBeenCalledOnce();
+    expect(drawImage).toHaveBeenCalledWith(canvas, 0, 0, 640, 360);
+  });
+
   it("captures the current canvas with aligned BGRA readback converted to RGBA", async () => {
     vi.stubGlobal("ImageData", class {
       constructor(

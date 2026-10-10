@@ -98,6 +98,8 @@ export interface RenderingEngine {
   getDisplayedCustomUniforms(): { name: string; type: string; value: number | number[] | boolean }[];
   /** Read the currently displayed Image pass without advancing time or feedback state. */
   captureCurrentFrame(): Promise<ImageData>;
+  /** Copy completed displayed frames into a recording canvas without CPU pixel readback. */
+  attachLiveCapture(context: CanvasRenderingContext2D): () => void;
   getCanvas(): HTMLCanvasElement | null;
   dispose(): void;
 }

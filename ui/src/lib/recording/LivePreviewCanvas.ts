@@ -3,6 +3,7 @@ export async function createLivePreviewCanvas(
   preview: HTMLCanvasElement,
   captureFrame: () => Promise<ImageData>,
   signal: AbortSignal,
+  attach?: (context: CanvasRenderingContext2D) => () => void,
 ) {
   const canvas = document.createElement("canvas");
   canvas.width = preview.width;
@@ -12,8 +13,11 @@ export async function createLivePreviewCanvas(
     throw new Error("Live recording could not create a stable preview canvas");
   }
   let stopped = false;
+  let detach: (() => void) | undefined;
   const dispose = () => {
     stopped = true;
+    detach?.();
+    detach = undefined;
     signal.removeEventListener("abort", dispose);
   };
   const update = async () => {
@@ -32,7 +36,8 @@ export async function createLivePreviewCanvas(
     signal.throwIfAborted();
     await update();
     signal.throwIfAborted();
-    return { canvas, dispose, update };
+    detach = attach?.(context);
+    return { canvas, dispose, update: attach ? undefined : update };
   } catch (failure) {
     dispose();
     throw failure;

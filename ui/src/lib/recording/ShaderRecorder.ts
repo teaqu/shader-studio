@@ -93,7 +93,7 @@ export class ShaderRecorder {
     return this.encodeImageData(image, config.format);
   }
 
-  recordLive(config: RecordingConfig, engine: Pick<RenderingEngine, "getCanvas"> & Partial<Pick<RenderingEngine, "captureCurrentFrame">>): Promise<Blob> {
+  recordLive(config: RecordingConfig, engine: Pick<RenderingEngine, "getCanvas"> & Partial<Pick<RenderingEngine, "captureCurrentFrame" | "getShaderLanguage" | "attachLiveCapture">>): Promise<Blob> {
     this.outputNotice = null;
     if (config.format === "gif") {
       return Promise.reject(new Error("Live GIF recording is not supported"));
@@ -105,11 +105,14 @@ export class ShaderRecorder {
     if (!canvas || typeof canvas.captureStream !== "function" || typeof MediaRecorder === "undefined") {
       return Promise.reject(new Error("Live video recording is not supported by this host"));
     }
-    if (!liveVideoMimeType(config.format)) {
+    if (config.format === "webm" && !liveVideoMimeType(config.format)) {
       return Promise.reject(new Error(`${config.format.toUpperCase()} Live recording is not supported by this host`));
     }
-    const captureFrame = engine.captureCurrentFrame ? () => engine.captureCurrentFrame!() : undefined;
-    return this.recordLiveVideo(canvas, config.format, captureFrame);
+    const directCanvas = engine.getShaderLanguage?.() === "glsl" && !!liveVideoMimeType(config.format);
+    const captureFrame = directCanvas ? undefined
+      : engine.captureCurrentFrame ? () => engine.captureCurrentFrame!() : undefined;
+    const attach = captureFrame && engine.attachLiveCapture ? (context: CanvasRenderingContext2D) => engine.attachLiveCapture!(context) : undefined;
+    return this.recordLiveVideo(canvas, config.format, captureFrame, attach);
   }
 
   stopLiveRecording(): void {
@@ -122,7 +125,7 @@ export class ShaderRecorder {
     }
   }
 
-  private async recordLiveVideo(canvas: HTMLCanvasElement, format: "mp4" | "webm", captureFrame?: () => Promise<ImageData>): Promise<Blob> {
+  private async recordLiveVideo(canvas: HTMLCanvasElement, format: "mp4" | "webm", captureFrame?: () => Promise<ImageData>, attach?: (context: CanvasRenderingContext2D) => () => void): Promise<Blob> {
     this.cancelled = false;
     const controller = new AbortController();
     this.liveFinalization = controller;
@@ -131,7 +134,7 @@ export class ShaderRecorder {
     recordingStore.startLiveRecording(format);
     try {
       this.activeLiveVideo = captureFrame
-        ? await createLiveVideoCapture(canvas, format, controller.signal, captureFrame)
+        ? await createLiveVideoCapture(canvas, format, controller.signal, captureFrame, attach)
         : await createLiveVideoCapture(canvas, format, controller.signal);
       this.startingLiveVideo = false;
       if (this.stopLiveVideoRequested) {

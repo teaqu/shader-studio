@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { liveVideoMimeType, supportedLiveVideoFormats, probeLiveVideoFormats } from "../../lib/recording/liveVideoFormats";
+import { canCaptureLiveMp4, liveVideoMimeType, supportedLiveVideoFormats, probeLiveVideoFormats } from "../../lib/recording/liveVideoFormats";
+
+const mocks = vi.hoisted(() => ({ canEncodeVideo: vi.fn() }));
+vi.mock("mediabunny", () => ({ canEncodeVideo: mocks.canEncodeVideo }));
 
 describe("liveVideoFormats", () => {
   it("prefers Shadertoy's H264 WebM before VP9 and VP8", () => {
@@ -16,6 +19,19 @@ describe("liveVideoFormats", () => {
     vi.stubGlobal("MediaRecorder", { isTypeSupported: (mime: string) => mime.startsWith("video/webm") });
     expect(await probeLiveVideoFormats(640, 360, 30)).toEqual(["webm"]);
   });
+  it("offers an AVC MP4 fallback when the native recorder only supports WebM", async () => {
+    vi.stubGlobal("VideoEncoder", {});
+    vi.stubGlobal("MediaRecorder", { isTypeSupported: (mime: string) => mime.startsWith("video/webm") });
+    mocks.canEncodeVideo.mockResolvedValueOnce(true);
+
+    expect(await probeLiveVideoFormats(641, 361, 30)).toEqual(["mp4", "webm"]);
+    expect(mocks.canEncodeVideo).toHaveBeenCalledWith("avc", {
+      width: 642,
+      height: 362,
+      frameRate: 30,
+      bitrate: 8_000_000,
+    });
+  });
   it("uses the native AVC MIME type for MP4", () => {
     vi.stubGlobal("MediaRecorder", { isTypeSupported: () => true });
     expect(liveVideoMimeType("mp4")).toBe("video/mp4;codecs=avc1");
@@ -30,8 +46,18 @@ describe("liveVideoFormats", () => {
     vi.stubGlobal("MediaRecorder", { isTypeSupported: () => false });
     expect(await probeLiveVideoFormats(640, 360, 30)).toEqual([]);
   });
+  it("does not offer the AVC fallback without WebCodecs", async () => {
+    vi.stubGlobal("VideoEncoder", undefined);
+    expect(await canCaptureLiveMp4(640, 360, 30)).toBe(false);
+  });
+  it("does not offer the AVC fallback after an encoder probe error", async () => {
+    vi.stubGlobal("VideoEncoder", {});
+    mocks.canEncodeVideo.mockRejectedValueOnce(new Error("unsupported"));
+    expect(await canCaptureLiveMp4(640, 360, 30)).toBe(false);
+  });
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.clearAllMocks();
   });
 
   it("picks the first MIME type the host reports as supported", () => {

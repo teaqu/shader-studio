@@ -1336,6 +1336,49 @@ chunks.push(chunk);
   expect(playback.height).toBeGreaterThan(0);
 });
 
+test('Live MP4 falls back to the quality encoder when native MP4 is unavailable', async ({ page }) => {
+  await page.addInitScript(() => {
+    const supported = MediaRecorder.isTypeSupported.bind(MediaRecorder);
+    MediaRecorder.isTypeSupported = mime => !mime.startsWith('video/mp4') && supported(mime);
+  });
+  await page.goto('/');
+  await page.getByTestId('shader-option-aurora-glsl').click();
+  await page.getByLabel('Toggle export panel').click();
+  await page.getByRole('button', { name: 'Video', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'MP4', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'MP4', exact: true }).click();
+  await page.getByRole('button', { name: 'Start recording', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Stop & save', exact: true })).toBeVisible();
+  await page.waitForTimeout(1000);
+  const downloading = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Stop & save', exact: true }).click();
+  const download = await downloading;
+  const chunks = [];
+  for await (const chunk of await download.createReadStream()) {
+    chunks.push(chunk);
+  }
+  const playback = await page.evaluate(async (base64) => {
+    const data = Uint8Array.from(atob(base64), char => char.charCodeAt(0));
+    const url = URL.createObjectURL(new Blob([data], { type: 'video/mp4' }));
+    const video = document.createElement('video');
+    video.src = url;
+    try {
+      await new Promise((resolve, reject) => {
+        video.onloadeddata = resolve;
+        video.onerror = reject;
+      });
+      return { duration: video.duration, width: video.videoWidth, height: video.videoHeight };
+    } finally {
+      video.removeAttribute('src');
+      video.load();
+      URL.revokeObjectURL(url);
+    }
+  }, Buffer.concat(chunks).toString('base64'));
+  expect(playback.duration).toBeGreaterThan(0);
+  expect(playback.width).toBeGreaterThan(0);
+  expect(playback.height).toBeGreaterThan(0);
+});
+
 test('records the live preview to WebM and remembers capture settings after reload', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('shader-option-aurora-glsl').click();
