@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getShaderEntryPoints, getShaderSourceFunctions, tokenizeShaderSource } from "./ShaderEntryPoints";
+import { withDefaultRenderEntryPoints, getShaderEntryPoints, getShaderSourceFunctions, tokenizeShaderSource } from "./ShaderEntryPoints";
 
 describe("native shader source discovery", () => {
   it("discovers every WGSL stage with arbitrary annotation order and shared helpers", () => {
@@ -56,5 +56,28 @@ Thing initializer = Thing() { };
     for (const token of tokens) {
       expect(source.slice(token.start, token.end)).toBe(token.text);
     }
+  });
+});
+
+describe("transient native render defaults", () => {
+  it.each(["slang", "wgsl"] as const)("selects first %s render stages and ignores compute", language => {
+    const source = language === "slang"
+      ? '[shader("compute")] void kernel() {} [shader("fragment")] float4 first() { return float4(1); } [shader("fragment")] float4 second() { return float4(0); } [shader("vertex")] float4 vertices() { return float4(0); }'
+      : '@compute @workgroup_size(1) fn kernel() {} @fragment fn first() -> vec4f { return vec4f(1); } @fragment fn second() -> vec4f { return vec4f(0); } @vertex fn vertices() -> vec4f { return vec4f(0); }';
+    expect(withDefaultRenderEntryPoints(null, source, language)).toEqual({
+      version: "1.0", passes: { Image: { inputs: {}, entryPoints: { vertex: "vertices", fragment: "first" } } },
+    });
+  });
+
+  it.each(["slang", "wgsl", "glsl"] as const)("leaves existing %s configs authoritative and unmodified", language => {
+    const config = { version: "1.0", passes: { Image: { inputs: {} } } };
+    expect(withDefaultRenderEntryPoints(config, '@fragment fn first() {}', language)).toBe(config);
+    expect(config).toEqual({ version: "1.0", passes: { Image: { inputs: {} } } });
+  });
+
+  it("keeps sources with no native render stages config-free", () => {
+    expect(withDefaultRenderEntryPoints(null, 'float4 mainImage(float2 p) { return float4(1); }', "slang")).toBeNull();
+    expect(withDefaultRenderEntryPoints(null, '@compute @workgroup_size(1) fn kernel() {}', "wgsl")).toBeNull();
+    expect(withDefaultRenderEntryPoints(null, 'void main() {}', "glsl")).toBeNull();
   });
 });

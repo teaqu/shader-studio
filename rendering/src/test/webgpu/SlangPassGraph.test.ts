@@ -26,6 +26,48 @@ describe("buildSlangPassGraph", () => {
     expect(graph.passes[0]?.modelPath).toBe("mesh.glb");
   });
 
+  describe.each(["slang", "wgsl"] as const)("unconfigured native %s shaders", language => {
+    const vertex = language === "slang"
+      ? '[shader("vertex")] float4 firstVertex(uint i : SV_VertexID) : SV_Position { return float4(0); }'
+      : '@vertex fn firstVertex(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f { return vec4f(0); }';
+    const fragment = language === "slang"
+      ? '[shader("fragment")] float4 firstFragment() : SV_Target0 { return float4(1); }'
+      : '@fragment fn firstFragment() -> @location(0) vec4f { return vec4f(1); }';
+    const build = (source: string, config: ShaderConfig | null = null) => buildSlangPassGraph({
+      imageCode: source, config, buffers: {}, canvasWidth: 800, canvasHeight: 600, language,
+    });
+
+    it("selects the first vertex and fragment in source order without modifying config", () => {
+      const source = [fragment, vertex, fragment.replaceAll("firstFragment", "secondFragment"), vertex.replaceAll("firstVertex", "secondVertex")].join("\n");
+      const graph = build(source);
+      expect(graph.errors).toEqual([]);
+      expect(graph.passes[0]?.entryPoints).toEqual({ vertex: "firstVertex", fragment: "firstFragment" });
+    });
+
+    it("uses the generated vertex for a fragment-only shader", () => {
+      expect(build(fragment).passes[0]?.entryPoints).toEqual({ fragment: "firstFragment" });
+    });
+
+    it("uses the hook fragment for a vertex-only shader", () => {
+      const hook = language === "slang" ? imageCode : 'fn mainImage(p: vec2f) -> vec4f { return vec4f(1); }';
+      expect(build(`${vertex}\n${hook}`).passes[0]?.entryPoints).toEqual({ vertex: "firstVertex" });
+    });
+
+    it("ignores commented entry points and keeps hook shaders unchanged", () => {
+      const hook = language === "slang" ? imageCode : 'fn mainImage(p: vec2f) -> vec4f { return vec4f(1); }';
+      expect(build(`/* ${vertex} ${fragment} */\n${hook}`).passes[0]?.entryPoints).toBeUndefined();
+    });
+
+    it("preserves explicit configuration and does not infer omitted stages", () => {
+      const config: ShaderConfig = { version: "1", passes: { Image: { entryPoints: { fragment: "secondFragment" } } } };
+      const before = JSON.stringify(config);
+      const graph = build([vertex, fragment, fragment.replaceAll("firstFragment", "secondFragment")].join("\n"), config);
+      expect(graph.passes[0]?.entryPoints).toEqual({ fragment: "secondFragment" });
+      expect(JSON.stringify(config)).toBe(before);
+      expect(build([vertex, fragment].join("\n"), { version: "1", passes: { Image: {} } }).passes[0]?.entryPoints).toBeUndefined();
+    });
+  });
+
   it("creates an Image pass when no config is provided", () => {
     const graph = buildSlangPassGraph({
       imageCode,

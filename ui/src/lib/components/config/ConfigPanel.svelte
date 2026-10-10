@@ -8,7 +8,7 @@
   import { shaderPathsEqual } from "../../editor/sharedSourcePassNames";
   import { portal } from "../../actions/portal";
   import type { ShaderConfig, BufferPass, ComputePass, ImagePass, StorageBufferConfig, StorageBufferSnapshot, ShaderEntryPoint } from "@shader-studio/types";
-  import { getShaderEntryPoints, SHADER_LANGUAGES, vertexPassKey } from "@shader-studio/types";
+  import { getShaderEntryPoints, withDefaultRenderEntryPoints, SHADER_LANGUAGES, vertexPassKey } from "@shader-studio/types";
   import type { Transport } from "../../transport/MessageTransport";
   import BufferConfig from "./BufferConfig.svelte";
   import ScriptInfo from "./ScriptInfo.svelte";
@@ -74,6 +74,8 @@
     onOpenInNewTab = () => {},
   }: Props = $props();
 
+  const effectiveConfig = $derived(withDefaultRenderEntryPoints(config, shaderSource, language));
+
   provideViewerCameraDefault(() => config);
 
   let configManager = $state<ConfigManager | undefined>(undefined);
@@ -114,7 +116,7 @@
         onConfigChange(updatedConfig);
       }
     );
-    configManager.setConfig(config);
+    configManager.setConfig(effectiveConfig);
     configManager.setPathMap(pathMap);
     configManager.setShaderPath(shaderPath);
   });
@@ -130,7 +132,7 @@
     if (!configManager) {
       return;
     }
-    configManager.setConfig(config);
+    configManager.setConfig(effectiveConfig);
   });
 
   $effect(() => {
@@ -680,7 +682,7 @@
 
     if (activeTab === "Image") {
       // Return actual config or default empty ImagePass
-      return config?.passes?.Image || { inputs: {} };
+      return effectiveConfig?.passes?.Image || { inputs: {} };
     } else {
       // Return actual buffer config or default empty BufferPass
       return config?.passes?.[actualBufferName] || { path: "", inputs: {} };
