@@ -66,11 +66,11 @@ export default [{
 },
 ...svelte.configs["flat/base"],
 {
-  files: ["**/*.svelte"],
+  files: ["**/*.svelte", "**/*.svelte.ts"],
   plugins: {
     "@typescript-eslint": typescriptEslint,
   },
-  // flat/base already sets svelte-eslint-parser for .svelte files.
+  // flat/base sets svelte-eslint-parser for components and rune modules.
   languageOptions: {
     parserOptions: {
       parser: tsParser,

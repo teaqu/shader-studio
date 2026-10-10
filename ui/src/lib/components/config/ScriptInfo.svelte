@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import type { MessageEvent as ShaderMessage } from "@shader-studio/types";
   import PathInput from './PathInput.svelte';
 
@@ -59,7 +60,7 @@
     { label: '120fps', fps: 120 },
   ];
 
-  let localFps = $state(pollingFps);
+  let localFps = $state(untrack(() => pollingFps));
   $effect(() => {
     localFps = pollingFps; 
   });
