@@ -23,6 +23,77 @@ describe('VideoTab', () => {
     await waitFor(() => expect(screen.getByText(/Live video recording isn't supported here/)).toBeInTheDocument());
     expect(screen.getByRole('button', { name: 'Start recording' })).toBeDisabled();
   });
+  it('waits for the initial capability probe before allowing Live recording', async () => {
+    let finishProbe!: (formats: liveFormats.LiveVideoFormat[]) => void;
+    vi.spyOn(liveFormats, 'probeLiveVideoFormats')
+      .mockImplementationOnce(() => new Promise(resolve => {
+        finishProbe = resolve;
+      }));
+    render(VideoTab, { props: defaultProps });
+    const start = screen.getByRole('button', { name: 'Start recording' });
+    expect(start).toBeDisabled();
+    finishProbe(['mp4', 'webm']);
+    await waitFor(() => expect(start).toBeEnabled());
+  });
+
+  it('disables recording when a capability refresh fails', async () => {
+    let failProbe!: (reason: Error) => void;
+    vi.spyOn(liveFormats, 'probeLiveVideoFormats')
+      .mockResolvedValueOnce(['mp4', 'webm'])
+      .mockImplementationOnce(() => new Promise((_, reject) => {
+        failProbe = reject;
+      }));
+    const { rerender } = render(VideoTab, { props: defaultProps });
+    const start = screen.getByRole('button', { name: 'Start recording' });
+    await waitFor(() => expect(start).toBeEnabled());
+    await rerender({ ...defaultProps, displayFrameRate: 30 });
+    expect(start).toBeEnabled();
+    failProbe(new Error('encoder unavailable'));
+    await waitFor(() => expect(start).toBeDisabled());
+    expect(defaultProps.onRecord).not.toHaveBeenCalled();
+  });
+
+  it('ignores a failed stale probe after a newer frame rate is validated', async () => {
+    let failStaleProbe!: (reason: Error) => void;
+    const probe = vi.spyOn(liveFormats, 'probeLiveVideoFormats')
+      .mockResolvedValueOnce(['mp4', 'webm'])
+      .mockImplementationOnce(() => new Promise((_, reject) => {
+        failStaleProbe = reject;
+      }))
+      .mockResolvedValueOnce(['webm']);
+    const { rerender } = render(VideoTab, { props: defaultProps });
+    const start = screen.getByRole('button', { name: 'Start recording' });
+    await waitFor(() => expect(start).toBeEnabled());
+    await rerender({ ...defaultProps, displayFrameRate: 30 });
+    await rerender({ ...defaultProps, displayFrameRate: 60 });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'MP4' })).toBeDisabled());
+    expect(probe).toHaveBeenLastCalledWith(800, 600, 60);
+    failStaleProbe(new Error('obsolete encoder configuration'));
+    await Promise.resolve();
+    expect(start).toBeEnabled();
+    await fireEvent.click(start);
+    expect(defaultProps.onRecord).toHaveBeenCalledWith(expect.objectContaining({ format: 'webm', fps: 60 }));
+  });
+
+  it('keeps validated recording available while the measured frame rate is re-probed', async () => {
+    let finishProbe!: (formats: liveFormats.LiveVideoFormat[]) => void;
+    const probe = vi.spyOn(liveFormats, 'probeLiveVideoFormats')
+      .mockResolvedValueOnce(['mp4', 'webm'])
+      .mockImplementationOnce(() => new Promise(resolve => {
+        finishProbe = resolve;
+      }));
+    const { rerender } = render(VideoTab, { props: defaultProps });
+    const start = screen.getByRole('button', { name: 'Start recording' });
+    await waitFor(() => expect(start).toBeEnabled());
+    await rerender({ ...defaultProps, displayFrameRate: 30 });
+    expect(probe).toHaveBeenLastCalledWith(800, 600, 30);
+    expect(start).toBeEnabled();
+    await fireEvent.click(start);
+    expect(defaultProps.onRecord).toHaveBeenCalledWith(expect.objectContaining({ mode: 'live', fps: 30 }));
+    finishProbe([]);
+    await waitFor(() => expect(start).toBeDisabled());
+  });
+
   let defaultProps: any;
 
   async function selectRenderMode() {

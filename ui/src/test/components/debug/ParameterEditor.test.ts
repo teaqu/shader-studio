@@ -40,6 +40,32 @@ function makeParam(overrides: Partial<DebugParameterInfo> = {}): DebugParameterI
 }
 
 describe('ParameterEditor', () => {
+  it('uses the default expression when the initial expression is empty', async () => {
+    const { rerender } = render(ParameterEditor, {
+      param: makeParam({ expression: '', defaultExpression: '0.25' }),
+    });
+    const input = screen.getByLabelText('Expression for testParam');
+    expect(input.textContent).toBe('0.25');
+    expect(screen.getByLabelText('Float slider for testParam')).toHaveValue('0.25');
+
+    await rerender({ param: makeParam({ expression: '0.75', defaultExpression: '0.25' }) });
+    expect(input.textContent).toBe('0.75');
+  });
+
+  it('preserves the fourth vector component when changing its color', async () => {
+    const onChange = vi.fn();
+    const { rerender } = render(ParameterEditor, {
+      param: makeParam({ type: 'vec4', expression: 'vec4(0.2, 0.4, 0.6, 0.25)' }),
+      onChange,
+    });
+    const picker = screen.getByLabelText('Color picker for testParam');
+    expect(picker).toHaveValue('#336699');
+    await fireEvent.input(picker, { target: { value: '#ff8000' } });
+    expect(onChange).toHaveBeenCalledWith('vec4(1.00, 0.50, 0.00, 0.25)');
+    await rerender({ param: makeParam({ type: 'vec4', expression: 'vec4(1.00, 0.50, 0.00, 0.25)' }), onChange });
+    expect(screen.getByLabelText('Expression for testParam').textContent).toBe('vec4(1.00, 0.50, 0.00, 0.25)');
+  });
+
   it('renders a single expression input', () => {
     render(ParameterEditor, { param: makeParam() });
     expect(screen.getByLabelText('Expression for testParam')).toBeInTheDocument();

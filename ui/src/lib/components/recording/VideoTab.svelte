@@ -58,17 +58,22 @@
   }
   let screenFrameRate = $derived(captureMode === "render" ? standardFrameRate(displayFrameRate) : displayFrameRate);
   let liveFormats = $state(supportedLiveVideoFormats());
-  let probing = $state(false);
+  let probing = $state(true);
+  let hasProbed = false;
   $effect(() => {
     let disposed = false;
-    probing = true;
+    // Keep a validated action available while refreshing capabilities: a
+    // measured FPS update between pointerdown and pointerup must not discard clicks.
+    probing = !hasProbed;
     void probeLiveVideoFormats(canvasWidth, canvasHeight, activeVideoFps).then(formats => {
       if (!disposed) {
+        hasProbed = true;
         liveFormats = formats;
         probing = false;
       }
     }, () => {
       if (!disposed) {
+        hasProbed = true;
         liveFormats = [];
         probing = false;
       }
