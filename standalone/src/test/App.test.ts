@@ -17,6 +17,7 @@ vi.mock('@shader-studio/ui', async () => {
 import App from '../App.svelte';
 import { StandaloneSettings } from '../settings/StandaloneSettings';
 afterEach(() => vi.unstubAllGlobals());
+import type { WorkspacePersistenceStatus } from '../VirtualWorkspace';
 import type { WebTransport } from '../WebTransport';
 import type { PwaController, PwaStatus } from '../pwa';
 import {
@@ -65,7 +66,7 @@ function createPwa(status: Partial<PwaStatus> = {}): PwaController & { applyUpda
       listener({ supported: true, online: true, updateAvailable: false, buildId: 'abc123', offlinePreparation: { state: 'idle' }, ...status });
       return vi.fn();
     }),
-    applyUpdate: vi.fn().mockResolvedValue(undefined),
+    applyUpdate: vi.fn().mockResolvedValue(true),
     checkForUpdate: vi.fn().mockResolvedValue(undefined),
     prepareOffline: vi.fn().mockResolvedValue(undefined),
     retryOfflinePreparation: vi.fn().mockResolvedValue(undefined),
@@ -95,10 +96,11 @@ describe('standalone App', () => {
     render(App, { props: { transport } });
     setNewShaderVisible(true);
     await tick();
+    await fireEvent.input(screen.getByLabelText('Shader name'), { target: { value: 'aurora' } });
     await fireEvent.change(screen.getByLabelText('Shader language'), { target: { value: 'wgsl' } });
     expect((screen.getByLabelText('Shader functions') as HTMLSelectElement).value).toBe('native');
     await fireEvent.click(screen.getByRole('button', { name: 'Create Shader' }));
-    expect(transport.postMessage).toHaveBeenCalledWith({ type: 'createShader', payload: { name: 'untitled', language: 'wgsl', authoringMode: 'native' } });
+    expect(transport.postMessage).toHaveBeenCalledWith({ type: 'createShader', payload: { name: 'aurora', language: 'wgsl', authoringMode: 'native' } });
   });
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -222,9 +224,9 @@ describe('standalone App', () => {
     expect(status.getAttribute('title')).toBe('Offline · Save failed · Build mobile-42');
     expect(status.querySelector('.codicon-debug-disconnect')).toBeTruthy();
     expect(status.querySelector('.codicon-error')).toBeTruthy();
-    await fireEvent.click(screen.getByRole('button', { name: 'Update ready' }));
+    expect(screen.queryByRole('button', { name: 'Update ready' })).toBeNull();
+    await waitFor(() => expect(pwa.applyUpdate).toHaveBeenCalledOnce());
     expect(transport.flush).toHaveBeenCalledOnce();
-    expect(pwa.applyUpdate).toHaveBeenCalledOnce();
   });
 
   it('reports session-only storage and exposes explicit offline preparation', async () => {
@@ -499,13 +501,135 @@ describe('standalone App', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('Could not import the workspace. Your current work was not changed.');
   });
 
+  it('keeps a session-only workspace open instead of reloading for an update', async () => {
+    const transport = createTransport();
+    transport.getStorageStatus.mockResolvedValue({ backend: 'session', persisted: false, persistSupported: false });
+    const pwa = createPwa({ updateAvailable: true });
+    render(App, { props: { transport, pwa } });
+    await tick(); await tick();
+    expect(pwa.applyUpdate).not.toHaveBeenCalled();
+    expect(transport.flush).not.toHaveBeenCalled();
+  });
+
+  it('waits for pending saves and handles duplicate update announcements once', async () => {
+    const transport = createTransport();
+    let finishSave!: () => void;
+    transport.flush.mockImplementation(() => new Promise<void>(resolve => {
+      finishSave = resolve;
+    }));
+    const pwa = createPwa();
+    let announce!: (status: PwaStatus) => void;
+    pwa.subscribe = listener => {
+      announce = listener; return vi.fn();
+    };
+    render(App, { props: { transport, pwa } });
+    const ready: PwaStatus = { supported: true, online: true, updateAvailable: true, buildId: 'new', offlinePreparation: { state: 'idle' } };
+    announce(ready); announce(ready);
+    await waitFor(() => expect(transport.flush).toHaveBeenCalledOnce());
+    expect(transport.flush).toHaveBeenCalledOnce();
+    expect(pwa.applyUpdate).not.toHaveBeenCalled();
+    finishSave();
+    await waitFor(() => expect(pwa.applyUpdate).toHaveBeenCalledOnce());
+    announce(ready);
+    expect(transport.flush).toHaveBeenCalledOnce();
+  });
+
+  it('unlocks editing when another app tab defers activation', async () => {
+    const transport = createTransport();
+    const pwa = createPwa({ updateAvailable: true });
+    pwa.applyUpdate.mockResolvedValue(false);
+    const view = render(App, { props: { transport, pwa } });
+    await waitFor(() => expect(pwa.applyUpdate).toHaveBeenCalledOnce());
+    await tick();
+    expect((view.container.querySelector('.standalone-app') as HTMLElement).inert).toBe(false);
+  });
+
+  it('keeps editing available when activation does not return an acknowledgement', async () => {
+    const transport = createTransport();
+    const pwa = createPwa({ updateAvailable: true });
+    pwa.applyUpdate.mockResolvedValue(undefined);
+    const view = render(App, { props: { transport, pwa } });
+    await waitFor(() => expect(pwa.applyUpdate).toHaveBeenCalledOnce());
+    await tick();
+    expect((view.container.querySelector('.standalone-app') as HTMLElement).inert).toBe(false);
+  });
+
+  it('saves again before reloading and unlocks if that final save fails', async () => {
+    const transport = createTransport();
+    const pwa = createPwa({ updateAvailable: true });
+    const view = render(App, { props: { transport, pwa } });
+    await waitFor(() => expect(pwa.applyUpdate).toHaveBeenCalledOnce());
+    await tick();
+    expect((view.container.querySelector('.standalone-app') as HTMLElement).inert).toBe(true);
+    const guard = pwa.applyUpdate.mock.calls[0][0];
+    await guard();
+    expect(transport.flush).toHaveBeenCalledTimes(2);
+    transport.flush.mockRejectedValueOnce(new Error('quota'));
+    await expect(guard()).rejects.toThrow('quota');
+    await tick();
+    expect((view.container.querySelector('.standalone-app') as HTMLElement).inert).toBe(false);
+    expect((await screen.findByRole('alert')).textContent).toContain('Could not save pending work');
+  });
+
+  it('allows another update attempt if the final save fails before activation acknowledgement', async () => {
+    const transport = createTransport();
+    transport.flush.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('quota'));
+    const pwa = createPwa();
+    let announce!: (status: PwaStatus) => void;
+    pwa.subscribe = listener => {
+      announce = listener; return vi.fn();
+    };
+    pwa.applyUpdate.mockImplementationOnce(async guard => {
+      await guard().catch(() => {});
+      return true;
+    });
+    const view = render(App, { props: { transport, pwa } });
+    const ready: PwaStatus = { supported: true, online: true, updateAvailable: true, buildId: 'new', offlinePreparation: { state: 'idle' } };
+    announce(ready);
+    await screen.findByRole('alert');
+    await tick();
+    expect((view.container.querySelector('.standalone-app') as HTMLElement).inert).toBe(false);
+    announce(ready);
+    await waitFor(() => expect(pwa.applyUpdate).toHaveBeenCalledTimes(2));
+  });
+
+  it('retries an automatic update after a failed save recovers', async () => {
+    const transport = createTransport();
+    transport.flush.mockRejectedValueOnce(new Error('quota'));
+    let persist!: (status: WorkspacePersistenceStatus) => void;
+    transport.onPersistenceStatus.mockImplementation(listener => {
+      persist = listener; return vi.fn();
+    });
+    const pwa = createPwa({ updateAvailable: true });
+    render(App, { props: { transport, pwa } });
+    await screen.findByRole('alert');
+    expect(pwa.applyUpdate).not.toHaveBeenCalled();
+    persist({ state: 'saved' });
+    await waitFor(() => expect(pwa.applyUpdate).toHaveBeenCalledOnce());
+    expect(transport.flush).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('does not activate an update after the shell has unmounted while saving', async () => {
+    const transport = createTransport();
+    let finishSave!: () => void;
+    transport.flush.mockImplementation(() => new Promise<void>(resolve => {
+      finishSave = resolve;
+    }));
+    const pwa = createPwa({ updateAvailable: true });
+    const view = render(App, { props: { transport, pwa } });
+    await waitFor(() => expect(transport.flush).toHaveBeenCalledOnce());
+    view.unmount(); finishSave(); await tick();
+    expect(pwa.applyUpdate).not.toHaveBeenCalled();
+  });
+
   it('does not apply an update when pending work cannot be saved first', async () => {
     const transport = createTransport();
     transport.flush.mockRejectedValueOnce(new Error('quota'));
     const pwa = createPwa({ updateAvailable: true });
     render(App, { props: { transport, pwa } });
 
-    await fireEvent.click(screen.getByRole('button', { name: 'Update ready' }));
+    expect(screen.queryByRole('button', { name: 'Update ready' })).toBeNull();
 
     expect((await screen.findByRole('alert')).textContent).toContain('Could not save pending work, so the update was not applied.');
     expect(pwa.applyUpdate).not.toHaveBeenCalled();

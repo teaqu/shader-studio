@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { getViewerSession, ShaderEditor } from '@shader-studio/ui';
+  import { getViewerSession, ShaderEditor, getHostEditorWordWrap, toggleHostEditorWordWrap } from '@shader-studio/ui';
 
   import { getEditorDocument, setEditorDocument } from './state/editorDocuments.svelte';
   import { passNameForFile } from './passSources';
@@ -48,6 +48,7 @@
     ? passNameForFile(session.config, session.shaderPath, path)
     : undefined);
   let vimMode = $state(false);
+  const wordWrap = $derived(getHostEditorWordWrap());
 </script>
 
 <div class="editor-pane">
@@ -94,6 +95,12 @@
     </div>
   {/if}
   <div class="editor-footer" role="toolbar" aria-label="Editor options">
+    {#if wordWrap !== undefined}
+      <button class="vim-toggle" type="button" aria-label="Wrap text"
+        aria-pressed={wordWrap === 'on'} onclick={toggleHostEditorWordWrap}>
+        Wrap{wordWrap === 'on' ? ' on' : ''}
+      </button>
+    {/if}
     {#if !path && session?.shaderPath}
       <button class="vim-toggle" type="button" onclick={() => requestEditor(session?.shaderPath ?? null)}>
         Open in separate editor

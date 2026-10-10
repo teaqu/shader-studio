@@ -1,6 +1,85 @@
 import { expect, test } from '@playwright/test';
 import { readWorkspaceFiles } from './workspace-store.mjs';
 
+test('new shader opens blank and focused, validates its name, and saves the named shader', async ({ page }) => {
+  await page.goto('/');
+  const nav = page.getByRole('navigation', { name: 'Workspace panels' });
+  await nav.getByRole('button', { name: 'Explorer' }).click();
+  await page.getByTestId('web-shader-explorer').getByTitle('New Shader').click();
+  const dialog = page.getByRole('dialog', { name: 'New Shader' });
+  const name = dialog.getByLabel('Shader name');
+  await expect(name).toHaveValue('');
+  await expect(name).toBeFocused();
+  for (const value of ['', '   ']) {
+    await name.fill(value);
+    await dialog.getByRole('button', { name: 'Create Shader' }).click();
+    await expect(dialog.getByRole('alert')).toHaveText('Enter a shader name.');
+    await expect(name).toHaveAttribute('aria-invalid', 'true');
+  }
+  await name.fill('mobile-named');
+  await expect(dialog.getByRole('alert')).toHaveCount(0);
+  await name.press('Enter');
+  await expect(dialog).toBeHidden();
+  await expect.poll(async () => (await readWorkspaceFiles(page)).some(file => file.path === '/shaders/mobile-named.glsl')).toBe(true);
+  await page.reload();
+  await nav.getByRole('button', { name: 'Explorer' }).click();
+  await expect(page.getByTestId('web-shader-explorer').getByTestId('shader-option-mobile-named-glsl')).toBeVisible();
+});
+
+test('vertex visibility is default-on and the chosen option survives reload', async ({ page }) => {
+  await page.goto('/');
+  const nav = page.getByRole('navigation', { name: 'Workspace panels' });
+  await nav.getByRole('button', { name: 'Explorer' }).click();
+  const explorer = page.getByTestId('web-shader-explorer');
+  await explorer.getByTitle('New Shader').click();
+  const dialog = page.getByRole('dialog', { name: 'New Shader' });
+  await dialog.getByLabel('Shader name').fill('mesh.vert');
+  await dialog.getByRole('button', { name: 'Create Shader' }).click();
+  await expect(dialog).toBeHidden();
+  await nav.getByRole('button', { name: 'Explorer' }).click();
+  await explorer.getByTitle('Options').click();
+  const hideVertex = explorer.getByLabel('Hide Vertex');
+  await expect(hideVertex).toBeChecked();
+  await expect(explorer.getByTestId('shader-option-mesh-vert-glsl')).toHaveCount(0);
+  await hideVertex.uncheck();
+  await expect(explorer.getByTestId('shader-option-mesh-vert-glsl')).toBeVisible();
+  await expect.poll(async () => {
+    const files = await readWorkspaceFiles(page);
+    const state = files.find(file => file.path === '/.shader-studio/explorer-state.json');
+    return state && JSON.parse(state.contents).hideVertexShaders;
+  }).toBe(false);
+  await page.reload();
+  await nav.getByRole('button', { name: 'Explorer' }).click();
+  await expect(explorer.getByTestId('shader-option-mesh-vert-glsl')).toBeVisible();
+  await expect(hideVertex).not.toBeChecked();
+  await hideVertex.check();
+  await expect(explorer.getByTestId('shader-option-mesh-vert-glsl')).toHaveCount(0);
+});
+
+test('word wrap shortcuts share the preference and persist across reload', async ({ page }) => {
+  await page.goto('/');
+  const nav = page.getByRole('navigation', { name: 'Workspace panels' });
+  await nav.getByRole('button', { name: 'Editor', exact: true }).click();
+  const wrap = page.getByTestId('web-editor').getByRole('button', { name: 'Wrap text' });
+  await expect(wrap).toHaveAttribute('aria-pressed', 'false');
+  await wrap.click();
+  await expect(wrap).toHaveAttribute('aria-pressed', 'true');
+  await nav.getByRole('button', { name: 'Preview' }).click();
+  await page.getByRole('button', { name: 'Open options menu' }).click();
+  await page.getByRole('button', { name: 'Open editor submenu' }).click();
+  const overlayWrap = page.locator('.editor-submenu-portal').getByRole('button', { name: 'Wrap text' });
+  await expect(overlayWrap).toHaveAttribute('aria-pressed', 'true');
+  await overlayWrap.click();
+  await expect(overlayWrap).toHaveAttribute('aria-pressed', 'false');
+  await page.keyboard.press('Escape');
+  await nav.getByRole('button', { name: 'Editor', exact: true }).click();
+  await expect(wrap).toHaveAttribute('aria-pressed', 'false');
+  await wrap.click();
+  await page.reload();
+  await nav.getByRole('button', { name: 'Editor', exact: true }).click();
+  await expect(wrap).toHaveAttribute('aria-pressed', 'true');
+});
+
 test('storage protection is requested automatically and the Workspace menu explains a declined request', async ({ page }) => {
   await page.addInitScript(() => {
     let protectedStorage = false;

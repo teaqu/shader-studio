@@ -1083,6 +1083,7 @@
   });
 
   onMount(() => {
+    const detachPendingSave = transport.registerPendingSave?.(flushPendingSource);
     unsubscribeTheme = currentTheme.subscribe((theme) => {
       editorTheme = theme;
       monaco.editor.setTheme(monacoThemeFor(theme));
@@ -1093,6 +1094,7 @@
     if (isVisible) {
       createEditor();
     }
+    return () => detachPendingSave?.();
   });
 
   onDestroy(() => {

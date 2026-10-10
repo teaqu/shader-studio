@@ -50,12 +50,13 @@ Shader Studio runs Shadertoy-style shaders. Your shader needs a `mainImage` func
 
 === "WGSL"
     ```wgsl
-    fn mainImage(coord: vec2f) -> vec4f {
+    fn mainImage(fragCoord: vec2f) -> vec4f
+    {
         // Normalized pixel coordinates (from 0 to 1)
-        let uv = coord / iResolution.xy;
+        let uv = fragCoord / iResolution.xy;
 
         // Time varying pixel color
-        let col = vec3f(0.5) + vec3f(0.5) * cos(iTime + uv.xyx + vec3f(0.0, 2.0, 4.0));
+        let col = vec3f(0.5) + vec3f(0.5) * cos(iTime + uv.xyx + vec3f(0, 2, 4));
 
         // Output to screen
         return vec4f(col, 1.0);

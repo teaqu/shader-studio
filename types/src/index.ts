@@ -33,3 +33,5 @@ export * from "./VertexHookInsertion";
 export * from "./ShaderInsertion";
 
 export { createNativeFragmentSource } from './ShaderSourceTemplates';
+
+export { shaderStarterTemplate } from './ShaderStarterTemplates';
