@@ -1,4 +1,6 @@
 import { WebSocket, WebSocketServer } from "ws";
+import { randomUUID } from 'node:crypto';
+import type { PreviewRegistry } from '../mcp/PreviewRegistry';
 import * as vscode from "vscode";
 import * as path from "path";
 import { fileURLToPath } from "url";
@@ -21,6 +23,11 @@ export class WebSocketTransport implements MessageTransport {
   private wsServer: WebSocketServer;
   private wsClients: Set<WebSocket> = new Set();
   private allowedBrowserOrigins = new Set<string>();
+  private previewRegistry?: PreviewRegistry;
+
+  public attachPreviewRegistry(registry: PreviewRegistry): void {
+    this.previewRegistry = registry;
+  }
   // Browser clients may be older than the extension, so commands stay opaque
   // until ClientMessageHandler selects and validates their payload.
   private messageHandler?: (message: any) => void;
@@ -91,6 +98,16 @@ export class WebSocketTransport implements MessageTransport {
     this.wsServer.on("connection", (ws: WebSocket) => {
       Logger.trace(`WebSocket: Client connected. Total clients: ${this.wsClients.size + 1}`);
       this.wsClients.add(ws);
+      const previewId = randomUUID();
+      const unregisterPreview = this.previewRegistry?.register({
+        id: previewId, kind: 'browser', send: message => {
+          if (ws.readyState !== WebSocket.OPEN) {
+            throw new Error('Preview disconnected.');
+          }
+          ws.send(JSON.stringify(message));
+        },
+      });
+      ws.once('close', () => unregisterPreview?.());
 
       // Create a per-connection ClientMessageHandler
       const clientHandler = new ClientMessageHandler(
@@ -111,6 +128,10 @@ export class WebSocketTransport implements MessageTransport {
         try {
           const messageStr = msg instanceof Buffer ? msg.toString() : msg;
           const data = JSON.parse(messageStr);
+          this.previewRegistry?.receive(previewId, data);
+          if (data.type === 'viewerRpcResponse') {
+            return;
+          }
 
           // Handle client identification (legacy, kept for compatibility)
           if (data.type === 'clientInfo') {

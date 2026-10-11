@@ -32,6 +32,7 @@
     },
     "extension": {
       "entry": [
+        "test/mcp/**/*.test.ts",
         "src/extension.ts",
         "src/**/*.{bench,test,test-d,spec,spec-d}.?(c|m)[jt]s?(x)",
         "src/**/test/**/*.{ts,svelte}",

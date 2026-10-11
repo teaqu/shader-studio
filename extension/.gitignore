@@ -14,3 +14,4 @@ glsl-deps
 
 # Per-worker workspaces written by the config-edit-feedback e2e tests
 e2e/fixtures/slang-parity-validation/config-edit-feedback-*/
+e2e/fixtures/slang-parity-validation/local-mcp-*/

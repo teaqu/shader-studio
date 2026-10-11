@@ -154,6 +154,26 @@
     "configuration": {
       "title": "Shader Studio",
       "properties": {
+        "shader-studio.mcpEnabled": {
+          "type": "boolean",
+          "default": false,
+          "scope": "application",
+          "description": "Enable local MCP tools for compatible AI agents. Disabled by default. Once enabled, starts automatically whenever Shader Studio starts and keeps running until disabled. A private mcpToken is generated on first enable."
+        },
+        "shader-studio.mcpPort": {
+          "type": "integer",
+          "default": 51474,
+          "scope": "application",
+          "minimum": 1024,
+          "maximum": 65535,
+          "description": "Loopback port for the local MCP endpoint, available even without starting the browser preview server."
+        },
+        "shader-studio.mcpToken": {
+          "type": "string",
+          "default": "",
+          "scope": "application",
+          "description": "Private local MCP bearer token (at least 16 characters). Automatically generated when MCP is first enabled. Copy this token into your agent's local MCP configuration; never commit it to workspace settings."
+        },
         "shader-studio.webServerPort": {
           "type": "number",
           "default": 3000,
@@ -376,25 +396,27 @@
     "@typescript-eslint/parser": "^8.31.1",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.5.2",
+    "ajv": "^6.12.6",
     "esbuild": "^0.24.0",
     "js-yaml": "^4.3.2",
+    "playwright": "^1.60.0",
     "sinon": "^21.0.0",
     "vscode-oniguruma": "^2.0.1",
-    "vscode-textmate": "^9.3.2",
-    "ajv": "^6.12.6",
-    "playwright": "^1.60.0"
+    "vscode-textmate": "^9.3.2"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.0",
     "@shader-studio/glsl-language-server": "*",
     "@shader-studio/language-server-core": "*",
     "@shader-studio/slang-language-server": "*",
-    "@shader-studio/wgsl-language-server": "*",
     "@shader-studio/types": "*",
     "@shader-studio/utils": "*",
+    "@shader-studio/wgsl-language-server": "*",
     "entities": "^6.0.1",
     "esbuild-wasm": "^0.24.0",
     "glsl-transpiler": "^3.0.3",
+    "vscode-languageserver-protocol": "3.18.2",
     "ws": "^8.18.3",
-    "vscode-languageserver-protocol": "3.18.2"
+    "zod": "^4.6.5"
   }
 }

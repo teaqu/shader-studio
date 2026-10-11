@@ -249,6 +249,11 @@ export class WebServer {
   private messenger: Messenger | null = null;
   private webSocketPort: number = 0;
   private listeningPort: number | undefined;
+  private mcpHandler?: (req: http.IncomingMessage, res: http.ServerResponse) => Promise<void>;
+
+  public setMcpHandler(handler?: (req: http.IncomingMessage, res: http.ServerResponse) => Promise<void>): void {
+    this.mcpHandler = handler;
+  }
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -316,6 +321,10 @@ export class WebServer {
       : vscode.Uri.joinPath(this.context.extensionUri, "ui-dist").fsPath;
 
     this.httpServer = http.createServer((req, res) => {
+      if (this.getRequestPath(req.url) === '/mcp' && this.mcpHandler) {
+        void this.mcpHandler(req, res);
+        return;
+      }
       if (req.method === "OPTIONS") {
         const requestPath = this.getRequestPath(req.url);
         const corsHeaders = requestPath.startsWith("/textures/")
@@ -454,7 +463,7 @@ export class WebServer {
     )) {
       res.setHeader(name, value);
     }
-    
+
     if (!req.url) {
       Logger.trace('WebServer: No URL in request');
       res.writeHead(400);
@@ -473,7 +482,7 @@ export class WebServer {
     const encodedPath = requestPath.slice("/textures/".length);
     const authorizedFile = resolveAuthorizedTextureFile(encodedPath, this.getTextureRoots());
     const texturePath = authorizedFile?.path;
-    
+
     Logger.trace(`WebServer: Encoded path: ${encodedPath}`);
     Logger.trace(`WebServer: Decoded path: ${texturePath}`);
 
@@ -570,7 +579,7 @@ export class WebServer {
   ): void {
     const range = req.headers.range;
     Logger.trace(`WebServer: Processing range request: ${range}`);
-    
+
     if (!range) {
       Logger.trace('WebServer: No range header, sending entire file');
       // No range header, send entire file
@@ -612,11 +621,11 @@ export class WebServer {
       console.error(`WebServer: Stream error: ${error}`);
       res.end();
     });
-    
+
     stream.on('end', () => {
       Logger.trace(`WebServer: Stream completed for range ${start}-${end}`);
     });
-    
+
     stream.pipe(res);
   }
 

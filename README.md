@@ -96,6 +96,10 @@ Run standalone checks with `npm run check -w @shader-studio/standalone`,
 
 ## Docs
 
+Connect compatible AI agents to local previews and file editing with the
+[Local MCP guide](docs/features/mcp.md). MCP is disabled by default; once enabled
+in user settings it starts automatically with Shader Studio.
+
 https://teaqu.github.io/shader-studio/docs/
 
 Docs are in `/docs` and configured with MkDocs (`/mkdocs.yml`).

@@ -13,6 +13,7 @@ export default defineConfig({
       // unchanged timeout. Istanbul limits instrumentation to our source scope.
       provider: 'istanbul',
       include: [
+        'extension/src/app/mcp/**/*.ts',
         'debug/src/**/*.ts', 'rendering/src/**/*.ts', 'ui/src/**/*.{ts,svelte}',
         'language-servers/*/src/**/*.ts', 'types/src/**/*.ts', 'utils/src/**/*.ts',
         'monaco/src/**/*.ts', 'standalone/src/**/*.{ts,svelte}', 'shader-explorer/src/**/*.{ts,svelte}',
@@ -34,6 +35,7 @@ export default defineConfig({
       },
     },
     projects: [
+      'extension/vitest.config.ts',
       'types/vitest.config.ts',
       'standalone/vitest.config.ts',
       'ui/vitest.config.ts',

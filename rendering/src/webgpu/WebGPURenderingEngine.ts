@@ -556,8 +556,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
   getCurrentConfig(): ShaderConfig | null {
     return this.session.currentConfig;
   }
-  async readStorageBuffer(name: string, start: number, count: number): Promise<StorageBufferSnapshot> {
-    return this.storage.readStorageBuffer(name, start, count);
+  async readStorageBuffer(name: string, start: number, count: number, maxBytes?: number): Promise<StorageBufferSnapshot> {
+    return this.storage.readStorageBuffer(name, start, count, maxBytes);
   }
 
   async writeStorageBuffer(name: string, start: number, data: ArrayBuffer): Promise<void> {

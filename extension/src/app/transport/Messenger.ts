@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { PreviewRegistry } from '../mcp/PreviewRegistry';
 import { MessageHandler } from "./MessageHandler";
 import { MessageTransport } from "./MessageTransport";
 import { ErrorHandler } from "../ErrorHandler";
@@ -14,6 +15,12 @@ function hasWebview(transport: MessageTransport): transport is WebviewTransportL
 }
 
 export class Messenger {
+  public readonly previews = new PreviewRegistry();
+  private compileSequences = new Map<string, number>();
+
+  public getCompileSequence(path: string): number | undefined {
+    return this.compileSequences.get(path);
+  }
   private messageHandler: MessageHandler;
   private errorHandler: ErrorHandler;
   private transports: MessageTransport[] = [];
@@ -42,6 +49,9 @@ export class Messenger {
     try {
       // Track shader config for error attribution
       if (message.type === "shaderSource") {
+        if (typeof message.path === 'string' && typeof message.compileSequence === 'number') {
+          this.compileSequences.set(message.path, message.compileSequence);
+        }
         this.errorHandler.setShaderConfig({
           config: message.config,
           shaderPath: message.path,
@@ -67,10 +77,12 @@ export class Messenger {
   }
 
   public close(): void {
+    this.previews.dispose();
     this.transports.forEach(transport => transport.close());
   }
 
   public addTransport(transport: MessageTransport): void {
+    transport.attachPreviewRegistry?.(this.previews);
     this.transports.push(transport);
     transport.onMessage((message) => this.messageHandler.handleMessage(message));
   }

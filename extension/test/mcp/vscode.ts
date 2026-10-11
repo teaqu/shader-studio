@@ -1,0 +1,46 @@
+export class Uri {
+  readonly scheme = 'file';
+  constructor(public readonly fsPath: string) {}
+  static file(path: string): Uri {
+    return new Uri(path);
+  }
+}
+export class Range {
+  constructor(public readonly start: number, public readonly end: number) {}
+}
+export class WorkspaceEdit {
+  entries: { uri: Uri; range: Range; text: string }[] = [];
+  replace(uri: Uri, range: Range, text: string): void {
+    this.entries.push({ uri, range, text });
+  }
+}
+export interface TestDocument {
+  uri: Uri; text: string; isDirty: boolean; getText(): string; positionAt(offset: number): number;
+}
+export const workspace = {
+  isTrusted: true,
+  workspaceFolders: [] as { uri: Uri }[],
+  textDocuments: [] as TestDocument[],
+  rejectEdit: false,
+  async openTextDocument(uri: Uri): Promise<TestDocument> {
+    const doc = this.textDocuments.find(document => document.uri.fsPath === uri.fsPath);
+    if (!doc) {
+      throw new Error('Document not found');
+    }
+    return doc;
+  },
+  async findFiles(): Promise<Uri[]> {
+    return this.textDocuments.map(doc => doc.uri);
+  },
+  async applyEdit(edit: WorkspaceEdit): Promise<boolean> {
+    if (this.rejectEdit) {
+      return false;
+    }
+    for (const entry of edit.entries) {
+      const doc = await this.openTextDocument(entry.uri);
+      doc.text = entry.text;
+      doc.isDirty = true;
+    }
+    return true;
+  },
+};

@@ -318,6 +318,14 @@ module.exports = Object.freeze({
     },
   "1b5e875a113099bca026f279f8c6e78a166f7337249611b62664b4cd5c1e8900": async (vscode, path) =>
         (await vscode.workspace.openTextDocument(vscode.Uri.file(path))).uri.toString(),
+  "1c10665a3f7beb8d35f6738fabfe738d7d513a8957e6fb08f6d277e6e640d780": async (vscode, settings) => {
+      const config = vscode.workspace.getConfiguration('shader-studio');
+      await config.update('mcpPort', settings.port, vscode.ConfigurationTarget.Global);
+      await config.update('mcpEnabled', true, vscode.ConfigurationTarget.Global);
+      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(settings.shaderPath));
+      await vscode.window.showTextDocument(doc, { preview: false });
+      await vscode.commands.executeCommand('shader-studio.view');
+    },
   "1d23a6f81b12e1b4e2b36d6f7cc27d38740741e04670fac0f7660b33033af42e": async vscode => vscode.commands.executeCommand('workbench.action.closeAllEditors'),
   "1d88c3d193e52a222ec233332ebbfb1971f1b37a1f88e95a73729bd409bc7c6b": vscode => ({
       active: vscode.window.activeTextEditor?.document.uri.toString(),
@@ -362,6 +370,7 @@ module.exports = Object.freeze({
   "2140db6cedaf18b9ea3f5d03e3eb1e4918b36d12abf5b97dbf943fb2e3bbfaac": async vscode =>
     vscode.workspace.getConfiguration('files').get('simpleDialog.enable'),
   "2154e4c77dc9283ebe902bb758341ba16d8101699708efcfd03780f3727eefb1": () => globalThis.__releaseStartupRefresh(),
+  "22049cff43bc13d7e14bfaa1a6caabb3aa26a9b94a8f886b9a0c1141f77659f6": vscode => vscode.workspace.getConfiguration('shader-studio').get('mcpToken'),
   "22082465fa913471459f28abcde68ee1d1ca1e56c65c7ab013d230f7d37a155f": async api => {
       await api.commands.executeCommand('shader-studio.toggleEditorOverlay');
     },
@@ -440,6 +449,12 @@ module.exports = Object.freeze({
       uri: vscode.Uri.file(root)
     });
   },
+  "2d4e4ff77484549addc2fc5d663f7d31d462c66afa04b4bdaf0e2918bb115bf0": async (vscode, path) => {
+      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
+      await vscode.window.showTextDocument(doc, {
+        preview: false
+      });
+    },
   "2f5f0269417db35f077bfbabb00a24e418167295c777fb6332794e6ed3333026": async (vscode) => {
       await vscode.commands.executeCommand('notifications.clearAll');
     },
@@ -774,6 +789,7 @@ module.exports = Object.freeze({
         preview: false
       });
     },
+  "53a2b4d1f4d652438c5b8a469ca85e1f7322c20bdf8db453216655e59c35c6aa": vscode => vscode.workspace.getConfiguration('shader-studio').get('mcpEnabled'),
   "53d0ca78353937ded0ba4050c0ee6c9d139d7698ca8184355377a35f2cc79ea1": async (vscode, documentUri, source) => {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.parse(documentUri));
     const edit = new vscode.WorkspaceEdit();
@@ -1041,6 +1057,10 @@ module.exports = Object.freeze({
           activeParameter: signature?.activeParameter
         };
       },
+  "73f3a22a0da7899aa357f338197f03c196f99d81826819a3f0e69b919e0646ce": async (vscode, webPort) => {
+      await vscode.workspace.getConfiguration('shader-studio').update('webServerPort', webPort, vscode.ConfigurationTarget.Global);
+      await vscode.commands.executeCommand('shader-studio.startWebServer');
+    },
   "741ecf9b2c4ed038349ce877b0a67e8d384651ca5f758b4e3461dab02594b96f": async (vscode, directory) => {
     // The webview may own focus. Revert each dirty fixture's text editor
     // explicitly before deleting it, so the next test cannot open a save prompt.
@@ -1076,6 +1096,13 @@ module.exports = Object.freeze({
       preview: false
     });
   },
+  "79308476ca7869cd45da25fb2d08c2f6b482f2b57abc65951c5a7f1e8bb813eb": async vscode => {
+      await vscode.commands.executeCommand('shader-studio.stopWebServer');
+      const config = vscode.workspace.getConfiguration('shader-studio');
+      for (const key of ['mcpEnabled', 'mcpPort', 'mcpToken', 'webServerPort']) {
+        await config.update(key, undefined, vscode.ConfigurationTarget.Global);
+      }
+    },
   "7ac230dccefb6d08c0dbc933f65259c349013cfed4cde5d77c90859f7a6c4f71": async (vscode, target, at) => {
     const document = vscode.workspace.textDocuments.find((candidate) => candidate.uri.fsPath === target)
       ?? await vscode.workspace.openTextDocument(vscode.Uri.file(target));
@@ -1291,8 +1318,14 @@ module.exports = Object.freeze({
         });
         await vscode.commands.executeCommand('shader-studio.view');
       },
+  "9c1ba317f77f70467ca0262ef3529a54e48c76befe28a25ae1eebc22ed40a791": async vscode => vscode.workspace.getConfiguration('shader-studio').update('mcpEnabled', false, vscode.ConfigurationTarget.Global),
+  "9c619ce927b18c46ae90be9334dedf115078d7ee04c03faa47b04bc168ded7f9": async (vscode, path) => (await vscode.workspace.openTextDocument(path)).getText(),
   "9e1c330e5f9dd044267a4d74dd8e07998b000487f96c6598348a94215bc4cd68": async (vscode) => {
       await vscode.extensions.getExtension('teaqu.shader-studio')?.activate();
+    },
+  "9eb9600f7a571eecc9a3311023276b3867e7cc79369f9a8955dbf36dda882d15": async (vscode, path) => {
+      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
+      await vscode.window.showTextDocument(doc, { preview: false });
     },
   "a341dbe31bccb877c558b70a6e7eaf5e1eabb00fd12e8dbaa04c451dba4cea21": async (vscode, config, shader) => {
       await vscode.extensions.getExtension('teaqu.shader-studio')?.activate();
@@ -1664,6 +1697,16 @@ module.exports = Object.freeze({
     };
   },
   "cbce59ec22ed98989676a13701b3b99945cbffac73bfa339b82d7afe75288114": vscode => vscode.commands.executeCommand('shader-studio.toggleLock'),
+  "cdc5d61824cbc86c0e2903d7674f22ba1567aff238e3c4710c85f51e92ce7038": async (vscode, settings) => {
+      const config = vscode.workspace.getConfiguration('shader-studio');
+      await config.update('mcpPort', settings.port, vscode.ConfigurationTarget.Global);
+      await config.update('mcpEnabled', true, vscode.ConfigurationTarget.Global);
+      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(settings.shaderPath));
+      await vscode.window.showTextDocument(doc, {
+        preview: false
+      });
+      await vscode.commands.executeCommand('shader-studio.view');
+    },
   "ce5e295b30297d2eee67199d6203d23e1a0ad653e0ba66b41f8f375ac375985a": async vscode => {
       await vscode.extensions.getExtension('teaqu.shader-studio')?.activate();
     },

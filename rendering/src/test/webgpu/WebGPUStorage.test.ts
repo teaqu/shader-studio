@@ -26,6 +26,13 @@ function harness() {
 }
 
 describe("WebGPUStorage boundaries", () => {
+  it('enforces a readback byte limit before allocating a staging buffer', async () => {
+    const { storage, createBuffer } = harness();
+    storage.publishPreparedStorage(storage.prepareStorageBuffers([node()], 1));
+    createBuffer.mockClear();
+    await expect(storage.readStorageBuffer('particles', 0, 4, 8)).rejects.toThrow('Request fewer elements');
+    expect(createBuffer).not.toHaveBeenCalled();
+  });
   it("rejects allocation without a device and leaves installed buffers intact", () => {
     const { storage, loseDevice } = harness();
     loseDevice();

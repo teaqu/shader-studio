@@ -219,8 +219,11 @@ export class WebGPUStorage {
     }
   }
 
-  async readStorageBuffer(name: string, start: number, count: number): Promise<StorageBufferSnapshot> {
+  async readStorageBuffer(name: string, start: number, count: number, maxBytes = Infinity): Promise<StorageBufferSnapshot> {
     const { buffer, layout, offset, size } = this.resolveStorageRange(name, start, count);
+    if (size > maxBytes) {
+      throw new Error(`Storage read exceeds ${maxBytes} bytes. Request fewer elements.`);
+    }
     const alignedOffset = Math.floor(offset / WEBGPU_BUFFER_SIZE_ALIGNMENT) * WEBGPU_BUFFER_SIZE_ALIGNMENT;
     const alignedEnd = Math.ceil((offset + size) / WEBGPU_BUFFER_SIZE_ALIGNMENT) * WEBGPU_BUFFER_SIZE_ALIGNMENT;
     const copied = await this.readStorageBytes(buffer, alignedOffset, alignedEnd - alignedOffset, name);

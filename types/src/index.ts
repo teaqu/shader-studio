@@ -1,5 +1,6 @@
 export * from './ShaderConfig';
 export * from './MessageTypes';
+export * from './ViewerRpc';
 export * from './StorageInspection';
 export * from './assetExtensions';
 export * from './DefaultAssets';

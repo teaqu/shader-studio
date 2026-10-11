@@ -6,6 +6,8 @@
   import { logSwitchTiming } from "../diagnostics/switchTiming";
   import { ShaderLocker } from "../ShaderLocker";
   import { createTransport } from "../transport/TransportFactory";
+  import { ViewerControl, validateViewerSettings } from '../ViewerControl';
+  import type { ViewerSnapshot, ViewerCapture } from '@shader-studio/types';
   import type { Transport } from "../transport/MessageTransport";
   import ShaderCanvas from "./ShaderCanvas.svelte";
   import MenuBar from "./MenuBar.svelte";
@@ -177,6 +179,23 @@
   let pendingSwapMessage: MessageEvent | null = null;
   let pendingSwapStartedAt: number | null = null;
   let transport: Transport = createTransport();
+  let mcpCompileSequence: number | null = null;
+  let mcpRenderedSequence: number | null = null;
+  const viewerControl = new ViewerControl({
+    snapshot: viewerSnapshot,
+    capture: captureViewerOutput,
+    readStorage: async payload => {
+      if (typeof payload.name !== 'string' || !Number.isInteger(payload.start) || !Number.isInteger(payload.count)
+        || Number(payload.start) < 0 || Number(payload.count) < 1 || Number(payload.count) > 1024) {
+        throw new Error('Provide a storage name and a valid range of 1 to 1024 elements.');
+      }
+      const { data, ...metadata } = await renderingEngine.readStorageBuffer(payload.name, Number(payload.start), Number(payload.count), 65536);
+      return { ...metadata, bytes: Array.from(new Uint8Array(data)) };
+    },
+    settings: updateViewerSettings,
+    playback: updateViewerPlayback,
+    respond: message => transport.postMessage(message),
+  });
   let layoutSlot = transport.getType() === 'vscode'
     ? (getInjectedLayoutSlot() ?? 'vscode:1')
     : allocateWebLayoutSlot();
@@ -518,6 +537,9 @@
           totalSinceSwapMs: pendingSwapStartedAt === null ? null : Math.round((performance.now() - pendingSwapStartedAt) * 100) / 100,
         });
         pendingSwapStartedAt = null;
+      } else if (!ok && pendingSwapMessage) {
+        viewerControl.compileCancelled(pendingSwapMessage.data.path, pendingSwapMessage.data.compileSequence);
+        pendingSwapMessage = null;
       }
     }
   }
@@ -1182,6 +1204,10 @@
 
   async function handleMessage(event: MessageEvent): Promise<void> {
     const { type } = event.data;
+    if (type === 'viewerRpcRequest') {
+      viewerControl.handle(event.data);
+      return;
+    }
 
     if (type === 'error') {
       const payload = event.data.payload;
@@ -1227,6 +1253,8 @@
       if (!messageTarget) {
         return;
       }
+      viewerControl.compileStarted(event.data.path, event.data.compileSequence);
+      mcpCompileSequence = event.data.compileSequence ?? null;
 
       // Only a main shader can select the renderer backend. Configured pass
       // updates often omit language and must stay on the locked main backend.
@@ -1248,6 +1276,9 @@
         && msgLanguage !== engineLanguage
       ) {
         renderingEngine?.stopRenderLoop?.();
+        if (pendingSwapMessage) {
+          viewerControl.compileCancelled(pendingSwapMessage.data.path, pendingSwapMessage.data.compileSequence);
+        }
         pendingSwapMessage = event;
         pendingSwapStartedAt = shaderMessageStartedAt;
         logSwitchTiming('backend swap scheduled', {
@@ -1278,12 +1309,17 @@
         }
         if (result) {
           applyCompilationResult(result);
+          if (result.success) {
+ mcpRenderedSequence = event.data.compileSequence ?? null;
+}
         }
         requestFullCustomUniformValues();
         isLocked = shaderLocker.isLocked();
       } catch (err) {
         resolutionController.handleShaderLoadFailed();
         addError(`Shader message handling failed: ${err}`);
+      } finally {
+        viewerControl.compileFinished(event.data.path, event.data.compileSequence);
       }
       return;
     }
@@ -1313,6 +1349,99 @@
     if (type === 'manualCompile') {
       void handleManualCompile();
       return;
+    }
+  }
+
+  function viewerSnapshot(): ViewerSnapshot {
+    const tm = renderingEngine?.getTimeManager();
+    return {
+      path: shaderPath ?? '', language: engineLanguage,
+      compileSequence: mcpCompileSequence, renderedSequence: mcpRenderedSequence,
+      compiling: viewerControl.compiling, errors: [...errors], warnings: [...warnings],
+      time: tm?.getCurrentTime(performance.now()) ?? 0, frame: tm?.getFrame() ?? 0,
+      paused: tm?.isPaused() ?? true, width: glCanvas?.width ?? 0, height: glCanvas?.height ?? 0,
+      fpsLimit, speed: tm?.getSpeed() ?? 1,
+      uniforms: renderingEngine?.getCurrentCustomUniforms() ?? [],
+      resources: viewerResources(),
+    };
+  }
+
+  function viewerResources(): ViewerSnapshot['resources'] {
+    return {
+      passes: Object.entries(currentConfig?.passes ?? { Image: {} }).map(([name, pass]) => ({
+        name,
+        kind: name.toLowerCase() === 'common' ? 'common' : pass && 'type' in pass && pass.type === 'compute' ? 'compute' : 'render',
+        path: name === 'Image' ? shaderPath ?? '' : bufferPathMap[name] ?? pass?.path ?? '',
+      })),
+      storage: currentConfig?.storage ?? {},
+    };
+  }
+
+  async function captureViewerOutput(): Promise<ViewerCapture> {
+    if (!initialized || !hasShader || !glCanvas) {
+ throw new Error('No shader is loaded in this preview.');
+}
+    const snapshot = viewerSnapshot();
+    renderingEngine.renderForCapture();
+    const blob = await new Promise<Blob>((resolve, reject) => glCanvas.toBlob(
+      value => value ? resolve(value) : reject(new Error('Could not capture rendered output.')), 'image/png',
+    ));
+    const data = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(',')[1]);
+      reader.onerror = () => reject(new Error('Could not encode rendered output.'));
+      reader.readAsDataURL(blob);
+    });
+    return { ...snapshot, mimeType: 'image/png', data };
+  }
+
+  function updateViewerSettings(payload: Record<string, unknown>): void {
+    validateViewerSettings(payload);
+    if (!initialized) {
+ throw new Error('Viewer is not initialized.');
+}
+    // Validate all uniforms before applying any settings.
+    const values = payload.uniforms as Record<string, number | number[] | boolean> | undefined;
+    const declared = renderingEngine.getCurrentCustomUniforms();
+    const changes = Object.entries(values ?? {}).map(([name, value]) => {
+      const uniform = declared.find(item => item.name === name);
+      if (!uniform) {
+ throw new Error(`Unknown custom uniform: ${name}`);
+}
+      const valid = Array.isArray(uniform.value)
+        ? Array.isArray(value) && value.length === uniform.value.length && value.every(item => typeof item === 'number' && Number.isFinite(item))
+        : typeof value === typeof uniform.value && (typeof value !== 'number' || Number.isFinite(value));
+      if (!valid) {
+ throw new Error(`Invalid value for uniform: ${name}`);
+}
+      return { name, type: uniform.type, value };
+    });
+    if (typeof payload.fpsLimit === 'number') {
+ handleFpsLimitChange(payload.fpsLimit);
+}
+    if (typeof payload.speed === 'number') {
+ renderingEngine.getTimeManager().setSpeed(payload.speed);
+}
+    if (changes.length) {
+ renderingEngine.updateCustomUniformValues(changes);
+}
+  }
+
+  async function updateViewerPlayback(payload: Record<string, unknown>): Promise<void> {
+    if (!initialized || !hasShader) {
+ throw new Error('No shader is loaded.');
+}
+    if (payload.reset === true) {
+ await handleReset();
+}
+    if (typeof payload.paused === 'boolean' && payload.paused !== renderingEngine.getTimeManager().isPaused()) {
+ handleTogglePause();
+}
+    if (typeof payload.time === 'number') {
+      if (!Number.isFinite(payload.time) || payload.time < 0) {
+ throw new Error('time must be a finite, non-negative number.');
+}
+      renderingEngine.getTimeManager().setTime(payload.time);
     }
   }
 
@@ -1587,6 +1716,7 @@
   const mountRecording = createMountFn(() => recordingEl);
 
   onDestroy(() => {
+    viewerControl.dispose();
     scriptRuntimeReporter?.dispose();
     scriptRuntimeReporter = null;
     setViewerSession(null);
