@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import Ajv = require('ajv');
 
-const schema = JSON.parse(readFileSync(resolve(__dirname, '../../../schemas/shader-config.schema.json'), 'utf8'));
+const schema = JSON.parse(readFileSync(new URL('../../../schemas/shader-config.schema.json', import.meta.url), 'utf8'));
 const validate = new Ajv({ allErrors: true }).compile(schema);
 const config = (input: unknown) => ({ version: '1.0', passes: { Image: { inputs: { density: input } } } });
 
