@@ -61,6 +61,8 @@ See [Resolution](resolution.md) for how these settings interact with the toolbar
 
 Each buffer pass uses a `.glsl`, `.slang`, or `.wgsl` file to produce an image that other passes can sample. Buffer pass names are ordinary identifiers such as `Flow`, `BloomHorizontal`, or `BufferA`; there is no `BufferA`–`BufferD` name set or four-pass limit. Every pass can configure its own channels: GLSL uses `iChannelN` and `iChN`, Slang uses direct globals such as `iChannelN`, and WGSL uses free functions such as `iChannelNSample(uv)`. See [Channels](channels.md) for how to bind textures, video, audio, and more.
 
+Choose **+ New → Cubemap** to create a cubemap buffer. Its Output section sets the square face size (512 pixels by default). Bind that pass as a regular Buffer channel in a later pass: Shader Studio derives the texture shape from the source pass, so GLSL receives a `samplerCube` and Slang a `TextureCube`. Sample it with a direction vector rather than UV coordinates.
+
 The **File** row shows an editable path. **Change…** opens a chooser with files already used by the config, **Browse workspace…**, and **Create**. Several passes can use the same source file, each selecting a different function. Standalone’s Browse action selects files from its virtual workspace.
 
 Three path forms are supported:
@@ -73,7 +75,7 @@ Three path forms are supported:
 
 **Create** generates a source template using the shader mode preference. WGSL/Slang function rows appear under **Fragment shader**; choose the function this pass should run. **Add function…** inserts a hook or native entry point into that file, using the adjacent mode chooser. A native fragment can run without `mainImage`, and native templates use the generated vertex stage until you request a custom one. GLSL has no fragment function selector or Built-in/Native chooser because it uses the fixed `mainImage` hook.
 
-The pass sections are arranged as Fragment source/functions, Vertex shader, Channels, Geometry, Rendering, Resolution, and Output. Image omits the file chooser. **Output** holds the buffer format and read-only [inferred output slots and names](multiple-render-targets.md); it does not add code or create attachments.
+The pass sections are arranged as Fragment source/functions, Vertex shader, Channels, Geometry, Rendering, Resolution, and Output. Image omits the file chooser. **Output** selects 2D or Cubemap, its cubemap face size, the buffer format, and read-only [inferred output slots and names](multiple-render-targets.md).
 
 **Resolution** (optional) — by default a buffer inherits the Image pass resolution exactly. You can override this in two ways:
 
@@ -81,6 +83,53 @@ The pass sections are arranged as Fragment source/functions, Vertex shader, Chan
 |------|---------|-------------|
 | **Fixed** | `512 × 512` | Exact pixel dimensions, independent of the canvas |
 | **Scale** | `0.5×` | Multiplier on the Image resolution — tracks canvas changes |
+
+---
+
+## Cubemap Buffers
+
+Cubemap output is supported by GLSL fragment and Slang fragment/compute passes. A cubemap is a texture with six square faces, independent of the canvas resolution. Choose **+ New → Cubemap**, then **File → Change… → Create** for a direction-colour starter. Slang cubemap tabs also offer Fragment/Compute execution. WGSL cubemap generation is not supported yet.
+
+A fragment pass calls `mainCubemap` once per pixel of every face. `fragCoord` is the face pixel coordinate, `rayOri` is zero, and `rayDir` is the normalized sampling direction:
+
+```glsl
+void mainCubemap(out vec4 color, in vec2 fragCoord,
+                 in vec3 rayOri, in vec3 rayDir) {
+    color = vec4(rayDir * 0.5 + 0.5, 1.0);
+}
+```
+
+```slang
+float4 mainCubemap(float2 fragCoord, float3 rayOri, float3 rayDir) {
+    return float4(rayDir * 0.5 + 0.5, 1.0);
+}
+```
+
+The source pass declares its shape; consumers keep ordinary buffer inputs:
+
+```json
+{
+  "version": "1.0",
+  "passes": {
+    "Cubemap": {
+      "path": "environment.glsl",
+      "outputKind": "cubemap",
+      "faceSize": 512
+    },
+    "Image": {
+      "inputs": { "iChannel0": { "type": "buffer", "source": "Cubemap" } }
+    }
+  }
+}
+```
+
+GLSL samples `texture(iChannel0, direction)`; Slang samples `iChannel0.Sample(direction)`. Face order is +X, −X, +Y, −Y, +Z, −Z. Slang compute outputs use six layers and `cubemapDirection(pixel.xy, face)` / `writeOutput(pixel.xy, face, color)`; the default texel dispatch covers all six faces in Z. The pixel helper samples the pixel centre.
+
+The **Cubemap preview** chooser displays one face, a cross layout, or an environment projection. **Image output** restores the normal Image pass. Preview selection does not alter the saved shader configuration.
+
+Faces default to 512 pixels and are limited by the device's texture limits. Cubemap passes use fullscreen fragment rendering or Slang compute; custom vertex stages, mesh geometry, multiple outputs, 2D resolution settings, and per-layer channel selection are unavailable. Nearest and linear filtering use the base level; generated mipmaps are not provided.
+
+Both feedback textures start cleared. A self-input reads the previous frame while later passes read the completed six-face output. Changing face size clears both textures; canvas resizing keeps the configured face size. Reset clears feedback, and removing a pass releases its textures.
 
 ---
 

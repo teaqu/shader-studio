@@ -20,6 +20,8 @@ export type RenderPassChannel =
       key: string;
       source: string;
       readFrom: ChannelReadTiming;
+      /** Texture view shape inherited from the producing buffer. */
+      outputKind?: "2d" | "cubemap";
       layer?: number;
       /** Colour attachment selected from a native render buffer. */
       output?: number;
@@ -92,6 +94,8 @@ export interface RenderPassNode extends VerticesDrawConfig, InstanceDrawConfig, 
   path?: string;
   kind: "render" | "compute";
   output: "texture" | "canvas" | "none";
+  /** A cubemap is physically a six-layer 2D texture but sampled as a cube. */
+  outputKind?: "2d" | "cubemap";
   outputLayers: number;
   /** Number of native render colour attachments; omitted means one. */
   outputCount?: number;

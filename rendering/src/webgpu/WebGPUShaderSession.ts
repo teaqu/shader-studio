@@ -512,6 +512,7 @@ export class WebGPUShaderSession {
       computeWorkgroupLimits: this.host.constraints.resolveComputeWorkgroupLimits(),
       maxOutputLayers: this.host.constraints.resolveMaxOutputLayers(),
       maxStorageBuffers: this.host.constraints.resolveMaxStorageBuffers(),
+      maxTextureDimension2D: this.host.constraints.maxTextureDimension2D,
     });
     resolveGraphBufferFormats(graph, {
       rgba16floatRenderable: true,

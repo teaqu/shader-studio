@@ -36,12 +36,17 @@ export function assignInputSlots<T extends GlslInputLike>(inputs: Readonly<Recor
 export function resolveChannelSamplerTypes<T extends GlslInputLike>(
   inputs: Readonly<Record<string, T>>,
   slotAssignments: SlotAssignment[] = assignInputSlots(inputs),
+  cubemapSources: readonly string[] = [],
 ): ChannelSamplerType[] {
   const channelCount = Math.max(4, slotAssignments.length);
   const types: ChannelSamplerType[] = new Array(channelCount).fill('2D');
 
   for (const { slot, key } of slotAssignments) {
-    if (inputs[key]?.type === 'cubemap') {
+    const input = inputs[key];
+    const source = input && typeof input === 'object' && 'source' in input && typeof input.source === 'string'
+      ? input.source
+      : undefined;
+    if (input?.type === 'cubemap' || (input?.type === 'buffer' && source && cubemapSources.includes(source))) {
       types[slot] = 'Cube';
     }
   }

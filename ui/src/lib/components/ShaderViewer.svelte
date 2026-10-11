@@ -1,5 +1,6 @@
 <svelte:options runes={true} />
 <script lang="ts">
+  import { getCubemapPreview } from "../state/cubemapPreview.svelte";
   import { sharedSourcePassNames, shaderPathsEqual } from "../editor/sharedSourcePassNames";
   import { clearCurrentEditorSource, setCurrentEditorSource } from "../state/currentEditorSourceState.svelte";
   import { onMount, onDestroy, tick, setContext, untrack } from "svelte";
@@ -686,6 +687,13 @@
       }
     });
   }
+
+  $effect(() => {
+    const previewRevision = getCubemapPreview(shaderPath).refresh;
+    if (initialized && hasShader && previewRevision > 0) {
+      untrack(() => pipeline?.recompileCurrentShader());
+    }
+  });
 
   function handleRefresh() {
     if (!initialized) {

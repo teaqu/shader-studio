@@ -458,6 +458,31 @@ describe('BufferConfig', () => {
       expect(mockPostMessage.mock.calls[0][0].payload.fileType).toBe('glsl-buffer');
     });
 
+    it('passes cubemap output kind to the file creator', async () => {
+      const { container } = render(BufferConfig, {
+        bufferName: 'Sky', config: { path: '', inputs: {}, outputKind: 'cubemap', faceSize: 512 } as BufferPass,
+        onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri, postMessage: mockPostMessage,
+        suggestedPath: 'sky.glsl',
+      });
+      await fileAction(container, 'create');
+      expect(mockPostMessage.mock.calls[0][0]).toEqual(expect.objectContaining({
+        type: 'createFile', payload: expect.objectContaining({ outputKind: 'cubemap' }),
+      }));
+    });
+
+    it('converts a Slang cubemap fragment pass to six-layer compute', async () => {
+      const { getByLabelText } = render(BufferConfig, {
+        bufferName: 'Sky', language: 'slang',
+        config: { path: 'sky.slang', inputs: { noise: { type: 'texture', path: 'n.png' } }, outputKind: 'cubemap', faceSize: 256 } as BufferPass,
+        onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri,
+      });
+      await fireEvent.change(getByLabelText('Cubemap execution'), { target: { value: 'compute' } });
+      expect(mockOnUpdate).toHaveBeenLastCalledWith('Sky', expect.objectContaining({
+        type: 'compute', outputKind: 'cubemap', outputLayers: 6, faceSize: 256,
+        inputs: { noise: { type: 'texture', path: 'n.png' } },
+      }));
+    });
+
     it('should create Slang fragment buffers with a Slang file type', async () => {
       const config: BufferPass = { path: '', inputs: {} };
       const { container } = render(BufferConfig, {

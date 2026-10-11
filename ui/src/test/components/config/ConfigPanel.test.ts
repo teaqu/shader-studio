@@ -985,6 +985,34 @@ describe('ConfigPanel', () => {
       expect(getByRole('button', { name: /^ComputeA/ })).toHaveClass('active');
     });
 
+    it.each([false, true])('adds a collision-safe cubemap pass (existing cube: %s)', async existing => {
+      const updatedConfig: ShaderConfig = { version: '1.0', passes: { Image: {}, ...(existing ? { Cubemap: { path: 'old.glsl' } } : {}) } };
+      const mockManager = createMockConfigManager([]);
+      mockManager.getConfig.mockReturnValue(updatedConfig);
+      mockManager.addBuffer.mockImplementation(() => {
+        updatedConfig.passes.BufferA = { path: '' };
+        return 'BufferA';
+      });
+      mockManager.renameBuffer.mockImplementation((oldName: string, newName: string) => {
+        updatedConfig.passes[newName] = updatedConfig.passes[oldName]!;
+        delete updatedConfig.passes[oldName];
+        return true;
+      });
+      mockManager.updateBuffer.mockImplementation((name: string, pass: ShaderConfig['passes'][string]) => {
+        updatedConfig.passes[name] = pass;
+      });
+      (ConfigManager as unknown as Mock).mockImplementation(function () {
+        return mockManager;
+      });
+      const { getByRole } = render(ConfigPanel, { config: updatedConfig, language: 'glsl', pathMap: {}, transport: mockTransport, shaderPath: '/test/image.glsl', isVisible: true, onFileSelect: mockOnFileSelect, selectedBuffer: 'Image', onConfigChange: vi.fn() });
+      await fireEvent.click(getByRole('button', { name: '+ New' }));
+      await fireEvent.click(getByRole('menuitem', { name: 'Cubemap' }));
+      const name = existing ? 'Cubemap2' : 'Cubemap';
+      expect(mockManager.renameBuffer).toHaveBeenCalledWith('BufferA', name);
+      expect(mockManager.updateBuffer).toHaveBeenCalledWith(name, expect.objectContaining({ outputKind: 'cubemap', faceSize: 512 }));
+      expect(mockOnFileSelect).toHaveBeenCalledWith(name);
+    });
+
     it('routes Compute tab source creation through the Slang compute file workflow', async () => {
       const computeConfig: ShaderConfig = {
         version: '1.0',
@@ -1197,6 +1225,9 @@ describe('ConfigPanel', () => {
       expect(bufferItem).toHaveFocus();
 
       await fireEvent.keyDown(bufferItem, { key: 'ArrowDown' });
+      const cubemapItem = getByRole('menuitem', { name: 'Cubemap' });
+      expect(cubemapItem).toHaveFocus();
+      await fireEvent.keyDown(cubemapItem, { key: 'ArrowDown' });
       expect(computeItem).toHaveFocus();
 
       await fireEvent.keyDown(computeItem, { key: 'Escape' });

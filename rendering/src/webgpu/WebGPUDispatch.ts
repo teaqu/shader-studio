@@ -14,7 +14,7 @@ export function resolveWorkgroupCounts(
       return [
         Math.ceil(pass.width / pass.workgroupSize[0]),
         Math.ceil(pass.height / pass.workgroupSize[1]),
-        1,
+        pass.outputKind === "cubemap" ? Math.ceil(6 / pass.workgroupSize[2]) : 1,
       ];
     case "count":
       return [Math.ceil(dispatch.count / pass.workgroupSize[0]), 1, 1];

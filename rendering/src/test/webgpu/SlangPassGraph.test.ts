@@ -2254,4 +2254,81 @@ struct Particle {
     expect(referenced.warnings).toHaveLength(1);
     expect(referenced.warnings[0]).toContain('Storage "custom"');
   });
+
+  it("infers six square cube faces and marks dependent buffer channels as cube views", () => {
+    const config: ShaderConfig = { version: "1", passes: {
+      Image: { inputs: { sky: { type: "buffer", source: "Sky" } } },
+      Sky: { path: "sky.slang", outputKind: "cubemap", faceSize: 24 },
+    } };
+    const graph = buildWgsl(config, { Sky: "fn mainImage(p: vec2f) -> vec4f { return vec4f(1); }" });
+    expect(graph.errors).toContain("Sky: cubemap buffer outputs currently require Slang");
+  });
+});
+
+describe("cubemap output graph", () => {
+  const source = "float4 mainImage(float2 p) { return float4(1); }";
+
+  function build(config: ShaderConfig, maxTextureDimension2D?: number) {
+    return buildSlangPassGraph({
+      imageCode: source,
+      config,
+      buffers: { Sky: source },
+      canvasWidth: 320,
+      canvasHeight: 180,
+      ...(maxTextureDimension2D === undefined ? {} : { maxTextureDimension2D }),
+    });
+  }
+
+  it("infers cube output bindings and clamps raw faceSize to the device extent", () => {
+    const graph = build({ version: "1", passes: {
+      Image: { inputs: { sky: { type: "buffer", source: "Sky" } } },
+      Sky: { outputKind: "cubemap", faceSize: 64 },
+    } } as unknown as ShaderConfig, 32);
+    const sky = graph.passes.find((pass) => pass.name === "Sky")!;
+    expect(graph.errors).toEqual([]);
+    expect(sky).toMatchObject({ outputKind: "cubemap", width: 32, height: 32, outputLayers: 1 });
+    expect(graph.passes.find((pass) => pass.name === "Image")!.channels[0]).toMatchObject({
+      kind: "buffer", source: "Sky", outputKind: "cubemap",
+    });
+  });
+
+  it("rejects invalid cube-only render options and cube attachment selectors", () => {
+    const graph = build({ version: "1", passes: {
+      Image: { inputs: { sky: { type: "buffer", source: "Sky", layer: 0 } } },
+      Sky: { outputKind: "cubemap", faceSize: 0, resolution: [20, 20], geometry: { type: "mesh", path: "mesh.obj" }, vertex: "v.slang", outputs: 2 },
+    } } as unknown as ShaderConfig);
+    expect(graph.errors).toEqual(expect.arrayContaining([
+      "Sky cubemap pass faceSize must be a positive integer",
+      "Sky cubemap pass uses faceSize rather than resolution",
+      "Sky cubemap pass only supports fullscreen geometry",
+      "Sky cubemap pass cannot define vertex, native entryPoints, or multiple outputs",
+      'Image: sky cubemap buffer "Sky" does not support layer or output selection',
+    ]));
+  });
+
+  it("rejects invalid output kinds and face sizes instead of treating them as 2d", () => {
+    const graph = build({ version: "1", passes: {
+      Image: {},
+      InvalidKind: { outputKind: "volume" },
+      Flat: { outputKind: "2d", faceSize: 16 },
+      InvalidSize: { outputKind: "cubemap", faceSize: 0 },
+    } } as unknown as ShaderConfig);
+    expect(graph.errors).toEqual(expect.arrayContaining([
+      "InvalidKind pass outputKind must be 2d or cubemap",
+      "Flat pass faceSize requires cubemap outputKind",
+      "InvalidSize cubemap pass faceSize must be a positive integer",
+    ]));
+    expect(graph.passes.map((pass) => pass.name)).not.toEqual(expect.arrayContaining(["InvalidKind", "Flat", "InvalidSize"]));
+  });
+
+  it("rejects output fields on Image and common passes", () => {
+    const graph = build({ version: "1", passes: {
+      Image: { outputKind: "cubemap", faceSize: 16 },
+      common: { outputKind: "2d", faceSize: 16 },
+    } } as unknown as ShaderConfig);
+    expect(graph.errors).toEqual(expect.arrayContaining([
+      "Image pass cannot define outputKind or faceSize",
+      "common pass cannot define outputKind or faceSize",
+    ]));
+  });
 });

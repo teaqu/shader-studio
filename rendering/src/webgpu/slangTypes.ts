@@ -26,6 +26,7 @@ export interface SlangCompileOptions {
   storage?: StorageBindingNode[];
   workgroupSize?: [number, number, number];
   outputLayers?: number;
+  outputKind?: "2d" | "cubemap";
   hasOutput?: boolean;
   outputImageFormat?: "rgba16f" | "rgba32f";
   entryPoint?: string;

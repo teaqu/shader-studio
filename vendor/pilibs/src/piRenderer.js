@@ -258,8 +258,21 @@ function piRenderer()
                                         mGL.generateMipmap( mGL.TEXTURE_3D );
                                     mGL.bindTexture( mGL.TEXTURE_3D, null );
                                 }
-                                else 
+                                else if (type === me.TEXTYPE.CUBEMAP)
                                 {
+                                    mGL.bindTexture(mGL.TEXTURE_CUBE_MAP, id);
+                                    for (var face = 0; face < 6; face++)
+                                        mGL.texImage2D(mGL.TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, glFoTy.mGLFormat, xres, yres, 0, glFoTy.mGLExternal, glFoTy.mGLType, buffer);
+                                    mGL.texParameteri(mGL.TEXTURE_CUBE_MAP, mGL.TEXTURE_WRAP_S, glWrap);
+                                    mGL.texParameteri(mGL.TEXTURE_CUBE_MAP, mGL.TEXTURE_WRAP_T, glWrap);
+                                    mGL.texParameteri(mGL.TEXTURE_CUBE_MAP, mGL.TEXTURE_WRAP_R, glWrap);
+                                    mGL.texParameteri(mGL.TEXTURE_CUBE_MAP, mGL.TEXTURE_MAG_FILTER, filter === me.FILTER.NONE ? mGL.NEAREST : mGL.LINEAR);
+                                    mGL.texParameteri(mGL.TEXTURE_CUBE_MAP, mGL.TEXTURE_MIN_FILTER, filter === me.FILTER.NONE ? mGL.NEAREST : mGL.LINEAR);
+                                    mGL.bindTexture(mGL.TEXTURE_CUBE_MAP, null);
+                                }
+                                else
+                                {
+                                    mGL.deleteTexture(id);
                                     return null;
                                 }
 
@@ -727,7 +740,11 @@ function piRenderer()
                                     if( color0 !== null ) mGL.framebufferTexture2D(mGL.FRAMEBUFFER, mGL.COLOR_ATTACHMENT0, mGL.TEXTURE_CUBE_MAP_POSITIVE_X, color0.mObjectID, 0);
 
                                     if (mGL.checkFramebufferStatus(mGL.FRAMEBUFFER) !== mGL.FRAMEBUFFER_COMPLETE)
+                                    {
+                                        mGL.bindFramebuffer(mGL.FRAMEBUFFER, null);
+                                        mGL.deleteFramebuffer(id);
                                         return null;
+                                    }
 
                                     mGL.bindRenderbuffer(mGL.RENDERBUFFER, null);
                                     mGL.bindFramebuffer(mGL.FRAMEBUFFER, null);

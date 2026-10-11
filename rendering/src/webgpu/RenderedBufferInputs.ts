@@ -23,7 +23,7 @@ export function renderedBufferInputs(
       : channel.readFrom === "previous-frame"
         ? render?.getPreviousOutputTexture(channel.output ?? 0) : render?.getCurrentOutputTexture(channel.output ?? 0);
     if (texture) {
-      inputs.set(channel.slot, { texture, ...(compute ? { layer: channel.layer ?? 0 } : {}) });
+      inputs.set(channel.slot, { texture, ...(channel.outputKind === "cubemap" ? { cubemap: true } : compute ? { layer: channel.layer ?? 0 } : {}) });
     }
   }
   return inputs;

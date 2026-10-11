@@ -41,6 +41,15 @@ export function validateComputePass(
   )) {
     errors.outputLayers = 'Output layers must be an integer from 1 through 8';
   }
+  if (pass.outputKind !== undefined && pass.outputKind !== '2d' && pass.outputKind !== 'cubemap') {
+    errors.outputKind = 'Output kind must be 2d or cubemap';
+  }
+  if (pass.faceSize !== undefined && !isPositiveInteger(pass.faceSize)) {
+    errors.faceSize = 'Face size must be a positive integer';
+  }
+  if (pass.outputKind === 'cubemap' && pass.outputLayers !== undefined && pass.outputLayers !== 6) {
+    errors.outputLayers = 'Cubemap outputs always use six layers';
+  }
 
   const dispatch = pass.dispatch;
   if (dispatch && 'count' in dispatch && !isPositiveInteger(dispatch.count ?? Number.NaN)) {

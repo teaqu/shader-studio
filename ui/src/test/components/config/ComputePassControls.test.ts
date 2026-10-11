@@ -90,3 +90,24 @@ describe('ComputePassControls', () => {
     expect(onCommit).toHaveBeenCalledWith({ type: 'compute', path: 'kernels.slang', entryPoints: { compute: 'animateSamples' } });
   });
 });
+
+describe('compute cubemap output', () => {
+  it('replaces 2D resolution with six cube faces', async () => {
+    const onCommit = vi.fn(() => ({}));
+    const { getByLabelText } = render(ComputePassControls, { pass: { type: 'compute', path: 'cube.slang', resolution: { width: 64, height: 32 } }, language: 'slang', storageNames: [], channelNames: [], onCommit });
+    await fireEvent.change(getByLabelText('Output kind'), { target: { value: 'cubemap' } });
+    expect(onCommit).toHaveBeenLastCalledWith(expect.objectContaining({ outputKind: 'cubemap', outputLayers: 6, faceSize: 512, resolution: undefined }));
+  });
+
+  it('edits cube face size and hides layer selection', async () => {
+    const { getByLabelText, queryByLabelText, onCommit } = renderControls({ type: 'compute', path: 'cube.slang', outputKind: 'cubemap', faceSize: 64 });
+    expect(queryByLabelText('Output layers')).toBeNull();
+    await fireEvent.input(getByLabelText('Cubemap face size'), { target: { value: '32' } });
+    expect(onCommit).toHaveBeenLastCalledWith(expect.objectContaining({ faceSize: 32 }));
+  });
+
+  it('disables unsupported WGSL cubemap generation', () => {
+    const { getByRole } = renderControls();
+    expect(getByRole('option', { name: 'Cubemap' })).toBeDisabled();
+  });
+});

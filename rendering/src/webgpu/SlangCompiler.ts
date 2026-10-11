@@ -126,6 +126,7 @@ export class SlangCompiler {
           storage: options.storage,
           workgroupSize: options.workgroupSize ?? [8, 8, 1],
           outputLayers: options.outputLayers ?? 1,
+          outputKind: options.outputKind,
           hasOutput: options.hasOutput === true,
           customUniforms: options.customUniforms,
           outputImageFormat: options.outputImageFormat ?? "rgba16f",
@@ -140,6 +141,7 @@ export class SlangCompiler {
           vertexCode: options.vertexCode,
           vertexSpace: options.vertexSpace,
           captureMode: options.captureMode,
+          outputKind: options.outputKind,
           renderEntryPoints: options.renderEntryPoints,
           customUniforms: options.customUniforms,
         });
