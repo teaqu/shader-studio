@@ -111,7 +111,7 @@ describe("WebGPURenderingEngine", () => {
     pixelRegionCapturerMock.constructor.mockClear();
   });
 
-  it("captures the current canvas with aligned BGRA readback converted to RGBA", async () => {
+  it.each([false, true])("captures BGRA as RGBA, initializing buffer passes when a frame has not been submitted: %s", async submitted => {
     vi.stubGlobal("ImageData", class {
       constructor(
         public data: Uint8ClampedArray,
@@ -120,6 +120,7 @@ describe("WebGPURenderingEngine", () => {
       ) {}
     });
     const engine = new WebGPURenderingEngine(assets);
+    engineOwners(engine).session.hasSubmittedFrameForInstalledGeneration = submitted;
     const mapped = new Uint8Array(256 * 2);
     mapped.set([1, 2, 3, 4, 5, 6, 7, 8], 0);
     mapped.set([9, 10, 11, 12, 13, 14, 15, 16], 256);
@@ -148,7 +149,7 @@ describe("WebGPURenderingEngine", () => {
     };
     internals.renderFrame = vi.fn((_time, capture, imageOnly, captureCanvas) => {
       expect(capture).toBe(true);
-      expect(imageOnly).toBe(true);
+      expect(imageOnly).toBe(submitted);
       captureCanvas({ copyTextureToBuffer } as unknown as GPUCommandEncoder, texture);
     });
 
@@ -237,7 +238,7 @@ describe("WebGPURenderingEngine", () => {
       const renderer = engineOwners(engine).frameRenderer as unknown as { renderFrame: ReturnType<typeof vi.fn>; pendingScreenshotCopies: unknown[] };
       renderer.renderFrame = vi.fn((_time, capture, imageOnly, captureCanvas) => {
         expect(capture).toBe(true);
-        expect(imageOnly).toBe(true);
+        expect(imageOnly).toBe(false);
         captureCanvas({ copyTextureToBuffer: vi.fn() } as unknown as GPUCommandEncoder, { width: 1, height: 1 } as GPUTexture);
       });
 

@@ -62,12 +62,12 @@ test('generic MCP edits files and captures both webview and server preview @gpu'
       await vscode.commands.executeCommand('shader-studio.view');
     }, { port, shaderPath });
     await expect.poll(async () => {
- try {
- return (await fetch(url)).status; 
-} catch {
- return 0; 
-} 
-}).toBe(401);
+      try {
+        return (await fetch(url)).status;
+      } catch {
+        return 0;
+      }
+    }).toBe(401);
     token = await vscode.evaluateInHost(vscode => vscode.workspace.getConfiguration('shader-studio').get('mcpToken'));
     expect(token.length).toBeGreaterThanOrEqual(16);
     await client.connect(new StreamableHTTPClientTransport(new URL(url), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }));
@@ -134,7 +134,9 @@ test('generic MCP edits files and captures both webview and server preview @gpu'
     const resources = (await call('get_resources', { previewId })).structuredContent;
     expect(resources.passes.map(pass => ({ ...pass, path: normalizedPath(pass.path) }))).toEqual(expect.arrayContaining([{ name: 'Compute', kind: 'compute', path: normalizedPath(computePath) }]));
     expect(resources.storage.counter).toMatchObject({ count: 1, elementType: 'Counter' });
-    expect(pixel(await call('capture_output', { previewId }))).toEqual([255, 0, 0, 255]);
+    const computeCapture = await call('capture_output', { previewId });
+    expect(computeCapture.structuredContent.errors, JSON.stringify(computeCapture.structuredContent)).toEqual([]);
+    expect(pixel(computeCapture)).toEqual([255, 0, 0, 255]);
     expect((await call('read_storage', { previewId, name: 'counter', start: 0, count: 1 })).structuredContent.storageRead.bytes).toEqual([8, 0, 0, 0]);
     const computeRead = (await call('read_file', { path: computePath })).structuredContent;
     expect(pixel(await call('update_file', { path: computePath, text: compute.replace('8u', '42u').replace('vec4f(1, 0, 0, 1)', 'vec4f(0, 1, 0, 1)'), expectedRevision: computeRead.revision, previewId, includePreview: true }))).toEqual([0, 255, 0, 255]);
@@ -152,24 +154,24 @@ test('generic MCP edits files and captures both webview and server preview @gpu'
     await vscode.window.keyboard.press('Enter');
     await expect.poll(() => oldFrame.isDetached()).toBe(true);
     await expect.poll(async () => {
- try {
- return (await fetch(url)).status; 
-} catch {
- return 0; 
-} 
-}).toBe(401);
+      try {
+        return (await fetch(url)).status;
+      } catch {
+        return 0;
+      }
+    }).toBe(401);
     const restarted = new Client({ name: 'reconnected-agent', version: '1' });
     await restarted.connect(new StreamableHTTPClientTransport(new URL(url), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }));
     expect((await restarted.listTools()).tools.some(tool => tool.name === 'read_storage')).toBe(true);
     await restarted.close();
     await vscode.evaluateInHost(async vscode => vscode.workspace.getConfiguration('shader-studio').update('mcpEnabled', false, vscode.ConfigurationTarget.Global));
     await expect.poll(async () => {
- try {
- await fetch(url); return false; 
-} catch {
- return true; 
-} 
-}).toBe(true);
+      try {
+        await fetch(url); return false;
+      } catch {
+        return true;
+      }
+    }).toBe(true);
   } finally {
     await client.close();
     await browser?.close();

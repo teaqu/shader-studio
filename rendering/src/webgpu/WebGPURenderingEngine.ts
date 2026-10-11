@@ -842,7 +842,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
     // Paused inputs are frozen in renderFrame, so a redraw reproduces the
     // picture on screen. While running, copy the next frame the render loop
     // draws, so the saved time/mouse/script values are the ones shown.
-    const redraw = () => this.frameRenderer.renderFrame(this.diagnostics.now(), true, true, copy);
+    // A capture immediately after compilation must initialize compute/buffer
+    // outputs before sampling Image. Later paused captures reuse those outputs.
+    const redraw = () => this.frameRenderer.renderFrame(
+      this.diagnostics.now(), true, this.session.hasSubmittedFrameForInstalledGeneration, copy,
+    );
     try {
       if (this.running && !this.timeManager.isPaused()) {
         await new Promise<void>((resolve) => {

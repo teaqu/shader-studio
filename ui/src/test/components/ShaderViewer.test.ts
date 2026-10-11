@@ -850,13 +850,13 @@ describe('ShaderViewer', () => {
     expect((await mcpCall('playback')).error).toContain('No shader');
     await loadShader();
     const engine = mockRecordingConstructor.mock.calls.at(-1)![3]();
-    engine.renderForCapture = vi.fn();
+    engine.captureCurrentFrame = vi.fn(async () => new ImageData(new Uint8ClampedArray(4), 1, 1));
     const blob = vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(callback => callback(new Blob(['pixels'], { type: 'image/png' })));
     const image = await mcpCall('capture');
     expect(image.result).toMatchObject({ mimeType: 'image/png', data: btoa('pixels'), path: '/test/shader.glsl' });
-    expect(engine.renderForCapture).toHaveBeenCalledOnce();
+    expect(engine.captureCurrentFrame).toHaveBeenCalledOnce();
     blob.mockImplementationOnce(callback => callback(null));
-    expect((await mcpCall('capture')).error).toContain('Could not capture');
+    expect((await mcpCall('capture')).error).toContain('Failed to encode');
     const reader = vi.spyOn(FileReader.prototype, 'readAsDataURL').mockImplementation(function (this: FileReader) {
       this.dispatchEvent(new ProgressEvent('error'));
     });

@@ -63,15 +63,8 @@ export class LocalMcpEndpoint {
     if (request.url?.split('?')[0] !== '/mcp') {
       fail(404, 'Not found.'); return;
     }
-    const port = request.socket.localPort;
-    const allowedHosts = [`127.0.0.1:${port}`, `localhost:${port}`];
-    if (!allowedHosts.includes(request.headers.host ?? '') || (request.headers.origin && !allowedHosts.some(host => request.headers.origin === `http://${host}`))) {
-      fail(403, 'Only local MCP clients are allowed.'); return;
-    }
-    const expected = Buffer.from(`Bearer ${this.token}`);
-    const supplied = Buffer.from(request.headers.authorization ?? '');
-    if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
-      fail(401, 'Configure the local MCP bearer token.'); return;
+    if (!this.authorize(request, fail)) {
+      return;
     }
     const sessionId = request.headers['mcp-session-id'];
     const session = typeof sessionId === 'string' ? this.sessions.get(sessionId) : undefined;
@@ -121,6 +114,22 @@ export class LocalMcpEndpoint {
     } catch {
       fail(500, 'MCP request failed. Reconnect and retry.');
     }
+  }
+
+  private authorize(request: IncomingMessage, fail: (status: number, message: string) => void): boolean {
+    const port = request.socket.localPort;
+    const allowedHosts = [`127.0.0.1:${port}`, `localhost:${port}`];
+    if (!allowedHosts.includes(request.headers.host ?? '') || (request.headers.origin && !allowedHosts.some(host => request.headers.origin === `http://${host}`))) {
+      fail(403, 'Only local MCP clients are allowed.');
+      return false;
+    }
+    const expected = Buffer.from(`Bearer ${this.token}`);
+    const supplied = Buffer.from(request.headers.authorization ?? '');
+    if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
+      fail(401, 'Configure the local MCP bearer token.');
+      return false;
+    }
+    return true;
   }
 
   private async readBody(request: IncomingMessage, fail: (status: number, message: string) => void): Promise<{ ok: boolean; value?: unknown }> {

@@ -296,18 +296,24 @@ describe('ShaderPipeline — overlay cursor gate', () => {
       vi.mocked(mocks.shaderLocker.isLocked).mockReturnValue(true);
       vi.mocked(mocks.shaderLocker.getLockedShaderPath).mockReturnValue(lockedPath);
       vi.mocked(mocks.renderEngine.getCurrentConfig).mockReturnValue(config as never);
-      vi.mocked(mocks.renderEngine.updateBufferAndRecompile).mockResolvedValue({
-        success: true,
-      } as never);
+      const compile = Promise.withResolvers<{ success: boolean }>();
+      vi.mocked(mocks.renderEngine.updateBufferAndRecompile).mockReturnValue(compile.promise);
 
-      await pipeline.handleShaderMessage({
+      let finished = false;
+      const updating = pipeline.handleShaderMessage({
         data: {
           type: 'shaderSource',
           code: 'updated buffer code',
           path: bufferPath,
           buffers: {},
         },
-      } as MessageEvent<ShaderSourceMessage>);
+      } as MessageEvent<ShaderSourceMessage>).then(() => {
+        finished = true;
+      });
+      await Promise.resolve();
+      expect(finished).toBe(false);
+      compile.resolve({ success: true });
+      await updating;
 
       await vi.waitFor(() => {
         expect(mocks.renderEngine.updateBufferAndRecompile).toHaveBeenCalledWith(

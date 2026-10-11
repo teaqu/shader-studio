@@ -30,13 +30,13 @@ export class BufferUpdater {
     this.compilationState = state;
   }
 
-  public updateBuffer(
+  public async updateBuffer(
     path: string,
     buffers: Record<string, string>,
     code: string,
     resolvedBufferName?: string,
     marker?: CompileReportMarker,
-  ): void {
+  ): Promise<void> {
     // Extract buffer name from path
     const bufferName = this.extractBufferNameFromPath(path);
     if (!bufferName) {
@@ -62,7 +62,7 @@ export class BufferUpdater {
       // Get the buffer content - either from buffers object or from code if it's a single buffer file
       const bufferContent = buffers[actualBufferName] || buffers[bufferName] || code || '';
       
-      this.renderEngine.updateBufferAndRecompile(actualBufferName, bufferContent)
+      await this.renderEngine.updateBufferAndRecompile(actualBufferName, bufferContent)
         .then(result => {
           if (result?.superseded) {
             // A newer update raced past this one; its own completion path

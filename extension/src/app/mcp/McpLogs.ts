@@ -23,7 +23,7 @@ export class McpLogs {
     }
   }
 
-  read(options: Record<string, unknown>): Record<string, unknown> {
+  read(options: Record<string, unknown>) {
     const after = typeof options.after === 'number' ? options.after : 0;
     const limit = Math.max(1, Math.min(200, Number(options.limit) || 100));
     const matches = this.entries.filter(entry => entry.id > after

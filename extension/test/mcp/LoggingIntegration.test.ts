@@ -22,7 +22,7 @@ describe('MCP diagnostic logging', () => {
       expect(mcpLogs.read({ after: cursor }).entries.some(entry => entry.source === 'script' && entry.message.includes('script 42'))).toBe(true);
       evaluator.stop();
     } finally {
-      consoleSpy.mockRestore(); 
+      consoleSpy.mockRestore();
     }
   });
 });

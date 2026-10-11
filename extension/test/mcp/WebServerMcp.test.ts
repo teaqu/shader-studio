@@ -4,7 +4,7 @@ import type { Server } from 'node:http';
 import { WebServer } from '../../src/app/WebServer';
 import { Logger } from '../../src/app/services/Logger';
 vi.mock('../../src/app/ShaderStudioStatusBar', () => ({ ShaderStudioStatusBar: class {
-  updateServerStatus() {} 
+  updateServerStatus() {}
 } }));
 vi.mock('vscode', () => ({ Uri: { joinPath: () => ({ fsPath: '/missing-ui' }) } }));
 
@@ -21,7 +21,7 @@ describe('web server MCP mount', () => {
     try {
       expect((await fetch(`${url}/mcp`, { method: 'POST' })).status).toBe(405);
       const handler = vi.fn(async (_request, response) => {
-        response.writeHead(202); response.end('mcp'); 
+        response.writeHead(202); response.end('mcp');
       });
       server.setMcpHandler(handler);
       for (const method of ['GET', 'POST', 'DELETE']) {

@@ -10,6 +10,7 @@
   import { ShaderLocker } from "../ShaderLocker";
   import { createTransport } from "../transport/TransportFactory";
   import { ViewerControl, validateViewerSettings } from '../ViewerControl';
+  import { ShaderRecorder } from '../recording/ShaderRecorder';
   import type { ViewerSnapshot, ViewerCapture } from '@shader-studio/types';
   import type { Transport } from "../transport/MessageTransport";
   import ShaderCanvas from "./ShaderCanvas.svelte";
@@ -1423,10 +1424,9 @@
       throw new Error('No shader is loaded in this preview.');
     }
     const snapshot = viewerSnapshot();
-    renderingEngine.renderForCapture();
-    const blob = await new Promise<Blob>((resolve, reject) => glCanvas.toBlob(
-      value => value ? resolve(value) : reject(new Error('Could not capture rendered output.')), 'image/png',
-    ));
+    const blob = await new ShaderRecorder().captureLiveScreenshot({
+      format: 'png', width: snapshot.width, height: snapshot.height,
+    }, renderingEngine);
     const data = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result).split(',')[1]);

@@ -463,7 +463,7 @@ export class WebServer {
     )) {
       res.setHeader(name, value);
     }
-
+    
     if (!req.url) {
       Logger.trace('WebServer: No URL in request');
       res.writeHead(400);
@@ -482,7 +482,7 @@ export class WebServer {
     const encodedPath = requestPath.slice("/textures/".length);
     const authorizedFile = resolveAuthorizedTextureFile(encodedPath, this.getTextureRoots());
     const texturePath = authorizedFile?.path;
-
+    
     Logger.trace(`WebServer: Encoded path: ${encodedPath}`);
     Logger.trace(`WebServer: Decoded path: ${texturePath}`);
 
@@ -579,7 +579,7 @@ export class WebServer {
   ): void {
     const range = req.headers.range;
     Logger.trace(`WebServer: Processing range request: ${range}`);
-
+    
     if (!range) {
       Logger.trace('WebServer: No range header, sending entire file');
       // No range header, send entire file
@@ -621,11 +621,11 @@ export class WebServer {
       console.error(`WebServer: Stream error: ${error}`);
       res.end();
     });
-
+    
     stream.on('end', () => {
       Logger.trace(`WebServer: Stream completed for range ${start}-${end}`);
     });
-
+    
     stream.pipe(res);
   }
 

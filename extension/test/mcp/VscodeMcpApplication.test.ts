@@ -71,7 +71,7 @@ describe('VS Code MCP file and viewer application', () => {
   it('reports a successful edit separately when no compilation was dispatched', async () => {
     const read = await app.call('read_file', { path: source.uri.fsPath }, signal());
     provider.sendShaderFromDocument.mockImplementationOnce(async () => {
-      sequence = undefined; 
+      sequence = undefined;
     });
     expect(await app.call('update_file', { path: source.uri.fsPath, expectedRevision: read.revision, text: 'edited', previewId: 'preview' }, signal())).toMatchObject({ applied: true, previewError: 'No compilation was sent for this shader.' });
   });

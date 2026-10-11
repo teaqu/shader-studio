@@ -16,28 +16,28 @@ vi.mock('vscode', () => ({
   window: { registerWebviewViewProvider: vi.fn(() => ({ dispose() {} })) },
   workspace: {
     get isTrusted() {
-      return state.trusted; 
+      return state.trusted;
     },
     getConfiguration: () => ({ get: (key: string, fallback: unknown) => state.config[key] ?? fallback, update: state.update }),
     onDidGrantWorkspaceTrust: (callback: () => void) => {
-      state.trust = callback; return { dispose() {} }; 
+      state.trust = callback; return { dispose() {} };
     },
     onDidChangeConfiguration: (callback: typeof state.change) => {
-      state.change = callback; return { dispose() {} }; 
+      state.change = callback; return { dispose() {} };
     },
   },
 }));
 vi.mock('../../src/app/mcp/LocalMcpEndpoint', () => ({ LocalMcpEndpoint: class {
   start = state.start; dispose = vi.fn(async () => {}); handle = vi.fn();
   constructor(_app: unknown, public token: string) {
-    state.endpoints.push(this); 
+    state.endpoints.push(this);
   }
 } }));
 vi.mock('../../src/app/mcp/VscodeMcpApplication', () => ({ VscodeMcpApplication: class {} }));
 vi.mock('../../src/app/PanelManager', () => ({ PanelManager: class {} }));
 vi.mock('../../src/app/ShaderProvider', () => ({ ShaderProvider: class {} }));
 vi.mock('../../src/app/WebServer', () => ({ WebServer: class {
-  setMessenger() {} setMcpHandler = state.mount; stopWebServer() {} 
+  setMessenger() {} setMcpHandler = state.mount; stopWebServer() {}
 } }));
 vi.mock('../../src/app/transport/WebSocketTransport', () => ({ WebSocketTransport: class {} }));
 vi.mock('../../src/app/ShaderExplorerProvider', () => ({ ShaderExplorerProvider: { register: () => ({ dispose() {} }) } }));
@@ -45,10 +45,10 @@ vi.mock('../../src/app/ShaderExplorerViewProvider', () => ({ ShaderExplorerViewP
 vi.mock('../../src/app/GlslFileTracker', () => ({ GlslFileTracker: class {} }));
 vi.mock('../../src/app/ShaderCreator', () => ({ ShaderCreator: class {} }));
 vi.mock('../../src/app/transport/Messenger', () => ({ Messenger: class {
-  close() {} 
+  close() {}
 } }));
 vi.mock('../../src/app/ErrorHandler', () => ({ ErrorHandler: class {
-  dispose() {} 
+  dispose() {}
 } }));
 vi.mock('../../src/app/ConfigGenerator', () => ({ ConfigGenerator: class {} }));
 vi.mock('../../src/app/WorkspaceTypeDefs', () => ({ writeWorkspaceTypeDefs() {} }));
@@ -66,14 +66,14 @@ function create() {
   return { studio, settled: () => (studio as unknown as Lifecycle).mcpConfiguration };
 }
 function change(key = 'mcpEnabled') {
- state.change!({ affectsConfiguration: value => value === `shader-studio.${key}` }); 
+ state.change!({ affectsConfiguration: value => value === `shader-studio.${key}` });
 }
 
 beforeEach(() => {
   vi.restoreAllMocks(); vi.clearAllMocks(); state.config = {}; state.trusted = true; state.endpoints = [];
   state.start.mockResolvedValue(51474);
   state.update.mockImplementation(async (key: string, value: unknown) => {
-    state.config[key] = value; 
+    state.config[key] = value;
   });
 });
 
@@ -109,9 +109,12 @@ describe('extension MCP lifecycle', () => {
   });
   it('closes a listener that finishes starting after the extension is disposed', async () => {
     state.config = { mcpEnabled: true, mcpToken: 'existing-token' };
-    const pending = Promise.withResolvers<number>(); state.start.mockReturnValueOnce(pending.promise);
+    let resolveStart!: (port: number) => void;
+    state.start.mockReturnValueOnce(new Promise<number>(resolve => {
+      resolveStart = resolve;
+    }));
     const app = create(); await vi.waitFor(() => expect(state.start).toHaveBeenCalled());
-    app.studio.dispose(); pending.resolve(51474); await app.settled();
+    app.studio.dispose(); resolveStart(51474); await app.settled();
     expect(state.endpoints[0].dispose).toHaveBeenCalledTimes(2);
     expect(state.mount).toHaveBeenLastCalledWith(undefined);
   });
