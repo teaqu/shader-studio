@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createLiveVideoCapture } from "../../lib/recording/LiveVideoCapture";
+import { automaticVideoBitrate } from "../../lib/recording/VideoEncoder";
 
 const mocks = vi.hoisted(() => ({
   start: vi.fn(), finalize: vi.fn(), cancel: vi.fn(), close: vi.fn(), add: vi.fn(), stopTrack: vi.fn(), canEncode: vi.fn(), bridge: vi.fn(),
@@ -162,10 +163,13 @@ it("propagates a later stable frame readback failure and releases the encoder", 
   expect(dispose).toHaveBeenCalledOnce();
   expect(mocks.cancel).toHaveBeenCalledOnce();
 });
-it.each(["mp4", "webm"] as const)("encodes %s at explicit quality and releases the track on stop", async format => {
+it.each(["mp4", "webm"] as const)("encodes %s at the codec's explicit quality mode and releases the track on stop", async format => {
   const capture = await createLiveVideoCapture(canvas(), 60, format, new AbortController().signal);
   expect(mocks.config?.codec).toBe(format === "mp4" ? "avc" : "vp9");
-  expect(mocks.config?.quality).toMatchObject({ options: { quantizer: 12 } });
+  const bitrate = automaticVideoBitrate({ width: format === "mp4" ? 816 : 815, height: format === "mp4" ? 460 : 459, fps: 60 });
+  expect(mocks.config?.quality).toMatchObject({ options: format === "mp4"
+    ? { bitrate, bitrateMode: "variable" }
+    : { quantizer: 12, bitrate } });
   expect(mocks.config?.hardwareAcceleration).toBeUndefined();
   expect(mocks.config?.transform).toEqual({ width: format === "mp4" ? 816 : 815, height: format === "mp4" ? 460 : 459, fit: "fill" });
   capture.stop(); capture.stop();
@@ -179,7 +183,7 @@ it("retains the original MP4 pixel preprocessing at even preview dimensions", as
   preview.height = 458;
   const capture = await createLiveVideoCapture(preview, 60, "mp4", new AbortController().signal);
   expect(mocks.config?.transform).toEqual({ width: 816, height: 458, fit: "fill" });
-  expect(mocks.config?.quality).toMatchObject({ options: { quantizer: 12 } });
+  expect(mocks.config?.quality).toMatchObject({ options: { bitrate: automaticVideoBitrate({ width: 816, height: 458, fps: 60 }), bitrateMode: "variable" } });
   expect(mocks.config?.hardwareAcceleration).toBeUndefined();
   capture.stop();
   await capture.result;
