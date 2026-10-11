@@ -2,7 +2,7 @@
   import type { DebugParameterInfo } from "../../types/ShaderDebugState";
   import { dragScrub } from "../../actions/dragScrub";
   import { CodeJar } from "codejar";
-  import { onMount, onDestroy } from "svelte";
+  import { onMount, onDestroy, untrack } from "svelte";
 
   interface Props {
     param: DebugParameterInfo;
@@ -14,14 +14,14 @@
     onChange = () => {},
   }: Props = $props();
 
-  let expression = $state(param.expression || param.defaultExpression);
-  let lastSyncedExpression = $state(param.expression || param.defaultExpression);
+  let expression = $state(untrack(() => param.expression || param.defaultExpression));
+  let lastSyncedExpression = $state(untrack(() => param.expression || param.defaultExpression));
   let presetMenu: HTMLDetailsElement | undefined = $state(undefined);
   let jarEl: HTMLDivElement | undefined = $state(undefined);
   let jar: ReturnType<typeof CodeJar> | undefined;
 
-  const isVec = param.type === 'vec2' || param.type === 'vec3' || param.type === 'vec4';
-  const componentCount = param.type === 'vec2' ? 2 : param.type === 'vec3' ? 3 : param.type === 'vec4' ? 4 : 0;
+  const isVec = untrack(() => param.type === 'vec2' || param.type === 'vec3' || param.type === 'vec4');
+  const componentCount = untrack(() => param.type === 'vec2' ? 2 : param.type === 'vec3' ? 3 : param.type === 'vec4' ? 4 : 0);
   type Preset = string | { label: string; value: string };
   const floatPresets: Preset[] = ['iTime', 'sin(iTime)', 'cos(iTime)', 'fract(iTime)', 'iTimeDelta'];
   const intPresets: Preset[] = ['iFrame', 'int(iTime)'];

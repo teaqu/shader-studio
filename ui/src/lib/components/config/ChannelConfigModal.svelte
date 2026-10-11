@@ -49,7 +49,7 @@
   }: Props = $props();
 
   // Capture onSave in a stable ref so it remains callable during child onDestroy
-  let onSaveRef = onSave;
+  let onSaveRef = untrack(() => onSave);
   $effect(() => {
     onSaveRef = onSave;
   });

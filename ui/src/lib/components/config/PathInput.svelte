@@ -84,7 +84,7 @@
   const supportsNative = $derived(fileType.startsWith('wgsl-') || fileType.startsWith('slang-'));
   const effectiveMode = $derived(supportsNative ? fileType.endsWith('-compute') ? 'native' : selectedMode ?? authoringMode ?? getDefaultAuthoringMode() : 'hooks');
   let pathInputFocused = $state(false);
-  let localPath = $state(value);
+  let localPath = $state(untrack(() => value));
   $effect(() => {
     const v = value; // force track value
     if (!pathInputFocused) {
@@ -108,7 +108,7 @@
   // preventing a flash while fileExists hasn't yet been confirmed by the extension.
   let suppressCreate = $state(false);
   let suppressTimer: ReturnType<typeof setTimeout> | undefined;
-  let prevValue = value;
+  let prevValue = untrack(() => value);
 
   $effect(() => {
     const v = value;
