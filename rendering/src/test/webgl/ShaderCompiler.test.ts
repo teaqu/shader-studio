@@ -1384,6 +1384,87 @@ describe("ShaderCompiler", () => {
       expect(gl.deleteProgram).toHaveBeenCalledWith(gl.__program);
     });
 
+    it("accepts GPU compilation completed before the deadline when animation frames are suspended", async () => {
+      vi.useFakeTimers();
+      const frames: FrameRequestCallback[] = [];
+      vi.stubGlobal("requestAnimationFrame", vi.fn((callback: FrameRequestCallback) => {
+        frames.push(callback);
+        return frames.length;
+      }));
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const gl = createMockGl();
+      let gpuCompleted = false;
+      vi.mocked(gl.getProgramParameter).mockImplementation((_program, parameter) =>
+        parameter === KHR_COMPLETION_STATUS ? gpuCompleted : true,
+      );
+      const compiler = new ShaderCompiler(mockRenderer, gl);
+
+      try {
+        const compilation = compiler.compileShaderAsync(
+          "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(1.0); }",
+        );
+        // The first frame sees compilation pending. The browser then suspends
+        // animation frames, but the GPU finishes and timers continue running.
+        frames.shift()!(0);
+        expect(gl.getProgramParameter).toHaveBeenCalledWith(gl.__program, KHR_COMPLETION_STATUS);
+        await vi.advanceTimersByTimeAsync(100);
+        gpuCompleted = true;
+        await vi.advanceTimersByTimeAsync(4900);
+
+        const result = await compilation;
+        expect(result).toMatchObject({ mProgram: gl.__program, mResult: true });
+        expect(gl.deleteProgram).not.toHaveBeenCalled();
+        expect(errorSpy).not.toHaveBeenCalled();
+        // A frame queued before settlement must not touch a released program.
+        vi.mocked(gl.getProgramParameter).mockClear();
+        vi.mocked(gl.isContextLost).mockClear();
+        const queuedFrames = frames.length;
+        frames.shift()!(5001);
+        expect(gl.getProgramParameter).not.toHaveBeenCalled();
+        expect(gl.isContextLost).not.toHaveBeenCalled();
+        expect(frames).toHaveLength(queuedFrames - 1);
+      } finally {
+        errorSpy.mockRestore();
+        warnSpy.mockRestore();
+        vi.useRealTimers();
+      }
+    });
+
+    it.each([
+      { name: "unfinished GPU compilation", completed: false, contextLost: false, linked: true, info: "Compile timed out after 5000ms" },
+      { name: "lost WebGL context", completed: true, contextLost: true, linked: true, info: "Compile timed out after 5000ms" },
+      { name: "completed compilation with a link error", completed: true, contextLost: false, linked: false, info: "link failed" },
+    ])("reports $name when no animation frames run", async ({ completed, contextLost, linked, info }) => {
+      vi.useFakeTimers();
+      vi.stubGlobal("requestAnimationFrame", vi.fn(() => 1));
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const gl = createMockGl();
+      vi.mocked(gl.isContextLost).mockReturnValue(contextLost);
+      vi.mocked(gl.getProgramParameter).mockImplementation((_program, parameter) =>
+        parameter === KHR_COMPLETION_STATUS ? completed : linked,
+      );
+      vi.mocked(gl.getProgramInfoLog).mockReturnValue("link failed");
+      const compiler = new ShaderCompiler(mockRenderer, gl);
+
+      try {
+        const compilation = compiler.compileShaderAsync(
+          "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(1.0); }",
+        );
+        await vi.advanceTimersByTimeAsync(5000);
+        expect(await compilation).toMatchObject({ mProgram: null, mResult: false, mInfo: info });
+        expect(gl.deleteShader).toHaveBeenCalledWith(gl.__vertexShader);
+        expect(gl.deleteShader).toHaveBeenCalledWith(gl.__fragmentShader);
+        expect(gl.deleteProgram).toHaveBeenCalledWith(gl.__program);
+        if (contextLost) {
+          expect(gl.getProgramParameter).not.toHaveBeenCalled();
+        }
+      } finally {
+        errorSpy.mockRestore();
+        vi.useRealTimers();
+      }
+    });
+
     it("aborts async compile when KHR completion does not finish within timeout", async () => {
       const rafCallbacks: FrameRequestCallback[] = [];
       vi.stubGlobal("requestAnimationFrame", vi.fn((callback: FrameRequestCallback) => {
