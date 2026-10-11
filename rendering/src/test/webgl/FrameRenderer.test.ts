@@ -170,6 +170,21 @@ describe("FrameRenderer", () => {
       expect(calls[3][6]).toEqual(expect.objectContaining({ view: eye(400) }));
     });
 
+    it("skips an eye without Image and uses live uniforms before the first desktop frame", () => {
+      const framebuffer = {} as WebGLFramebuffer;
+      const view = { viewport: { x: 0, y: 0, width: 120, height: 80 }, rayTransform: new Float32Array(16) };
+      frameRenderer.renderVrView(framebuffer, view);
+      expect(mockPassRenderer.renderPass).not.toHaveBeenCalled();
+      const image = { name: "Image", inputs: {} };
+      mockShaderPipeline.getPasses.mockReturnValue([image]);
+      mockShaderPipeline.getPassShaders.mockReturnValue({ Image: { mProgram: {} } });
+      frameRenderer.renderVrView(framebuffer, view);
+      expect(mockPassRenderer.renderPass).toHaveBeenCalledWith(
+        image, null, { mProgram: {} }, expect.objectContaining({ res: [120, 80, 1], time: 1 }),
+        undefined, true, { framebuffer, view },
+      );
+    });
+
     it("keeps the paused snapshot for both eyes", () => {
       const image = { name: "Image", inputs: {} } as any;
       mockShaderPipeline.getPasses.mockReturnValue([image]);

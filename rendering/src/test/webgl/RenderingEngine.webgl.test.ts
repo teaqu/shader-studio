@@ -77,6 +77,7 @@ describe("RenderingEngine WebGL Initialization", () => {
         true, // useDepth
         false, // usePreserveBuffer (default)
         false, // useSupersampling
+        false, // xrCompatible (desktop default)
       );
     });
 
@@ -98,6 +99,7 @@ describe("RenderingEngine WebGL Initialization", () => {
         true, // useDepth
         true,  // usePreserveBuffer
         false, // useSupersampling
+        false, // xrCompatible (desktop default)
       );
     });
 

@@ -5603,6 +5603,27 @@ describe('ShaderViewer', () => {
       ShaderPipeline.prototype.handleShaderMessage = origHandleShaderMessage;
     });
 
+    it.each([
+      { success: false, errors: ['VR compile failed'], warnings: ['VR warning'] },
+      { success: false },
+    ])('publishes failed compilation diagnostics %j', async result => {
+      const { ShaderPipeline } = await import('../../lib/ShaderPipeline');
+      vi.spyOn(ShaderPipeline.prototype, 'handleShaderMessage').mockResolvedValue(result);
+      render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      await tick();
+      const messageHandler = vi.mocked(mockTransport.onMessage).mock.calls[0][0];
+      await messageHandler({ data: {
+        type: 'shaderSource', path: '/test/shader.glsl',
+        code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }', config: null, pathMap: {},
+      } });
+      await tick();
+      expect(screen.getByLabelText('Toggle pause').classList.contains('error')).toBe(Boolean(result.errors?.length));
+      if (result.errors) {
+expect(screen.getByText('VR compile failed')).toBeTruthy();
+}
+    });
+
     it('should handle null result from handleShaderMessage', async () => {
       const { ShaderPipeline } = await import('../../lib/ShaderPipeline');
       const origHandleShaderMessage = ShaderPipeline.prototype.handleShaderMessage;

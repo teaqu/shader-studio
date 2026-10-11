@@ -1677,8 +1677,8 @@
     if (pixelInspectorManager) {
       pixelInspectorManager.dispose();
     }
+    updateVrPreviewContext(null, "");
     if (renderingEngine) {
-      updateVrPreviewContext(null, "");
       renderingEngine.dispose();
     }
     if (transport) {
