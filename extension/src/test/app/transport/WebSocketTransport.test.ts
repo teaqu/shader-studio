@@ -60,6 +60,7 @@ suite('WebSocketTransport Test Suite', () => {
 
     mockWsClient = {
       readyState: WebSocket.OPEN,
+      once: sandbox.stub().returnsThis(),
       on: sandbox.stub(),
       send: sandbox.stub(),
       close: sandbox.stub(),
