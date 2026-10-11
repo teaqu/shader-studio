@@ -10,7 +10,7 @@
     shaderPath: string; projectConfig?: ShaderConfig | null;
     postMessage?: (message: ShaderMessage) => void; onMessage?: (handler: (event: MessageEvent) => void) => void;
     sourcePath: string; builtInSourcePath: string; passType: 'render' | 'compute'; hasNativeTemplate: boolean;
-    outputCount: number; passSource: string; onCreated: (result: CreatedSource) => void;
+    onCreated: (result: CreatedSource) => void;
     onOpen?: () => void;
   }
   let { value, onPathChange, hasError, suggestedPath, bufferName, language, fileType, shaderPath, projectConfig,

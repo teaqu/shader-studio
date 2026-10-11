@@ -764,7 +764,7 @@ return;
         <BufferSourceControls value={currentPath} onPathChange={handlePathChange} hasError={!validation.isValid}
           {suggestedPath} {bufferName} {language} {fileType} {shaderPath} {projectConfig} {postMessage} {onMessage}
           sourcePath={nativeInsertionPath} builtInSourcePath={ownedSourcePath} {passType} {hasNativeTemplate}
-          outputCount={Math.max(1, renderOutputs.length)} {passSource} onCreated={applyCreatedSource}
+          onCreated={applyCreatedSource}
           onOpen={openBufferInEditor} />
 
         {#if passType === 'compute'}
