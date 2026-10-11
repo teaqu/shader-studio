@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/svelte';
+import { render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ConfigInput } from '@shader-studio/types';
 import ChannelListItem from '../../../lib/components/config/ChannelListItem.svelte';
@@ -9,18 +9,24 @@ afterEach(() => {
 });
 
 describe('volume channel previews', () => {
-  it('labels volume channels in the list', () => {
+  it.each([
+    ['texture', 'Texture'], ['video', 'Video'], ['audio', 'Audio'],
+    ['buffer', 'Buffer'], ['volume', 'Volume'], ['cubemap', 'Cubemap'],
+    ['system-audio', 'Shared Audio'], ['webcam', 'Webcam'], ['screen', 'Screen'],
+    ['microphone', 'Mic'], ['keyboard', 'Keyboard'], ['unknown', 'Unknown'],
+  ])('labels %s channels as %s', (type, label) => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 404 })));
 
-    render(ChannelListItem, {
+    const { container } = render(ChannelListItem, {
       channelName: 'iChannel3',
-      channelInput: { type: 'volume', path: 'density.ktx2' } as ConfigInput,
+      // Unknown persisted kinds retain a readable fallback badge.
+      channelInput: { type, path: 'density.ktx2' } as ConfigInput,
       getWebviewUri: () => undefined,
       onEdit: vi.fn(),
       onRemove: vi.fn(),
     });
 
-    expect(screen.getByText('Volume')).toBeInTheDocument();
+    expect(container.querySelector('.type-badge')).toHaveTextContent(label);
   });
 
   it.each([
