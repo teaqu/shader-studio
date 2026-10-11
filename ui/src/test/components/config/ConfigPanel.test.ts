@@ -1011,8 +1011,8 @@ describe('ConfigPanel', () => {
       });
       await tick();
 
-      await fireEvent.click(getAllByText(/^Choose (?:another )?file…$/)[0]);
-      await fireEvent.click(getAllByText('Create')[0]);
+      await fireEvent.click(getAllByText('Choose a shader…')[0]);
+      await fireEvent.click(getAllByText('Create shader…')[0]);
 
       expect(mockManager.generateBufferPath).toHaveBeenCalledWith('ComputeA', 'slang');
       expect(mockTransport.postMessage).toHaveBeenCalledWith({
@@ -1056,8 +1056,8 @@ describe('ConfigPanel', () => {
       });
       await tick();
 
-      await fireEvent.click(getAllByText(/^Choose (?:another )?file…$/)[0]);
-      await fireEvent.click(getAllByText('Create')[0]);
+      await fireEvent.click(getAllByText('Choose a shader…')[0]);
+      await fireEvent.click(getAllByText('Create shader…')[0]);
 
       expect(mockManager.generateBufferPath).toHaveBeenCalledWith('BufferA', 'slang');
       expect(mockTransport.postMessage).toHaveBeenCalledWith({

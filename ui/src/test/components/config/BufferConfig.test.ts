@@ -32,7 +32,7 @@ async function fileAction(container: HTMLElement, kind: 'create' | 'select') {
   if (direct) {
     await fireEvent.click(direct); return;
   }
-  await fireEvent.click(within(main).getByRole('button', { name: /^Choose (?:another )?file…$/ }));
+  await fireEvent.click(within(main).getByRole('button', { name: 'Choose shader file' }));
   await fireEvent.click(document.querySelector(`[role="dialog"] .${kind}-file-btn`)!);
 }
 
@@ -83,7 +83,7 @@ describe('BufferConfig', () => {
       config: { path: '' }, onUpdate: vi.fn(), getWebviewUri: () => undefined, postMessage: vi.fn() });
     const main = getMainPathConfig(view.container);
     expect(main.querySelector('.file-row .insert-file-btn')).toBeNull();
-    await fireEvent.click(within(main).getByRole('button', { name: /^Choose (?:another )?file…$/ }));
+    await fireEvent.click(within(main).getByRole('button', { name: 'Choose shader file' }));
     expect(document.querySelector('[role="dialog"] .create-file-btn')).not.toBeNull();
     expect(main.querySelector('.file-row select[aria-label="Insert mode"]')).toBeNull();
   });
@@ -443,9 +443,10 @@ describe('BufferConfig', () => {
       });
 
       const mainPathConfig = getMainPathConfig(container);
-      await fireEvent.click(within(mainPathConfig).getByRole('button', { name: /^Choose (?:another )?file…$/ }));
+      await fireEvent.click(within(mainPathConfig).getByRole('button', { name: 'Choose shader file' }));
       expect(document.querySelector('[role="dialog"] .create-file-btn')).toBeTruthy();
-      // Path input should also be visible alongside the create button
+      // Manual path entry remains available inside the picker.
+      await fireEvent.click(within(mainPathConfig).getByText('Enter a path…'));
       expect(within(document.querySelector('[role="dialog"]') as HTMLElement).getByLabelText('Shader file path')).toBeVisible();
     });
 
@@ -462,7 +463,7 @@ describe('BufferConfig', () => {
       });
 
       expect(container.querySelector('.create-file-btn')).toBeNull();
-      expect(container.querySelector('.summary-details')).toHaveTextContent('existing.glsl');
+      expect(container.querySelector('.picker-button')).toHaveTextContent('existing.glsl');
     });
 
     it('should not show create file button for Image pass', () => {
@@ -590,7 +591,7 @@ describe('BufferConfig', () => {
         postMessage: mockPostMessage,
       });
 
-      await fireEvent.click(within(getMainPathConfig(container)).getByRole('button', { name: /^Choose (?:another )?file…$/ }));
+      await fireEvent.click(within(getMainPathConfig(container)).getByRole('button', { name: 'Choose shader file' }));
       expect(document.querySelector('[role="dialog"] .select-file-btn')).toBeTruthy();
     });
 
@@ -618,7 +619,7 @@ describe('BufferConfig', () => {
         postMessage: mockPostMessage,
       });
 
-      await fireEvent.click(within(getMainPathConfig(container)).getByRole('button', { name: /^Choose (?:another )?file…$/ }));
+      await fireEvent.click(within(getMainPathConfig(container)).getByRole('button', { name: 'Choose shader file' }));
       await fireEvent.click(document.querySelector('[role="dialog"] .select-file-btn')!);
       expect(mockPostMessage).toHaveBeenCalledOnce();
       expect(mockPostMessage.mock.calls[0][0].type).toBe('selectFile');
@@ -639,7 +640,7 @@ describe('BufferConfig', () => {
         shaderPath: '/shaders/image.slang',
       });
 
-      await fireEvent.click(within(getMainPathConfig(container)).getByRole('button', { name: /^Choose (?:another )?file…$/ }));
+      await fireEvent.click(within(getMainPathConfig(container)).getByRole('button', { name: 'Choose shader file' }));
       await fireEvent.click(document.querySelector('[role="dialog"] .select-file-btn')!);
 
       expect(mockPostMessage).toHaveBeenCalledWith({
@@ -668,8 +669,8 @@ describe('BufferConfig', () => {
       });
 
       const mainPathConfig = getMainPathConfig(container);
-      expect(within(mainPathConfig).getByText('No shader file selected')).toBeVisible();
-      await fireEvent.click(within(mainPathConfig).getByRole('button', { name: /^Choose (?:another )?file…$/ }));
+      expect(within(mainPathConfig).getByText('Choose a shader…')).toBeVisible();
+      await fireEvent.click(within(mainPathConfig).getByRole('button', { name: 'Choose shader file' }));
       await fireEvent.click(document.querySelector('[role="dialog"] .create-file-btn')!);
 
       expect(mockPostMessage).toHaveBeenCalledWith({
@@ -697,7 +698,7 @@ describe('BufferConfig', () => {
         passType: 'compute',
       });
 
-      await fireEvent.click(within(getMainPathConfig(container)).getByRole('button', { name: /^Choose (?:another )?file…$/ }));
+      await fireEvent.click(within(getMainPathConfig(container)).getByRole('button', { name: 'Choose shader file' }));
       await fireEvent.click(document.querySelector('[role="dialog"] .select-file-btn')!);
 
       expect(mockPostMessage.mock.calls[0][0].payload.fileType).toBe('glsl-compute');
@@ -1743,7 +1744,8 @@ describe('BufferConfig', () => {
         getWebviewUri: mockGetWebviewUri,
       });
 
-      await fireEvent.click(getByRole('button', { name: 'Choose another file…' }));
+      await fireEvent.click(getByRole('button', { name: 'Choose shader file' }));
+      await fireEvent.click(document.querySelector('.chooser-path summary')!);
       const pathInput = getByDisplayValue('old.glsl');
       await fireEvent.input(pathInput, { target: { value: 'new.glsl' } });
 
@@ -1796,7 +1798,8 @@ describe('BufferConfig', () => {
         getWebviewUri: mockGetWebviewUri,
       });
 
-      await fireEvent.click(getByRole('button', { name: 'Choose another file…' }));
+      await fireEvent.click(getByRole('button', { name: 'Choose shader file' }));
+      await fireEvent.click(document.querySelector('.chooser-path summary')!);
       const pathInput = getByDisplayValue('test.glsl');
       await fireEvent.focus(pathInput);
       // After focus, typing should be possible without being overridden
