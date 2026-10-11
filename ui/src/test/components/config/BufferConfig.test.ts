@@ -60,6 +60,24 @@ describe('BufferConfig', () => {
     expect(view.getByRole('button', { name: 'Open in editor' })).toBeDisabled();
   });
 
+  it('applies a newly created buffer file returned by the host', async () => {
+    const handlers: Array<(event: MessageEvent) => void> = [];
+    const postMessage = vi.fn();
+    const onUpdate = vi.fn();
+    const view = render(BufferConfig, { bufferName: 'BufferA', config: { path: '' },
+      onUpdate, getWebviewUri: () => undefined, postMessage, onMessage: handler => handlers.push(handler) });
+    await tick();
+    await fileAction(view.container, 'create');
+    await tick();
+    const requestId = postMessage.mock.calls.at(-1)![0].payload.requestId;
+    for (const handler of handlers) {
+      handler({ data: { type: 'fileSelected', payload: { requestId, path: 'created.glsl' } } } as MessageEvent);
+    }
+    await tick();
+    expect(onUpdate).toHaveBeenCalledWith('BufferA', expect.objectContaining({ path: 'created.glsl' }));
+    expect(view.getByText('created.glsl', { selector: '.summary-path' })).toBeVisible();
+  });
+
   it('offers file creation without insertion on a new WGSL buffer', async () => {
     const view = render(BufferConfig, { bufferName: 'BufferA', language: 'wgsl', shaderPath: '/shaders/image.wgsl',
       config: { path: '' }, onUpdate: vi.fn(), getWebviewUri: () => undefined, postMessage: vi.fn() });
