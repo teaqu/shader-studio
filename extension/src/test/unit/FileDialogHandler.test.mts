@@ -51,9 +51,20 @@ describe('cubemap source creation', () => {
     mocks.exists.mockReturnValue(false);
     mocks.save.mockResolvedValue({ fsPath: '/shaders/cube.slang' });
   });
-  it.each([
+  it.each<[string, 'hooks' | 'native', string, ('2d' | 'cubemap')?]>([
     ['glsl-buffer', 'native', 'void mainCubemap'],
     ['glsl-buffer', 'native', 'void mainImage', '2d'],
+    ['slang-compute', 'native', 'ComputeCompute', '2d'],
+    ['wgsl-compute', 'native', 'ComputeCompute', '2d'],
+    ['script', 'hooks', 'export function uniforms', '2d'],
+    ['glsl-common', 'hooks', 'Common', '2d'],
+    ['slang-common', 'hooks', 'Common', '2d'],
+    ['wgsl-common', 'hooks', 'Common', '2d'],
+    ['glsl-vertex', 'hooks', 'void mainVertex', '2d'],
+    ['slang-vertex', 'hooks', 'void mainVertex', '2d'],
+    ['wgsl-vertex', 'hooks', 'fn mainVertex', '2d'],
+    ['slang-compute', 'hooks', 'void compute', '2d'],
+    ['wgsl-compute', 'hooks', 'fn compute', '2d'],
     ['slang-compute', 'native', 'ComputeCompute', '2d'],
     ['wgsl-compute', 'native', 'ComputeCompute', '2d'],
     ['glsl-buffer', 'hooks', 'void mainCubemap'],
@@ -66,7 +77,7 @@ describe('cubemap source creation', () => {
     ['wgsl-buffer', 'hooks', 'fn mainImage', '2d'],
     ['slang-buffer', 'hooks', 'float4 mainImage', '2d'],
     ['glsl-buffer', 'hooks', 'void mainImage', '2d'],
-  ] as const)('creates %s in %s mode (%s)', async (fileType, authoringMode, source, outputKind = 'cubemap') => {
+  ])('creates %s in %s mode (%s)', async (fileType, authoringMode, source, outputKind = 'cubemap') => {
     const handler = new FileDialogHandler(null!, null!, '', null, () => 1,
       { info: mocks.info, error: mocks.error } as unknown as Logger);
     const respond = vi.fn();
@@ -76,4 +87,15 @@ describe('cubemap source creation', () => {
     expect(respond).toHaveBeenCalledWith({ type: 'fileSelected', payload: expect.objectContaining({ path: './cube.slang', requestId: 'cube' }) });
     expect(mocks.error).not.toHaveBeenCalled();
   });
+  it('keeps an existing cubemap file intact', async () => {
+    mocks.exists.mockReturnValue(true);
+    const respond = vi.fn();
+    const handler = new FileDialogHandler(null!, null!, '', null, () => 1,
+      { info: mocks.info, error: mocks.error } as unknown as Logger);
+    await handler.handleCreateFile({ shaderPath: '/shaders/image.slang', suggestedPath: 'cube.slang',
+      fileType: 'slang-buffer', outputKind: 'cubemap', requestId: 'cube' }, respond);
+    expect(mocks.write).not.toHaveBeenCalled();
+    expect(respond).toHaveBeenCalledWith({ type: 'fileSelected', payload: { path: './cube.slang', requestId: 'cube' } });
+  });
+
 });

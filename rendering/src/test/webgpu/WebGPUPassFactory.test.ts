@@ -77,10 +77,12 @@ describe("WebGPUPassFactory reconciliation boundaries", () => {
   it.each([undefined, 64])('keeps cube faces square during resize (face size %s)', faceSize => {
     const { factory, graph } = harness();
     const pass = graph.passes[0];
-    pass.output = "buffer";
+    pass.name = "Sky";
+    pass.output = "texture";
     pass.outputKind = "cubemap";
     factory.updatePassGraphResolutions(graph.passes, { version: "1", passes: {
-      Image: { outputKind: "cubemap", ...(faceSize === undefined ? {} : { faceSize }) },
+      Image: {},
+      Sky: { path: "sky.slang", outputKind: "cubemap", ...(faceSize === undefined ? {} : { faceSize }) },
     } });
     expect(pass).toMatchObject({ width: faceSize ?? 512, height: faceSize ?? 512 });
   });
