@@ -1,10 +1,12 @@
 <script lang="ts">
   import LiveInputPreview from "./LiveInputPreview.svelte";
+  import { getBufferOutputKind } from '../../state/bufferOutputKinds.svelte';
   import { onDestroy } from "svelte";
   import type { ConfigInput } from "@shader-studio/types";
   import type { AudioVideoController } from "../../AudioVideoController";
 
   interface Props {
+    shaderPath?: string;
     channelInput: ConfigInput | undefined;
     getWebviewUri: (path: string) => string | undefined;
     audioVideoController?: AudioVideoController;
@@ -13,12 +15,16 @@
   }
 
   let {
+    shaderPath = '',
     channelInput,
     getWebviewUri,
     audioVideoController = undefined as AudioVideoController | undefined,
     onUpdateMuted = undefined,
     showControls = true,
   }: Props = $props();
+
+  const isCubemapBuffer = $derived(channelInput?.type === 'buffer'
+    && getBufferOutputKind(shaderPath, channelInput.source) === 'cubemap');
 
   // Mute icon/title/action are config-driven (channelInput.muted), matching
   // the modal's mute buttons — not the transient engine mute state, which a
@@ -453,7 +459,7 @@
   {:else if channelInput.type === "buffer"}
     <!-- Buffer preview -->
     <div class="buffer-preview">
-      <i class="codicon codicon-layers buffer-type-icon"></i>
+      <i class="codicon buffer-type-icon" class:codicon-package={isCubemapBuffer} class:codicon-layers={!isCubemapBuffer} title={isCubemapBuffer ? 'Cubemap buffer' : 'Buffer'}></i>
       <span class="buffer-letter">{(channelInput.source || 'B').replace(/^.*?([A-Za-z])$/, '$1').toUpperCase()}</span>
     </div>
 

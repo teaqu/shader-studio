@@ -3,6 +3,20 @@ import { render, fireEvent } from '@testing-library/svelte';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import ChannelPreview from '../../../lib/components/config/ChannelPreview.svelte';
 import type { ConfigInput } from '@shader-studio/types';
+import { setBufferOutputKinds } from '../../../lib/state/bufferOutputKinds.svelte';
+import { tick } from 'svelte';
+
+it('reactively distinguishes cubemap buffers from ordinary buffers', async () => {
+  setBufferOutputKinds('cube-icon', { version: '1.0', passes: { Image: {}, Sky: { path: 'sky.slang', outputKind: 'cubemap' } } });
+  const view = render(ChannelPreview, { shaderPath: 'cube-icon', channelInput: { type: 'buffer', source: 'Sky' }, getWebviewUri: () => undefined });
+  expect(view.container.querySelector('.codicon-package')).toBeTruthy();
+  expect(view.container.querySelector('.codicon-layers')).toBeNull();
+  setBufferOutputKinds('cube-icon', null);
+  await tick();
+  expect(view.container.querySelector('.codicon-layers')).toBeTruthy();
+  expect(view.container.querySelector('.codicon-package')).toBeNull();
+  view.unmount();
+});
 
 // Mock waveformCache
 vi.mock('../../../lib/util/waveformCache', () => ({

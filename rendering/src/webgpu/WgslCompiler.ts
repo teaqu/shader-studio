@@ -31,6 +31,7 @@ export class WgslCompiler implements AsyncSlangCompiler {
         entryPoint: options.entryPoint,
       })
       : wrapWgslImageSource(source, {
+        outputKind: options.outputKind,
         passName: options.passName,
         commonCode,
         channels: options.channels,

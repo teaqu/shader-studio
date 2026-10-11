@@ -311,7 +311,8 @@ export class StandaloneLayoutController {
 
   /** Shows exactly one existing Dockview group for the phone shell. */
   showMobileDockviewPanel(panelId: MobileDockviewPanelId): void {
-    const selected = this.api.getPanel(panelId);
+    const selected = (panelId === 'editor' ? this.api.getPanel(this.activeEditorId) : undefined)
+      ?? this.api.getPanel(panelId);
     if (!selected) {
       return;
     }

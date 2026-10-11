@@ -259,8 +259,8 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       canvasHeight,
       errors,
     });
-    if (outputKind === "cubemap" && language !== "slang") {
-      errors.push(`${name}: cubemap buffer outputs currently require Slang`);
+    if (outputKind === "cubemap" && language === "wgsl" && isComputePass(passConfig)) {
+      errors.push(`${name}: cubemap compute outputs currently require Slang`);
       continue;
     }
     if (outputKind === "cubemap") {

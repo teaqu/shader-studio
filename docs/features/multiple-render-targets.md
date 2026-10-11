@@ -38,7 +38,7 @@ Shader Studio infers the attachment count, slots, and default names from the sel
 
 Omitting an input's `output` selects attachment zero. Compute outputs continue to use `layer`; render attachments use `output`. The consuming channel still needs an explicit choice when you want a nonzero attachment: code discovery cannot decide which texture that channel should sample.
 
-The buffer's **Output** section shows read-only rows such as **Output 0 · color** and **Output 1 · normal**, alongside the shared **Output format** setting. Add or remove fields in your fragment return type to change the attachments. The UI does not rewrite shader code or add attachments. Older `outputs` arrays remain optional labels by slot; they do not determine the count or create missing attachments.
+The buffer's **Output** section contains the shared **Output format** setting and reports invalid declarations or device limits. Output names and slots appear in the consuming channel's **Buffer output** picker. Add or remove fields in your fragment return type to change the attachments. The UI does not rewrite shader code or add attachments. Older `outputs` arrays remain optional labels by slot; they do not determine the count or create missing attachments.
 
 ![Buffer format and inferred output slots](../assets/images/render-outputs.png)
 

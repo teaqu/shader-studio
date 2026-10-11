@@ -985,7 +985,7 @@ describe('ConfigPanel', () => {
       expect(getByRole('button', { name: /^ComputeA/ })).toHaveClass('active');
     });
 
-    it.each([false, true])('adds a collision-safe cubemap pass (existing cube: %s)', async existing => {
+    it.each([['glsl', false], ['glsl', true], ['wgsl', false]] as const)('adds a collision-safe %s cubemap pass (existing cube: %s)', async (language, existing) => {
       const updatedConfig: ShaderConfig = { version: '1.0', passes: { Image: {}, ...(existing ? { Cubemap: { path: 'old.glsl' } } : {}) } };
       const mockManager = createMockConfigManager([]);
       mockManager.getConfig.mockReturnValue(updatedConfig);
@@ -1004,7 +1004,7 @@ describe('ConfigPanel', () => {
       (ConfigManager as unknown as Mock).mockImplementation(function () {
         return mockManager;
       });
-      const { getByRole } = render(ConfigPanel, { config: updatedConfig, language: 'glsl', pathMap: {}, transport: mockTransport, shaderPath: '/test/image.glsl', isVisible: true, onFileSelect: mockOnFileSelect, selectedBuffer: 'Image', onConfigChange: vi.fn() });
+      const { getByRole } = render(ConfigPanel, { config: updatedConfig, language, pathMap: {}, transport: mockTransport, shaderPath: '/test/image.glsl', isVisible: true, onFileSelect: mockOnFileSelect, selectedBuffer: 'Image', onConfigChange: vi.fn() });
       await fireEvent.click(getByRole('button', { name: '+ New' }));
       await fireEvent.click(getByRole('menuitem', { name: 'Cubemap' }));
       const name = existing ? 'Cubemap2' : 'Cubemap';

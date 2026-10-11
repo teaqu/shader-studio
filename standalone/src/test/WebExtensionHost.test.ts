@@ -366,6 +366,7 @@ describe('WebExtensionHost', () => {
   it.each([
     ['glsl-buffer', 'sky.glsl', 'void mainCubemap(out vec4 fragColor, in vec2 fragCoord, in vec3 rayOri, in vec3 rayDir)'],
     ['slang-buffer', 'sky.slang', 'float4 mainCubemap(float2 fragCoord, float3 rayOri, float3 rayDir)'],
+    ['wgsl-buffer', 'sky.wgsl', 'fn mainCubemap(fragCoord: vec2f, rayOri: vec3f, rayDir: vec3f)'],
   ])('creates the cubemap starter ABI for %s', async (fileType, path, expected) => {
     const host = await createHost({ prompt: (_message, initial) => initial });
     const receive = vi.fn();

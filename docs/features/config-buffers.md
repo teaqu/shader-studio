@@ -88,7 +88,7 @@ The pass sections are arranged as Fragment source/functions, Vertex shader, Chan
 
 ## Cubemap Buffers
 
-Cubemap output is supported by GLSL fragment and Slang fragment/compute passes. A cubemap is a texture with six square faces, independent of the canvas resolution. Choose **+ New → Cubemap**, then **File → Change… → Create** for a direction-colour starter. Slang cubemap tabs also offer Fragment/Compute execution. WGSL cubemap generation is not supported yet.
+Cubemap output is supported by GLSL/WGSL fragment and Slang fragment/compute passes. A cubemap is a texture with six square faces, independent of the canvas resolution. Choose **+ New → Cubemap**, then **File → Change… → Create** for a direction-colour starter. Slang cubemap tabs also offer Fragment/Compute execution. WGSL cubemap passes use `fn mainCubemap(fragCoord: vec2f, rayOri: vec3f, rayDir: vec3f) -> vec4f`.
 
 A fragment pass calls `mainCubemap` once per pixel of every face. `fragCoord` is the face pixel coordinate, `rayOri` is zero, and `rayDir` is the normalized sampling direction:
 
@@ -123,7 +123,7 @@ The source pass declares its shape; consumers keep ordinary buffer inputs:
 }
 ```
 
-GLSL samples `texture(iChannel0, direction)`; Slang samples `iChannel0.Sample(direction)`. Face order is +X, −X, +Y, −Y, +Z, −Z. Slang compute outputs use six layers and `cubemapDirection(pixel.xy, face)` / `writeOutput(pixel.xy, face, color)`; the default texel dispatch covers all six faces in Z. The pixel helper samples the pixel centre.
+GLSL samples `texture(iChannel0, direction)`; Slang samples `iChannel0.Sample(direction)`; WGSL samples `iChannel0Sample(direction)`. Face order is +X, −X, +Y, −Y, +Z, −Z. Slang compute outputs use six layers and `cubemapDirection(pixel.xy, face)` / `writeOutput(pixel.xy, face, color)`; the default texel dispatch covers all six faces in Z. The pixel helper samples the pixel centre.
 
 The **Cubemap preview** chooser displays one face, a cross layout, or an environment projection. **Image output** restores the normal Image pass. Preview selection does not alter the saved shader configuration.
 

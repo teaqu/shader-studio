@@ -459,6 +459,25 @@ describe('StandaloneLayoutController', () => {
 });
 
 describe('file editor panels', () => {
+  it('keeps the requested file active when mobile navigation shows Editor', () => {
+    const api = createApi();
+    const controller = new StandaloneLayoutController(api, null);
+    controller.initialize();
+    controller.openEditor('/shaders/buffer.wgsl');
+    api.activate('editor:/shaders/buffer.wgsl');
+    vi.mocked(api.getPanel('editor')!.api.setActive).mockClear();
+    vi.mocked(api.getPanel('editor:/shaders/buffer.wgsl')!.api.setActive).mockClear();
+    controller.showMobilePanel('editor');
+    expect(api.getPanel('editor:/shaders/buffer.wgsl')!.api.setActive).toHaveBeenCalledOnce();
+    expect(api.getPanel('editor')!.api.setActive).not.toHaveBeenCalled();
+    controller.showMobilePanel('preview');
+    controller.showMobilePanel('editor');
+    expect(api.getPanel('editor:/shaders/buffer.wgsl')!.api.setActive).toHaveBeenCalledTimes(2);
+    api.remove('editor:/shaders/buffer.wgsl');
+    controller.showMobilePanel('editor');
+    expect(api.getPanel('editor')!.api.setActive).toHaveBeenCalledOnce();
+  });
+
   it('opens distinct dockable files and focuses an existing file without duplicating it', () => {
     const api = createApi();
     const controller = new StandaloneLayoutController(api, null);

@@ -1,6 +1,7 @@
 <script lang="ts">
   import './configPanel.css';
   import { discoverRenderOutputs, setRenderOutputMetadata } from "../../state/renderOutputMetadata.svelte";
+  import { setBufferOutputKinds } from '../../state/bufferOutputKinds.svelte';
   import { getDefaultAuthoringMode } from '../../state/authoringModeState.svelte';
   import { onMount, onDestroy, tick, untrack } from "svelte";
   import { ConfigManager, type BufferRenameError } from "../../ConfigManager";
@@ -435,8 +436,9 @@
     })
     .map(([name, discovery]) => [name, discovery.outputs.length])));
   $effect(() => {
- setRenderOutputMetadata(shaderPath, renderOutputMetadata);
-});
+    setBufferOutputKinds(shaderPath, config);
+    setRenderOutputMetadata(shaderPath, renderOutputMetadata);
+  });
 
   let computeOutputLayerCounts = $derived.by(() => Object.fromEntries(
     Object.entries(config?.passes ?? {})
@@ -817,7 +819,7 @@
             bind:this={addMenu}
           >
             <button class="dropdown-item" role="menuitem" onclick={() => runAddMenuAction(addBuffer)}>Buffer</button>
-            {#if language !== 'wgsl'}<button class="dropdown-item" role="menuitem" onclick={() => runAddMenuAction(addCubemapBuffer)}>Cubemap</button>{/if}
+            <button class="dropdown-item" role="menuitem" onclick={() => runAddMenuAction(addCubemapBuffer)}>Cubemap</button>
             {#if SHADER_LANGUAGES[language].engine === "webgpu"}
               <button
                 class="dropdown-item"

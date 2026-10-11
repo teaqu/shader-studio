@@ -9,13 +9,13 @@ async function centerPixel(canvas) {
   return [...png.data.subarray(offset, offset + 4)];
 }
 
-for (const [language, execution] of [['glsl', 'render'], ['slang', 'render'], ['slang', 'compute']]) {
+for (const [language, execution] of [['glsl', 'render'], ['slang', 'render'], ['slang', 'compute'], ['wgsl', 'render']]) {
   test(`${language} ${execution} creates a Cubemap tab, samples direction colours, and restores configuration after reload`, async ({ page }) => {
     await page.route('**/__cube_fixture__', route => route.fulfill({ contentType: 'text/html', body: '<title>Fixture</title>' }));
     await page.goto('/__cube_fixture__');
     const image = language === 'glsl'
       ? 'void mainImage(out vec4 c, in vec2 p) { c = texture(iChannel0, vec3(1,0,0)); }'
-      : 'float4 mainImage(float2 p) { return iChannel0.Sample(float3(1,0,0)); }';
+      : language === 'wgsl' ? 'fn mainImage(p: vec2f) -> vec4f { return iChannel0Sample(vec3f(1,0,0)); }' : 'float4 mainImage(float2 p) { return iChannel0.Sample(float3(1,0,0)); }';
     await workspace(page, [[`direction.${language}`, image], ['direction.sha.json', JSON.stringify({ version: '1.0', passes: { Image: { inputs: { iChannel0: { type: 'buffer', source: 'Cubemap' } } } } })]]);
     await page.goto('/');
     await page.getByTestId(`shader-option-direction-${language}`).click();
