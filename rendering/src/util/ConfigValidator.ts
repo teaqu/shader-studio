@@ -399,7 +399,7 @@ export class ConfigValidator {
       return false;
     }
     return (input.filter === undefined || (typeof input.filter === 'string' && ['linear', 'nearest', 'mipmap'].includes(input.filter))) &&
-      (input.wrap === undefined || (typeof input.wrap === 'string' && (typeof input.wrap === "string" && ["repeat", "clamp"].includes(input.wrap)))) &&
+      (input.wrap === undefined || (typeof input.wrap === 'string' && ['repeat', 'clamp'].includes(input.wrap))) &&
       (input.vflip === undefined || typeof input.vflip === 'boolean');
   }
 
