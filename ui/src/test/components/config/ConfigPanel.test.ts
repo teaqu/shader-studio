@@ -1013,6 +1013,23 @@ describe('ConfigPanel', () => {
       expect(mockOnFileSelect).toHaveBeenCalledWith(name);
     });
 
+    it('routes cubemap execution changes to the correct config manager command', async () => {
+      const config: ShaderConfig = { version: '1', passes: { Image: {}, Sky: { path: 'sky.slang', outputKind: 'cubemap' } } };
+      const manager = createMockConfigManager(['Sky']);
+      manager.getConfig.mockReturnValue(config);
+      (ConfigManager as unknown as Mock).mockImplementation(function () {
+ return manager; 
+});
+      const view = render(ConfigPanel, { config, language: 'slang', pathMap: {}, transport: mockTransport,
+        shaderPath: '/test/image.slang', isVisible: true, onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Sky', onConfigChange: vi.fn() });
+      await tick();
+      await fireEvent.change(view.getByLabelText('Cubemap execution'), { target: { value: 'compute' } });
+      expect(manager.updateComputePass).toHaveBeenCalledWith('Sky', expect.objectContaining({ type: 'compute', outputLayers: 6 }));
+      await fireEvent.change(view.getByLabelText('Cubemap execution'), { target: { value: 'render' } });
+      expect(manager.updateBuffer).toHaveBeenCalledWith('Sky', expect.objectContaining({ outputKind: 'cubemap' }));
+    });
+
     it('routes Compute tab source creation through the Slang compute file workflow', async () => {
       const computeConfig: ShaderConfig = {
         version: '1.0',

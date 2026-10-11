@@ -54,6 +54,10 @@ describe('cubemap source creation', () => {
   it.each<[string, 'hooks' | 'native', string, ('2d' | 'cubemap')?]>([
     ['wgsl-buffer', 'hooks', 'fn mainCubemap'],
     ['wgsl-buffer', 'native', 'fn mainCubemap'],
+    ['glsl-buffer', 'native', 'void mainCubemap'],
+    ['glsl-buffer', 'native', 'void mainImage', '2d'],
+    ['slang-compute', 'native', 'ComputeCompute', '2d'],
+    ['wgsl-compute', 'native', 'ComputeCompute', '2d'],
     ['script', 'hooks', 'export function uniforms', '2d'],
     ['glsl-common', 'hooks', 'Common', '2d'],
     ['slang-common', 'hooks', 'Common', '2d'],
