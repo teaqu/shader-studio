@@ -4,8 +4,8 @@ vi.mock('vscode', () => ({
   Uri: { file: (fsPath: string) => ({ fsPath }) },
   workspace: { workspaceFolders: [{ uri: { fsPath: '/workspace' } }], getWorkspaceFolder: () => ({ uri: { fsPath: '/workspace' } }) },
 }));
-import { WebviewTransport } from '../../app/transport/WebviewTransport.ts';
-import { WebSocketTransport } from '../../app/transport/WebSocketTransport.ts';
+import { WebviewTransport } from '../../app/transport/WebviewTransport.js';
+import { WebSocketTransport } from '../../app/transport/WebSocketTransport.js';
 
 const volumeMessage = () => ({
   type: 'shaderSource', path: '/workspace/shader.glsl',

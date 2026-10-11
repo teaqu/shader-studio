@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ save: vi.fn(), open: vi.fn(), write: vi.fn(), info: vi.fn(), error: vi.fn() }));
 vi.mock('vscode', () => ({ window: { showSaveDialog: mocks.save, showOpenDialog: mocks.open }, workspace: { workspaceFolders: [{ uri: { fsPath: '/workspace' } }] }, Uri: { file: (fsPath: string) => ({ fsPath }) } }));
 vi.mock('fs', () => ({ writeFileSync: mocks.write }));
-import { FileDialogHandler } from '../../app/handlers/FileDialogHandler.ts';
-import type { Logger } from '../../app/services/Logger.ts';
+import { FileDialogHandler } from '../../app/handlers/FileDialogHandler.js';
+import type { Logger } from '../../app/services/Logger.js';
 
 describe('extension capture save acknowledgement', () => {
   beforeEach(() => vi.clearAllMocks());
