@@ -8,17 +8,17 @@ import { RenderingEngine } from "../../webgl/RenderingEngine";
 import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
 import scriptUrl from "../../../../ui/src/slang/slang-wasm.js?url";
 import wasmUrl from "../../../../ui/src/slang/slang-wasm.wasm?url";
-import cloudsGlsl from "../../../../tests/fixtures/shader-corpus/glsl/volume-input/clouds.glsl?raw";
+import cloudsGlsl from "../../../../tests/fixtures/shader-corpus/glsl/volume-input/clouds_glsl.glsl?raw";
 import cloudsSlang from "../../../../tests/fixtures/shader-corpus/slang/volume-input/clouds.slang?raw";
-import tomographyGlsl from "../../../../tests/fixtures/shader-corpus/glsl/volume-input/tomography.glsl?raw";
+import tomographyGlsl from "../../../../tests/fixtures/shader-corpus/glsl/volume-input/tomography_glsl.glsl?raw";
 import tomographySlang from "../../../../tests/fixtures/shader-corpus/slang/volume-input/tomography.slang?raw";
 import densityUrl from "../../../../tests/fixtures/shader-corpus/assets/volume-input/cloud-density.ktx2?url";
 
 import greyNoiseUrl from "../../../../tests/fixtures/shader-corpus/assets/volume-input/noise-grey.ktx2?url";
 import rgbaNoiseUrl from "../../../../tests/fixtures/shader-corpus/assets/volume-input/noise-rgba.ktx2?url";
-import noiseGlsl from "../../../../tests/fixtures/shader-corpus/glsl/volume-input/noise.glsl?raw";
+import noiseGlsl from "../../../../tests/fixtures/shader-corpus/glsl/volume-input/noise_glsl.glsl?raw";
 import noiseSlang from "../../../../tests/fixtures/shader-corpus/slang/volume-input/noise.slang?raw";
-import rgbaNoiseGlsl from "../../../../tests/fixtures/shader-corpus/glsl/volume-input/noise-rgba.glsl?raw";
+import rgbaNoiseGlsl from "../../../../tests/fixtures/shader-corpus/glsl/volume-input/noise-rgba_glsl.glsl?raw";
 import rgbaNoiseSlang from "../../../../tests/fixtures/shader-corpus/slang/volume-input/noise-rgba.slang?raw";
 
 import cloudsWgsl from "../../../../tests/fixtures/shader-corpus/wgsl/volume-input/clouds.wgsl?raw";

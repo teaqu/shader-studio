@@ -45,8 +45,8 @@ when porting a shader that uses a bundled Shadertoy volume.
 
 ## Example
 
-Open `tests/fixtures/shader-corpus/glsl/volume-input/volume.glsl` or the corresponding `slang/volume-input/volume.slang` with the adjacent
-`volume.sha.json`. The included original `axis-ramp.ktx2` stores X/Y/Z in RGB;
+Open `tests/fixtures/shader-corpus/glsl/volume-input/volume_glsl.glsl` or the corresponding `slang/volume-input/volume.slang` with the adjacent
+`volume_glsl.sha.json`. The included original `axis-ramp.ktx2` stores X/Y/Z in RGB;
 `generate.py` regenerates it. The image's blue channel changes as the sampled
 depth moves with time. These files use the repository's MIT license.
 
