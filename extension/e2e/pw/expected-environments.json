@@ -255,6 +255,11 @@
     "environment": "non-gpu"
   },
   {
+    "id": "14fbfab7e8e0c708796f-5ba47c77b376522e8d8c:",
+    "title": "local-mcp.e2e.mjs › generic MCP edits files and captures both webview and server preview @gpu",
+    "environment": "gpu"
+  },
+  {
     "id": "c4005cb3607e1e1b7838-d7fd1f85e03564ef295f:",
     "title": "named-channels.e2e.mjs › edits, saves and reloads glsl named sampling in VS Code",
     "environment": "non-gpu"

@@ -1,14 +1,14 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
-import { builtinModules } from 'node:module';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync } from 'node:fs';
+import { builtinModules, createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { basename, join, resolve } from 'node:path';
+import { basename, join, relative, resolve } from 'node:path';
 
 /**
- * The VSIX is packaged with `--no-dependencies`: it carries no node_modules at
- * all. Anything the bundle still requires by package name at runtime therefore
- * has to come from the extension host, or the feature importing it is dead in
- * every published release while working perfectly in the development host.
+ * The VSIX is packaged with `--no-dependencies`, except for the small runtime
+ * modules explicitly copied into dist/node_modules. Anything else the bundle
+ * requires by package name must come from the extension host, or the feature
+ * importing it is dead in every published release while working locally.
  *
  * That is how custom uniform scripts shipped broken in 1.1.0 - `esbuild` was
  * external, absent from the VSIX, and every script load failed with
@@ -57,6 +57,17 @@ export function unresolvableRuntimeModules(source) {
   return [...names].sort();
 }
 
+function carriesRuntimeModule(extensionDir, name) {
+  try {
+    const runtimeRoot = realpathSync(resolve(extensionDir, 'dist', 'node_modules'));
+    const resolved = createRequire(resolve(extensionDir, 'dist', 'extension.js')).resolve(name);
+    const pathFromRuntime = relative(runtimeRoot, realpathSync(resolved));
+    return pathFromRuntime !== '' && !pathFromRuntime.startsWith('..');
+  } catch {
+    return false;
+  }
+}
+
 /**
  * @param {string} extensionDir root of an unpacked VSIX or an installed extension
  * @returns {Promise<string[]>} one problem per line, empty when the package is sound
@@ -89,7 +100,8 @@ export async function checkExtensionDirectory(extensionDir) {
     ? readdirSync(distDir).filter((name) => name.endsWith('.js'))
     : [];
   for (const bundle of bundles) {
-    const missing = unresolvableRuntimeModules(readFileSync(join(distDir, bundle), 'utf8'));
+    const missing = unresolvableRuntimeModules(readFileSync(join(distDir, bundle), 'utf8'))
+      .filter((name) => !carriesRuntimeModule(extensionDir, name));
     for (const name of missing) {
       problems.push(`dist/${bundle} requires "${name}" at runtime, which the VSIX does not carry`);
     }
