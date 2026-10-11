@@ -24,7 +24,7 @@
     "@shader-studio/wgsl-analysis": "*"
   },
   "devDependencies": {
-    "@vitest/browser-playwright": "^4.0.18",
+    "@vitest/browser-playwright": "5.0.3",
     "@webgpu/types": "^0.1.70",
     "playwright": "^1.60.0",
     "vitest": "*"
