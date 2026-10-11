@@ -111,7 +111,8 @@ describe('BufferConfig', () => {
       config: { path: 'a.wgsl', entryPoints: { fragment: 'shade' }, outputFormat: 'rgba32float' },
       passSource: 'struct R { @location(0) colour: vec4f, @location(1) normal: vec4f, } @fragment fn shade() -> R { return R(); }',
       maxColorAttachments: 8, maxColorAttachmentBytesPerSample: 16 });
-    expect(view.getByText('Output 1 · normal')).toBeVisible();
+    expect(view.queryByText('Output 1 · normal')).toBeNull();
+    expect(view.getByRole('region', { name: 'Output' }).querySelector('.output-list')).toBeNull();
     expect(view.getByRole('alert')).toHaveTextContent('supports up to 1 outputs');
     expect(view.queryByRole('button', { name: 'Add output' })).toBeNull();
     expect(onUpdate).not.toHaveBeenCalled();
