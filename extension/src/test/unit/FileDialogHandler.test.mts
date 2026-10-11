@@ -39,6 +39,17 @@ describe('extension capture save acknowledgement', () => {
     }));
     expect(respond).toHaveBeenCalledWith({ type: 'fileSelected', payload: { path: './assets/density.ktx2', requestId: 'volume-1' } });
   });
+  it.each([
+    ['script', 'Script files'], ['texture', 'Texture files'], ['video', 'Video files'], ['audio', 'Audio files'],
+    ['cubemap', 'Cubemap files'], ['slang-vertex', 'Slang files'], ['slang-buffer', 'Slang files'],
+    ['slang-common', 'Slang files'], ['slang-compute', 'Slang files'], ['wgsl-vertex', 'WGSL files'],
+    ['wgsl-buffer', 'WGSL files'], ['wgsl-common', 'WGSL files'], ['wgsl-compute', 'WGSL files'], ['model', 'GLB models'],
+    ['unknown', 'GLSL files'],
+  ])('selects the %s file filter branch', async (fileType, filterName) => {
+    mocks.open.mockResolvedValue(undefined);
+    await handler().handleSelectFile({ shaderPath: '/workspace/shader.glsl', fileType, requestId: 'filter-1' }, vi.fn());
+    expect(mocks.open).toHaveBeenCalledWith(expect.objectContaining({ filters: expect.objectContaining({ [filterName]: expect.any(Array) }) }));
+  });
   it.each(['dialog', 'write'])('acknowledges a %s failure with the original request ID', async failure => {
     mocks.save.mockResolvedValue({ fsPath: '/saved/capture.png' });
     if (failure === 'dialog') {
