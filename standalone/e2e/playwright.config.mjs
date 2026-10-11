@@ -11,7 +11,7 @@ export default defineConfig({
     { name: 'chromium-screen-inputs', testMatch: 'screen-inputs.e2e.mjs', use: { browserName: 'chromium', launchOptions: { args: ['--enable-unsafe-webgpu'] } } },
     { name: 'firefox-screen-inputs', testMatch: 'screen-inputs.e2e.mjs', grep: /glsl screen/, use: { browserName: 'firefox' } },
     { name: 'firefox-browser-audio', testMatch: 'browser-audio-firefox.e2e.mjs', use: { browserName: 'firefox' } },
-    { name: 'firefox-exports', testMatch: 'web.e2e.mjs', use: { browserName: 'firefox' }, grep: /exports a standalone/ },
+    { name: 'firefox-exports', testMatch: 'web.e2e.mjs', use: { browserName: 'firefox' }, grep: /exports a standalone|video mode clicks survive/ },
     { name: 'chromium-live-inputs', testMatch: 'live-inputs.e2e.mjs', use: {
       browserName: 'chromium', permissions: ['camera', 'microphone'],
       launchOptions: { args: ['--enable-unsafe-webgpu', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] },
