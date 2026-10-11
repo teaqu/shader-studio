@@ -2,6 +2,44 @@ import { fireEvent, render } from '@testing-library/svelte';
 import { expect, it, vi } from 'vitest';
 import ShaderFileControls from '../../../lib/components/config/ShaderFileControls.svelte';
 
+it('shows a file summary and opens the selected shader without editing its path', async () => {
+  const onOpen = vi.fn();
+  const view = render(ShaderFileControls, { value: './shaders/a.wgsl', shaderPath: '/image.wgsl', language: 'wgsl',
+    fileType: 'wgsl-buffer', suggestedPath: 'b.wgsl', inputId: 'source', summary: true, onOpen,
+    onPathChange: vi.fn(), onCreated: vi.fn() });
+  expect(view.getByText('a.wgsl')).toBeVisible();
+  expect(view.getByText('./shaders/a.wgsl')).toBeVisible();
+  expect(view.queryByRole('textbox')).toBeNull();
+  await fireEvent.click(view.getByRole('button', { name: 'Open in editor' }));
+  expect(onOpen).toHaveBeenCalledOnce();
+  await fireEvent.click(view.getByRole('button', { name: 'Choose another file…' }));
+  expect(view.getByRole('dialog', { name: 'Choose shader file' })).toBeVisible();
+});
+
+it('offers choosing and creating an empty buffer while disabling Open in editor', async () => {
+  const postMessage = vi.fn();
+  const view = render(ShaderFileControls, { value: '', shaderPath: '/image.wgsl', language: 'wgsl',
+    fileType: 'wgsl-buffer', suggestedPath: 'a.wgsl', inputId: 'source', summary: true,
+    onPathChange: vi.fn(), onCreated: vi.fn(), onOpen: vi.fn(), postMessage });
+  expect(view.getByText('No shader file selected')).toBeVisible();
+  expect(view.getByRole('button', { name: 'Open in editor' })).toBeDisabled();
+  await fireEvent.click(view.getByRole('button', { name: 'Create shader…' }));
+  expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'createFile' }));
+  await fireEvent.click(view.getByRole('button', { name: 'Choose file…' }));
+  expect(view.getByRole('dialog')).toBeVisible();
+});
+
+it('keeps the editor accessible when the config has validation errors', async () => {
+  const onOpen = vi.fn();
+  const view = render(ShaderFileControls, { value: 'missing.wgsl', hasError: true, summary: true,
+    shaderPath: '/image.wgsl', language: 'wgsl', fileType: 'wgsl-buffer', suggestedPath: 'a.wgsl',
+    inputId: 'source', onPathChange: vi.fn(), onCreated: vi.fn(), onOpen, postMessage: vi.fn() });
+  await fireEvent.click(view.getByRole('button', { name: 'Open in editor' }));
+  expect(onOpen).toHaveBeenCalledOnce();
+  await fireEvent.click(view.getByRole('button', { name: 'Choose another file…' }));
+  expect(view.getByRole('dialog')).toBeVisible();
+});
+
 it('closes the chooser with Close or Escape without changing the file', async () => {
   const onPathChange = vi.fn();
   const view = render(ShaderFileControls, { value: 'a.wgsl', shaderPath: '/image.wgsl', language: 'wgsl',

@@ -10,11 +10,13 @@
     value: string; shaderPath: string; language: ShaderLanguageId; fileType: FileDialogFileType;
     suggestedPath: string; inputId: string; projectConfig?: ShaderConfig | null; hasError?: boolean;
     passName?: string;
+    summary?: boolean;
+    onOpen?: () => void;
     onPathChange: (path: string) => void; onCreated: (source: CreatedSource) => void;
     postMessage?: (message: ViewerMessage) => void; onMessage?: (handler: (event: MessageEvent) => void) => void;
   }
   let { value, shaderPath, language, fileType, suggestedPath, inputId, projectConfig, hasError = false,
-    onPathChange, onCreated, postMessage, onMessage, passName }: Props = $props();
+    onPathChange, onCreated, postMessage, onMessage, passName, summary = false, onOpen }: Props = $props();
   let open = $state(false);
   const paths = $derived(configSourcePaths(projectConfig, shaderPath, language));
   function accept(source: CreatedSource) {
@@ -27,10 +29,40 @@ open = false;
 }
 }} />
 
+{#if summary}
+<div class="file-summary">
+  <div class="summary-label">Shader file</div>
+  <div class="summary-file">
+    <i class="codicon codicon-file-code" aria-hidden="true"></i>
+    <div class="summary-details">
+      <div>{value ? value.split(/[/\\]/).pop() : 'No shader file selected'}</div>
+      <div class="summary-path">{value || 'Choose an existing shader or create a new one.'}</div>
+    </div>
+  </div>
+  <div class="summary-actions">
+    {#if value}
+      <button class="open-editor-btn" type="button" onclick={onOpen} disabled={!onOpen}>
+        <i class="codicon codicon-go-to-file" aria-hidden="true"></i>Open in editor
+      </button>
+    {/if}
+    <button class:choose-primary={!value} type="button" onclick={() => open = true}>{value ? 'Choose another file…' : 'Choose file…'}</button>
+    {#if !value}
+      <PathInput {value} hidePath={true} allowSelect={false} createLabel="Create shader…"
+        {shaderPath} {suggestedPath} {fileType} {postMessage} {onMessage} {passName}
+        createAuthoringMode={fileType.endsWith('-compute') ? 'native' : getDefaultAuthoringMode()} onCreated={accept} />
+    {/if}
+  </div>
+  {#if !value}
+    <button class="open-editor-btn" type="button" disabled>Open in editor</button>
+    <div class="summary-path">Available once a shader file exists.</div>
+  {/if}
+</div>
+{:else}
 <div class="file-row">
   <PathInput {value} placeholder={suggestedPath} label="File" {inputId} {onPathChange} {hasError} allowSelect={false} allowCreate={false} />
   <button type="button" onclick={() => open = true}>Change…</button>
 </div>
+{/if}
 {#if open}
   <div use:portal class="backdrop" role="presentation">
     <div class="chooser" role="dialog" tabindex="-1" aria-modal="true" aria-label="Choose shader file">
@@ -41,11 +73,26 @@ open = false;
 }}>{path}</button>{/each}</div>
       <PathInput value="" hidePath={true} showSelectWhenHidden={true} {shaderPath} {suggestedPath} {fileType} {postMessage} {onMessage}
         {passName} createAuthoringMode={fileType.endsWith('-compute') ? 'native' : getDefaultAuthoringMode()} selectLabel="Browse workspace…" onCreated={accept} />
+      {#if summary}
+        <PathInput {value} {inputId} label="Shader file path" {hasError} placeholder={suggestedPath}
+          onPathChange={onPathChange} allowCreate={false} allowSelect={false}
+          note="Relative, absolute, or @ for workspace root" />
+      {/if}
     </div>
   </div>
 {/if}
 
 <style>
+  .file-summary { display: flex; flex-direction: column; gap: 8px; }
+  .summary-label { font-size: 14px; font-weight: 500; color: var(--vscode-foreground); }
+  .summary-file { display: flex; align-items: center; gap: 10px; color: var(--vscode-foreground); }
+  .summary-details { min-width: 0; overflow-wrap: anywhere; }
+  .summary-path { font-size: 12px; color: var(--vscode-descriptionForeground); overflow-wrap: anywhere; }
+  .summary-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .open-editor-btn { align-self: flex-start; }
+  .open-editor-btn, .choose-primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border-color: var(--vscode-button-background); }
+  .open-editor-btn:hover:not(:disabled), .choose-primary:hover { background: var(--vscode-button-hoverBackground); }
+  button:disabled { opacity: 0.5; cursor: default; }
   .file-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
   button { box-sizing: border-box; min-height: 33px; padding: 6px 9px; font: 400 13px/1.4 var(--vscode-font-family, "Segoe UI", sans-serif); background: transparent; color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 3px; cursor: pointer; }
   button:hover { background: var(--vscode-list-hoverBackground); }

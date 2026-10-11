@@ -1011,7 +1011,7 @@ describe('ConfigPanel', () => {
       });
       await tick();
 
-      await fireEvent.click(getAllByText('Change…')[0]);
+      await fireEvent.click(getAllByText(/^Choose (?:another )?file…$/)[0]);
       await fireEvent.click(getAllByText('Create')[0]);
 
       expect(mockManager.generateBufferPath).toHaveBeenCalledWith('ComputeA', 'slang');
@@ -1056,7 +1056,7 @@ describe('ConfigPanel', () => {
       });
       await tick();
 
-      await fireEvent.click(getAllByText('Change…')[0]);
+      await fireEvent.click(getAllByText(/^Choose (?:another )?file…$/)[0]);
       await fireEvent.click(getAllByText('Create')[0]);
 
       expect(mockManager.generateBufferPath).toHaveBeenCalledWith('BufferA', 'slang');

@@ -698,6 +698,17 @@ return;
     }
   }
 
+  function openBufferInEditor() {
+    if (!currentPath) {
+      return;
+    }
+    if (getEditorOverlayVisible()) {
+      setOverlayActiveFile(bufferName);
+    } else {
+      onOpenInNewTab(bufferName, 'active');
+    }
+  }
+
   function commitCompute(next: ComputePass): Record<string, string> {
     if (onComputeCommit) {
       return onComputeCommit(next);
@@ -756,7 +767,8 @@ return;
         <BufferSourceControls value={currentPath} onPathChange={handlePathChange} hasError={!validation.isValid}
           {suggestedPath} {bufferName} {language} {fileType} {shaderPath} {projectConfig} {postMessage} {onMessage}
           sourcePath={nativeInsertionPath} builtInSourcePath={ownedSourcePath} {passType} {hasNativeTemplate}
-          outputCount={Math.max(1, renderOutputs.length)} {passSource} onCreated={applyCreatedSource} />
+          outputCount={Math.max(1, renderOutputs.length)} {passSource} onCreated={applyCreatedSource}
+          onOpen={openBufferInEditor} />
 
         {#if passType === 'compute'}
           <ComputePassControls
