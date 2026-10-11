@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ save: vi.fn(), write: vi.fn(), info: vi.fn(), error: vi.fn() }));
-vi.mock('vscode', () => ({ window: { showSaveDialog: mocks.save }, Uri: { file: (fsPath: string) => ({ fsPath }) } }));
+const mocks = vi.hoisted(() => ({ save: vi.fn(), open: vi.fn(), write: vi.fn(), info: vi.fn(), error: vi.fn() }));
+vi.mock('vscode', () => ({ window: { showSaveDialog: mocks.save, showOpenDialog: mocks.open }, workspace: { workspaceFolders: [{ uri: { fsPath: '/workspace' } }] }, Uri: { file: (fsPath: string) => ({ fsPath }) } }));
 vi.mock('fs', () => ({ writeFileSync: mocks.write }));
 import { FileDialogHandler } from '../../app/handlers/FileDialogHandler.js';
 import type { Logger } from '../../app/services/Logger.js';
@@ -28,6 +28,16 @@ describe('extension capture save acknowledgement', () => {
     await handler().handleSaveFile(payload, respond);
     expect(mocks.write).not.toHaveBeenCalled();
     expect(respond).toHaveBeenCalledExactlyOnceWith({ type: 'saveFileResult', payload: { success: false, cancelled: true, error: 'Cancelled', requestId: 'save-42' } });
+  });
+  it('offers KTX2 files when selecting a volume input', async () => {
+    mocks.open.mockResolvedValue([{ fsPath: '/workspace/assets/density.ktx2' }]);
+    const respond = vi.fn();
+    await handler().handleSelectFile({ shaderPath: '/workspace/shader.glsl', fileType: 'volume', requestId: 'volume-1' }, respond);
+    expect(mocks.open).toHaveBeenCalledWith(expect.objectContaining({
+      filters: { 'Volume files': ['ktx2'] },
+      defaultUri: { fsPath: '/workspace' },
+    }));
+    expect(respond).toHaveBeenCalledWith({ type: 'fileSelected', payload: { path: './assets/density.ktx2', requestId: 'volume-1' } });
   });
   it.each(['dialog', 'write'])('acknowledges a %s failure with the original request ID', async failure => {
     mocks.save.mockResolvedValue({ fsPath: '/saved/capture.png' });
