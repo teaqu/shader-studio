@@ -62,7 +62,6 @@ suite('WebSocketTransport Test Suite', () => {
       readyState: WebSocket.OPEN,
       once: sandbox.stub().returnsThis(),
       on: sandbox.stub(),
-      once: sandbox.stub(),
       send: sandbox.stub(),
       close: sandbox.stub(),
       ping: sandbox.stub(),
