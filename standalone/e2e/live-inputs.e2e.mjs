@@ -5,12 +5,14 @@ import { workspace } from './language-service-fixtures.mjs';
 async function expectGreen(page) {
   const canvas = page.getByTestId('web-preview').locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
   await expect(canvas).toBeVisible();
+  // Cold Slang/WebGPU compilation can outlast Playwright's five-second assertion
+  // default. Keep the exact GPU pixel check while allowing its first frame to arrive.
   await expect.poll(async () => {
     const url = await canvas.evaluate(element => element.toDataURL());
     const { data, width, height } = PNG.sync.read(Buffer.from(url.split(',')[1], 'base64'));
     const offset = (Math.floor(height / 2) * width + Math.floor(width / 2)) * 4;
     return [...data.subarray(offset, offset + 3)];
-  }).toEqual([0, 255, 0]);
+  }, { timeout: 20_000 }).toEqual([0, 255, 0]);
 }
 
 async function expectLivePreview(scope, label) {
