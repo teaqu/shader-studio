@@ -111,3 +111,21 @@ describe('compute cubemap output', () => {
     expect(getByRole('option', { name: 'Cubemap' })).toBeDisabled();
   });
 });
+
+describe('cubemap validation and conversion', () => {
+  it('rejects invalid face sizes and clears errors on correction', async () => {
+    const view = renderControls({ type: 'compute', path: 'cube.slang', outputKind: 'cubemap' });
+    const face = view.getByLabelText('Cubemap face size');
+    await fireEvent.input(face, { target: { value: '0' } });
+    expect(view.getByRole('alert')).toHaveTextContent('positive integer');
+    expect(view.onCommit).not.toHaveBeenCalled();
+    await fireEvent.input(face, { target: { value: '16' } });
+    expect(view.queryByRole('alert')).toBeNull();
+    expect(view.onCommit).toHaveBeenLastCalledWith(expect.objectContaining({ faceSize: 16 }));
+    await fireEvent.change(view.getByLabelText('Output kind'), { target: { value: '2d' } });
+    expect(view.onCommit).toHaveBeenLastCalledWith(expect.objectContaining({ outputKind: undefined, faceSize: undefined }));
+    await view.rerender({ pass: { type: 'compute', path: 'cube.slang' }, storageNames: [], channelNames: [], onCommit: view.onCommit });
+    await fireEvent.input(view.getByLabelText('Output layers'), { target: { value: '3' } });
+    expect(view.onCommit).toHaveBeenLastCalledWith(expect.objectContaining({ outputLayers: 3 }));
+  });
+});

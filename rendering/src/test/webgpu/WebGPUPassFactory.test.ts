@@ -74,6 +74,17 @@ describe("WebGPUPassFactory reconciliation boundaries", () => {
     expect(session.passPipelines.get("Image")).toBe(pipeline);
   });
 
+  it.each([undefined, 64])('keeps cube faces square during resize (face size %s)', faceSize => {
+    const { factory, graph } = harness();
+    const pass = graph.passes[0];
+    pass.output = "buffer";
+    pass.outputKind = "cubemap";
+    factory.updatePassGraphResolutions(graph.passes, { version: "1", passes: {
+      Image: { outputKind: "cubemap", ...(faceSize === undefined ? {} : { faceSize }) },
+    } });
+    expect(pass).toMatchObject({ width: faceSize ?? 512, height: faceSize ?? 512 });
+  });
+
   it("resizes compute graph dimensions even before the compute pipeline is installed", () => {
     const { factory, graph, session } = harness();
     graph.passes[0].kind = "compute";
