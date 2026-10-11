@@ -686,7 +686,7 @@
             "path": {
               "type": "string",
               "minLength": 1,
-              "description": "Path to Shadertoy BIN volume (8-bit R or RGBA)"
+              "description": "Path to an uncompressed KTX2 3D volume (linear R8 or RGBA8)"
             },
             "filter": {
               "enum": [
