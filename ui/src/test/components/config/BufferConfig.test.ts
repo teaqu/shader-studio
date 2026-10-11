@@ -37,6 +37,29 @@ async function fileAction(container: HTMLElement, kind: 'create' | 'select') {
 }
 
 describe('BufferConfig', () => {
+  it.each([false, true])('opens a buffer with overlay visible=%s', async overlay => {
+    setEditorOverlayVisible(overlay);
+    setOverlayActiveFile('Image');
+    const onOpenInNewTab = vi.fn();
+    const view = render(BufferConfig, { bufferName: 'BufferA', config: { path: 'a.glsl' },
+      onUpdate: vi.fn(), getWebviewUri: () => undefined, onOpenInNewTab });
+    await fireEvent.click(view.getByRole('button', { name: 'Open in editor' }));
+    if (overlay) {
+      expect(getOverlayActiveFile()).toBe('BufferA');
+      expect(onOpenInNewTab).not.toHaveBeenCalled();
+    } else {
+      expect(onOpenInNewTab).toHaveBeenCalledExactlyOnceWith('BufferA', 'active');
+    }
+    setEditorOverlayVisible(false);
+    setOverlayActiveFile('Image');
+  });
+
+  it('disables opening a buffer without a shader file', () => {
+    const view = render(BufferConfig, { bufferName: 'BufferA', config: { path: '' },
+      onUpdate: vi.fn(), getWebviewUri: () => undefined });
+    expect(view.getByRole('button', { name: 'Open in editor' })).toBeDisabled();
+  });
+
   it('offers file creation without insertion on a new WGSL buffer', async () => {
     const view = render(BufferConfig, { bufferName: 'BufferA', language: 'wgsl', shaderPath: '/shaders/image.wgsl',
       config: { path: '' }, onUpdate: vi.fn(), getWebviewUri: () => undefined, postMessage: vi.fn() });

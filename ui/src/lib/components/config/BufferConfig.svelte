@@ -699,9 +699,6 @@ return;
   }
 
   function openBufferInEditor() {
-    if (!currentPath) {
-      return;
-    }
     if (getEditorOverlayVisible()) {
       setOverlayActiveFile(bufferName);
     } else {

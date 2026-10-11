@@ -61,7 +61,7 @@ test('WGSL native Insert appends one buffer and one compute entry point, then pe
   await page.getByRole('menuitem', { name: 'Buffer' }).click();
   const buffer = page.locator('.tab-content').filter({ has: page.getByLabel('Render entry points') });
   await expect(buffer.getByRole('button', { name: 'Built-in', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await buffer.getByRole('button', { name: 'Change…' }).click();
+  await buffer.getByRole('button', { name: /^Choose (?:another )?file…$/ }).click();
   await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: `/shaders/${stem}.wgsl`, exact: true }).click();
   await buffer.getByRole('group', { name: 'Fragment function controls' }).getByRole('button', { name: 'Add function…' }).click();
   await expect(buffer.getByRole('button', { name: 'Built-in', exact: true })).toHaveAttribute('aria-pressed', 'true');
@@ -69,7 +69,7 @@ test('WGSL native Insert appends one buffer and one compute entry point, then pe
 
   await page.getByRole('button', { name: '+ New' }).click();
   await page.getByRole('menuitem', { name: 'Compute' }).click();
-  await page.getByRole('button', { name: 'Change…' }).click();
+  await page.getByRole('button', { name: /^Choose (?:another )?file…$/ }).click();
   await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: `/shaders/${stem}.wgsl`, exact: true }).click();
   await expect(page.getByRole('combobox', { name: 'Insert mode' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Add function…', exact: true }).click();
@@ -287,7 +287,7 @@ test('new native Slang Image compiles, then inserts Buffer and Compute into the 
   await page.getByRole('button', { name: '+ New' }).click();
   await page.getByRole('menuitem', { name: 'Buffer' }).click();
   await expect(page.getByRole('button', { name: 'Built-in', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('button', { name: 'Change…' }).click();
+  await page.getByRole('button', { name: /^Choose (?:another )?file…$/ }).click();
   await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: '/shaders/native-slang-created.slang', exact: true }).click();
   await page.getByRole('group', { name: 'Fragment function controls' }).getByRole('button', { name: 'Add function…' }).click();
   await expect(page.getByRole('button', { name: 'Built-in', exact: true })).toHaveAttribute('aria-pressed', 'true');
@@ -295,7 +295,7 @@ test('new native Slang Image compiles, then inserts Buffer and Compute into the 
 
   await page.getByRole('button', { name: '+ New' }).click();
   await page.getByRole('menuitem', { name: 'Compute' }).click();
-  await page.getByRole('button', { name: 'Change…' }).click();
+  await page.getByRole('button', { name: /^Choose (?:another )?file…$/ }).click();
   await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: '/shaders/native-slang-created.slang', exact: true }).click();
   await page.getByRole('button', { name: 'Add function…', exact: true }).click();
 
@@ -352,7 +352,7 @@ test('native Compute Add reuses a Buffer source selected from the config and per
 
   await page.getByRole('button', { name: '+ New' }).click();
   await page.getByRole('menuitem', { name: 'Compute' }).click();
-  await page.getByRole('button', { name: 'Change…' }).click();
+  await page.getByRole('button', { name: /^Choose (?:another )?file…$/ }).click();
   await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: `${stem}/buffer.wgsl`, exact: true }).click();
   await page.getByRole('button', { name: 'Add function…', exact: true }).click();
 
