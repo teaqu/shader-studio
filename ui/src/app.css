@@ -42,6 +42,12 @@ body.vscode-high-contrast {
 
 :root[data-theme="light"] {
   color-scheme: light;
+  --vscode-menu-background: #ffffff;
+  --vscode-menu-foreground: #1f1f1f;
+  --vscode-menu-border: #cecece;
+  --vscode-menu-selectionBackground: #005fb8;
+  --vscode-menu-selectionForeground: #ffffff;
+  --vscode-widget-shadow: rgba(0, 0, 0, 0.16);
   --vscode-foreground: #1f1f1f;
   --vscode-descriptionForeground: #616161;
   --vscode-editor-background: #ffffff;
@@ -96,6 +102,12 @@ body.vscode-high-contrast {
 
 :root[data-theme="dark"] {
   color-scheme: dark;
+  --vscode-menu-background: #252526;
+  --vscode-menu-foreground: #cccccc;
+  --vscode-menu-border: #454545;
+  --vscode-menu-selectionBackground: #04395e;
+  --vscode-menu-selectionForeground: #ffffff;
+  --vscode-widget-shadow: rgba(0, 0, 0, 0.36);
   --vscode-foreground: #cccccc;
   --vscode-descriptionForeground: #ccccccb3;
   --vscode-editor-background: #1e1e1e;
