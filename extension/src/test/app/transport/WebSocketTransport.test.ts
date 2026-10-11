@@ -62,6 +62,7 @@ suite('WebSocketTransport Test Suite', () => {
       readyState: WebSocket.OPEN,
       once: sandbox.stub().returnsThis(),
       on: sandbox.stub(),
+      once: sandbox.stub(),
       send: sandbox.stub(),
       close: sandbox.stub(),
       ping: sandbox.stub(),
@@ -217,6 +218,10 @@ suite('WebSocketTransport Test Suite', () => {
     transport.onMessage(message => received.push(message));
 
     (transport as any).wsServer.emit('connection', mockWsClient);
+    assert.ok(
+      (mockWsClient.once as sinon.SinonStub).getCalls().some(call => call.args[0] === 'close'),
+      'connection never registered its preview cleanup handler',
+    );
     const messageHandler = (mockWsClient.on as sinon.SinonStub)
       .getCalls().find(call => call.args[0] === 'message')?.args[1];
     assert.ok(messageHandler, 'connection never registered a message handler');
