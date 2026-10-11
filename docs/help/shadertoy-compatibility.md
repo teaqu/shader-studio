@@ -68,3 +68,9 @@ These uniforms are provided by Shader Studio but are not part of the Shadertoy A
 | Webcam input | Live camera feed |
 | Microphone input | Real-time audio from microphone |
 | VR/AR | Immersive rendering modes |
+
+### Volume inputs
+
+File-backed KTX2 3D volumes are supported as native `sampler3D` inputs
+in GLSL and `Texture3D<float4>` inputs in Slang and `texture_3d<f32>` inputs in WGSL. See [volume inputs](volume-inputs.md)
+for formats, axis orientation, limitations, and examples.

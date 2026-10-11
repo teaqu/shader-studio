@@ -675,6 +675,37 @@
         },
         {
           "type": "object",
+          "required": [
+            "type",
+            "path"
+          ],
+          "properties": {
+            "type": {
+              "const": "volume"
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Path to Shadertoy BIN volume (8-bit R or RGBA)"
+            },
+            "filter": {
+              "enum": [
+                "linear",
+                "nearest"
+              ]
+            },
+            "wrap": {
+              "enum": [
+                "repeat",
+                "clamp"
+              ],
+              "description": "Wrapping on X, Y and Z"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
           "required": ["type", "path"],
           "properties": {
             "type": {

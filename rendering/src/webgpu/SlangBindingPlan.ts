@@ -23,7 +23,7 @@ export function getSlangTextureIdentity(channel: RenderPassChannel): string {
   }
   return JSON.stringify([
     channel.kind, channel.path, getSlangSamplerSettings(channel).filter === "mipmap",
-    channel.vflip ?? (channel.kind !== "cubemap"),
+    channel.kind === "volume" ? false : channel.vflip ?? (channel.kind !== "cubemap"),
     channel.kind === "texture" ? channel.grayscale ?? false : false,
   ]);
 }
@@ -37,6 +37,9 @@ export function getSlangSamplerSettings(channel: RenderPassChannel): { filter: "
   }
   if (channel.kind === "keyboard") {
     return { filter: "nearest", wrap: "clamp" };
+  }
+  if (channel.kind === "volume") {
+    return { filter: channel.filter ?? "linear", wrap: channel.wrap ?? "repeat" };
   }
   if (channel.kind === "video") {
     return { filter: channel.filter ?? "linear", wrap: channel.wrap ?? "clamp" };
@@ -61,7 +64,7 @@ export function buildSlangBindingPlan(channels: readonly SlangBindingChannel[]) 
   const textureBindings = new Map<string, number>();
   const samplerBindings = new Map<string, number>();
   const bindings = [...channels].sort((a, b) => a.slot - b.slot).map(channel => {
-    const textureKey = JSON.stringify([channel.kind === "cubemap" ? "cube" : "2d", channel.sampleType ?? "float", channel.textureIdentity ?? { slot: channel.slot }]);
+    const textureKey = JSON.stringify([channel.kind === "cubemap" ? "cube" : channel.kind === "volume" ? "3d" : "2d", channel.sampleType ?? "float", channel.textureIdentity ?? { slot: channel.slot }]);
     const samplerKey = JSON.stringify([channel.samplerType ?? "filtering", channel.samplerIdentity ?? `slot:${channel.slot}`]);
     let textureBinding = textureBindings.get(textureKey);
     if (textureBinding === undefined) {

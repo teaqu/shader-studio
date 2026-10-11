@@ -587,6 +587,12 @@ export class WebGPUShaderSession {
           if (result.warning) {
             warnings.push(result.warning);
           }
+        } else if (channel.kind === "volume") {
+          const result = await this.host.candidates.trackCandidateResourceLoad(pipelineCandidates, () =>
+            compileResourceManager.loadVolumeTexture(channel.path, channel), compileResourceManager);
+          if (result.warning) {
+            warnings.push(result.warning);
+          }
         } else if (channel.kind === "cubemap") {
           await this.host.candidates.trackCandidateResourceLoad(pipelineCandidates, () =>
             compileResourceManager.loadCubemapTexture(channel.path, {

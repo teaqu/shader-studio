@@ -32,6 +32,13 @@ describe("resolveTextureBindings", () => {
     passBuffers = { Trails: { front: { mTex0: { id: "trails" } }, back: { mTex0: { id: "trails-back" } } } };
   });
 
+  it.each([true, false])("binds a volume with its resolved path and sampler settings without a 2D fallback (%s)", present => {
+    const volume = present ? { id: "volume" } : null;
+    resourceManager.getVolumeTexture = vi.fn(() => volume);
+    const input = { type: "volume", path: "local.ktx2", resolved_path: "webview://local.ktx2", filter: "nearest", wrap: "clamp" };
+    expect(resolve({ density: input })[0]).toBe(volume);
+    expect(resourceManager.getVolumeTexture).toHaveBeenCalledWith("webview://local.ktx2", input);
+  });
   const resolve = (inputs: any, keyboardState: typeof keyboard | null = keyboard) =>
     resolveTextureBindings({
       inputs,

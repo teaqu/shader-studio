@@ -55,7 +55,7 @@ export interface CaptureCompileContext {
     samplerIdentity?: string;
     slot: number;
     key: string;
-    kind?: "texture" | "video" | "cubemap" | "audio" | "buffer" | "keyboard";
+    kind?: "texture" | "video" | "cubemap" | "volume" | "audio" | "buffer" | "keyboard";
   }>;
   /** Frozen channel views for a capture batch; implementations release copies after GPU work completes. */
   captureChannelSnapshot?: () => {

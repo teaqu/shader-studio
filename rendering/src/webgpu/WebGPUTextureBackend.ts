@@ -1,3 +1,4 @@
+import { volumeRgba, type VolumeTextureData } from "@shader-studio/types";
 /// <reference types="@webgpu/types" />
 import { getWebGPUSampler } from "./WebGPUSamplerCache";
 import type {
@@ -15,6 +16,7 @@ export interface WebGPUTextureHandle {
   sampler: GPUSampler;
   width: number;
   height: number;
+  depth?: number;
   /** Format the texture was created with; drives r8 expansion on updateTexture. */
   format: TextureFormat;
   /** Filter determines whether a resized live video needs a mip chain. */
@@ -68,6 +70,33 @@ export class WebGPUTextureBackend implements TextureBackend<WebGPUTextureHandle>
   private mipSampler: GPUSampler | null = null;
 
   constructor(private readonly device: GPUDevice) {}
+
+  createVolumeTexture(volume: VolumeTextureData, filter: "linear" | "nearest", wrap: TextureWrap): WebGPUTextureHandle {
+    const limit = this.device.limits.maxTextureDimension3D;
+    if ([volume.width, volume.height, volume.depth].some(size => size > limit)) {
+      throw new Error(`Volume exceeds maxTextureDimension3D (${limit})`);
+    }
+    const texture = this.device.createTexture({
+      size: { width: volume.width, height: volume.height, depthOrArrayLayers: volume.depth },
+      dimension: "3d", format: "rgba8unorm",
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+    });
+    try {
+      this.device.queue.writeTexture({ texture }, volumeRgba(volume),
+        { bytesPerRow: volume.width * 4, rowsPerImage: volume.height },
+        { width: volume.width, height: volume.height, depthOrArrayLayers: volume.depth });
+      return { texture, view: texture.createView({ dimension: "3d" }),
+        sampler: this.device.createSampler({ minFilter: filter, magFilter: filter,
+          addressModeU: wrap === "clamp" ? "clamp-to-edge" : "repeat",
+          addressModeV: wrap === "clamp" ? "clamp-to-edge" : "repeat",
+          addressModeW: wrap === "clamp" ? "clamp-to-edge" : "repeat" }),
+        width: volume.width, height: volume.height, depth: volume.depth,
+        format: "rgba8", filter, vflip: false };
+    } catch (error) {
+      texture.destroy?.();
+      throw error;
+    }
+  }
 
   createTexture(desc: CreateTextureDesc): WebGPUTextureHandle | null {
     if (desc.type === "cubemap") {

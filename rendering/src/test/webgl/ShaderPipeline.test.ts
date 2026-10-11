@@ -24,6 +24,7 @@ const createMockResourceManager = () => ({
   cleanupAllExceptMedia: vi.fn(),
   loadImageTexture: vi.fn(),
   loadVideoTexture: vi.fn().mockResolvedValue({ texture: null, warning: undefined }),
+  loadVolumeTexture: vi.fn().mockResolvedValue({ texture: null }),
   loadCubemapTexture: vi.fn().mockResolvedValue(null),
   loadAudioSource: vi.fn().mockResolvedValue({}),
   updateAudioLoopRegion: vi.fn(),
@@ -540,6 +541,16 @@ describe("ShaderPipeline", () => {
       await shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {});
       expect(mockResourceManager.cleanup).not.toHaveBeenCalled();
       expect(mockBufferManager.dispose).not.toHaveBeenCalled();
+    });
+
+    it("loads volume inputs with resolved paths, declares sampler3D, and forwards load warnings", async () => {
+      const source = "void mainImage(out vec4 c, in vec2 p) { c = texture(density, vec3(p, 0.5)); }";
+      const config = { version: "1", passes: { Image: { inputs: { density: { type: "volume", path: "local.bin", resolved_path: "webview://volume.bin", filter: "nearest", wrap: "clamp" } } } } } as const;
+      mockResourceManager.loadVolumeTexture.mockResolvedValueOnce({ texture: null, warning: "Volume loading failed" });
+      const result = await shaderPipeline.compileShaderPipeline(source, config, "volume.glsl", {});
+      expect(mockResourceManager.loadVolumeTexture).toHaveBeenCalledWith("webview://volume.bin", config.passes.Image.inputs.density);
+      expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledWith(source, expect.objectContaining({ slotAssignments: [{ slot: 0, key: "density", isCustomName: true }], channelTypes: ["3D", "2D", "2D", "2D"] }));
+      expect(result?.warnings).toContain("Volume loading failed");
     });
 
     it("should compile and load cubemap inputs as Cube channels", async () => {

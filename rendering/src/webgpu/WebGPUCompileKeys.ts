@@ -93,7 +93,7 @@ export function pipelineCacheKey(
 export function hasFileResources(passes: RenderPassNode[]): boolean {
   return passes.some((pass) => pass.channels.some((channel) =>
     channel.kind === "texture" || channel.kind === "video" ||
-      channel.kind === "cubemap" || channel.kind === "audio"));
+      channel.kind === "cubemap" || channel.kind === "volume" || channel.kind === "audio"));
 }
 
 export function resourceLayoutKey(passes: RenderPassNode[]): string {
@@ -121,6 +121,9 @@ export function resourceLayoutKey(passes: RenderPassNode[]): string {
         channel.vflip,
         channel.muted,
       ]];
+    }
+    if (channel.kind === "volume") {
+      return [[pass.name, channel.slot, channel.kind, channel.path, channel.filter, channel.wrap]];
     }
     if (channel.kind === "cubemap") {
       return [[

@@ -315,7 +315,8 @@ export type FileDialogFileType =
   | 'texture'
   | 'video'
   | 'audio'
-  | 'cubemap';
+  | 'cubemap'
+  | 'volume';
 
 export interface SelectFileMessage extends BaseMessage {
   type: 'selectFile';

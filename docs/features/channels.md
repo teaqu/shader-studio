@@ -2,7 +2,7 @@
 
 ![Channels](../assets/images/channels.png)
 
-Channels let a pass read images, video, audio, buffers, cubemaps, keyboard state, webcam frames, or microphone data.
+Channels let a pass read images, video, audio, buffers, cubemaps, volumes, keyboard state, webcam frames, or microphone data.
 Each pass has its own configured names. A channel named `albedo` exposes
 `albedo.size`, `albedo.time`, and `albedo.loaded` in GLSL, Slang, and WGSL.
 
@@ -19,7 +19,7 @@ is fragment-only. See [Vertex Shaders](vertex-shaders.md) for each hook signatur
 
 Channels are useful in a few different ways:
 
-- Add source media, such as images, videos, audio files, and cubemaps.
+- Add source media, such as images, videos, audio files, cubemaps, and volumes.
 - Connect passes together by reading the output of a buffer.
 - Build feedback effects by letting a buffer read its own previous frame.
 - Make shaders interactive by sampling keyboard state.
@@ -30,7 +30,7 @@ Channels are useful in a few different ways:
 Open the pass you want to configure, then use its **Channels** section:
 
 1. Click **+ Add Channel** to add an input, or use the configure button on an existing channel row.
-2. Choose what the channel should read: texture, video, audio, cubemap, buffer, or keyboard.
+2. Choose what the channel should read: texture, video, audio, cubemap, volume, buffer, or keyboard.
 3. Set the file, source pass, or options for that input.
 4. Sample it with the matching channel name using the examples below.
 
@@ -161,7 +161,7 @@ Metadata updates with the current frame. Pausing or reaching the end of a video
 keeps its last frame available. A video reports loaded once its first frame is
 ready to sample. A configured but unavailable input
 reports unloaded; a name absent from the configuration is a compile error.
-Channels support 2D and cubemap inputs; volume/3D assets are not configurable.
+Channels support 2D textures, cubemaps, and 3D volume inputs. The Volumes tab loads uncompressed R8 or RGBA8 KTX2 files, with filtering and wrapping controls and an interactive 3D preview. See [Volume inputs](../help/volume-inputs.md) for supported formats and GLSL, Slang, and WGSL examples.
 
 ## Choosing a Channel Type
 

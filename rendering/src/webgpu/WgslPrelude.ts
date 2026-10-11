@@ -277,23 +277,25 @@ interface WgslChannelAccessors {
   textureVar: string;
   samplerVar: string;
   cube: boolean;
+  volume: boolean;
 }
 
 function channelAccessors(channel: WgslChannelAccessors, fragmentStage: boolean): string {
-  const { key, textureVar, samplerVar, cube } = channel;
-  const coordType = cube ? "vec3<f32>" : "vec2<f32>";
+  const { key, textureVar, samplerVar, cube, volume } = channel;
+  const coordType = cube || volume ? "vec3<f32>" : "vec2<f32>";
   const coordName = cube ? "dir" : "uv";
   // Mirror describeSlangChannel: 2D sampling flips Y for the ShaderToy
   // bottom-left origin (and negates gradients); cubemaps sample unflipped.
-  const sampleCoord = cube ? coordName : `vec2<f32>(${coordName}.x, 1.0 - ${coordName}.y)`;
-  const grad = (name: string) => cube ? name : `vec2<f32>(${name}.x, -${name}.y)`;
-  const methods = describeSlangChannel(cube ? 'texture-cube' : 'texture-2d').methods;
+  const sampleCoord = cube || volume ? coordName : `vec2<f32>(${coordName}.x, 1.0 - ${coordName}.y)`;
+  const grad = (name: string) => cube || volume ? name : `vec2<f32>(${name}.x, -${name}.y)`;
+  const methods = describeSlangChannel(cube ? 'texture-cube' : volume ? 'texture-3d' : 'texture-2d').methods;
   const implicit = methods.find(method => method.name === 'Sample');
   const sample = implicit && (fragmentStage || !implicit.requiresFragment)
     ? `fn ${key}Sample(${coordName}: ${coordType}) -> vec4<f32> {
   return textureSample(${textureVar}, ${samplerVar}, ${sampleCoord});
 }` : '';
-  const load = cube ? '' : `
+  const load = volume ? `
+fn ${key}Load(pixel: vec3i) -> vec4f { return textureLoad(${textureVar}, pixel, 0); }` : cube ? '' : `
 fn ${key}Load(pixel: vec2i) -> vec4f {
   return load2D(${textureVar}, pixel);
 }`;
@@ -304,7 +306,7 @@ fn ${key}SampleLevel(${coordName}: ${coordType}, lod: f32) -> vec4<f32> {
 fn ${key}SampleGrad(${coordName}: ${coordType}, dx: ${coordType}, dy: ${coordType}) -> vec4<f32> {
   return textureSampleGrad(${textureVar}, ${samplerVar}, ${sampleCoord}, ${grad("dx")}, ${grad("dy")});
 }
-fn ${key}Size() -> vec2<u32> { return ${key}.size; }
+fn ${key}Size() -> ${volume ? "vec3<u32>" : "vec2<u32>"} { return ${key}.size; }
 fn ${key}Time() -> f32 { return ${key}.time; }
 fn ${key}Loaded() -> bool { return ${key}.loaded; }`;
 }
@@ -374,19 +376,20 @@ function buildChannelPrelude(channels: SlangChannelBinding[] = [], fragmentStage
   const sorted = [...plan.channels].sort((a, b) => a.slot - b.slot);
   const lines: string[] = [
     'struct _ss_ChannelMetadata { size: vec2<u32>, time: f32, loaded: bool }',
-    buildChannelSamplingFunctions(sorted.map(channel => channel.kind === 'cubemap' ? 'texture-cube' : 'texture-2d'), 'wgsl', fragmentStage),
+    ...(sorted.some(channel => channel.kind === 'volume') ? ['struct _ss_VolumeMetadata { size: vec3<u32>, time: f32, loaded: bool }'] : []),
+    buildChannelSamplingFunctions(sorted.map(channel => channel.kind === 'cubemap' ? 'texture-cube' : channel.kind === 'volume' ? 'texture-3d' : 'texture-2d'), 'wgsl', fragmentStage),
   ];
   for (const texture of plan.textures) {
     const textureVar = textureVarByBinding.get(texture.binding)!;
-    lines.push(`@group(0) @binding(${texture.binding}) var ${textureVar}: ${texture.kind === 'cubemap' ? 'texture_cube<f32>' : 'texture_2d<f32>'};`);
+    lines.push(`@group(0) @binding(${texture.binding}) var ${textureVar}: ${texture.kind === 'cubemap' ? 'texture_cube<f32>' : texture.kind === 'volume' ? 'texture_3d<f32>' : 'texture_2d<f32>'};`);
   }
   for (const sampler of plan.samplers) {
     lines.push(`@group(0) @binding(${sampler.binding}) var ${samplerVarByBinding.get(sampler.binding)!}: sampler;`);
   }
   const init: string[] = [];
   for (const channel of sorted) {
-    lines.push(`var<private> ${channel.key}: _ss_ChannelMetadata;`);
-    init.push(`  ${channel.key}.size = vec2<u32>(_ss_u.channelResolution[${channel.slot}].xy);`,
+    lines.push(`var<private> ${channel.key}: ${channel.kind === "volume" ? "_ss_VolumeMetadata" : "_ss_ChannelMetadata"};`);
+    init.push(`  ${channel.key}.size = ${channel.kind === "volume" ? "vec3<u32>" : "vec2<u32>"}(_ss_u.channelResolution[${channel.slot}].${channel.kind === "volume" ? "xyz" : "xy"});`,
       `  ${channel.key}.time = _ss_u.channelTime[${channel.slot}].x;`,
       `  ${channel.key}.loaded = _ss_u.channelLoaded[${channel.slot}].x != 0.0;`);
     lines.push(channelAccessors({
@@ -394,6 +397,7 @@ function buildChannelPrelude(channels: SlangChannelBinding[] = [], fragmentStage
       textureVar: textureVarByBinding.get(channel.textureBinding)!,
       samplerVar: samplerVarByBinding.get(channel.samplerBinding)!,
       cube: channel.kind === 'cubemap',
+      volume: channel.kind === 'volume',
     }, fragmentStage));
   }
   lines.push(`fn _ss_initChannels() {\n${init.join('\n')}\n}`);

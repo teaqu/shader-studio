@@ -1052,6 +1052,16 @@ function resolveChannels(options: {
       continue;
     }
 
+    if (input.type === "volume") {
+      const path = input.resolved_path || input.path;
+      if (!path || (input.filter !== undefined && !["linear", "nearest"].includes(input.filter))
+        || (input.wrap !== undefined && !["repeat", "clamp"].includes(input.wrap))) {
+        options.errors.push(`${options.passName}: ${key} volume requires a path, linear/nearest filtering, and repeat/clamp wrapping`);
+        continue;
+      }
+      channels.push({ kind: "volume", slot, key, path, filter: input.filter, wrap: input.wrap });
+      continue;
+    }
     if (input.type === "cubemap") {
       const path = input.resolved_path || input.path;
       if (!path) {

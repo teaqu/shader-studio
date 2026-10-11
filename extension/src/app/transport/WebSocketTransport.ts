@@ -224,7 +224,7 @@ export class WebSocketTransport implements MessageTransport {
 
       for (const key of Object.keys(pass.inputs)) {
         const input = pass.inputs[key];
-        if (input.type !== 'texture' && input.type !== 'video' && input.type !== 'audio' && input.type !== 'cubemap') {
+        if (input.type !== 'texture' && input.type !== 'video' && input.type !== 'audio' && input.type !== 'cubemap' && input.type !== 'volume') {
           continue;
         }
         if (!input.path) {

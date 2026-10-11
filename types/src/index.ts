@@ -35,3 +35,5 @@ export * from "./ShaderInsertion";
 export { createNativeFragmentSource } from './ShaderSourceTemplates';
 
 export { shaderStarterTemplate } from './ShaderStarterTemplates';
+
+export * from "./VolumeTexture";

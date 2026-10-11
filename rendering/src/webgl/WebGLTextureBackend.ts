@@ -1,3 +1,4 @@
+import { volumeRgba, type VolumeTextureData } from "@shader-studio/types";
 import type { PiRenderer, PiTexture } from "../types/piRenderer";
 import type {
   CreateTextureDesc,
@@ -10,7 +11,52 @@ import type {
 } from "../resources/TextureBackend";
 
 export class WebGLTextureBackend implements TextureBackend<PiTexture> {
-  constructor(private readonly renderer: PiRenderer) {}
+  constructor(private readonly renderer: PiRenderer, private readonly gl?: WebGL2RenderingContext) {}
+
+  createVolumeTexture(volume: VolumeTextureData, filter: "linear" | "nearest", wrap: TextureWrap): PiTexture | null {
+    const gl = this.gl;
+    if (!gl) {
+      throw new Error("Volume textures require a WebGL 2 context");
+    }
+    const limit = gl.getParameter(gl.MAX_3D_TEXTURE_SIZE) as number;
+    if ([volume.width, volume.height, volume.depth].some(size => size > limit)) {
+      throw new Error(`Volume exceeds MAX_3D_TEXTURE_SIZE (${limit})`);
+    }
+    const texture = gl.createTexture();
+    if (!texture) {
+      return null;
+    }
+    const previous = gl.getParameter(gl.TEXTURE_BINDING_3D) as WebGLTexture | null;
+    const alignment = gl.getParameter(gl.UNPACK_ALIGNMENT) as number;
+    const flip = gl.getParameter(gl.UNPACK_FLIP_Y_WEBGL) as boolean;
+    try {
+      gl.bindTexture(gl.TEXTURE_3D, texture);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
+      gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, volume.width, volume.height, volume.depth, 0, gl.RGBA, gl.UNSIGNED_BYTE, volumeRgba(volume));
+      const address = wrap === "clamp" ? gl.CLAMP_TO_EDGE : gl.REPEAT;
+      for (const axis of [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T, gl.TEXTURE_WRAP_R]) {
+        gl.texParameteri(gl.TEXTURE_3D, axis, address);
+      }
+      const mode = filter === "nearest" ? gl.NEAREST : gl.LINEAR;
+      gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, mode);
+      gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, mode);
+      const error = gl.getError();
+      if (error !== gl.NO_ERROR) {
+        throw new Error(`3D texture upload failed (WebGL error ${error})`);
+      }
+      return { mObjectID: texture, mXres: volume.width, mYres: volume.height, mZres: volume.depth,
+        mType: this.renderer.TEXTYPE.T3D, mFormat: this.renderer.TEXFMT.C4I8,
+        mFilter: this.mapFilter(filter), mWrap: this.mapWrap(wrap), mVFlip: false };
+    } catch (error) {
+      gl.deleteTexture(texture);
+      throw error;
+    } finally {
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, alignment);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, Number(flip));
+      gl.bindTexture(gl.TEXTURE_3D, previous);
+    }
+  }
 
   createTexture(desc: CreateTextureDesc): PiTexture | null {
     return this.renderer.CreateTexture(

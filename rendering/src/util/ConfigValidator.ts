@@ -367,6 +367,8 @@ export class ConfigValidator {
         return this.validateBufferInput(input);
       case 'texture':
         return this.validateTextureInput(input);
+      case 'volume':
+        return this.validateVolumeInput(input);
       case 'cubemap':
         return this.validateCubemapInput(input);
       case 'video':
@@ -386,12 +388,18 @@ export class ConfigValidator {
     }
   }
 
+  private static validateVolumeInput(input: Record<string, unknown>): boolean {
+    return typeof input.path === 'string' && input.path.length > 0
+          && (input.filter === undefined || (typeof input.filter === "string" && ["linear", "nearest"].includes(input.filter)))
+          && (input.wrap === undefined || (typeof input.wrap === "string" && ["repeat", "clamp"].includes(input.wrap)));
+  }
+
   private static validateScreenInput(input: Record<string, unknown>): boolean {
     if (!Object.keys(input).every(key => ['type', 'filter', 'wrap', 'vflip'].includes(key))) {
       return false;
     }
     return (input.filter === undefined || (typeof input.filter === 'string' && ['linear', 'nearest', 'mipmap'].includes(input.filter))) &&
-      (input.wrap === undefined || (typeof input.wrap === 'string' && ['repeat', 'clamp'].includes(input.wrap))) &&
+      (input.wrap === undefined || (typeof input.wrap === 'string' && (typeof input.wrap === "string" && ["repeat", "clamp"].includes(input.wrap)))) &&
       (input.vflip === undefined || typeof input.vflip === 'boolean');
   }
 

@@ -65,7 +65,7 @@ export function resourcesForPass(config: ShaderConfig | null, passName: string):
   const inputs = pass && "inputs" in pass ? pass.inputs : undefined;
   const resources: AuthoringResource[] = Object.entries(inputs ?? {}).map(([name, input], slot) => ({
     name,
-    kind: input.type === "cubemap" ? "texture-cube" : "texture-2d",
+    kind: input.type === "cubemap" ? "texture-cube" : input.type === "volume" ? "texture-3d" : "texture-2d",
     slot,
   }));
   for (const [name, storage] of Object.entries(config?.storage ?? {})) {

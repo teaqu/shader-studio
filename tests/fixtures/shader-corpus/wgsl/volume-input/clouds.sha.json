@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "inputs": {
+        "iChannel0": {
+          "type": "volume",
+          "path": "../../assets/volume-input/cloud-density.ktx2",
+          "filter": "linear",
+          "wrap": "clamp"
+        }
+      }
+    }
+  }
+}

@@ -29,8 +29,8 @@ export function describeSlangChannel(kind: SlangChannelKind): SlangChannelDescri
   const dimensions = kind === 'texture-2d' ? 2 : 3;
   const coordinate = kind === 'texture-cube' ? 'dir' : 'uv';
   const vector = `float${dimensions}`;
-  const position = kind === 'texture-cube' ? coordinate : dimensions === 2 ? 'float2(uv.x, 1.0 - uv.y)' : 'float3(uv.x, 1.0 - uv.y, uv.z)';
-  const gradient = (name: string) => kind === 'texture-cube' ? name : dimensions === 2 ? `float2(${name}.x, -${name}.y)` : `float3(${name}.x, -${name}.y, ${name}.z)`;
+  const position = kind === 'texture-2d' ? 'float2(uv.x, 1.0 - uv.y)' : coordinate;
+  const gradient = (name: string) => kind === 'texture-2d' ? `float2(${name}.x, -${name}.y)` : name;
   return {
     shape,
     textureType: `Texture${shape}<float4>`,

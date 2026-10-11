@@ -43,6 +43,8 @@ export function resolveChannelSamplerTypes<T extends GlslInputLike>(
   for (const { slot, key } of slotAssignments) {
     if (inputs[key]?.type === 'cubemap') {
       types[slot] = 'Cube';
+    } else if (inputs[key]?.type === 'volume') {
+      types[slot] = '3D';
     }
   }
 

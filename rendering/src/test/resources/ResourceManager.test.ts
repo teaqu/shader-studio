@@ -129,6 +129,7 @@ const createMockBackend = (): TextureBackend<PiTexture> => {
   return {
     createTexture: vi.fn(),
     createTextureFromImage: vi.fn(),
+    createVolumeTexture: vi.fn(() => null),
     createMipmaps: vi.fn(),
     updateTexture: vi.fn(),
     updateTextureFromImage: vi.fn(),
