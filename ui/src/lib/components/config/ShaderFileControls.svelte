@@ -74,9 +74,11 @@ open = false;
       <PathInput value="" hidePath={true} showSelectWhenHidden={true} {shaderPath} {suggestedPath} {fileType} {postMessage} {onMessage}
         {passName} createAuthoringMode={fileType.endsWith('-compute') ? 'native' : getDefaultAuthoringMode()} selectLabel="Browse workspace…" onCreated={accept} />
       {#if summary}
+        <div class="chooser-path">
         <PathInput {value} {inputId} label="Shader file path" {hasError} placeholder={suggestedPath}
           onPathChange={onPathChange} allowCreate={false} allowSelect={false}
           note="Relative, absolute, or @ for workspace root" />
+        </div>
       {/if}
     </div>
   </div>
@@ -98,8 +100,11 @@ open = false;
   button:hover { background: var(--vscode-list-hoverBackground); }
   button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
   .backdrop { position: fixed; inset: 0; display: flex; justify-content: center; align-items: center; background: rgba(0,0,0,.45); z-index: 1000; padding: 16px; }
-  .chooser { width: 420px; max-width: 100%; padding: 16px; background: var(--vscode-editor-background); color: var(--vscode-foreground); border: 1px solid var(--vscode-panel-border); border-radius: 5px; }
+  .chooser { display: flex; flex-direction: column; gap: 12px; box-sizing: border-box; width: 420px; max-width: 100%; padding: 16px; background: var(--vscode-editor-background); color: var(--vscode-foreground); border: 1px solid var(--vscode-panel-border); border-radius: 5px; }
   header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-  h3 { font-size: 13px; margin: 0; } p { font-size: 12px; color: var(--vscode-descriptionForeground); }
-  .files { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; } .files button { text-align: left; overflow-wrap: anywhere; }
+  h3 { font-size: 13px; margin: 0; } p { margin: 0; font-size: 12px; color: var(--vscode-descriptionForeground); }
+  .files { display: flex; flex-direction: column; gap: 5px; } .files button { text-align: left; overflow-wrap: anywhere; }
+  .chooser-path :global(.input-row) { flex-direction: column; align-items: stretch; gap: 6px; }
+  .chooser-path :global(.config-input) { box-sizing: border-box; width: 100%; min-width: 0; }
+  .chooser-path :global(.input-note) { font-size: 12px; font-style: normal; }
 </style>
