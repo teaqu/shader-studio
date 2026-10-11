@@ -78,7 +78,7 @@
   <div class:picker-actions={summary}>
     <PathInput value="" hidePath={true} showSelectWhenHidden={true} {shaderPath} {suggestedPath} {fileType} {postMessage} {onMessage}
       {passName} createAuthoringMode={fileType.endsWith('-compute') ? 'native' : getDefaultAuthoringMode()}
-      selectLabel="Browse workspace…" createLabel={summary ? 'Create shader…' : 'Create'} onCreated={accept} />
+      selectLabel="Browse workspace…" createLabel={summary ? 'Create file…' : 'Create'} onCreated={accept} />
   </div>
   {#if summary}
     <details class="chooser-path">
@@ -92,13 +92,13 @@
 
 {#if summary}
   <div class="file-picker" bind:this={pickerRoot}>
-    <div class="picker-label">Shader</div>
+    <div class="picker-label">Shader file</div>
     <div class="picker-row">
       <button class="picker-button" class:error={hasError} type="button" bind:this={pickerButton}
         aria-label="Choose shader file" aria-expanded={open} aria-controls={`${inputId}-chooser`}
-        aria-haspopup="dialog" title={value || 'Choose a shader'} onclick={toggleChooser}>
+        aria-haspopup="dialog" title={value || 'Choose file…'} onclick={toggleChooser}>
         <i class="codicon codicon-file-code" aria-hidden="true"></i>
-        <span>{value ? filename(value) : 'Choose a shader…'}</span>
+        <span>{value ? filename(value) : 'Choose file…'}</span>
         <i class="codicon codicon-chevron-down" aria-hidden="true"></i>
       </button>
       <button class="open-editor-btn" type="button" disabled={!value || !onOpen} onclick={() => {
@@ -117,7 +117,7 @@
       </div>
     {:else if !value}
       <div class="empty-actions">
-        <PathInput {value} hidePath={true} allowSelect={false} createLabel="Create shader…"
+        <PathInput {value} hidePath={true} allowSelect={false} createLabel="Create file…"
           {shaderPath} {suggestedPath} {fileType} {postMessage} {onMessage} {passName}
           createAuthoringMode={fileType.endsWith('-compute') ? 'native' : getDefaultAuthoringMode()} onCreated={accept} />
       </div>

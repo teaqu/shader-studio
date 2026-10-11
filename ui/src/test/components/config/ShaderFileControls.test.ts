@@ -7,6 +7,7 @@ it('shows a compact file picker and opens the selected shader without editing it
   const view = render(ShaderFileControls, { value: './shaders/a.wgsl', shaderPath: '/image.wgsl', language: 'wgsl',
     fileType: 'wgsl-buffer', suggestedPath: 'b.wgsl', inputId: 'source', summary: true, onOpen,
     onPathChange: vi.fn(), onCreated: vi.fn() });
+  expect(view.getByText('Shader file', { exact: true })).toBeVisible();
   expect(view.getByText('a.wgsl')).toBeVisible();
   expect(view.getByText('./shaders/')).toBeVisible();
   expect(view.queryByText('./shaders/a.wgsl')).toBeNull();
@@ -22,9 +23,9 @@ it('offers choosing and creating an empty buffer while disabling Open editor', a
   const view = render(ShaderFileControls, { value: '', shaderPath: '/image.wgsl', language: 'wgsl',
     fileType: 'wgsl-buffer', suggestedPath: 'a.wgsl', inputId: 'source', summary: true,
     onPathChange: vi.fn(), onCreated: vi.fn(), onOpen: vi.fn(), postMessage });
-  expect(view.getByText('Choose a shader…')).toBeVisible();
+  expect(view.getByText('Choose file…')).toBeVisible();
   expect(view.getByRole('button', { name: 'Open editor' })).toBeDisabled();
-  await fireEvent.click(view.getByRole('button', { name: 'Create shader…' }));
+  await fireEvent.click(view.getByRole('button', { name: 'Create file…' }));
   expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'createFile' }));
   await fireEvent.click(view.getByRole('button', { name: 'Choose shader file' }));
   expect(view.getByRole('dialog')).toBeVisible();
@@ -145,7 +146,7 @@ it('keeps manual path entry available behind its disclosure', async () => {
   expect(onPathChange).toHaveBeenLastCalledWith('@/shaders/fixed.wgsl');
 });
 
-it.each(['Browse workspace…', 'Create shader…'])('handles cancellation, errors, and a successful %s response in the picker', async action => {
+it.each(['Browse workspace…', 'Create file…'])('handles cancellation, errors, and a successful %s response in the picker', async action => {
   const postMessage = vi.fn();
   const onCreated = vi.fn();
   let handler: (event: MessageEvent) => void;

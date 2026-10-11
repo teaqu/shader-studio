@@ -68,7 +68,7 @@ test('standalone source controls select config and workspace files, add to the c
  await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
  await page.locator('[data-tab-name="BufferA"]').click();
  const main=page.locator('.tab-content .buffer-details > .config-item').first();
- await expect(main.getByRole('button', { name: 'Choose shader file' })).toHaveText('Choose a shader…');
+ await expect(main.getByRole('button', { name: 'Choose shader file' })).toHaveText('Choose file…');
  await expect(main.getByRole('button', { name: 'Open editor' })).toBeDisabled();
  await main.getByRole('button', {name:'Choose shader file'}).click();
  await page.getByRole('dialog', {name:'Choose shader file'}).getByRole('button', {name:'existing.wgsl', exact:true}).click();

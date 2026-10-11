@@ -97,7 +97,7 @@ for (const language of ['wgsl', 'slang']) {
     const main = page.locator('.tab-content .buffer-details > .config-item').first();
     page.once('dialog', dialog => dialog.accept(`owned.${language}`));
     await main.getByRole('button', { name: 'Choose shader file' }).click();
-    await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: 'Create shader…', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: 'Create file…', exact: true }).click();
     await expect(main.getByRole('button', { name: 'Choose shader file' })).toHaveText(`owned.${language}`);
     const configured = await main.getByRole('button', { name: 'Choose shader file' }).getAttribute('title');
     const path = configured.startsWith('/') ? configured : `/shaders/${configured.replace(/^\.\//, '')}`;

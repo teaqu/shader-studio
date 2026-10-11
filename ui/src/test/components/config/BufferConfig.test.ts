@@ -669,7 +669,7 @@ describe('BufferConfig', () => {
       });
 
       const mainPathConfig = getMainPathConfig(container);
-      expect(within(mainPathConfig).getByText('Choose a shader…')).toBeVisible();
+      expect(within(mainPathConfig).getByText('Choose file…')).toBeVisible();
       await fireEvent.click(within(mainPathConfig).getByRole('button', { name: 'Choose shader file' }));
       await fireEvent.click(document.querySelector('[role="dialog"] .create-file-btn')!);
 
