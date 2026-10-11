@@ -37,16 +37,16 @@ for (const [language, source] of Object.entries(shaders)) {
     await expect(page.getByLabel('3D volume preview; drag to rotate')).toBeVisible();
     await page.getByRole('button', { name: 'Slices', exact: true }).click();
     await expect(page.getByRole('dialog', { name: /^iChannel0/ }).getByLabel('Volume slice preview')).toBeVisible();
-    await page.getByLabel('Slice axis', { exact: true }).selectOption('x');
-    await page.getByLabel('Filter', { exact: true }).selectOption('nearest');
-    await page.getByLabel('Wrap X / Y / Z', { exact: true }).selectOption('clamp');
+    await page.getByRole('combobox', { name: 'Slice axis', exact: true }).selectOption('x');
+    await page.getByRole('combobox', { name: 'Filter', exact: true }).selectOption('nearest');
+    await page.getByRole('combobox', { name: 'Wrap X / Y / Z', exact: true }).selectOption('clamp');
     await expect.poll(async () => JSON.parse((await workspace(page))['/shaders/volume.sha.json']).passes.Image.inputs.iChannel0)
       .toMatchObject({ type: 'volume', path, filter: 'nearest', wrap: 'clamp' });
     await page.reload();
     await green();
     await page.getByRole('button', { name: 'Configure iChannel0', exact: true }).click();
-    await expect(page.getByLabel('Filter', { exact: true })).toHaveValue('nearest');
-    await expect(page.getByLabel('Wrap X / Y / Z', { exact: true })).toHaveValue('clamp');
+    await expect(page.getByRole('combobox', { name: 'Filter', exact: true })).toHaveValue('nearest');
+    await expect(page.getByRole('combobox', { name: 'Wrap X / Y / Z', exact: true })).toHaveValue('clamp');
     await expect(page.getByRole('dialog', { name: /^iChannel0/ }).getByText('8 × 8 × 8 · RGBA8', { exact: true })).toBeVisible();
   });
 }
