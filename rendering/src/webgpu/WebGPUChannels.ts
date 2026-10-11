@@ -31,6 +31,7 @@ export class WebGPUChannels {
     pass: RenderPassNode,
     skipInputUpdates = false,
     encodedComputePasses: ReadonlySet<string> = new Set(),
+    completedFrame = false,
   ): SlangChannelResource[] | null {
     const resources: SlangChannelResource[] = [];
     for (const channel of pass.channels) {
@@ -38,13 +39,21 @@ export class WebGPUChannels {
         const renderSource = this.host.session.passPipelines.get(channel.source);
         const computeSource = this.host.session.computePipelines.get(channel.source);
         const layer = channel.layer ?? 0;
+        // Image-only capture redraws after the feedback targets have swapped.
+        // Reverse their roles to reproduce the picture that was submitted.
+        const previousRenderOutput = completedFrame
+          ? channel.readFrom !== "previous-frame"
+          : channel.readFrom === "previous-frame";
+        const previousComputeOutput = completedFrame
+          ? channel.readFrom !== "previous-frame" || !encodedComputePasses.has(channel.source)
+          : channel.readFrom === "previous-frame" || !encodedComputePasses.has(channel.source);
         const textureView = computeSource
-          ? channel.readFrom === "previous-frame" || !encodedComputePasses.has(channel.source)
+          ? previousComputeOutput
             ? computeSource.getPreviousLayerOutputView(layer)
             : computeSource.getLayerOutputView(layer)
-          : channel.readFrom === "previous-frame"
-            ? renderSource?.getPreviousOutputView()
-            : renderSource?.getCurrentOutputView();
+          : previousRenderOutput
+            ? renderSource?.getPreviousOutputView(channel.output ?? 0)
+            : renderSource?.getCurrentOutputView(channel.output ?? 0);
         if (!textureView) {
           return null;
         }
@@ -167,8 +176,8 @@ export class WebGPUChannels {
       } else if (channel.kind === "buffer") {
         const source = this.host.session.passPipelines.get(channel.source);
         const view = channel.readFrom === "previous-frame"
-          ? source?.getPreviousOutputView()
-          : source?.getCurrentOutputView();
+          ? source?.getPreviousOutputView(channel.output ?? 0)
+          : source?.getCurrentOutputView(channel.output ?? 0);
         channelLoaded[channel.slot] = view ? 1 : 0;
         const sourcePass = this.host.session.passGraph.find((candidate) => candidate.name === channel.source);
         this.setChannelResolution(channelResolution, channel.slot, sourcePass?.width, sourcePass?.height);

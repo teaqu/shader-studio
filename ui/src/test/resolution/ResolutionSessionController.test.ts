@@ -670,6 +670,20 @@ describe('ResolutionSessionController — handleConfigUpdated does not post', ()
 
     expect(deps.recompileCurrentShader).not.toHaveBeenCalled();
   });
+
+  it('recompiles when a render pass changes its viewer-camera setting', () => {
+    const deps = makeDeps({
+      currentConfig: { version: '1.0', passes: { Image: { geometry: { type: 'cube' } } } },
+    });
+    const ctrl = new ResolutionSessionController(deps);
+
+    ctrl.handleConfigUpdated({
+      version: '1.0',
+      passes: { Image: { geometry: { type: 'cube' }, useViewerCamera: false } },
+    });
+
+    expect(deps.recompileCurrentShader).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('ResolutionSessionController — resetCurrentTarget with syncWithConfig=false', () => {

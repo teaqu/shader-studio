@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { configureHost, getHostCapabilities, getHostDefaultAssets, getHostTransportFactory, resetHost } from '../lib/state/hostState.svelte';
+import { getHostEditorWordWrap, toggleHostEditorWordWrap, configureHost, getHostCapabilities, getHostDefaultAssets, getHostTransportFactory, resetHost } from '../lib/state/hostState.svelte';
 
 afterEach(resetHost);
 
@@ -8,6 +8,16 @@ describe('viewer host contract', () => {
     expect(getHostDefaultAssets()).toEqual([]);
     expect(getHostTransportFactory()).toBeUndefined();
     expect(getHostCapabilities()).toEqual({ compileOnSave: true });
+  });
+
+  it('does not expose a word-wrap shortcut without a writable preference', () => {
+    expect(getHostEditorWordWrap()).toBeUndefined();
+    expect(() => toggleHostEditorWordWrap()).not.toThrow();
+    configureHost({ setEditorWordWrap: () => {
+      throw new Error('No preference to toggle');
+    } });
+    expect(getHostEditorWordWrap()).toBeUndefined();
+    expect(() => toggleHostEditorWordWrap()).not.toThrow();
   });
 
   it('lets a shell that saves every edit drop compile-on-save', () => {

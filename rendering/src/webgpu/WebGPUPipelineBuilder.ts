@@ -22,7 +22,7 @@ import { wgslUnsupportedFeatureMessage } from "./WgslPrelude";
 import {
   createSlangCustomUniformLayout
 } from "./uniforms";
-import { extractStructSizes } from "./wgslStructSize";
+import { extractStructSizes, extractStorageFields, resolveStorageStructType } from "./wgslStructSize";
 
 
 import type { WebGPUShaderSession } from "./WebGPUShaderSession";
@@ -139,6 +139,7 @@ export async function buildWebGPUPipelines(
             ? { outputImageFormat: dependencies.constraints.wgslImageFormat(pass.resolvedOutputFormat ?? dependencies.bufferTextureFormat) }
             : {}),
           ...(pass.kind === "compute" ? { entryPoint: pass.entryPoint } : {}),
+          ...(pass.kind === "render" && pass.entryPoints ? { renderEntryPoints: pass.entryPoints } : {}),
           ...(passModules.length > 0 ? { modules: passModules } : {}),
           ...(slangSourcePaths?.[pass.name]
             ? { sourcePath: slangSourcePaths[pass.name] }
@@ -195,7 +196,8 @@ export async function buildWebGPUPipelines(
           if (storageNode.builtin) {
             continue;
           }
-          const actualSize = structSizes.get(storageNode.elementType);
+          const actualSize = structSizes.get(resolveStorageStructType(wgsl, storageNode.elementType, storageNode.name));
+          storageNode.fields = extractStorageFields(wgsl, storageNode.elementType, storageNode.name) ?? storageNode.fields;
           if (actualSize !== undefined && actualSize.size !== storageNode.stride) {
             graph.warnings.push(
               `Storage "${storageNode.name}": stride ${storageNode.stride} does not match ` +

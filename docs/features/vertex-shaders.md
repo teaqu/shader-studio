@@ -1,6 +1,6 @@
 # Vertex Shaders
 
-Vertex shaders let you deform 3D geometry before it reaches the fragment shader. Each pass can have its own vertex shader, configured through the **Geometry** dropdown in the pass config.
+Vertex shaders let you deform 3D geometry before it reaches the fragment shader. Each render pass can select its vertex source in **Vertex shader**, then choose what to draw in **Geometry**.
 
 ## When to Use a Vertex Shader
 
@@ -16,13 +16,17 @@ Fullscreen passes can also use vertex shaders for warping, custom projections, o
 ## Configuring a Vertex Shader
 
 1. In the config panel, select the pass you want to configure
-2. In the **Vertex shader** section, enter a path to a `.vert.glsl`, `.vert.slang`, or `.vert.wgsl` file, or click **Create File** to generate a stub
+2. In **Vertex shader**, choose **Built-in**, **Same file**, or **Separate file**.
+3. Same file uses the pass source and hides the path. Separate file shows an editable **File** row; **Change…** lets you reuse a config file, browse the workspace, or create a source.
+4. WGSL/Slang list the available vertex functions from the chosen source. Select a row, or use **Add function…** to append a Built-in hook or Native entry point there. GLSL uses the fixed `mainVertex` name, so it only shows Add when that hook is missing.
+
+Built-in clears the custom vertex source and selection. It does not create a vertex file. New native shaders and buffers retain this generated stage by default. If you select **Vertices** geometry, you still need code that places the vertices: their default positions coincide and produce no visible triangles.
 
 **Double-click the "Vertex shader" title** to open the file in the [editor overlay](editor-overlay.md).
 
 ## The `mainVertex` Function
 
-Your vertex shader must define a `mainVertex` function. It receives the index of the vertex being processed, followed by the vertex data as `inout` parameters — modify them in-place to change the rendered geometry.
+A Built-in vertex hook defines `mainVertex`. WGSL and Slang can instead select a native annotated vertex entry point; see [Native entry points](wgsl-authoring.md#native-entry-points-and-shared-files). The hook receives the index of the vertex being processed, followed by the vertex data as `inout` parameters — modify them in-place to change the rendered geometry.
 
 === "GLSL"
     ```glsl
@@ -69,7 +73,7 @@ The meaning of the parameters depends on the geometry type:
 | **Sphere** | Mesh vertex index | Unit-sphere object-space vertex | Surface normal | Latitude/longitude UV |
 | **Model** | Mesh vertex index | GLB mesh vertex position | Mesh vertex normal | Mesh UV |
 
-For 3D geometry types (plane, cube, sphere, model), the engine applies the model, view, and projection matrices after `mainVertex` returns. Their draws are indexed, so `vertexIndex` is the index of the mesh vertex, and a vertex shared by several triangles may run more than once with the same index. `iVertexCount` is the number of distinct mesh vertices, so `vertexIndex` runs from 0 to `iVertexCount - 1` here too.
+For 3D geometry types (plane, cube, sphere, model), the engine applies the model, view, and projection matrices after `mainVertex` returns when **Use viewer camera** is enabled. Disable it to use the returned positions directly in clip space. This applies to GLSL, WGSL, and Slang mesh passes. Their draws are indexed, so `vertexIndex` is the index of the mesh vertex, and a vertex shared by several triangles may run more than once with the same index. `iVertexCount` is the number of distinct mesh vertices, so `vertexIndex` runs from 0 to `iVertexCount - 1` here too.
 
 For fullscreen, `position` is in clip-space coordinates directly. A fullscreen pass always draws one oversized triangle with three vertices, `(-1, -1)`, `(3, -1)` and `(-1, 3)`, which covers the whole screen, and `iVertexCount` is 3. Assign `position` from `vertexIndex` to move the triangle yourself; pixels it no longer covers are cleared to opaque black. To draw your own shapes, lines or points, use [Vertices geometry](#vertices-geometry).
 

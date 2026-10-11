@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FrameRenderer } from "../../webgl/FrameRenderer";
+import type { CustomUniformManager } from "../../webgl/CustomUniformManager";
 
 // Mock dependencies
 vi.mock("../../util/TimeManager");
@@ -288,6 +289,125 @@ describe("FrameRenderer", () => {
 
       const afterResume = customUniformsOf(mockPassRenderer.renderPass.mock.calls.length - 1);
       expect(afterResume).toEqual([{ name: "uFast", type: "float", value: 42 }]);
+    });
+  });
+
+  describe("Live screenshot of the displayed frame", () => {
+    const singleImagePass = () => {
+      const pass = { name: "Image", inputs: {} } as any;
+      mockShaderPipeline.getPasses = vi.fn(() => [pass]);
+      mockShaderPipeline.getPassShader = vi.fn(() => ({ mProgram: {} }));
+      mockShaderPipeline.getPassShaders = vi.fn(() => ({ Image: { mProgram: {} } }));
+    };
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("redraws a paused frame with the frozen uniforms, not values that changed underneath it", async () => {
+      singleImagePass();
+      let value = 1;
+      frameRenderer.setCustomUniformManager({
+        hasUniforms: () => true,
+        getValues: () => [{ name: "uFast", type: "float", value }],
+      } as any);
+      frameRenderer.setRunning(true);
+      frameRenderer.render(0);
+      mockTimeManager.isPaused = vi.fn(() => true);
+      frameRenderer.render(16);
+      const pausedUniforms = mockPassRenderer.renderPass.mock.calls.at(-1)[3];
+
+      value = 99;
+      mockMouseManager.getMouse = vi.fn(() => new Float32Array([50, 60, 1, 1]));
+      const read = vi.fn(() => "pixels");
+      await expect(frameRenderer.readNextDisplayedFrame(read)).resolves.toBe("pixels");
+
+      const capture = mockPassRenderer.renderPass.mock.calls.at(-1);
+      expect(capture[3]).toEqual(pausedUniforms);
+      expect(capture[4]).toEqual([{ name: "uFast", type: "float", value: 1 }]);
+      expect(capture[5]).toBe(true);
+      expect(read).toHaveBeenCalledOnce();
+    });
+
+    it("reads the next loop frame right after its Image pass instead of drawing an extra one", async () => {
+      singleImagePass();
+      const events: string[] = [];
+      mockPassRenderer.renderPass.mockImplementation(() => events.push("image"));
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(3);
+      frameRenderer.setRunning(true);
+
+      const read = vi.fn(() => {
+        events.push("read");
+        return "displayed";
+      });
+      const pending = frameRenderer.readNextDisplayedFrame(read);
+      expect(read).not.toHaveBeenCalled();
+      expect(events).toEqual([]);
+
+      frameRenderer.render(1000);
+      await expect(pending).resolves.toBe("displayed");
+      frameRenderer.render(1016);
+
+      expect(events).toEqual(["image", "read", "image"]);
+    });
+
+    it("falls back to redrawing Image when no loop frame arrives in time", async () => {
+      vi.useFakeTimers();
+      singleImagePass();
+      frameRenderer.setRunning(true);
+      const read = vi.fn(() => "redrawn");
+
+      const pending = frameRenderer.readNextDisplayedFrame(read, 50);
+      await vi.advanceTimersByTimeAsync(50);
+
+      await expect(pending).resolves.toBe("redrawn");
+      expect(mockPassRenderer.renderPass).toHaveBeenCalledOnce();
+      expect(read).toHaveBeenCalledOnce();
+    });
+
+    it("returns a rejected promise when the immediate redraw read fails", async () => {
+      singleImagePass();
+      const failure = new Error("readback failed");
+
+      await expect(frameRenderer.readNextDisplayedFrame(() => {
+        throw failure;
+      })).rejects.toBe(failure);
+      expect(mockPassRenderer.renderPass).toHaveBeenCalledOnce();
+    });
+
+    it("rejects one failed queued read without preventing another request from reading the same frame", async () => {
+      singleImagePass();
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(3);
+      const failure = new Error("first read failed");
+
+      const failed = frameRenderer.readNextDisplayedFrame(() => {
+        throw failure;
+      });
+      const succeeded = frameRenderer.readNextDisplayedFrame(() => "pixels");
+      frameRenderer.render(1000);
+
+      await expect(failed).rejects.toBe(failure);
+      await expect(succeeded).resolves.toBe("pixels");
+    });
+
+    it("exposes frozen custom uniforms only while a paused frame exists", () => {
+      singleImagePass();
+      frameRenderer.setCustomUniformManager({
+        hasUniforms: () => true,
+        getValues: () => [{ name: "uFast", type: "float", value: 7 }],
+      } as unknown as CustomUniformManager);
+      expect(frameRenderer.getPausedCustomUniforms()).toBeNull();
+
+      frameRenderer.setRunning(true);
+      mockTimeManager.isPaused = vi.fn(() => true);
+      frameRenderer.render(0);
+      expect(frameRenderer.getPausedCustomUniforms()).toEqual([{ name: "uFast", type: "float", value: 7 }]);
+
+      mockTimeManager.isPaused = vi.fn(() => false);
+      expect(frameRenderer.getPausedCustomUniforms()).toBeNull();
     });
   });
 

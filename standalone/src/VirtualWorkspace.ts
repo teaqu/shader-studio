@@ -574,7 +574,14 @@ export class VirtualWorkspace {
   }
 
   async flush(): Promise<void> {
-    await this.pendingSave;
+    // Edits arriving while IndexedDB is writing extend the save barrier.
+    for (;;) {
+      const barrier = this.pendingSave;
+      await barrier;
+      if (barrier === this.pendingSave) {
+        return;
+      }
+    }
   }
 
   async clear(): Promise<void> {

@@ -53,6 +53,17 @@ function vertexChanged(previous: ShaderConfig | null, next: ShaderConfig): boole
   return [...passNames].some((passName) => previous?.passes[passName]?.vertex !== next.passes[passName]?.vertex);
 }
 
+function viewerCameraChanged(previous: ShaderConfig | null, next: ShaderConfig): boolean {
+  const passNames = new Set([...Object.keys(previous?.passes ?? {}), ...Object.keys(next.passes)]);
+  return [...passNames].some((passName) => {
+    const before = previous?.passes[passName];
+    const after = next.passes[passName];
+    const previousValue = before && 'useViewerCamera' in before ? before.useViewerCamera ?? previous?.webgpu?.useViewerCamera ?? true : previous?.webgpu?.useViewerCamera ?? true;
+    const nextValue = after && 'useViewerCamera' in after ? after.useViewerCamera ?? next.webgpu?.useViewerCamera ?? true : next.webgpu?.useViewerCamera ?? true;
+    return previousValue !== nextValue;
+  });
+}
+
 function inputSignature(config: ShaderConfig | null): string {
   const inputs = Object.entries(config?.passes ?? {})
     .sort(([left], [right]) => left.localeCompare(right))
@@ -151,7 +162,9 @@ export class ResolutionSessionController {
   public handleConfigUpdated(updatedConfig: ShaderConfig): void {
     const currentConfig = this.deps.currentConfig;
     const debugState = this.deps.debugState;
-    const requiresGeometryRecompile = geometryChanged(currentConfig, updatedConfig) || vertexChanged(currentConfig, updatedConfig);
+    const requiresGeometryRecompile = geometryChanged(currentConfig, updatedConfig)
+      || vertexChanged(currentConfig, updatedConfig)
+      || viewerCameraChanged(currentConfig, updatedConfig);
     const requiresInlineResourceRefresh = debugState.isEnabled
       && debugState.isActive
       && debugState.isInlineRenderingEnabled

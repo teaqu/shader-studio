@@ -38,7 +38,9 @@ function pngColorType(src: string): number {
 function environment() {
   const listeners = new Map<string, EventListener>();
   const workerListeners = new Map<string, EventListener>();
-  const waiting = { postMessage: vi.fn() } as unknown as ServiceWorker;
+  const waiting = { postMessage: vi.fn((_message: unknown, ports?: MessagePort[]) => {
+    ports?.[0].postMessage({ type: 'update-ready' });
+  }) } as unknown as ServiceWorker;
   const activePostMessage = vi.fn();
   const active = { postMessage: activePostMessage } as unknown as ServiceWorker;
   const registration = {
@@ -89,7 +91,7 @@ describe('PWA controller', () => {
     expect(setup.environment.serviceWorker.register).toHaveBeenCalledWith('https://example.test/app/sw.js');
     expect(states.at(-1)).toEqual({ supported: true, online: true, updateAvailable: true, buildId: 'build-123', offlinePreparation: { state: 'idle' } });
     await controller.applyUpdate();
-    expect((setup.registration.waiting as ServiceWorker).postMessage).toHaveBeenCalledWith({ type: 'SKIP_WAITING' });
+    expect((setup.registration.waiting as ServiceWorker).postMessage).toHaveBeenCalledWith({ type: 'SKIP_WAITING' }, expect.any(Array));
     await controller.checkForUpdate();
     expect(setup.registration.update).toHaveBeenCalledOnce();
   });
@@ -100,11 +102,115 @@ describe('PWA controller', () => {
     await controller.start();
 
     setup.listeners.get('controllerchange')?.(new Event('controllerchange'));
+    await Promise.resolve();
     expect(setup.environment.reload).not.toHaveBeenCalled();
 
     await controller.applyUpdate();
     setup.listeners.get('controllerchange')?.(new Event('controllerchange'));
+    await Promise.resolve();
     expect(setup.environment.reload).toHaveBeenCalledOnce();
+  });
+
+  it('does not activate or reload when the waiting worker defers the update', async () => {
+    const setup = environment();
+    const postMessage = (setup.registration.waiting as unknown as { postMessage: ReturnType<typeof vi.fn> }).postMessage;
+    postMessage.mockImplementation((_message: unknown, ports?: MessagePort[]) => {
+      ports?.[0].postMessage({ type: 'update-deferred' });
+    });
+    const controller = createPwaController(setup.environment);
+    await controller.start();
+
+    await expect(controller.applyUpdate()).resolves.toBe(false);
+    setup.listeners.get('controllerchange')?.(new Event('controllerchange'));
+    await Promise.resolve();
+
+    expect(setup.environment.reload).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the waiting worker does not reply before the update timeout', async () => {
+    vi.useFakeTimers();
+    try {
+      const setup = environment();
+      const postMessage = (setup.registration.waiting as unknown as { postMessage: ReturnType<typeof vi.fn> }).postMessage;
+      postMessage.mockImplementation(() => {});
+      const controller = createPwaController(setup.environment);
+      await controller.start();
+
+      const update = controller.applyUpdate();
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      await expect(update).resolves.toBe(false);
+      setup.listeners.get('controllerchange')?.(new Event('controllerchange'));
+      expect(setup.environment.reload).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('fails closed when posting an update request throws', async () => {
+    const setup = environment();
+    const postMessage = (setup.registration.waiting as unknown as { postMessage: ReturnType<typeof vi.fn> }).postMessage;
+    postMessage.mockImplementation(() => {
+      throw new Error('worker unavailable');
+    });
+    const controller = createPwaController(setup.environment);
+    await controller.start();
+
+    await expect(controller.applyUpdate()).resolves.toBe(false);
+    setup.listeners.get('controllerchange')?.(new Event('controllerchange'));
+    expect(setup.environment.reload).not.toHaveBeenCalled();
+  });
+
+  it('waits to save before reloading and ignores duplicate controller changes', async () => {
+    const setup = environment();
+    const controller = createPwaController(setup.environment);
+    await controller.start();
+    let finishSave!: () => void;
+    const beforeReload = vi.fn(() => new Promise<void>(resolve => {
+      finishSave = resolve;
+    }));
+
+    await expect(controller.applyUpdate(beforeReload)).resolves.toBe(true);
+    setup.listeners.get('controllerchange')?.(new Event('controllerchange'));
+    setup.listeners.get('controllerchange')?.(new Event('controllerchange'));
+    await vi.waitFor(() => expect(beforeReload).toHaveBeenCalledOnce());
+    expect(setup.environment.reload).not.toHaveBeenCalled();
+
+    finishSave();
+    await vi.waitFor(() => expect(setup.environment.reload).toHaveBeenCalledOnce());
+  });
+
+  it('does not reload when saving before activation fails', async () => {
+    const setup = environment();
+    const controller = createPwaController(setup.environment);
+    await controller.start();
+    const beforeReload = vi.fn().mockRejectedValue(new Error('disk full'));
+
+    await expect(controller.applyUpdate(beforeReload)).resolves.toBe(true);
+    setup.listeners.get('controllerchange')?.(new Event('controllerchange'));
+    await vi.waitFor(() => expect(beforeReload).toHaveBeenCalledOnce());
+    await Promise.resolve();
+
+    expect(setup.environment.reload).not.toHaveBeenCalled();
+  });
+
+  it('does not reload after disposal while a pre-reload save is pending', async () => {
+    const setup = environment();
+    const controller = createPwaController(setup.environment);
+    await controller.start();
+    let finishSave!: () => void;
+    const beforeReload = vi.fn(() => new Promise<void>(resolve => {
+      finishSave = resolve;
+    }));
+
+    await expect(controller.applyUpdate(beforeReload)).resolves.toBe(true);
+    setup.listeners.get('controllerchange')?.(new Event('controllerchange'));
+    await vi.waitFor(() => expect(beforeReload).toHaveBeenCalledOnce());
+    controller.dispose();
+    finishSave();
+    await Promise.resolve();
+
+    expect(setup.environment.reload).not.toHaveBeenCalled();
   });
 
   it('restores offline readiness from the active service worker after a refresh', async () => {
@@ -205,6 +311,40 @@ describe('PWA controller lifecycle branches', () => {
     setup.listeners.get('online')?.(new Event('online'));
 
     expect(states.map((state) => state.online).slice(-2)).toEqual([false, true]);
+  });
+
+  it('observes a worker already installing when registration resolves', async () => {
+    const setup = environment();
+    (setup.registration as { waiting: unknown }).waiting = null;
+    const stateListeners: EventListener[] = [];
+    const installing = { state: 'installing', addEventListener: (_type: string, listener: EventListener) => stateListeners.push(listener) };
+    (setup.registration as { installing: unknown }).installing = installing;
+    const controller = createPwaController(setup.environment);
+    const states: { updateAvailable: boolean }[] = [];
+    controller.subscribe(state => states.push(state));
+    await controller.start();
+    installing.state = 'installed';
+    (setup.registration as { waiting: unknown }).waiting = { postMessage: vi.fn() };
+    stateListeners.forEach(listener => listener(new Event('statechange')));
+    expect(states.at(-1)?.updateAvailable).toBe(true);
+    dispose(controller);
+  });
+
+  it('checks for updates on focus and reconnection without interrupting the app on network errors', async () => {
+    const setup = environment();
+    const controller = createPwaController(setup.environment);
+    await controller.start();
+    setup.listeners.get('focus')?.(new Event('focus'));
+    await Promise.resolve();
+    expect(setup.registration.update).toHaveBeenCalledOnce();
+    vi.mocked(setup.registration.update).mockRejectedValueOnce(new Error('offline'));
+    setup.listeners.get('online')?.(new Event('online'));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(setup.registration.update).toHaveBeenCalledTimes(2);
+    setup.environment.online = () => false;
+    setup.listeners.get('focus')?.(new Event('focus'));
+    expect(setup.registration.update).toHaveBeenCalledTimes(2);
+    dispose(controller);
   });
 
   it('offers an update that finishes installing while the app is open', async () => {

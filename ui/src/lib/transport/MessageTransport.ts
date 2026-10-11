@@ -1,6 +1,7 @@
 import type {
   BaseMessage,
   CreateFileMessage,
+  InsertShaderSourceMessage,
   SelectFileMessage,
 } from '@shader-studio/types';
 
@@ -9,6 +10,8 @@ export type TransportMessage<TMessage extends BaseMessage> = TMessage & (
     ? SelectFileMessage
     : TMessage extends { type: 'createFile' }
       ? CreateFileMessage
+      : TMessage extends { type: 'insertShaderSource' }
+        ? InsertShaderSourceMessage
       : TMessage
 );
 
@@ -18,6 +21,8 @@ export interface ShaderExplorerHostApi {
 }
 
 export interface Transport {
+  /** Register an editor's pending-text save command with a host that owns persistence. */
+  registerPendingSave?: (save: () => void) => () => void;
   applyWorkspaceEdit?: (
     changes: readonly { uri: string; before: string; after: string }[],
     isCurrent: () => boolean,

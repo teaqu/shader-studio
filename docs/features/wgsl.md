@@ -63,7 +63,7 @@ let basis = mat2x2f(0.125, 0.25, 0.5, 0.75);
 Larger matrices and `f16` matrices are not capturable as a whole. Select a supported
 column or scalar component instead. Boolean vectors are also inferred for vector
 comparisons but are not capturable as a whole; select a scalar component. Matrix capture in the Variable Inspector is
-separate from the Storage inspector, which edits scalar and vector buffer elements.
+separate from the [Storage inspector](storage.md#inspecting-values), which reads scalar and vector buffer elements and numeric struct fields without editing them.
 
 ## Compute Debugging Limits
 

@@ -90,7 +90,7 @@ export class WgslLanguageServiceBackend {
       parseWgslDocument(CHANNEL_DECLARATIONS_URI, buildWgslChannelAuthoringSource(
         environment.resources.filter(resource => resource.kind !== 'storage').map((resource, slot) => ({
           name: resource.name, kind: resource.kind as 'texture-2d' | 'texture-cube' | 'texture-3d', slot: resource.slot ?? slot,
-        })), environment.stage === 'fragment'), environment.stage),
+        })), true), environment.stage),
     ]);
     this.rebuild(environment.documentUri);
   }

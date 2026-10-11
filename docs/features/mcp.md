@@ -21,8 +21,8 @@ Workspace trust is required. No extra helper, terminal process, remote service,
 or agent-specific connection button is needed.
 
 The default address is `http://127.0.0.1:51474/mcp`. Change **Shader Studio: Mcp Port**
-if another VS Code window is already using that port. These settings belong to
-the user, and the token must not be committed in workspace settings.
+in that workspace's settings if another VS Code window is already using that
+port. Enablement and the token are user settings; never commit the token.
 
 ## Connect an agent
 
@@ -104,7 +104,7 @@ simulation history; reset separately when needed.
 | `get_settings` | Read the config file and runtime viewer state |
 | `update_settings` | Change temporary runtime viewer controls |
 | `get_diagnostics` | Read preview errors, warnings, and compile markers |
-| `capture_output` | Return PNG image content from the actual renderer |
+| `capture_output` | Render a frame and return PNG image content; feedback buffers can advance |
 | `set_playback` | Pause, resume, seek time, or reset |
 
 When exactly one preview is open, `previewId` can be omitted. With multiple

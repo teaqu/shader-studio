@@ -1,3 +1,4 @@
+import { createAudioAnalyser } from "./AudioAnalyser";
 import type { TextureBackend } from "./TextureBackend";
 
 interface AudioSource<T> {
@@ -151,9 +152,7 @@ export class AudioTextureManager<T> {
     this.initializing.add(path);
 
     // Create analyser + gain nodes
-    const analyser = ctx.createAnalyser();
-    analyser.fftSize = 1024; // frequencyBinCount = 512
-    analyser.smoothingTimeConstant = 0.5;
+    const analyser = createAudioAnalyser(ctx);
 
     const gainNode = ctx.createGain();
     this.channelMuted[path] = options?.muted === true;
@@ -178,6 +177,7 @@ export class AudioTextureManager<T> {
       throw new Error("Failed to create audio texture");
     }
 
+    // Match Shadertoy: the texture exposes the first 512 FFT bins/samples.
     const freqData = new Uint8Array(this.textureWidth);
     const waveData = new Uint8Array(this.textureWidth);
 

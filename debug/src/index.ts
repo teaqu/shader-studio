@@ -30,3 +30,4 @@ export * from './wgsl/WgslWorkspace';
 export * from './wgsl/WgslDebugEngine';
 export * from './wgsl/WgslFunctionContext';
 export * from './wgsl/WgslFullShaderPostProcessing';
+export * from './native/NativeRasterDisplay';

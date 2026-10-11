@@ -5,6 +5,7 @@ import {
   parseVertexPassKey,
   resolveConfiguredPath,
   resourcesForPass,
+  resourcesForSharedSource,
   shaderPathsForConfig,
   stageForPass,
   vertexPassKey,
@@ -103,6 +104,24 @@ describe("resourcesForPass", () => {
       { name: "data", kind: "storage", elementType: "float" },
     ]);
     expect(resourcesForPass(null, "Image")).toEqual([]);
+  });
+});
+
+describe("resourcesForSharedSource", () => {
+  it("keeps focused slots and assigns unique synthetic slots to peer aliases", () => {
+    const shared = {
+      version: "1.0",
+      storage: { values: { count: 1, elementType: "float" } },
+      passes: {
+        Image: { inputs: { display: { type: "texture" } } },
+        BufferA: { path: "shared.wgsl", inputs: { history: { type: "buffer", source: "BufferA" } } },
+      },
+    } as unknown as ShaderConfig;
+    expect(resourcesForSharedSource(shared, "Image", ["Image", "BufferA"])).toEqual([
+      { name: "display", kind: "texture-2d", slot: 0 },
+      { name: "values", kind: "storage", elementType: "float" },
+      { name: "history", kind: "texture-2d", slot: 1 },
+    ]);
   });
 });
 

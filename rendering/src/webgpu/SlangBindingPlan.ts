@@ -13,7 +13,7 @@ export interface SlangBindingChannel {
 /** Stable source identities, never transient GPU views (fallbacks and feedback can change). */
 export function getSlangTextureIdentity(channel: RenderPassChannel): string {
   if (channel.kind === "buffer") {
-    return JSON.stringify([channel.kind, channel.source, channel.readFrom, channel.layer ?? 0]);
+    return JSON.stringify([channel.kind, channel.source, channel.readFrom, channel.layer ?? 0, channel.output ?? 0]);
   }
   if (channel.kind === "keyboard") {
     return "keyboard";

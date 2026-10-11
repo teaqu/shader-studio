@@ -259,6 +259,24 @@ describe('VirtualWorkspace', () => {
     expect(workspace.persistenceStatus.state).toBe('saved');
   });
 
+  it('flush waits for a new write queued while an older write is in flight', async () => {
+    const store = new GatedWorkspaceStore(seedFiles);
+    const workspace = await VirtualWorkspace.open(store, seedFiles);
+    workspace.writeText('/shaders/first.glsl', 'first edit');
+    await vi.waitFor(() => expect(store.saved).toHaveLength(1));
+    let flushed = false;
+    const barrier = workspace.flush().then(() => {
+      flushed = true;
+    });
+    workspace.writeText('/shaders/first.glsl', 'latest edit');
+    store.release();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(flushed).toBe(false);
+    store.release();
+    await barrier;
+    expect((await VirtualWorkspace.open(store, [])).readText('/shaders/first.glsl')).toBe('latest edit');
+  });
+
   it('coalesces queued saves so a typing burst writes once more, not once each', async () => {
     // Every save carries a complete snapshot, so a queued-but-unstarted write
     // is superseded by the next one. Without coalescing, N keystrokes queue N
@@ -405,7 +423,7 @@ describe('VirtualWorkspace', () => {
     const workspace = await VirtualWorkspace.open(store, seedFiles);
     const save = store.save.bind(store);
     store.save = async () => {
-      throw new Error('disk full'); 
+      throw new Error('disk full');
     };
     await expect(workspace.applyTextTransaction([{ path: '/shaders/first.glsl', before: 'first', after: 'changed' }])).rejects.toThrow('disk full');
     expect(workspace.list()).toEqual(seedFiles);
@@ -427,7 +445,7 @@ describe('VirtualWorkspace', () => {
     let saves = 0;
     let current = true;
     store.save = async files => {
-      saves++; await save(files); current = false; 
+      saves++; await save(files); current = false;
     };
     await workspace.applyTextTransaction([{ path: '/shaders/first.glsl', before: 'first', after: 'changed' }], () => current);
     expect(saves).toBe(1);
@@ -450,7 +468,7 @@ describe('VirtualWorkspace', () => {
         }
       },
       clear: async () => {
-        backing.clear(); 
+        backing.clear();
       },
     };
     const workspace = await VirtualWorkspace.open(store as unknown as MemoryWorkspaceStore, [

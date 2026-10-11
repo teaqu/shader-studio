@@ -1,7 +1,13 @@
-import { defineConfig } from 'vitest/config';
-import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { defineProject } from 'vitest/config';
 
-export default defineConfig({
-  test: { name: 'extension-mcp', environment: 'node', include: ['test/mcp/**/*.test.ts'], maxWorkers: 4 },
-  resolve: { alias: { vscode: path.resolve(__dirname, 'test/mcp/vscode.ts') } },
+// Pure extension units run in Node; VS Code API integration remains in the
+// existing extension-host suite. This project supplies Istanbul counters too.
+export default defineProject({
+  resolve: { alias: { vscode: fileURLToPath(new URL('./src/test/unit/vscodeStub.ts', import.meta.url)) } },
+  test: {
+    name: 'extension-units',
+    environment: 'node',
+    include: ['src/test/unit/**/*.test.{ts,mts}'],
+  },
 });

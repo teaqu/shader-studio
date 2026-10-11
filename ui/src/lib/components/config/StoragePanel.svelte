@@ -1,72 +1,357 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { tick } from 'svelte';
-  import type { StorageBufferConfig } from '@shader-studio/types';
-  import type { StorageBufferSnapshot } from '@shader-studio/types';
-  import type { ConfigFieldErrors } from '../../config/ComputeConfigMutations';
-  import StorageBufferEditor from './StorageBufferEditor.svelte';
-
+  import { tick } from "svelte";
+  import type {
+    StorageBufferConfig,
+    StorageBufferSnapshot,
+    StorageCapturePoint,
+  } from "@shader-studio/types";
+  import type { ConfigFieldErrors } from "../../config/ComputeConfigMutations";
+  import {
+    getStorageView,
+    getPendingStorageForm,
+    selectStorageBuffer,
+    selectStorageTab,
+  } from "../../state/storageViewState.svelte";
+  import StorageBufferEditor from "./StorageBufferEditor.svelte";
+  import StorageInspector from "./StorageInspector.svelte";
   interface Props {
     storage: Record<string, StorageBufferConfig>;
     referencesFor: (name: string) => string[];
     onAdd: () => string | null;
-    onApply: (originalName: string, name: string, declaration: StorageBufferConfig) => ConfigFieldErrors;
+    onApply: (
+      originalName: string,
+      name: string,
+      declaration: StorageBufferConfig,
+    ) => ConfigFieldErrors;
     onDelete: (name: string) => ConfigFieldErrors;
-    onRead?: (name: string, start: number, count: number) => Promise<StorageBufferSnapshot>;
-    onWrite?: (name: string, start: number, data: ArrayBuffer) => Promise<void>;
+    onRead?: (
+      name: string,
+      start: number,
+      count: number,
+      point?: StorageCapturePoint,
+    ) => Promise<StorageBufferSnapshot>;
+    onReset?: (name: string) => Promise<void>;
+    scope?: string;
+    language?: "wgsl" | "slang" | "glsl";
+    passes?: Array<{ name: string; compute: boolean; dispatchOnce?: boolean }>;
   }
-
-  let { storage, referencesFor, onAdd, onApply, onDelete, onRead, onWrite }: Props = $props();
+  let {
+    storage,
+    referencesFor,
+    onAdd,
+    onApply,
+    onDelete,
+    onRead,
+    onReset,
+    scope = "",
+    language = "wgsl",
+    passes = [],
+  }: Props = $props();
   let panel = $state<HTMLElement>();
-
-  async function addStorage() {
+  const id = $props.id();
+  const pendingForm = $derived(getPendingStorageForm(scope));
+  const view = $derived(getStorageView(scope));
+  const names = $derived(Object.keys(storage));
+  const selected = $derived(storage[view.selected] ? view.selected : names[0]);
+  const tab = $derived(onRead ? view.tab : "settings");
+  async function addStorage(): Promise<void> {
     const name = onAdd();
     if (!name) {
       return;
     }
+    selectStorageBuffer(scope, name);
+    selectStorageTab(scope, "settings");
     await tick();
-    panel?.querySelector<HTMLInputElement>(`[data-storage-name="${name}"] input`)?.focus();
+    panel
+      ?.querySelector<HTMLInputElement>('[aria-label="Storage name"]')
+      ?.focus();
   }
 </script>
 
 <section class="storage-panel" bind:this={panel} aria-label="Storage buffers">
-  <div class="storage-header">
+  <header>
     <div>
-      <h2>Storage</h2>
-      <p>These declarations configure GPU storage buffers. Applying a size or type change recreates the buffer and clears its contents; this UI does not rewrite your Slang source.</p>
+      <h2>GPU storage</h2>
     </div>
-    <button onclick={addStorage} aria-label="Add storage buffer">Add storage</button>
-  </div>
-
-  {#if Object.keys(storage).length === 0}
-    <p class="empty">No storage buffers are configured.</p>
-  {:else}
-    <div class="storage-list">
-      {#each Object.entries(storage) as [name, declaration] (name)}
-        <StorageBufferEditor
-          {name}
-          {declaration}
-          existingNames={Object.keys(storage)}
-          referencedBy={referencesFor(name)}
-          {onApply}
-          {onDelete}
-          {onRead}
-          {onWrite}
-          onDeleted={() => panel?.querySelector<HTMLButtonElement>('[aria-label="Add storage buffer"]')?.focus()}
-        />
-      {/each}
+    <div class="header-actions">
+      {#if tab === "settings" && pendingForm}<button
+          class="primary"
+          type="submit"
+          form={pendingForm}
+          aria-label="Apply pending storage changes">Apply changes</button
+        >{/if}
+      <button
+        class="primary"
+        onclick={addStorage}
+        aria-label="Add storage buffer">+ Add buffer</button
+      >
     </div>
-  {/if}
+  </header>
+  {#if !names.length}<p>No storage buffers are configured.</p>
+  {:else}<div class="workspace">
+      <nav aria-label="Storage buffers list">
+        {#each names as name}<button
+            aria-label="Select storage {name}"
+            aria-pressed={selected === name}
+            onclick={() => selectStorageBuffer(scope, name)}
+            ><span>{name}</span><small
+              >{storage[name]!.count.toLocaleString()} elements</small
+            ></button
+          >{/each}
+      </nav>
+      <main>
+        <div class="tabs" role="tablist" aria-label="Buffer view">
+          <button
+            role="tab"
+            id={`${id}-settings-tab`}
+            aria-controls={`${id}-settings`}
+            aria-selected={tab === "settings"}
+            onclick={() => selectStorageTab(scope, "settings")}>Settings</button
+          ><button
+            role="tab"
+            id={`${id}-inspect-tab`}
+            aria-controls={`${id}-inspect`}
+            aria-selected={tab === "inspect"}
+            disabled={!onRead}
+            onclick={() => selectStorageTab(scope, "inspect")}>Inspect</button
+          >
+        </div>
+        {#if selected}{#key selected}
+            {#if tab === "settings"}<div
+                id={`${id}-settings`}
+                role="tabpanel"
+                aria-labelledby={`${id}-settings-tab`}
+              >
+                <StorageBufferEditor
+                  name={selected}
+                  {scope}
+                  formId={`${id}-storage-form`}
+                  declaration={storage[selected]!}
+                  existingNames={names}
+                  referencedBy={referencesFor(selected)}
+                  {language}
+                  {passes}
+                  {onApply}
+                  {onDelete}
+                  {onReset}
+                  onRenamed={(name) => selectStorageBuffer(scope, name)}
+                  onDeleted={() => {
+                    selectStorageBuffer(scope, "");
+                    panel
+                      ?.querySelector<HTMLButtonElement>(
+                        '[aria-label="Add storage buffer"]',
+                      )
+                      ?.focus();
+                  }}
+                />
+              </div>
+            {:else if onRead}<div
+                id={`${id}-inspect`}
+                role="tabpanel"
+                aria-labelledby={`${id}-inspect-tab`}
+              >
+                <StorageInspector
+                  name={selected}
+                  count={storage[selected]!.count}
+                  {scope}
+                  passes={passes
+                    .filter((pass) => !pass.dispatchOnce)
+                    .map((pass) => pass.name)}
+                  {onRead}
+                />
+              </div>{/if}
+          {/key}{/if}
+      </main>
+    </div>{/if}
 </section>
 
 <style>
-  .storage-panel { display: flex; flex: 1; flex-direction: column; gap: 14px; overflow: auto; padding: 12px; }
-  .storage-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
-  h2, p { margin: 0; }
-  h2 { font-size: 14px; }
-  p { color: var(--vscode-descriptionForeground); font-size: 12px; line-height: 1.4; }
-  .storage-header p { margin-top: 4px; max-width: 620px; }
-  .storage-list { display: grid; gap: 10px; }
-  .empty { padding: 16px 0; }
+  .header-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .storage-panel {
+    --storage-bg: var(--vscode-editor-background, #202124);
+    --storage-text: var(--vscode-foreground, #edeef2);
+    --storage-muted: var(--vscode-descriptionForeground, #a7adba);
+    --storage-soft: color-mix(
+      in srgb,
+      var(--storage-text) 4%,
+      var(--storage-bg)
+    );
+    --storage-line: var(--vscode-panel-border, #3c3c3c);
+    --storage-accent: var(--vscode-focusBorder, #007acc);
+    --storage-selected: var(
+      --vscode-list-activeSelectionBackground,
+      color-mix(in srgb, var(--storage-accent) 14%, var(--storage-bg))
+    );
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    overflow: auto;
+    color: var(--storage-text);
+    background: var(--storage-bg);
+    font: 12px/1.5 var(--vscode-font-family, system-ui, sans-serif);
+    container-type: inline-size;
+  }
+  .storage-panel :global(button),
+  .storage-panel :global(input),
+  .storage-panel :global(select) {
+    font: inherit;
+    font-size: 12px;
+    color: var(--storage-text);
+    background: var(--storage-bg);
+    border: 1px solid var(--storage-line);
+    border-radius: 4px;
+    padding: 5px 10px;
+    min-height: 32px;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .storage-panel :global(input),
+  .storage-panel :global(select) {
+    color: var(--vscode-input-foreground, var(--storage-text));
+    background: var(--vscode-input-background, var(--storage-bg));
+    border-color: var(--vscode-input-border, var(--storage-line));
+  }
+  .storage-panel :global(button) {
+    cursor: pointer;
+    height: 32px;
+    line-height: 18px;
+    flex: 0 0 auto;
+  }
+  .storage-panel :global(input[type="checkbox"]) {
+    min-height: 0;
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    accent-color: var(--storage-accent);
+  }
+  .storage-panel :global(button:hover:not(:disabled)) {
+    background: var(--storage-soft);
+  }
+  .storage-panel :global(button:disabled) {
+    opacity: 0.45;
+    cursor: default;
+  }
+  .storage-panel :global(.primary) {
+    background: var(--vscode-button-background, #0e639c);
+    color: var(--vscode-button-foreground, #fff);
+    border-color: transparent;
+  }
+  .storage-panel :global(button.primary:hover:not(:disabled)) {
+    background: var(--vscode-button-hoverBackground, #1177bb);
+  }
+  .storage-panel :global(button:focus-visible),
+  .storage-panel :global(input:focus-visible),
+  .storage-panel :global(select:focus-visible) {
+    outline: 2px solid var(--storage-accent);
+    outline-offset: 2px;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    gap: 12px;
+    border-bottom: 1px solid var(--storage-line);
+  }
+  h2 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 500;
+  }
+  p {
+    padding: 16px;
+    margin: 0;
+    font-size: 12px;
+    color: var(--storage-muted);
+  }
+  .workspace {
+    display: grid;
+    grid-template-columns: 175px minmax(0, 1fr);
+    flex: 1;
+  }
+  nav {
+    background: var(--storage-soft);
+    padding: 10px;
+    border-right: 1px solid var(--storage-line);
+  }
+  .storage-panel nav button {
+    display: grid;
+    gap: 3px;
+    height: auto;
+    width: 100%;
+    text-align: left;
+    margin: 3px 0;
+    padding: 10px;
+    background: transparent;
+    border: 0;
+    overflow-wrap: anywhere;
+  }
+  .storage-panel nav button[aria-pressed="true"] {
+    background: var(--storage-selected);
+    color: var(--vscode-list-activeSelectionForeground, var(--storage-text));
+  }
+  .storage-panel nav button[aria-pressed="true"] small {
+    color: inherit;
+    opacity: 0.8;
+  }
+  small {
+    font-size: 12px;
+    color: var(--storage-muted);
+  }
+  main {
+    padding: 16px;
+    min-width: 0;
+  }
+  .tabs {
+    display: flex;
+    gap: 20px;
+    border-bottom: 1px solid var(--storage-line);
+    margin-bottom: 16px;
+  }
+  .storage-panel .tabs button {
+    height: 36px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    padding: 0 2px 10px;
+    color: var(--storage-muted);
+  }
+  .storage-panel .tabs button[aria-selected="true"] {
+    border-bottom-color: var(--storage-accent);
+    color: var(--storage-text);
+  }
+  .storage-panel .tabs button:hover:not(:disabled) {
+    color: var(--storage-text);
+    background: transparent;
+  }
+  @container (max-width: 540px) {
+    .workspace {
+      grid-template-columns: 1fr;
+    }
+    header,
+    main {
+      padding: 16px;
+    }
+    nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      border-right: 0;
+      border-bottom: 1px solid var(--storage-line);
+    }
+    .storage-panel nav button {
+      width: auto;
+      min-width: 110px;
+      flex: 1;
+    }
+  }
 </style>

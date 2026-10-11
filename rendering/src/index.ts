@@ -23,3 +23,6 @@ export { listGlbMeshNames } from './preview3d/GltfMeshLoader';
 export { OrbitCamera } from './preview3d/OrbitCamera';
 export * from './types';
 export * from './models';
+
+export type { RenderingEngine as RenderingEngineInterface } from './types/RenderingEngine';
+export type { LiveInputPreview, LiveInputType } from './resources/LiveInputTextureManager';

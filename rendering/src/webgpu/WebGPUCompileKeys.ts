@@ -1,3 +1,4 @@
+import { meshDepthCompare } from "./MeshDepthCompare";
 import type { StorageBindingNode } from "../types/PassGraph";
 import { renderPipelineStateKey,verticesSpace } from "../types/Geometry";
 import { buildSlangBindingPlan,getSlangChannels } from "./SlangBindingPlan";
@@ -27,6 +28,7 @@ export function wgslCacheKey(
     SLANG_WGSL_CACHE_KEY_VERSION,
     pass.kind,
     pass.entryPoint,
+    pass.entryPoints,
     pass.source,
     pass.geometry,
     pass.vertexSrc,
@@ -81,8 +83,10 @@ export function pipelineCacheKey(
     pass.dispatchOnce,
     pass.output,
     pass.outputLayers,
+    pass.outputCount ?? 1,
     pass.resolvedOutputFormat,
     pass.kind === "render" ? renderPipelineStateKey(pass) : null,
+    pass.geometry !== "fullscreen" ? meshDepthCompare(pass.useViewerCamera) : null,
   ]);
 }
 
@@ -149,5 +153,5 @@ export function prefixPassError(passName: string, error: string): string {
 }
 
 export function storageCacheKey(node: StorageBindingNode): string {
-  return JSON.stringify([node.elementType, node.count, node.stride, node.containsAtomic === true]);
+  return JSON.stringify([node.elementType, node.count, node.stride, node.containsAtomic === true, node.structDeclarations, node.initialData]);
 }

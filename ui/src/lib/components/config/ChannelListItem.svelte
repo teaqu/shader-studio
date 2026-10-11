@@ -32,6 +32,10 @@
       case 'audio': return 'Audio';
       case 'buffer': return 'Buffer';
       case 'cubemap': return 'Cubemap';
+      case 'system-audio': return 'Shared Audio';
+      case 'webcam': return 'Webcam';
+      case 'screen': return 'Screen';
+      case 'microphone': return 'Mic';
       case 'keyboard': return 'Keyboard';
       default: return 'Unknown';
     }
@@ -71,7 +75,7 @@
     if (type === 'video' && resolvedPath && gvs) {
       videoState = gvs(resolvedPath);
       const id = setInterval(() => {
-        videoState = gvs(resolvedPath); 
+        videoState = gvs(resolvedPath);
       }, 500);
       return () => clearInterval(id);
     } else {
@@ -86,7 +90,7 @@
     if (type === 'audio' && resolvedPath && gas) {
       audioState = gas(resolvedPath);
       const id = setInterval(() => {
-        audioState = gas(resolvedPath); 
+        audioState = gas(resolvedPath);
       }, 500);
       return () => clearInterval(id);
     } else {
@@ -103,7 +107,7 @@
     setTimeout(() => {
       if (getVideoState && path) {
         videoState = getVideoState(path);
-      } 
+      }
     }, 100);
   }
 

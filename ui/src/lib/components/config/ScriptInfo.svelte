@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { untrack } from "svelte";
+  import type { MessageEvent as ShaderMessage } from "@shader-studio/types";
   import PathInput from './PathInput.svelte';
 
   interface Props {
@@ -13,7 +15,7 @@
     suggestedPath?: string;
     fileExists?: boolean;
     shaderPath?: string;
-    postMessage?: (msg: { type: string; [key: string]: unknown }) => void;
+    postMessage?: (msg: ShaderMessage) => void;
     onMessage?: (handler: (event: MessageEvent) => void) => void;
   }
 
@@ -58,7 +60,7 @@
     { label: '120fps', fps: 120 },
   ];
 
-  let localFps = $state(pollingFps);
+  let localFps = $state(untrack(() => pollingFps));
   $effect(() => {
     localFps = pollingFps; 
   });

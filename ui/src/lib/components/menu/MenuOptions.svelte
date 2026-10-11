@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 <script lang="ts">
   import { portal } from "../../actions/portal";
-  import { getHostCapabilities } from "../../state/hostState.svelte";
+  import { getHostCapabilities, getHostEditorWordWrap, toggleHostEditorWordWrap } from "../../state/hostState.svelte";
   import { getActiveProfile, getProfileList, restoreActiveProfile, saveProfile, switchTo } from "../../state/profileStore.svelte";
   import type { CompileMode } from "../../stores/compileModeStore";
   import ProfileModal from "../ProfileModal.svelte";
@@ -65,6 +65,7 @@
 
   let confirmingSave = $state(false);
   let showProfileModal = $state(false);
+  const wordWrap = $derived(getHostEditorWordWrap());
 
   function handleVolumeSlider(event: Event) {
     onVolumeChange(parseFloat((event.target as HTMLInputElement).value));
@@ -342,6 +343,17 @@
     class="editor-submenu-portal"
     style="top: {editorMenu.position.top}px; left: {editorMenu.position.left}px; visibility: {editorMenu.visible ? 'visible' : 'hidden'};"
   >
+    {#if wordWrap !== undefined}
+      <button class="editor-submenu-item" class:active={wordWrap === 'on'}
+        aria-label="Wrap text" aria-pressed={wordWrap === 'on'} onclick={toggleHostEditorWordWrap}>
+        {#if wordWrap === 'on'}
+          <i class="codicon codicon-check"></i>
+        {:else}
+          <span class="check-placeholder"></span>
+        {/if}
+        Wrap Text
+      </button>
+    {/if}
     <button
       class="editor-submenu-item"
       class:active={isEditorOverlayVisible}

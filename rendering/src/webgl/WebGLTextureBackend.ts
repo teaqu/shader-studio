@@ -42,6 +42,9 @@ export class WebGLTextureBackend implements TextureBackend<PiTexture> {
       texture.mXres = image[0].width;
       texture.mYres = image[0].height;
     }
+    if (texture && "videoWidth" in image) {
+      this.updateVideoDimensions(texture, image);
+    }
     return texture;
   }
 
@@ -55,10 +58,20 @@ export class WebGLTextureBackend implements TextureBackend<PiTexture> {
 
   updateTextureFromImage(tex: PiTexture, image: HTMLImageElement | HTMLVideoElement): void {
     this.renderer.UpdateTextureFromImage(tex, image);
+    if ("videoWidth" in image) {
+      this.updateVideoDimensions(tex, image);
+    }
   }
 
   destroyTexture(tex: PiTexture | null): void {
     this.renderer.DestroyTexture(tex);
+  }
+
+  private updateVideoDimensions(tex: PiTexture, video: HTMLVideoElement): void {
+    if (video.videoWidth > 0 && video.videoHeight > 0) {
+      tex.mXres = video.videoWidth;
+      tex.mYres = video.videoHeight;
+    }
   }
 
   private mapType(type: TextureType): number {

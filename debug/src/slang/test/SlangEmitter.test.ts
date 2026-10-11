@@ -8,6 +8,8 @@ describe("Slang debug emission", () => {
     expect(emitSlangFloat4("float3", "value")).toBe("float4(value, 1.0)");
     expect(emitSlangFloat4("float4", "value")).toBe("value");
     expect(emitSlangFloat4("int", "value")).toBe("float4(float(value), float(value), float(value), 1.0)");
+    expect(emitSlangFloat4("uint", "value")).toBe("float4(float(value), float(value), float(value), 1.0)");
+    expect(emitSlangFloat4("uint2", "value")).toBe("float4(float2(value), 0.0, 1.0)");
     expect(emitSlangFloat4("bool", "value")).toBe("float4(value ? 1.0 : 0.0, value ? 1.0 : 0.0, value ? 1.0 : 0.0, 1.0)");
     expect(emitSlangFloat4("float2x2", "value")).toBe("float4(value[0][0], value[0][1], value[1][0], value[1][1])");
   });

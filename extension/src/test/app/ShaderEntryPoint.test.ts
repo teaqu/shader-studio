@@ -1,5 +1,6 @@
 import * as assert from 'assert';
 import { definesMainImage, stripCommentsAndStrings } from '../../app/ShaderEntryPoint';
+import { isConfiguredNativeRenderRoot } from '../../app/ShaderProjectRoot';
 
 suite('ShaderEntryPoint', () => {
   suite('definesMainImage', () => {
@@ -105,4 +106,16 @@ suite('ShaderEntryPoint', () => {
       assert.ok(stripped.includes('float a = 1.0;'));
     });
   });
+
+
+  suite('configured native roots', () => {
+    const nativeRender = '@vertex fn vertices() -> @builtin(position) vec4f { return vec4f(0.0); }\n@fragment fn image() -> @location(0) vec4f { return vec4f(1.0); }';
+    test('keeps a native root on the project path when its sibling config is malformed', () => {
+      assert.strictEqual(isConfiguredNativeRenderRoot(nativeRender, 'wgsl', null, true), true);
+    });
+    test('does not treat a compute-only sibling source as an Image root', () => {
+      assert.strictEqual(isConfiguredNativeRenderRoot('@compute @workgroup_size(1) fn update() {}', 'wgsl', null, true), false);
+    });
+  });
+
 });

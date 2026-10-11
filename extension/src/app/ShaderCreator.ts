@@ -3,6 +3,8 @@ import * as path from "path";
 import * as fs from "fs";
 import { Logger } from "./services/Logger";
 import { GlslFileTracker } from "./GlslFileTracker";
+import { getConfigPathForShaderPath } from "./ShaderConfigPaths";
+import { createNativeFragmentSource, shaderStarterTemplate } from "@shader-studio/types";
 
 export class ShaderCreator {
   private logger: Logger;
@@ -11,47 +13,6 @@ export class ShaderCreator {
   constructor(logger: Logger, glslFileTracker: GlslFileTracker) {
     this.logger = logger;
     this.glslFileTracker = glslFileTracker;
-  }
-
-  private getShaderTemplate(): string {
-    return `void mainImage( out vec4 fragColor, in vec2 fragCoord )
-{
-    // Normalized pixel coordinates (from 0 to 1)
-    vec2 uv = fragCoord / iResolution.xy;
-
-    // Time varying pixel color
-    vec3 col = 0.5 + 0.5 * cos(iTime + uv.xyx + vec3(0, 2, 4));
-
-    // Output to screen
-    fragColor = vec4(col, 1.0);
-}`;
-  }
-
-  private getSlangShaderTemplate(): string {
-    return `float4 mainImage(float2 fragCoord)
-{
-    // Normalized pixel coordinates (from 0 to 1)
-    float2 uv = fragCoord / iResolution.xy;
-
-    // Time varying pixel color
-    float3 col = 0.5 + 0.5 * cos(iTime + uv.xyx + float3(0, 2, 4));
-
-    // Output to screen
-    return float4(col, 1.0);
-}`;
-  }
-
-  private getWgslShaderTemplate(): string {
-    return `fn mainImage(coord: vec2f) -> vec4f {
-    let st = coord / vec2f(iResolution.x, iResolution.y);
-    let uv = vec2f(st.x * iResolution.x / iResolution.y, st.y);
-
-    // Time varying pixel color
-    let col = vec3f(0.5) + vec3f(0.5) * cos(iTime + vec3f(uv.x, uv.y, uv.x) + vec3f(0.0, 2.0, 4.0));
-
-    // Output to screen
-    return vec4f(col, 1.0);
-}`;
   }
 
   private getDefaultUri(): vscode.Uri {
@@ -86,17 +47,45 @@ export class ShaderCreator {
       }
 
       const filePath = uri.fsPath;
+      const lowerPath = filePath.toLowerCase();
+      const isWebGpuLanguage = lowerPath.endsWith(".wgsl") || lowerPath.endsWith(".slang");
+      const defaultMode = vscode.workspace.getConfiguration('shader-studio').get('webgpu.defaultRenderAuthoring', 'hooks');
+      const authoringMode = isWebGpuLanguage
+        ? await vscode.window.showQuickPick([
+          { label: 'ShaderToy hooks', value: 'hooks' as const, description: 'Generate the familiar mainImage wrapper' },
+          { label: 'Native entry points', value: 'native' as const, description: 'Start with a native fragment function and the viewer vertex shader' },
+        ].sort((a, b) => Number(b.value === defaultMode) - Number(a.value === defaultMode)), { title: 'WebGPU authoring style' })
+        : { value: 'hooks' as const };
+      if (!authoringMode) {
+        return;
+      }
+      const configPath = getConfigPathForShaderPath(filePath);
+      if (authoringMode.value === 'native' && fs.existsSync(configPath)) {
+        vscode.window.showErrorMessage(`Cannot create native shader because its config already exists: ${path.basename(configPath)}`);
+        return;
+      }
 
       // Create a basic shader template
-      const lowerPath = filePath.toLowerCase();
-      const shaderTemplate = lowerPath.endsWith(".slang")
-        ? this.getSlangShaderTemplate()
+      const nativeTemplate = authoringMode.value === 'native'
+        ? createNativeFragmentSource(lowerPath.endsWith(".slang") ? 'slang' : 'wgsl', '', 'Image')
+        : undefined;
+      const shaderTemplate = nativeTemplate
+        ? nativeTemplate.text.trimStart()
+        : lowerPath.endsWith(".slang")
+        ? shaderStarterTemplate('slang')
         : lowerPath.endsWith(".wgsl")
-          ? this.getWgslShaderTemplate()
-          : this.getShaderTemplate();
+          ? shaderStarterTemplate('wgsl')
+          : shaderStarterTemplate('glsl');
 
       // Write the shader file
       fs.writeFileSync(filePath, shaderTemplate);
+      if (authoringMode.value === 'native') {
+        fs.writeFileSync(configPath, JSON.stringify({
+          version: '1.0',
+          webgpu: { defaultRenderAuthoring: 'native' },
+          passes: { Image: { inputs: {}, entryPoints: nativeTemplate!.entryPoints } },
+        }, null, 2));
+      }
 
       // Open the newly created file
       const document = await vscode.workspace.openTextDocument(uri);

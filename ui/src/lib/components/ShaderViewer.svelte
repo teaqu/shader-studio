@@ -1,8 +1,11 @@
 <svelte:options runes={true} />
 <script lang="ts">
+  import { sharedSourcePassNames, shaderPathsEqual } from "../editor/sharedSourcePassNames";
+  import { clearCurrentEditorSource, setCurrentEditorSource } from "../state/currentEditorSourceState.svelte";
   import { onMount, onDestroy, tick, setContext, untrack } from "svelte";
   import { get } from "svelte/store";
   import { ShaderPipeline } from "../ShaderPipeline";
+  import { ConfigEchoGuard } from '../config/ConfigEchoGuard';
   import { logSwitchTiming } from "../diagnostics/switchTiming";
   import { ShaderLocker } from "../ShaderLocker";
   import { createTransport } from "../transport/TransportFactory";
@@ -34,6 +37,11 @@
   import { performancePanelStore } from "../stores/performancePanelStore";
   import { recordingPanelStore } from "../stores/recordingPanelStore";
   import RecordingPanel from "./recording/RecordingPanel.svelte";
+  import { buildRenderCaptureShaderInfo } from "../recording/captureSnapshot";
+  import { CaptureSaveChannel, shaderMessageEndsLiveRecording } from "../recording/captureSaveChannel";
+  import { LiveCanvasSizeHold } from "../recording/liveCanvasSizeHold";
+  import { recordingStore } from "../stores/recordingStore";
+  import type { RecordingConfig, ScreenshotConfig } from "../recording/types";
   import { isUsableCanvasSize, retainUsableCanvasSize } from "../util/canvasSize";
   import {
     getEditorOverlayVisible,
@@ -63,7 +71,7 @@
   import { resolutionStore } from "../stores/resolutionStore";
   import { PageRenderLifecycle } from "../rendering/PageRenderLifecycle";
   import { aspectRatioStore } from "../stores/aspectRatioStore";
-  import { ResolutionSessionController } from "../resolution/ResolutionSessionController.svelte";
+  import { createResolutionSessionController } from "../resolution/createResolutionSessionController";
   import { FileProfileAdapter } from "../profiles/FileProfileAdapter";
   import { init as initProfiles } from "../state/profileStore.svelte";
   import { setLanguageServiceSettings } from "../state/languageServiceState.svelte";
@@ -169,6 +177,7 @@
   let pipeline: ShaderPipeline;
   let shaderLocker: ShaderLocker;
   let renderingEngine = $state<IRenderingEngine>(undefined!);
+  let renderOutputLimits = $state<{ maxColorAttachments: number; maxColorAttachmentBytesPerSample: number } | null>(null);
   // Uniform scripts run in the extension host, which has no clock of the
   // shader's own; this keeps it told what the viewer is showing.
   let scriptRuntimeReporter: ScriptRuntimeReporter | null = null;
@@ -189,12 +198,12 @@
         || Number(payload.start) < 0 || Number(payload.count) < 1 || Number(payload.count) > 1024) {
         throw new Error('Provide a storage name and a valid range of 1 to 1024 elements.');
       }
-      const { data, ...metadata } = await renderingEngine.readStorageBuffer(payload.name, Number(payload.start), Number(payload.count), 65536);
+      const { data, ...metadata } = await renderingEngine.readStorageBuffer(payload.name, Number(payload.start), Number(payload.count), undefined, 65536);
       return { ...metadata, bytes: Array.from(new Uint8Array(data)) };
     },
     settings: updateViewerSettings,
     playback: updateViewerPlayback,
-    respond: message => transport.postMessage(message),
+    respond: message => transport.postMessage($state.snapshot(message)),
   });
   let layoutSlot = transport.getType() === 'vscode'
     ? (getInjectedLayoutSlot() ?? 'vscode:1')
@@ -237,9 +246,11 @@
   // Recording
   let isRecording = $state(false);
   let recordingManager: RecordingManager;
+  let captureSaveChannel: CaptureSaveChannel | null = null;
 
   // Config panel state
   let currentConfig = $state<ShaderConfig | null>(null);
+  const configEchoGuard = new ConfigEchoGuard();
   const hasMeshPass = $derived(Boolean(Object.values(currentConfig?.passes ?? {}).some((pass) => pass && 'geometry' in pass && pass.geometry?.type && pass.geometry.type !== 'fullscreen')));
   let pathMap = $state<Record<string, string>>({});
   let bufferPathMap = $state<Record<string, string>>({});
@@ -263,14 +274,30 @@
   let editorVimMode = $derived(getVimMode());
   let currentShaderCode = $state('');
   let originalShaderCode = $state('');
+
+  // A WebGPU device initializes asynchronously. Source and config updates occur
+  // after compilation, so a short retry sequence keeps the visible limit current.
+  $effect(() => {
+    const engine = renderingEngine;
+    currentConfig;
+    currentShaderCode;
+    const refresh = () => {
+      renderOutputLimits = engine?.getRenderOutputLimits?.() ?? null;
+    };
+    refresh();
+    const retries = [50, 250].map((delay) => setTimeout(refresh, delay));
+    return () => retries.forEach(clearTimeout);
+  });
+
   let editorBufferName = $state('Image');
   let editorFilePath = $state('');
+  const editorSourcePassNames = $derived(sharedSourcePassNames(editorFilePath, shaderPath, bufferPathMap));
   let editorFileCode = $state('');
   let editorBufferNames = $state<string[]>(['Image']);
   let configSelectedBuffer = $state('Image');
 
   // Resolution controller — created at component level so setContext works synchronously
-  const resolutionController = new ResolutionSessionController({
+  const resolutionController = createResolutionSessionController({
     get currentConfig() {
       return currentConfig;
     },
@@ -626,10 +653,19 @@
     if (!initialized || !isUsableCanvasSize(data)) {
       return;
     }
-    renderingEngine.handleCanvasResize(data.width, data.height);
-    // Resolution is script context; report it without waiting for the sample.
-    scriptRuntimeReporter?.sync();
+    // A Live recording keeps its output size: the resize is held until the
+    // recording ends and the canvas is scaled to the new layout meanwhile.
+    liveCanvasSizeHold.resize(data.width, data.height, recordingManager?.isLiveRecording ?? false);
   }
+
+  const liveCanvasSizeHold = new LiveCanvasSizeHold(
+    (width, height) => {
+      renderingEngine.handleCanvasResize(width, height);
+      // Resolution is script context; report it without waiting for the sample.
+      scriptRuntimeReporter?.sync();
+    },
+    (listener) => recordingStore.subscribe((state) => listener(state.isLive)),
+  );
 
   function handleCanvasClick(event: MouseEvent, pointerType?: string) {
     if (pointerType === 'touch') {
@@ -766,6 +802,7 @@
     }
 
     if (bufferPath) {
+      setCurrentEditorSource(shaderPath, bufferPath);
       transport.postMessage({
         type: "navigateToBuffer",
         payload: { bufferPath, shaderPath, mode },
@@ -816,21 +853,6 @@
   function handleRecordingClosed() {
     recordingPanelStore.setVisible(false);
   }
-
-  // Track current time for RecordingPanel (only runs RAF when panel is visible)
-  let recordingCurrentTime = $state(0);
-  $effect(() => {
-    if (!$recordingPanelStore.isVisible) {
-      return;
-    }
-    let rafId: number;
-    function tick() {
-      recordingCurrentTime = timeManager?.getCurrentTime(performance.now()) ?? 0;
-      rafId = requestAnimationFrame(tick);
-    }
-    rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
-  });
 
   $effect(() => {
     if (initialized && renderingEngine) {
@@ -883,14 +905,14 @@
     transport.postMessage({ type: 'forkShader', payload: { shaderPath } });
   }
 
-  function handleScreenshot(config: { format: "png" | "jpeg"; time?: number; width: number; height: number }) {
+  function handleScreenshot(config: ScreenshotConfig) {
     if (!initialized) {
       return;
     }
     recordingManager.screenshot(config);
   }
 
-  function handleRecord(config: import('../recording/types').RecordingConfig) {
+  function handleRecord(config: RecordingConfig) {
     if (!initialized) {
       return;
     }
@@ -899,6 +921,10 @@
 
   function handleCancelRecording() {
     recordingManager.cancel();
+  }
+
+  function handleStopLiveRecording() {
+    recordingManager.stopLiveRecording();
   }
 
   function handleExtensionCommand(command: string) {
@@ -1083,10 +1109,6 @@
     return renderingEngine.getUniforms();
   }
 
-  function shaderPathsEqual(firstPath: string, secondPath: string) {
-    return firstPath.replace(/\\/g, '/') === secondPath.replace(/\\/g, '/');
-  }
-
   /**
    * Publish the common pass for the in-app editor's language service.
    *
@@ -1129,6 +1151,9 @@
       }
       const prevShaderPath = shaderPath;
       const nextShaderPath = event.data.path || "";
+      if (prevShaderPath && !shaderPathsEqual(nextShaderPath, prevShaderPath)) {
+        clearCurrentEditorSource(prevShaderPath);
+      }
       const isSameShader = nextShaderPath !== ""
         && shaderPathsEqual(nextShaderPath, prevShaderPath);
       currentConfig = event.data.config || null;
@@ -1209,6 +1234,11 @@
       return;
     }
 
+    if (type === 'saveFileResult') {
+      captureSaveChannel?.handleResult(event.data.payload);
+      return;
+    }
+
     if (type === 'error') {
       const payload = event.data.payload;
       errors = Array.isArray(payload) ? payload : [payload];
@@ -1254,7 +1284,13 @@
         return;
       }
       viewerControl.compileStarted(event.data.path, event.data.compileSequence);
-      mcpCompileSequence = event.data.compileSequence ?? null;
+      // Hot reloads of the same shader keep recording the same canvas; only a
+      // switch to a different main shader ends a Live recording.
+      if (shaderMessageEndsLiveRecording(messageTarget.kind, event.data.path, shaderPath, shaderPathsEqual)) {
+        recordingManager?.endLiveRecording(
+          'Live recording stopped because a different shader was opened.',
+        );
+      }
 
       // Only a main shader can select the renderer backend. Configured pass
       // updates often omit language and must stay on the locked main backend.
@@ -1291,9 +1327,14 @@
       }
 
       if (messageTarget.kind === 'main') {
+        if (!configEchoGuard.accepts(event.data.path || '', event.data.config || null, event.data.compileSequence)) {
+          viewerControl.compileCancelled(event.data.path, event.data.compileSequence);
+          return;
+        }
         handleShaderSource(event);
       }
       publishCommonShaderSource(event.data);
+      mcpCompileSequence = event.data.compileSequence ?? null;
       try {
         const result: CompilationResult | undefined = await pipeline?.handleShaderMessage(event);
         logSwitchTiming('shaderSource pipeline complete', {
@@ -1310,8 +1351,8 @@
         if (result) {
           applyCompilationResult(result);
           if (result.success) {
- mcpRenderedSequence = event.data.compileSequence ?? null;
-}
+            mcpRenderedSequence = event.data.compileSequence ?? null;
+          }
         }
         requestFullCustomUniformValues();
         isLocked = shaderLocker.isLocked();
@@ -1371,7 +1412,7 @@
       passes: Object.entries(currentConfig?.passes ?? { Image: {} }).map(([name, pass]) => ({
         name,
         kind: name.toLowerCase() === 'common' ? 'common' : pass && 'type' in pass && pass.type === 'compute' ? 'compute' : 'render',
-        path: name === 'Image' ? shaderPath ?? '' : bufferPathMap[name] ?? pass?.path ?? '',
+        path: name === 'Image' ? shaderPath ?? '' : bufferPathMap[name] ?? (pass && 'path' in pass ? pass.path : '') ?? '',
       })),
       storage: currentConfig?.storage ?? {},
     };
@@ -1379,8 +1420,8 @@
 
   async function captureViewerOutput(): Promise<ViewerCapture> {
     if (!initialized || !hasShader || !glCanvas) {
- throw new Error('No shader is loaded in this preview.');
-}
+      throw new Error('No shader is loaded in this preview.');
+    }
     const snapshot = viewerSnapshot();
     renderingEngine.renderForCapture();
     const blob = await new Promise<Blob>((resolve, reject) => glCanvas.toBlob(
@@ -1398,49 +1439,49 @@
   function updateViewerSettings(payload: Record<string, unknown>): void {
     validateViewerSettings(payload);
     if (!initialized) {
- throw new Error('Viewer is not initialized.');
-}
+      throw new Error('Viewer is not initialized.');
+    }
     // Validate all uniforms before applying any settings.
     const values = payload.uniforms as Record<string, number | number[] | boolean> | undefined;
     const declared = renderingEngine.getCurrentCustomUniforms();
     const changes = Object.entries(values ?? {}).map(([name, value]) => {
       const uniform = declared.find(item => item.name === name);
       if (!uniform) {
- throw new Error(`Unknown custom uniform: ${name}`);
-}
+        throw new Error(`Unknown custom uniform: ${name}`);
+      }
       const valid = Array.isArray(uniform.value)
         ? Array.isArray(value) && value.length === uniform.value.length && value.every(item => typeof item === 'number' && Number.isFinite(item))
         : typeof value === typeof uniform.value && (typeof value !== 'number' || Number.isFinite(value));
       if (!valid) {
- throw new Error(`Invalid value for uniform: ${name}`);
-}
+        throw new Error(`Invalid value for uniform: ${name}`);
+      }
       return { name, type: uniform.type, value };
     });
     if (typeof payload.fpsLimit === 'number') {
- handleFpsLimitChange(payload.fpsLimit);
-}
+      handleFpsLimitChange(payload.fpsLimit);
+    }
     if (typeof payload.speed === 'number') {
- renderingEngine.getTimeManager().setSpeed(payload.speed);
-}
+      renderingEngine.getTimeManager().setSpeed(payload.speed);
+    }
     if (changes.length) {
- renderingEngine.updateCustomUniformValues(changes);
-}
+      renderingEngine.updateCustomUniformValues(changes);
+    }
   }
 
   async function updateViewerPlayback(payload: Record<string, unknown>): Promise<void> {
     if (!initialized || !hasShader) {
- throw new Error('No shader is loaded.');
-}
+      throw new Error('No shader is loaded.');
+    }
     if (payload.reset === true) {
- await handleReset();
-}
+      await handleReset();
+    }
     if (typeof payload.paused === 'boolean' && payload.paused !== renderingEngine.getTimeManager().isPaused()) {
- handleTogglePause();
-}
+      handleTogglePause();
+    }
     if (typeof payload.time === 'number') {
       if (!Number.isFinite(payload.time) || payload.time < 0) {
- throw new Error('time must be a finite, non-negative number.');
-}
+        throw new Error('time must be a finite, non-negative number.');
+      }
       renderingEngine.getTimeManager().setTime(payload.time);
     }
   }
@@ -1487,26 +1528,42 @@
         },
       );
 
+      captureSaveChannel = new CaptureSaveChannel((payload) => {
+        transport.postMessage({ type: "saveFile", payload });
+      });
       recordingManager = new RecordingManager(
         () => {
           const lastEvent = pipeline.getLastEvent();
-          return {
+          return buildRenderCaptureShaderInfo({
             code: currentShaderCode,
             config: currentConfig,
             path: shaderPath,
             buffers: lastEvent?.data?.buffers ?? {},
             language: engineLanguage,
-          };
+            scriptContextOmitted: lastEvent?.data?.scriptContextOmitted,
+            customUniformDeclarations: lastEvent?.data?.customUniformDeclarations,
+            customUniformInfo: lastEvent?.data?.customUniformInfo,
+            slangModules: engineLanguage === 'slang' ? slangModules : undefined,
+            slangSourcePath: engineLanguage === 'glsl' ? undefined : shaderPath || undefined,
+            slangSourcePaths: engineLanguage === 'glsl' ? undefined : bufferPathMap,
+          }, renderingEngine);
         },
-        (blob, defaultName, filters) => {
-          blob.arrayBuffer().then((buf) => {
-            const base64 = btoa(new Uint8Array(buf).reduce((d, b) => d + String.fromCharCode(b), ""));
-            transport.postMessage({ type: "saveFile", payload: { data: base64, defaultName, filters } });
-          });
+        async (blob, defaultName, filters) => {
+          const bytes = new Uint8Array(await blob.arrayBuffer());
+          const chunkSize = 32_768;
+          let binary = '';
+          for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+            binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+          }
+          if (!captureSaveChannel) {
+            throw new Error('The viewer closed before the capture was saved');
+          }
+          return captureSaveChannel.save(btoa(binary), defaultName, filters);
         },
         (rec) => {
           isRecording = rec;
         },
+        () => renderingEngine,
       );
 
       pixelInspectorManager = new PixelInspectorManager(setInspectorState);
@@ -1546,6 +1603,9 @@
   const editorOverlayCallbacks: EditorOverlayCallbacks = {
     onStateChanged: (state) => {
       editorFilePath = state.filePath;
+      if (getEditorOverlayVisible()) {
+        setCurrentEditorSource(shaderPath, state.filePath);
+      }
       editorFileCode = state.fileCode;
       editorBufferName = state.bufferName;
       editorBufferNames = state.bufferNames;
@@ -1676,16 +1736,17 @@
   }
 
   async function handleConfigPanelConfigChange(updatedConfig: ShaderConfig) {
+    configEchoGuard.recordLocalEdit(shaderPath, currentConfig, updatedConfig);
     resolutionController.handleConfigUpdated(updatedConfig);
     await tick();
   }
 
-  async function readStorageBuffer(name: string, start: number, count: number) {
-    return renderingEngine.readStorageBuffer(name, start, count);
+  async function readStorageBuffer(name: string, start: number, count: number, point?: import('@shader-studio/types').StorageCapturePoint) {
+    return renderingEngine.readStorageBuffer(name, start, count, point);
   }
 
-  async function writeStorageBuffer(name: string, start: number, data: ArrayBuffer) {
-    await renderingEngine.writeStorageBuffer(name, start, data);
+  async function resetStorageBuffer(name: string) {
+    await renderingEngine.resetStorageBuffer(name);
   }
 
   // DOM teleport refs
@@ -1717,6 +1778,9 @@
 
   onDestroy(() => {
     viewerControl.dispose();
+    liveCanvasSizeHold.dispose();
+    captureSaveChannel?.dispose();
+    captureSaveChannel = null;
     scriptRuntimeReporter?.dispose();
     scriptRuntimeReporter = null;
     setViewerSession(null);
@@ -1779,6 +1843,7 @@
           {slangModules}
           commonPath={authoringCommonPath}
           commonSource={authoringCommonSource}
+          sourcePassNames={editorSourcePassNames}
           vimMode={editorVimMode}
           bufferNames={editorBufferNames}
           activeBufferName={editorBufferName}
@@ -1816,8 +1881,9 @@
         {pathMap}
         {bufferPathMap}
         {bufferSources}
+        shaderSource={currentShaderCode}
         onReadStorage={SHADER_LANGUAGES[engineLanguage].engine === 'webgpu' ? readStorageBuffer : undefined}
-        onWriteStorage={SHADER_LANGUAGES[engineLanguage].engine === 'webgpu' ? writeStorageBuffer : undefined}
+        onResetStorage={SHADER_LANGUAGES[engineLanguage].engine === 'webgpu' ? resetStorageBuffer : undefined}
         {transport}
         {shaderPath}
         isVisible={$configPanelStore.isVisible}
@@ -1831,6 +1897,7 @@
         {customUniformValues}
         {actualPollFps}
         {uniformActualFps}
+        {renderOutputLimits}
         onConfigChange={handleConfigPanelConfigChange}
       />
     {/if}
@@ -1845,10 +1912,11 @@
       <RecordingPanel
         {canvasWidth}
         {canvasHeight}
-        currentTime={recordingCurrentTime}
+        displayFrameRate={Math.max(1, Math.round(currentFPS || 60))}
         onScreenshot={handleScreenshot}
         onRecord={handleRecord}
         onCancel={handleCancelRecording}
+        onStopLive={handleStopLiveRecording}
       />
     {/if}
   </div>

@@ -170,7 +170,8 @@ test('a first install does not offer an update', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Update ready' })).toHaveCount(0);
 });
 
-test('accepting a newer build keeps an edit made just before the update', async ({ page, baseURL }) => {
+for (const mobile of [false, true]) {
+test(`automatically installing a newer build keeps pending edits (${mobile ? 'mobile' : 'desktop'})`, async ({ page, baseURL }) => {
   const builds = await startTwoBuildServer(baseURL);
   try {
     await page.goto(`${builds.origin}/`);
@@ -182,22 +183,19 @@ test('accepting a newer build keeps an edit made just before the update', async 
     await expect(page.getByRole('button', { name: 'Update ready' })).toHaveCount(0);
     await page.getByTestId('shader-option-aurora-glsl').click();
 
-    builds.publishNextBuild();
-    await page.getByRole('button', { name: 'Workspace' }).click();
-    await page.getByRole('button', { name: 'Check for Updates' }).click();
-    const updateReady = page.getByRole('button', { name: 'Update ready' });
-    // The offer appears only once the new worker has fetched and precached the
-    // app shell; that measured 4.2-5.6s here, past the default 5s assertion.
-    await expect(updateReady).toBeVisible({ timeout: 30_000 });
-    await page.keyboard.press('Escape');
-
-    // Typed while the update waits; the shell must save it before reloading.
+    // Edit before requesting the update; activation must flush pending saves.
     const editor = page.getByTestId('web-editor');
     await editor.locator('.view-lines').click({ position: { x: 80, y: 20 } });
     await editor.locator('.inputarea').press('ControlOrMeta+A');
     await page.keyboard.insertText('void mainImage(out vec4 color, in vec2 coord) { color = vec4(0.75); } // before update');
+    if (mobile) {
+      await page.setViewportSize({ width: 390, height: 844 });
+    }
+    builds.publishNextBuild();
+    // Returning to the app discovers and applies the build without an update action.
     const reloaded = page.waitForEvent('load');
-    await updateReady.click();
+    // Headless tabs do not emit focus when brought to front; deliver the foreground event.
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await reloaded;
 
     await expect(page.getByRole('status')).toHaveAttribute('title', /Build next-build/);
@@ -205,6 +203,66 @@ test('accepting a newer build keeps an edit made just before the update', async 
     await expect(page.getByTestId('shader-option-aurora-glsl')).toHaveAttribute('aria-pressed', 'true');
     await expect(editor.locator('.view-lines')).toContainText('before update');
     await expect.poll(() => page.evaluate(() => caches.keys())).toEqual([expect.stringMatching(/-next$/)]);
+  } finally {
+    await builds.close();
+  }
+});
+}
+
+test('defers an automatic update while another app tab is open, then applies it after that tab closes', async ({ page, context, baseURL }) => {
+  const builds = await startTwoBuildServer(baseURL);
+  try {
+    await page.goto(`${builds.origin}/`);
+    await controlledByWorker(page);
+    await page.getByTestId('shader-option-aurora-glsl').click();
+    await replaceShader(page, 'void mainImage(out vec4 color, in vec2 coord) { color = vec4(0.25); } // deferred update edit', 'deferred update edit');
+
+    const otherTab = await context.newPage();
+    await otherTab.goto(`${builds.origin}/`);
+    await controlledByWorker(otherTab);
+
+    builds.publishNextBuild();
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect.poll(() => page.evaluate(() => navigator.serviceWorker.getRegistration()
+      .then(registration => Boolean(registration?.waiting)))).toBe(true);
+    await expect(page.getByTestId('web-editor').locator('.view-lines')).toContainText('deferred update edit');
+
+    await otherTab.close();
+    const reloaded = page.waitForEvent('load');
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await reloaded;
+
+    await expect(page.getByRole('status')).toHaveAttribute('title', /Build next-build/);
+    await expect(page.getByTestId('web-editor').locator('.view-lines')).toContainText('deferred update edit');
+  } finally {
+    await builds.close();
+  }
+});
+
+test('a session-only workspace refuses automatic activation and retains the live edit', async ({ page, baseURL }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'indexedDB', { configurable: true, value: undefined });
+    sessionStorage.setItem('pwa-load-count', String(Number(sessionStorage.getItem('pwa-load-count') ?? '0') + 1));
+  });
+  const builds = await startTwoBuildServer(baseURL);
+  try {
+    await page.goto(`${builds.origin}/`);
+    await controlledByWorker(page);
+    await expect(page.getByRole('status')).toHaveAttribute('aria-label', /Session-only/);
+    await page.getByTestId('shader-option-aurora-glsl').click();
+    const editor = page.getByTestId('web-editor');
+    await editor.locator('.view-lines').click({ position: { x: 80, y: 20 } });
+    await editor.locator('.inputarea').press('ControlOrMeta+A');
+    await page.keyboard.insertText('void mainImage(out vec4 color, in vec2 coord) { color = vec4(0.5); } // session update edit');
+    await expect(editor.locator('.view-lines')).toContainText('session update edit');
+
+    builds.publishNextBuild();
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect.poll(() => page.evaluate(() => navigator.serviceWorker.getRegistration()
+      .then(registration => Boolean(registration?.waiting)))).toBe(true);
+
+    expect(await page.evaluate(() => sessionStorage.getItem('pwa-load-count'))).toBe('1');
+    await expect(editor.locator('.view-lines')).toContainText('session update edit');
   } finally {
     await builds.close();
   }

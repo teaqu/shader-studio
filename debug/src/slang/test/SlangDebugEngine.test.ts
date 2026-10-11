@@ -11,6 +11,28 @@ const request = {
 };
 
 describe("SlangDebugEngine", () => {
+  it.each([['uint', '7u'], ['uint2', 'uint2(3u, 5u)']])("captures unsigned %s locals from compute shaders", (typeName, value) => {
+    const source = `[shader("compute")]\n[numthreads(1,1,1)]\nvoid update(uint3 tid : SV_DispatchThreadID)\n{\n  ${typeName} value = ${value};\n  writeOutput(tid.xy, float4(0.0));\n}`;
+    const unsignedRequest = {
+      ...request,
+      workspace: { ...request.workspace, compute: { entryPoint: 'update', storageNames: [] }, files: [{ ...request.workspace.files[0], source }] },
+      position: { line: 4, character: 8 },
+    };
+    const engine = new SlangDebugEngine();
+    const analysis = engine.analyze(unsignedRequest);
+    expect(analysis.ok).toBe(true);
+    if (!analysis.ok) {
+      throw new Error(analysis.diagnostics[0]?.message);
+    }
+    const captured = analysis.analysis.visibleValues.find(candidate => candidate.name === 'value');
+    expect(captured).toMatchObject({ typeName });
+    const preview = engine.planPreview(unsignedRequest, { normalizeMode: 'off', stepEdge: null });
+    if (!preview.ok) {
+      throw new Error(preview.diagnostics[0]?.message);
+    }
+    expect(preview).toMatchObject({ ok: true });
+    expect(engine.planCapture(unsignedRequest, [captured!.id])).toMatchObject({ ok: true, plan: { captureSlots: [{ hidden: true }, { name: 'value', typeName }] } });
+  });
   it("exposes analysis, preview, and selected-variable capture through the public debug contract", () => {
     const engine = new SlangDebugEngine();
     const analysis = engine.analyze(request);

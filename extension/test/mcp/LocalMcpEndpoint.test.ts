@@ -12,7 +12,7 @@ afterEach(async () => {
 });
 
 async function fixture() {
-  const call = vi.fn(async (operation: string) => operation === 'capture_output'
+  const call = vi.fn(async (operation: string, _args: Record<string, unknown>, _signal: AbortSignal) => operation === 'capture_output'
     ? { previewId: 'a', image: { data: 'cGl4ZWxz', mimeType: 'image/png' } } : { operation });
   const endpoint = new LocalMcpEndpoint({ call }, token);
   endpoints.push(endpoint);

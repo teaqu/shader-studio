@@ -2,7 +2,7 @@
 
 ![Channels](../assets/images/channels.png)
 
-Channels let a pass read images, video, audio, buffers, cubemaps, or keyboard state.
+Channels let a pass read images, video, audio, buffers, cubemaps, keyboard state, webcam frames, or microphone data.
 Each pass has its own configured names. A channel named `albedo` exposes
 `albedo.size`, `albedo.time`, and `albedo.loaded` in GLSL, Slang, and WGSL.
 
@@ -27,9 +27,9 @@ Channels are useful in a few different ways:
 
 ## Adding a Channel
 
-Open the pass you want to configure, then use the channel grid:
+Open the pass you want to configure, then use its **Channels** section:
 
-1. Click **+** on an empty slot to add an input.
+1. Click **+ Add Channel** to add an input, or use the configure button on an existing channel row.
 2. Choose what the channel should read: texture, video, audio, cubemap, buffer, or keyboard.
 3. Set the file, source pass, or options for that input.
 4. Sample it with the matching channel name using the examples below.
@@ -220,7 +220,7 @@ The channel editor includes playback controls — play, pause, next, mute, reset
 
 ## Audio Channels
 
-Bind an audio file. The channel provides a **512×2 texture** containing frequency and waveform data each frame.
+Bind an audio file. The channel provides a **512×2 texture** containing frequency and waveform data each frame. Audio files, Mic and Shared Audio use Shadertoy’s analyser settings: a 2048-point FFT, 0.8 smoothing, and a −100 to −30 dB range. The spectrum row exposes the first 512 bins (approximately 0 to `iSampleRate / 4` Hz); bin `n` corresponds to `n * iSampleRate / 2048` Hz. The waveform row holds the first 512 samples, with silence centered at roughly 0.5. This changes the frequency mapping from earlier builds that used a 1024-point FFT.
 
 ![Choosing an audio channel](../assets/images/select-music.png)
 
@@ -251,7 +251,7 @@ ffmpeg -i input.mp4 -c:v copy -c:a libmp3lame -q:a 2 output.mp4
 
 | Row | y coordinate | Contents |
 |-----|-------------|----------|
-| Row 0 | ≈ 0.25 | FFT frequency spectrum — x goes from low to high frequency, value is amplitude 0–1 |
+| Row 0 | ≈ 0.25 | FFT frequency spectrum — x goes from low to high frequency, value is normalized decibel magnitude 0–1 |
 | Row 1 | ≈ 0.75 | Time-domain waveform — x is sample position across the current audio frame |
 
 ```glsl
@@ -297,7 +297,23 @@ vec4 sky  = texture(iChannel0, dir);  // samplerCube lookup — direction, not U
 
 Read the texture output of a renderable pass. The `source` field accepts arbitrary fragment buffer pass names such as `Flow` and arbitrary names of Slang or WGSL compute passes declared with `"type": "compute"`. To sample a compute pass, write its output with `writeOutput`. `common` is shared code rather than a renderable source, and `Image` cannot be used as a source. Pass names and counts are not limited to `BufferA` through `BufferD`.
 
+In the channel editor, open **Misc** and select the source pass. A native WGSL/Slang buffer with several color attachments shows **Buffer output** rows with the inferred slot and field name, for example **Output 1 · normals**. Choose the row you want this channel to sample. Output names and available slots come from the selected fragment code; the channel connection saves a numeric `output` choice. Omitting it selects slot zero:
+
+```json
+"iChannel0": {
+  "type": "buffer",
+  "source": "GBuffer",
+  "output": 1,
+  "filter": "nearest",
+  "wrap": "clamp"
+}
+```
+
+The buffer's **Output** section lists the inferred attachments and controls their shared format. Edit the fragment return type to add or remove attachments; neither that section nor Misc rewrites the shader. See [Multiple render targets](multiple-render-targets.md) for a two-output WGSL example. A selected attachment that disappears is shown as unavailable.
+
 For a compute pass with `outputLayers` greater than 1, set `layer` to select one texture-array layer. It defaults to 0 and must be less than the source pass's `outputLayers`:
+
+Misc shows this as **Compute output layer**. Compute layers and render attachment slots are separate concepts; use `layer` for compute and `output` for render buffers.
 
 ```json
 "iChannel0": {
@@ -325,7 +341,7 @@ Most shaders can leave **Output format** on **Auto**. For simulations, 32-bit
 storage helps preserve values that later passes read or that feed back into the
 next frame. Choose 16-bit when lower memory use matters more than precision.
 
-Find **Output format** at the bottom of a buffer or compute pass's settings.
+Find **Output format** in the buffer or compute pass's **Output** section.
 Image has no output-format setting: it displays the final result on the canvas,
 while buffers store values for other passes to use.
 
@@ -452,3 +468,74 @@ float pressed = texture(iChannel1, vec2(32.0 / 256.0, 0.50)).r;  // Space just p
 ## Next
 
 [Uniforms](uniforms.md) — built-in and custom uniforms, including channel samplers
+
+## Webcam and Mic
+
+Choose **Webcam** in **Misc**, or **Mic** in the channel's **Audio** tab. These use the
+browser's default device and ask for capture permission. Mic has a device selector for microphones and loopback inputs; choose a device and click **Change device** to switch. Once enabled, the channel
+row and selection cards show the live camera image or microphone spectrum and
+waveform. These previews share the shader's capture stream. The config is pathless:
+
+```json
+"inputs": {
+  "camera": { "type": "webcam" },
+  "sound": { "type": "microphone" }
+}
+```
+
+Webcam channels expose a live 2D image and its actual frame dimensions. Microphone
+channels expose a 512 × 2 texture: row 0 contains FFT magnitudes, row 1 contains
+the waveform. Sample at `y = 0.25` for frequency data or `y = 0.75` for waveform
+data; values are normalized to 0–1. The microphone is never played through your
+speakers. Click or press a key in the preview if the browser suspends audio analysis.
+
+Named channel metadata and numbered Shadertoy uniforms work in GLSL, Slang and
+WGSL. Channels of the same device type share one capture stream in a preview.
+Removing the input, switching shaders, or closing the preview releases capture.
+
+Capture requires HTTPS or localhost and permission from the browser and operating
+system. If a VS Code webview blocks capture, use **Open in Browser** on localhost.
+If permission is denied or a device is unavailable, the preview reports a warning;
+allow access and reload the shader to retry.
+
+### Screen
+
+Choose **Screen** next to Webcam in **Misc**, then click **Start screen sharing**.
+The browser picker can provide a screen, window, or browser tab as a live 2D video
+channel; audio is not used by this input. You can select its filter, wrap, and
+vertical-flip settings in the channel editor. The saved input is pathless, for
+example `{ "type": "screen", "filter": "linear" }`; the selected surface and its
+permission are session-only.
+
+Click **Stop screen sharing**, remove the channel, or switch away from a shader
+using Screen to release capture. A page reload also needs a new selection from the
+browser picker. Screen capture needs HTTPS or localhost, and browser/operating
+system permission just like Webcam.
+
+Screen requests 1920 × 1080 video at 30 fps when the browser supports these capture preferences and uploads only newly presented frames. Sources that do not support these preferences keep their available resolution. The channel dimensions report the captured video size. Filter, wrap and vertical flip affect sampling in the shader; the small channel preview shows the original capture. Wrap changes are visible when UV coordinates leave the 0–1 range, and filtering differences appear at pixel edges or when scaling.
+
+### Shared Audio
+
+Choose **Shared Audio** in **Audio**, then click **Start sharing**. For a song
+playing in a browser, choose that tab in the sharing picker and enable audio
+sharing. Where offered, the browser can also share system or app audio. These
+options depend on your browser and operating system; selecting a source without
+an audio track shows an actionable warning. Firefox currently cannot share tab/system audio ([Mozilla issue 1541425](https://bugzilla.mozilla.org/show_bug.cgi?id=1541425)); the preview explains this and disables screen-only sharing for audio. Use Chrome or Edge for browser-tab audio.
+
+For desktop apps such as Spotify or Apple Music, you can route playback through
+a virtual audio input device and select it under **Audio → Mic → Audio device**. **Refresh
+devices** updates the list; microphone permission may be needed for device names.
+Shader Studio does not configure audio routing or install virtual audio drivers.
+
+Shared Audio uses the same 512 × 2 FFT/waveform texture and live tile preview as
+the microphone. The saved config is `{ "type": "system-audio" }`; capture permission
+and source choices are session-only. Reloading requires an explicit reconnect.
+**Stop sharing**, removing the channel, or switching to a shader without Browser
+Audio releases capture. Display video is discarded and audio is never monitored
+through your speakers.
+
+### Live inputs in VS Code
+
+Mic, Shared Audio, Webcam and Screen are greyed out in VS Code panels. Hover over an input for guidance on using Shader Studio in a browser. Start the web server from the Shader Studio status menu, then choose **Open in Browser** to use these inputs in your external browser. Shader edits continue to update the viewer through the extension’s existing connection.
+
+Allow camera and microphone access for the localhost page in your browser when prompted. Shared Audio requires **Start sharing**, and Screen requires **Start screen sharing**. Sharing options depend on the browser; choose a routed audio input device if tab/system sharing is unavailable. Device choices, source permissions and sharing sessions are not saved in shader configs.

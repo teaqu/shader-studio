@@ -22,13 +22,13 @@
     "@sveltejs/vite-plugin-svelte": "^5.0.3",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/svelte": "^5.2.8",
-    "@vitest/browser-playwright": "^4.0.18",
-    "eslint-plugin-svelte": "^2.46.1",
+    "@vitest/browser-playwright": "5.0.3",
+    "eslint-plugin-svelte": "^3.23.1",
     "playwright": "^1.60.0",
-    "svelte": "^5.28.1",
+    "svelte": "^5.56.4",
     "svelte-check": "^4.0.8",
     "svelte-eslint-parser": "^0.43.0",
-    "rollup": "^4.45.3"
+    "rollup": "^4.64.5"
   },
   "dependencies": {
     "@shader-studio/debug": "*",
@@ -43,9 +43,8 @@
     "codejar": "^4.3.0",
     "dockview-core": "^5.0.0",
     "gifski-wasm": "^2.2.0",
+    "mediabunny": "^1.61.1",
     "monaco-editor": "^0.57.0",
-    "monaco-vim": "^0.4.4",
-    "mp4-muxer": "^5.2.2",
-    "webm-muxer": "^5.1.4"
+    "monaco-vim": "^0.4.4"
   }
 }

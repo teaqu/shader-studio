@@ -107,7 +107,9 @@ for (const language of [
       await frame.getByRole('button', { name: 'Image', exact: true }).click();
       await frame.locator('select').filter({ has: frame.locator('option[value="plane"]') }).first().selectOption('plane');
       const vertex = frame.locator('.vertex-shader-title').locator('..');
-      await vertex.locator('.create-file-btn').click();
+      await vertex.getByRole('group', { name: 'Vertex source' }).getByRole('button', { name: 'Separate file' }).click();
+      await vertex.getByRole('button', { name: /^Change/ }).click();
+      await frame.getByRole('dialog', { name: 'Choose shader file' }).locator('.create-file-btn').click();
       await saveWithSimpleDialog(vscode, vertexPath, vertexSuggestedPath);
       await expect.poll(() => existsSync(vertexPath), { timeout: 8_000 }).toBe(true);
       const source = readFileSync(vertexPath, 'utf8');

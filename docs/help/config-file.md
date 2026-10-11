@@ -49,6 +49,44 @@ Image reads from an arbitrarily named `Simulation` pass, which reads keyboard in
 }
 ```
 
+## Native Stages and Shared Sources
+
+WGSL and Slang passes select annotated functions with `entryPoints`. Several passes may use the same source file and select different functions:
+
+```json
+{
+  "version": "1.0",
+  "webgpu": { "defaultRenderAuthoring": "native" },
+  "passes": {
+    "ComputeA": {
+      "type": "compute",
+      "path": "shared.wgsl",
+      "entryPoints": { "compute": "advance" },
+      "outputLayers": 2
+    },
+    "BufferA": {
+      "path": "shared.wgsl",
+      "entryPoints": { "fragment": "twoOutputs" },
+      "outputFormat": "rgba16float"
+    },
+    "Image": {
+      "inputs": {
+        "iChannel0": { "type": "buffer", "source": "BufferA", "output": 1 },
+        "iChannel1": { "type": "buffer", "source": "ComputeA", "layer": 1 }
+      }
+    }
+  }
+}
+```
+
+Image uses the main shader file. For vertex sources, omitted `vertex` and `entryPoints.vertex` use the generated stage; `vertex` equal to the pass source chooses Same file, while another path chooses Separate file. Native vertex selection uses `entryPoints.vertex`; a Built-in custom source provides `mainVertex`. Fragment and vertex choices are independent. Pure native fragments do not need `mainImage`.
+
+Compute uses `entryPoints.compute`; legacy `entryPoint` still loads. Native render output slots and default names are inferred from the selected fragment return declaration in the pass source and Common code. Do not add an `outputs` array to allocate attachments: edit the shader declaration instead. Legacy `outputs` entries can override labels by slot. A channel's `output` selects a render attachment, and `layer` selects a compute output layer; both default to zero.
+
+The config UI writes these paths and selections when you choose a file or function. **Add function…** also inserts source code in that stage's file. Output selection in **Misc** only changes the channel connection. See [Native entry points](../features/wgsl-authoring.md#native-entry-points-and-shared-files) and [Multiple render targets](../features/multiple-render-targets.md).
+
+For mesh passes, `useViewerCamera: false` disables the viewer transform in GLSL, WGSL, and Slang. Omitting it inherits the shader-wide `webgpu.useViewerCamera` setting, then the global preference. **Use default** removes the pass override.
+
 ## Texture Input Example
 
 Bind an image file to a channel:
@@ -304,3 +342,43 @@ order; WebGPU runs compute passes first, and `Image` always runs last. See
 ## File Paths
 
 Paths in the config are relative to the config file's directory. Keep all referenced files (buffer `.glsl` files, textures, videos, audio) in the same directory or subdirectories.
+
+## Storage Declarations
+
+Declare WebGPU storage at the top level of the config, alongside `passes`. The visual [Storage workspace](../features/storage.md) edits these declarations.
+
+```json
+{
+  "version": "1.0",
+  "storage": {
+    "particles": {
+      "count": 1024,
+      "elementType": "ParticleData",
+      "fields": [
+        { "name": "position", "type": "float4" },
+        { "name": "velocity", "type": "float4" }
+      ],
+      "resetOnRestart": false
+    },
+    "counter": {
+      "count": 1,
+      "elementType": "u32",
+      "initialData": "AQAAAA==",
+      "initialDataName": "counter.bin"
+    }
+  },
+  "passes": { "Image": {} }
+}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `count` | Positive integer element count. |
+| `elementType` | Numeric Slang/WGSL type or struct name. |
+| `fields` | Optional 1-64 named numeric fields. When supplied, generates the named struct; omit for a type defined in shader source. Field names must be unique shader identifiers. |
+| `initialData` | Optional base64-encoded raw binary bytes, at most 256 KiB decoded and no larger than the buffer. Missing bytes are zero. |
+| `initialDataName` | Optional display name of the uploaded file; not a path loaded at runtime. |
+| `clearEachFrame` | Optional boolean, default `false`. Zeros storage before each normal simulation frame. |
+| `resetOnRestart` | Optional boolean, default `true`. Set `false` to preserve compatible existing storage during a shader restart. |
+
+The example initializes `counter[0]` to `1u`. Binary data must match the actual GPU element stride and field offsets, including padding. Changing a declaration's layout, size or initial data can recreate its buffer. Capture settings and the selected inspector field are UI choices, not storage declaration fields.

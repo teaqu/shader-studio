@@ -18,6 +18,7 @@ export interface SlangWorkspace {
   passName: string;
   contentHash: string;
   compute?: DebugWorkspace["compute"];
+  render?: DebugWorkspace["render"];
   filesByUri: ReadonlyMap<string, SlangWorkspaceFile>;
   moduleUris: ReadonlyMap<string, string>;
 }
@@ -72,6 +73,7 @@ export function createSlangWorkspace(workspace: DebugWorkspace): CreateSlangWork
       passName: workspace.passName,
       contentHash: workspace.contentHash,
       compute: workspace.compute,
+      render: workspace.render,
       filesByUri,
       moduleUris,
     },

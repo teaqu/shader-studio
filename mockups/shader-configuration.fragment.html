@@ -1,0 +1,356 @@
+<div id="shader-file-first" class="viz-dotted-background">
+  <div class="sf-stage">
+    <div class="sf-panel" aria-label="File-first shader controls">
+      <header><span>Shader configuration</span><span class="sf-language">WGSL</span></header>
+      <div class="sf-tabs" role="group" aria-label="Pass"><button type="button" data-pass="Image">Image</button><button type="button" data-pass="Buffer A">Buffer A</button><button type="button" data-pass="Buffer B">Buffer B</button></div>
+      <div class="sf-content">
+        <section data-stage="fragment">
+          <h3>Fragment shader</h3>
+          <label class="sf-field">File
+            <div class="sf-file-row"><input aria-label="Fragment file path" value="./buffers/feedback.wgsl" spellcheck="false"><button type="button" data-choose="fragment">Change…</button></div>
+          </label>
+          <div class="sf-function" data-function="fragment"></div>
+        </section>
+        <section data-stage="vertex">
+          <h3>Vertex shader</h3>
+          <div class="sf-source-options" role="group" aria-label="Vertex source">
+            <button type="button" data-source="builtin" aria-pressed="false">Built-in</button>
+            <button type="button" data-source="same" aria-pressed="true">Same file</button>
+            <button type="button" data-source="separate" aria-pressed="false">Separate file</button>
+          </div>
+          <div class="sf-vertex-file" hidden>
+            <label class="sf-field">File
+              <div class="sf-file-row"><input aria-label="Vertex file path" value="./mesh.wgsl" spellcheck="false"><button type="button" data-choose="vertex">Change…</button></div>
+            </label>
+          </div>
+          <div class="sf-function" data-function="vertex"></div>
+          <div class="sf-builtin" hidden>Viewer vertex shader</div>
+        </section>
+        <details class="sf-settings sf-channels" open><summary>Channels <span class="sf-summary-value" data-channel-count>2 inputs</span></summary>
+          <div class="sf-settings-body"><div class="sf-channel-list"></div><div class="sf-small-actions"><button type="button" data-add-channel>+ Add channel</button><button type="button" data-sort>Sort A–Z</button></div></div>
+        </details>
+        <details class="sf-settings" open><summary>Geometry <span class="sf-summary-value" data-geometry-name>Cube</span></summary>
+          <div class="sf-settings-body">
+            <label class="sf-field">Type<select aria-label="Geometry type" data-setting="geometry"><option value="fullscreen">Fullscreen</option><option value="vertices">Vertices</option><option value="plane">Plane</option><option value="cube" selected>Cube</option><option value="sphere">Sphere</option><option value="model">Model</option></select></label>
+            <div class="sf-model-fields" hidden><label class="sf-field">Model file<div class="sf-file-row"><input aria-label="Model file path" data-setting="modelPath" value="./models/scene.glb"><button type="button" data-model-file>Change…</button></div></label><label class="sf-field">Mesh<select data-setting="modelMesh" aria-label="Model mesh"><option>All meshes</option><option>Body</option><option>Glass</option></select></label></div>
+            <div class="sf-mesh-fields"><label class="sf-field">Topology<select aria-label="Mesh topology" data-setting="meshTopology"><option>Triangles</option><option>Wireframe</option><option>Points</option></select></label></div>
+            <div class="sf-vertices-fields" hidden><div class="sf-two-col"><label class="sf-field">Vertex count<input type="number" min="1" value="36" data-setting="vertexCount" aria-label="Vertex count"></label><label class="sf-field">Topology<select data-setting="vertexTopology" aria-label="Vertex topology"><option>Triangle list</option><option>Triangle strip</option><option>Line list</option><option>Line strip</option><option>Point list</option></select></label></div><label class="sf-field">Space<select aria-label="Vertex space" data-setting="space"><option value="world">World</option><option value="clip">Clip</option></select></label></div>
+            <label class="sf-field sf-instance-field">Instances<input type="number" min="1" value="1" aria-label="Instance count" data-setting="instances"></label>
+            <label class="sf-check sf-camera-field"><input type="checkbox" checked data-setting="camera">Use viewer camera</label>
+            <div class="sf-camera-default sf-small-actions"><span>Using global default</span><button type="button" data-camera-reset>Use default</button></div>
+          </div>
+        </details>
+        <details class="sf-settings" open><summary>Rendering</summary><div class="sf-settings-body">
+          <div class="sf-two-col"><label class="sf-field">Blending<select aria-label="Blending" data-setting="blend"><option>None</option><option>Alpha</option><option>Premultiplied alpha</option><option>Additive</option></select></label><label class="sf-field sf-aa-field">Antialiasing<select aria-label="Antialiasing" data-setting="samples"><option>Off</option><option>4× MSAA</option></select></label></div>
+          <div class="sf-two-col sf-clear-fields"><label class="sf-field">Clear color<input type="color" value="#000000" data-setting="clearColor" aria-label="Clear color"></label><label class="sf-field">Clear alpha<input type="number" min="0" max="1" step="0.05" value="1" data-setting="clearAlpha" aria-label="Clear alpha"></label></div>
+          <div class="sf-depth-fields"><label class="sf-field">Cull faces<select aria-label="Cull faces" data-setting="cull"><option>Back</option><option>Front</option><option>None</option></select></label><details class="sf-advanced"><summary>Depth settings</summary><div class="sf-settings-body"><label class="sf-check"><input type="checkbox" checked data-setting="depth">Depth testing</label><label class="sf-check"><input type="checkbox" checked data-setting="depthWrite">Write depth</label><label class="sf-field">Compare<select aria-label="Depth comparison" data-setting="depthCompare"><option>Less or equal</option><option>Less</option><option>Greater</option><option>Greater or equal</option><option>Equal</option><option>Not equal</option><option>Always</option><option>Never</option></select></label></div></details></div>
+        </div></details>
+        <details class="sf-settings sf-resolution" open><summary>Resolution</summary><div class="sf-settings-body">
+          <div class="sf-image-resolution sf-settings-body" hidden><label class="sf-field">Scale<select data-setting="imageScale" aria-label="Image scale"><option>0.25×</option><option>0.5×</option><option selected>1×</option><option>2×</option><option>4×</option></select></label><label class="sf-field">Aspect<select data-setting="aspect" aria-label="Image aspect"><option>16:9</option><option>4:3</option><option>1:1</option><option>fill</option><option selected>auto</option></select></label><div class="sf-two-col"><label class="sf-field">Fixed width<input type="number" min="1" data-setting="imageWidth" aria-label="Image width" placeholder="Auto"></label><label class="sf-field">Fixed height<input type="number" min="1" data-setting="imageHeight" aria-label="Image height" placeholder="Auto"></label></div><button type="button" data-clear-size>Clear fixed size</button></div>
+          <label class="sf-field">Resolution<select aria-label="Resolution" data-setting="resolution"><option value="inherit">Inherit</option><option value="scale">Scale</option><option value="fixed">Fixed size</option></select></label>
+          <label class="sf-field sf-scale-fields" hidden>Scale<select data-setting="scale" aria-label="Resolution scale"><option>0.25×</option><option>0.5×</option><option selected>1×</option><option>2×</option><option>4×</option></select></label>
+          <div class="sf-two-col sf-fixed-fields" hidden><label class="sf-field">Width<input type="number" min="1" value="1920" data-setting="width" aria-label="Output width"></label><label class="sf-field">Height<input type="number" min="1" value="1080" data-setting="height" aria-label="Output height"></label></div>
+          <button type="button" data-reset-resolution>Reset resolution</button>
+        </div></details>
+        <details class="sf-settings sf-output" open><summary>Output</summary><div class="sf-settings-body">
+          <label class="sf-field">Format<select aria-label="Output format" data-setting="format"><option>Auto (32-bit preferred)</option><option>RGBA 16-bit float</option><option>RGBA 32-bit float</option></select></label>
+          <div class="sf-native-outputs"><div class="sf-field">Output textures · detected from function<div class="sf-output-list"></div></div></div>
+        </div></details>
+      </div>
+      <div class="sf-overlay" hidden>
+        <div class="sf-dialog" role="dialog" aria-modal="true" aria-label="Choose shader file">
+          <div class="sf-dialog-heading"><h3>Choose shader file</h3><button type="button" data-close aria-label="Close file chooser">×</button></div>
+          <div class="sf-choose-body"></div>
+        </div>
+      </div>
+      <div class="sf-status" aria-live="polite"></div>
+    </div>
+  </div>
+</div>
+<style>
+#shader-file-first .sf-stage{display:flex;justify-content:center;padding:22px 12px;min-height:510px;box-sizing:border-box}
+#shader-file-first .sf-panel{--sf-bg:light-dark(#fafafa,#202020);--sf-header:light-dark(#f0f0f0,#252526);--sf-text:light-dark(#252525,#d4d4d4);--sf-muted:light-dark(#626262,#ababab);--sf-border:light-dark(#d4d4d4,#414141);--sf-input:light-dark(#fff,#2d2d2d);--sf-hover:light-dark(#e8e8e8,#383838);--sf-blue:light-dark(#006cbe,#3794ff);--sf-selected:light-dark(#e3effa,#173a54);--sf-primary:light-dark(#0876c9,#0e639c);--sf-gap:14px;width:100%;max-width:500px;align-self:flex-start;position:relative;background:var(--sf-bg);color:var(--sf-text);border:1px solid var(--sf-border);border-radius:6px;font:13px/1.5 "Segoe UI",Arial,sans-serif;box-shadow:0 8px 26px light-dark(#0000000c,#00000026)}
+#shader-file-first .sf-panel *{box-sizing:border-box}
+#shader-file-first .sf-panel [hidden]{display:none!important}
+#shader-file-first .sf-panel header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--sf-header);font-weight:500;border-radius:6px 6px 0 0}
+#shader-file-first .sf-language{font-weight:400;font-size:11px;color:var(--sf-muted);letter-spacing:.5px}
+#shader-file-first .sf-tabs{display:flex;gap:24px;padding:0 16px;border-bottom:1px solid var(--sf-border);color:var(--sf-muted)}
+#shader-file-first .sf-panel .sf-tabs button{padding:10px 0 8px;border:0;border-radius:0;background:none}
+#shader-file-first .sf-panel .sf-tabs button.sf-active{border-bottom:2px solid var(--sf-blue);color:var(--sf-text)}
+#shader-file-first .sf-content{padding:0 16px 16px}
+#shader-file-first .sf-content>section{padding:18px 0;border-bottom:1px solid var(--sf-border)}
+#shader-file-first .sf-panel h3{font:500 13px/1.5 "Segoe UI",Arial,sans-serif;margin:0 0 12px;color:var(--sf-text)}
+#shader-file-first .sf-field{display:flex;flex-direction:column;gap:5px;min-width:0;color:var(--sf-muted);font-size:12px}
+#shader-file-first .sf-panel button,#shader-file-first .sf-panel input,#shader-file-first .sf-panel select{font:400 13px/1.4 "Segoe UI",Arial,sans-serif;min-height:33px;min-width:0;max-width:100%;border:1px solid var(--sf-border);border-radius:3px;padding:6px 9px;background:var(--sf-input);color:var(--sf-text)}
+#shader-file-first .sf-panel input{width:100%;font-family:Consolas,"Courier New",monospace;font-size:12px}
+#shader-file-first .sf-panel button{background:transparent;flex-shrink:0}
+#shader-file-first .sf-panel button:hover{background:var(--sf-hover)}
+#shader-file-first .sf-panel button.sf-primary{background:var(--sf-primary);border-color:var(--sf-primary);color:#fff}
+#shader-file-first .sf-file-row,#shader-file-first .sf-function-row{display:flex;align-items:center;gap:8px}
+#shader-file-first .sf-file-row input,#shader-file-first .sf-function-row select{flex:1;width:100%}
+#shader-file-first .sf-function,#shader-file-first .sf-vertex-file{margin-top:var(--sf-gap)}
+#shader-file-first .sf-function-list{display:flex;flex-direction:column;gap:5px}
+#shader-file-first .sf-function-choice{display:flex;align-items:center;gap:9px;padding:8px;border-radius:3px;color:var(--sf-text);background:var(--sf-input);font:12px/1.5 Consolas,monospace;overflow-wrap:anywhere}
+#shader-file-first .sf-function-choice:has(input:checked){background:var(--sf-selected)}
+#shader-file-first .sf-panel .sf-function-choice input{width:14px;height:14px;min-height:14px;padding:0;margin:0;flex-shrink:0;accent-color:var(--sf-blue)}
+#shader-file-first .sf-function-add{margin-top:10px}
+#shader-file-first .sf-source-options{display:flex;gap:0}
+#shader-file-first .sf-source-options button{flex:1;border-radius:0;margin-left:-1px;white-space:normal}
+#shader-file-first .sf-function-value{display:flex;align-items:center;min-height:33px;flex:1;overflow-wrap:anywhere;color:var(--sf-text);font:12px/1.5 Consolas,"Courier New",monospace}
+#shader-file-first .sf-source-options button:first-child{margin-left:0;border-radius:3px 0 0 3px}
+#shader-file-first .sf-source-options button:last-child{border-radius:0 3px 3px 0}
+#shader-file-first .sf-source-options button[aria-pressed="true"]{background:var(--sf-selected);border-color:var(--sf-blue);position:relative}
+#shader-file-first .sf-builtin{margin-top:var(--sf-gap);color:var(--sf-muted);font-size:12px}
+#shader-file-first .sf-settings{padding:16px 0;border-bottom:1px solid var(--sf-border)}
+#shader-file-first .sf-settings:last-child{border-bottom:0;padding-bottom:0}
+#shader-file-first .sf-settings summary{font-weight:500}
+#shader-file-first .sf-summary-value{float:right;color:var(--sf-muted);font-weight:400;font-size:12px}
+#shader-file-first .sf-settings-body{display:flex;flex-direction:column;gap:var(--sf-gap);margin-top:14px}
+#shader-file-first .sf-two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+#shader-file-first .sf-check{display:flex;align-items:center;gap:8px;font-size:13px}
+#shader-file-first .sf-panel input[type="checkbox"]{width:14px;height:14px;min-height:14px;flex-shrink:0;accent-color:var(--sf-blue);margin:0}
+#shader-file-first .sf-panel input[type="color"]{padding:3px;height:33px}
+#shader-file-first .sf-instance-field input{max-width:150px}
+#shader-file-first .sf-model-fields,#shader-file-first .sf-vertices-fields,#shader-file-first .sf-depth-fields{display:flex;flex-direction:column;gap:var(--sf-gap)}
+#shader-file-first .sf-advanced{padding:8px 0 0}
+#shader-file-first .sf-advanced summary{color:var(--sf-muted);font-weight:400;font-size:12px}
+#shader-file-first .sf-channel-list,#shader-file-first .sf-output-list{display:flex;flex-direction:column;gap:8px}
+#shader-file-first .sf-channel-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#shader-file-first .sf-channel-row code{font:12px/1.5 Consolas,"Courier New",monospace;min-width:75px}
+#shader-file-first .sf-channel-row .sf-channel-source{flex:1;text-align:left}
+#shader-file-first .sf-channel-row .sf-remove{min-width:30px;padding:4px}
+#shader-file-first .sf-small-actions{display:flex;gap:8px;flex-wrap:wrap}
+#shader-file-first .sf-native-outputs{display:flex;flex-direction:column;gap:12px}
+#shader-file-first .sf-output-entry{flex-wrap:wrap}
+#shader-file-first .sf-output-entry input{min-width:130px}
+#shader-file-first .sf-misc-tabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--sf-border);padding-bottom:10px}
+#shader-file-first .sf-panel .sf-misc-tabs button{padding:5px 7px;font-size:12px}
+#shader-file-first .sf-buffer-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+#shader-file-first .sf-buffer-choice{display:flex;flex-direction:column;align-items:center;gap:4px}
+#shader-file-first .sf-buffer-choice span{font-size:23px}
+#shader-file-first .sf-buffer-choice small{font-size:11px}
+#shader-file-first .sf-panel button[aria-pressed="true"]{background:var(--sf-selected);border-color:var(--sf-blue)}
+#shader-file-first .sf-output-picker{display:flex;flex-direction:column;gap:8px}
+#shader-file-first .sf-output-entry{display:flex;align-items:center;gap:12px}
+#shader-file-first .sf-output-entry span{white-space:nowrap}
+#shader-file-first .sf-output-entry input{flex:1}
+#shader-file-first .sf-panel button:disabled{opacity:.45}
+#shader-file-first .sf-overlay{position:absolute;inset:0;z-index:4;padding:48px 16px 16px;background:light-dark(#00000024,#00000066);border-radius:6px}
+#shader-file-first .sf-dialog{background:var(--sf-header);border:1px solid var(--sf-border);border-radius:5px;padding:16px;box-shadow:0 8px 26px #0003}
+#shader-file-first .sf-dialog-heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px}
+#shader-file-first .sf-dialog-heading h3{margin:0}
+#shader-file-first .sf-dialog-heading button{min-width:32px;padding:0;font-size:20px}
+#shader-file-first .sf-picker-label{color:var(--sf-muted);font-size:11px;margin:0 0 6px}
+#shader-file-first .sf-file-list{display:flex;flex-direction:column;gap:4px}
+#shader-file-first .sf-file-list button{text-align:left;overflow-wrap:anywhere}
+#shader-file-first .sf-picker-actions{display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid var(--sf-border);padding-top:12px;margin-top:12px}
+#shader-file-first .sf-new-form{display:flex;flex-direction:column;gap:12px}
+#shader-file-first .sf-new-form .sf-picker-actions{margin-top:0;border:0;padding:0;justify-content:flex-end}
+#shader-file-first .sf-status{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+#shader-file-first .sf-code{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--sf-input);color:var(--sf-text);padding:10px;border-radius:3px;font:12px/1.5 Consolas,monospace;margin:8px 0 0}
+#shader-file-first .sf-added,#shader-file-first .sf-camera-default{font-size:12px;color:var(--sf-muted);margin-top:6px;align-items:center}
+#shader-file-first .sf-channel-row{flex-wrap:nowrap;padding:8px;border:1px solid var(--sf-border);border-radius:4px}
+#shader-file-first .sf-thumbnail{width:58px;height:48px;flex-shrink:0;border-radius:3px;background:var(--sf-input);object-fit:cover}
+#shader-file-first .sf-channel-info{flex:1;min-width:0;overflow-wrap:anywhere}
+#shader-file-first .sf-channel-info small{display:block;color:var(--sf-muted);font-size:11px}
+#shader-file-first .sf-channel-actions{display:flex;gap:4px;flex-wrap:wrap}
+#shader-file-first .sf-channel-actions{max-width:128px;justify-content:flex-end}
+#shader-file-first .sf-panel .sf-channel-actions button{padding:4px;min-height:28px;font-size:11px}
+#shader-file-first .sf-panel .sf-preview-button{padding:0;border:0;line-height:0}
+#shader-file-first .sf-panel .sf-channel-actions button{border:0;display:inline-flex;align-items:center;justify-content:center}
+#shader-file-first .sf-channel-preview-large{width:100%;height:100px;object-fit:cover}
+@media(max-width:420px){#shader-file-first .sf-stage{padding:12px 0}#shader-file-first .sf-content{padding-left:12px;padding-right:12px}#shader-file-first .sf-function-row{flex-wrap:wrap}#shader-file-first .sf-function-row select{flex-basis:100%}#shader-file-first .sf-overlay{padding:38px 8px 8px}#shader-file-first .sf-channel-actions{max-width:70px}#shader-file-first .sf-channel-info{min-width:70px}#shader-file-first .sf-channel-row{flex-wrap:wrap}}
+@media(pointer:coarse){#shader-file-first .sf-panel button,#shader-file-first .sf-panel input,#shader-file-first .sf-panel select{min-height:44px;font-size:16px}}
+</style>
+<script>
+(() => {
+  const root=document.getElementById('shader-file-first');
+  const panel=root.querySelector('.sf-panel');
+  const state={fragmentPath:'./buffers/feedback.wgsl',vertexPath:'./mesh.wgsl',vertexMode:'same',functions:{
+    './image.wgsl':{fragment:['mainImage'],vertex:[]},
+    './buffers/feedback.wgsl':{fragment:['@fragment BufferAFragment'],vertex:[]},
+    './mesh.wgsl':{fragment:[],vertex:['@vertex MeshVertex']},
+    './effects/warp.wgsl':{fragment:[],vertex:['@vertex WarpVertex']}
+  }};
+  const saved=window.openai?.widgetState?.privateContent;
+  if(saved?.version===2&&saved.state)Object.assign(state,saved.state);
+  state.activePass??='Image';state.passes??={};state.codes??={};
+  state.outputLabels??={};
+  const sampleFragment='@fragment GBufferFragment';
+  if(!state.functions['./buffers/feedback.wgsl'].fragment.includes(sampleFragment))state.functions['./buffers/feedback.wgsl'].fragment.push(sampleFragment);
+  if(!state.functions['./effects/warp.wgsl'].fragment.length)state.functions['./effects/warp.wgsl'].fragment.push('@fragment WarpFragment');
+  const reflectedOutputs={'@fragment GBufferFragment':[{slot:0,name:'colour'},{slot:1,name:'normals'},{slot:2,name:'velocity'}],'@fragment WarpFragment':[{slot:0,name:'colour'},{slot:1,name:'normals'},{slot:2,name:'velocity'}]};
+  if(!state.passes.Image){state.passes.Image={fragmentPath:'./image.wgsl',vertexPath:'./mesh.wgsl',vertexMode:'builtin',settings:{geometry:'fullscreen'},channels:[{name:'iChannel0',kind:'Buffer',source:'Buffer A',filter:'Linear',wrap:'Clamp'},{name:'iChannel1',kind:'Texture',source:'Noise',filter:'Linear',wrap:'Repeat'}],outputs:['color']};state.passes['Buffer A']={fragmentPath:state.fragmentPath,vertexPath:state.vertexPath,vertexMode:'same',settings:{geometry:'cube'},channels:[{name:'iChannel0',kind:'Buffer',source:'Buffer B',filter:'Linear',wrap:'Repeat'},{name:'iChannel1',kind:'Texture',source:'Noise',filter:'Linear',wrap:'Repeat'}],outputs:['color']};state.passes['Buffer B']={fragmentPath:'./effects/warp.wgsl',vertexPath:'./mesh.wgsl',vertexMode:'builtin',settings:{geometry:'fullscreen'},channels:[],outputs:['color']};Object.assign(state,structuredClone(state.passes[state.activePass]));}
+  state.settings??={};
+  state.channels??=[{name:'iChannel0',kind:'Buffer',source:'Buffer B',filter:'Linear',wrap:'Repeat'},{name:'iChannel1',kind:'Texture',source:'Noise',filter:'Linear',wrap:'Repeat'}];
+  state.outputs??=['color'];
+  const prefs={compact:false};
+  const overlay=panel.querySelector('.sf-overlay');
+  const dialog=overlay.querySelector('[role="dialog"]');
+  const body=panel.querySelector('.sf-choose-body');
+  const heading=panel.querySelector('.sf-dialog-heading h3');
+  let choosing='fragment';
+  const configFiles=['./image.wgsl','./buffers/feedback.wgsl','./mesh.wgsl'];
+  function snapshotPass(){state.passes[state.activePass]=structuredClone(Object.fromEntries(['fragmentPath','vertexPath','vertexMode','settings','channels','outputs'].map(key=>[key,state[key]])));}
+  function persist(){snapshotPass();window.openai?.setWidgetState?.({modelContent:{proposal:'Full shader configuration',activePass:state.activePass,passes:state.passes,functions:state.functions},privateContent:{version:2,state:structuredClone(state)}})?.catch(()=>{});}
+  function pathFor(stage){return stage==='fragment'||state.vertexMode==='same'?state.fragmentPath:state.vertexPath;}
+  function button(label,action,primary=false){const b=document.createElement('button');b.type='button';b.textContent=label;b.onclick=action;if(primary)b.className='sf-primary';return b;}
+  function label(text,control){const l=document.createElement(control.tagName==='DIV'?'div':'label');l.className='sf-field';l.append(document.createTextNode(text),control);return l;}
+  function close(){overlay.hidden=true;}
+  function announce(text){panel.querySelector('.sf-status').textContent=text;}
+  function useFile(path){if(choosing==='fragment')state.fragmentPath=path;else state.vertexPath=path;close();render();persist();}
+  function show(title){heading.textContent=title;dialog.setAttribute('aria-label',title);body.replaceChildren();overlay.hidden=false;dialog.scrollIntoView({block:'center'});}
+  function chooseFile(stage,all=false){
+    choosing=stage;show(all?'Browse workspace':'Choose shader file');
+    const caption=document.createElement('div');caption.className='sf-picker-label';caption.textContent=all?'WORKSPACE FILES':'FILES IN THIS CONFIG';body.append(caption);
+    const list=document.createElement('div');list.className='sf-file-list';
+    (all?Object.keys(state.functions):configFiles).forEach(path=>list.append(button(path,()=>useFile(path))));body.append(list);
+    const actions=document.createElement('div');actions.className='sf-picker-actions';
+    if(!all)actions.append(button('Browse workspace…',()=>chooseFile(stage,true)));
+    actions.append(button('Create new file…',()=>newFile(stage)));body.append(actions);
+  }
+  function newFile(stage){
+    choosing=stage;show(stage==='fragment'?'New fragment file':'New vertex file');
+    const form=document.createElement('form');form.className='sf-new-form';
+    const input=document.createElement('input');input.value=stage==='fragment'?'./buffers/new-buffer.wgsl':'./new-vertex.wgsl';input.setAttribute('aria-label','New file path');input.required=true;
+    const mode=document.createElement('select');mode.setAttribute('aria-label','Starter style');mode.add(new Option('Native (default)','native'));mode.add(new Option('Built-in','hooks'));
+    form.append(label('File path',input),label('Starter',mode));
+    const actions=document.createElement('div');actions.className='sf-picker-actions';actions.append(button('Back',()=>chooseFile(stage)));
+    function createFile(){const path=input.value.trim();if(!path)return;const name=mode.value==='hooks'?(stage==='vertex'?'mainVertex':'mainImage'):(stage==='vertex'?'@vertex BufferAVertex':'@fragment BufferAFragment');state.functions[path]={fragment:[],vertex:[]};state.functions[path][stage].push(name);if(!configFiles.includes(path))configFiles.push(path);useFile(path);announce('Created '+path);}
+    actions.append(button('Create file',createFile,true));form.append(actions);
+    form.onsubmit=event=>{event.preventDefault();createFile();};body.append(form);
+  }
+  function addFunction(stage){
+    show('Add '+stage+' function');const list=document.createElement('div');list.className='sf-file-list';
+    const path=pathFor(stage);const existing=state.functions[path]?.[stage]??[];
+    [['Native (default)','@'+stage+' '+state.activePass.replaceAll(' ','')+(stage==='vertex'?'Vertex':'Fragment')],['Built-in',stage==='vertex'?'mainVertex':'mainImage']].forEach(([title,baseName])=>{
+      const duplicateHook=title==='Built-in'&&existing.includes(baseName);
+      const action=button(duplicateHook?'Built-in (already exists)':title,()=>{
+        let name=baseName;let suffix=2;
+        while(existing.includes(name))name=baseName+suffix++;
+        state.functions[path]??={fragment:[],vertex:[]};state.functions[path][stage].push(name);
+        state.selected??={};state.selected[path+'|'+stage]=name;
+        state.codes[path+'|'+name]=stage==='vertex'?'@vertex\nfn '+name.replace('@vertex ','')+'(@builtin(vertex_index) index: u32) -> @builtin(position) vec4f {\n  let p = array(vec2f(-1, -1), vec2f(3, -1), vec2f(-1, 3));\n  return vec4f(p[index % 3u], 0.0, 1.0);\n}':'@fragment\nfn '+name.replace('@fragment ','')+'(@builtin(position) position: vec4f) -> @location(0) vec4f {\n  let uv = position.xy / iResolution.xy;\n  let col = 0.5 + 0.5 * cos(iTime + uv.xyx + vec3f(0.0, 2.0, 4.0));\n  return vec4f(col, 1.0);\n}';
+        if(title==='Built-in')state.codes[path+'|'+name]=stage==='vertex'?'fn mainVertex(position: vec3f) -> vec4f {\n  return vec4f(position, 1.0);\n}':'fn mainImage(coord: vec2f) -> vec4f {\n  let uv = coord / iResolution.xy;\n  let col = 0.5 + 0.5 * cos(iTime + uv.xyx + vec3f(0.0, 2.0, 4.0));\n  return vec4f(col, 1.0);\n}';
+        state.lastAdded={path,name,stage};
+        close();render();persist();announce('Added '+name+' to '+path);
+      });action.disabled=duplicateHook;list.append(action);
+    });body.append(list);
+  }
+  function renderFunction(stage){
+    const host=panel.querySelector('[data-function="'+stage+'"]');host.replaceChildren();
+    host.hidden=stage==='vertex'&&state.vertexMode==='builtin';if(host.hidden)return;
+    const functions=state.functions[pathFor(stage)]?.[stage]??[];
+    const row=document.createElement('div');row.className='sf-function-list';row.setAttribute('role','radiogroup');row.setAttribute('aria-label',stage==='fragment'?'Fragment functions':'Vertex functions');
+    if(functions.length>0){const chosen=state.selected?.[pathFor(stage)+'|'+stage];const selected=functions.includes(chosen)?chosen:functions[0];functions.forEach(name=>{const choice=document.createElement('label');choice.className='sf-function-choice cursor-interaction';const radio=document.createElement('input');radio.type='radio';radio.name='sf-'+stage+'-function';radio.value=name;radio.checked=name===selected;radio.onchange=()=>{state.selected??={};state.selected[pathFor(stage)+'|'+stage]=name;renderSettings();persist();};const text=document.createElement('span');text.textContent=name;choice.append(radio,text);row.append(choice);});}
+    else{const value=document.createElement('span');value.className='sf-function-value';value.textContent=functions[0]||(stage==='vertex'?'Built-in · no function in file':'No fragment function found');row.append(value);}
+    host.append(label('Functions',row));const add=button('Add function…',()=>addFunction(stage));add.className='sf-function-add';host.append(add);
+  }
+  function render(){
+    panel.style.setProperty('--sf-gap',prefs.compact?'9px':'14px');
+    panel.querySelector('[aria-label="Fragment file path"]').closest('.sf-field').hidden=state.activePass==='Image';
+    panel.querySelector('[aria-label="Fragment file path"]').value=state.fragmentPath;
+    panel.querySelector('[aria-label="Vertex file path"]').value=state.vertexPath;
+    panel.querySelector('.sf-vertex-file').hidden=state.vertexMode!=='separate';panel.querySelector('.sf-builtin').hidden=state.vertexMode!=='builtin';
+    panel.querySelectorAll('[data-source]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.source===state.vertexMode)));
+    renderFunction('fragment');renderFunction('vertex');renderSettings();renderChannels();renderOutputs();
+    panel.querySelectorAll('[data-pass]').forEach(b=>{b.classList.toggle('sf-active',b.dataset.pass===state.activePass);b.setAttribute('aria-pressed',String(b.dataset.pass===state.activePass));});
+  }
+  function renderSettings(){
+    panel.querySelectorAll('[data-setting]').forEach(control=>{const value=state.settings[control.dataset.setting];if(control.type==='checkbox')control.checked=!!value;else if(value!==undefined)control.value=String(value);});
+    const geometry=state.settings.geometry;const vertices=geometry==='vertices';const fullscreen=geometry==='fullscreen';
+    panel.querySelector('[data-geometry-name]').textContent=geometry.charAt(0).toUpperCase()+geometry.slice(1);
+    panel.querySelector('.sf-model-fields').hidden=geometry!=='model';panel.querySelector('.sf-mesh-fields').hidden=fullscreen||vertices;
+    panel.querySelector('.sf-vertices-fields').hidden=!vertices;panel.querySelector('.sf-instance-field').hidden=fullscreen;
+    panel.querySelector('.sf-camera-field').hidden=fullscreen||(vertices&&state.settings.space==='clip');
+    panel.querySelector('.sf-depth-fields').hidden=fullscreen;panel.querySelector('.sf-aa-field').hidden=fullscreen;panel.querySelector('[data-setting="depthCompare"]').disabled=!state.settings.depth;
+    panel.querySelector('.sf-camera-default').hidden=panel.querySelector('.sf-camera-field').hidden;panel.querySelector('.sf-camera-default span').textContent=state.settings.cameraOverride?'Pass override':'Using global default';
+    panel.querySelector('.sf-scale-fields').hidden=state.settings.resolution!=='scale';panel.querySelector('.sf-fixed-fields').hidden=state.settings.resolution!=='fixed';
+    const isImage=state.activePass==='Image';panel.querySelector('.sf-image-resolution').hidden=!isImage;panel.querySelector('[data-setting="resolution"]').parentElement.hidden=isImage;panel.querySelector('[data-setting="format"]').parentElement.hidden=isImage;panel.querySelector('.sf-scale-fields').hidden=isImage||state.settings.resolution!=='scale';panel.querySelector('.sf-fixed-fields').hidden=isImage||state.settings.resolution!=='fixed';panel.querySelector('[data-setting="aspect"]').disabled=!!(state.settings.imageWidth&&state.settings.imageHeight);
+    panel.querySelector('.sf-output').hidden=isImage;renderOutputs();
+  }
+  panel.querySelectorAll('[data-setting]').forEach(control=>{
+    const key=control.dataset.setting;
+    if(state.settings[key]===undefined)state.settings[key]=control.type==='checkbox'?control.checked:control.value;
+    const update=()=>{state.settings[key]=control.type==='checkbox'?control.checked:control.value;if(key==='camera')state.settings.cameraOverride=true;renderSettings();persist();};
+    control.addEventListener(control.tagName==='INPUT'&&control.type!=='checkbox'?'input':'change',update);
+  });
+  panel.querySelector('[data-model-file]').onclick=()=>{
+    show('Choose model');const list=document.createElement('div');list.className='sf-file-list';
+    ['./models/scene.glb','./models/sphere.glb','./models/character.glb'].forEach(path=>list.append(button(path,()=>{state.settings.modelPath=path;close();renderSettings();persist();})));body.append(list);
+  };
+  function changeChannel(index){
+    openMisc(index);
+    return;
+    const channel=structuredClone(state.channels[index]);show(channel.name);
+    const choices={Buffer:['Buffer A','Buffer B'],Texture:['Noise','./textures/albedo.png'],Cubemap:['Environment'],Video:['./media/clip.mp4','Webcam'],Audio:['./media/music.mp3','Microphone'],Keyboard:['Keyboard']};
+    const type=document.createElement('select');type.setAttribute('aria-label','Channel type');Object.keys(choices).forEach(value=>type.add(new Option(value,value)));type.value=channel.kind;
+    const source=document.createElement('select');source.setAttribute('aria-label','Channel source');
+    const fill=()=>{source.replaceChildren(...choices[type.value].map(value=>new Option(value,value)));if(choices[type.value].includes(channel.source))source.value=channel.source;};fill();type.onchange=fill;
+    const filter=document.createElement('select');filter.setAttribute('aria-label','Channel filter');['Linear','Nearest','Mipmap'].forEach(value=>filter.add(new Option(value,value)));filter.value=channel.filter;
+    const wrap=document.createElement('select');wrap.setAttribute('aria-label','Channel wrap');['Repeat','Clamp'].forEach(value=>wrap.add(new Option(value,value)));wrap.value=channel.wrap;
+    const fields=document.createElement('div');fields.className='sf-new-form';const name=document.createElement('input');name.value=channel.name;name.setAttribute('aria-label','Channel name');const preview=thumbnail(channel,true);fields.append(preview,label('Name',name),label('Type',type),label('Source',source),label('Filter',filter),label('Wrap',wrap));
+    const extras=document.createElement('div');extras.className='sf-new-form';fields.append(extras);const draft={...channel};
+    const extraFields=()=>{extras.replaceChildren();const kind=type.value;const currentPreview=fields.querySelector('canvas');currentPreview.replaceWith(thumbnail({...channel,kind,source:source.value},true));if(['Texture','Video','Cubemap'].includes(kind)){for(const [key,title] of [['vflip','Flip vertically'],...(kind==='Texture'?[['grayscale','Grayscale']]:[])]){const check=document.createElement('input');check.type='checkbox';check.checked=draft[key]??key==='vflip';check.onchange=()=>draft[key]=check.checked;const l=label(title,check);l.className='sf-check';extras.append(l);}}
+      if(kind==='Buffer'){const output=document.createElement('select');output.setAttribute('aria-label','Buffer output');const count=state.passes[source.value]?.outputs?.length??1;for(let n=0;n<count;n++)output.add(new Option('Output '+n,String(n)));output.value=String(draft.output??0);output.onchange=()=>draft.output=Number(output.value);extras.append(label('Output',output));}
+      if(kind==='Audio'){for(const key of ['startTime','endTime']){const input=document.createElement('input');input.type='number';input.min=0;input.value=draft[key]??0;input.oninput=()=>draft[key]=Number(input.value);extras.append(label(key==='startTime'?'Start time (seconds)':'End time (seconds)',input));}}
+      if(kind==='Audio'||kind==='Video'){const controls=document.createElement('div');controls.className='sf-small-actions';const play=button(draft.paused?'Play':'Pause',()=>{draft.paused=!draft.paused;play.textContent=draft.paused?'Play':'Pause';});const mute=button(draft.muted?'Unmute':'Mute',()=>{draft.muted=!draft.muted;mute.textContent=draft.muted?'Unmute':'Mute';});controls.append(play,mute,button('Reset',()=>{draft.paused=true;play.textContent='Play';}));extras.append(controls);}
+    };type.onchange=()=>{fill();extraFields();};source.onchange=extraFields;extraFields();
+    fields.append(button('Apply',()=>{state.channels[index]={...draft,name:name.value.trim()||channel.name,kind:type.value,source:source.value,filter:filter.value,wrap:wrap.value};close();renderChannels();persist();},true));body.append(fields);
+  }
+  function outputsForPass(passName){const pass=passName===state.activePass?state:state.passes[passName];if(!pass)return[];const entries=state.functions[pass.fragmentPath]?.fragment??[];const selected=state.selected?.[pass.fragmentPath+'|fragment']??entries[0];return selected?(reflectedOutputs[selected]??[{slot:0,name:'colour'}]):[];}
+  function openMisc(index,previewSource){
+    const current=state.channels[index];const draft={...current};if(previewSource){draft.kind='Buffer';draft.source=previewSource;draft.output=0;}show(current.name);
+    const tabs=document.createElement('div');tabs.className='sf-misc-tabs';['Misc','Textures','Cubemaps','Videos','Audio'].forEach(name=>{const tab=button(name,()=>{});tab.disabled=name!=='Misc';tab.setAttribute('aria-pressed',String(name==='Misc'));tabs.append(tab);});body.append(tabs);
+    const section=document.createElement('div');section.className='sf-settings-body';body.append(section);
+    const title=document.createElement('h3');title.textContent='Buffer';section.append(title);
+    const buffers=document.createElement('div');buffers.className='sf-buffer-grid';section.append(buffers);
+    const outputHost=document.createElement('div');outputHost.className='sf-output-picker';section.append(outputHost);
+    const fields=document.createElement('div');fields.className='sf-two-col';const filter=document.createElement('select');filter.setAttribute('aria-label','Channel filter');['Linear','Nearest'].forEach(s=>filter.add(new Option(s,s)));filter.value=draft.filter??'Linear';const wrap=document.createElement('select');wrap.setAttribute('aria-label','Channel wrap');['Clamp','Repeat'].forEach(s=>wrap.add(new Option(s,s)));wrap.value=draft.wrap??'Clamp';fields.append(label('Filter',filter),label('Wrap',wrap));section.append(fields);
+    const other=document.createElement('h3');other.textContent='Other';section.append(other);const keyboard=button('Keyboard',()=>{draft.kind='Keyboard';draft.source='Keyboard';draw();});section.append(keyboard);
+    const footer=document.createElement('div');footer.className='sf-picker-actions';footer.append(button('Remove',()=>{state.channels.splice(index,1);close();renderChannels();persist();}),button('Cancel',close),button('Apply',()=>{state.channels[index]={...draft,filter:filter.value,wrap:wrap.value};close();renderChannels();persist();},true));section.append(footer);
+    function draw(){buffers.replaceChildren();['A','B','C','D'].forEach(letter=>{const source='Buffer '+letter;const b=button('',()=>{draft.kind='Buffer';draft.source=source;draft.output=0;draw();});b.className='sf-buffer-choice';const big=document.createElement('span');big.textContent=letter;const small=document.createElement('small');small.textContent='Buffer'+letter;b.append(big,small);b.disabled=!state.passes[source];b.setAttribute('aria-label',source+(b.disabled?' (not configured)':''));b.setAttribute('aria-pressed',String(draft.kind==='Buffer'&&draft.source===source));buffers.append(b);});keyboard.setAttribute('aria-pressed',String(draft.kind==='Keyboard'));fields.hidden=draft.kind==='Keyboard';outputHost.replaceChildren();
+      if(draft.kind==='Buffer'){const outputs=outputsForPass(draft.source);const name=document.createElement('div');name.className='sf-field';name.textContent=outputs.length>1?'Output texture':'Output 0 · colour';outputHost.append(name);if(outputs.length>1){const choices=document.createElement('div');choices.className='sf-function-list';choices.setAttribute('role','radiogroup');choices.setAttribute('aria-label','Buffer output');outputs.forEach(output=>{const l=document.createElement('label');l.className='sf-function-choice';const r=document.createElement('input');r.type='radio';r.name='sf-channel-output';r.value=String(output.slot);r.checked=(draft.output??0)===output.slot;r.onchange=()=>draft.output=output.slot;const t=document.createElement('span');t.textContent=output.slot+' · '+(state.outputLabels[draft.source+'|'+output.slot]||output.name);l.append(r,t);choices.append(l);});outputHost.append(choices);}else draft.output=outputs[0]?.slot??0;}
+    }draw();
+  }
+  function renderChannels(){
+    const list=panel.querySelector('.sf-channel-list');list.replaceChildren();panel.querySelector('[data-channel-count]').textContent=state.channels.length+' inputs';
+    state.channels.forEach((channel,index)=>{
+      const row=document.createElement('div');row.className='sf-channel-row';
+      const preview=button('',()=>changeChannel(index));preview.className='sf-preview-button';preview.setAttribute('aria-label','Open '+channel.name);preview.append(thumbnail(channel));
+      const info=document.createElement('div');info.className='sf-channel-info';const name=document.createElement('div');name.textContent=channel.name;const detail=document.createElement('small');detail.textContent=channel.kind;if(channel.kind==='Buffer'){const slot=channel.output??0;const output=outputsForPass(channel.source).find(o=>o.slot===slot);detail.textContent=channel.source+' · '+(output?(state.outputLabels[channel.source+'|'+slot]||output.name):'Output '+slot+' unavailable');}info.append(name,detail);
+      const actions=document.createElement('div');actions.className='sf-channel-actions';
+      if(['Audio','Video'].includes(channel.kind)){actions.append(iconButton(channel.paused?'play':'pause',channel.paused?'Play':'Pause',()=>{state.channels[index].paused=!channel.paused;renderChannels();persist();}),iconButton(channel.muted?'volume-x':'volume-2',channel.muted?'Unmute':'Mute',()=>{state.channels[index].muted=!channel.muted;renderChannels();persist();}),iconButton('rotate-ccw','Reset to beginning',()=>{state.channels[index].paused=true;renderChannels();persist();}));}
+      actions.append(iconButton('settings','Configure '+channel.name,()=>changeChannel(index)),iconButton('trash-2','Remove '+channel.name,()=>{state.channels.splice(index,1);renderChannels();persist();}));
+      row.append(preview,info,actions);list.append(row);
+    });
+    if(globalThis.lucide)lucide.createIcons({attrs:{width:16,height:16}});
+  }
+  function iconButton(icon,title,action){const b=button('',action);b.setAttribute('aria-label',title);b.setAttribute('data-tooltip',title);const i=document.createElement('i');i.setAttribute('data-lucide',icon);i.setAttribute('aria-hidden','true');b.append(i);return b;}
+  panel.querySelector('[data-add-channel]').onclick=()=>{let n=0;while(state.channels.some(channel=>channel.name==='iChannel'+n))n++;state.channels.push({name:'iChannel'+n,kind:'Texture',source:'Noise',filter:'Linear',wrap:'Repeat'});renderChannels();changeChannel(state.channels.length-1);persist();};
+  function renderOutputs(){
+    const list=panel.querySelector('.sf-output-list');list.replaceChildren();
+    const names=state.functions[state.fragmentPath]?.fragment??[];const selected=state.selected?.[state.fragmentPath+'|fragment']??names[0];
+    const detected=selected?(reflectedOutputs[selected]??[{slot:0,name:'colour'}]):[];
+    state.outputs=detected.map(output=>output.name);
+    detected.forEach(({slot,name})=>{const row=document.createElement('div');row.className='sf-output-entry';const number=document.createElement('span');number.textContent='Output '+slot+' · '+name;row.append(number);list.append(row);});
+    if(!detected.length)list.textContent='Select a fragment function to detect outputs.';
+  }
+  panel.querySelectorAll('[data-source]').forEach(b=>b.onclick=()=>{state.vertexMode=b.dataset.source;render();persist();});
+  panel.querySelectorAll('[data-choose]').forEach(b=>b.onclick=()=>chooseFile(b.dataset.choose));
+  panel.querySelector('[aria-label="Fragment file path"]').oninput=event=>{state.fragmentPath=event.target.value;renderFunction('fragment');renderFunction('vertex');persist();};
+  panel.querySelector('[aria-label="Vertex file path"]').oninput=event=>{state.vertexPath=event.target.value;renderFunction('vertex');persist();};
+  panel.querySelector('[data-close]').onclick=close;overlay.onclick=event=>{if(event.target===overlay)close();};panel.addEventListener('keydown',event=>{if(event.key==='Escape')close();});
+  const defaultSettings=structuredClone(state.settings);
+  function switchPass(name){snapshotPass();state.activePass=name;Object.assign(state,structuredClone(state.passes[name]));state.settings={...defaultSettings,...state.settings};close();render();persist();}
+  panel.querySelectorAll('[data-pass]').forEach(b=>b.onclick=()=>switchPass(b.dataset.pass));
+  panel.querySelector('[data-sort]').onclick=()=>{state.channels.sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));renderChannels();persist();};
+  panel.querySelector('[data-camera-reset]').onclick=()=>{state.settings.camera=true;state.settings.cameraOverride=false;renderSettings();persist();};
+  panel.querySelector('[data-clear-size]').onclick=()=>{state.settings.imageWidth='';state.settings.imageHeight='';renderSettings();persist();};
+  panel.querySelector('[data-reset-resolution]').onclick=()=>{Object.assign(state.settings,{imageScale:'1×',aspect:'auto',imageWidth:'',imageHeight:'',resolution:'inherit',scale:'1×',width:512,height:512});renderSettings();persist();};
+  function thumbnail(channel,large=false){const canvas=document.createElement('canvas');canvas.width=large?320:116;canvas.height=large?100:96;canvas.className=large?'sf-channel-preview-large':'sf-thumbnail';canvas.setAttribute('role','img');canvas.setAttribute('aria-label',channel.kind+' preview for '+channel.name);const ctx=canvas.getContext('2d');const w=canvas.width,h=canvas.height;if(channel.kind==='Texture'){const pixels=ctx.createImageData(w,h);for(let i=0;i<pixels.data.length;i+=4){const shade=((i*73+(i%137)*41)%150)+60;pixels.data.set([shade,shade,shade,255],i);}ctx.putImageData(pixels,0,0);}else if(channel.kind==='Buffer'||channel.kind==='Keyboard'){ctx.fillStyle='#30343c';ctx.fillRect(0,0,w,h);ctx.fillStyle='#bdc8d7';ctx.font='28px Segoe UI';ctx.textAlign='center';ctx.fillText(channel.kind==='Buffer'?channel.source.replace('Buffer ',''):'⌨',w/2,h/2+10);}else if(channel.kind==='Audio'){ctx.fillStyle='#182b35';ctx.fillRect(0,0,w,h);ctx.fillStyle='#65bacc';for(let x=0;x<w;x+=6){const height=(Math.sin(x*1.3)*.5+.5)*h*.8;ctx.fillRect(x,(h-height)/2,3,height);}}else{const g=ctx.createLinearGradient(0,0,w,h);g.addColorStop(0,'#498cbd');g.addColorStop(.55,'#e5bb83');g.addColorStop(1,'#304c49');ctx.fillStyle=g;ctx.fillRect(0,0,w,h);}return canvas;}
+  render();
+  if(globalThis.Tweak){const tweak=new Tweak({container:panel,onChange:render});tweak.addToggle(prefs,'compact',{label:'Compact spacing'});}
+  window.addEventListener('openai:set_globals',event=>{const restored=event.detail?.globals?.widgetState?.privateContent;if(restored?.version===2&&restored.state){Object.assign(state,structuredClone(restored.state));state.settings={...defaultSettings,...state.settings};render();}});
+})();
+</script>

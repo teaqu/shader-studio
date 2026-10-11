@@ -17,7 +17,10 @@ export function isRuntimeSource(file, source) {
     return true;
   }
   const emitted = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ESNext, removeComments: true } }).outputText;
-  return !/^\s*(?:export\s*\{\s*\}\s*;?)?\s*$/.test(emitted);
+  // Re-export barrels forward contracts to instrumented definitions. Istanbul
+  // emits no counters for them, even when a unit test imports their exports.
+  const ast = ts.createSourceFile(file, emitted, ts.ScriptTarget.Latest, true);
+  return ast.statements.some(statement => !ts.isExportDeclaration(statement));
 }
 
 export function checkNewFileCoverage(report, addedFiles, root, readSource) {

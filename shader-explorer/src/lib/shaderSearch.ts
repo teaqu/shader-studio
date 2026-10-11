@@ -22,6 +22,7 @@ interface VisibleShaderSearchParams {
     searchResultPaths: string[] | null;
     hideFailedShaders: boolean;
     hideBufferShaders?: boolean;
+    hideVertexShaders?: boolean;
     failedShaderPaths: Set<string>;
     sortBy: ShaderExplorerSortBy;
     sortOrder: ShaderExplorerSortOrder;
@@ -93,6 +94,7 @@ export function getVisibleShadersForSearch({
     searchResultPaths,
     hideFailedShaders,
     hideBufferShaders = true,
+    hideVertexShaders = true,
     failedShaderPaths,
     sortBy,
     sortOrder,
@@ -104,6 +106,10 @@ export function getVisibleShadersForSearch({
 
     if (hideBufferShaders) {
         visible = visible.filter(shader => !shader.name.toLowerCase().includes('buffer'));
+    }
+
+    if (hideVertexShaders) {
+        visible = visible.filter(shader => !shader.name.toLowerCase().includes('.vert'));
     }
 
     if (hideFailedShaders) {

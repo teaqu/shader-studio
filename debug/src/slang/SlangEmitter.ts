@@ -1,4 +1,4 @@
-const supportedCaptureTypes = new Set(["float", "float2", "float3", "float4", "int", "bool", "float2x2"]);
+const supportedCaptureTypes = new Set(["float", "float2", "float3", "float4", "int", "uint", "uint2", "bool", "float2x2"]);
 
 export function emitSlangFloat4(typeName: string, expression: string): string {
   assertSupportedCaptureType(typeName);
@@ -12,7 +12,10 @@ export function emitSlangFloat4(typeName: string, expression: string): string {
     case "float4":
       return expression;
     case "int":
+    case "uint":
       return `float4(float(${expression}), float(${expression}), float(${expression}), 1.0)`;
+    case "uint2":
+      return `float4(float2(${expression}), 0.0, 1.0)`;
     case "bool":
       return `float4(${expression} ? 1.0 : 0.0, ${expression} ? 1.0 : 0.0, ${expression} ? 1.0 : 0.0, 1.0)`;
     case "float2x2":

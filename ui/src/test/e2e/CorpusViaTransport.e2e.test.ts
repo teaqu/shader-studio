@@ -431,7 +431,11 @@ describe("shader corpus through the UI transport layer", () => {
 
       let region: Awaited<ReturnType<ShaderCanvasHarness["renderAndReadRegion"]>> = new Uint8ClampedArray();
       for (const time of sampleTimes(project)) {
-        region = await rig.harness.renderAndReadRegion(time);
+        try {
+          region = await rig.harness.renderAndReadRegion(time);
+        } catch (error) {
+          throw new Error(`${project.name} at shader time ${time}: ${String(error)}`, { cause: error });
+        }
       }
       const lit = nonBlackPixelCount(region);
       if (isUntouched(region)) {

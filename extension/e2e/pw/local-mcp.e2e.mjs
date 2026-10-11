@@ -46,6 +46,12 @@ test('generic MCP edits files and captures both webview and server preview @gpu'
   const client = new Client({ name: 'any-agent', version: '1' });
   let browser;
   try {
+    await vscode.evaluateInHost((vscode, path) => {
+      if (!vscode.workspace.workspaceFolders?.length) {
+        vscode.workspace.updateWorkspaceFolders(0, 0, { uri: vscode.Uri.file(path) });
+      }
+    }, workspacePath);
+    await expect.poll(() => vscode.evaluateInHost(vscode => vscode.workspace.workspaceFolders?.length ?? 0)).toBeGreaterThan(0);
     expect(await vscode.evaluateInHost(vscode => vscode.workspace.getConfiguration('shader-studio').get('mcpEnabled'))).toBe(false);
     await vscode.evaluateInHost(async (vscode, settings) => {
       const config = vscode.workspace.getConfiguration('shader-studio');
@@ -124,7 +130,7 @@ test('generic MCP edits files and captures both webview and server preview @gpu'
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
       await vscode.window.showTextDocument(doc, { preview: false });
     }, wgslPath);
-    await expect.poll(async () => normalizedPath((await call('list_previews')).structuredContent.previews.find(p => p.id === previewId)?.path)).toBe(normalizedPath(wgslPath));
+    await expect.poll(async () => (await call('list_previews')).structuredContent.previews.map(p => ({ ...p, path: normalizedPath(p.path) }))).toEqual(expect.arrayContaining([expect.objectContaining({ id: previewId, path: normalizedPath(wgslPath) })]));
     const resources = (await call('get_resources', { previewId })).structuredContent;
     expect(resources.passes.map(pass => ({ ...pass, path: normalizedPath(pass.path) }))).toEqual(expect.arrayContaining([{ name: 'Compute', kind: 'compute', path: normalizedPath(computePath) }]));
     expect(resources.storage.counter).toMatchObject({ count: 1, elementType: 'Counter' });

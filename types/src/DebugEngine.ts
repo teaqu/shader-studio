@@ -14,6 +14,8 @@ export interface DebugWorkspace {
   rootUri: string;
   rootPath: string;
   passName: string;
+  /** Selected native fragment, replayed with its authored raster interface. */
+  render?: { entryPoint?: string; output?: number };
   /** Compute replay metadata, present when the debug root is a compute pass. */
   compute?: {
     entryPoint?: string;
@@ -98,6 +100,8 @@ export interface DebugCaptureSlot {
   hidden: boolean;
 }
 export interface DebugInstrumentationPlan {
+  /** Preserve the original vertex stage, geometry and rasterized fragment inputs. */
+  nativeRender?: { fragmentEntryPoint: string; output?: number };
   workspaceHash: string;
   rootUri: string;
   selectedSourceUri: string;
@@ -116,6 +120,7 @@ export interface DebugAnalysisRequest {
 export interface DebugPreviewOptions {
   normalizeMode: "off" | "soft" | "abs";
   stepEdge: number | null;
+  output?: number;
   customParameters?: ReadonlyMap<number, string>;
   loopMaxIterations?: ReadonlyMap<number, number>;
 }

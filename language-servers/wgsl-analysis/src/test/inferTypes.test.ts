@@ -150,7 +150,7 @@ describe("declaration type inference", () => {
     expect(types.badTranspose).toBeUndefined();
   });
 
-  it("preserves result shapes for comparisons, boolean negation, and scalar-matrix multiplication", () => {
+  it("preserves result shapes for comparisons, boolean negation, and matrix multiplication", () => {
     const types = variableTypes([
       "fn shade(uv: vec2f, mask: vec2<bool>, matrix: mat2x3f, halfMatrix: mat3x2h) {",
       "  let compared = uv < vec2f(0.5);",
@@ -159,7 +159,9 @@ describe("declaration type inference", () => {
       "  let scaledRight = matrix * 0.5;",
       "  let scaledLeft = 2.0 * matrix;",
       "  let scaledHalf = halfMatrix * 0.5;",
-      "  let incompatible = matrix * vec2f(1.0);",
+      "  let transformed = matrix * vec2f(1.0);",
+      "  let transformedHalf = halfMatrix * vec3h(1.0);",
+      "  let incompatible = matrix * vec3f(1.0);",
       "  let mismatched = uv < vec3f(0.5);",
       "  let mixedInteger = vec2u(1u) + 1.0;",
       "}",
@@ -171,6 +173,8 @@ describe("declaration type inference", () => {
     expect(types.scaledRight).toBe("mat2x3f");
     expect(types.scaledLeft).toBe("mat2x3f");
     expect(types.scaledHalf).toBe("mat3x2h");
+    expect(types.transformed).toBe("vec3f");
+    expect(types.transformedHalf).toBe("vec2h");
     expect(types.incompatible).toBeUndefined();
     expect(types.mismatched).toBeUndefined();
     expect(types.mixedInteger).toBeUndefined();

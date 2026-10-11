@@ -2,11 +2,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import '@testing-library/jest-dom';
 import GifTab from '../../../lib/components/recording/GifTab.svelte';
+import { resetCapturePreferences } from '../../../lib/state/capturePreferences.svelte';
 
 describe('GifTab', () => {
   let defaultProps: any;
 
+  function getEstimate(container: HTMLElement): HTMLElement {
+    return Array.from(container.querySelectorAll<HTMLElement>('.recording-info-text'))
+      .find((element) => element.textContent?.includes('est.'))!;
+  }
+
   beforeEach(() => {
+    resetCapturePreferences();
     defaultProps = {
       canvasWidth: 800,
       canvasHeight: 600,
@@ -32,9 +39,17 @@ describe('GifTab', () => {
 
   it('should render Start Time section', () => {
     render(GifTab, { props: defaultProps });
-    expect(screen.getByText('Start Time')).toBeInTheDocument();
-    expect(screen.getByText('5.5s')).toBeInTheDocument();
+    expect(screen.getByText('Start recording at:')).toBeInTheDocument();
+    expect(screen.getByText('Renders preceding frames before recording begins.')).toBeInTheDocument();
+    expect(screen.queryByText('5.5s')).not.toBeInTheDocument();
     expect(screen.getByText('0')).toBeInTheDocument();
+  });
+
+  it('defaults to zero with no current-time option', () => {
+    render(GifTab, { props: defaultProps });
+    const zeroBtn = screen.getByText('0');
+    expect(zeroBtn).toHaveClass('active');
+    expect(screen.queryByText('5.5s')).not.toBeInTheDocument();
   });
 
   it('should render Frame Rate presets (10, 15, 24, 30)', () => {
@@ -66,19 +81,9 @@ describe('GifTab', () => {
     expect(currentResBtn).toHaveClass('active');
   });
 
-  it('should render Colors section with 32, 64, 128, 256, custom', () => {
-    const { container } = render(GifTab, { props: defaultProps });
-    expect(screen.getByText('Colors')).toBeInTheDocument();
-    expect(screen.getByText('32')).toBeInTheDocument();
-    expect(screen.getByText('64')).toBeInTheDocument();
-    expect(screen.getByText('128')).toBeInTheDocument();
-    expect(screen.getByText('256')).toBeInTheDocument();
-  });
-
-  it('256 should be active by default', () => {
+  it('does not expose an unsupported color-count control', () => {
     render(GifTab, { props: defaultProps });
-    const colors256Btn = screen.getByText('256');
-    expect(colors256Btn).toHaveClass('active');
+    expect(screen.queryByText('Colors')).not.toBeInTheDocument();
   });
 
   it('should render Loop section with Infinite and Once', () => {
@@ -111,7 +116,7 @@ describe('GifTab', () => {
   it('should show estimated file size', () => {
     const { container } = render(GifTab, { props: defaultProps });
     // Default: 3s * 15fps = 45 frames, 800*600 res
-    const infoText = container.querySelector('.recording-info-text');
+    const infoText = getEstimate(container);
     expect(infoText).toBeInTheDocument();
     expect(infoText!.textContent).toMatch(/~45 frames/);
     expect(infoText!.textContent).toMatch(/est\. ~/);
@@ -140,61 +145,21 @@ describe('GifTab', () => {
     expect(call.quality).toBe(80);
   });
 
-  it('should call onRecord with infinite loop (-1) by default', async () => {
+  it('should call onRecord with infinite looping by default', async () => {
     render(GifTab, { props: defaultProps });
-    await fireEvent.click(screen.getByText('Record'));
-
-    const call = defaultProps.onRecord.mock.calls[0][0];
-    expect(call.loopCount).toBe(-1);
-  });
-
-  it('should call onRecord with once loop (0) when selected', async () => {
-    render(GifTab, { props: defaultProps });
-    await fireEvent.click(screen.getByText('Once'));
     await fireEvent.click(screen.getByText('Record'));
 
     const call = defaultProps.onRecord.mock.calls[0][0];
     expect(call.loopCount).toBe(0);
   });
 
-  it('should call onRecord with custom colors when custom input used', async () => {
-    const { container } = render(GifTab, { props: defaultProps });
-    // Find the colors custom input by its placeholder
-    const colorsInputs = container.querySelectorAll('.recording-custom-fps-input.recording-duration-input');
-    // Colors input has placeholder "2-256"
-    let colorsInput: HTMLInputElement | null = null;
-    colorsInputs.forEach((input) => {
-      if ((input as HTMLInputElement).placeholder === '2-256') {
-        colorsInput = input as HTMLInputElement;
-      }
-    });
-    expect(colorsInput).not.toBeNull();
-
-    await fireEvent.input(colorsInput!, { target: { value: '64' } });
-    await fireEvent.change(colorsInput!, { target: { value: '64' } });
+  it('should call onRecord with no repeat when Once is selected', async () => {
+    render(GifTab, { props: defaultProps });
+    await fireEvent.click(screen.getByText('Once'));
     await fireEvent.click(screen.getByText('Record'));
 
     const call = defaultProps.onRecord.mock.calls[0][0];
-    expect(call.maxColors).toBe(64);
-  });
-
-  it('should clamp colors to valid range on change', async () => {
-    const { container } = render(GifTab, { props: defaultProps });
-    const colorsInputs = container.querySelectorAll('.recording-custom-fps-input.recording-duration-input');
-    let colorsInput: HTMLInputElement | null = null;
-    colorsInputs.forEach((input) => {
-      if ((input as HTMLInputElement).placeholder === '2-256') {
-        colorsInput = input as HTMLInputElement;
-      }
-    });
-    expect(colorsInput).not.toBeNull();
-
-    // Set value above max
-    await fireEvent.input(colorsInput!, { target: { value: '500' } });
-    await fireEvent.change(colorsInput!, { target: { value: '500' } });
-
-    // The clamped value should be 256
-    expect(colorsInput!.value).toBe('256');
+    expect(call.loopCount).toBe(-1);
   });
 
   it('should clamp quality to valid range on change', async () => {
@@ -218,7 +183,7 @@ describe('GifTab', () => {
 
   it('should update estimated file size when settings change', async () => {
     const { container } = render(GifTab, { props: defaultProps });
-    const infoText = container.querySelector('.recording-info-text')!;
+    const infoText = getEstimate(container);
     const initialText = infoText.textContent;
 
     // Change duration to 10s -> 10 * 15 = 150 frames
@@ -281,7 +246,7 @@ describe('GifTab', () => {
 
   it('should update estimated file size when resolution changes', async () => {
     const { container } = render(GifTab, { props: defaultProps });
-    const infoText = container.querySelector('.recording-info-text')!;
+    const infoText = getEstimate(container);
     const initialText = infoText.textContent;
 
     // Switch to 480p (854x480 vs default 800x600)
@@ -295,7 +260,7 @@ describe('GifTab', () => {
 
   it('should update estimated file size when fps changes', async () => {
     const { container } = render(GifTab, { props: defaultProps });
-    const infoText = container.querySelector('.recording-info-text')!;
+    const infoText = getEstimate(container);
     const initialText = infoText.textContent;
 
     // Change fps to 30: 3s * 30fps = 90 frames

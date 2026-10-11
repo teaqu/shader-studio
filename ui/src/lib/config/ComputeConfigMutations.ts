@@ -4,6 +4,7 @@ import type {
   StorageBufferConfig,
 } from '@shader-studio/types';
 import { getBuiltinStorageStride } from './StorageTypeLayout';
+import { configuredStorageLayout, validateStorageOptions } from '@shader-studio/types';
 
 export type ConfigFieldErrors = Record<string, string>;
 
@@ -98,6 +99,10 @@ function validateStorageBuffer(
   declaration: StorageBufferConfig,
 ): ConfigFieldErrors {
   const errors: ConfigFieldErrors = {};
+  const optionErrors = validateStorageOptions(declaration);
+  if (optionErrors.length) {
+    errors.layout = optionErrors.join('; ');
+  }
   if (!IDENTIFIER.test(name)) {
     errors.name = 'Invalid storage buffer name';
   } else if (RESERVED_STORAGE_NAMES.has(name)) {
@@ -115,7 +120,7 @@ function validateStorageBuffer(
   // Total bytes estimate: only calculable for built-in types where stride is known.
   // Custom struct strides are inferred at compile time in the rendering backend.
   if (isPositiveInteger(declaration.count)) {
-    const stride = getBuiltinStorageStride(declaration.elementType);
+    const stride = configuredStorageLayout(declaration)?.stride ?? getBuiltinStorageStride(declaration.elementType);
     if (stride !== null) {
       const bytes = declaration.count * stride;
       if (!Number.isSafeInteger(bytes)) {
@@ -124,7 +129,7 @@ function validateStorageBuffer(
         const otherBytes = Object.entries(config.storage ?? {})
           .filter(([existingName]) => existingName !== originalName)
           .reduce((sum, [, item]) => {
-            const itemStride = getBuiltinStorageStride(item.elementType) ?? 0;
+            const itemStride = configuredStorageLayout(item)?.stride ?? getBuiltinStorageStride(item.elementType) ?? 0;
             return sum + item.count * itemStride;
           }, 0);
         if (otherBytes + bytes > MAX_TOTAL_STORAGE_BYTES) {

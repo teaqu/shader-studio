@@ -1,3 +1,5 @@
+import type { StorageBufferSnapshot } from './StorageInspection';
+
 /** Host-independent requests carried by the existing viewer transports. */
 export interface ViewerRpcRequest {
   type: 'viewerRpcRequest';
@@ -33,8 +35,7 @@ export interface ViewerSnapshot {
     passes: { name: string; kind: string; path: string }[];
     storage: Record<string, { count: number; elementType: string }>;
   };
-  storageRead?: {
-    name: string; elementType: string; stride: number; start: number; count: number;
+  storageRead?: Omit<StorageBufferSnapshot, 'data'> & {
     bytes: number[];
   };
 }

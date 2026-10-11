@@ -1,122 +1,527 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import type { StorageBufferConfig } from '@shader-studio/types';
-  import type { ConfigFieldErrors } from '../../config/ComputeConfigMutations';
-  import type { StorageBufferSnapshot } from '@shader-studio/types';
-  import StorageInspector from './StorageInspector.svelte';
-  import { getBuiltinStorageStride } from '../../config/StorageTypeLayout';
-
+  import { untrack } from "svelte";
+  import { setPendingStorageForm } from "../../state/storageViewState.svelte";
+  import {
+    configuredStorageLayout,
+    storageStructDeclaration,
+    validateStorageOptions,
+    type StorageBufferConfig,
+  } from "@shader-studio/types";
+  import type { ConfigFieldErrors } from "../../config/ComputeConfigMutations";
+  import { getBuiltinStorageStride } from "../../config/StorageTypeLayout";
   interface Props {
     name: string;
+    scope?: string;
+    formId?: string;
     declaration: StorageBufferConfig;
     existingNames: string[];
     referencedBy: string[];
-    onApply: (originalName: string, name: string, declaration: StorageBufferConfig) => ConfigFieldErrors;
+    language?: "wgsl" | "slang" | "glsl";
+    passes?: Array<{ name: string; compute: boolean }>;
+    onApply: (
+      originalName: string,
+      name: string,
+      declaration: StorageBufferConfig,
+    ) => ConfigFieldErrors;
     onDelete: (name: string) => ConfigFieldErrors;
     onDeleted?: () => void;
-    onRead?: (name: string, start: number, count: number) => Promise<StorageBufferSnapshot>;
-    onWrite?: (name: string, start: number, data: ArrayBuffer) => Promise<void>;
+    onRenamed?: (name: string) => void;
+    onReset?: (name: string) => Promise<void>;
   }
-
-  let { name, declaration, existingNames, referencedBy, onApply, onDelete, onDeleted = () => {}, onRead, onWrite }: Props = $props();
-  let draftName = $state(name);
-  let count = $state(String(declaration.count));
-  let elementType = $state(declaration.elementType);
+  let {
+    name,
+    scope = "",
+    formId = "",
+    declaration,
+    existingNames,
+    referencedBy,
+    language = "wgsl",
+    passes = [],
+    onApply,
+    onDelete,
+    onDeleted = () => {},
+    onRenamed = () => {},
+    onReset,
+  }: Props = $props();
+  const id = $props.id();
+  let draftName = $state("");
+  let count = $state("");
+  let draft = $state<StorageBufferConfig>({ count: 1, elementType: "float4" });
   let errors = $state<ConfigFieldErrors>({});
-  let inspecting = $state(false);
-
-  const builtinStride = $derived(getBuiltinStorageStride(elementType));
-
+  let resetting = $state(false);
+  let status = $state("");
   $effect(() => {
     draftName = name;
     count = String(declaration.count);
-    elementType = declaration.elementType;
+    draft = structuredClone($state.snapshot(declaration));
+    errors = {};
   });
-
+  const layout = $derived(configuredStorageLayout(draft));
+  const stride = $derived(
+    layout?.stride ?? getBuiltinStorageStride(draft.elementType),
+  );
   const dirty = $derived(
     draftName !== name ||
       count !== String(declaration.count) ||
-      elementType !== declaration.elementType,
+      JSON.stringify(draft) !== JSON.stringify(declaration),
   );
-
-  function draft(): StorageBufferConfig | null {
-    const nextCount = Number(count);
-    const nextErrors: ConfigFieldErrors = {};
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(draftName)) {
-      nextErrors.name = 'Use a valid shader identifier';
+  $effect(() => {
+    const currentScope = scope;
+    const pending = dirty ? formId : "";
+    untrack(() => setPendingStorageForm(currentScope, pending));
+    return () => setPendingStorageForm(currentScope, "");
+  });
+  const fieldTypes = [
+    "float",
+    "float2",
+    "float3",
+    "float4",
+    "int",
+    "int2",
+    "int3",
+    "int4",
+    "uint",
+    "uint2",
+    "uint3",
+    "uint4",
+  ];
+  const mode = $derived(draft.fields ? "struct" : "source");
+  function apply(): void {
+    const next: StorageBufferConfig = {
+      ...$state.snapshot(draft),
+      count: Number(count),
+      elementType: draft.elementType.trim(),
+    };
+    const validation: ConfigFieldErrors = {};
+    if (!/^[A-Za-z_]\w*$/.test(draftName)) {
+      validation.name = "Use a valid shader identifier";
     } else if (draftName !== name && existingNames.includes(draftName)) {
-      nextErrors.name = 'Storage buffer name is already in use';
+      validation.name = "Storage buffer name is already in use";
     }
-    if (!Number.isInteger(nextCount) || nextCount <= 0) {
-      nextErrors.count = 'Enter a positive integer';
+    if (!Number.isSafeInteger(next.count) || next.count <= 0) {
+      validation.count = "Enter a positive integer";
     }
-    if (elementType.trim().length === 0) {
-      nextErrors.elementType = 'Element type is required';
+    if (!next.elementType) {
+      validation.elementType = "Element type is required";
     }
-    errors = nextErrors;
-    if (Object.keys(nextErrors).length > 0) {
-      return null;
+    const optionErrors = validateStorageOptions(next);
+    if (optionErrors.length) {
+      validation.layout = optionErrors.join("; ");
     }
-    return { count: nextCount, elementType: elementType.trim() };
-  }
-
-  function apply() {
-    const next = draft();
-    if (!next) {
+    errors = validation;
+    if (Object.keys(errors).length) {
       return;
     }
     errors = onApply(name, draftName, next);
+    if (!Object.keys(errors).length) {
+      onRenamed(draftName);
+    }
   }
-
-  function cancel() {
+  function cancel(): void {
     draftName = name;
     count = String(declaration.count);
-    elementType = declaration.elementType;
+    draft = structuredClone($state.snapshot(declaration));
     errors = {};
   }
-
-  function deleteStorage() {
+  function changeLayout(value: string): void {
+    if (value === "struct") {
+      draft.fields = [
+        { name: "position", type: "float4" },
+        { name: "velocity", type: "float4" },
+      ];
+      draft.elementType = `${name}_Element`;
+    } else {
+      delete draft.fields;
+      draft.elementType = "float4";
+    }
+  }
+  async function importData(event: Event): Promise<void> {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) {
+      return;
+    }
+    try {
+      if (file.size > 262144) {
+        throw new Error("Initial data files must be at most 256 KiB");
+      }
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      let text = "";
+      for (const byte of bytes) {
+        text += String.fromCharCode(byte);
+      }
+      draft.initialData = btoa(text);
+      draft.initialDataName = file.name;
+      errors = {};
+    } catch (reason) {
+      errors = {
+        initialData: reason instanceof Error ? reason.message : String(reason),
+      };
+    }
+    input.value = "";
+  }
+  async function reset(): Promise<void> {
+    if (!onReset || resetting) {
+      return;
+    }
+    resetting = true;
+    status = "";
+    try {
+      await onReset(name);
+      status = "Data reset to initial values";
+    } catch (reason) {
+      errors = {
+        reset: reason instanceof Error ? reason.message : String(reason),
+      };
+    } finally {
+      resetting = false;
+    }
+  }
+  function remove(): void {
     errors = onDelete(name);
-    if (Object.keys(errors).length === 0) {
+    if (!Object.keys(errors).length) {
       onDeleted();
     }
   }
 </script>
 
-<article class="storage-editor" data-storage-name={name}>
-  <h3>{name}</h3>
-  <label>Name<input name="storage-name" aria-label="Storage name" aria-invalid={errors.name ? 'true' : undefined} bind:value={draftName} /></label>
-  <label>Element count<input aria-label="Element count" aria-invalid={errors.count ? 'true' : undefined} bind:value={count} /></label>
-  <label>Element type<input aria-label="Element type" aria-invalid={errors.elementType ? 'true' : undefined} bind:value={elementType} /></label>
-  {#if builtinStride !== null}
-    <p class="stride-info">Stride: {builtinStride} bytes (auto-inferred from type)</p>
-  {:else}
-    <p class="stride-info">Stride inferred from struct definition in source</p>
-  {/if}
+<form
+  id={formId || undefined}
+  class="storage-editor"
+  data-storage-name={name}
+  onsubmit={(event) => {
+    event.preventDefault();
+    apply();
+  }}
+>
+  <section>
+    <div class="heading">
+      <h3>{name}</h3>
+      {#if stride !== null}<span
+          >{((Number(count) * stride) / 1024).toLocaleString(undefined, {
+            maximumFractionDigits: 2,
+          })} KiB</span
+        >{/if}
+    </div>
+    <div class="fields">
+      <label
+        >Buffer name<input
+          aria-label="Storage name"
+          aria-invalid={!!errors.name}
+          bind:value={draftName}
+        /></label
+      ><label
+        >Number of elements<input
+          aria-label="Element count"
+          aria-invalid={!!errors.count}
+          bind:value={count}
+          inputmode="numeric"
+        /></label
+      >
+    </div>
+  </section>
+  <section>
+    <div class="heading">
+      <h3>Data layout</h3>
+      <select
+        aria-label="Data layout"
+        value={mode}
+        onchange={(event) => changeLayout(event.currentTarget.value)}
+        ><option value="source">Value / source type</option><option
+          value="struct">Structured data</option
+        ></select
+      >
+    </div>
+    <label
+      >{draft.fields ? "Struct type" : "Element type"}<input
+        aria-label="Element type"
+        aria-invalid={!!errors.elementType}
+        bind:value={draft.elementType}
+      /></label
+    >
+    {#if draft.fields}<div class="schema">
+        {#each draft.fields as field, index}<div>
+            <label
+              >Field<input
+                aria-label="Field {index + 1} name"
+                bind:value={field.name}
+              /></label
+            ><label
+              >Type<input
+                list={`${id}-types`}
+                aria-label="Field {index + 1} type"
+                bind:value={field.type}
+              /></label
+            ><button
+              type="button"
+              aria-label="Remove field {index + 1}"
+              disabled={draft.fields.length === 1}
+              onclick={() => draft.fields?.splice(index, 1)}>×</button
+            >
+          </div>{/each}
+      </div>
+      <datalist id={`${id}-types`}
+        >{#each fieldTypes as type}<option value={type}
+          ></option>{/each}</datalist
+      ><button
+        type="button"
+        disabled={draft.fields.length >= 64}
+        onclick={() =>
+          draft.fields?.push({
+            name: `field${draft.fields.length + 1}`,
+            type: "float",
+          })}>+ Add field</button
+      >{/if}
+    <p class="meta">
+      {stride === null
+        ? "Stride inferred from struct definition in source"
+        : `Stride: ${stride} bytes · alignment handled automatically`}
+    </p>
+    <details>
+      <summary
+        >Shader declaration · {language === "slang" ? "Slang" : "WGSL"}</summary
+      >
+      <pre>{storageStructDeclaration(
+          draft,
+          language === "slang" ? "slang" : "wgsl",
+        )}{draft.fields
+          ? ""
+          : `// Element type: ${draft.elementType}\n`}// Buffer: {draftName}</pre>
+    </details>
+    {#if draft.fields}<p class="meta">
+        This struct is generated from the config. Use a different name from
+        structs already declared in your source.
+      </p>{/if}
+  </section>
+  <section>
+    <h3>Pass bindings</h3>
+    {#each passes as pass}<div class="pass">
+        <span>{pass.name}</span><span
+          >{pass.compute ? "Read & write" : "Read only"}</span
+        >
+      </div>{/each}
+    <p class="meta">
+      Buffers are available to every pass. Each shader accesses only the buffers
+      its code uses.
+    </p>
+    {#if referencedBy.length}<p class="meta">
+        Dispatch target for {referencedBy.join(", ")}
+      </p>{/if}
+  </section>
+  <section>
+    <h3>Initial data & reset</h3>
+    <div class="fields">
+      <label
+        >Start with<select
+          aria-label="Initial data"
+          value={draft.initialData === undefined ? "zero" : "file"}
+          onchange={(event) => {
+            if (event.currentTarget.value === "zero") {
+              delete draft.initialData;
+              delete draft.initialDataName;
+            } else {
+              draft.initialData = "";
+            }
+          }}
+          ><option value="zero">Zeros</option><option value="file"
+            >Binary file</option
+          ></select
+        ></label
+      ><label
+        >Between frames<select
+          aria-label="Between frames"
+          value={draft.clearEachFrame ? "clear" : "keep"}
+          onchange={(event) => {
+            if (event.currentTarget.value === "clear") {
+              draft.clearEachFrame = true;
+            } else {
+              delete draft.clearEachFrame;
+            }
+          }}
+          ><option value="keep">Keep previous values</option><option
+            value="clear">Clear every frame</option
+          ></select
+        ></label
+      >
+    </div>
+    {#if draft.initialData !== undefined}<label
+        >Initial data file<input
+          type="file"
+          aria-label="Initial data file"
+          onchange={importData}
+        /></label
+      >
+      <p class="meta">
+        {draft.initialDataName ?? "Choose a binary file"} · up to 256 KiB, embedded
+        in config. Unfilled bytes start at zero.
+      </p>{/if}
+    <label class="check"
+      ><input
+        type="checkbox"
+        aria-label="Reset on restart"
+        checked={draft.resetOnRestart !== false}
+        onchange={(event) => {
+          if (event.currentTarget.checked) {
+            delete draft.resetOnRestart;
+          } else {
+            draft.resetOnRestart = false;
+          }
+        }}
+      />Reset when the shader restarts</label
+    >
+    <div class="actions">
+      {#if onReset}<button
+          type="button"
+          onclick={reset}
+          disabled={dirty || resetting}
+          >{resetting ? "Resetting…" : "Reset data now"}</button
+        >{/if}<button
+        type="button"
+        aria-label="Delete {name}"
+        onclick={remove}
+        disabled={referencedBy.length > 0}>Remove buffer</button
+      >
+    </div>
+    {#if referencedBy.length}<p class="meta">
+        Remove its dispatch references before deleting this buffer.
+      </p>{/if}
+    {#if status}<p role="status">{status}</p>{/if}
+  </section>
   {#each Object.values(errors) as error}<p role="alert">{error}</p>{/each}
-  {#if referencedBy.length > 0}
-    <p role="alert">Cannot delete: used by {referencedBy.join(', ')}</p>
-  {/if}
-  <div class="actions">
-    {#if dirty}<button onclick={apply} aria-label="Apply {name} changes">Apply</button><button onclick={cancel} aria-label="Cancel {name} changes">Cancel</button>{/if}
-    {#if onRead && onWrite}<button onclick={() => inspecting = !inspecting} aria-label="Inspect {name}">{inspecting ? 'Hide inspector' : 'Inspect'}</button>{/if}
-    {#if referencedBy.length === 0}<button onclick={deleteStorage} aria-label="Delete {name}">Delete</button>{/if}
-  </div>
-  {#if inspecting && onRead && onWrite}
-    <StorageInspector {name} count={declaration.count} {onRead} {onWrite} onClose={() => inspecting = false} />
-  {/if}
-</article>
+  {#if dirty}<div class="actions">
+      <button type="submit" class="primary" aria-label="Apply {name} changes"
+        >Apply changes</button
+      ><button type="button" aria-label="Cancel {name} changes" onclick={cancel}
+        >Cancel</button
+      >
+    </div>
+    <p class="meta">
+      Applying a layout, size, or initial data change recreates the buffer.
+    </p>{/if}
+</form>
 
 <style>
-  .storage-editor { display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid var(--vscode-panel-border, #3c3c3c); border-radius: 4px; }
-  h3, p { margin: 0; }
-  label { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; }
-  input { min-width: 120px; padding: 4px 6px; border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px; outline: none; background: var(--vscode-input-background, #3c3c3c); color: var(--vscode-input-foreground, #ccc); font: inherit; }
-  input:hover { background: var(--vscode-inputOption-hoverBackground, #454545); }
-  input:focus { border-color: var(--vscode-focusBorder, #007fd4); }
-  input[aria-invalid="true"] { border-color: var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground, #f48771)); }
-  p[role="alert"] { color: var(--vscode-errorForeground, #f48771); font-size: 12px; }
-  .stride-info { color: var(--vscode-descriptionForeground, #888); font-size: 11px; }
-  .actions { display: flex; gap: 6px; }
+  .storage-editor {
+    display: grid;
+    gap: 16px;
+    min-width: 0;
+  }
+  section {
+    display: grid;
+    gap: 12px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--storage-line);
+  }
+  section:last-of-type {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+  .heading,
+  .actions,
+  .pass {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+  h3,
+  p {
+    margin: 0;
+  }
+  h3 {
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .fields {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 12px;
+  }
+  label {
+    display: grid;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--storage-muted, var(--vscode-descriptionForeground));
+  }
+  input,
+  select {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    font-size: 13px;
+  }
+  .heading select {
+    width: auto;
+  }
+  .check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--storage-text, var(--vscode-foreground));
+  }
+  .check input {
+    width: auto;
+    min-height: 0;
+    accent-color: var(--storage-accent);
+  }
+  .schema {
+    display: grid;
+    border: 1px solid var(--storage-line);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .schema > div {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 32px;
+    gap: 8px;
+    align-items: end;
+    padding: 10px;
+    border-bottom: 1px solid var(--storage-line);
+  }
+  .schema > div:last-child {
+    border-bottom: 0;
+  }
+  .schema button {
+    border: 0;
+    background: transparent;
+    padding: 6px;
+  }
+  .pass {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--storage-line);
+  }
+  .meta,
+  .heading span,
+  .pass span:last-child,
+  summary {
+    font-size: 12px;
+    color: var(--storage-muted, var(--vscode-descriptionForeground));
+  }
+  summary {
+    cursor: pointer;
+  }
+  .actions {
+    justify-content: flex-start;
+  }
+  pre {
+    margin: 12px 0 0;
+    padding: 12px;
+    background: var(--storage-soft);
+    border-radius: 4px;
+    font: 12px/1.7 var(--vscode-editor-font-family, monospace);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  p[role="alert"] {
+    color: var(--vscode-errorForeground);
+    font-size: 12px;
+  }
+  @container (max-width: 420px) {
+    .fields {
+      grid-template-columns: 1fr;
+    }
+  }
 </style>

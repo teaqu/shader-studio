@@ -26,6 +26,24 @@
     },
     "passes": {
       "$ref": "#/definitions/ShaderPasses"
+    },
+    "webgpu": {
+      "type": "object",
+      "description": "WebGPU shader preferences and defaults for render passes.",
+      "properties": {
+        "useViewerCamera": {
+          "type": "boolean",
+          "description": "Shader-wide viewer camera default. Omit to inherit the global preference; individual render passes can override it."
+        },
+        "defaultRenderAuthoring": {
+          "enum": [
+            "hooks",
+            "native"
+          ],
+          "default": "hooks"
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false,
@@ -80,12 +98,20 @@
         "samples": {
           "$ref": "#/definitions/SampleCount"
         },
+        "useViewerCamera": {
+          "type": "boolean",
+          "description": "Override the shader/global viewer camera default for this WebGPU mesh pass; disable for clip-space positions"
+        },
         "vertex": {
           "type": "string",
           "description": "Path to the optional per-pass vertex shader hook source"
+        },
+        "entryPoints": {
+          "$ref": "#/definitions/RenderEntryPoints"
         }
       },
       "allOf": [
+        { "not": { "required": ["vertex", "entryPoints"] } },
         {
           "if": { "properties": { "geometry": { "properties": { "type": { "const": "fullscreen" } } } } },
           "then": { "properties": { "depth": false, "cull": false, "samples": false } }
@@ -126,15 +152,26 @@
         "samples": {
           "$ref": "#/definitions/SampleCount"
         },
+        "useViewerCamera": {
+          "type": "boolean",
+          "description": "Override the shader/global viewer camera default for this WebGPU mesh pass; disable for clip-space positions"
+        },
         "vertex": {
           "type": "string",
           "description": "Path to the optional per-pass vertex shader hook source"
         },
         "outputFormat": {
           "$ref": "#/definitions/BufferOutputFormat"
+        },
+        "outputs": {
+          "$ref": "#/definitions/RenderOutputs"
+        },
+        "entryPoints": {
+          "$ref": "#/definitions/RenderEntryPoints"
         }
       },
       "allOf": [
+        { "not": { "required": ["vertex", "entryPoints"] } },
         {
           "if": { "properties": { "geometry": { "properties": { "type": { "const": "fullscreen" } } } } },
           "then": { "properties": { "depth": false, "cull": false, "samples": false } }
@@ -274,7 +311,7 @@
     },
     "ComputePass": {
       "type": "object",
-      "description": "Slang compute pass configuration",
+      "description": "WebGPU compute pass configuration",
       "required": ["type", "path"],
       "properties": {
         "type": {
@@ -317,7 +354,18 @@
         "entryPoint": {
           "type": "string",
           "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
-          "description": "Named [shader(\"compute\")] entry point in the compute source"
+          "description": "Legacy compute selection; prefer entryPoints.compute for new configurations"
+        },
+        "entryPoints": {
+          "type": "object",
+          "description": "Native WebGPU compute stage selected from this source.",
+          "properties": {
+            "compute": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
@@ -366,6 +414,22 @@
       "type": "string",
       "enum": ["auto", "rgba16float", "rgba32float"],
       "description": "Storage precision for this producer pass (default: auto)"
+    },
+    "RenderOutputs": {
+      "type": "array",
+      "description": "Optional legacy labels by colour slot. Native output slots and field names are inferred from the selected fragment code.",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      }
     },
     "StorageBuffers": {
       "type": "object",
@@ -493,6 +557,25 @@
       "oneOf": [
         {
           "type": "object",
+          "required": ["type"],
+          "properties": { "type": { "enum": ["webcam", "microphone", "system-audio"] } },
+          "description": "Live capture input. System audio requires explicit sharing or an audio input device.",
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type"],
+          "properties": {
+            "type": { "const": "screen" },
+            "filter": { "enum": ["linear", "nearest", "mipmap"] },
+            "wrap": { "enum": ["repeat", "clamp"] },
+            "vflip": { "type": "boolean" }
+          },
+          "description": "Live video capture chosen through the browser screen, window, or tab picker.",
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
           "required": ["type", "source"],
           "properties": {
             "type": {
@@ -507,6 +590,11 @@
               "type": "integer",
               "minimum": 0,
               "description": "Texture-array layer of a multi-layer compute output"
+            },
+            "output": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Colour attachment of a native render buffer (default: 0)"
             },
             "filter": {
               "type": "string",
@@ -652,6 +740,21 @@
           "additionalProperties": false
         }
       ]
+    },
+    "RenderEntryPoints": {
+      "type": "object",
+      "description": "Native WebGPU render stages in the same source file. Omitted names resolve only when exactly one candidate exists.",
+      "properties": {
+        "vertex": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "fragment": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

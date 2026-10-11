@@ -75,4 +75,17 @@ suite('ShaderExplorerBackend Test Suite', () => {
     assert.ok(shaders.some((shader: { path?: string; fsPath?: string }) =>
       (shader.path ?? shader.fsPath ?? '').endsWith('image.wgsl')));
   });
+
+
+  test('discovers a configured native WGSL root without mainImage', () => {
+    const backend = createBackend() as any;
+    const shaderPath = '/ws/native.wgsl';
+    const configPath = '/ws/native.sha.json';
+    const source = '@vertex fn vertices() -> @builtin(position) vec4f { return vec4f(0.0); }\n@fragment fn image() -> @location(0) vec4f { return vec4f(1.0); }';
+    const fs = require('fs');
+    sandbox.stub(fs, 'existsSync').callsFake((candidate: unknown) => candidate === configPath);
+    sandbox.stub(fs, 'readFileSync').callsFake((candidate: unknown) => candidate === shaderPath ? source : JSON.stringify({ version: '1.0', passes: { Image: { entryPoints: { vertex: 'vertices', fragment: 'image' } } } }));
+    assert.strictEqual(backend.hasMainImage(shaderPath), true);
+  });
+
 });

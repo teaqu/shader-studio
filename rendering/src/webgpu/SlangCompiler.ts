@@ -11,6 +11,7 @@ import {
   wrapSlangImageSource,
   findSlangChannelDeclarationCollisions,
   getNativeComputeEntryPoints,
+  isolateSlangEntryPoints,
   SLANG_ENTRY_VERTEX,
   SLANG_ENTRY_FRAGMENT,
 } from "./SlangPrelude";
@@ -113,8 +114,12 @@ export class SlangCompiler {
           errors: ['Slang: compute source must declare a native `[shader("compute")]` entry point'],
         };
       }
+      const selectedEntryPoints = selectedSourceEntryPoints(isCompute, computeEntryPoint, options);
+      const isolatedSource = selectedEntryPoints
+        ? isolateSlangEntryPoints(resolvedSource, selectedEntryPoints, options.commonCode)
+        : resolvedSource;
       const wrapped = isCompute
-        ? wrapSlangComputeSource(resolvedSource, {
+        ? wrapSlangComputeSource(isolatedSource, {
           passName: options.passName,
           commonCode: options.commonCode,
           channels: options.channels,
@@ -125,7 +130,7 @@ export class SlangCompiler {
           customUniforms: options.customUniforms,
           outputImageFormat: options.outputImageFormat ?? "rgba16f",
         })
-        : wrapSlangImageSource(resolvedSource, {
+        : wrapSlangImageSource(isolatedSource, {
           passName: options.passName,
           commonCode: options.commonCode,
           channels: options.channels,
@@ -135,6 +140,7 @@ export class SlangCompiler {
           vertexCode: options.vertexCode,
           vertexSpace: options.vertexSpace,
           captureMode: options.captureMode,
+          renderEntryPoints: options.renderEntryPoints,
           customUniforms: options.customUniforms,
         });
       // Name the module after the pass so Slang diagnostics cite the right
@@ -169,14 +175,18 @@ export class SlangCompiler {
 
       const entryPointNames = isCompute
         ? [computeEntryPoint!]
-        : [SLANG_ENTRY_VERTEX, SLANG_ENTRY_FRAGMENT];
+        : options.renderEntryPoints
+          ? [options.renderEntryPoints.vertex ?? SLANG_ENTRY_VERTEX, options.renderEntryPoints.fragment ?? SLANG_ENTRY_FRAGMENT]
+          : [SLANG_ENTRY_VERTEX, SLANG_ENTRY_FRAGMENT];
       entryPoints = entryPointNames.map((name) => rootModule.findEntryPointByName(name));
       if (entryPoints.some((entryPoint) => !entryPoint)) {
         return {
           success: false,
           errors: [isCompute
             ? "Slang: configured native compute entry point was not found"
-            : "Slang: entry points not found (is `mainImage` defined?)"],
+            : options.renderEntryPoints
+              ? "Slang: configured native render entry point was not found"
+              : "Slang: entry points not found (is `mainImage` defined?)"],
         };
       }
 
@@ -294,4 +304,14 @@ function isMissingMainImageDiagnostic(error: string): boolean {
 
 function deleteSlangHandle(handle: { delete?: () => void } | null): void {
   handle?.delete?.();
+}
+
+function selectedSourceEntryPoints(isCompute: boolean, computeEntryPoint: string | undefined, options: SlangCompileOptions): string[] | undefined {
+  if (isCompute) {
+    return [computeEntryPoint!];
+  }
+  if (!options.renderEntryPoints) {
+    return undefined;
+  }
+  return [options.renderEntryPoints.vertex ?? "mainVertex", options.renderEntryPoints.fragment ?? "mainImage"];
 }

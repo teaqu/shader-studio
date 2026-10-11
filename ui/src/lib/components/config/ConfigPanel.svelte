@@ -1,14 +1,20 @@
 <script lang="ts">
+  import './configPanel.css';
+  import { discoverRenderOutputs, setRenderOutputMetadata } from "../../state/renderOutputMetadata.svelte";
+  import { getDefaultAuthoringMode } from '../../state/authoringModeState.svelte';
   import { onMount, onDestroy, tick, untrack } from "svelte";
   import { ConfigManager, type BufferRenameError } from "../../ConfigManager";
   import { getEditorOverlayVisible, setOverlayActiveFile } from "../../state/editorOverlayState.svelte";
+  import { shaderPathsEqual } from "../../editor/sharedSourcePassNames";
   import { portal } from "../../actions/portal";
-  import type { ShaderConfig, BufferPass, ComputePass, ImagePass, StorageBufferConfig, StorageBufferSnapshot } from "@shader-studio/types";
-  import { SHADER_LANGUAGES } from "@shader-studio/types";
+  import type { ShaderConfig, BufferPass, ComputePass, ImagePass, StorageBufferConfig, StorageBufferSnapshot, ShaderEntryPoint } from "@shader-studio/types";
+  import { getShaderEntryPoints, withDefaultRenderEntryPoints, SHADER_LANGUAGES, vertexPassKey } from "@shader-studio/types";
   import type { Transport } from "../../transport/MessageTransport";
   import BufferConfig from "./BufferConfig.svelte";
   import ScriptInfo from "./ScriptInfo.svelte";
   import StoragePanel from "./StoragePanel.svelte";
+  import { provideViewerCameraDefault } from "../../config/ViewerCameraContext";
+  import { addRenderPass } from "../../config/RenderPassCreation";
   import { persistConfig } from "../../config/ConfigPersistence";
   import type { ConfigFieldErrors } from "../../config/ComputeConfigMutations";
   import type { AudioVideoController } from "../../AudioVideoController";
@@ -22,8 +28,9 @@
     pathMap?: Record<string, string>;
     bufferPathMap?: Record<string, string>;
     bufferSources?: Record<string, string>;
-    onReadStorage?: (name: string, start: number, count: number) => Promise<StorageBufferSnapshot>;
-    onWriteStorage?: (name: string, start: number, data: ArrayBuffer) => Promise<void>;
+    shaderSource?: string;
+    onReadStorage?: (name: string, start: number, count: number, point?: import('@shader-studio/types').StorageCapturePoint) => Promise<StorageBufferSnapshot>;
+    onResetStorage?: (name: string) => Promise<void>;
     transport: Transport;
     shaderPath?: string;
     isVisible?: boolean;
@@ -36,6 +43,7 @@
     customUniformValues?: Record<string, number | number[] | boolean>;
     actualPollFps?: number;
     uniformActualFps?: Record<string, number>;
+    renderOutputLimits?: { maxColorAttachments: number; maxColorAttachmentBytesPerSample: number } | null;
     onConfigChange?: (config: ShaderConfig) => void;
     onOpenInNewTab?: (bufferName: string, mode: "active" | "beside") => void;
   }
@@ -46,8 +54,9 @@
     pathMap = {},
     bufferPathMap = {},
     bufferSources = {},
+    shaderSource = '',
     onReadStorage,
-    onWriteStorage,
+    onResetStorage,
     transport,
     shaderPath = "",
     isVisible = true,
@@ -60,9 +69,14 @@
     customUniformValues = {},
     actualPollFps = 0,
     uniformActualFps = {},
+    renderOutputLimits = null,
     onConfigChange = () => {},
     onOpenInNewTab = () => {},
   }: Props = $props();
+
+  const effectiveConfig = $derived(withDefaultRenderEntryPoints(config, shaderSource, language));
+
+  provideViewerCameraDefault(() => config);
 
   let configManager = $state<ConfigManager | undefined>(undefined);
   let activeTab: string = $state("Image");
@@ -102,7 +116,7 @@
         onConfigChange(updatedConfig);
       }
     );
-    configManager.setConfig(config);
+    configManager.setConfig(effectiveConfig);
     configManager.setPathMap(pathMap);
     configManager.setShaderPath(shaderPath);
   });
@@ -118,7 +132,7 @@
     if (!configManager) {
       return;
     }
-    configManager.setConfig(config);
+    configManager.setConfig(effectiveConfig);
   });
 
   $effect(() => {
@@ -149,13 +163,11 @@
     }
   }
 
-  function addBuffer() {
-    if (!configManager) {
-      return;
-    }
-    const bufferName = configManager.addBuffer();
+  const defaultRenderAuthoring = $derived(config?.webgpu?.defaultRenderAuthoring ?? getDefaultAuthoringMode());
+  function addBuffer(authoringMode: 'hooks' | 'native' = defaultRenderAuthoring) {
+    const bufferName = addRenderPass(configManager, authoringMode);
     if (bufferName) {
-      config = configManager.getConfig();
+      config = configManager?.getConfig() ?? null;
       if (config) {
         onConfigChange(config);
       }
@@ -356,9 +368,29 @@
     return !!pass && 'type' in pass && pass.type === "compute";
   }
 
+  function sourceForPass(passName: string): string {
+    if (passName === 'Image') {
+      return shaderSource;
+    }
+    const pass = config?.passes[passName];
+    const configuredPath = pass && 'path' in pass ? pass.path : undefined;
+    if (
+      (bufferPathMap[passName] && shaderPathsEqual(bufferPathMap[passName], shaderPath))
+      || (configuredPath && shaderPathsEqual(configuredPath, shaderPath))
+    ) {
+      return shaderSource;
+    }
+    return bufferSources[passName] ?? '';
+  }
+
+  function shaderEntryPoints(passName: string): ShaderEntryPoint[] {
+    return getShaderEntryPoints(sourceForPass(passName), language);
+  }
+
   function computeEntryPoints(passName: string): string[] {
-    const source = bufferSources[passName] ?? '';
-    return Array.from(source.matchAll(/\[\s*shader\s*\(\s*["']compute["']\s*\)\s*\]\s*\[\s*numthreads\s*\([^)]*\)\s*\]\s*void\s+([A-Za-z_]\w*)\s*\(/gi), (match) => match[1]!);
+    return shaderEntryPoints(passName)
+      .filter((entry) => entry.stage === 'compute')
+      .map((entry) => entry.name);
   }
 
   function getWebviewUri(path: string): string | undefined {
@@ -371,6 +403,18 @@
     }
     return Object.keys(config.passes).filter((k) => k !== "Image" && k !== "common");
   });
+
+  const renderOutputMetadata = $derived(discoverRenderOutputs(config, language, sourceForPass));
+  const renderOutputCounts = $derived(Object.fromEntries(Object.entries(renderOutputMetadata).map(([name, discovery]) => [name, discovery.outputs.length])));
+  $effect(() => {
+ setRenderOutputMetadata(shaderPath, renderOutputMetadata);
+});
+
+  let computeOutputLayerCounts = $derived.by(() => Object.fromEntries(
+    Object.entries(config?.passes ?? {})
+      .filter(([name, pass]) => name !== 'Image' && name !== 'common' && (pass as ComputePass).type === 'compute')
+      .map(([name, pass]) => [name, (pass as ComputePass).outputLayers ?? 1]),
+  ));
 
   // Reactive statement to ensure tabs update when config changes
   let allTabs = $derived.by(() => {
@@ -638,7 +682,7 @@
 
     if (activeTab === "Image") {
       // Return actual config or default empty ImagePass
-      return config?.passes?.Image || { inputs: {} };
+      return effectiveConfig?.passes?.Image || { inputs: {} };
     } else {
       // Return actual buffer config or default empty BufferPass
       return config?.passes?.[actualBufferName] || { path: "", inputs: {} };
@@ -790,12 +834,16 @@
           onApply={applyStorageBuffer}
           onDelete={removeStorageBuffer}
           onRead={onReadStorage}
-          onWrite={onWriteStorage}
+          onReset={onResetStorage}
+          scope={shaderPath}
+          {language}
+          passes={Object.entries(config?.passes ?? {}).filter(([name, pass]) => name !== 'common' && !!pass).map(([name, pass]) => ({ name, compute: !!pass && 'type' in pass && pass.type === 'compute', dispatchOnce: !!pass && 'type' in pass && pass.type === 'compute' && !!pass.dispatchOnce }))}
         />
       {:else if activeTab === "Image"}
         <BufferConfig
           bufferName={activeTab}
           config={activeTabConfig}
+          projectConfig={config}
           {language}
           onUpdate={(_passName, updatedConfig) => {
             configManager?.updateImagePass(updatedConfig as ImagePass);
@@ -808,12 +856,20 @@
           {audioVideoController}
           {globalMuted}
           {availableBufferNames}
+          {renderOutputCounts}
+          {computeOutputLayerCounts}
+          maxColorAttachments={renderOutputLimits?.maxColorAttachments}
+          maxColorAttachmentBytesPerSample={renderOutputLimits?.maxColorAttachmentBytesPerSample}
+          renderEntryPoints={shaderEntryPoints('Image')}
+          passSource={sourceForPass('Image')}
+          vertexSource={bufferSources[vertexPassKey('Image')] ?? ''}
           {onOpenInNewTab}
         />
       {:else}
         <BufferConfig
           bufferName={getActualBufferName(activeTab)}
           config={activeTabConfig}
+          projectConfig={config}
           {language}
           passType={isComputeTab(activeTab) ? 'compute' : 'render'}
           onUpdate={(bufferName, updatedConfig) => {
@@ -834,8 +890,15 @@
           {audioVideoController}
           {globalMuted}
           {availableBufferNames}
+          {renderOutputCounts}
+          {computeOutputLayerCounts}
+          maxColorAttachments={renderOutputLimits?.maxColorAttachments}
+          maxColorAttachmentBytesPerSample={renderOutputLimits?.maxColorAttachmentBytesPerSample}
           storageNames={Object.keys(config?.storage ?? {})}
           entryPointNames={computeEntryPoints(getActualBufferName(activeTab))}
+          renderEntryPoints={shaderEntryPoints(getActualBufferName(activeTab))}
+          passSource={sourceForPass(getActualBufferName(activeTab))}
+          vertexSource={bufferSources[vertexPassKey(getActualBufferName(activeTab))] ?? ''}
           onComputeCommit={(nextConfig) => {
             const result = configManager?.updateComputePass(getActualBufferName(activeTab), nextConfig);
             return result && !result.ok ? result.errors : {};

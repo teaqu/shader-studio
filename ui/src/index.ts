@@ -6,7 +6,7 @@
  * `@shader-studio/standalone` imports instead.
  */
 export { default as ShaderStudioApp } from './App.svelte';
-export { configureHost, resetHost } from './lib/state/hostState.svelte';
+export { configureHost, resetHost, getHostEditorWordWrap, toggleHostEditorWordWrap } from './lib/state/hostState.svelte';
 export type { HostConfig, ViewerCapabilities } from './lib/state/hostState.svelte';
 export type {
   ShaderExplorerHostApi,

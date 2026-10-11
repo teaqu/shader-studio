@@ -11,10 +11,11 @@ export default defineConfig({
     coverage: {
       // V8 precise profiling slows the exhaustive Slang sweep enough to exceed its
       // unchanged timeout. Istanbul limits instrumentation to our source scope.
-      provider: 'istanbul',
+      // Restore Svelte's missing template mount mapping before instrumentation.
+      provider: 'custom',
+      customProviderModule: './.github/scripts/svelte-istanbul-provider.mjs',
       include: [
-        'extension/src/app/mcp/**/*.ts',
-        'debug/src/**/*.ts', 'rendering/src/**/*.ts', 'ui/src/**/*.{ts,svelte}',
+        'debug/src/**/*.ts', 'rendering/src/**/*.ts', 'ui/src/**/*.{ts,svelte}', 'extension/src/**/*.ts',
         'language-servers/*/src/**/*.ts', 'types/src/**/*.ts', 'utils/src/**/*.ts',
         'monaco/src/**/*.ts', 'standalone/src/**/*.{ts,svelte}', 'shader-explorer/src/**/*.{ts,svelte}',
       ],
@@ -35,8 +36,9 @@ export default defineConfig({
       },
     },
     projects: [
-      'extension/vitest.config.ts',
+      'extension/vitest.mcp.config.ts',
       'types/vitest.config.ts',
+      'extension/vitest.config.ts',
       'standalone/vitest.config.ts',
       'ui/vitest.config.ts',
       'debug/vitest.config.ts',

@@ -1,3 +1,7 @@
+import { ShaderCameraSession } from "../preview3d/ShaderCameraSession";
+import { RenderedCaptureState } from "./RenderedCaptureState";
+import { audioPreviewData, livePreviewData, controlSystemAudio, controlAudioInput } from "../resources/MediaPreview";
+import type { LiveInputType, LiveInputPreview } from "../resources/LiveInputTextureManager";
 import type { DebugInstrumentationPlan,ShaderConfig,ShaderLanguageId,SlangSourceModule,StorageBufferSnapshot } from "@shader-studio/types";
 import type {
   CaptureCompileContext,
@@ -56,6 +60,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   private meshResources: WebGPUMeshResources | null = null;
   private meshCamera = new OrbitCamera();
+  private readonly meshCameraSession = new ShaderCameraSession(this.meshCamera);
+  private readonly renderedCaptureState = new RenderedCaptureState();
 
   private disposed = false;
 
@@ -178,6 +184,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
       constraints: this.constraints,
       passFactory: this.passFactory,
       resetPausedFrame: () => this.frameRenderer.resetPausedFrame(),
+      onShaderInstalled: (path) => {
+        this.renderedCaptureState.clear();
+        this.meshCameraSession.install(path);
+      },
       get disposed() {
         return engine.disposed;
       },
@@ -235,6 +245,13 @@ export class WebGPURenderingEngine implements RenderingEngine {
       },
     });
     this.capture = new WebGPUCapture({
+      renderedCaptureState: this.renderedCaptureState,
+      get meshResources() {
+        return engine.meshResources;
+      },
+      get meshCamera() {
+        return engine.meshCamera;
+      },
       session: this.session,
       geometry: this.geometry,
       channels: this.channels,
@@ -261,6 +278,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       getUniforms: () => this.getUniforms(),
     });
     this.frameRenderer = new WebGPUFrameRenderer({
+      renderedCaptureState: this.renderedCaptureState,
       timing: this.timing,
       session: this.session,
       channels: this.channels,
@@ -529,6 +547,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const w = this.constraints.clampDimensionToTextureLimit(width);
     const h = this.constraints.clampDimensionToTextureLimit(height);
     if (this.canvas.width !== w || this.canvas.height !== h) {
+      this.renderedCaptureState.clear();
       this.canvas.width = w;
       this.canvas.height = h;
       this.passFactory.applyPassResolutions();
@@ -556,8 +575,17 @@ export class WebGPURenderingEngine implements RenderingEngine {
   getCurrentConfig(): ShaderConfig | null {
     return this.session.currentConfig;
   }
-  async readStorageBuffer(name: string, start: number, count: number, maxBytes?: number): Promise<StorageBufferSnapshot> {
-    return this.storage.readStorageBuffer(name, start, count, maxBytes);
+  async readStorageBuffer(name: string, start: number, count: number, point?: import('@shader-studio/types').StorageCapturePoint, maxBytes?: number): Promise<StorageBufferSnapshot> {
+    if (point && !this.session.passGraph.some(pass => pass.name === point.pass)) {
+      throw new Error('Capture pass is not available');
+    }
+    const frame = this.timeManager.getFrame();
+    const snapshot = await this.storage.readStorageBuffer(name, start, count, point, maxBytes);
+    return { ...snapshot, frame: snapshot.frame ?? frame };
+  }
+
+  async resetStorageBuffer(name: string): Promise<void> {
+    this.storage.resetStorageBuffer(name);
   }
 
   async writeStorageBuffer(name: string, start: number, data: ArrayBuffer): Promise<void> {
@@ -591,6 +619,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   resetTime(): void {
+    this.renderedCaptureState.clear();
     // Allocate the complete storage replacement before invalidating any live
     // compile state. Until a matching compilation publishes, the installed
     // pipeline, feedback, storage, clock, and pause snapshot remain untouched.
@@ -652,6 +681,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   dispose(): void {
     this.disposed = true;
+    this.renderedCaptureState.clear();
 
     let firstError: unknown;
     let hasError = false;
@@ -762,6 +792,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
     return this.capture.getVariableCaptureCompileContext(code, passName, sourcePath);
   }
 
+  public getRenderOutputLimits(): { maxColorAttachments: number; maxColorAttachmentBytesPerSample: number } | null {
+    const limits = this.device?.limits;
+    return limits ? { maxColorAttachments: limits.maxColorAttachments, maxColorAttachmentBytesPerSample: limits.maxColorAttachmentBytesPerSample } : null;
+  }
+
   getShaderLanguage(): ShaderLanguageId {
     return this.language;
   }
@@ -772,6 +807,88 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   renderForCapture(): void {
     this.frameRenderer.renderFrame(performance.now(), true);
+  }
+
+  async captureCurrentFrame(): Promise<ImageData> {
+    if (!this.device || !this.context || !this.canvas) {
+      throw new Error("Cannot capture the current frame before WebGPU is initialized");
+    }
+    const width = this.canvas.width;
+    const height = this.canvas.height;
+    if (width < 1 || height < 1) {
+      throw new Error("Cannot capture an empty WebGPU canvas");
+    }
+    const bytesPerPixel = 4;
+    const bytesPerRow = Math.ceil((width * bytesPerPixel) / 256) * 256;
+    const MAP_READ = globalThis.GPUBufferUsage?.MAP_READ ?? 0x0001;
+    const COPY_DST = globalThis.GPUBufferUsage?.COPY_DST ?? 0x0008;
+    const READ = globalThis.GPUMapMode?.READ ?? 0x0001;
+    const buffer = this.device.createBuffer({
+      size: bytesPerRow * height,
+      usage: MAP_READ | COPY_DST,
+    });
+    let copied = false;
+    const copy = (encoder: GPUCommandEncoder, texture: GPUTexture) => {
+      if (copied || texture.width !== width || texture.height !== height) {
+        return;
+      }
+      encoder.copyTextureToBuffer(
+        { texture },
+        { buffer, bytesPerRow, rowsPerImage: height },
+        { width, height, depthOrArrayLayers: 1 },
+      );
+      copied = true;
+    };
+    // Paused inputs are frozen in renderFrame, so a redraw reproduces the
+    // picture on screen. While running, copy the next frame the render loop
+    // draws, so the saved time/mouse/script values are the ones shown.
+    const redraw = () => this.frameRenderer.renderFrame(this.diagnostics.now(), true, true, copy);
+    try {
+      if (this.running && !this.timeManager.isPaused()) {
+        await new Promise<void>((resolve) => {
+          const hook = (encoder: GPUCommandEncoder, texture: GPUTexture) => {
+            clearTimeout(timer);
+            copy(encoder, texture);
+            resolve();
+          };
+          const timer = setTimeout(() => {
+            this.frameRenderer.pendingScreenshotCopies = this.frameRenderer.pendingScreenshotCopies.filter((candidate) => candidate !== hook);
+            redraw();
+            resolve();
+          }, 1000);
+          this.frameRenderer.pendingScreenshotCopies.push(hook);
+        });
+      } else {
+        redraw();
+      }
+      if (!copied) {
+        throw new Error("The WebGPU shader did not produce a canvas frame");
+      }
+      await buffer.mapAsync(READ);
+      const source = new Uint8Array(buffer.getMappedRange());
+      const rgba = new Uint8ClampedArray(width * height * bytesPerPixel);
+      const bgra = this.format === "bgra8unorm" || this.format === "bgra8unorm-srgb";
+      for (let row = 0; row < height; row += 1) {
+        const sourceRow = row * bytesPerRow;
+        const destinationRow = row * width * bytesPerPixel;
+        for (let column = 0; column < width; column += 1) {
+          const src = sourceRow + column * bytesPerPixel;
+          const dst = destinationRow + column * bytesPerPixel;
+          rgba[dst] = bgra ? source[src + 2] : source[src];
+          rgba[dst + 1] = source[src + 1];
+          rgba[dst + 2] = bgra ? source[src] : source[src + 2];
+          rgba[dst + 3] = source[src + 3];
+        }
+      }
+      return new ImageData(rgba, width, height);
+    } finally {
+      try {
+        buffer.unmap();
+      } catch {
+        // A failed map may leave the buffer unmapped already.
+      }
+      buffer.destroy();
+    }
   }
 
   // ---- Audio/video ----
@@ -810,11 +927,21 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.session.resourceManager?.seekAudio(path, time);
   }
   getAudioFFTData(type: string, path?: string): Uint8Array | null {
-    return type === "audio" && path
-      ? this.session.resourceManager?.getAudioFFTData(path) ?? null
-      : null;
+    return audioPreviewData(this.session.resourceManager, type, path);
   }
 
+  controlAudioInput(action: "start" | "stop", deviceId?: string): Promise<string | undefined> {
+    return controlAudioInput(this.session.resourceManager, action, deviceId);
+  }
+  controlSystemAudio(action: "start" | "stop", deviceId?: string): Promise<string | undefined> {
+    return controlSystemAudio(this.session.resourceManager, action, deviceId);
+  }
+  controlScreen(action: "start" | "stop"): Promise<string | undefined> {
+    return this.session.resourceManager?.controlScreen(action) ?? Promise.resolve("Shader is not ready. Try again after it loads.");
+  }
+  getLiveInputPreview(type: LiveInputType): LiveInputPreview | null {
+    return livePreviewData(this.session.resourceManager, type);
+  }
   // ---- Custom uniforms ----
 
   getMouse(): [number, number, number, number] {
@@ -842,6 +969,16 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
   getCurrentCustomUniforms(): CaptureCustomUniform[] {
     return this.session.visibleCustomUniformManager().getCurrentValues();
+  }
+
+  getDisplayedCustomUniforms(): CaptureCustomUniform[] {
+    if (this.timeManager.isPaused() && this.frameRenderer.pausedCustomUniformValues) {
+      return this.frameRenderer.pausedCustomUniformValues.map((uniform) => ({
+        ...uniform,
+        value: Array.isArray(uniform.value) ? [...uniform.value] : uniform.value,
+      }));
+    }
+    return this.getCurrentCustomUniforms();
   }
 
   setCustomUniformValues(values: CustomUniform[]): void {

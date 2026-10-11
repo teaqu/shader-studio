@@ -32,6 +32,23 @@ export class WebGLPixelRegionCapturer {
 
   constructor(private readonly gl: WebGL2RenderingContext) {}
 
+  /** Read-only diagnostics: querying a request never polls or consumes it. */
+  getRequestStage(requestId: number): "queued" | "pending" | "completed" | "context lost" | "disposed" | null {
+    if (this.disposed) {
+      return "disposed";
+    }
+    if (this.gl.isContextLost()) {
+      return "context lost";
+    }
+    if (this.queuedRequest?.requestId === requestId) {
+      return "queued";
+    }
+    if (this.pendingCaptures.some((capture) => capture.request.requestId === requestId)) {
+      return "pending";
+    }
+    return this.completedResults.some((result) => result.requestId === requestId) ? "completed" : null;
+  }
+
   queue(request: PixelRegionRequest): boolean {
     if (this.disposed || this.gl.isContextLost()) {
       return false;

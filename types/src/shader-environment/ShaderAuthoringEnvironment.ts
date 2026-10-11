@@ -50,6 +50,8 @@ export interface ShaderAuthoringEnvironment {
   readonly passName: string;
   readonly stage: ShaderStage;
   readonly entryPoint?: string;
+  /** A shared native module contains a compute entry point that writes storage. */
+  readonly storageWritable?: boolean;
   /** Compute output texture layer count; omitted and one select the 2D output helper. */
   readonly outputLayers?: number;
   readonly customUniforms: readonly Readonly<CustomUniformDeclaration>[];

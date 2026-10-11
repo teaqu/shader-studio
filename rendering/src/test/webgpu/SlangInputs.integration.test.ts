@@ -2,6 +2,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SlangCompiler } from '../../webgpu/SlangCompiler';
 import type { SlangModuleApi } from '../../webgpu/slangTypes';
+import { buildSlangPassGraph } from '../../webgpu/SlangPassGraph';
+import { extractStorageFields } from '../../webgpu/wgslStructSize';
 
 let compiler: SlangCompiler;
 const channels = [{ slot: 0, key: 'iChannel0' }, { slot: 3, key: 'sky', kind: 'cubemap' as const }];
@@ -14,6 +16,18 @@ beforeAll(async () => {
 afterAll(() => compiler?.dispose());
 
 describe('native Slang input objects compile to WGSL', () => {
+  it('compiles generated storage structs and exposes the compiled field layout', () => {
+    const graph = buildSlangPassGraph({ imageCode: 'float4 mainImage(float2 p) { return first[0].position + second[0].position; }', buffers: {}, config: { version: '1', passes: { Image: {} }, storage: {
+      first: { count: 2, elementType: 'ConfiguredData', fields: [{ name: 'position', type: 'float4' }, { name: 'velocity', type: 'float4' }] },
+      second: { count: 2, elementType: 'ConfiguredData', fields: [{ name: 'position', type: 'float4' }, { name: 'velocity', type: 'float4' }] },
+    } }, canvasWidth: 32, canvasHeight: 32 });
+    expect(graph.errors).toEqual([]);
+    const result = compiler.compileImagePass(graph.passes[0]!.source, { storage: graph.storage });
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    if (result.success) {
+      expect(extractStorageFields(result.wgsl, 'ConfiguredData', 'first')).toEqual([{ name: 'position', type: 'vec4f', offset: 0 }, { name: 'velocity', type: 'vec4f', offset: 16 }]);
+    }
+  });
   it.each([
     'iChannel0.Sample(c)',
     'iChannel0.SampleLevel(c, 2.0)',

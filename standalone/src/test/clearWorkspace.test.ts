@@ -56,3 +56,31 @@ it('preserves settings and avoids reloading if workspace deletion fails', async 
   expect(localStorage.getItem('shader-studio.theme')).toBe('dark');
   expect(reload).not.toHaveBeenCalled();
 });
+
+it('keeps browser-wide preferences when clearing workspace files and layout', async () => {
+  localStorage.setItem('shader-studio.standalone.settings', '{"version":1,"values":{"editor.fontSize":22}}');
+  localStorage.setItem('shader-studio.webgpu.useViewerCamera', 'false');
+  await clearStandaloneWorkspace({ clearWorkspace: vi.fn().mockResolvedValue(undefined) }, () => true, vi.fn());
+  expect(localStorage.getItem('shader-studio.standalone.settings')).toContain('22');
+  expect(localStorage.getItem('shader-studio.webgpu.useViewerCamera')).toBe('false');
+});
+
+it('reloads after clearing workspace when browser storage is denied', async () => {
+  const reload = vi.fn();
+  const denied = {
+    get length(): number {
+      throw new Error('denied');
+    },
+    key: () => {
+      throw new Error('denied');
+    },
+    removeItem: () => {
+      throw new Error('denied');
+    },
+  };
+  vi.stubGlobal('localStorage', denied);
+  vi.stubGlobal('sessionStorage', denied);
+
+  await expect(clearStandaloneWorkspace({ clearWorkspace: vi.fn().mockResolvedValue(undefined) }, () => true, reload)).resolves.toBeUndefined();
+  expect(reload).toHaveBeenCalledOnce();
+});

@@ -6,4 +6,18 @@ export interface StorageBufferSnapshot {
   start: number;
   count: number;
   data: ArrayBuffer;
+  fields?: StorageFieldLayout[];
+  frame?: number;
+  capturePoint?: StorageCapturePoint;
+}
+
+export interface StorageCapturePoint {
+  pass: string;
+  timing: 'before' | 'after';
+}
+
+export interface StorageFieldLayout {
+  name: string;
+  type: string;
+  offset: number;
 }

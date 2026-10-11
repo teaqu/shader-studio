@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render } from '@testing-library/svelte';
+import { fireEvent, render } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import ShaderEditorStub from './ShaderEditorStub.svelte';
 
 vi.mock('@shader-studio/ui', async () => {
   const { getViewerSession } = await import('@shader-studio/ui/lib/state/viewerSession.svelte');
-  return { getViewerSession, ShaderEditor: ShaderEditorStub };
+  const { getHostEditorWordWrap, toggleHostEditorWordWrap } = await import('@shader-studio/ui/lib/state/hostState.svelte');
+  return { getViewerSession, getHostEditorWordWrap, toggleHostEditorWordWrap, ShaderEditor: ShaderEditorStub };
 });
 
 import { clearEditorDocuments } from '../state/editorDocuments.svelte';
@@ -43,7 +44,33 @@ function createSession(overrides: Partial<ViewerSession> = {}): ViewerSession {
   };
 }
 
+import { configureHost, resetHost } from '@shader-studio/ui/lib/state/hostState.svelte';
+import { StandaloneSettings } from '../settings/StandaloneSettings';
+import { connectSettings, getEditorPreferences } from '../settings/settingsState.svelte';
+
 describe('EditorPane', () => {
+  it('toggles the shared word-wrap preference and persists it for future editors', async () => {
+    const values = new Map<string, string>();
+    const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => {
+      values.set(key, value);
+    } };
+    const settings = new StandaloneSettings(storage);
+    const disconnect = connectSettings(settings);
+    configureHost({ getEditorPreferences, setEditorWordWrap: value => settings.update('editor.wordWrap', value) });
+    setViewerSession(createSession());
+    const view = render(EditorPane);
+    try {
+      expect(view.getByRole('button', { name: 'Wrap text' }).getAttribute('aria-pressed')).toBe('false');
+      await fireEvent.click(view.getByRole('button', { name: 'Wrap text' }));
+      expect(settings.snapshot['editor.wordWrap']).toBe('on');
+      expect(view.getByRole('button', { name: 'Wrap text' }).getAttribute('aria-pressed')).toBe('true');
+      expect(new StandaloneSettings(storage).snapshot['editor.wordWrap']).toBe('on');
+      await fireEvent.click(view.getByRole('button', { name: 'Wrap text' }));
+      expect(settings.snapshot['editor.wordWrap']).toBe('off');
+    } finally {
+      view.unmount(); disconnect(); resetHost();
+    }
+  });
   beforeEach(() => {
     setViewerSession(null);
   });
@@ -57,7 +84,7 @@ describe('EditorPane', () => {
   });
 
   it('passes the current editing state to the shared editor and delegates its commands', async () => {
-    const session = createSession({ commonPath: '/shaders/common.wgsl', commonSource: 'fn shared() {}' });
+    const session = createSession({ commonPath: '/shaders/common.wgsl', commonSource: 'fn shared() {}', config: { version: '1.0', passes: { Image: {} } } });
     setViewerSession(session);
     const { getByTestId, getByRole } = render(EditorPane);
 
@@ -68,6 +95,11 @@ describe('EditorPane', () => {
     expect(editor.getAttribute('data-buffer')).toBe('Image');
     expect(editor.getAttribute('data-common-path')).toBe('/shaders/common.wgsl');
     expect(editor.getAttribute('data-common-source')).toBe('fn shared() {}');
+    expect(editor.getAttribute('data-buffers')).toBe('Image|Buffer B');
+    expect(editor.getAttribute('data-compile-mode')).toBe('hot');
+    expect(editor.getAttribute('data-config')).toBe(JSON.stringify(session.config));
+    expect(editor.getAttribute('data-uniforms')).toBe('[]');
+    expect(editor.getAttribute('data-modules')).toBe('[]');
 
     await getByRole('button', { name: 'Edit' }).click();
     await getByRole('button', { name: 'Switch buffer' }).click();
@@ -116,6 +148,32 @@ describe('EditorPane', () => {
 
     expect(toggle.getAttribute('aria-pressed')).toBe('false');
     expect(getByTestId('shader-editor').getAttribute('data-vim')).toBe('false');
+  });
+
+  it('finishes editor teardown when a viewer session disappears and mounts its replacement', async () => {
+    const disposed = vi.fn();
+    document.addEventListener('editor-disposed', disposed, { once: true });
+    setViewerSession(createSession());
+    const { getByTestId, queryByTestId } = render(EditorPane);
+    expect(getByTestId('shader-editor').getAttribute('data-path')).toBe('/shaders/image.glsl');
+
+    setViewerSession(null);
+    await tick();
+    expect(queryByTestId('shader-editor')).toBeNull();
+    expect(disposed).toHaveBeenCalledWith(expect.objectContaining({
+      detail: expect.objectContaining({ shaderPath: '/shaders/image.glsl', shaderCode: 'initial source' }),
+    }));
+
+    setViewerSession(createSession({ shaderPath: '/replacement.glsl' }));
+    await tick();
+    expect(getByTestId('shader-editor').getAttribute('data-path')).toBe('/replacement.glsl');
+  });
+
+  it('retains editor props when teardown starts before the cleared session has flushed', () => {
+    setViewerSession(createSession());
+    const pane = render(EditorPane);
+    setViewerSession(null);
+    expect(() => pane.unmount()).not.toThrow();
   });
 });
 

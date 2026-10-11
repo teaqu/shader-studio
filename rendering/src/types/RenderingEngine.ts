@@ -22,11 +22,14 @@ export interface RenderingEngine {
   /** Compile a complete, in-place Slang debug workspace when the backend supports Slang. */
   compileDebugPlan?(plan: DebugInstrumentationPlan, config?: ShaderConfig | null): Promise<CompilationResult | undefined>;
   getCurrentConfig(): ShaderConfig | null;
-  readStorageBuffer(name: string, start: number, count: number, maxBytes?: number): Promise<StorageBufferSnapshot>;
+  readStorageBuffer(name: string, start: number, count: number, point?: import('@shader-studio/types').StorageCapturePoint, maxBytes?: number): Promise<StorageBufferSnapshot>;
+  resetStorageBuffer(name: string): Promise<void>;
   writeStorageBuffer(name: string, start: number, data: ArrayBuffer): Promise<void>;
   setInputEnabled(enabled: boolean): void;
   updateBufferAndRecompile(bufferName: string, bufferContent: string): Promise<CompilationResult | undefined>;
   getPasses(): (Pass | RenderPassNode)[];
+  /** Effective colour-attachment limits of the installed WebGPU device. */
+  getRenderOutputLimits?(): { maxColorAttachments: number; maxColorAttachmentBytesPerSample: number } | null;
   togglePause(): void;
   getTimeManager(): TimeManager;
   resetTime(): void;
@@ -80,6 +83,10 @@ export interface RenderingEngine {
   controlAudio(path: string, action: 'play' | 'pause' | 'mute' | 'unmute' | 'reset'): void;
   getAudioState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null;
   seekAudio(path: string, time: number): void;
+  controlAudioInput?(action: "start" | "stop", deviceId?: string): Promise<string | undefined>;
+  controlSystemAudio?(action: "start" | "stop", deviceId?: string): Promise<string | undefined>;
+  controlScreen?(action: "start" | "stop"): Promise<string | undefined>;
+  getLiveInputPreview?(type: import("../resources/LiveInputTextureManager").LiveInputType): import("../resources/LiveInputTextureManager").LiveInputPreview | null;
   getAudioFFTData(type: string, path?: string): Uint8Array | null;
   getCustomUniformInfo(): { name: string; type: string }[];
   getCustomUniformDeclarations(): string;
@@ -87,6 +94,10 @@ export interface RenderingEngine {
   setCustomUniformValues(values: { name: string; type: string; value: number | number[] | boolean }[]): void;
   updateCustomUniformValues(changed: { name: string; type: string; value: number | number[] | boolean }[]): void;
   renderForCapture(): void;
+  /** Custom uniform values of the displayed frame: frozen values while paused. */
+  getDisplayedCustomUniforms(): { name: string; type: string; value: number | number[] | boolean }[];
+  /** Read the currently displayed Image pass without advancing time or feedback state. */
+  captureCurrentFrame(): Promise<ImageData>;
   getCanvas(): HTMLCanvasElement | null;
   dispose(): void;
 }

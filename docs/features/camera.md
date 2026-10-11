@@ -29,6 +29,12 @@ Orbit uses yaw (around world Y axis) and pitch (clamped to ±90° to avoid flipp
 In 2D fullscreen mode the camera defaults to `(0, 0, 0)` looking along `(0, 0, 1)` — still useful as a fixed ray origin and direction for raymarching. When a pass uses 3D geometry, the camera transforms update with your mouse and keyboard input.
 
 
+## Per-Pass Camera Transform
+
+For plane, cube, sphere, and model geometry, **Geometry → Use viewer camera** controls whether the viewer transforms the mesh. It applies to GLSL, WGSL, and Slang. Disable it when your vertex code already supplies clip-space positions. Native WGSL/Slang stages own their projection and can read the viewer matrices when enabled; those matrices become identity when disabled.
+
+The pass choice overrides the shader-wide camera setting and the global default. **Use default** clears the pass override. The global preference is available in standalone Settings and VS Code as `shader-studio.webgpu.useViewerCamera`. For procedural **Vertices** geometry, **Space** selects world or clip coordinates instead.
+
 ## Next
 
 [Vertex Shaders](vertex-shaders.md) — deform 3D geometry before it reaches the fragment shader

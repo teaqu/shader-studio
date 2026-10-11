@@ -1,7 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { extractStructSizes } from "../../webgpu/wgslStructSize";
+import { extractStructSizes, extractStorageFields, resolveStorageStructType } from "../../webgpu/wgslStructSize";
 
 describe("extractStructSizes", () => {
+  it('resolves compiled storage types by buffer identity and restores authored field names', () => {
+    const source = 'struct User_std430_0 { p_0: vec4f, field_0_1: u32, } @binding(1) @group(0) var<storage, read> data_0: array<User_std430_0>;';
+    expect(resolveStorageStructType(source, 'User', 'data')).toBe('User_std430_0');
+    expect(resolveStorageStructType(source, 'User')).toBe('User_std430_0');
+    expect(extractStorageFields(source, 'User', 'data')).toEqual([{ name: 'p', type: 'vec4f', offset: 0 }, { name: 'field_0', type: 'u32', offset: 16 }]);
+    const native = 'struct User { field_0: u32, } var<storage, read> data: array<User>;';
+    expect(extractStorageFields(native, 'User', 'data')).toEqual([{ name: 'field_0', type: 'u32', offset: 0 }]);
+    expect(resolveStorageStructType(native, 'Unknown', 'missing')).toBe('Unknown');
+  });
+  it('reports source field offsets and inspectable native atomic types', () => {
+    expect(extractStorageFields('struct Data { @align(16) p: vec3f, age: f32, counter: atomic<u32>, }', 'Data')).toEqual([
+      { name: 'p', type: 'vec3f', offset: 0 }, { name: 'age', type: 'f32', offset: 12 }, { name: 'counter', type: 'atomic<u32>', offset: 16 },
+    ]);
+    expect(extractStorageFields('struct Bad { x: Unknown, }', 'Bad')).toBeUndefined();
+    expect(extractStorageFields('', 'Missing')).toBeUndefined();
+  });
   it("uses WGSL array stride, resolves nested structs, and honours explicit member layout", () => {
     const layouts = extractStructSizes(`
 enable f16;

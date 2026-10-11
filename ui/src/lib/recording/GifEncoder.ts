@@ -1,11 +1,23 @@
 import gifskiWasmBytes from "./gifskiWasmBytes";
 
+const MAX_GIF_RAW_FRAME_BYTES = 512 * 1024 * 1024;
+
+export function assertGifMemoryBudget(width: number, height: number, frames: number): void {
+  const bytes = width * height * 4 * frames;
+  if (!Number.isSafeInteger(bytes) || bytes > MAX_GIF_RAW_FRAME_BYTES) {
+    const requiredMiB = Math.ceil(bytes / (1024 * 1024));
+    throw new Error(
+      `GIF settings require about ${requiredMiB} MB of frame memory; reduce duration, frame rate, or resolution`,
+    );
+  }
+}
+
 export interface GifEncoderOptions {
   width: number;
   height: number;
   fps: number;
   quality?: number; // 1-100, default 100
-  repeat?: number; // 0 = infinite, -1 = once, N = N times
+  repeat?: number; // omitted = infinite, 0 = once, N = N repeats
 }
 
 // Self-contained worker code that initializes gifski WASM and encodes.
@@ -85,7 +97,7 @@ export class GifEncoderWrapper {
   private height: number;
   private fps: number;
   private quality: number;
-  private repeat: number;
+  private repeat: number | undefined;
   private frames: Uint8Array[] = [];
   private cancelled = false;
   private worker: Worker | null = null;
@@ -96,7 +108,7 @@ export class GifEncoderWrapper {
     this.height = options.height;
     this.fps = options.fps;
     this.quality = options.quality ?? 100;
-    this.repeat = options.repeat ?? 0;
+    this.repeat = options.repeat;
   }
 
   addFrame(imageData: ImageData): void {

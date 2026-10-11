@@ -77,6 +77,46 @@ suite('ClientMessageHandler Test Suite', () => {
     assert.ok(handler instanceof ClientMessageHandler);
   });
 
+  suite('viewer camera settings', () => {
+    test('returns the user-wide default on request', async () => {
+      sandbox.stub(vscode.workspace, 'getConfiguration').returns({
+        get: sandbox.stub().withArgs('webgpu.useViewerCamera', true).returns(false),
+      } as any);
+
+      await handler.handle({ type: 'requestViewerCameraSettings' }, respondFn);
+
+      sinon.assert.calledOnceWithExactly(respondFn, {
+        type: 'viewerCameraSettings', payload: { useViewerCamera: false },
+      });
+    });
+
+    test('acknowledges settings from a fresh snapshot after saving', async () => {
+      const update = sandbox.stub().resolves();
+      const before = { get: sandbox.stub().returns(true), update };
+      const after = { get: sandbox.stub().returns(false) };
+      sandbox.stub(vscode.workspace, 'getConfiguration').onFirstCall().returns(before as any).onSecondCall().returns(after as any);
+
+      await handler.handle({ type: 'updateViewerCameraSettings', payload: { useViewerCamera: false } }, respondFn);
+
+      sinon.assert.calledOnceWithExactly(respondFn, {
+        type: 'viewerCameraSettings', payload: { useViewerCamera: false },
+      });
+    });
+
+    test('persists updates globally and acknowledges the resolved setting', async () => {
+      const update = sandbox.stub().resolves();
+      const get = sandbox.stub().withArgs('webgpu.useViewerCamera', true).returns(false);
+      sandbox.stub(vscode.workspace, 'getConfiguration').returns({ get, update } as any);
+
+      await handler.handle({ type: 'updateViewerCameraSettings', payload: { useViewerCamera: false } }, respondFn);
+
+      sinon.assert.calledOnceWithExactly(update, 'webgpu.useViewerCamera', false, vscode.ConfigurationTarget.Global);
+      sinon.assert.calledOnceWithExactly(respondFn, {
+        type: 'viewerCameraSettings', payload: { useViewerCamera: false },
+      });
+    });
+  });
+
   suite('updateConfig', () => {
     test('writes config file and triggers shader refresh', async () => {
       const writeStub = sandbox.stub(AtomicFile, 'writeFileAtomicSync');

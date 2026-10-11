@@ -1,19 +1,36 @@
 <svelte:options runes={true} />
 <script lang="ts">
-  import type { ShaderLanguageId } from '@shader-studio/types';
+  import { onMount } from 'svelte';
+  import type { ShaderLanguageId, WebGPUAuthoringMode } from '@shader-studio/types';
 
   interface Props {
-    onCreate: (name: string, language: ShaderLanguageId) => void;
+    onCreate: (name: string, language: ShaderLanguageId, authoringMode?: WebGPUAuthoringMode) => void;
     onClose: () => void;
+    defaultAuthoringMode?: WebGPUAuthoringMode;
   }
 
-  let { onCreate, onClose }: Props = $props();
-  let name = $state('untitled');
+  let { onCreate, onClose, defaultAuthoringMode = 'hooks' }: Props = $props();
+  let name = $state('');
+  let nameError = $state('');
+  let nameInput: HTMLInputElement;
   let language = $state<ShaderLanguageId>('glsl');
+  let selectedAuthoring = $state<WebGPUAuthoringMode | null>(null);
+  const webgpuAuthoring = $derived(selectedAuthoring ?? defaultAuthoringMode);
+  const nativeFunctionLabel = $derived(
+    language === 'slang' ? '[shader("fragment")]' : '@fragment',
+  );
+  onMount(() => nameInput.focus());
 
   function submit() {
     const trimmedName = name.trim();
-    if (trimmedName) {
+    if (!trimmedName) {
+      nameError = 'Enter a shader name.';
+      return;
+    }
+    nameError = '';
+    if (language !== 'glsl') {
+      onCreate(trimmedName, language, webgpuAuthoring);
+    } else {
       onCreate(trimmedName, language);
     }
   }
@@ -42,8 +59,14 @@
       </div>
       <label>
         Name
-        <input bind:value={name} aria-label="Shader name" />
+        <input bind:this={nameInput} bind:value={name} aria-label="Shader name"
+          aria-invalid={nameError ? 'true' : undefined}
+          aria-describedby={nameError ? 'shader-name-error' : undefined}
+          oninput={() => nameError = ''} />
       </label>
+      {#if nameError}
+        <p id="shader-name-error" class="validation-error" role="alert">{nameError}</p>
+      {/if}
       <label>
         Language
         <select bind:value={language} aria-label="Shader language">
@@ -52,6 +75,15 @@
           <option value="wgsl">WGSL</option>
         </select>
       </label>
+      {#if language !== 'glsl'}
+        <label>
+          Shader functions
+          <select value={webgpuAuthoring} onchange={(event) => selectedAuthoring = event.currentTarget.value as WebGPUAuthoringMode} aria-label="Shader functions">
+            <option value="hooks">mainImage / mainVertex</option>
+            <option value="native">{nativeFunctionLabel}</option>
+          </select>
+        </label>
+      {/if}
       <div class="actions">
         <button type="button" onclick={onClose}>Cancel</button>
         <button type="submit">Create Shader</button>
@@ -68,6 +100,7 @@
   label { display: grid; gap: 6px; margin-top: 16px; }
   input, select { box-sizing: border-box; width: 100%; padding: 7px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); border-radius: 3px; }
   input:focus, select:focus { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+  .validation-error { margin: 6px 0 0; color: var(--vscode-errorForeground); font-size: 12px; }
   .actions { justify-content: flex-end; margin-top: 20px; }
   button { padding: 6px 12px; }
   .actions button[type="button"] { color: var(--vscode-editor-foreground); background: var(--vscode-list-hoverBackground); }

@@ -5,13 +5,14 @@ import { Messenger } from "./transport/Messenger";
 import { Logger } from "./services/Logger";
 import { isShaderDocument } from "./GlslFileTracker";
 import { definesMainImage } from "./ShaderEntryPoint";
+import { isConfiguredNativeRenderRoot } from "./ShaderProjectRoot";
+import { getConfigPathForShaderPath } from "./ShaderConfigPaths";
 import { ShaderConfigProcessor } from "./ShaderConfigProcessor";
 import { ConfigPathConverter } from "./transport/ConfigPathConverter";
 import { PathResolver } from "./PathResolver";
 import { ScriptBundler } from "./ScriptBundler";
 import { ScriptEvaluator, type ScriptRuntimeState } from "./ScriptEvaluator";
 import { ConfigChangeClassifier } from "./services/ConfigChangeClassifier";
-import { getConfigPathForShaderPath } from "./ShaderConfigPaths";
 import { collectSlangDependencies, resolveSlangIncludes, resolveSlangImports } from "@shader-studio/utils";
 import type {
   ShaderConfig,
@@ -534,7 +535,7 @@ export class ShaderProvider {
     // A file that defines the entry point is a shader in its own right. One
     // that only mentions it - a comment, a call, a name that starts with it -
     // is a helper, and previewing it as a whole shader replaces the picture.
-    if (definesMainImage(code)) {
+    if (definesMainImage(code) || this.isConfiguredNativeRenderRoot(shaderPath, code, language)) {
       return false;
     }
 
@@ -556,6 +557,17 @@ export class ShaderProvider {
 
     await sendNonMainShader();
     return true;
+  }
+
+  private isConfiguredNativeRenderRoot(shaderPath: string, source: string, language: "glsl" | "slang" | "wgsl"): boolean {
+    const configPath = getConfigPathForShaderPath(shaderPath);
+    const hasSiblingConfig = vscode.workspace.textDocuments.some((document) => document.uri.fsPath === configPath)
+      || fs.existsSync(configPath);
+    if (!hasSiblingConfig) {
+      return false;
+    }
+    const config = this.configProcessor.loadAndProcessConfig(shaderPath, {});
+    return isConfiguredNativeRenderRoot(source, language, config, hasSiblingConfig);
   }
 
   private resolveOwningSlangDependency(filePath: string): string | null {

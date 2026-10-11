@@ -54,7 +54,7 @@ export async function createMcpServer(application: McpApplication): Promise<McpS
     uniforms: z.record(z.string(), uniformValue).optional(), includePreview,
   }, false);
   register('get_diagnostics', 'Read the selected preview compiler/runtime errors and warnings with revision markers.', { previewId }, true);
-  register('capture_output', 'Return actual PNG pixels from the selected live renderer. Does not reset simulation or change resolution/time.', { previewId }, true);
+  register('capture_output', 'Render and return actual PNG pixels from the selected renderer. Preserves resolution/time; rendering can advance feedback buffers.', { previewId }, false);
   register('set_playback', 'Pause/resume, seek shader time, or reset the running simulation. Seeking does not reconstruct simulation history.', {
     previewId, paused: z.boolean().optional(), reset: z.boolean().optional(), time: z.number().finite().min(0).optional(), includePreview,
   }, false);

@@ -1,3 +1,5 @@
+import { audioPreviewData, livePreviewData, controlSystemAudio, controlAudioInput } from "../resources/MediaPreview";
+import type { LiveInputType, LiveInputPreview } from "../resources/LiveInputTextureManager";
 import { piRenderer } from "../../../vendor/pilibs/src/piRenderer";
 import {
   gpuBackpressureEnabled,
@@ -380,6 +382,7 @@ export class RenderingEngine implements RenderingEngineInterface {
       } catch (error) {
         return { success: false, errors: [error instanceof Error ? error.message : String(error)] };
       }
+      this.passRenderer.installShaderCamera(path);
       const shaderTime = this.timeManager.getCurrentTime(performance.now());
       const paused = this.timeManager.isPaused();
       this.resourceManager.syncAllVideosToTime(shaderTime);
@@ -467,6 +470,10 @@ export class RenderingEngine implements RenderingEngineInterface {
 
   public async writeStorageBuffer(_name: string, _start: number, _data: ArrayBuffer): Promise<void> {
     throw new Error("Storage inspection requires the Slang/WebGPU renderer");
+  }
+
+  public async resetStorageBuffer(_name: string): Promise<void> {
+    throw new Error('Storage buffers require WebGPU');
   }
 
   public setInputEnabled(enabled: boolean): void {
@@ -647,10 +654,23 @@ export class RenderingEngine implements RenderingEngineInterface {
   }
 
   public getAudioFFTData(type: string, path?: string): Uint8Array | null {
-    if (type === 'audio' && path) {
-      return this.resourceManager.getAudioFFTData(path);
-    }
-    return null;
+    return audioPreviewData(this.resourceManager, type, path);
+  }
+
+  controlAudioInput(action: "start" | "stop", deviceId?: string): Promise<string | undefined> {
+    return controlAudioInput(this.resourceManager, action, deviceId);
+  }
+
+  controlSystemAudio(action: "start" | "stop", deviceId?: string): Promise<string | undefined> {
+    return controlSystemAudio(this.resourceManager, action, deviceId);
+  }
+
+  controlScreen(action: "start" | "stop"): Promise<string | undefined> {
+    return this.resourceManager?.controlScreen(action) ?? Promise.resolve("Shader is not ready. Try again after it loads.");
+  }
+
+  public getLiveInputPreview(type: LiveInputType): LiveInputPreview | null {
+    return livePreviewData(this.resourceManager, type);
   }
 
   public getTimeManager(): TimeManager {
@@ -722,6 +742,42 @@ export class RenderingEngine implements RenderingEngineInterface {
     this.frameRenderer.renderForCapture();
   }
 
+  public async captureCurrentFrame(): Promise<ImageData> {
+    if (!this.glCanvas || !this.gl) {
+      throw new Error("Cannot capture the current frame before WebGL is initialized");
+    }
+    return this.frameRenderer.readNextDisplayedFrame(() => this.readCanvasImage());
+  }
+
+  /** Read the default framebuffer as top-down RGBA. Call in the task that drew it. */
+  private readCanvasImage(): ImageData {
+    if (!this.glCanvas || !this.gl) {
+      throw new Error("Cannot read the WebGL canvas after disposal");
+    }
+    if (this.gl.isContextLost()) {
+      // A lost context reads back as transparent black; don't save that as the preview.
+      throw new Error("Cannot capture the preview: its WebGL context was lost. Reload the preview and try again.");
+    }
+    const { width, height } = this.glCanvas;
+    const source = new Uint8Array(width * height * 4);
+    this.gl.readPixels(
+      0,
+      0,
+      width,
+      height,
+      this.gl.RGBA,
+      this.gl.UNSIGNED_BYTE,
+      source,
+    );
+    const rgba = new Uint8ClampedArray(source.length);
+    const rowBytes = width * 4;
+    for (let row = 0; row < height; row += 1) {
+      const sourceOffset = (height - row - 1) * rowBytes;
+      rgba.set(source.subarray(sourceOffset, sourceOffset + rowBytes), row * rowBytes);
+    }
+    return new ImageData(rgba, width, height);
+  }
+
   private getVariableCaptureTextureBindings(inputConfig: Record<string, ConfigInput>): (PiTexture | null)[] {
     return resolveTextureBindings({
       inputs: inputConfig,
@@ -751,6 +807,11 @@ export class RenderingEngine implements RenderingEngineInterface {
 
   public getCurrentCustomUniforms(): { name: string; type: string; value: number | number[] | boolean }[] {
     return this.customUniformManager?.getCurrentValues() || [];
+  }
+
+  public getDisplayedCustomUniforms(): { name: string; type: string; value: number | number[] | boolean }[] {
+    const frozen = this.frameRenderer?.getPausedCustomUniforms();
+    return frozen ? frozen.map((value) => this.copyCustomUniform(value)) : this.getCurrentCustomUniforms();
   }
 
   public setCustomUniformValues(values: { name: string; type: string; value: number | number[] | boolean }[]): void {
@@ -802,6 +863,10 @@ export class RenderingEngine implements RenderingEngineInterface {
 
   public collectPixelRegionResults(): PixelRegionResult[] {
     return this.pixelRegionCapturer?.collectResults() ?? [];
+  }
+
+  public getPixelRegionRequestStage(requestId: number): ReturnType<WebGLPixelRegionCapturer["getRequestStage"]> {
+    return this.pixelRegionCapturer?.getRequestStage(requestId) ?? null;
   }
 
   public cancelPixelRegionRequests(): void {

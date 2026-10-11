@@ -143,3 +143,77 @@ test('real wedged tree exits without terminating an unrelated process', { skip: 
     }
   }
 });
+
+test('slow periodic inventories do not queue stale reads ahead of cleanup', async () => {
+  let reads = 0;
+  let release;
+  let started;
+  const blocked = new Promise(resolve => {
+    started = resolve;
+  });
+  const tree = await monitorProcessTree(1, {
+    intervalMs: 2,
+    read: async () => {
+      reads++;
+      if (reads === 3) {
+        started();
+        await new Promise(resolve => {
+          release = resolve;
+        });
+      }
+      return [row(1, 0)];
+    },
+  });
+  try {
+    await blocked;
+    await new Promise(resolve => setTimeout(resolve, 30));
+    // Cleanup must request a fresh read, but must not inherit queued ticks.
+    const inspection = tree.inspect();
+    release();
+    await inspection;
+    await tree.stop();
+    assert.equal(reads, 4);
+  } finally {
+    release?.();
+    await tree.stop();
+  }
+});
+
+test('process telemetry failure leaves authoritative inventory and shutdown usable', async () => {
+  let live = true;
+  let fail = false;
+  const tree = await monitorProcessTree(1, {
+    read: async () => live ? [row(1, 0)] : [],
+    sample: () => {
+      if (fail) {
+        throw new Error('sample sink unavailable');
+      }
+    },
+  });
+  try {
+    fail = true;
+    assert.equal((await tree.inspect()).length, 1);
+    const result = await closeOwnedProcessTree(async () => {
+      live = false;
+    }, tree, limits);
+    assert.equal(result.forced, false);
+    assert.ok(result.samplingErrors.includes('sample sink unavailable'));
+  } finally {
+    await tree.stop();
+  }
+});
+
+test('an observer failure during initial sampling cannot prevent monitoring', async () => {
+  const tree = await monitorProcessTree(1, {
+    read: async () => [row(1, 0)],
+    sample: () => {
+      throw new Error('observer unavailable');
+    },
+  });
+  try {
+    assert.equal((await tree.inspect()).length, 1);
+    assert.deepEqual(tree.summary().samplingErrors, ['observer unavailable', 'observer unavailable']);
+  } finally {
+    await tree.stop();
+  }
+});

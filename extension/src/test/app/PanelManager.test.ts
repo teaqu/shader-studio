@@ -95,6 +95,27 @@ suite('PanelManager Test Suite', () => {
     assert.ok(panelManager instanceof PanelManager);
   });
 
+  test('broadcasts externally changed viewer camera settings to every transport', () => {
+    let onConfigurationChange!: (event: vscode.ConfigurationChangeEvent) => void;
+    sandbox.stub(vscode.workspace, 'onDidChangeConfiguration').callsFake((listener) => {
+      onConfigurationChange = listener;
+      return { dispose: () => undefined } as vscode.Disposable;
+    });
+    sandbox.stub(vscode.workspace, 'getConfiguration').returns({
+      get: sandbox.stub().withArgs('webgpu.useViewerCamera', true).returns(false),
+    } as any);
+    const manager = new PanelManager(mockContext, mockMessenger, mockShaderProvider, (panelManager as any).glslFileTracker);
+
+    onConfigurationChange({
+      affectsConfiguration: (section: string) => section === 'shader-studio.webgpu.useViewerCamera',
+    } as vscode.ConfigurationChangeEvent);
+
+    sinon.assert.calledWithExactly(mockMessenger.send as sinon.SinonStub, {
+      type: 'viewerCameraSettings', payload: { useViewerCamera: false },
+    });
+    manager.dispose();
+  });
+
   test('PanelManager uses WebviewTransport and not WebSocket', () => {
     // Given - When: PanelManager is created in setup
 

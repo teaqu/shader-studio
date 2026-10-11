@@ -63,7 +63,17 @@ const isOfflineReady = async () => {
 self.addEventListener('install', (event) => event.waitUntil(installRequired()));
 self.addEventListener('activate', (event) => event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key.startsWith(CHANNEL_PREFIX) && key !== CACHE).map((key) => caches.delete(key)))).then(() => self.clients.claim())));
 self.addEventListener('message', (event) => {
-  if (event.data?.type === 'SKIP_WAITING') { self.skipWaiting(); return; }
+  if (event.data?.type === 'SKIP_WAITING') {
+    const port = event.ports?.[0];
+    event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      if (clients.filter((client) => client.url.startsWith(self.registration.scope)).length > 1) {
+        message(port, { type: 'update-deferred' });
+        return;
+      }
+      return self.skipWaiting().then(() => message(port, { type: 'update-ready' }));
+    }).catch(() => message(port, { type: 'update-deferred' })));
+    return;
+  }
   if (event.data?.type === 'CANCEL_PREPARE_OFFLINE') { if (preparation) preparation.cancelled = true; return; }
   if (event.data?.type === 'GET_OFFLINE_STATUS') {
     const port = event.ports[0];

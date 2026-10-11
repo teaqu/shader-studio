@@ -8,12 +8,16 @@ import type { GeometryType, VertexSpace, VertexTopology } from "@shader-studio/t
 import { resolveRenderState, type ResolvedRenderState } from "../types/Geometry";
 import { webgpuBlendState } from "./WebGPURenderState";
 import { createShaderToyUniformLayout, getShaderToyChannelCount, SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX } from "./SlangPrelude";
+import { nativeFragmentWritesDepth, validateMrtPipeline } from "./MrtPipelineValidation";
+import { meshDepthCompare } from "./MeshDepthCompare";
 
 export interface SlangPassPipelineDescriptor {
   name: string;
   width: number;
   height: number;
   output: "texture" | "canvas";
+  /** Number of colour attachments for a native render buffer; defaults to one. */
+  outputCount?: number;
   channels: SlangBindingChannel[];
   vertexChannels?: boolean;
   storage?: StorageBindingNode[];
@@ -24,7 +28,10 @@ export interface SlangPassPipelineDescriptor {
   vertexSpace?: VertexSpace;
   /** Blend/depth/cull baked into the pipeline; omitted resolves the geometry defaults. */
   renderState?: ResolvedRenderState;
+  useViewerCamera?: boolean;
   uniformBufferSize?: number;
+  /** Native stages selected by the pass, or generated ShaderToy adapters. */
+  entryPoints?: { vertex?: string; fragment?: string };
   /** Generated prelude lines before user line 1; remaps diagnostics onto user lines. */
   sourceLineOffset?: number;
   /** User-source lines after the prelude; clamps generated-code errors. */
@@ -138,7 +145,7 @@ export class SlangPassPipeline {
   private meshUniformBuffer: GPUBuffer | null = null;
   private depthTexture: GPUTexture | null = null;
   /** Multisampled colour target resolved into the pass output; only with samples above 1. */
-  private msaaTexture: GPUTexture | null = null;
+  private msaaTextures: GPUTexture[] = [];
   private bindGroup: GPUBindGroup | null = null;
   private bindGroupResourceIdentities: unknown[] | null = null;
   private bindGroupLayout: GPUBindGroupLayout | null = null;
@@ -148,6 +155,7 @@ export class SlangPassPipeline {
   private textureIndex = 0;
   private rebuildGeneration = 0;
   private pendingTextureRetirements = new Set<GPUTexture>();
+  private fragmentWritesDepth = false;
 
   constructor(
     private readonly device: GPUDevice,
@@ -159,7 +167,20 @@ export class SlangPassPipeline {
   async rebuild(wgsl: string): Promise<string[]> {
     const generation = ++this.rebuildGeneration;
     this.resetResources();
+    this.fragmentWritesDepth = false;
     const moduleSource = allowNonUniformDerivatives(wgsl);
+    const outputCount = this.outputCount();
+    const mrtError = validateMrtPipeline(
+      this.device,
+      this.targetFormat(),
+      outputCount,
+      moduleSource,
+      this.descriptor.entryPoints?.fragment,
+    );
+    if (mrtError) {
+      return [`${this.descriptor.name}: ${mrtError}`];
+    }
+    this.fragmentWritesDepth = nativeFragmentWritesDepth(moduleSource, this.descriptor.entryPoints?.fragment);
     // The diagnostic filter adds a generated line only when no filter exists.
     const sourceLineOffset = this.descriptor.sourceLineOffset === undefined
       ? undefined
@@ -216,8 +237,9 @@ export class SlangPassPipeline {
     if (this.descriptor.output === "texture") {
       const textures: GPUTexture[] = [];
       try {
-        textures.push(this.createOutputTexture());
-        textures.push(this.createOutputTexture());
+        for (let index = 0; index < this.outputCount() * 2; index++) {
+          textures.push(this.createOutputTexture());
+        }
         this.outputViews = textures.map((texture) => texture.createView());
         this.textures = textures;
       } catch (error) {
@@ -312,8 +334,9 @@ export class SlangPassPipeline {
       const newTextures: GPUTexture[] = [];
       let newViews: GPUTextureView[];
       try {
-        newTextures.push(this.createOutputTexture(width, height));
-        newTextures.push(this.createOutputTexture(width, height));
+        for (let index = 0; index < this.outputCount() * 2; index++) {
+          newTextures.push(this.createOutputTexture(width, height));
+        }
         newViews = newTextures.map((texture) => texture.createView());
       } catch (error) {
         SlangPassPipeline.destroyTextureList(newTextures);
@@ -439,8 +462,8 @@ export class SlangPassPipeline {
   }
 
   /** The multisampled colour attachment to draw into and resolve from, or null without MSAA. */
-  getMsaaView(): GPUTextureView | null {
-    return this.msaaTexture?.createView() ?? null;
+  getMsaaView(output = 0): GPUTextureView | null {
+    return this.msaaTextures[output]?.createView() ?? null;
   }
 
   private renderState(): ResolvedRenderState {
@@ -457,7 +480,7 @@ export class SlangPassPipeline {
       layout: this.device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
       vertex: {
         module: shaderModule,
-        entryPoint: SLANG_ENTRY_VERTEX,
+        entryPoint: this.descriptor.entryPoints?.vertex ?? SLANG_ENTRY_VERTEX,
         ...(this.hasVertexBuffers() ? { buffers: [{ arrayStride: 32, attributes: [
           { shaderLocation: 0, offset: 0, format: "float32x3" },
           { shaderLocation: 1, offset: 12, format: "float32x3" },
@@ -466,8 +489,8 @@ export class SlangPassPipeline {
       },
       fragment: {
         module: shaderModule,
-        entryPoint: SLANG_ENTRY_FRAGMENT,
-        targets: [{ format: this.targetFormat(), ...webgpuBlendState(renderState.blend) }],
+        entryPoint: this.descriptor.entryPoints?.fragment ?? SLANG_ENTRY_FRAGMENT,
+        targets: Array.from({ length: this.outputCount() }, () => ({ format: this.targetFormat(), ...webgpuBlendState(renderState.blend) })),
       },
       primitive: {
         topology: this.descriptor.topology ?? "triangle-list",
@@ -476,11 +499,11 @@ export class SlangPassPipeline {
       },
       // Every non-fullscreen pass has a depth attachment, so its pipeline
       // declares one; a disabled test still writes depth when asked, as in WebGL.
-      ...(renderState.depth ? {
+      ...(this.hasDepthAttachment() ? {
         depthStencil: {
           format: "depth24plus" as const,
-          depthWriteEnabled: renderState.depth.write,
-          depthCompare: renderState.depth.test ? renderState.depth.compare : "always" as const,
+          depthWriteEnabled: renderState.depth?.write ?? true,
+          depthCompare: renderState.depth?.test ? (this.hasVertexBuffers() && this.descriptor.useViewerCamera === false && renderState.depth.compare === "less" ? meshDepthCompare(false) : renderState.depth.compare) : "always" as const,
         },
       } : {}),
       ...(renderState.samples > 1 ? { multisample: { count: renderState.samples } } : {}),
@@ -489,17 +512,17 @@ export class SlangPassPipeline {
 
   /** Every non-fullscreen pass (meshes and vertices) draws into a depth attachment. */
   hasDepthAttachment(): boolean {
-    return this.descriptor.geometry !== undefined && this.descriptor.geometry !== "fullscreen";
+    return (this.descriptor.geometry !== undefined && this.descriptor.geometry !== "fullscreen") || this.fragmentWritesDepth;
   }
 
   /** Indexed meshes read position, normal and uv from a vertex buffer; vertices geometry has none. */
   hasVertexBuffers(): boolean {
-    return this.hasDepthAttachment() && this.descriptor.geometry !== "vertices";
+    return this.descriptor.geometry !== undefined && this.descriptor.geometry !== "fullscreen" && this.descriptor.geometry !== "vertices";
   }
 
   /** Meshes and world-space vertices bind the orbit camera's matrices. */
   usesCameraUniforms(): boolean {
-    return this.hasDepthAttachment() &&
+    return this.descriptor.geometry !== undefined && this.descriptor.geometry !== "fullscreen" &&
       !(this.descriptor.geometry === "vertices" && this.descriptor.vertexSpace === "clip");
   }
 
@@ -507,15 +530,31 @@ export class SlangPassPipeline {
     return { width: this.descriptor.width, height: this.descriptor.height };
   }
 
-  getCurrentOutputView(): GPUTextureView | null {
-    return this.outputViews[this.textureIndex] ?? null;
+  getCurrentOutputView(output = 0): GPUTextureView | null {
+    return this.outputViews[this.outputTextureIndex(output, this.textureIndex)] ?? null;
   }
 
-  getPreviousOutputView(): GPUTextureView | null {
+  getCurrentOutputTexture(output = 0): GPUTexture | null {
+    return this.textures[this.outputTextureIndex(output, this.textureIndex)] ?? null;
+  }
+
+  getPreviousOutputView(output = 0): GPUTextureView | null {
     if (this.textures.length === 0) {
       return null;
     }
-    return this.outputViews[1 - this.textureIndex] ?? null;
+    return this.outputViews[this.outputTextureIndex(output, 1 - this.textureIndex)] ?? null;
+  }
+
+  getPreviousOutputTexture(output = 0): GPUTexture | null {
+    if (this.textures.length === 0) {
+      return null;
+    }
+    return this.textures[this.outputTextureIndex(output, 1 - this.textureIndex)] ?? null;
+  }
+
+  getCurrentOutputViews(): GPUTextureView[] {
+    return Array.from({ length: this.outputCount() }, (_, output) => this.getCurrentOutputView(output))
+      .filter((view): view is GPUTextureView => view !== null);
   }
 
   swap(): void {
@@ -530,7 +569,7 @@ export class SlangPassPipeline {
       return;
     }
     this.destroyTextures();
-    this.textures = [this.createOutputTexture(), this.createOutputTexture()];
+    this.textures = Array.from({ length: this.outputCount() * 2 }, () => this.createOutputTexture());
     this.outputViews = this.textures.map((texture) => texture.createView());
     this.textureIndex = 0;
   }
@@ -569,6 +608,15 @@ export class SlangPassPipeline {
     return this.descriptor.output === "texture" ? this.bufferTextureFormat : this.format;
   }
 
+  private outputCount(): number {
+    return this.descriptor.outputCount ?? 1;
+  }
+
+  private outputTextureIndex(output: number, textureIndex: number): number {
+    return output * 2 + textureIndex;
+  }
+
+
   private createOutputTexture(
     width = this.descriptor.width,
     height = this.descriptor.height,
@@ -599,16 +647,16 @@ export class SlangPassPipeline {
     });
     this.depthTexture?.destroy?.();
     this.depthTexture = nextDepthTexture;
-    this.msaaTexture?.destroy?.();
-    this.msaaTexture = sampleCount > 1
-      ? this.device.createTexture({
+    this.msaaTextures.forEach(texture => texture.destroy?.());
+    this.msaaTextures = sampleCount > 1
+      ? Array.from({ length: this.outputCount() }, () => this.device.createTexture({
         label: `${this.descriptor.name} multisample`,
         size: { width, height },
         format: this.targetFormat(),
         usage: GPUTextureUsage.RENDER_ATTACHMENT,
         sampleCount,
-      })
-      : null;
+      }))
+      : [];
   }
 
   private resetResources(): void {
@@ -627,8 +675,8 @@ export class SlangPassPipeline {
     this.meshUniformBuffer = null;
     this.depthTexture?.destroy?.();
     this.depthTexture = null;
-    this.msaaTexture?.destroy?.();
-    this.msaaTexture = null;
+    this.msaaTextures.forEach(texture => texture.destroy?.());
+    this.msaaTextures = [];
   }
 
   private invalidateBindGroup(): void {

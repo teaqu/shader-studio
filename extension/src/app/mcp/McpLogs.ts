@@ -39,6 +39,9 @@ export class McpLogs {
 
   recordViewer(previewId: string, message: Record<string, unknown>): void {
     const levels = { log: 'info', debug: 'debug', warning: 'warning', error: 'error' } as const;
+    if (typeof message.type !== 'string' || !Object.hasOwn(levels, message.type)) {
+      return;
+    }
     const level = levels[message.type as keyof typeof levels];
     if (level && message.payload !== undefined) {
       const text = Array.isArray(message.payload) ? message.payload.slice(0, 32).join('\n') : String(message.payload);

@@ -1,3 +1,4 @@
+import { isFragmentOnlyNativePosition } from "../NativeStageReachability.js";
 import { findMemberAccess, isPositionInComment, type DocumentPositionParams } from "@shader-studio/language-server-core";
 import { SHADER_STUDIO_SYMBOL_DOCS } from "@shader-studio/types";
 import { parseWgslDocumentAtPosition, visibleSymbolsAtPosition } from "@shader-studio/wgsl-analysis";
@@ -31,6 +32,11 @@ export class WgslCompletionProvider {
     for (const included of includes) {
       for (const symbol of included.symbols) {
         if (included.uri === "shader-studio://generated/channels.wgsl" && (symbol.name.startsWith("_ss") || !included.scopes.some((scope) => scope.id === symbol.scopeId && scope.kind === "global"))) {
+          continue;
+        }
+        if (included.uri === "shader-studio://generated/channels.wgsl" && state.environment.stage !== "fragment"
+          && !isFragmentOnlyNativePosition(state.document.text, params.position)
+          && /(?:Sample|SampleBias)$/.test(symbol.name)) {
           continue;
         }
         if (!items.has(symbol.name)) {

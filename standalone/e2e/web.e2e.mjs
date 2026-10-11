@@ -1186,17 +1186,43 @@ for (const format of ['PNG', 'JPEG', 'WebM', 'MP4', 'GIF']) {
     await page.getByLabel('Toggle export panel').click();
     const screenshot = format === 'PNG' || format === 'JPEG';
     await page.getByRole('button', { name: screenshot ? 'Screenshot' : format === 'GIF' ? 'GIF' : 'Video', exact: true }).click();
+    if (!screenshot && format !== 'GIF') {
+      // Live formats can be disabled independently of Render encoder support.
+      await page.getByRole('button', { name: 'Render', exact: true }).click();
+    }
     if (format !== 'GIF') {
       await page.getByRole('button', { name: format, exact: true }).click();
     }
     if (!screenshot) {
       await page.locator('input[min="0.5"][step="0.5"]').fill('0.5');
     }
+    const action = page.getByRole('button', {
+      name: screenshot ? 'Capture screenshot' : format === 'GIF' ? 'Record' : 'Render video',
+      exact: true,
+    });
+    if (format === 'MP4') {
+      // Open-source Chromium builds ship no H.264 encoder. Render MP4 must then
+      // refuse visibly before rendering instead of saving a broken file.
+      const hasWebCodecs = await page.evaluate(() => typeof globalThis.VideoEncoder !== 'undefined');
+      const encodesAvc = hasWebCodecs && await page.evaluate(async () => (await VideoEncoder.isConfigSupported({
+        codec: 'avc1.42001f', width: 640, height: 360, bitrate: 2_000_000, framerate: 30,
+      })).supported === true);
+      if (!encodesAvc) {
+        test.info().annotations.push({ type: 'MP4 coverage', description: 'Host cannot encode AVC; verified visible unsupported error' });
+        await action.click();
+        const panelError = page.locator('.recording-panel [role="alert"]');
+        await expect(panelError).toContainText(hasWebCodecs ? 'MP4 export at' : 'WebCodecs unavailable');
+        await expect(panelError).toContainText('is not supported by this host');
+        expect(pageErrors).toEqual([]);
+        return;
+      }
+    }
     const downloadPromise = page.waitForEvent('download');
-    await page.getByRole('button', { name: screenshot ? 'Capture' : 'Record', exact: true }).click();
+    await action.click();
     const download = await downloadPromise;
     const extension = format === 'JPEG' ? 'jpg' : format.toLowerCase();
-    expect(download.suggestedFilename()).toMatch(new RegExp(`^shader-.*\\.${extension}$`));
+    // Named after the shader and the capture time.
+    expect(download.suggestedFilename()).toMatch(new RegExp(`^aurora-\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}-\\d{3}\\.${extension}$`));
     expect(await download.failure()).toBeNull();
     const stream = await download.createReadStream();
     const chunks = [];
@@ -1220,10 +1246,203 @@ for (const format of ['PNG', 'JPEG', 'WebM', 'MP4', 'GIF']) {
     if (format === 'GIF') {
       expect(bytes.subarray(0, 6).toString()).toMatch(/^GIF8[79]a$/);
     }
+    if (format === 'WebM' || format === 'MP4') {
+      // A container signature alone cannot prove the migrated encoder produced playable pixels.
+      const decoded = await page.evaluate(async ({ base64, mimeType }) => {
+        const data = Uint8Array.from(atob(base64), char => char.charCodeAt(0));
+        const url = URL.createObjectURL(new Blob([data], { type: mimeType }));
+        const video = document.createElement('video');
+        try {
+          const loaded = new Promise((resolve, reject) => {
+            video.onloadeddata = resolve;
+            video.onerror = () => reject(new Error('Saved export could not be decoded'));
+          });
+          video.src = url;
+          await loaded;
+          const duration = video.duration;
+          const seeked = new Promise(resolve => {
+ video.onseeked = resolve;
+});
+          video.currentTime = 0.2;
+          await seeked;
+          const canvas = document.createElement('canvas');
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          const context = canvas.getContext('2d');
+          context.drawImage(video, 0, 0);
+          const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+          let brightest = 0;
+          for (let i = 0; i < pixels.length; i += 4) {
+            brightest = Math.max(brightest, pixels[i], pixels[i + 1], pixels[i + 2]);
+          }
+          return { duration, width: canvas.width, height: canvas.height, brightest };
+        } finally {
+          video.removeAttribute('src');
+          video.load();
+          URL.revokeObjectURL(url);
+        }
+      }, { base64: bytes.toString('base64'), mimeType: `video/${format.toLowerCase()}` });
+      test.info().annotations.push({ type: 'Decoded export', description: `${format}: ${decoded.width}×${decoded.height}, ${decoded.duration}s` });
+      expect(decoded.duration).toBeCloseTo(0.5, 1);
+      expect(decoded.width).toBeGreaterThan(0);
+      expect(decoded.height).toBeGreaterThan(0);
+      expect(decoded.brightest).toBeGreaterThan(20);
+    }
     expect(pageErrors).toEqual([]);
   });
 }
 
+test('Live MP4 saves an indexed file even when MediaRecorder cannot encode MP4', async ({ page }) => {
+  await page.addInitScript(() => {
+    const supported = MediaRecorder.isTypeSupported.bind(MediaRecorder);
+    MediaRecorder.isTypeSupported = mime => !mime.startsWith('video/mp4') && supported(mime);
+  });
+  await page.goto('/');
+  await page.getByTestId('shader-option-aurora-glsl').click();
+  await page.getByLabel('Toggle export panel').click();
+  await page.getByRole('button', { name: 'Video', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'MP4', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'MP4', exact: true }).click();
+  await page.getByRole('button', { name: 'Start recording', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Stop & save', exact: true })).toBeVisible();
+  await expect(page.locator(".recording-panel")).toContainText("2s elapsed");
+  const downloading = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Stop & save', exact: true }).click();
+  const download = await downloading;
+  const chunks = [];
+  for await (const chunk of await download.createReadStream()) {
+chunks.push(chunk);
+}
+  const bytes = Buffer.concat(chunks);
+  const boxes = [];
+  function walk(start, end) {
+    for (let offset = start; offset + 8 <= end;) {
+      const size = bytes.readUInt32BE(offset);
+      const type = bytes.toString('ascii', offset + 4, offset + 8);
+      expect(size).toBeGreaterThanOrEqual(8);
+      boxes.push({ type, offset });
+      if (['moov', 'trak', 'mdia', 'minf', 'stbl'].includes(type)) {
+walk(offset + 8, offset + size);
+}
+      offset += size;
+    }
+  }
+  walk(0, bytes.length);
+  expect(boxes.some(box => box.type === 'moof')).toBe(false);
+  const mvhd = boxes.find(box => box.type === 'mvhd').offset;
+  const duration = bytes[mvhd + 8] === 1
+    ? Number(bytes.readBigUInt64BE(mvhd + 32)) / bytes.readUInt32BE(mvhd + 28)
+    : bytes.readUInt32BE(mvhd + 24) / bytes.readUInt32BE(mvhd + 20);
+  expect(duration).toBeGreaterThan(0.5);
+  const stsz = boxes.find(box => box.type === 'stsz').offset;
+  expect(bytes.readUInt32BE(stsz + 16)).toBeGreaterThan(1);
+});
+
+test('records the live preview to WebM and remembers capture settings after reload', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('shader-option-aurora-glsl').click();
+  await page.getByLabel('Toggle export panel').click();
+  await page.getByRole('button', { name: 'Video', exact: true }).click();
+  await page.getByRole('button', { name: 'WebM', exact: true }).click();
+  await page.getByRole('button', { name: '60', exact: true }).click();
+
+  await page.getByRole('button', { name: 'Start recording', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Stop & save', exact: true })).toBeVisible();
+  await expect(page.locator(".recording-panel")).toContainText("1s elapsed");
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Stop & save', exact: true }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^aurora-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}-\d{3}\.webm$/);
+  expect(await download.failure()).toBeNull();
+  // A real recording, not an empty file: WebM starts with the EBML magic.
+  const recorded = [];
+  for await (const chunk of await download.createReadStream()) {
+    recorded.push(chunk);
+  }
+  expect([...Buffer.concat(recorded).subarray(0, 4)]).toEqual([26, 69, 223, 163]);
+
+  await page.reload();
+  const videoTab = page.getByRole('button', { name: 'Video', exact: true });
+  if (!await videoTab.isVisible()) {
+    await page.getByLabel('Toggle export panel').click();
+  }
+  await videoTab.click();
+  await expect(page.getByRole('button', { name: 'Live', exact: true })).toHaveClass(/active/);
+  await expect(page.getByRole('button', { name: 'WebM', exact: true })).toHaveClass(/active/);
+  await expect(page.getByRole('button', { name: '60', exact: true })).toHaveClass(/active/);
+});
+
+
+test('Live capture of a preview that lost its WebGL context fails visibly instead of saving empty media', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('shader-option-aurora-glsl').click();
+  const canvas = page.getByTestId('web-preview').locator('canvas').first();
+  const lost = await canvas.evaluate((element) => {
+    const gl = element.getContext('webgl2');
+    // Extensions are unavailable once a context is lost, so only force it if needed.
+    if (!gl.isContextLost()) {
+      gl.getExtension('WEBGL_lose_context').loseContext();
+    }
+    return gl.isContextLost();
+  });
+  expect(lost).toBe(true);
+  let downloads = 0;
+  page.on('download', () => {
+ downloads++;
+});
+  await page.getByLabel('Toggle export panel').click();
+  const panelError = page.locator('.recording-panel [role="alert"]');
+
+  await page.getByRole('button', { name: 'Screenshot', exact: true }).click();
+  await page.getByRole('button', { name: 'Live', exact: true }).click();
+  await page.getByRole('button', { name: 'Capture screenshot', exact: true }).click();
+  await expect(panelError).toContainText('WebGL context was lost');
+  await panelError.getByRole('button', { name: 'Dismiss' }).click();
+
+  await page.getByRole('button', { name: 'Video', exact: true }).click();
+  await page.getByRole('button', { name: 'Live', exact: true }).click();
+  await page.getByRole('button', { name: 'WebM', exact: true }).click();
+  await page.getByRole('button', { name: 'Start recording', exact: true }).click();
+  await expect(page.getByRole("button", { name: "Stop & save", exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Stop & save', exact: true }).click();
+  await expect(panelError).toContainText('Live recording captured no frames');
+  expect(downloads).toBe(0);
+});
+
+test('keeps a Live recording at a fixed size through a preview resize and saves it', async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.goto('/');
+  await page.getByTestId('shader-option-aurora-glsl').click();
+  const canvas = page.getByTestId('web-preview').locator('canvas').first();
+  const pixelSize = () => canvas.evaluate((element) => [element.width, element.height]);
+  await page.getByLabel('Toggle export panel').click();
+  await page.getByRole('button', { name: 'Video', exact: true }).click();
+  await page.getByRole('button', { name: 'WebM', exact: true }).click();
+
+  await page.getByRole('button', { name: 'Start recording', exact: true }).click();
+  const stopAndSave = page.getByRole('button', { name: 'Stop & save', exact: true });
+  await expect(stopAndSave).toBeVisible();
+  const recordingSize = await pixelSize();
+
+  await page.setViewportSize({ width: 1000, height: 700 });
+  await expectStableFor(page, async () => expect(await pixelSize()).toEqual(recordingSize), 500);
+  // The recording keeps going at its original output size.
+  await expect(stopAndSave).toBeVisible();
+  expect(await pixelSize()).toEqual(recordingSize);
+
+  const downloadPromise = page.waitForEvent('download');
+  await stopAndSave.click();
+  const download = await downloadPromise;
+  expect(await download.failure()).toBeNull();
+  const recorded = [];
+  for await (const chunk of await download.createReadStream()) {
+    recorded.push(chunk);
+  }
+  expect([...Buffer.concat(recorded).subarray(0, 4)]).toEqual([26, 69, 223, 163]);
+  await expect(page.locator('.recording-panel [role="alert"]')).toHaveCount(0);
+  // The held resize applies once recording ends.
+  await expect.poll(pixelSize).not.toEqual(recordingSize);
+});
 
 test('standalone defaults to Aurora GLSL and preserves a later selection on reload', async ({ page }) => {
   await page.goto('/');
@@ -1647,9 +1866,11 @@ test('creates a valid WGSL vertex hook from the config panel', async ({ page }) 
   await page.getByTestId('shader-option-aurora-wgsl-wgsl').click();
   await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
   const vertex = page.locator('.config-item').filter({ has: page.getByRole('heading', { name: 'Vertex shader', exact: true }) });
+  await vertex.getByRole('button', { name: 'Separate file', exact: true }).click();
+  await vertex.getByRole('button', { name: 'Change…', exact: true }).click();
   page.once('dialog', (dialog) => dialog.accept(dialog.defaultValue()));
-  await vertex.getByRole('button', { name: 'Create', exact: true }).click();
-  await expect(vertex.locator('input')).toHaveValue(/\.vert\.wgsl$/);
+  await page.getByRole('dialog', { name: 'Choose shader file', exact: true }).getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(vertex.getByRole('textbox', { name: 'File', exact: true })).toHaveValue(/\.vert\.wgsl$/);
   await expect.poll(async () => (await readWorkspaceFiles(page))
     .find((file) => file.path.endsWith('.vert.wgsl'))?.contents ?? '')
     .toContain('position: ptr<function, vec3f>');
@@ -1657,4 +1878,98 @@ test('creates a valid WGSL vertex hook from the config panel', async ({ page }) 
   await expect(page.getByTestId('shader-option-aurora-wgsl-wgsl')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('web-preview').getByLabel('Change FPS limit')).not.toContainText('0.0 FPS');
   await expect(page.getByTestId('shader-option-aurora-wgsl-wgsl').locator('.shader-error')).toHaveCount(0);
+});
+
+test('standalone global settings apply live, persist, search, and reset without changing shader files', async ({ page }) => {
+  await page.goto('/');
+  const editor = page.getByTestId('web-editor');
+  await expect(editor.locator('.monaco-editor')).toBeVisible();
+  const before = await readWorkspaceFiles(page);
+  const open = () => page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
+  await open();
+  await expect(dialog.getByRole('searchbox', { name: 'Search settings' })).toBeFocused();
+  await dialog.getByLabel('Font size', { exact: true }).fill('24');
+  await dialog.getByLabel('Font size', { exact: true }).press('Tab');
+  await dialog.getByLabel('Tab size', { exact: true }).fill('2');
+  await dialog.getByLabel('Tab size', { exact: true }).press('Tab');
+  await dialog.getByLabel('Insert spaces', { exact: true }).uncheck();
+  await dialog.getByLabel('Word wrap', { exact: true }).selectOption('on');
+  await dialog.getByLabel('Minimap', { exact: true }).check();
+  await dialog.getByLabel('Line numbers', { exact: true }).selectOption('off');
+  await dialog.getByLabel('GLSL language service', { exact: true }).uncheck();
+  await dialog.getByLabel('Use viewer camera', { exact: true }).uncheck();
+  await dialog.getByRole('searchbox').fill('camera');
+  await expect(dialog.getByLabel('Use viewer camera', { exact: true })).toBeVisible();
+  await expect(dialog.getByLabel('Font size', { exact: true })).toHaveCount(0);
+  await dialog.getByRole('searchbox').fill('no-setting-matches');
+  await expect(dialog.getByRole('status')).toHaveText('No matching settings.');
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeFocused();
+  await expect(editor.locator('.view-lines')).toHaveCSS('font-size', '24px');
+  await expect(editor.locator('.minimap')).toBeVisible();
+  await page.reload();
+  await expect(editor.locator('.view-lines')).toHaveCSS('font-size', '24px');
+  await open();
+  await expect(dialog.getByLabel('Tab size', { exact: true })).toHaveValue('2');
+  await expect(dialog.getByLabel('Insert spaces', { exact: true })).not.toBeChecked();
+  await expect(dialog.getByLabel('Word wrap', { exact: true })).toHaveValue('on');
+  await expect(dialog.getByLabel('Line numbers', { exact: true })).toHaveValue('off');
+  await expect(dialog.getByLabel('GLSL language service', { exact: true })).not.toBeChecked();
+  await expect(dialog.getByLabel('Use viewer camera', { exact: true })).not.toBeChecked();
+  await dialog.getByRole('button', { name: 'Reset all settings' }).click();
+  await expect(dialog.getByLabel('Font size', { exact: true })).toHaveValue('14');
+  await expect(dialog.getByLabel('GLSL language service', { exact: true })).toBeChecked();
+  await expect(dialog.getByLabel('Use viewer camera', { exact: true })).toBeChecked();
+  await dialog.getByRole('button', { name: 'Done' }).click();
+  await expect(editor.locator('.view-lines')).toHaveCSS('font-size', '14px');
+  await expect(editor.locator('.minimap')).not.toBeVisible();
+  const after = await readWorkspaceFiles(page);
+  for (const file of before) {
+    if (/\.(glsl|wgsl|slang|sha\.json)$/.test(file.path)) {
+ expect(after.find(saved => saved.path === file.path)?.contents).toEqual(file.contents);
+}
+  }
+});
+
+test('standalone global settings synchronize between open tabs', async ({ page, context }) => {
+  await page.goto('/');
+  const other = await context.newPage();
+  await other.goto('/');
+  const otherEditor = other.getByTestId('web-editor');
+  await expect(otherEditor.locator('.monaco-editor')).toBeVisible();
+  await other.getByRole('button', { name: 'Settings', exact: true }).click();
+  const otherDialog = other.getByRole('dialog', { name: 'Settings' });
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Settings' });
+  await dialog.getByLabel('Font size', { exact: true }).fill('28');
+  await dialog.getByLabel('Font size', { exact: true }).press('Tab');
+  await dialog.getByLabel('Use viewer camera', { exact: true }).uncheck();
+  await expect(otherDialog.getByLabel('Font size', { exact: true })).toHaveValue('28');
+  await expect(otherDialog.getByLabel('Use viewer camera', { exact: true })).not.toBeChecked();
+  await expect(otherEditor.locator('.view-lines')).toHaveCSS('font-size', '28px');
+  await otherDialog.getByRole('button', { name: 'Reset all settings' }).click();
+  await expect(dialog.getByLabel('Font size', { exact: true })).toHaveValue('14');
+  await expect(dialog.getByLabel('Use viewer camera', { exact: true })).toBeChecked();
+  await other.close();
+});
+
+test('standalone global settings disable and restore language service diagnostics live', async ({ page }) => {
+  await page.goto('/');
+  // Keep compiler diagnostics out of this language-service toggle check.
+  await page.getByTestId('web-preview').getByLabel('Open options menu').click();
+  await page.getByLabel('Set manual compile mode').click();
+  const editor = page.getByTestId('web-editor');
+  await waitForLanguageService(editor);
+  await editor.locator('.view-lines').click({ position: { x: 80, y: 20 } });
+  await page.keyboard.press('ControlOrMeta+A');
+  await page.keyboard.insertText('void mainImage(out vec4 color, in vec2 coord) {\n  color = missingName;\n}');
+  await expect(editor.locator('.squiggly-error').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Settings' });
+  await dialog.getByLabel('GLSL language service', { exact: true }).uncheck();
+  await expect(editor.locator('.squiggly-error')).toHaveCount(0);
+  await dialog.getByLabel('GLSL language service', { exact: true }).check();
+  await expect(editor.locator('.squiggly-error').first()).toBeVisible();
 });

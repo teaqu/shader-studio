@@ -1,5 +1,5 @@
 import type { FunctionMock } from '../../FunctionMock';
-import { render, fireEvent } from '@testing-library/svelte';
+import { render, fireEvent, waitFor } from '@testing-library/svelte';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { tick } from 'svelte';
@@ -113,6 +113,69 @@ describe('ConfigPanel', () => {
   }
 
   describe('rendering', () => {
+    it.each(['slang', 'wgsl'] as const)('shows transient first %s stages and preserves the other stage on selection', async language => {
+      const source = language === 'slang'
+        ? '[shader("vertex")] float4 firstVertex() { return float4(0); } [shader("fragment")] float4 firstFragment() { return float4(1); } [shader("fragment")] float4 secondFragment() { return float4(0); }'
+        : '@vertex fn firstVertex() -> vec4f { return vec4f(0); } @fragment fn firstFragment() -> vec4f { return vec4f(1); } @fragment fn secondFragment() -> vec4f { return vec4f(0); }';
+      const onConfigChange = vi.fn();
+      const { getByLabelText } = render(ConfigPanel, {
+        config: null, language, transport: mockTransport, shaderPath: `/shader/image.${language}`, shaderSource: source, onConfigChange,
+      });
+      await tick();
+      const label = (stage: string, name: string) => `${language === 'slang' ? `[shader("${stage}")]` : `@${stage}`} ${name}`;
+      expect(getByLabelText(label('vertex', 'firstVertex'))).toBeChecked();
+      expect(getByLabelText(label('fragment', 'firstFragment'))).toBeChecked();
+      const manager = getLatestConfigManagerInstance();
+      expect(manager.setConfig).toHaveBeenCalledWith({ version: '1.0', passes: { Image: { inputs: {}, entryPoints: { vertex: 'firstVertex', fragment: 'firstFragment' } } } });
+      expect(mockTransport.postMessage).not.toHaveBeenCalled();
+      expect(onConfigChange).not.toHaveBeenCalled();
+      await fireEvent.click(getByLabelText(label('fragment', 'secondFragment')));
+      expect(manager.updateImagePass).toHaveBeenCalledWith(expect.objectContaining({ entryPoints: { vertex: 'firstVertex', fragment: 'secondFragment' } }));
+    });
+
+    it.each(['wgsl', 'slang'] as const)('uses the saved %s render-function preference through one Buffer menu item', async (language) => {
+      const config: ShaderConfig = { version: '1.0', webgpu: { defaultRenderAuthoring: 'native' }, passes: { Image: {} } };
+      const { getByRole, queryByLabelText } = render(ConfigPanel, {
+        config, language, transport: mockTransport, shaderPath: `/shader/image.${language}`,
+      });
+
+      await fireEvent.click(getByRole('button', { name: '+ New' }));
+      expect(getByRole('menuitem', { name: 'Buffer' })).toBeInTheDocument();
+      expect(queryByLabelText('New render pass authoring')).not.toBeInTheDocument();
+    });
+
+    it('discovers native Slang stages from the root source for a same-file Buffer', async () => {
+      const source = '[shader("vertex")] float4 bufferVertex(uint id : SV_VertexID) : SV_Position { return float4(0, 0, 0, 1); }\n[shader("fragment")] float4 bufferFragment() : SV_Target0 { return float4(1, 0, 0, 1); }';
+      const { getByLabelText } = render(ConfigPanel, {
+        config: { version: '1.0', passes: { Image: {}, BufferA: { path: '/shader/image.slang', entryPoints: { vertex: 'bufferVertex', fragment: 'bufferFragment' } } } },
+        language: 'slang', transport: mockTransport, shaderPath: '/shader/image.slang', shaderSource: source,
+        bufferPathMap: { BufferA: '/shader/image.slang' }, selectedBuffer: 'BufferA',
+      });
+
+      await tick();
+      expect(getByLabelText('[shader("vertex")] bufferVertex')).toBeChecked();
+      expect(getByLabelText('[shader("fragment")] bufferFragment')).toBeChecked();
+    });
+
+    it('uses the current shared source while a stale Buffer snapshot is pending', async () => {
+      const previous = [
+        '@vertex fn rasterVertex(@builtin(vertex_index) index: u32) -> @builtin(position) vec4f { return vec4f(f32(index)); }',
+        '@fragment fn rasterColor() -> @location(0) vec4f { return vec4f(1.0); }',
+      ].join('\n');
+      const current = `${previous}\n@fragment fn rasterColor2() -> @location(0) vec4f { return vec4f(0.0); }`;
+      const { getByLabelText } = render(ConfigPanel, {
+        config: { version: '1.0', passes: {
+          Image: {},
+          BufferA: { path: '/shader/image.wgsl', entryPoints: { vertex: 'rasterVertex', fragment: 'rasterColor2' } },
+        } },
+        language: 'wgsl', transport: mockTransport, shaderPath: '/shader/image.wgsl', shaderSource: current,
+        bufferPathMap: { BufferA: '/shader/image.wgsl' }, bufferSources: { BufferA: previous }, selectedBuffer: 'BufferA',
+      });
+
+      await tick();
+      expect(getByLabelText('@fragment rasterColor2')).toBeChecked();
+    });
+
     it('should render the Image tab by default', async () => {
       const { getByText } = render(ConfigPanel, {
         config: null,
@@ -232,7 +295,7 @@ describe('ConfigPanel', () => {
       await tick();
       await fireEvent.click(getByRole('button', { name: 'Storage' }));
 
-      expect(getByRole('heading', { name: 'Storage' })).toBeInTheDocument();
+      expect(getByRole('heading', { name: 'GPU storage' })).toBeInTheDocument();
       expect(mockOnFileSelect).not.toHaveBeenCalled();
     });
 
@@ -257,8 +320,25 @@ describe('ConfigPanel', () => {
       await tick();
       await fireEvent.click(getByRole('button', { name: 'Storage' }));
 
-      expect(getByRole('heading', { name: 'Storage' })).toBeInTheDocument();
+      expect(getByRole('heading', { name: 'GPU storage' })).toBeInTheDocument();
       expect(mockOnFileSelect).not.toHaveBeenCalled();
+    });
+
+    it('forwards WebGPU inspection callbacks and omits one-shot compute capture points', async () => {
+      const onReadStorage = vi.fn(async () => ({ name: 'particles', elementType: 'u32', stride: 4, start: 0, count: 1, data: new Uint32Array([7]).buffer }));
+      const onResetStorage = vi.fn(async () => {});
+      const { getByRole, getByLabelText, queryByRole } = render(ConfigPanel, {
+        config: { version: '1.0', storage: { particles: { count: 1, elementType: 'u32' } }, passes: { Image: {}, Seed: { type: 'compute', path: 'seed.wgsl', dispatchOnce: true }, Simulate: { type: 'compute', path: 'simulate.wgsl' } } },
+        language: 'wgsl', transport: mockTransport, shaderPath: '/test/image.wgsl', onReadStorage, onResetStorage,
+      });
+      await fireEvent.click(getByRole('button', { name: 'Storage' }));
+      await fireEvent.click(getByRole('tab', { name: 'Inspect' }));
+      await waitFor(() => expect(getByLabelText('Element 0 value')).toHaveTextContent('7'));
+      expect(queryByRole('option', { name: 'Before Seed' })).not.toBeInTheDocument();
+      expect(getByRole('option', { name: 'Before Simulate' })).toBeInTheDocument();
+      await fireEvent.click(getByRole('tab', { name: 'Settings' }));
+      await fireEvent.click(getByRole('button', { name: 'Reset data now' }));
+      await waitFor(() => expect(onResetStorage).toHaveBeenCalledWith('particles'));
     });
 
     it('reacts when a compute pass is added to the config prop', async () => {
@@ -931,6 +1011,7 @@ describe('ConfigPanel', () => {
       });
       await tick();
 
+      await fireEvent.click(getAllByText('Change…')[0]);
       await fireEvent.click(getAllByText('Create')[0]);
 
       expect(mockManager.generateBufferPath).toHaveBeenCalledWith('ComputeA', 'slang');
@@ -941,6 +1022,8 @@ describe('ConfigPanel', () => {
           suggestedPath: 'image.computea.slang',
           fileType: 'slang-compute',
           requestId: expect.any(String),
+          authoringMode: 'native',
+          passName: 'ComputeA',
         },
       });
     });
@@ -973,6 +1056,7 @@ describe('ConfigPanel', () => {
       });
       await tick();
 
+      await fireEvent.click(getAllByText('Change…')[0]);
       await fireEvent.click(getAllByText('Create')[0]);
 
       expect(mockManager.generateBufferPath).toHaveBeenCalledWith('BufferA', 'slang');
@@ -983,6 +1067,8 @@ describe('ConfigPanel', () => {
           suggestedPath: 'image.buffera.slang',
           fileType: 'slang-buffer',
           requestId: expect.any(String),
+          authoringMode: 'hooks',
+          passName: 'BufferA',
         },
       });
     });

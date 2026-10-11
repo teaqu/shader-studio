@@ -70,7 +70,9 @@ describe('VS Code MCP file and viewer application', () => {
 
   it('reports a successful edit separately when no compilation was dispatched', async () => {
     const read = await app.call('read_file', { path: source.uri.fsPath }, signal());
-    provider.sendShaderFromDocument.mockImplementationOnce(async () => { sequence = undefined; });
+    provider.sendShaderFromDocument.mockImplementationOnce(async () => {
+      sequence = undefined; 
+    });
     expect(await app.call('update_file', { path: source.uri.fsPath, expectedRevision: read.revision, text: 'edited', previewId: 'preview' }, signal())).toMatchObject({ applied: true, previewError: 'No compilation was sent for this shader.' });
   });
   it('reads editor documents rather than disk and exposes config as a file', async () => {
@@ -89,7 +91,7 @@ describe('VS Code MCP file and viewer application', () => {
   it('edits shader and configuration files, remains unsaved, and rebuilds before returning output', async () => {
     const read = await app.call('read_file', { path: config.uri.fsPath }, signal());
     const result = await app.call('update_file', { path: config.uri.fsPath, text: '{"passes":{}}', expectedRevision: read.revision, includePreview: true }, signal());
-    expect(result).toMatchObject({ applied: true, dirty: true, compileSequence: 2, image: { data: 'pixels' } });
+    expect(result).toMatchObject({ path: config.uri.fsPath, applied: true, dirty: true, compileSequence: 2, image: { data: 'pixels' } });
     expect(config.text).toBe('{"passes":{}}');
     expect(provider.sendShaderFromDocument).toHaveBeenCalledWith(source);
     await expect(app.call('update_file', { path: config.uri.fsPath, text: 'stale', expectedRevision: read.revision }, signal())).rejects.toThrow('changed');

@@ -184,7 +184,7 @@ describe("SlangComputePipeline", () => {
         label: "ComputeA compute output",
         size: { width: 320, height: 180, depthOrArrayLayers: 1 },
         format: BUFFER_TEXTURE_FORMAT,
-        usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+        usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
       });
     }
     expect(compute.getBindGroup(0)).toBeNull();

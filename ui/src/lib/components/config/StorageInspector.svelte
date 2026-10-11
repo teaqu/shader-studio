@@ -1,214 +1,377 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import type { StorageBufferSnapshot } from '@shader-studio/types';
-  import { floatToHalf, halfToFloat } from '../../halfFloat';
-
+  import { onDestroy, untrack } from "svelte";
+  import {
+    storageValueLayout,
+    type StorageBufferSnapshot,
+    type StorageCapturePoint,
+  } from "@shader-studio/types";
+  import {
+    snapshotFields,
+    readSnapshotField,
+    formatStorageValue,
+  } from "../../config/StorageSnapshotValues";
+  import {
+    getStorageView,
+    selectStorageField,
+  } from "../../state/storageViewState.svelte";
   interface Props {
     name: string;
     count: number;
-    onRead: (name: string, start: number, count: number) => Promise<StorageBufferSnapshot>;
-    onWrite: (name: string, start: number, data: ArrayBuffer) => Promise<void>;
-    onClose: () => void;
+    scope?: string;
+    passes?: string[];
+    onRead: (
+      name: string,
+      start: number,
+      count: number,
+      point?: StorageCapturePoint,
+    ) => Promise<StorageBufferSnapshot>;
   }
-
-  type ScalarKind = 'float' | 'half' | 'int' | 'uint';
-  interface Layout { kind: ScalarKind; columns: number; bytes: number; }
-
-  let { name, count, onRead, onWrite, onClose }: Props = $props();
-  const PAGE_SIZE = 100;
-  let page = $state(0);
+  let { name, count, scope = "", passes = [], onRead }: Props = $props();
+  const PAGE_SIZE = 16;
+  let start = $state(0);
   let snapshot = $state<StorageBufferSnapshot | null>(null);
-  let values = $state<number[][]>([]);
   let loading = $state(false);
-  let writing = $state(false);
-  let error = $state<string | null>(null);
-  let saveQueued = false;
-
-  const layout = $derived.by<Layout | null>(() => {
-    if (!snapshot) {
-      return null;
+  let live = $state(false);
+  let error = $state("");
+  let point = $state("");
+  let hex = $state(false);
+  let requestVersion = 0;
+  let disposed = false;
+  const fields = $derived(snapshot ? snapshotFields(snapshot) : []);
+  const field = $derived(
+    fields.find((item) => item.name === getStorageView(scope).fields[name]) ??
+      fields[0],
+  );
+  const layout = $derived(field ? storageValueLayout(field.type) : null);
+  const values = $derived.by(() => {
+    if (!snapshot || !field || !layout) {
+      return { rows: [], error: "" };
     }
-    return storageLayout(snapshot.elementType);
+    try {
+      return { rows: readSnapshotField(snapshot, field), error: "" };
+    } catch (reason) {
+      return {
+        rows: [],
+        error: reason instanceof Error ? reason.message : String(reason),
+      };
+    }
   });
-  const pageCount = $derived(Math.max(1, Math.ceil(count / PAGE_SIZE)));
-  const pageItems = $derived.by<Array<number | 'ellipsis'>>(() => {
-    if (pageCount <= 7) {
-      return Array.from({ length: pageCount }, (_, index) => index);
+  const stale = $derived(snapshot !== null && snapshot.start !== start);
+  async function capture(): Promise<void> {
+    if (loading || disposed || count <= 0) {
+      return;
     }
-    const start = Math.min(Math.max(page - 2, 0), pageCount - 5);
-    const nearby = Array.from({ length: 5 }, (_, index) => start + index);
-    const items: Array<number | 'ellipsis'> = [];
-    if (nearby[0] !== 0) {
-      items.push(0, 'ellipsis');
-    }
-    items.push(...nearby);
-    if (nearby.at(-1) !== pageCount - 1) {
-      items.push('ellipsis', pageCount - 1);
-    }
-    return items;
-  });
-
-  function snapshotValues(next: StorageBufferSnapshot, nextLayout: Layout): number[][] {
-    const view = new DataView(next.data);
-    return Array.from({ length: next.count }, (_, row) => Array.from({ length: nextLayout.columns }, (_, column) => {
-      const offset = row * next.stride + column * nextLayout.bytes;
-      if (offset + nextLayout.bytes > next.data.byteLength) {
-        return 0;
-      }
-      if (nextLayout.kind === 'half') {
-        return halfToFloat(view.getUint16(offset, true));
-      }
-      if (nextLayout.kind === 'float') {
-        return view.getFloat32(offset, true);
-      }
-      return nextLayout.kind === 'int' ? view.getInt32(offset, true) : view.getUint32(offset, true);
-    }));
-  }
-
-  async function refresh() {
-    const rangeStart = page * PAGE_SIZE;
-    const rangeCount = Math.min(PAGE_SIZE, count - rangeStart);
+    const version = ++requestVersion;
+    const captureName = name;
     loading = true;
-    error = null;
+    error = "";
+    const selectedPoint: StorageCapturePoint | undefined = point
+      ? JSON.parse(point)
+      : undefined;
     try {
-      const next = await onRead(name, rangeStart, rangeCount);
-      const nextLayout = storageLayout(next.elementType);
-      if (!nextLayout) {
-        error = `${next.elementType} is not editable yet. Use scalar or vector f16, f32, i32, or u32 values.`;
-        snapshot = next;
-        values = [];
-        return;
+      const result = await onRead(
+        captureName,
+        start,
+        Math.min(PAGE_SIZE, count - start),
+        selectedPoint,
+      );
+      if (version === requestVersion && !disposed && captureName === name) {
+        snapshot = result;
       }
-      snapshot = next;
-      values = snapshotValues(next, nextLayout);
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : String(reason);
+      if (version === requestVersion && !disposed) {
+        error = reason instanceof Error ? reason.message : String(reason);
+        live = false;
+      }
     } finally {
+      if (version === requestVersion && !disposed) {
+        loading = false;
+      }
+    }
+  }
+  function navigate(next: number): void {
+    start = Math.max(0, Math.min(count - 1, Math.floor(next) || 0));
+    void capture();
+  }
+  $effect(() => {
+    const currentName = name,
+      currentCount = count;
+    untrack(() => {
+      requestVersion++;
       loading = false;
-    }
-  }
-
-  function selectPage(nextPage: number) {
-    if (nextPage === page || nextPage < 0 || nextPage >= pageCount) {
-      return;
-    }
-    page = nextPage;
-    void refresh();
-  }
-
-  function updateValue(row: number, column: number, value: string) {
-    const next = Number(value);
-    if (!Number.isFinite(next)) {
-      return;
-    }
-    values[row]![column] = next;
-    values = values;
-    void saveValues();
-  }
-
-  async function saveValues() {
-    if (!snapshot || !layout) {
-      return;
-    }
-    if (writing) {
-      saveQueued = true;
-      return;
-    }
-    writing = true;
-    try {
-      do {
-        saveQueued = false;
-        const activeSnapshot = snapshot;
-        const activeLayout = layout;
-        if (!activeSnapshot || !activeLayout) {
-          return;
-        }
-        const data = new ArrayBuffer(activeSnapshot.count * activeSnapshot.stride);
-        const view = new DataView(data);
-        for (let row = 0; row < values.length; row += 1) {
-          for (let column = 0; column < activeLayout.columns; column += 1) {
-            const offset = row * activeSnapshot.stride + column * activeLayout.bytes;
-            const value = values[row]![column]!;
-            if (activeLayout.kind === 'float') {
-              view.setFloat32(offset, value, true);
-            } else if (activeLayout.kind === 'half') {
-              view.setUint16(offset, floatToHalf(value), true);
-            } else if (activeLayout.kind === 'int') {
-              view.setInt32(offset, value, true);
-            } else {
-              view.setUint32(offset, value, true);
-            }
-          }
-        }
-        error = null;
-        await onWrite(name, activeSnapshot.start, data);
-      } while (saveQueued);
-    } catch (reason) {
-      error = reason instanceof Error ? reason.message : String(reason);
-    } finally {
-      writing = false;
-    }
-  }
-
-  onMount(() => {
-    void refresh();
+      snapshot = null;
+      start = 0;
+      live = false;
+      if (currentName && currentCount > 0) {
+        void capture();
+      }
+    });
+    return () => {
+      requestVersion++;
+    };
   });
-
-  function storageLayout(elementType: string): Layout | null {
-    const type = elementType.trim();
-    const legacy = /^(float|int|uint)([1-4])?$/.exec(type);
-    if (legacy) {
-      return { kind: legacy[1] as ScalarKind, columns: Number(legacy[2] ?? '1'), bytes: 4 };
+  $effect(() => {
+    if (!live) {
+      return;
     }
-    if (type === 'Atomic<int>' || type === 'atomic<i32>') {
-      return { kind: 'int', columns: 1, bytes: 4 };
-    }
-    if (type === 'Atomic<uint>' || type === 'atomic<u32>') {
-      return { kind: 'uint', columns: 1, bytes: 4 };
-    }
-    const vector = /^vec([2-4])<(f16|f32|i32|u32)>$/.exec(type);
-    const scalarMatch = /^(f16|f32|i32|u32)$/.exec(type);
-    const alias = /^vec([2-4])([fhiu])$/.exec(type);
-    if (!vector && !scalarMatch && !alias) {
-      return null;
-    }
-    const scalar = vector?.[2] ?? scalarMatch?.[1] ?? ({ f: 'f32', h: 'f16', i: 'i32', u: 'u32' } as const)[alias![2] as 'f' | 'h' | 'i' | 'u'];
-    const columns = vector ? Number(vector[1]) : alias ? Number(alias[1]) : 1;
-    return { kind: scalar === 'f16' ? 'half' : scalar === 'f32' ? 'float' : scalar === 'i32' ? 'int' : 'uint', columns, bytes: scalar === 'f16' ? 2 : 4 };
-  }
-
+    const timer = setInterval(() => {
+      void capture();
+    }, 500);
+    return () => clearInterval(timer);
+  });
+  onDestroy(() => {
+    disposed = true;
+    requestVersion++;
+  });
 </script>
 
 <section class="storage-inspector" aria-label="Inspect {name}">
-  <div class="header"><h3>Inspect {name}</h3><button onclick={onClose}>Close</button></div>
-  <div class="toolbar">
-    <div class="pagination" aria-label="Storage pages">
-      {#each pageItems as item, index (index)}
-        {#if item === 'ellipsis'}<span aria-hidden="true">…</span>{:else}<button class:active={item === page} onclick={() => selectPage(item)} aria-label="Page {item + 1}" aria-current={item === page ? 'page' : undefined}>{item + 1}</button>{/if}
-      {/each}
-    </div>
-    <div class="actions"><button onclick={refresh} disabled={loading}>{loading ? 'Reading…' : 'Refresh'}</button>{#if writing}<span aria-live="polite">Saving…</span>{/if}</div>
+  <div class="inspector-heading">
+    <h3>{name}</h3>
+    <span>Read-only</span>
   </div>
-  <p class="page-status" aria-label="Page status">Page {page + 1} of {pageCount}</p>
+  <div class="capture-options">
+    <label
+      >Capture point<select
+        aria-label="Capture point"
+        title="Latest values reads the buffer now. Before/after captures the next execution of a GPU pass."
+        bind:value={point}
+        onchange={() => {
+          live = false;
+          void capture();
+        }}
+        disabled={loading}
+      >
+        <option value="">Latest values</option>
+        {#each passes as pass}<option
+            value={JSON.stringify({ pass, timing: "before" })}
+            >Before {pass}</option
+          ><option value={JSON.stringify({ pass, timing: "after" })}
+            >After {pass}</option
+          >{/each}
+      </select></label
+    >
+    <label
+      >Display<select aria-label="Number display" bind:value={hex}
+        ><option value={false}>Decimal</option><option value={true}
+          >Hex · integers</option
+        ></select
+      ></label
+    >
+  </div>
+  <div class="capture-actions">
+    <button class="primary" onclick={capture} disabled={loading}
+      >{loading ? "Reading…" : "Capture snapshot"}</button
+    ><button
+      aria-pressed={live}
+      onclick={() => {
+        live = !live;
+        if (live) {
+          void capture();
+        }
+      }}>{live ? "Pause live" : "Start live"}</button
+    ><span>{live ? "Live · up to 2 updates/sec" : "Paused"}</span>
+  </div>
   {#if error}<p role="alert">{error}</p>{/if}
-  {#if snapshot && layout}
-    <p class="meta">{snapshot.elementType} · elements {snapshot.start}–{snapshot.start + snapshot.count - 1}</p>
-    <div class="grid-scroll">
-      <table aria-label="{name} values">
-        <thead><tr><th>Index</th>{#each Array(layout.columns) as _, index}<th>{['x', 'y', 'z', 'w'][index]}</th>{/each}</tr></thead>
-        <tbody>{#each values as row, rowIndex}<tr><th>{snapshot.start + rowIndex}</th>{#each row as value, columnIndex}<td><input aria-label={`Element ${snapshot.start + rowIndex} component ${columnIndex}`} type="number" value={value} oninput={(event) => updateValue(rowIndex, columnIndex, event.currentTarget.value)} /></td>{/each}</tr>{/each}</tbody>
+  {#if snapshot}
+    <p class="capture-meta" aria-live="polite">
+      {snapshot.frame === undefined ? "Snapshot" : `Frame ${snapshot.frame}`} · {snapshot.capturePoint
+        ? `${snapshot.capturePoint.timing === "before" ? "Before" : "After"} ${snapshot.capturePoint.pass}`
+        : "Latest values"}{stale ? " · Previous range" : ""}
+    </p>
+    {#if fields.length > 1}<label
+        >Field<select
+          aria-label="Inspect field"
+          value={field?.name}
+          onchange={(event) =>
+            selectStorageField(scope, name, event.currentTarget.value)}
+          >{#each fields as item}<option value={item.name}
+              >{item.name} · {item.type}</option
+            >{/each}</select
+        ></label
+      >{/if}
+    {#if !fields.length}<p role="alert">
+        Field layout unavailable for {snapshot.elementType}. Define a numeric
+        layout or compile the shader successfully.
+      </p>
+    {:else if !layout}<p role="alert">
+        {field?.type} cannot be displayed yet. Select a numeric scalar or vector field.
+      </p>
+    {:else if values.error}<p role="alert">{values.error}</p>
+    {:else if layout.columns === 1}
+      <div class="scalar-values" role="list" aria-label="{name} values">
+        {#each values.rows as row, index}<div role="listitem">
+            <span class="element-index">[{snapshot.start + index}]</span><output
+              aria-label="Element {snapshot.start + index} value"
+              >{formatStorageValue(row[0]!, field!.type, hex)}</output
+            >
+          </div>{/each}
+      </div>
+    {:else}
+      <table aria-label="{name} {field?.name} values">
+        <thead
+          ><tr
+            ><th scope="col">#</th>{#each Array(layout.columns) as _, index}<th
+                scope="col">{["x", "y", "z", "w"][index]}</th
+              >{/each}</tr
+          ></thead
+        ><tbody
+          >{#each values.rows as row, index}<tr
+              ><th scope="row">{snapshot.start + index}</th
+              >{#each row as value, column}<td
+                  ><output
+                    aria-label="Element {snapshot.start +
+                      index} component {column}"
+                    >{formatStorageValue(value, field!.type, hex)}</output
+                  ></td
+                >{/each}</tr
+            >{/each}</tbody
+        >
       </table>
-    </div>
-    <div class="pagination bottom" aria-label="Storage pages">
-      {#each pageItems as item, index (index)}
-        {#if item === 'ellipsis'}<span aria-hidden="true">…</span>{:else}<button class:active={item === page} onclick={() => selectPage(item)} aria-label="Page {item + 1}" aria-current={item === page ? 'page' : undefined}>{item + 1}</button>{/if}
-      {/each}
-    </div>
+    {/if}
   {/if}
+  <div class="range-controls">
+    <label
+      >First element<input
+        aria-label="First element"
+        type="number"
+        min="0"
+        max={count - 1}
+        value={start}
+        disabled={loading}
+        onchange={(event) => navigate(Number(event.currentTarget.value))}
+      /></label
+    >
+    <div>
+      <button
+        onclick={() => navigate(start - PAGE_SIZE)}
+        disabled={loading || start === 0}>Previous</button
+      ><button
+        onclick={() => navigate(start + PAGE_SIZE)}
+        disabled={loading || start + PAGE_SIZE >= count}>Next</button
+      >
+    </div>
+  </div>
+  <p class="range-status" aria-label="Element range">
+    {start}–{Math.min(count - 1, start + PAGE_SIZE - 1)} of {count.toLocaleString()}
+    elements
+  </p>
 </section>
 
 <style>
-  .storage-inspector { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--vscode-focusBorder, #007fd4); border-radius: 4px; } .header, .toolbar, .pagination, .actions { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; } .toolbar { justify-content: space-between; } h3, p { margin: 0; } .pagination button { min-width: 28px; padding: 2px 6px; } .pagination button.active { outline: 1px solid var(--vscode-focusBorder, #007fd4); background: var(--vscode-button-background); color: var(--vscode-button-foreground); } .bottom { justify-content: center; } .page-status { font-size: 12px; color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; } .meta { font-size: 12px; color: var(--vscode-descriptionForeground); } p[role="alert"] { color: var(--vscode-errorForeground, #f48771); font-size: 12px; } .grid-scroll { overflow: auto; max-height: 360px; border: 1px solid var(--vscode-panel-border, #3c3c3c); border-radius: 3px; } table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 12px; } th, td { padding: 5px 7px; border-right: 1px solid var(--vscode-panel-border, #3c3c3c); border-bottom: 1px solid var(--vscode-panel-border, #3c3c3c); } tr > :last-child { border-right: 0; } tbody tr:last-child > * { border-bottom: 0; } thead th { position: sticky; top: 0; z-index: 1; background: var(--vscode-editor-background); font-size: 11px; font-weight: 600; } tbody th { background: var(--vscode-editor-background); color: var(--vscode-descriptionForeground); text-align: right; font-variant-numeric: tabular-nums; } td { padding: 0; text-align: right; } td input { display: block; box-sizing: border-box; width: 100%; min-width: 5ch; padding: 6px 8px; border: 1px solid transparent; border-radius: 2px; outline: none; appearance: textfield; background: var(--vscode-input-background, #3c3c3c); color: var(--vscode-input-foreground, #ccc); font: inherit; font-variant-numeric: tabular-nums; } td input:hover { background: var(--vscode-inputOption-hoverBackground, #454545); } td input:focus { border-color: var(--vscode-focusBorder, #007fd4); background: var(--vscode-input-background, #3c3c3c); } td input::-webkit-inner-spin-button, td input::-webkit-outer-spin-button { margin: 0; appearance: none; }
+  .storage-inspector {
+    display: grid;
+    gap: 16px;
+    min-width: 0;
+  }
+  .inspector-heading,
+  .capture-actions,
+  .range-controls,
+  .range-controls > div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  h3,
+  p {
+    margin: 0;
+  }
+  h3 {
+    font-size: 13px;
+    font-weight: 500;
+  }
+  label {
+    display: grid;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--storage-muted, var(--vscode-descriptionForeground));
+  }
+  .capture-options {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 12px;
+  }
+  select,
+  input {
+    width: 100%;
+    box-sizing: border-box;
+    min-width: 0;
+    font-size: 13px;
+  }
+  .capture-actions {
+    justify-content: flex-start;
+  }
+  .capture-actions span,
+  .inspector-heading span,
+  .capture-meta,
+  .range-status {
+    font-size: 12px;
+    color: var(--storage-muted, var(--vscode-descriptionForeground));
+  }
+  .capture-meta {
+    padding: 10px 12px;
+    background: var(--storage-soft);
+    border-radius: 4px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font: 12px/1.6 var(--vscode-editor-font-family, monospace);
+    font-variant-numeric: tabular-nums;
+  }
+  th,
+  td {
+    padding: 10px 6px;
+    border-bottom: 1px solid var(--storage-line);
+    text-align: right;
+    overflow-wrap: anywhere;
+    font-weight: 400;
+  }
+  thead th,
+  tbody th {
+    color: var(--storage-muted, var(--vscode-descriptionForeground));
+  }
+  tr > :first-child {
+    width: 40px;
+    text-align: left;
+  }
+  .scalar-values {
+    font: 14px/1.6 var(--vscode-editor-font-family, monospace);
+    font-variant-numeric: tabular-nums;
+  }
+  .scalar-values > div {
+    display: grid;
+    grid-template-columns: 50px minmax(0, 1fr);
+    gap: 12px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--storage-line);
+  }
+  .element-index {
+    color: var(--storage-muted, var(--vscode-descriptionForeground));
+    font-size: 12px;
+  }
+  .range-controls input {
+    width: 85px;
+  }
+  p[role="alert"] {
+    color: var(--vscode-errorForeground);
+    font-size: 12px;
+  }
+  @container (max-width: 420px) {
+    .capture-options {
+      grid-template-columns: 1fr;
+    }
+    th,
+    td {
+      padding: 9px 2px;
+    }
+    tr > :first-child {
+      width: 28px;
+    }
+  }
 </style>

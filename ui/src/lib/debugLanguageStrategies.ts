@@ -50,6 +50,7 @@ export interface DebugRequestInputs {
   bufferCodes: Record<string, string>;
   slangModules: SlangSourceModule[];
   customUniforms?: { name: string; type: string }[];
+  renderOutput?: number;
   getDebugTarget: (imageCode: string, config: ShaderConfig | null) => DebugTarget;
 }
 
@@ -64,12 +65,14 @@ export interface DebugPlanStrategy {
     functionContext: DebugFunctionContext | null;
     customParameters: ReadonlyMap<number, string>;
     loopMaxIterations: ReadonlyMap<number, number>;
+    output?: number;
   }): DebugPreviewOptions;
   staleVariableError(request: DebugAnalysisRequest, selectedRange: DebugSourceRange, varName: string): DebugDiagnostic;
   postProcessFullShader(
     code: string,
     normalizeMode: NormalizeMode,
     stepEdge: number | null,
+    entryPoint?: string | null,
   ): string | null;
   extractFunctionContext(code: string, line: number): DebugFunctionContext | null;
 }
@@ -111,10 +114,11 @@ class SlangDebugStrategy implements DebugPlanStrategy {
     const selectedLineContent = selectedSource.split("\n")[selectedLine] ?? inputs.lineContent ?? "";
     const computePass = inputs.config?.passes[ownerPassName];
     const compute = computePass && "type" in computePass && computePass.type === "compute"
-      ? { entryPoint: computePass.entryPoint, storageNames: Object.keys(inputs.config?.storage ?? {}) }
+      ? { entryPoint: computePass.entryPoints?.compute ?? computePass.entryPoint, storageNames: Object.keys(inputs.config?.storage ?? {}) }
       : undefined;
+    const render = nativeRenderMetadata(inputs.config, ownerPassName, rootSource, 'slang');
     return {
-      workspace: { rootUri: rootPath, rootPath, passName: ownerPassName, files, compute, contentHash: debugWorkspaceHash(files, compute) },
+      workspace: { rootUri: rootPath, rootPath, passName: ownerPassName, files, compute, render, contentHash: debugWorkspaceHash(files, compute, undefined, undefined, undefined, render) },
       sourceUri: selectedPath,
       position: { line: selectedLine, character: Math.max(0, selectedLineContent.search(/\S/)) },
     };
@@ -126,12 +130,14 @@ class SlangDebugStrategy implements DebugPlanStrategy {
     functionContext: DebugFunctionContext | null;
     customParameters: ReadonlyMap<number, string>;
     loopMaxIterations: ReadonlyMap<number, number>;
+    output?: number;
   }): DebugPreviewOptions {
     return {
       normalizeMode: inputs.normalizeMode,
       stepEdge: inputs.stepEdge,
       customParameters: effectiveDebugParameters(inputs.functionContext, inputs.customParameters),
       loopMaxIterations: inputs.loopMaxIterations,
+      output: inputs.output ?? 0,
     };
   }
 
@@ -144,8 +150,8 @@ class SlangDebugStrategy implements DebugPlanStrategy {
     };
   }
 
-  postProcessFullShader(code: string, normalizeMode: NormalizeMode, stepEdge: number | null): string | null {
-    return applySlangFullShaderPostProcessing(code, { normalizeMode, stepEdge });
+  postProcessFullShader(code: string, normalizeMode: NormalizeMode, stepEdge: number | null, entryPoint?: string | null): string | null {
+    return applySlangFullShaderPostProcessing(code, { normalizeMode, stepEdge }, entryPoint);
   }
 
   extractFunctionContext(code: string, line: number): DebugFunctionContext | null {
@@ -183,10 +189,13 @@ class WgslDebugStrategy implements DebugPlanStrategy {
     const computePass = inputs.config?.passes[ownerPassName];
     const compute = computePass && "type" in computePass && computePass.type === "compute"
       ? {
-        ...(computePass.entryPoint ? { entryPoint: computePass.entryPoint } : {}),
+        ...(computePass.entryPoints?.compute ?? computePass.entryPoint
+          ? { entryPoint: computePass.entryPoints?.compute ?? computePass.entryPoint }
+          : {}),
         storageNames: Object.keys(inputs.config?.storage ?? {}),
       }
       : undefined;
+    const render = nativeRenderMetadata(inputs.config, ownerPassName, rootSource, 'wgsl');
     const storage = Object.fromEntries(Object.entries(inputs.config?.storage ?? {})
       .map(([name, declaration]) => [name, { elementType: declaration.elementType }]));
     const channels = resolveAuthoringChannelBindings(resourcesForPass(inputs.config, ownerPassName))
@@ -199,11 +208,12 @@ class WgslDebugStrategy implements DebugPlanStrategy {
         rootPath,
         passName: ownerPassName,
         ...(compute ? { compute } : {}),
+        ...(render ? { render } : {}),
         storage,
         channels,
         customUniforms: inputs.customUniforms ?? [],
         files,
-        contentHash: debugWorkspaceHash(files, compute, storage, channels, inputs.customUniforms ?? []),
+        contentHash: debugWorkspaceHash(files, compute, storage, channels, inputs.customUniforms ?? [], render),
       },
       sourceUri: selectedPath,
       position: { line: rawLine, character: Math.max(0, selectedLineContent.search(/\S/)) },
@@ -216,12 +226,14 @@ class WgslDebugStrategy implements DebugPlanStrategy {
     functionContext: DebugFunctionContext | null;
     customParameters: ReadonlyMap<number, string>;
     loopMaxIterations: ReadonlyMap<number, number>;
+    output?: number;
   }): DebugPreviewOptions {
     return {
       normalizeMode: inputs.normalizeMode,
       stepEdge: inputs.stepEdge,
       customParameters: effectiveDebugParameters(inputs.functionContext, inputs.customParameters),
       loopMaxIterations: inputs.loopMaxIterations,
+      output: inputs.output ?? 0,
     };
   }
 
@@ -234,8 +246,8 @@ class WgslDebugStrategy implements DebugPlanStrategy {
     };
   }
 
-  postProcessFullShader(code: string, normalizeMode: NormalizeMode, stepEdge: number | null): string | null {
-    return applyWgslFullShaderPostProcessing(code, { normalizeMode, stepEdge });
+  postProcessFullShader(code: string, normalizeMode: NormalizeMode, stepEdge: number | null, entryPoint?: string | null): string | null {
+    return applyWgslFullShaderPostProcessing(code, { normalizeMode, stepEdge }, entryPoint);
   }
 
   extractFunctionContext(code: string, line: number): DebugFunctionContext | null {
@@ -263,6 +275,7 @@ function debugWorkspaceHash(
   storage?: Record<string, { elementType: string }>,
   channels?: { name: string; slot: number; kind: string }[],
   customUniforms?: { name: string; type: string }[],
+  render?: { entryPoint?: string },
 ): string {
   let hash = 2166136261;
   for (const file of [...files].sort((left, right) => left.path.localeCompare(right.path))) {
@@ -270,10 +283,25 @@ function debugWorkspaceHash(
       hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
     }
   }
-  for (const character of JSON.stringify({ compute, storage, channels, customUniforms })) {
+  for (const character of JSON.stringify({ compute, storage, channels, customUniforms, render })) {
     hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
   }
   return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function nativeRenderMetadata(
+  config: ShaderConfig | null,
+  passName: string,
+  source: string,
+  language: ShaderLanguageId,
+): { entryPoint?: string } | undefined {
+  const pass = config?.passes[passName];
+  if (!pass || !('entryPoints' in pass) || pass.entryPoints === undefined) {
+    return undefined;
+  }
+  const configured = 'fragment' in pass.entryPoints ? pass.entryPoints.fragment : undefined;
+  const entryPoint = configured;
+  return entryPoint ? { entryPoint } : {};
 }
 
 function computeSlangLineOffset(processed: string, original: string): number {

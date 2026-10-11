@@ -37,7 +37,15 @@ interface Network {
   holds: Set<string>;
 }
 
-function createWorker(options: { required: string[]; optional: string[]; channel?: string; buildId?: string; caches?: string[] }) {
+function createWorker(options: {
+  required: string[];
+  optional: string[];
+  channel?: string;
+  buildId?: string;
+  caches?: string[];
+  clients?: string[];
+  clientEnumerationFails?: boolean;
+}) {
   const handlers = new Map<string, Handler>();
   const cacheStorage = new Map<string, FakeCache>(
     (options.caches ?? []).map(name => [name, new FakeCache()]),
@@ -48,8 +56,16 @@ function createWorker(options: { required: string[]; optional: string[]; channel
     registration: { scope: SCOPE },
     location: { origin: ORIGIN },
     addEventListener: (type: string, handler: Handler) => handlers.set(type, handler),
-    skipWaiting: vi.fn(),
-    clients: { claim: vi.fn(async () => {}) },
+    skipWaiting: vi.fn(async () => {}),
+    clients: {
+      claim: vi.fn(async () => {}),
+      matchAll: vi.fn(async () => {
+        if (options.clientEnumerationFails) {
+          throw new Error('clients unavailable');
+        }
+        return (options.clients ?? []).map(url => ({ url }));
+      }),
+    },
   };
   const caches = {
     open: async (name: string) => {
@@ -103,12 +119,12 @@ function createWorker(options: { required: string[]; optional: string[]; channel
     });
     await work;
   };
-  const message = (data: unknown) => {
+  const message = (data: unknown, includePort = true) => {
     const port = { postMessage: vi.fn() };
     let work: Promise<unknown> = Promise.resolve();
     handlers.get('message')!({
       data,
-      ports: [port],
+      ports: includePort ? [port] : [],
       waitUntil: (promise: Promise<unknown>) => {
         work = promise;
       },
@@ -202,12 +218,65 @@ describe('generated service worker', () => {
   });
 
   describe('messages', () => {
-    it('activates a waiting update only when the page asks', () => {
-      const worker = createWorker({ required, optional });
+    it.each([{ clients: [] }, { clients: [`${SCOPE}shader`] }])('activates a waiting update with at most one app tab', async ({ clients }) => {
+      const worker = createWorker({ required, optional, clients });
 
-      worker.message({ type: 'SKIP_WAITING' });
+      const update = worker.message({ type: 'SKIP_WAITING' });
+      await update.done;
 
       expect(worker.self.skipWaiting).toHaveBeenCalledOnce();
+      expect(update.replies()).toEqual([{ type: 'update-ready' }]);
+      expect(worker.self.clients.matchAll).toHaveBeenCalledWith({ type: 'window', includeUncontrolled: true });
+    });
+
+    it('defers activation while another app tab is open', async () => {
+      const worker = createWorker({ required, optional, clients: [`${SCOPE}one`, `${SCOPE}two`] });
+
+      const update = worker.message({ type: 'SKIP_WAITING' });
+      await update.done;
+
+      expect(worker.self.skipWaiting).not.toHaveBeenCalled();
+      expect(update.replies()).toEqual([{ type: 'update-deferred' }]);
+    });
+
+    it('ignores windows outside its registration scope when activating an update', async () => {
+      const worker = createWorker({ required, optional, clients: [`${SCOPE}editor`, `${ORIGIN}/other`] });
+
+      const update = worker.message({ type: 'SKIP_WAITING' });
+      await update.done;
+
+      expect(worker.self.skipWaiting).toHaveBeenCalledOnce();
+      expect(update.replies()).toEqual([{ type: 'update-ready' }]);
+    });
+
+    it('fails closed when it cannot enumerate app tabs', async () => {
+      const worker = createWorker({ required, optional, clientEnumerationFails: true });
+
+      const update = worker.message({ type: 'SKIP_WAITING' });
+      await update.done;
+
+      expect(worker.self.skipWaiting).not.toHaveBeenCalled();
+      expect(update.replies()).toEqual([{ type: 'update-deferred' }]);
+    });
+
+    it('reports a deferred update when activation fails after tab enumeration', async () => {
+      const worker = createWorker({ required, optional });
+      worker.self.skipWaiting.mockRejectedValueOnce(new Error('activation failed'));
+
+      const update = worker.message({ type: 'SKIP_WAITING' });
+      await update.done;
+
+      expect(update.replies()).toEqual([{ type: 'update-deferred' }]);
+    });
+
+    it('still handles an older client without a reply port', async () => {
+      const worker = createWorker({ required, optional });
+
+      const update = worker.message({ type: 'SKIP_WAITING' }, false);
+      await update.done;
+
+      expect(worker.self.skipWaiting).toHaveBeenCalledOnce();
+      expect(update.replies()).toEqual([]);
     });
 
     it('ignores messages it does not understand', async () => {

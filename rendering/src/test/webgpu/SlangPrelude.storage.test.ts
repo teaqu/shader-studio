@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { StorageBindingNode } from "../../types/PassGraph";
 import { buildStorageDeclarations, wrapSlangImageSource } from "../../webgpu/SlangPrelude";
+import { buildWgslStorageDeclarations } from "../../webgpu/WgslPrelude";
 
 const lanes: StorageBindingNode = {
   name: "lanes",
@@ -10,6 +11,16 @@ const lanes: StorageBindingNode = {
   count: 1024,
   stride: 16,
 };
+
+it('emits shared config-owned structs once while retaining every buffer binding in both languages', () => {
+  const first: StorageBindingNode = { name: 'first', binding: 0, elementType: 'Data', builtin: false, count: 1, stride: 16, structDeclarations: { wgsl: 'struct Data { value: vec4f, }\n', slang: 'struct Data { float4 value; };\n' } };
+  const second = { ...first, name: 'second', binding: 1 };
+  for (const source of [buildStorageDeclarations([first, second], 0, 'compute').afterCommon, buildWgslStorageDeclarations([first, second], 0, 'compute').afterCommon]) {
+    expect(source.match(/struct Data/g)).toHaveLength(1);
+    expect(source).toContain('first');
+    expect(source).toContain('second');
+  }
+});
 
 const boids: StorageBindingNode = {
   name: "boids",

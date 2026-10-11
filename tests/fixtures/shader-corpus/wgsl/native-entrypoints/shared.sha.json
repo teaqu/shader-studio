@@ -1,0 +1,12 @@
+{
+  "version": "1.0",
+  "storage": { "samples": { "count": 1, "elementType": "f32" } },
+  "passes": {
+    "ComputeAdvance": { "type": "compute", "path": "shared.wgsl", "entryPoints": { "compute": "advance" }, "dispatch": { "count": 1 } },
+    "BufferA": { "path": "shared.wgsl", "entryPoints": { "vertex": "fullscreenVertex", "fragment": "bufferCool" } },
+    "Image": {
+      "entryPoints": { "vertex": "fullscreenVertex", "fragment": "present" },
+      "inputs": { "iChannel0": { "type": "buffer", "source": "BufferA" } }
+    }
+  }
+}

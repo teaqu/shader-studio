@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
@@ -70,12 +70,25 @@ function expectedSources(configPath: string, config: ShaderConfig): ExpectedSour
   return out;
 }
 
-function stageOf(config: ShaderConfig, source: ExpectedSource): string {
+function stageOf(config: ShaderConfig, source: ExpectedSource, configPath?: string): string {
   if (source.vertexOf) {
     return 'vertex';
   }
-  const passName = source.key === 'common' ? 'common' : source.key;
+  const passName = configPath && implicitImageRoot(configPath, source)
+    ? 'Image'
+    : source.key === 'common' ? 'common' : source.key;
   return stageForPass(config, passName, source.abs);
+}
+
+function implicitImageRoot(configPath: string, source: ExpectedSource): boolean {
+  const rootStem = configPath.replace(/\.sha\.json$/i, '');
+  return source.vertexOf === null
+    && dirname(source.abs) === dirname(rootStem)
+    && basename(source.abs, extname(source.abs)) === basename(rootStem);
+}
+
+function ownerOf(configPath: string, source: ExpectedSource): string {
+  return implicitImageRoot(configPath, source) ? 'Image' : source.vertexOf ?? source.key;
 }
 
 describe('project derivation parity', () => {
@@ -110,8 +123,8 @@ describe('project derivation parity', () => {
           const companion = configPathForShader(source.abs);
           return !existsSync(companion) || companion === configPath;
         })
-        // A file shared by several passes of one config keeps the first
-        // owner in config order, matching findExplicitPass first-match.
+        // A companion root source is implicitly Image even when it is also
+        // referenced by another pass; other shared files keep first ownership.
         .filter((source) => {
           if (seen.has(source.abs)) {
             return false;
@@ -171,16 +184,16 @@ describe('project derivation parity', () => {
         const configDir = configPath.slice(0, configPath.lastIndexOf('/'));
         const extAssociated = source.abs === configPath || source.abs.startsWith(`${configDir}/`);
         if (env && extAssociated) {
-          check(env.passName === (source.vertexOf ?? source.key),
-            `${project.name}: extension pass ${env.passName} != ${source.vertexOf ?? source.key} for ${source.rel}`);
+          check(env.passName === ownerOf(configPath, source),
+            `${project.name}: extension pass ${env.passName} != ${ownerOf(configPath, source)} for ${source.rel}`);
         }
         if (env) {
-          check(env.stage === stageOf(config, source),
-            `${project.name}: extension stage ${env.stage} != ${stageOf(config, source)} for ${source.rel}`);
+          check(env.stage === stageOf(config, source, configPath),
+            `${project.name}: extension stage ${env.stage} != ${stageOf(config, source, configPath)} for ${source.rel}`);
         }
         if (standaloneDoc && siblingConfig) {
-          check(standaloneDoc.stage === stageOf(config, source),
-            `${project.name}: standalone stage ${standaloneDoc.stage} != ${stageOf(config, source)} for ${source.rel}`);
+          check(standaloneDoc.stage === stageOf(config, source, configPath),
+            `${project.name}: standalone stage ${standaloneDoc.stage} != ${stageOf(config, source, configPath)} for ${source.rel}`);
         }
         if (env && standaloneDoc && siblingConfig) {
           check(env.stage === standaloneDoc.stage,

@@ -25,6 +25,7 @@
     slangModules?: SlangSourceModule[];
     commonPath?: string;
     commonSource?: string;
+    sourcePassNames?: string[];
     onCursorChange?: (line: number, lineContent: string, bufferName: string) => void;
   }
 
@@ -48,6 +49,7 @@
     slangModules = [],
     commonPath = undefined,
     commonSource = undefined,
+    sourcePassNames = [],
     onCursorChange = (_line: number, _lineContent: string, _bufferName: string) => {},
   }: Props = $props();
 </script>
@@ -72,6 +74,7 @@
   {slangModules}
   {commonPath}
   {commonSource}
+  {sourcePassNames}
   {onCursorChange}
   displayMode="overlay"
 />

@@ -8,6 +8,9 @@
   import ShaderExplorer from '@shader-studio/shader-explorer/lib/components/ShaderExplorer.svelte';
   import StandaloneLayout from './StandaloneLayout.svelte';
   import EditorPane from './EditorPane.svelte';
+  import SettingsPanel from './settings/SettingsPanel.svelte';
+  import { connectSettings, getDefaultShaderMode } from './settings/settingsState.svelte';
+  import WorkspaceFilePicker from './WorkspaceFilePicker.svelte';
   import NewShaderModal from './NewShaderModal.svelte';
   import type { WebTransport, WorkspaceStorageStatus } from './WebTransport';
   import {
@@ -15,7 +18,7 @@
     resetShellState, setNewShaderVisible,
   } from './state/shellState.svelte';
   import { clearStandaloneWorkspace } from './clearWorkspace';
-  import type { ShaderLanguageId } from '@shader-studio/types';
+  import type { ShaderLanguageId, WebGPUAuthoringMode } from '@shader-studio/types';
   import type { PwaController, PwaStatus } from './pwa';
   import type { WorkspacePersistenceStatus } from './VirtualWorkspace';
 
@@ -50,6 +53,9 @@
   setContext(PANEL_HOST_CONTEXT, hostedPanels);
   let layout = $state<StandaloneLayout>();
   let workspaceError = $state('');
+  const disconnectSettings = connectSettings(transport.settings);
+  onDestroy(disconnectSettings);
+  let settingsOpen = $state(false);
   let alphaNoticeVisible = $state(shouldShowAlphaNotice());
   let viewMenuOpen = $state(false);
   let workspaceMenuOpen = $state(false);
@@ -72,8 +78,13 @@
   let workspaceFileInput: HTMLInputElement;
   const session = $derived(getViewerSession());
   const explorerApi = transport.getShaderExplorerHostApi();
+  let shellMounted = false;
+  let updateInProgress = false;
+  let updateApplied = false;
+  let updateLocked = $state(false);
 
   onMount(() => {
+    shellMounted = true;
     void transport.getStorageStatus?.().then(async (status) => {
       storageStatus = status;
       if (status.backend === 'indexeddb' && status.persistSupported && !status.persisted && claimAutomaticStorageRequest()) {
@@ -82,11 +93,18 @@
     }).catch(() => { /* Storage inspection must not interrupt editing. */ });
     const stopPersistence = transport.onPersistenceStatus?.((status) => {
       persistenceStatus = status;
+      if (status.state === 'saved' && pwaStatus.updateAvailable) {
+        void applyAutomaticUpdate();
+      }
     }) ?? (() => {});
     const stopPwa = pwa?.subscribe((status) => {
       pwaStatus = status;
+      if (status.updateAvailable) {
+        void applyAutomaticUpdate();
+      }
     }) ?? (() => {});
     return () => {
+      shellMounted = false;
       stopPersistence();
       stopPwa();
       pwa?.dispose();
@@ -127,8 +145,8 @@
     }
   });
 
-  function createShader(name: string, language: ShaderLanguageId) {
-    transport.postMessage({ type: 'createShader', payload: { name, language } });
+  function createShader(name: string, language: ShaderLanguageId, authoringMode?: WebGPUAuthoringMode) {
+    transport.postMessage({ type: 'createShader', payload: { name, language, ...(authoringMode ? { authoringMode } : {}) } });
     setNewShaderVisible(false);
   }
 
@@ -177,13 +195,46 @@
     }
   }
 
-  async function applyUpdate() {
+  async function applyAutomaticUpdate() {
+    if (!shellMounted || updateInProgress || updateApplied) {
+      return;
+    }
+    updateInProgress = true;
     workspaceError = '';
     try {
-      await transport.flush();
-      await pwa?.applyUpdate();
+      const storage = await transport.getStorageStatus();
+      if (!shellMounted || storage.backend !== 'indexeddb') {
+        return;
+      }
+      updateLocked = true;
+      let finalSaveFailed = false;
+      const prepareReload = async () => {
+        try {
+          if (!shellMounted) {
+            throw new Error('App closed before the update was ready.');
+          }
+          await transport.flush();
+        } catch (error) {
+          finalSaveFailed = true;
+          updateLocked = false;
+          updateApplied = false;
+          workspaceError = 'Could not save pending work, so the update was not applied.';
+          throw error;
+        }
+      };
+      await prepareReload();
+      if (!shellMounted) {
+        return;
+      }
+      const activated = await pwa?.applyUpdate(prepareReload) ?? false;
+      updateApplied = activated && !finalSaveFailed;
     } catch {
       workspaceError = 'Could not save pending work, so the update was not applied.';
+    } finally {
+      updateInProgress = false;
+      if (!updateApplied) {
+        updateLocked = false;
+      }
     }
   }
 
@@ -284,9 +335,10 @@
 
   onDestroy(resetShellState);
 </script>
+<WorkspaceFilePicker />
 
 <svelte:window onclick={closeMenusOnOutsideClick} onkeydown={closeMenusOnEscape} />
-<div class="standalone-app">
+<div class="standalone-app" inert={updateLocked} aria-busy={updateLocked}>
   <header class="standalone-toolbar" aria-label="Standalone workspace">
     <strong>Shader Studio</strong>
     <div class="toolbar-menu">
@@ -354,6 +406,11 @@
         </div>
       {/if}
     </div>
+    <button class="menu-trigger" onclick={() => {
+      settingsOpen = true;
+      viewMenuOpen = false;
+      workspaceMenuOpen = false;
+    }}>Settings</button>
     <a class="toolbar-right" href="https://teaqu.github.io/shader-studio/docs/" target="_blank" rel="noopener noreferrer">Documentation</a>
     <a href="https://github.com/teaqu/shader-studio" target="_blank" rel="noopener noreferrer">GitHub</a>
     <span
@@ -375,7 +432,6 @@
         <i class="codicon codicon-package" aria-hidden="true"></i>
       {/if}
     </span>
-    {#if pwaStatus.updateAvailable}<button class="update-action" onclick={applyUpdate}>Update ready</button>{/if}
   </header>
   <input class="visually-hidden" bind:this={workspaceFileInput} type="file" accept="application/json,.json" onchange={importWorkspace} />
   {#if alphaNoticeVisible}
@@ -402,8 +458,13 @@
       <div class="panel-content" data-testid="web-preview"><ShaderStudioApp /></div>
     {/snippet}
   </StandaloneLayout>
+  {#if settingsOpen}
+    <SettingsPanel settings={transport.settings} onClose={() => {
+      settingsOpen = false;
+    }} />
+  {/if}
   {#if getNewShaderVisible()}
-    <NewShaderModal onCreate={createShader} onClose={() => setNewShaderVisible(false)} />
+    <NewShaderModal defaultAuthoringMode={getDefaultShaderMode()} onCreate={createShader} onClose={() => setNewShaderVisible(false)} />
   {/if}
 </div>
 
@@ -431,7 +492,6 @@
   .build-status { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; color: var(--vscode-descriptionForeground); font-size: 16px; }
   .build-status .spinning { animation: status-spin 1s linear infinite; }
   @keyframes status-spin { to { transform: rotate(360deg); } }
-  .standalone-toolbar .update-action { border: 1px solid var(--vscode-focusBorder); }
   .visually-hidden { position: fixed; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
   @media (max-width: 767px) {

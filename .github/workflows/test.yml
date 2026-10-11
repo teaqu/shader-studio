@@ -9,6 +9,8 @@ on:
       - "**.md"
       - "mkdocs.yml"
   pull_request:
+    # Applying or removing ci:full immediately re-evaluates selection.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   workflow_dispatch:
 
 concurrency:

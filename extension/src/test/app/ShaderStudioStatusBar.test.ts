@@ -162,6 +162,14 @@ suite('ShaderStudioStatusBar Test Suite', () => {
     assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledWith('shader-studio.openSettings'));
   });
 
+  test('does not offer a capture preview command', async () => {
+    statusBar = new ShaderStudioStatusBar(mockContext);
+    await statusBar.showShaderStudioMenu();
+    const items = (vscode.window.showQuickPick as sinon.SinonStub).firstCall.args[0] as Array<{ action: string }>;
+    assert.ok(!items.some(item => item.action === 'capture-preview'));
+    assert.ok((vscode.commands.executeCommand as sinon.SinonStub).notCalled);
+  });
+
   test('dispose should call dispose on status bar item', () => {
     statusBar = new ShaderStudioStatusBar(mockContext);
 

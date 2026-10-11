@@ -163,7 +163,7 @@
         "shader-studio.mcpPort": {
           "type": "integer",
           "default": 51474,
-          "scope": "application",
+          "scope": "window",
           "minimum": 1024,
           "maximum": 65535,
           "description": "Loopback port for the local MCP endpoint, available even without starting the browser preview server."
@@ -195,6 +195,15 @@
           "type": "boolean",
           "default": true,
           "description": "Lock the editor group when opening a shader panel, preventing other editors from opening in it."
+        },
+        "shader-studio.webgpu.defaultRenderAuthoring": {
+          "type": "string", "scope": "application", "enum": ["hooks", "native"], "enumDescriptions": ["Built-in mainImage/mainVertex hooks", "Native WGSL/Slang entry points"], "default": "hooks", "description": "Default mode for WGSL/Slang buffers and source insertion."
+        },
+        "shader-studio.webgpu.useViewerCamera": {
+          "type": "boolean",
+          "scope": "application",
+          "default": true,
+          "description": "Use the viewer camera by default for mesh passes."
         },
         "shader-studio.languageServers.glsl.enabled": {
           "type": "boolean",
@@ -366,7 +375,7 @@
     "package": "npm run build:ui && npm run build:shader-explorer && node esbuild.js --production && npm run copy-glsl-to-dist",
     "vsce-package": "npm run package && vsce package --no-dependencies",
     "compile-tests": "npm run build:deps && rimraf out && tsc -p ./tsconfig.test.json",
-    "typecheck": "tsc -p tsconfig.test.json --noEmit",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit && tsc -p tsconfig.mcp.json",
     "watch-tests": "rimraf out && tsc -p . -w --outDir out",
     "build:code": "npm run build:deps && node esbuild.js && tsc -p ./",
     "build:deps": "turbo run build --filter=@shader-studio/types --filter=@shader-studio/language-server-core --filter=@shader-studio/glsl-analysis --filter=@shader-studio/glsl-language-server --filter=@shader-studio/slang-language-server --filter=@shader-studio/wgsl-analysis --filter=@shader-studio/wgsl-language-server --filter=@shader-studio/utils --filter=@shader-studio/debug --filter=@shader-studio/rendering",
@@ -397,7 +406,7 @@
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.5.2",
     "ajv": "^6.12.6",
-    "esbuild": "^0.24.0",
+    "esbuild": "^0.28.1",
     "js-yaml": "^4.3.2",
     "playwright": "^1.60.0",
     "sinon": "^21.0.0",

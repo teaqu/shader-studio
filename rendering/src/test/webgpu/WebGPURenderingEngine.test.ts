@@ -111,6 +111,265 @@ describe("WebGPURenderingEngine", () => {
     pixelRegionCapturerMock.constructor.mockClear();
   });
 
+  it("captures the current canvas with aligned BGRA readback converted to RGBA", async () => {
+    vi.stubGlobal("ImageData", class {
+      constructor(
+        public data: Uint8ClampedArray,
+        public width: number,
+        public height: number,
+      ) {}
+    });
+    const engine = new WebGPURenderingEngine(assets);
+    const mapped = new Uint8Array(256 * 2);
+    mapped.set([1, 2, 3, 4, 5, 6, 7, 8], 0);
+    mapped.set([9, 10, 11, 12, 13, 14, 15, 16], 256);
+    const buffer = {
+      mapAsync: vi.fn().mockResolvedValue(undefined),
+      getMappedRange: vi.fn(() => mapped.buffer),
+      unmap: vi.fn(),
+      destroy: vi.fn(),
+    };
+    const copyTextureToBuffer = vi.fn();
+    const device = { createBuffer: vi.fn(() => buffer) };
+    const texture = { width: 2, height: 2 } as GPUTexture;
+    Object.assign(engine as unknown as Record<string, unknown>, {
+      device,
+      context: {},
+      canvas: { width: 2, height: 2 },
+      format: "bgra8unorm",
+    });
+    const internals = engineOwners(engine).frameRenderer as unknown as {
+      renderFrame: (
+        time: number,
+        capture: boolean,
+        imageOnly: boolean,
+        captureCanvas: (encoder: GPUCommandEncoder, texture: GPUTexture) => void,
+      ) => void;
+    };
+    internals.renderFrame = vi.fn((_time, capture, imageOnly, captureCanvas) => {
+      expect(capture).toBe(true);
+      expect(imageOnly).toBe(true);
+      captureCanvas({ copyTextureToBuffer } as unknown as GPUCommandEncoder, texture);
+    });
+
+    const image = await engine.captureCurrentFrame();
+
+    expect(copyTextureToBuffer).toHaveBeenCalledWith(
+      { texture },
+      { buffer, bytesPerRow: 256, rowsPerImage: 2 },
+      { width: 2, height: 2, depthOrArrayLayers: 1 },
+    );
+    expect(Array.from(image.data)).toEqual([
+      3, 2, 1, 4, 7, 6, 5, 8,
+      11, 10, 9, 12, 15, 14, 13, 16,
+    ]);
+    expect(buffer.unmap).toHaveBeenCalledOnce();
+    expect(buffer.destroy).toHaveBeenCalledOnce();
+  });
+
+  it("copies the next frame the render loop draws while running instead of redrawing at a later time", async () => {
+    vi.stubGlobal("ImageData", class {
+      constructor(
+        public data: Uint8ClampedArray,
+        public width: number,
+        public height: number,
+      ) {}
+    });
+    const engine = new WebGPURenderingEngine(assets);
+    const mapped = new Uint8Array(256);
+    mapped.set([1, 2, 3, 4], 0);
+    const buffer = {
+      mapAsync: vi.fn().mockResolvedValue(undefined),
+      getMappedRange: vi.fn(() => mapped.buffer),
+      unmap: vi.fn(),
+      destroy: vi.fn(),
+    };
+    const copyTextureToBuffer = vi.fn();
+    const texture = { width: 1, height: 1 } as GPUTexture;
+    Object.assign(engine as unknown as Record<string, unknown>, {
+      device: { createBuffer: vi.fn(() => buffer) },
+      context: {},
+      canvas: { width: 1, height: 1 },
+      format: "rgba8unorm",
+      running: true,
+    });
+    const internals = engineOwners(engine).frameRenderer as unknown as {
+      renderFrame: ReturnType<typeof vi.fn>;
+      pendingScreenshotCopies: Array<(encoder: GPUCommandEncoder, texture: GPUTexture) => void>;
+    };
+    internals.renderFrame = vi.fn();
+
+    const pending = engine.captureCurrentFrame();
+    expect(internals.pendingScreenshotCopies).toHaveLength(1);
+
+    // What renderFrame does for the next RAF frame before submitting it.
+    const captures = internals.pendingScreenshotCopies;
+    internals.pendingScreenshotCopies = [];
+    captures.forEach((copy) => copy({ copyTextureToBuffer } as unknown as GPUCommandEncoder, texture));
+    const image = await pending;
+
+    expect(internals.renderFrame).not.toHaveBeenCalled();
+    expect(copyTextureToBuffer).toHaveBeenCalledOnce();
+    expect(Array.from(image.data)).toEqual([1, 2, 3, 4]);
+    expect(buffer.destroy).toHaveBeenCalledOnce();
+  });
+
+  it("redraws and captures after the running-frame wait expires", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("ImageData", class {
+      constructor(
+        public data: Uint8ClampedArray,
+        public width: number,
+        public height: number,
+      ) {}
+    });
+    try {
+      const engine = new WebGPURenderingEngine(assets);
+      const buffer = {
+        mapAsync: vi.fn().mockResolvedValue(undefined),
+        getMappedRange: vi.fn(() => new Uint8Array(256).buffer),
+        unmap: vi.fn(), destroy: vi.fn(),
+      };
+      Object.assign(engine as unknown as Record<string, unknown>, {
+        device: { createBuffer: vi.fn(() => buffer) }, context: {}, canvas: { width: 1, height: 1 }, format: "rgba8unorm", running: true,
+        timeManager: { isPaused: () => false }, diagnostics: { now: () => 42 },
+      });
+      const renderer = engineOwners(engine).frameRenderer as unknown as { renderFrame: ReturnType<typeof vi.fn>; pendingScreenshotCopies: unknown[] };
+      renderer.renderFrame = vi.fn((_time, capture, imageOnly, captureCanvas) => {
+        expect(capture).toBe(true);
+        expect(imageOnly).toBe(true);
+        captureCanvas({ copyTextureToBuffer: vi.fn() } as unknown as GPUCommandEncoder, { width: 1, height: 1 } as GPUTexture);
+      });
+
+      const capture = engine.captureCurrentFrame();
+      await vi.advanceTimersByTimeAsync(1000);
+
+      await expect(capture).resolves.toMatchObject({ width: 1, height: 1 });
+      expect(renderer.pendingScreenshotCopies).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rejects current-frame capture before WebGPU is initialized", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+
+    await expect(engine.captureCurrentFrame()).rejects.toThrow(
+      "Cannot capture the current frame before WebGPU is initialized",
+    );
+  });
+
+  it("rejects an empty WebGPU canvas before allocating a readback buffer", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const createBuffer = vi.fn();
+    Object.assign(engine as unknown as Record<string, unknown>, {
+      device: { createBuffer }, context: {}, canvas: { width: 0, height: 1 },
+    });
+
+    await expect(engine.captureCurrentFrame()).rejects.toThrow("Cannot capture an empty WebGPU canvas");
+    expect(createBuffer).not.toHaveBeenCalled();
+  });
+
+  it("cleans up the readback buffer when mapping fails", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const buffer = {
+      mapAsync: vi.fn().mockRejectedValue(new Error("device lost")),
+      getMappedRange: vi.fn(), unmap: vi.fn(), destroy: vi.fn(),
+    };
+    Object.assign(engine as unknown as Record<string, unknown>, {
+      device: { createBuffer: vi.fn(() => buffer) }, context: {}, canvas: { width: 1, height: 1 }, format: "rgba8unorm",
+    });
+    const renderer = engineOwners(engine).frameRenderer as unknown as { renderFrame: ReturnType<typeof vi.fn> };
+    renderer.renderFrame = vi.fn((_time, _capture, _imageOnly, captureCanvas) => {
+      captureCanvas({ copyTextureToBuffer: vi.fn() } as unknown as GPUCommandEncoder, { width: 1, height: 1 } as GPUTexture);
+    });
+
+    await expect(engine.captureCurrentFrame()).rejects.toThrow("device lost");
+    expect(buffer.unmap).toHaveBeenCalledOnce();
+    expect(buffer.destroy).toHaveBeenCalledOnce();
+  });
+
+  it("still destroys the readback buffer when unmapping reports it is already unmapped", async () => {
+    vi.stubGlobal("ImageData", class {
+      constructor(
+        public data: Uint8ClampedArray,
+        public width: number,
+        public height: number,
+      ) {}
+    });
+    const engine = new WebGPURenderingEngine(assets);
+    const buffer = {
+      mapAsync: vi.fn().mockResolvedValue(undefined),
+      getMappedRange: vi.fn(() => new Uint8Array(256).buffer),
+      unmap: vi.fn(() => {
+        throw new Error("already unmapped");
+      }),
+      destroy: vi.fn(),
+    };
+    Object.assign(engine as unknown as Record<string, unknown>, {
+      device: { createBuffer: vi.fn(() => buffer) }, context: {}, canvas: { width: 1, height: 1 }, format: "rgba8unorm",
+    });
+    const renderer = engineOwners(engine).frameRenderer as unknown as { renderFrame: ReturnType<typeof vi.fn> };
+    renderer.renderFrame = vi.fn((_time, _capture, _imageOnly, captureCanvas) => {
+      captureCanvas({ copyTextureToBuffer: vi.fn() } as unknown as GPUCommandEncoder, { width: 1, height: 1 } as GPUTexture);
+    });
+
+    await expect(engine.captureCurrentFrame()).resolves.toMatchObject({ width: 1, height: 1 });
+    expect(buffer.destroy).toHaveBeenCalledOnce();
+  });
+
+  it("rejects when a redraw does not produce a matching canvas texture", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const buffer = { unmap: vi.fn(), destroy: vi.fn() };
+    Object.assign(engine as unknown as Record<string, unknown>, {
+      device: { createBuffer: vi.fn(() => buffer) }, context: {}, canvas: { width: 2, height: 2 }, format: "rgba8unorm",
+    });
+    const renderer = engineOwners(engine).frameRenderer as unknown as { renderFrame: ReturnType<typeof vi.fn> };
+    renderer.renderFrame = vi.fn((_time, _capture, _imageOnly, captureCanvas) => {
+      captureCanvas({ copyTextureToBuffer: vi.fn() } as unknown as GPUCommandEncoder, { width: 1, height: 1 } as GPUTexture);
+    });
+
+    await expect(engine.captureCurrentFrame()).rejects.toThrow("did not produce a canvas frame");
+    expect(buffer.destroy).toHaveBeenCalledOnce();
+  });
+
+  it("returns cloned frozen custom uniforms while paused", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const original = [{ name: "uColour", type: "float3", value: [0.1, 0.2, 0.3] }];
+    (engineOwners(engine).frameRenderer as unknown as { pausedCustomUniformValues: typeof original }).pausedCustomUniformValues = original;
+    Object.assign(engine as unknown as Record<string, unknown>, {
+      timeManager: { isPaused: () => true },
+    });
+
+    const displayed = engine.getDisplayedCustomUniforms();
+
+    expect(displayed).toEqual(original);
+    expect(displayed).not.toBe(original);
+    expect(displayed[0].value).not.toBe(original[0].value);
+  });
+
+  it("returns live custom uniforms when playback is not paused", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const live = [{ name: "uValue", type: "float", value: 8 }];
+    Object.assign(engine as unknown as Record<string, unknown>, {
+      timeManager: { isPaused: () => false },
+    });
+    vi.spyOn(engine, "getCurrentCustomUniforms").mockReturnValue(live);
+
+    expect(engine.getDisplayedCustomUniforms()).toEqual(live);
+  });
+
+  it("uses live custom uniforms if a paused frame has not been rendered yet", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const live = [{ name: "uValue", type: "float", value: 8 }];
+    Object.assign(engine as unknown as Record<string, unknown>, {
+      timeManager: { isPaused: () => true },
+    });
+    vi.spyOn(engine, "getCurrentCustomUniforms").mockReturnValue(live);
+
+    expect(engine.getDisplayedCustomUniforms()).toEqual(live);
+  });
+
   it("compiles a structured Slang debug plan through the normal image/module pipeline", async () => {
     const engine = new WebGPURenderingEngine(assets);
     const compile = vi.spyOn(engineOwners(engine).session, "compileShaderPipeline").mockResolvedValue({ success: true });
@@ -554,7 +813,10 @@ describe("WebGPURenderingEngine", () => {
     const engine = new WebGPURenderingEngine(assets);
     stubDeviceAndContext(engine);
     const imagePipeline = renderablePipeline({
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => null,
+      getCurrentOutputViews: () => [{}],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => null,
     });
     (engineOwners(engine).session as any).passGraph = [
@@ -614,11 +876,17 @@ describe("WebGPURenderingEngine", () => {
     stubDeviceAndContext(engine);
 
     const bufferPipeline = renderablePipeline({
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => ({ label: "bufferA-current" }),
+      getCurrentOutputViews: () => [{ label: "bufferA-current" }],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => ({ label: "bufferA-previous" }),
     });
     const imagePipeline = renderablePipeline({
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => null,
+      getCurrentOutputViews: () => [{}],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => null,
     });
 
@@ -1483,7 +1751,10 @@ describe("WebGPURenderingEngine", () => {
       getPipeline: () => ({ label: "buffer-pipeline" }),
       getBindGroup: () => ({ label: "buffer-bind-group" }),
       getUniformBuffer: () => ({ label: "buffer-uniform" }),
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => ({ label: "buffer-current-view" }),
+      getCurrentOutputViews: () => [{ label: "buffer-current-view" }],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => ({ label: "buffer-previous-view" }),
       rebuildBindGroup: vi.fn(),
       swap: vi.fn(() => calls.push("swap:BufferA")),
@@ -1492,7 +1763,10 @@ describe("WebGPURenderingEngine", () => {
       getPipeline: () => ({ label: "image-pipeline" }),
       getBindGroup: () => ({ label: "image-bind-group" }),
       getUniformBuffer: () => ({ label: "image-uniform" }),
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => null,
+      getCurrentOutputViews: () => [{}],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => null,
       rebuildBindGroup: vi.fn(),
       swap: vi.fn(),
@@ -1541,7 +1815,10 @@ describe("WebGPURenderingEngine", () => {
       getPipeline: () => ({ label: "buffer-pipeline" }),
       getBindGroup: () => ({ label: "buffer-bind-group" }),
       getUniformBuffer: () => ({ label: "buffer-uniform" }),
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => ({ label: "buffer-current-view" }),
+      getCurrentOutputViews: () => [{ label: "buffer-current-view" }],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => ({ label: "buffer-previous-view" }),
       rebuildBindGroup: vi.fn(),
       swap: vi.fn(),
@@ -1550,7 +1827,10 @@ describe("WebGPURenderingEngine", () => {
       getPipeline: () => ({ label: "image-pipeline" }),
       getBindGroup: () => ({ label: "image-bind-group" }),
       getUniformBuffer: () => ({ label: "image-uniform" }),
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => null,
+      getCurrentOutputViews: () => [{}],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => null,
       rebuildBindGroup: vi.fn(),
       swap: vi.fn(),
@@ -1626,7 +1906,10 @@ describe("WebGPURenderingEngine", () => {
       getPipeline: () => ({ label: "buffer-pipeline" }),
       getBindGroup: () => ({ label: "buffer-bind-group" }),
       getUniformBuffer: () => bufferUniform,
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => ({ label: "buffer-current-view" }),
+      getCurrentOutputViews: () => [{ label: "buffer-current-view" }],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => ({ label: "buffer-previous-view" }),
       rebuildBindGroup: vi.fn(),
       swap: vi.fn(),
@@ -1635,7 +1918,10 @@ describe("WebGPURenderingEngine", () => {
       getPipeline: () => ({ label: "image-pipeline" }),
       getBindGroup: () => ({ label: "image-bind-group" }),
       getUniformBuffer: () => imageUniform,
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => null,
+      getCurrentOutputViews: () => [{}],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => null,
       rebuildBindGroup: vi.fn(),
       swap: vi.fn(),
@@ -2016,7 +2302,10 @@ describe("WebGPURenderingEngine", () => {
         Float32Array.from([2026, 7, 19, 12345]),
       );
       const imagePipeline = renderablePipeline({
+        getCurrentOutputTexture: () => null,
         getCurrentOutputView: () => null,
+        getCurrentOutputViews: () => [{}],
+        getPreviousOutputTexture: () => null,
         getPreviousOutputView: () => null,
       });
       (engineOwners(engine).session as any).passGraph = [{
@@ -4001,6 +4290,8 @@ describe("WebGPURenderingEngine", () => {
       expect(enumerations).toBe(1);
       expect((engineOwners(engine).session as any).passPipelines).not.toBe(predecessors);
       expect(engine.getVariableCaptureCompileContext()).toEqual({
+        captureChannelSnapshot: expect.any(Function),
+        nativeRender: undefined,
         commonCode: "",
         slangPassName: "Image",
         slangChannels: [expect.objectContaining({ slot: 0, key: "iChannel0", kind: "buffer" })],
@@ -4339,6 +4630,8 @@ describe("WebGPURenderingEngine", () => {
       ));
 
       expect(engine.getVariableCaptureCompileContext("candidate image")).toEqual({
+        captureChannelSnapshot: expect.any(Function),
+        nativeRender: undefined,
         commonCode: "float commonA() { return 1.0; }",
         slangPassName: "Image",
         slangChannels: [expect.objectContaining({ slot: 0, key: "iChannel0", kind: "buffer" })],
@@ -4350,6 +4643,8 @@ describe("WebGPURenderingEngine", () => {
       rejectCandidate();
       expect((await pending)?.success).toBe(false);
       expect(engine.getVariableCaptureCompileContext("candidate image")).toEqual({
+        captureChannelSnapshot: expect.any(Function),
+        nativeRender: undefined,
         commonCode: "float commonB() { return 2.0; }",
         slangPassName: "Image",
         slangChannels: [expect.objectContaining({ slot: 0, key: "iChannel1", kind: "buffer" })],
@@ -4371,6 +4666,8 @@ describe("WebGPURenderingEngine", () => {
 
       expect(failedSamePath?.success).toBe(false);
       expect(engine.getVariableCaptureCompileContext("same-path candidate image")).toEqual({
+        captureChannelSnapshot: expect.any(Function),
+        nativeRender: undefined,
         commonCode: "float commonC() { return 3.0; }",
         slangPassName: "Image",
         slangChannels: [expect.objectContaining({ slot: 0, key: "iChannel0", kind: "buffer" })],
@@ -4406,6 +4703,8 @@ describe("WebGPURenderingEngine", () => {
 
       expect(result?.success).toBe(true);
       expect(engine.getVariableCaptureCompileContext("candidate image")).toEqual({
+        captureChannelSnapshot: expect.any(Function),
+        nativeRender: undefined,
         commonCode: "float commonB() { return 2.0; }",
         slangPassName: "Image",
         slangChannels: [expect.objectContaining({ slot: 0, key: "iChannel1", kind: "buffer" })],
@@ -4467,7 +4766,10 @@ describe("WebGPURenderingEngine", () => {
       getPipeline: () => ({ label: "pipeline" }),
       getBindGroup: () => ({ label: "bind-group" }),
       getUniformBuffer: () => ({ label: "uniform" }),
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => ({ label: "current-view" }),
+      getCurrentOutputViews: () => [{ label: "current-view" }],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => ({ label: "previous-view" }),
       rebuildBindGroup: vi.fn(),
       swap: vi.fn(),
@@ -4495,16 +4797,92 @@ describe("WebGPURenderingEngine", () => {
     (engine as any).canvas = { width: 320, height: 180 };
   }
 
+  it("forwards the canvas capture callback through frame encoding before submission", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    stubDeviceAndContext(engine);
+    const owners = engineOwners(engine);
+    Object.assign(owners.session, {
+      passGraph: [{ name: "Image", width: 320, height: 180, output: "canvas", channels: [] }],
+      passPipelines: new Map([["Image", renderablePipeline()]]),
+    });
+    const device = (engine as unknown as { device: GPUDevice }).device;
+    const submit = vi.spyOn(device.queue, "submit");
+    const copy = vi.fn();
+
+    owners.frameRenderer.renderFrame(1000, true, true, copy);
+
+    expect(copy).toHaveBeenCalledOnce();
+    expect(copy).toHaveBeenCalledWith(expect.any(Object), expect.objectContaining({ createView: expect.any(Function) }));
+    expect(copy.mock.invocationCallOrder[0]).toBeLessThan(submit.mock.invocationCallOrder[0]);
+  });
+
+  it.each(["canvas copy", "submission"])("cancels storage captures when %s fails during canvas capture", (failureStage) => {
+    const engine = new WebGPURenderingEngine(assets);
+    stubDeviceAndContext(engine);
+    const owners = engineOwners(engine);
+    Object.assign(owners.session, {
+      passGraph: [{ name: "Image", width: 320, height: 180, output: "canvas", channels: [] }],
+      passPipelines: new Map([["Image", renderablePipeline()]]),
+    });
+    const device = (engine as unknown as { device: GPUDevice }).device;
+    const failure = new Error(`${failureStage} failed`);
+    const copy = vi.fn(() => {
+      if (failureStage === "canvas copy") {
+        throw failure;
+      }
+    });
+    const submit = vi.spyOn(device.queue, "submit").mockImplementation(() => {
+      throw failure;
+    });
+    const cancel = vi.spyOn(owners.storage.captures, "cancel");
+    const mappings = vi.spyOn(owners.storage.captures, "beginMappings");
+
+    expect(() => owners.frameRenderer.renderFrame(1000, true, true, copy)).toThrow(failure);
+
+    expect(copy).toHaveBeenCalledOnce();
+    expect(submit).toHaveBeenCalledTimes(failureStage === "submission" ? 1 : 0);
+    expect(cancel).toHaveBeenCalledWith("Storage capture cancelled because the frame could not be submitted");
+    expect(mappings).not.toHaveBeenCalled();
+    expect(owners.session.hasSubmittedFrameForInstalledGeneration).toBe(false);
+  });
+
+  it("copies every queued screenshot from the canvas frame before submitting it", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    stubDeviceAndContext(engine);
+    const pipeline = renderablePipeline();
+    Object.assign(engineOwners(engine).session, {
+      passGraph: [{ name: "Image", width: 320, height: 180, output: "canvas", channels: [] }],
+      passPipelines: new Map([["Image", pipeline]]),
+    });
+    const copy = vi.fn();
+    (engineOwners(engine).frameRenderer as unknown as {
+      pendingScreenshotCopies: Array<typeof copy>;
+    }).pendingScreenshotCopies = [copy];
+
+    engine.render(1000);
+
+    expect(copy).toHaveBeenCalledOnce();
+    expect((engineOwners(engine).frameRenderer as unknown as {
+      pendingScreenshotCopies: unknown[];
+    }).pendingScreenshotCopies).toEqual([]);
+  });
+
   it("passes the source pipeline's previous-frame view for a self-feedback buffer channel", () => {
     const engine = new WebGPURenderingEngine(assets);
     stubDeviceAndContext(engine);
 
     const bufferPipeline = renderablePipeline({
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => ({ label: "bufferA-current" }),
+      getCurrentOutputViews: () => [{ label: "bufferA-current" }],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => ({ label: "bufferA-previous" }),
     });
     const imagePipeline = renderablePipeline({
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => null,
+      getCurrentOutputViews: () => [{}],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => null,
     });
 
@@ -4537,11 +4915,17 @@ describe("WebGPURenderingEngine", () => {
     stubDeviceAndContext(engine);
 
     const bufferPipeline = renderablePipeline({
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => ({ label: "bufferA-current" }),
+      getCurrentOutputViews: () => [{ label: "bufferA-current" }],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => ({ label: "bufferA-previous" }),
     });
     const imagePipeline = renderablePipeline({
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => null,
+      getCurrentOutputViews: () => [{}],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => null,
     });
 
@@ -4568,6 +4952,67 @@ describe("WebGPURenderingEngine", () => {
     );
   });
 
+  it.each([
+    { readFrom: "current-frame" as const, output: 0 },
+    { readFrom: "previous-frame" as const, output: 0 },
+    { readFrom: "current-frame" as const, output: 1 },
+    { readFrom: "previous-frame" as const, output: 1 },
+  ])("retains the $readFrom buffer output $output when capturing after the feedback swap", ({ readFrom, output }) => {
+    const engine = new WebGPURenderingEngine(assets);
+    stubDeviceAndContext(engine);
+    let swapped = false;
+    const bufferPipeline = renderablePipeline({
+      getCurrentOutputView: vi.fn((index = 0) => ({ label: `${swapped ? "older" : "latest"}-${index}` })),
+      getPreviousOutputView: vi.fn((index = 0) => ({ label: `${swapped ? "latest" : "older"}-${index}` })),
+      swap: vi.fn(() => {
+        swapped = !swapped;
+      }),
+    });
+    const imagePipeline = renderablePipeline();
+    // These are partial GPU pipeline fixtures; unused rendering operations are stubbed above.
+    Object.assign(engineOwners(engine).session, {
+      passGraph: [
+        { name: "BufferA", width: 320, height: 180, output: "texture", channels: [] },
+        { name: "Image", width: 320, height: 180, output: "canvas", channels: [
+          { kind: "buffer", slot: 0, key: "iChannel0", source: "BufferA", readFrom, output },
+        ] },
+      ],
+      passPipelines: new Map([["BufferA", bufferPipeline], ["Image", imagePipeline]]),
+    });
+    engine.renderForCapture();
+    const original = imagePipeline.rebuildBindGroup.mock.calls[0][0];
+    expect(original[0].textureView).toEqual({ label: `${readFrom === "current-frame" ? "latest" : "older"}-${output}` });
+    engineOwners(engine).frameRenderer.renderFrame(1000, true, true);
+    expect(imagePipeline.rebuildBindGroup.mock.calls[1][0]).toEqual(original);
+    expect(bufferPipeline.swap).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { readFrom: "current-frame" as const, dispatched: true },
+    { readFrom: "previous-frame" as const, dispatched: true },
+    { readFrom: "current-frame" as const, dispatched: false },
+    { readFrom: "previous-frame" as const, dispatched: false },
+  ])("keeps the $readFrom compute texture after a frame (dispatched: $dispatched)", ({ readFrom, dispatched }) => {
+    const engine = new WebGPURenderingEngine(assets);
+    const compute = {
+      getLayerOutputView: vi.fn(() => ({ label: "older" })),
+      getPreviousLayerOutputView: vi.fn(() => ({ label: "latest" })),
+    };
+    // Partial compute pipeline: this test only exercises channel texture selection.
+    Object.assign(engineOwners(engine).session, { computePipelines: new Map([["Compute", compute]]) });
+    const resources = engineOwners(engine).channels.getChannelResources({
+      name: "Image", width: 8, height: 8, output: "canvas", channels: [
+        { kind: "buffer", slot: 0, key: "iChannel0", source: "Compute", layer: 2, readFrom },
+      ],
+      source: "", language: "wgsl", geometry: "fullscreen", kind: "render", outputLayers: 1,
+      dispatchCount: 1, dispatchOnce: false, workgroupSize: [1, 1, 1],
+    }, false, new Set(dispatched ? ["Compute"] : []), true);
+    const latest = readFrom === "current-frame" || !dispatched;
+    expect(resources?.[0].textureView).toEqual({ label: latest ? "latest" : "older" });
+    expect(latest ? compute.getPreviousLayerOutputView : compute.getLayerOutputView)
+      .toHaveBeenCalledWith(2);
+  });
+
   it("attaches the requested sampler to a non-default buffer input", () => {
     const engine = new WebGPURenderingEngine(assets);
     stubDeviceAndContext(engine);
@@ -4576,7 +5021,9 @@ describe("WebGPURenderingEngine", () => {
     vi.mocked(device.createSampler).mockReturnValue(sampler);
 
     const bufferPipeline = renderablePipeline({
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => ({ label: "bufferA-current" }),
+      getCurrentOutputViews: () => [{ label: "bufferA-current" }],
     });
     const imagePipeline = renderablePipeline();
     (engineOwners(engine).session as any).passGraph = [
@@ -4613,11 +5060,17 @@ describe("WebGPURenderingEngine", () => {
     const positions = { label: "positions" } as unknown as GPUBuffer;
     const installedStorage = new Map([["positions", positions]]);
     const bufferPipeline = renderablePipeline({
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => ({ label: "bufferA-current" }),
+      getCurrentOutputViews: () => [{ label: "bufferA-current" }],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => ({ label: "bufferA-previous" }),
     });
     const imagePipeline = renderablePipeline({
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => null,
+      getCurrentOutputViews: () => [{}],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => null,
     });
     (engineOwners(engine).storage as any).storageBuffers = installedStorage;
@@ -4656,11 +5109,17 @@ describe("WebGPURenderingEngine", () => {
     const writeBuffer = (engine as any).device.queue.writeBuffer as ReturnType<typeof vi.fn>;
 
     const bufferPipeline = renderablePipeline({
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => ({ label: "bufferA-current" }),
+      getCurrentOutputViews: () => [{ label: "bufferA-current" }],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => ({ label: "bufferA-previous" }),
     });
     const imagePipeline = renderablePipeline({
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => null,
+      getCurrentOutputViews: () => [{}],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => null,
     });
 
@@ -4704,7 +5163,10 @@ describe("WebGPURenderingEngine", () => {
 
     const bufferPipeline = renderablePipeline();
     const imagePipeline = renderablePipeline({
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => null,
+      getCurrentOutputViews: () => [{}],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => null,
     });
 
@@ -4739,7 +5201,10 @@ describe("WebGPURenderingEngine", () => {
       rebuildBindGroup: vi.fn(() => {
         imageBindGroup = { label: "image-bind-group" };
       }),
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => null,
+      getCurrentOutputViews: () => [{}],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => null,
     });
 
@@ -4772,10 +5237,14 @@ describe("WebGPURenderingEngine", () => {
 
     let bufferViewToggle = false;
     const bufferPipeline = renderablePipeline({
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => (bufferViewToggle ? { label: "swapped-view" } : { label: "initial-view" }),
     });
     const imagePipeline = renderablePipeline({
+      getCurrentOutputTexture: () => null,
       getCurrentOutputView: () => null,
+      getCurrentOutputViews: () => [{}],
+      getPreviousOutputTexture: () => null,
       getPreviousOutputView: () => null,
     });
 
@@ -5855,11 +6324,17 @@ describe("WebGPURenderingEngine", () => {
       };
 
       const bufferPipeline = renderablePipeline({
+        getCurrentOutputTexture: () => null,
         getCurrentOutputView: () => ({ label: "bufferA-current" }),
+        getCurrentOutputViews: () => [{ label: "bufferA-current" }],
+        getPreviousOutputTexture: () => null,
         getPreviousOutputView: () => ({ label: "bufferA-previous" }),
       });
       const imagePipeline = renderablePipeline({
+        getCurrentOutputTexture: () => null,
         getCurrentOutputView: () => null,
+        getCurrentOutputViews: () => [{}],
+        getPreviousOutputTexture: () => null,
         getPreviousOutputView: () => null,
       });
 

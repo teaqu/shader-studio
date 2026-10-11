@@ -1,6 +1,7 @@
 import type { FunctionMock } from './FunctionMock';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ConfigManager } from '../lib/ConfigManager';
+import { withDefaultRenderEntryPoints } from '@shader-studio/types';
 import type { ShaderConfig, BufferPass, ImagePass } from '@shader-studio/types';
 import type { Transport } from '../lib/transport/MessageTransport';
 
@@ -36,6 +37,18 @@ describe('ConfigManager', () => {
     transport = createMockTransport();
     onConfigChange = vi.fn();
     configManager = new ConfigManager(transport, onConfigChange);
+  });
+
+  it('keeps inferred stages in memory until a user changes config, then saves both stages', () => {
+    const inferred = withDefaultRenderEntryPoints(null,
+      '[shader("vertex")] float4 vertices() { return float4(0); } [shader("fragment")] float4 image() { return float4(1); }', 'slang');
+    configManager.setConfig(inferred);
+    expect(transport.postMessage).not.toHaveBeenCalled();
+    expect(onConfigChange).not.toHaveBeenCalled();
+    configManager.updateImagePass({ ...inferred!.passes.Image, entryPoints: { ...inferred!.passes.Image.entryPoints, fragment: 'otherImage' } });
+    expect(configManager.getConfig()!.passes.Image.entryPoints).toEqual({ vertex: 'vertices', fragment: 'otherImage' });
+    expect(transport.postMessage).toHaveBeenCalled();
+    expect(onConfigChange).toHaveBeenCalled();
   });
 
   describe('Default Config', () => {

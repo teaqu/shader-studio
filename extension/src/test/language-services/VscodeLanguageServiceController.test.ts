@@ -232,7 +232,7 @@ suite("VS Code language-service revisions", () => {
           Compute: {
             type: "compute",
             path: "./compute-lab/passes/compute.slang",
-            entryPoint: "computeMain",
+            entryPoints: { compute: "computeMain" },
             outputLayers: 3,
           },
         },
@@ -246,7 +246,55 @@ suite("VS Code language-service revisions", () => {
       const environment = new ShaderAuthoringEnvironmentProvider().environmentFor(document);
 
       assert.strictEqual(environment?.stage, "compute");
+      assert.strictEqual(environment?.entryPoint, "computeMain");
       assert.strictEqual(environment?.outputLayers, 3);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("provides the selected native fragment entry point to WGSL authoring", () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-native-ls-"));
+    const shaderPath = path.join(directory, "native.wgsl");
+    const shaderSource = "@vertex fn imageVertex() -> @builtin(position) vec4f { return vec4f(0.0); }\n@fragment fn imageFragment() -> @location(0) vec4f { return vec4f(1.0); }";
+    try {
+      fs.writeFileSync(shaderPath, shaderSource);
+      fs.writeFileSync(path.join(directory, "native.sha.json"), JSON.stringify({
+        version: "1.0",
+        passes: { Image: { entryPoints: { vertex: "imageVertex", fragment: "imageFragment" } } },
+      }));
+      const environment = new ShaderAuthoringEnvironmentProvider().environmentFor({
+        uri: vscode.Uri.file(shaderPath), languageId: "wgsl", getText: () => shaderSource,
+      });
+
+      assert.strictEqual(environment?.stage, "fragment");
+      assert.strictEqual(environment?.entryPoint, "imageFragment");
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("keeps implicit Image semantics when its root source is shared with compute and buffer passes", () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-shared-root-ls-"));
+    const shaderPath = path.join(directory, "scene.wgsl");
+    const shaderSource = "@vertex fn imageVertex() -> @builtin(position) vec4f { return vec4f(0.0); }\n@fragment fn imageFragment() -> @location(0) vec4f { return vec4f(1.0); }\n@compute @workgroup_size(1) fn simulate() {}";
+    try {
+      fs.writeFileSync(shaderPath, shaderSource);
+      fs.writeFileSync(path.join(directory, "scene.sha.json"), JSON.stringify({
+        version: "1.0",
+        passes: {
+          Simulation: { type: "compute", path: "scene.wgsl", entryPoints: { compute: "simulate" } },
+          BufferA: { path: "scene.wgsl", entryPoints: { vertex: "imageVertex", fragment: "imageFragment" } },
+          Image: { entryPoints: { vertex: "imageVertex", fragment: "imageFragment" } },
+        },
+      }));
+      const environment = new ShaderAuthoringEnvironmentProvider().environmentFor({
+        uri: vscode.Uri.file(shaderPath), languageId: "wgsl", getText: () => shaderSource,
+      });
+
+      assert.strictEqual(environment?.passName, "Image");
+      assert.strictEqual(environment?.stage, "fragment");
+      assert.strictEqual(environment?.entryPoint, "imageFragment");
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
     }

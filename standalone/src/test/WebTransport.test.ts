@@ -2,6 +2,8 @@ import { getEditorDocument } from '../state/editorDocuments.svelte';
 import { getSelectedEditor, getRequestedEditor, getNewShaderVisible, getRequestedPanel, resetShellState, setNewShaderVisible } from '../state/shellState.svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDefaultWorkspaceFiles } from '../defaultWorkspace';
+import { VirtualWorkspace } from '../VirtualWorkspace';
+import { WebExtensionHost } from '../WebExtensionHost';
 import { inspectWorkspaceStorage, WebTransport } from '../WebTransport';
 
 async function eventually(assertion: () => void): Promise<void> {
@@ -19,6 +21,42 @@ describe('WebTransport', () => {
         values.set(key, value);
       },
     });
+  });
+
+  it('keeps the workspace connected when a viewer is disposed and restores its replacement', async () => {
+    const transport = new WebTransport();
+    const oldViewer = transport.createViewerTransport();
+    const oldReceive = vi.fn();
+    oldViewer.onMessage(oldReceive);
+    await eventually(() => expect(oldReceive).toHaveBeenCalled());
+    oldViewer.dispose();
+    expect(oldViewer.isConnected()).toBe(false);
+    expect(transport.isConnected()).toBe(true);
+    oldReceive.mockClear();
+    const replacement = transport.createViewerTransport();
+    const receive = vi.fn();
+    replacement.onMessage(receive);
+    replacement.postMessage({ type: 'refresh' });
+    await eventually(() => expect(receive).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ type: 'shaderSource' }),
+    })));
+    expect(oldReceive).not.toHaveBeenCalled();
+    transport.dispose();
+    expect(replacement.isConnected()).toBe(false);
+  });
+
+  it('does not attach a disposed viewer while the workspace is opening', async () => {
+    const transport = new WebTransport();
+    const viewer = transport.createViewerTransport();
+    const receive = vi.fn();
+    viewer.onMessage(receive);
+    viewer.dispose();
+    viewer.onMessage(receive);
+    viewer.postMessage({ type: 'refresh' });
+    await transport.readEditorFile('/shaders/aurora.glsl');
+    expect(receive).not.toHaveBeenCalled();
+    expect(transport.isConnected()).toBe(true);
+    transport.dispose();
   });
 
   it('persists explorer preferences before queued workspace saves can finish', async () => {
@@ -85,6 +123,140 @@ describe('WebTransport', () => {
     const transport = new WebTransport();
     expect(transport.getType()).toBe('web');
     expect(transport.getShaderExplorerHostApi()).toBeDefined();
+    transport.dispose();
+  });
+
+  it('flushes pending editor text through the host before reporting persistence complete', async () => {
+    const transport = new WebTransport();
+    const path = '/shaders/aurora.glsl';
+    let pending = true;
+    const detach = transport.registerPendingSave(() => {
+      if (pending) {
+        pending = false;
+        transport.postMessage({ type: 'updateShaderSource', payload: { path, code: 'latest text' } });
+      }
+    });
+    await transport.flush();
+    expect(await transport.readEditorFile(path)).toBe('latest text');
+    detach(); detach();
+    await transport.flush();
+    transport.dispose();
+  });
+
+  it('waits for an editor save that arrives while workspace persistence is in progress', async () => {
+    const transport = new WebTransport();
+    await transport.readEditorFile('/shaders/aurora.glsl');
+    const originalFlush = VirtualWorkspace.prototype.flush;
+    let releaseFirstFlush!: () => void;
+    let firstFlushStarted!: () => void;
+    const firstFlush = new Promise<void>(resolve => {
+      releaseFirstFlush = resolve;
+    });
+    const flushStarted = new Promise<void>(resolve => {
+      firstFlushStarted = resolve;
+    });
+    let calls = 0;
+    vi.spyOn(VirtualWorkspace.prototype, 'flush').mockImplementation(function(this: VirtualWorkspace) {
+      calls += 1;
+      if (calls === 1) {
+        firstFlushStarted();
+        return firstFlush;
+      }
+      return originalFlush.call(this);
+    });
+    let saveArrived = false;
+    const detach = transport.registerPendingSave(() => {
+      if (saveArrived) {
+        transport.postMessage({ type: 'updateShaderSource', payload: { path: '/shaders/aurora.glsl', code: 'saved during IO' } });
+        saveArrived = false;
+      }
+    });
+
+    const saving = transport.flush();
+    await flushStarted;
+    saveArrived = true;
+    releaseFirstFlush();
+    await saving;
+
+    expect(await transport.readEditorFile('/shaders/aurora.glsl')).toBe('saved during IO');
+    expect(calls).toBeGreaterThanOrEqual(2);
+    detach();
+    transport.dispose();
+  });
+
+  it('surfaces a tracked viewer-message failure when flushing', async () => {
+    const handling = vi.spyOn(WebExtensionHost.prototype, 'handleViewerMessage')
+      .mockRejectedValueOnce(new Error('write failed'));
+    const transport = new WebTransport();
+    transport.postMessage({ type: 'updateShaderSource', payload: { path: '/shaders/aurora.glsl', code: 'lost' } });
+
+    await eventually(() => expect(handling).toHaveBeenCalledOnce());
+    await Promise.resolve();
+    await expect(transport.flush()).rejects.toThrow('write failed');
+    expect(handling).toHaveBeenCalledOnce();
+    transport.dispose();
+  });
+
+  it('waits for in-flight workspace edits and clears before flushing', async () => {
+    let finishEdit!: () => void;
+    let finishClear!: () => void;
+    const editing = vi.spyOn(WebExtensionHost.prototype, 'applyWorkspaceEdit').mockImplementation(() => new Promise<void>(resolve => {
+      finishEdit = resolve;
+    }));
+    const clearing = vi.spyOn(WebExtensionHost.prototype, 'clearWorkspace').mockImplementation(() => new Promise<void>(resolve => {
+      finishClear = resolve;
+    }));
+    const transport = new WebTransport();
+    const edit = transport.applyWorkspaceEdit([], () => true, vi.fn());
+    const clear = transport.clearWorkspace();
+    await vi.waitFor(() => {
+      expect(editing).toHaveBeenCalledOnce();
+      expect(clearing).toHaveBeenCalledOnce();
+    });
+    let flushed = false;
+    const barrier = transport.flush().then(() => {
+      flushed = true;
+    });
+    await Promise.resolve();
+    expect(flushed).toBe(false);
+
+    finishEdit();
+    finishClear();
+    await Promise.all([edit, clear, barrier]);
+    expect(flushed).toBe(true);
+    transport.dispose();
+  });
+
+  it('unregisters pending editor saves when disposed', async () => {
+    const transport = new WebTransport();
+    const save = vi.fn();
+    transport.registerPendingSave(save);
+
+    transport.dispose();
+    await transport.flush();
+
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('waits for an in-flight backup import before allowing reload', async () => {
+    let complete!: () => void;
+    const importing = vi.spyOn(VirtualWorkspace.prototype, 'importBackup').mockImplementation(() =>
+      new Promise<void>(resolve => {
+        complete = resolve;
+      }));
+    const transport = new WebTransport();
+    const imported = transport.importWorkspaceBackup({}, { replace: true });
+    await vi.waitFor(() => expect(importing).toHaveBeenCalledOnce());
+    let saved = false;
+    const barrier = transport.flush().then(() => {
+      saved = true;
+    });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(saved).toBe(false);
+    complete();
+    await imported;
+    await barrier;
+    expect(saved).toBe(true);
     transport.dispose();
   });
 
@@ -318,6 +490,21 @@ it.each(['active', 'beside'] as const)('opens requested buffer in standalone wit
   transport.dispose();
 });
 
+it('does not open buffers when navigation on buffer switch is disabled', async () => {
+  resetShellState();
+  const transport = new WebTransport();
+  expect(transport.settings.update('navigateOnBufferSwitch', false)).toBe(true);
+  transport.postMessage({ type: 'navigateToBuffer', payload: {
+    bufferPath: '/shaders/glow-trails/trails.buffer.glsl', shaderPath: '/shaders/glow-trails.glsl', mode: 'active',
+  } });
+  await transport.readEditorFile('/shaders/aurora.glsl');
+  expect(getRequestedEditor()).toBeNull();
+  // Standalone preferences are browser-global. Restore the default so later
+  // transport tests do not inherit this deliberate opt-out.
+  transport.settings.update('navigateOnBufferSwitch', true);
+  transport.dispose();
+});
+
 it('ignores missing navigation targets and navigation after disposal', async () => {
   resetShellState();
   const transport = new WebTransport();
@@ -395,4 +582,26 @@ it('keeps manual edits out of the preview until a compile is requested', async (
     data: expect.objectContaining({ type: 'shaderSource', code: 'manual edit' }),
   })));
   transport.dispose();
+});
+
+it('delegates viewer document indexing and atomic edits while guarding disposed viewers', async () => {
+  const transport = new WebTransport();
+  const viewer = transport.createViewerTransport();
+  expect(viewer.getType()).toBe('web');
+  const documents = await viewer.getWorkspaceDocuments!('glsl');
+  const document = documents.find(file => file.uri.endsWith('/aurora.glsl'))!;
+  expect(document).toBeDefined();
+  const change = { uri: document.uri, before: document.text, after: `${document.text}\n// renamed` };
+  const commit = vi.fn();
+  await viewer.applyWorkspaceEdit!([change], () => true, commit, new Map([[document.uri, document.text]]));
+  expect(commit).toHaveBeenCalledOnce();
+  expect(await transport.readEditorFile('/shaders/aurora.glsl')).toBe(change.after);
+  expect(getEditorDocument('/shaders/aurora.glsl')).toBe(change.after);
+  viewer.dispose();
+  await expect(viewer.applyWorkspaceEdit!([{ ...change, before: change.after, after: document.text }], () => true, commit)).rejects.toThrow();
+  expect(commit).toHaveBeenCalledOnce();
+  const receive = vi.fn();
+  transport.dispose();
+  transport.onMessage(receive);
+  expect(receive).not.toHaveBeenCalled();
 });

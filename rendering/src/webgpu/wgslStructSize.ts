@@ -30,6 +30,7 @@ export interface WgslStructInfo {
 }
 
 interface WgslField {
+  name: string;
   type: string;
   size?: number;
   alignment?: number;
@@ -241,7 +242,7 @@ function parseField(line: string): WgslField | null {
 
   const type = normalizeTypeName(match[2]!);
 
-  return { type, size, alignment };
+  return { name: match[1]!, type, size, alignment };
 }
 
 function normalizeTypeName(typeName: string): string {
@@ -265,3 +266,44 @@ function alignUp(value: number, alignment: number): number {
   return Math.ceil(value / alignment) * alignment;
 }
 import { maskWgslNonCode } from "./WgslPrelude";
+
+/** Field offsets from the same layout calculation used for compiled storage validation. */
+export function resolveStorageStructType(source: string, type: string, bufferName?: string): string {
+  const code = maskWgslNonCode(source);
+  if (bufferName) {
+    const variables = [...code.matchAll(/var\s*<\s*storage[^>]*>\s*(\w+)\s*:\s*array\s*<\s*(\w+)/g)];
+    const variable = variables.find(item => item[1] === bufferName || (item[1]?.startsWith(`${bufferName}_`) && /^\d+$/.test(item[1].slice(bufferName.length + 1))));
+    if (variable) {
+      return variable[2]!;
+    }
+  }
+  const names = [...code.matchAll(/\bstruct\s+(\w+)\s*\{/g)].map(item => item[1]!);
+  return names.find(name => name === type)
+    ?? names.find(name => name.startsWith(`${type}_std430_`) && /^\d+$/.test(name.slice(type.length + 8)))
+    ?? type;
+}
+
+export function extractStorageFields(source: string, type: string, bufferName?: string): import('@shader-studio/types').StorageFieldLayout[] | undefined {
+  const structs = extractStructSizes(source);
+  const actualType = resolveStorageStructType(source, type, bufferName);
+  const match = [...maskWgslNonCode(source).matchAll(/\bstruct\s+(\w+)\s*\{([^}]*)\}/g)].find(item => item[1] === actualType);
+  if (!match || !structs.has(actualType)) {
+    return undefined;
+  }
+  let offset = 0;
+  const fields: import('@shader-studio/types').StorageFieldLayout[] = [];
+  for (const line of splitTopLevel(match[2]!, ',;')) {
+    const field = parseField(line);
+    if (!field) {
+      continue;
+    }
+    const layout = fieldLayout(field, structs);
+    if (!layout) {
+      return undefined;
+    }
+    offset = alignUp(offset, layout.alignment);
+    fields.push({ name: actualType === type ? field.name : field.name.replace(/_\d+$/, ''), type: field.type.replace(/^atomic_(i32|u32)$/, 'atomic<$1>'), offset });
+    offset += layout.size;
+  }
+  return fields;
+}

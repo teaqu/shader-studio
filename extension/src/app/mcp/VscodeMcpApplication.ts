@@ -155,7 +155,7 @@ export class VscodeMcpApplication implements McpApplication {
       const output = await this.output(id, args.includePreview === true, {
         expectedPath: state.path, requiredPath: state.path, requiredSequence: sequence,
       }, signal);
-      return { ...file, applied: true, ...output };
+      return { ...output, ...file, applied: true, previewPath: state.path };
     } catch (error) {
       // The edit already happened: do not encourage retrying a successful edit.
       return { ...file, applied: true, previewError: error instanceof Error ? error.message : String(error) };

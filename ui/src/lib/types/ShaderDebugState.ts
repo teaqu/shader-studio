@@ -28,4 +28,10 @@ export interface ShaderDebugState {
   isErrorsEnabled: boolean;  // errors section toggle
   capturedVariables: CapturedVariable[];  // latest captured variable values
   activeBufferName: string;  // 'Image' | 'BufferA' | 'BufferB' | 'common' etc.
+  /** Selected native raster stage; its inputs are GPU-provided and read-only. */
+  nativeFragmentEntryPoint?: string | null;
+  /** Selected colour attachment of the active native render buffer. */
+  renderOutput?: number;
+  /** Attachment labels supplied by the active render buffer configuration. */
+  renderOutputs?: string[];
 }

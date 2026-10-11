@@ -74,6 +74,8 @@ export class WebGPUDeviceConstraints {
       requiredLimits.maxStorageBufferBindingSize = adapterStorageSizeLimit;
     }
     const computeLimits: Array<[keyof GPUSupportedLimits, number]> = [
+      ["maxColorAttachments", 8],
+      ["maxColorAttachmentBytesPerSample", 32],
       ["maxComputeInvocationsPerWorkgroup", DEFAULT_MAX_COMPUTE_INVOCATIONS_PER_WORKGROUP],
       ["maxComputeWorkgroupSizeX", DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_X],
       ["maxComputeWorkgroupSizeY", DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_Y],

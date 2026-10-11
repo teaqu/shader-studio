@@ -5,6 +5,8 @@ import MenuBar from '../lib/components/MenuBar.svelte';
 import { currentTheme } from '../lib/stores/themeStore';
 import { aspectRatioStore } from '../lib/stores/aspectRatioStore';
 import { resolutionStore } from '../lib/stores/resolutionStore';
+import { configureHost, resetHost } from '../lib/state/hostState.svelte';
+import { getFixturePreferences, setFixturePreferences } from './editor/editorPreferencesFixture.svelte';
 
 const profileStoreMock = vi.hoisted(() => ({
   getActiveProfile: vi.fn(() => 'default'),
@@ -64,6 +66,26 @@ describe('MenuBar Component', () => {
       context: new Map([['resolution', mockResCtrl]]),
     });
   }
+
+  it('offers a live word-wrap shortcut in the overlay editor menu when the host supports it', async () => {
+    setFixturePreferences({ ...getFixturePreferences(), wordWrap: 'off' });
+    configureHost({ getEditorPreferences: getFixturePreferences, setEditorWordWrap: value => {
+      setFixturePreferences({ ...getFixturePreferences(), wordWrap: value });
+    } });
+    try {
+      renderMenuBar();
+      await openEditorSubmenu();
+      const button = screen.getByRole('button', { name: 'Wrap text' });
+      expect(button).toHaveAttribute('aria-pressed', 'false');
+      await fireEvent.click(button);
+      expect(button).toHaveAttribute('aria-pressed', 'true');
+      expect(getFixturePreferences().wordWrap).toBe('on');
+      await fireEvent.click(button);
+      expect(getFixturePreferences().wordWrap).toBe('off');
+    } finally {
+      resetHost();
+    }
+  });
 
   async function openEditorSubmenu() {
     const existingEditorButton = screen.queryByLabelText('Open editor submenu');

@@ -85,6 +85,9 @@ export class WebGPUPassFactory {
           ? { topology: verticesTopology(pass), vertexSpace: verticesSpace(pass) }
           : pass.geometry && pass.geometry !== "fullscreen" ? { topology: meshTopology(pass) } : {}),
         renderState: resolveRenderState(pass),
+        outputCount: pass.outputCount,
+        useViewerCamera: pass.useViewerCamera,
+        entryPoints: pass.entryPoints,
         channels,
         vertexChannels: Boolean(pass.vertexSrc),
         vertexRange: compilation?.vertexRange,

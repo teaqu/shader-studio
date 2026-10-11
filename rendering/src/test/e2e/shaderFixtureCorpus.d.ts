@@ -11,6 +11,8 @@ declare module "virtual:shader-fixture-corpus" {
   }
 
   interface CorpusPass {
+    entryPoints?: { vertex?: string; fragment?: string; compute?: string };
+    outputs?: string[];
     type?: string;
     path?: string;
     vertex?: string;
@@ -42,3 +44,6 @@ declare module "virtual:shader-fixture-corpus" {
   const projects: ShaderFixtureProject[];
   export default projects;
 }
+
+declare module "*.wgsl?raw" { const source: string; export default source; }
+declare module "*.slang?raw" { const source: string; export default source; }

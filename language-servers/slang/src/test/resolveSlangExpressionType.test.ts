@@ -62,6 +62,11 @@ describe("resolveSlangExpressionType", () => {
     expect(resolve("mainImage(p)")?.name).toBe("float4");
   });
 
+  it("resolves native mesh matrix multiplication for a following swizzle", () => {
+    const includes = ["float4x4 iNormalMatrix;"];
+    expect(resolve("mul(iNormalMatrix, float4(0, 1, 0, 0)).xyz", { includes })?.name).toBe("float3");
+  });
+
   it("resolves names and functions supplied by the host environment", () => {
     const context = {
       variableType: (name: string) => (name === "iResolution" ? "float3" : undefined),
@@ -112,6 +117,15 @@ describe("resolveSlangExpressionType", () => {
       { name: "velocity", type: "float4" },
     ]);
     expect(resolve("current.velocity.xyz", { includes })?.name).toBe("float3");
+  });
+
+  it("keeps struct fields preceded by Vulkan location attributes", () => {
+    const includes = ["struct Varyings { [[vk::location(0)]] float2 uv : TEXCOORD0; [[vk::location(2)]] float3 normal : TEXCOORD2; };\nVaryings input;"];
+    expect(resolve("input", { includes })?.fields).toEqual([
+      { name: "uv", type: "float2" },
+      { name: "normal", type: "float3" },
+    ]);
+    expect(resolve("input.normal.xy", { includes })?.name).toBe("float2");
   });
 
   it("resolves an indexed structured buffer to its element type", () => {

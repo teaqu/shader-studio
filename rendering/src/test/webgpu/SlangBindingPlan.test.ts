@@ -46,6 +46,18 @@ describe("Slang binding plan", () => {
       kind: "buffer", slot: 5, key: "d", source: "Buffer", readFrom: "previous-frame", filter: "nearest", wrap: "repeat",
     })).toEqual({ filter: "nearest", wrap: "repeat" });
   });
+  it("keeps distinct MRT attachments separate and shares repeated attachment zero", () => {
+    const plan = buildSlangBindingPlan(getSlangChannels([
+      { kind: "buffer", slot: 0, key: "colour", source: "Scene", readFrom: "current-frame" },
+      { kind: "buffer", slot: 1, key: "colourAgain", source: "Scene", readFrom: "current-frame", output: 0 },
+      { kind: "buffer", slot: 2, key: "normal", source: "Scene", readFrom: "current-frame", output: 1 },
+      { kind: "buffer", slot: 3, key: "oldNormal", source: "Scene", readFrom: "previous-frame", output: 1 },
+    ]));
+    expect(plan.textures).toHaveLength(3);
+    expect(plan.samplers).toHaveLength(1);
+    expect(plan.channels[1].textureBinding).toBe(plan.channels[0].textureBinding);
+    expect(new Set([plan.channels[0], plan.channels[2], plan.channels[3]].map(channel => channel.textureBinding)).size).toBe(3);
+  });
   it("keeps upload variants separate while sharing one texture with different wrap", () => {
     const plan = buildSlangBindingPlan(getSlangChannels([
       { kind: "texture", slot: 0, key: "a", path: "a.png" },

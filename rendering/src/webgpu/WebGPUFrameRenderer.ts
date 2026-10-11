@@ -1,3 +1,7 @@
+import type { CaptureUniforms } from "../capture/VariableCapturer";
+import { meshUniformData } from "./MeshUniformData";
+import { renderedBufferInputs } from "./RenderedBufferInputs";
+import type { RenderedCaptureState } from "./RenderedCaptureState";
 import { FULLSCREEN_VERTEX_COUNT } from "@shader-studio/types";
 import { depthClearValue, geometryInstanceCount, meshTopology, resolveRenderState, verticesVertexCount } from "../types/Geometry";
 import type { WebGPUGeometry } from "./WebGPUGeometry";
@@ -8,7 +12,6 @@ import { CameraManager } from "../input/CameraManager";
 import { KeyboardManager } from "../input/KeyboardManager";
 import { MouseManager } from "../input/MouseManager";
 import { OrbitCamera } from "../preview3d/OrbitCamera";
-import { createModelMatrix,createNormalMatrix3 } from "../preview3d/math";
 import { FPSCalculator } from "../util/FPSCalculator";
 import { TimeManager } from "../util/TimeManager";
 import { getShaderToyChannelCount } from "./SlangPrelude";
@@ -25,10 +28,11 @@ import {
 } from "./uniforms";
 
 interface WebGPUFrameRendererHost {
+  renderedCaptureState: RenderedCaptureState;
   timing: Pick<WebGPUFrameTiming, "probeGpuFrameTime" | "recordFrameTime" | "shouldRenderFrame" | "trackFrameInFlight">;
   session: Pick<WebGPUShaderSession, "computePipelines" | "customUniformManager" | "dispatchOnceRan" | "hasSubmittedFrameForInstalledGeneration" | "passGraph" | "passPipelines" | "resourceManager" | "shaderPath">;
   channels: Pick<WebGPUChannels, "getChannelResources" | "getChannelUniforms">;
-  storage: Pick<WebGPUStorage, "storageBuffers" | "storageLayouts">;
+  storage: Pick<WebGPUStorage, "storageBuffers" | "storageLayouts" | "clearFrame" | "captureAt" | "captures">;
   constraints: Pick<WebGPUDeviceConstraints, "resolveComputeWorkgroupLimit">;
   device: GPUDevice | null;
   context: GPUCanvasContext | null;
@@ -67,7 +71,19 @@ export class WebGPUFrameRenderer {
     this.pausedCustomUniformValues = null;
   }
 
-  renderFrame(time: number, capture: boolean, imageOnly = false): void {
+  pendingScreenshotCopies: Array<(encoder: GPUCommandEncoder, texture: GPUTexture) => void> = [];
+  private completedComputePasses: ReadonlySet<string> = new Set();
+
+  renderFrame(time: number, capture: boolean, imageOnly = false, captureCanvas?: (encoder: GPUCommandEncoder, texture: GPUTexture) => void): void {
+    try {
+      this.encodeFrame(time, capture, imageOnly, captureCanvas);
+    } catch (error) {
+      this.host.storage.captures.cancel('Storage capture cancelled because the frame could not be submitted');
+      throw error;
+    }
+  }
+
+  private encodeFrame(time: number, capture: boolean, imageOnly: boolean, captureCanvas?: (encoder: GPUCommandEncoder, texture: GPUTexture) => void): void {
     if (!this.host.device || !this.host.context) {
       return;
     }
@@ -102,6 +118,9 @@ export class WebGPUFrameRenderer {
     const skipBufferPasses = isPaused && this.host.session.hasSubmittedFrameForInstalledGeneration;
 
     const encoder = this.host.device.createCommandEncoder();
+    if (!skipBufferPasses && !imageOnly && !capture) {
+      this.host.storage.clearFrame(encoder);
+    }
     let canvasTexture: GPUTexture | null = null;
     const encodedComputePasses = new Set<string>();
     const pendingDispatchOnce = new Set<string>();
@@ -152,6 +171,7 @@ export class WebGPUFrameRenderer {
       }, this.host.session.customUniformManager.getUniformInfo(), frameCustomUniformValues);
       this.host.device.queue.writeBuffer(uniformBuffer, 0, data);
 
+      this.host.storage.captureAt(encoder, pass.name, 'before', frameInput.frame);
       const computePass = encoder.beginComputePass();
       let operationFailed = false;
       try {
@@ -172,6 +192,7 @@ export class WebGPUFrameRenderer {
           }
         }
       }
+      this.host.storage.captureAt(encoder, pass.name, 'after', frameInput.frame);
       if (pass.dispatchOnce) {
         pendingDispatchOnce.add(pass.name);
       }
@@ -193,7 +214,9 @@ export class WebGPUFrameRenderer {
       // All-or-nothing: the pass's WGSL was compiled against its full channel
       // list, so if any channel source is unresolvable this frame, binding the
       // survivors positionally would mis-bind them. Skip the pass entirely.
-      const channelResources = this.host.channels.getChannelResources(pass, isPaused, encodedComputePasses);
+      const channelResources = this.host.channels.getChannelResources(
+        pass, isPaused, imageOnly ? this.completedComputePasses : encodedComputePasses, imageOnly,
+      );
       if (channelResources === null) {
         continue;
       }
@@ -226,15 +249,8 @@ export class WebGPUFrameRenderer {
       }, this.host.session.customUniformManager.getUniformInfo(), frameCustomUniformValues);
       this.host.device.queue.writeBuffer(pipeline.getUniformBuffer()!, 0, data);
       if (pass.geometry && pass.geometry !== "fullscreen" && pipeline.getMeshUniformBuffer?.()) {
-        const model = createModelMatrix({ position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] });
-        const viewProjection = camera.viewProjection;
-        const normal = createNormalMatrix3(model);
-        const meshData = new Float32Array(64);
-        meshData.set(model, 0);
-        meshData.set(viewProjection, 16);
-        meshData.set([normal[0], normal[1], normal[2], 0, normal[3], normal[4], normal[5], 0, normal[6], normal[7], normal[8], 0, 0, 0, 0, 1], 32);
-        meshData.set([...this.host.meshCamera.getPosition(), 1], 48);
-        this.host.device.queue.writeBuffer(pipeline.getMeshUniformBuffer()!, 0, meshData);
+        this.host.device.queue.writeBuffer(pipeline.getMeshUniformBuffer()!, 0,
+          meshUniformData(this.host.meshCamera, pass.width, pass.height, pass.useViewerCamera));
       }
 
       const targetView = pass.output === "canvas"
@@ -244,18 +260,33 @@ export class WebGPUFrameRenderer {
         continue;
       }
 
+      const meshData = pass.geometry && pass.geometry !== "fullscreen"
+        ? meshUniformData(this.host.meshCamera, pass.width, pass.height, pass.useViewerCamera)
+        : undefined;
+      const captureUniforms: CaptureUniforms = {
+        time: frameInput.time, timeDelta: frameInput.timeDelta, frameRate: frameInput.frameRate, frame: frameInput.frame,
+        res: [pass.width, pass.height, 1], mouse: Array.from(frameInput.mouse), date: Array.from(frameInput.date),
+        cameraPos: Array.from(frameInput.cameraPos), cameraDir: Array.from(frameInput.cameraDir), ...this.host.channels.getChannelUniforms(pass),
+      };
+      const bufferInputs = renderedBufferInputs(pass.channels, this.host.session.passPipelines, this.host.session.computePipelines, encodedComputePasses);
+      this.host.renderedCaptureState.record(pass.name, captureUniforms, meshData, channelResources, bufferInputs);
+
       const renderState = resolveRenderState(pass);
       const [clearR, clearG, clearB, clearA] = renderState.clear;
       // With MSAA the pass draws into the multisampled texture and resolves into
       // its output; the samples themselves are not needed after the pass.
-      const msaaView = pipeline.getMsaaView?.() ?? null;
+      const outputViews = pass.output === "canvas" ? [targetView] : pipeline.getCurrentOutputViews();
+      this.host.storage.captureAt(encoder, pass.name, 'before', frameInput.frame);
       const renderPass = encoder.beginRenderPass({
-        colorAttachments: [{
-          ...(msaaView ? { view: msaaView, resolveTarget: targetView, storeOp: "discard" as const } : { view: targetView, storeOp: "store" as const }),
-          clearValue: { r: clearR, g: clearG, b: clearB, a: clearA },
-          loadOp: "clear",
-        }],
-        ...(pass.geometry && pass.geometry !== "fullscreen" && pipeline.getDepthView?.() ? {
+        colorAttachments: outputViews.map((targetView, index) => {
+          const msaaView = pipeline.getMsaaView?.(index) ?? null;
+          return {
+            ...(msaaView ? { view: msaaView, resolveTarget: targetView, storeOp: "discard" as const } : { view: targetView, storeOp: "store" as const }),
+            clearValue: { r: clearR, g: clearG, b: clearB, a: clearA },
+            loadOp: "clear",
+          };
+        }),
+        ...(pipeline.getDepthView?.() ? {
           depthStencilAttachment: { view: pipeline.getDepthView()!, depthClearValue: depthClearValue(renderState), depthLoadOp: "clear", depthStoreOp: "store" },
         } : {}),
       });
@@ -281,12 +312,22 @@ export class WebGPUFrameRenderer {
         }
       }
       renderPass.end();
+      this.host.storage.captureAt(encoder, pass.name, 'after', frameInput.frame);
     }
 
     if (canvasTexture && this.host.canvas) {
+      captureCanvas?.(encoder, canvasTexture);
+      if (!capture && this.pendingScreenshotCopies.length > 0) {
+        const captures = this.pendingScreenshotCopies;
+        this.pendingScreenshotCopies = [];
+        for (const copy of captures) {
+          copy(encoder, canvasTexture);
+        }
+      }
       this.host.pixelRegionCapturer?.encodeAfterRender(encoder, canvasTexture, this.host.canvas.width, this.host.canvas.height);
     }
     this.host.device.queue.submit([encoder.finish()]);
+    this.host.storage.captures.beginMappings();
     this.host.session.hasSubmittedFrameForInstalledGeneration = true;
     this.host.timing.probeGpuFrameTime();
     this.host.timing.trackFrameInFlight();
@@ -297,6 +338,9 @@ export class WebGPUFrameRenderer {
     }
     for (const passName of encodedComputePasses) {
       this.host.session.computePipelines.get(passName)?.swap();
+    }
+    if (!imageOnly) {
+      this.completedComputePasses = encodedComputePasses;
     }
 
     if (!skipBufferPasses && !imageOnly) {

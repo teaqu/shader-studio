@@ -18,7 +18,7 @@ export type OfflinePreparationStatus =
 export interface PwaController {
   start(): Promise<void>;
   subscribe(listener: (status: PwaStatus) => void): () => void;
-  applyUpdate(): Promise<void>;
+  applyUpdate(beforeReload?: () => Promise<void>): Promise<boolean>;
   checkForUpdate(): Promise<void>;
   prepareOffline(): Promise<void>;
   retryOfflinePreparation(): Promise<void>;
@@ -37,8 +37,8 @@ interface ServiceWorkerContainerLike {
 export interface PwaEnvironment {
   serviceWorker?: ServiceWorkerContainerLike;
   online: () => boolean;
-  addEventListener(type: 'online' | 'offline', listener: EventListener): void;
-  removeEventListener(type: 'online' | 'offline', listener: EventListener): void;
+  addEventListener(type: 'online' | 'offline' | 'focus', listener: EventListener): void;
+  removeEventListener(type: 'online' | 'offline' | 'focus', listener: EventListener): void;
   fetchBuildIdentity?: () => Promise<string | null>;
   reload(): void;
   baseUrl: string;
@@ -75,6 +75,8 @@ export function createPwaController(environment: PwaEnvironment = browserPwaEnvi
   let registration: ServiceWorkerRegistration | undefined;
   let disposed = false;
   let applyingUpdate = false;
+  let beforeReload: (() => Promise<void>) | undefined;
+  let reloadInProgress = false;
   const listeners = new Set<(status: PwaStatus) => void>();
   let status: PwaStatus = {
     supported: !!environment.serviceWorker,
@@ -88,10 +90,27 @@ export function createPwaController(environment: PwaEnvironment = browserPwaEnvi
   const onConnectivity = () => {
     status = { ...status, online: environment.online() };
     emit();
+    checkInBackground();
+  };
+  const checkInBackground = () => {
+    if (!disposed && environment.online()) {
+      void checkForUpdate().catch(() => { /* A network failure must not interrupt editing. */ });
+    }
   };
   const onControllerChange = () => {
-    if (applyingUpdate) {
-      environment.reload();
+    if (applyingUpdate && !reloadInProgress && !disposed) {
+      reloadInProgress = true;
+      void (async () => {
+        try {
+          await beforeReload?.();
+          if (!disposed) {
+            environment.reload();
+          }
+        } catch {
+          // The shell reports the save failure. Keep its live workspace open.
+          reloadInProgress = false;
+        }
+      })();
     }
   };
   const inspect = () => {
@@ -102,6 +121,24 @@ export function createPwaController(environment: PwaEnvironment = browserPwaEnvi
       emit();
     }
   };
+  const observeInstallingWorker = () => {
+    const installing = registration?.installing;
+    installing?.addEventListener('statechange', () => {
+      if (installing.state === 'installed' && !disposed) {
+        inspect();
+      }
+    });
+  };
+  async function checkForUpdate(): Promise<void> {
+    await registration?.update();
+    if (disposed) {
+      return;
+    }
+    const buildId = await environment.fetchBuildIdentity?.() ?? status.buildId;
+    status = { ...status, buildId };
+    inspect();
+    emit();
+  }
   let preparationPort: MessagePort | undefined;
   let offlineStatusPort: MessagePort | undefined;
 
@@ -166,6 +203,7 @@ export function createPwaController(environment: PwaEnvironment = browserPwaEnvi
       }
       environment.addEventListener('online', onConnectivity);
       environment.addEventListener('offline', onConnectivity);
+      environment.addEventListener('focus', checkInBackground);
       environment.serviceWorker.addEventListener('controllerchange', onControllerChange);
       try {
         registration = await environment.serviceWorker.register(new URL('sw.js', environment.baseUrl).toString()) ?? undefined;
@@ -180,14 +218,8 @@ export function createPwaController(environment: PwaEnvironment = browserPwaEnvi
         emit();
         return;
       }
-      registration.addEventListener('updatefound', () => {
-        const installing = registration?.installing;
-        installing?.addEventListener('statechange', () => {
-          if (installing.state === 'installed') {
-            inspect();
-          }
-        });
-      });
+      registration.addEventListener('updatefound', observeInstallingWorker);
+      observeInstallingWorker();
       inspect();
       inspectOfflinePreparation();
       const buildId = await environment.fetchBuildIdentity?.() ?? null;
@@ -199,20 +231,40 @@ export function createPwaController(environment: PwaEnvironment = browserPwaEnvi
       listener({ ...status });
       return () => listeners.delete(listener);
     },
-    async applyUpdate(): Promise<void> {
-      if (!registration?.waiting) {
-        return;
+    async applyUpdate(prepareReload?: () => Promise<void>): Promise<boolean> {
+      if (disposed || !registration?.waiting) {
+        return false;
       }
+      beforeReload = prepareReload;
       applyingUpdate = true;
-      registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+      // The waiting worker decides whether other app tabs make activation unsafe.
+      const channel = environment.createMessageChannel();
+      const ready = await new Promise<boolean>(resolve => {
+        const finish = (value: boolean) => {
+          clearTimeout(timer);
+          channel.port1.close();
+          channel.port2.close();
+          resolve(value);
+        };
+        const timer = setTimeout(() => finish(false), 2000);
+        channel.port1.onmessage = event => {
+          if (event.data?.type === 'update-ready' || event.data?.type === 'update-deferred') {
+            finish(event.data.type === 'update-ready');
+          }
+        };
+        channel.port1.start();
+        try {
+          registration!.waiting!.postMessage({ type: 'SKIP_WAITING' }, [channel.port2]);
+        } catch {
+          finish(false);
+        }
+      });
+      if (!ready) {
+        applyingUpdate = false;
+      }
+      return ready;
     },
-    async checkForUpdate(): Promise<void> {
-      await registration?.update();
-      const buildId = await environment.fetchBuildIdentity?.() ?? status.buildId;
-      status = { ...status, buildId };
-      inspect();
-      emit();
-    },
+    checkForUpdate,
     prepareOffline,
     async retryOfflinePreparation(): Promise<void> {
       await prepareOffline();
@@ -227,6 +279,7 @@ export function createPwaController(environment: PwaEnvironment = browserPwaEnvi
       disposed = true;
       environment.removeEventListener('online', onConnectivity);
       environment.removeEventListener('offline', onConnectivity);
+      environment.removeEventListener('focus', checkInBackground);
       environment.serviceWorker?.removeEventListener('controllerchange', onControllerChange);
       preparationPort?.close();
       preparationPort = undefined;
