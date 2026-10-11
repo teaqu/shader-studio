@@ -17,8 +17,8 @@ test('compute file and function rows add native code to their source and expose 
   await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
   await page.locator('[data-tab-name="ComputeA"]').click();
   await expect(page.getByRole('heading', { name: 'Compute shader' })).toHaveCount(0);
-  await expect(page.locator('.summary-path')).toHaveText('kernels.wgsl');
-  await page.getByRole('button', { name: /^Choose (?:another )?file…$/ }).click();
+  await expect(page.getByRole('button', { name: 'Choose shader file' })).toHaveText('kernels.wgsl');
+  await page.getByRole('button', { name: 'Choose shader file' }).click();
   await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: 'kernels.wgsl', exact: true }).click();
   const functions = page.getByRole('group', { name: 'Compute function controls' });
   await expect(functions.getByRole('radio', { name: '@compute clear' })).toBeChecked();
@@ -68,16 +68,20 @@ test('standalone source controls select config and workspace files, add to the c
  await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
  await page.locator('[data-tab-name="BufferA"]').click();
  const main=page.locator('.tab-content .buffer-details > .config-item').first();
- await expect(main.locator('.summary-path').first()).toBeVisible();
- await main.getByRole('button', {name:/^Choose (?:another )?file…$/}).click();
+ await expect(main.getByRole('button', { name: 'Choose shader file' })).toHaveText('Choose a shader…');
+ await expect(main.getByRole('button', { name: 'Open editor' })).toBeDisabled();
+ await main.getByRole('button', {name:'Choose shader file'}).click();
  await page.getByRole('dialog', {name:'Choose shader file'}).getByRole('button', {name:'existing.wgsl', exact:true}).click();
- await expect(main.locator('.summary-path').first()).toHaveText('existing.wgsl');
- await main.getByRole('button',{name:/^Choose (?:another )?file…$/}).click();
+ await expect(main.getByRole('button', { name: 'Choose shader file' })).toHaveText('existing.wgsl');
+ await expect(main.getByRole('button', { name: 'Open editor' })).toBeEnabled();
+ await main.getByRole('button', { name: 'Open editor' }).click();
+ await expect(page.locator('[data-testid="file-editor"][data-path="/shaders/existing.wgsl"] .monaco-editor')).toBeVisible();
+ await main.getByRole('button',{name:'Choose shader file'}).click();
  await page.getByRole('dialog',{name:'Choose shader file'}).getByRole('button',{name:'Browse workspace…'}).click();
  const dialog=page.getByRole('dialog',{name:'Select workspace file'});
  await dialog.getByLabel('Filter files').fill('reuse');
  await dialog.getByRole('button',{name:'/shaders/reuse.wgsl',exact:true}).click();
- await expect(main.locator('.summary-path').first()).toHaveText('/shaders/reuse.wgsl');
+ await expect(main.getByRole('button', { name: 'Choose shader file' })).toHaveAttribute('title', '/shaders/reuse.wgsl');
  const vertex=page.locator('.config-item').filter({has:page.getByRole('heading',{name:'Vertex shader',exact:true})});
  await vertex.getByRole('button',{name:'Same file'}).click();
  await expect(vertex.getByLabel('File', {exact:true})).toHaveCount(0);
@@ -101,7 +105,7 @@ test('standalone source controls select config and workspace files, add to the c
  await expect.poll(async()=>JSON.parse((await workspace(page))['/shaders/reuse.sha.json']).passes.BufferA).toMatchObject({path:'/shaders/reuse.wgsl',outputFormat:'rgba16float',vertex:'/shaders/reuse.wgsl'});
  await page.reload();
  await page.locator('[data-tab-name="BufferA"]').click();
- await expect(page.locator('.summary-path').first()).toHaveText('/shaders/reuse.wgsl');
+ await expect(page.getByRole('button', { name: 'Choose shader file' }).first()).toHaveAttribute('title', '/shaders/reuse.wgsl');
  expect(JSON.parse((await workspace(page))['/shaders/reuse.sha.json']).passes.BufferA).toMatchObject({path:'/shaders/reuse.wgsl',outputFormat:'rgba16float',vertex:'/shaders/reuse.wgsl'});
 });
 

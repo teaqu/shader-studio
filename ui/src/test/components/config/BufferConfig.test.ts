@@ -43,7 +43,7 @@ describe('BufferConfig', () => {
     const onOpenInNewTab = vi.fn();
     const view = render(BufferConfig, { bufferName: 'BufferA', config: { path: 'a.glsl' },
       onUpdate: vi.fn(), getWebviewUri: () => undefined, onOpenInNewTab });
-    await fireEvent.click(view.getByRole('button', { name: 'Open in editor' }));
+    await fireEvent.click(view.getByRole('button', { name: 'Open editor' }));
     if (overlay) {
       expect(getOverlayActiveFile()).toBe('BufferA');
       expect(onOpenInNewTab).not.toHaveBeenCalled();
@@ -57,7 +57,7 @@ describe('BufferConfig', () => {
   it('disables opening a buffer without a shader file', () => {
     const view = render(BufferConfig, { bufferName: 'BufferA', config: { path: '' },
       onUpdate: vi.fn(), getWebviewUri: () => undefined });
-    expect(view.getByRole('button', { name: 'Open in editor' })).toBeDisabled();
+    expect(view.getByRole('button', { name: 'Open editor' })).toBeDisabled();
   });
 
   it('applies a newly created buffer file returned by the host', async () => {
@@ -75,7 +75,7 @@ describe('BufferConfig', () => {
     }
     await tick();
     expect(onUpdate).toHaveBeenCalledWith('BufferA', expect.objectContaining({ path: 'created.glsl' }));
-    expect(view.getByText('created.glsl', { selector: '.summary-path' })).toBeVisible();
+    expect(view.getByRole('button', { name: 'Choose shader file' })).toHaveTextContent('created.glsl');
   });
 
   it('offers file creation without insertion on a new WGSL buffer', async () => {
