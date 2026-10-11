@@ -20,7 +20,7 @@ describe("ShaderPipeline volume resource loading", () => {
   it("abandons a volume load that completes after the pipeline is disposed", async () => {
     let resolve!: (result: { texture: null }) => void;
     const resources = { cleanup: vi.fn(), cleanupAllExceptMedia: vi.fn(), loadVolumeTexture: vi.fn(() => new Promise(resolvePromise => {
-      resolve = resolvePromise; 
+      resolve = resolvePromise;
     })) };
     const subject = pipeline(resources);
     const compile = subject.compileShaderPipeline("void mainImage() {}", {

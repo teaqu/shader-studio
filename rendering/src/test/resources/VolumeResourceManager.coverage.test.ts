@@ -8,26 +8,26 @@ const volumeManager = vi.hoisted(() => ({
 
 vi.mock("../../resources/VolumeTextureManager", () => ({
   VolumeTextureManager: vi.fn().mockImplementation(function() {
-    return volumeManager; 
+    return volumeManager;
   }),
 }));
 vi.mock("../../resources/TextureCache", () => ({ TextureCache: vi.fn().mockImplementation(function() {
-  return { cleanup: vi.fn(), dispose: vi.fn() }; 
+  return { cleanup: vi.fn(), dispose: vi.fn() };
 }) }));
 vi.mock("../../resources/VideoTextureManager", () => ({ VideoTextureManager: vi.fn().mockImplementation(function() {
-  return { cleanup: vi.fn() }; 
+  return { cleanup: vi.fn() };
 }) }));
 vi.mock("../../resources/CubemapTextureManager", () => ({ CubemapTextureManager: vi.fn().mockImplementation(function() {
-  return { cleanup: vi.fn() }; 
+  return { cleanup: vi.fn() };
 }) }));
 vi.mock("../../resources/AudioTextureManager", () => ({ AudioTextureManager: vi.fn().mockImplementation(function() {
-  return { cleanup: vi.fn() }; 
+  return { cleanup: vi.fn() };
 }) }));
 vi.mock("../../resources/LiveInputTextureManager", () => ({ LiveInputTextureManager: vi.fn().mockImplementation(function() {
-  return { cleanup: vi.fn() }; 
+  return { cleanup: vi.fn() };
 }) }));
 vi.mock("../../resources/ShaderKeyboardInput", () => ({ ShaderKeyboardInput: vi.fn().mockImplementation(function() {
-  return { cleanup: vi.fn() }; 
+  return { cleanup: vi.fn() };
 }) }));
 
 describe("ResourceManager volume delegation", () => {
