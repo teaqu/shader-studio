@@ -11,31 +11,39 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
 ## Desktop VR shader previews
 
-Fullscreen GLSL passes can define Shadertoy's VR entry point:
+Use the desktop VR preview to look around a GLSL shader that defines `mainVR`, even without a headset.
+
+1. Create a GLSL shader and leave **Image → Geometry** set to **Fullscreen**.
+2. Add both `mainImage` for the normal preview and `mainVR` for the view you can look around. The complete example below colors each viewing direction differently.
+3. Enable **VR** in the preview toolbar. Move with **W / A / S / D**, move vertically with **Q / E**, and look by dragging or pressing **I / J / K / L**.
+4. Turn **VR** off to return to `mainImage`. Opening another shader also turns it off.
 
 ```glsl
-void mainVR(out vec4 fragColor, in vec2 fragCoord, in vec3 rayOrigin, in vec3 rayDirection) {
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = fragCoord / iResolution.xy;
+    fragColor = vec4(uv, 0.5, 1.0);
+}
+
+void mainVR(out vec4 fragColor, in vec2 fragCoord,
+            in vec3 rayOrigin, in vec3 rayDirection) {
     fragColor = vec4(rayDirection * 0.5 + 0.5, 1.0);
 }
 ```
 
-The **VR** toggle appears in the toolbar only when the fullscreen Image pass
-defines `mainVR`. Keep `mainImage` for the normal preview: VR is off by default,
-and enabling the toggle calls `mainVR` instead. It resets when switching shaders.
-Move with WASD/QE and look by dragging the mouse or pressing IJKL. Dragging also
-updates `iMouse`, so shaders that read it continue to receive mouse input.
-The ray origin is `iCameraPos`; the normalized world-space ray direction uses
-`iCameraDir`, the canvas aspect ratio, and a 90° vertical field of view.
-This desktop preview uses one camera view with world-Y up. Mesh passes continue
-to use `mainImage`.
+The **VR** toggle appears only when a fullscreen GLSL Image shader defines `mainVR`. If it is missing, check the function signature and geometry setting. Mesh passes continue to use `mainImage`; this VR workflow does not apply to Slang or WGSL.
+
+`rayOrigin` is the camera position and `rayDirection` is a normalized direction in world space. In desktop preview, they follow `iCameraPos` and `iCameraDir` with a 90° vertical field of view. Dragging also updates `iMouse`, which matters if your shader uses mouse input for another effect.
 
 ### Headsets and controllers
 
-When the browser supports an immersive WebXR session, **Enter VR** appears next
-to the desktop toggle for fullscreen GLSL Image shaders defining `mainVR`.
-Click it to request a headset session; **Exit VR** returns to desktop rendering.
-WebXR requires a secure context and a compatible browser/device. Hosts without
-WebXR keep the desktop preview.
+To view the shader in a headset:
+
+1. Open it in a browser with immersive WebXR support and connect a compatible headset.
+2. Use a secure page (HTTPS, or localhost for a preview opened from VS Code).
+3. Click **Enter VR** beside the desktop **VR** toggle and accept the browser's request to start the session.
+4. Click **Exit VR** to return to the desktop view.
+
+If **Enter VR** is absent, check the browser, device, and page requirements above. You can still use the desktop VR preview without WebXR support. Headset and controller behavior can vary by device.
 
 Each eye receives its tracked ray origin and projection in `mainVR`. Ray origins
 use metres in the WebXR reference space (floor-relative when available); rays
@@ -117,4 +125,4 @@ These uniforms are provided by Shader Studio but are not part of the Shadertoy A
 | Cubemap buffer | Shadertoy's Cubemap buffer pass is not supported |
 | Webcam input | Live camera feed |
 | Microphone input | Real-time audio from microphone |
-| VR/AR | Immersive rendering modes |
+| AR | Immersive augmented-reality sessions |
