@@ -19,6 +19,7 @@ const createMockRenderer = () => ({
   DrawUnitQuad: vi.fn(),
   SetViewport: vi.fn(),
   SetRenderTarget: vi.fn(),
+  SetRenderTargetCubeMap: vi.fn(),
   AttachShader: vi.fn(),
   AttachTextures: vi.fn(),
   GetAttribLocation: vi.fn(),
@@ -224,6 +225,17 @@ describe("PassRenderer", () => {
   });
 
   describe("renderPass", () => {
+    it("draws all six cubemap faces with distinct face uniforms", () => {
+      const target = { mTex0: createMockTexture(32, 32) } as PiRenderTarget;
+      passRenderer.renderPass({ name: "Sky", inputs: {}, shaderSrc: "", geometry: "fullscreen", outputKind: "cubemap" }, target, createMockShader(), { ...defaultUniforms, res: new Float32Array([32, 32, 1]) });
+      expect(mockRenderer.SetRenderTargetCubeMap).toHaveBeenCalledTimes(6);
+      expect(mockRenderer.DrawPrimitive).toHaveBeenCalledTimes(6);
+      for (let face = 0; face < 6; face++) {
+        expect(mockRenderer.SetRenderTargetCubeMap).toHaveBeenNthCalledWith(face + 1, target, face);
+        expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("iCubemapFace", face);
+      }
+    });
+
     /** Order of every recorded GL/renderer call, for "state set before draw, restored after" checks. */
     const order = (fn: unknown, call = 0) => (fn as { mock: { invocationCallOrder: number[] } }).mock.invocationCallOrder[call];
     const lastOrder = (fn: unknown) => {

@@ -747,7 +747,7 @@ export class RenderingEngine implements RenderingEngineInterface {
 
     const passInputs = targetPass.inputs || {};
     const slotAssignments = assignInputSlots(passInputs);
-    const channelTypes = resolveChannelSamplerTypes(passInputs, slotAssignments);
+    const channelTypes = resolveChannelSamplerTypes(passInputs, slotAssignments, targetPass.cubemapSources);
 
     return {
       commonCode: isCapturingCommonPass ? '' : commonPassCode,

@@ -1177,6 +1177,38 @@ test('replacing the active editor preserves tab order after reload', async ({ pa
 });
 
 
+test('video mode clicks survive a Live capability update', async ({ page }) => {
+  await page.addInitScript(() => {
+    // Start with the MediaRecorder fallback, then expose MP4 during a held click.
+    globalThis.VideoEncoder = undefined;
+    globalThis.exportSupportsMp4 = false;
+    MediaRecorder.isTypeSupported = mime => mime.startsWith('video/webm') || globalThis.exportSupportsMp4;
+  });
+  await page.goto('/');
+  await page.getByTestId('shader-option-aurora-glsl').click();
+  await page.getByLabel('Toggle export panel').click();
+  await page.getByRole('button', { name: 'Video', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'this will record WebM' })).toBeVisible();
+  const render = page.getByRole('button', { name: 'Render', exact: true });
+  const bounds = await render.boundingBox();
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.mouse.down();
+  await page.evaluate(() => {
+    globalThis.exportSupportsMp4 = true;
+    // Refresh capabilities at another frame rate while the pointer remains down.
+    const fps = document.querySelector('input[placeholder="fps"]');
+    fps.value = '30';
+    fps.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await expect(page.getByRole('button', { name: 'MP4', exact: true })).toBeEnabled();
+  await page.mouse.up();
+  await expect(render).toHaveClass(/active/);
+  await expect(page.locator('input[min="0.5"][step="0.5"]')).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Video', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Render', exact: true })).toHaveClass(/active/);
+});
+
 for (const format of ['PNG', 'JPEG', 'WebM', 'MP4', 'GIF']) {
   test(`exports a standalone ${format} download`, async ({ page }) => {
     const pageErrors = [];

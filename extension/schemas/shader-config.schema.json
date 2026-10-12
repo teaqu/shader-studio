@@ -163,6 +163,15 @@
         "outputFormat": {
           "$ref": "#/definitions/BufferOutputFormat"
         },
+        "outputKind": {
+          "enum": ["2d", "cubemap"],
+          "description": "Texture dimensionality produced by this pass (default: 2d)"
+        },
+        "faceSize": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Square pixel size of each cubemap face (default: 512)"
+        },
         "outputs": {
           "$ref": "#/definitions/RenderOutputs"
         },
@@ -171,6 +180,11 @@
         }
       },
       "allOf": [
+        {
+          "if": { "required": ["outputKind"], "properties": { "outputKind": { "const": "cubemap" } } },
+          "then": { "properties": { "resolution": false, "vertex": false, "entryPoints": false, "outputs": false, "geometry": { "properties": { "type": { "const": "fullscreen" } } } } },
+          "else": { "properties": { "faceSize": false } }
+        },
         { "not": { "required": ["vertex", "entryPoints"] } },
         {
           "if": { "properties": { "geometry": { "properties": { "type": { "const": "fullscreen" } } } } },
@@ -336,6 +350,15 @@
         "outputFormat": {
           "$ref": "#/definitions/BufferOutputFormat"
         },
+        "outputKind": {
+          "enum": ["2d", "cubemap"],
+          "description": "Texture dimensionality produced by this pass (default: 2d)"
+        },
+        "faceSize": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Square pixel size of each cubemap face (default: 512)"
+        },
         "dispatch": {
           "$ref": "#/definitions/ComputeDispatch"
         },
@@ -368,6 +391,11 @@
           "additionalProperties": false
         }
       },
+      "allOf": [{
+        "if": { "required": ["outputKind"], "properties": { "outputKind": { "const": "cubemap" } } },
+        "then": { "properties": { "resolution": false, "outputLayers": { "const": 6 } } },
+        "else": { "properties": { "faceSize": false } }
+      }],
       "additionalProperties": false
     },
     "ComputeDispatch": {

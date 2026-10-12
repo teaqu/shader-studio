@@ -16,6 +16,7 @@ export interface ShaderWrapOptions {
   geometry?: GeometryType;
   /** Generate the optional desktop VR branch for the Image pass. */
   vrPreview?: boolean;
+  outputKind?: "2d" | "cubemap";
   commonCode?: string;
   slotAssignments?: SlotAssignment[];
   channelTypes?: ChannelSamplerType[];
@@ -175,6 +176,19 @@ ${instanceIndexContext}
 ${this.buildChannelMetadataDeclarations(types, channelCount)}
 `;
 
+    if (options.outputKind === "cubemap") {
+      header += `uniform int iCubemapFace;
+vec3 cubemapDirection(vec2 pixel, int face) {
+  vec2 p = 2.0 * pixel / iResolution.xy - 1.0;
+  if (face == 0) return normalize(vec3(1.0, -p.y, -p.x));
+  if (face == 1) return normalize(vec3(-1.0, -p.y, p.x));
+  if (face == 2) return normalize(vec3(p.x, 1.0, p.y));
+  if (face == 3) return normalize(vec3(p.x, -1.0, -p.y));
+  if (face == 4) return normalize(vec3(p.x, -p.y, 1.0));
+  return normalize(vec3(-p.x, -p.y, -1.0));
+}
+`;
+    }
     if (options.customUniformDeclarations) {
       header += options.customUniformDeclarations + "\n";
     }
@@ -189,7 +203,10 @@ ${this.buildChannelMetadataDeclarations(types, channelCount)}
       ? `${MESH_FRAGMENT_CONTEXT.uv} * iResolution.xy`
       : "gl_FragCoord.xy";
     const fullscreen = options.geometry === undefined || options.geometry === "fullscreen";
-    const shaderCode = header + code + buildFragmentEntry(`${options.commonCode ?? ""}\n${code}`, coordinate, fullscreen && options.vrPreview === true);
+    const entry = options.outputKind === "cubemap"
+      ? "\nvoid main() {\n mainCubemap(fragColor, gl_FragCoord.xy, vec3(0.0), cubemapDirection(gl_FragCoord.xy, iCubemapFace));\n}"
+      : buildFragmentEntry(`${options.commonCode ?? ""}\n${code}`, coordinate, fullscreen && options.vrPreview === true);
+    const shaderCode = header + code + entry;
     const headerLineCount = (header.match(/\n/g) || []).length;
     const vertexBuilt = this.buildVertexSource(mesh, options);
     return {
@@ -280,7 +297,8 @@ ${this.buildChannelMetadataDeclarations(types, channelCount)}
       gl.linkProgram(program);
 
       // Poll without blocking — yields to the browser each frame.
-      // Hard setTimeout ensures we abort even if rAF freezes (context loss, Metal crash, bg tab).
+      // Keep a deadline even if animation frames stop, but check GPU completion
+      // before timing out: a hidden view can finish compiling without polling.
       const pollOutcome = await new Promise<'completed' | 'timeout'>(resolve => {
         let resolved = false;
         const done = (outcome: 'completed' | 'timeout') => {
@@ -288,9 +306,16 @@ ${this.buildChannelMetadataDeclarations(types, channelCount)}
             resolved = true; resolve(outcome);
           }
         };
-        const timeoutId = setTimeout(() => done('timeout'), ASYNC_COMPILE_TIMEOUT_MS);
+        const timeoutId = setTimeout(() => {
+          const completed = !gl.isContextLost()
+            && gl.getProgramParameter(program!, ext.COMPLETION_STATUS_KHR);
+          done(completed ? 'completed' : 'timeout');
+        }, ASYNC_COMPILE_TIMEOUT_MS);
         let slowLogged = false;
         const poll = () => {
+          if (resolved) {
+            return;
+          }
           pollCount++;
           if (gl.isContextLost()) {
             clearTimeout(timeoutId);

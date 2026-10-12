@@ -2905,6 +2905,31 @@ describe("ShaderPipeline", () => {
     });
   });
 
+  describe("cubemap buffer output", () => {
+    it("wraps cube producers and declares dependent buffer channels as cube samplers", async () => {
+      mockShaderCompiler.compileShaderAsync.mockResolvedValue(createMockShader());
+      mockBufferManager.createPingPongBuffers.mockReturnValue({ front: null, back: null, outputKind: "cubemap" });
+      const config: ShaderConfig = { version: "1", passes: {
+        Image: { inputs: { environment: { type: "buffer", source: "Cubemap" } } },
+        Cubemap: { path: "cube.glsl", outputKind: "cubemap", faceSize: 32 },
+      } };
+      expect(await shaderPipeline.compileShaderPipeline("image", config, "image.glsl", { Cubemap: "cube" })).toMatchObject({ success: true });
+      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(32, 32, false, "auto", "cubemap");
+      expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledWith("cube", expect.objectContaining({ outputKind: "cubemap" }));
+      expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledWith("image", expect.objectContaining({ channelTypes: ["Cube", "2D", "2D", "2D"] }));
+    });
+
+    it("reallocates when an existing square 2D buffer becomes a cube", async () => {
+      mockShaderCompiler.compileShaderAsync.mockResolvedValue(createMockShader());
+      const old = { front: { mTex0: { mXres: 32, mYres: 32 } }, back: null, requiresDepth: false };
+      mockBufferManager.getPassBuffers.mockReturnValue({ Cubemap: old });
+      const config: ShaderConfig = { version: "1", passes: { Image: {}, Cubemap: { path: "cube.glsl", outputKind: "cubemap", faceSize: 32 } } };
+      await shaderPipeline.compileShaderPipeline("image", config, "image.glsl", { Cubemap: "cube" });
+      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledTimes(1);
+      expect(mockBufferManager.cleanupBuffers).toHaveBeenCalledWith({ Cubemap: old });
+    });
+  });
+
   describe("buffer output formats", () => {
     it.each([undefined, 'auto', 'rgba32float', 'rgba16float'] as const)(
       'passes configured format %s to buffer allocation', async (outputFormat) => {

@@ -363,6 +363,34 @@ describe('WebExtensionHost', () => {
     } }));
   });
 
+  it.each([
+    ['glsl-buffer', 'sky.glsl', 'void mainCubemap(out vec4 fragColor, in vec2 fragCoord, in vec3 rayOri, in vec3 rayDir)'],
+    ['slang-buffer', 'sky.slang', 'float4 mainCubemap(float2 fragCoord, float3 rayOri, float3 rayDir)'],
+  ])('creates the cubemap starter ABI for %s', async (fileType, path, expected) => {
+    const host = await createHost({ prompt: (_message, initial) => initial });
+    const receive = vi.fn();
+    host.onViewerMessage(receive);
+    await host.handleViewerMessage({ type: 'createFile', payload: {
+      shaderPath: '/shaders/clouds.slang', suggestedPath: path, fileType, requestId: 'sky', outputKind: 'cubemap',
+    } });
+    await host.handleViewerMessage({ type: 'updateConfig', payload: {
+      shaderPath: '/shaders/clouds.slang', text: JSON.stringify({ version: '1.0', passes: { Image: {}, Sky: { path, outputKind: 'cubemap' } } }),
+    } });
+    expect(receive).toHaveBeenLastCalledWith(expect.objectContaining({ buffers: { Sky: expect.stringContaining(expected) } }));
+  });
+
+  it('creates the cubemap compute starter without native override', async () => {
+    const host = await createHost({ prompt: (_message, initial) => initial });
+    const receive = vi.fn(); host.onViewerMessage(receive);
+    await host.handleViewerMessage({ type: 'createFile', payload: {
+      shaderPath: '/shaders/clouds.slang', suggestedPath: 'sky.slang', fileType: 'slang-compute', requestId: 'compute', authoringMode: 'native', outputKind: 'cubemap',
+    } });
+    await host.handleViewerMessage({ type: 'updateConfig', payload: {
+      shaderPath: '/shaders/clouds.slang', text: JSON.stringify({ version: '1.0', passes: { Image: {}, Sky: { type: 'compute', path: 'sky.slang', outputKind: 'cubemap' } } }),
+    } });
+    expect(receive).toHaveBeenLastCalledWith(expect.objectContaining({ buffers: { Sky: expect.stringContaining('cubemapDirection(pixel.xy, pixel.z)') } }));
+  });
+
   it('opens, edits and restores buffer sources without changing the active shader', async () => {
     const store = new MemoryWorkspaceStore();
     const workspace = await VirtualWorkspace.open(store, [

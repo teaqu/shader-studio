@@ -405,6 +405,56 @@ suite('FileDialogHandler Test Suite', () => {
       assert.ok(!content.includes('out vec4'));
     });
 
+    test('prefers the GLSL cubemap fragment hook over native fragment authoring', async () => {
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(false);
+      const writeStub = sandbox.stub(fs, 'writeFileSync');
+      sandbox.stub(vscode.window, 'showSaveDialog').resolves(vscode.Uri.file('/test/sky.glsl'));
+
+      await handler.handleCreateFile(
+        { shaderPath: '/test/image.glsl', suggestedPath: 'sky.glsl', fileType: 'glsl-buffer', requestId: 'cube-glsl', outputKind: 'cubemap', authoringMode: 'native', passName: 'Sky' },
+        respondFn,
+      );
+
+      assert.strictEqual(writeStub.firstCall.args[1], 'void mainCubemap(out vec4 fragColor, in vec2 fragCoord, in vec3 rayOri, in vec3 rayDir) {\n    fragColor = vec4(0.5 + 0.5 * rayDir, 1.0);\n}\n');
+      assert.strictEqual(respondFn.firstCall.args[0].payload.entryPoints, undefined);
+      assert.strictEqual(respondFn.firstCall.args[0].payload.authoringMode, 'native');
+    });
+
+    test('prefers the Slang cubemap fragment hook over native fragment authoring', async () => {
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(false);
+      const writeStub = sandbox.stub(fs, 'writeFileSync');
+      sandbox.stub(vscode.window, 'showSaveDialog').resolves(vscode.Uri.file('/test/sky.slang'));
+
+      await handler.handleCreateFile(
+        { shaderPath: '/test/image.slang', suggestedPath: 'sky.slang', fileType: 'slang-buffer', requestId: 'cube-slang', outputKind: 'cubemap', authoringMode: 'native', passName: 'Sky' },
+        respondFn,
+      );
+
+      assert.strictEqual(writeStub.firstCall.args[1], 'float4 mainCubemap(float2 fragCoord, float3 rayOri, float3 rayDir) {\n    return float4(0.5 + 0.5 * rayDir, 1.0);\n}\n');
+      assert.strictEqual(respondFn.firstCall.args[0].payload.entryPoints, undefined);
+      assert.strictEqual(respondFn.firstCall.args[0].payload.authoringMode, 'native');
+    });
+
+    test('creates the Slang cubemap compute helper with uint2 direction coordinates and its entry point', async () => {
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(false);
+      const writeStub = sandbox.stub(fs, 'writeFileSync');
+      sandbox.stub(vscode.window, 'showSaveDialog').resolves(vscode.Uri.file('/test/sky.compute.slang'));
+
+      await handler.handleCreateFile(
+        { shaderPath: '/test/image.slang', suggestedPath: 'sky.compute.slang', fileType: 'slang-compute', requestId: 'cube-compute', outputKind: 'cubemap' },
+        respondFn,
+      );
+
+      const content = writeStub.firstCall.args[1] as string;
+      assert.ok(content.includes('void mainCompute(uint3 pixel : SV_DispatchThreadID)'));
+      assert.ok(content.includes('cubemapDirection(pixel.xy, pixel.z)'));
+      assert.ok(content.includes('writeOutput(pixel.xy, pixel.z'));
+      assert.deepStrictEqual(respondFn.firstCall.args[0].payload.entryPoints, { compute: 'mainCompute' });
+    });
+
     test('passes WGSL filters when fileType is wgsl-buffer or wgsl-compute', async () => {
       const showSaveStub = sandbox.stub(vscode.window, 'showSaveDialog').resolves(undefined);
 
@@ -958,7 +1008,8 @@ suite('FileDialogHandler Test Suite', () => {
       assert.ok(respondFn.calledOnce);
       const msg = respondFn.firstCall.args[0];
       assert.strictEqual(msg.type, 'workspaceFiles');
-      assert.strictEqual(msg.payload.files.length, 1);
+      assert.strictEqual(msg.payload.files.length, 3);
+      assert.deepStrictEqual(msg.payload.files.slice(2), mockFiles);
     });
 
     test('passes pathConverter through to scanner', async () => {
@@ -981,7 +1032,7 @@ suite('FileDialogHandler Test Suite', () => {
       assert.strictEqual(capturedConverter!('/img.png'), 'http://example.com//img.png');
     });
 
-    test('responds with empty files array when scanner throws', async () => {
+    test('responds with default images when scanner throws', async () => {
       const WorkspaceFileScanner = require('../../../app/WorkspaceFileScanner');
       sandbox.stub(WorkspaceFileScanner.WorkspaceFileScanner, 'scanFiles').rejects(new Error('scan error'));
 
@@ -994,7 +1045,10 @@ suite('FileDialogHandler Test Suite', () => {
       assert.ok(respondFn.calledOnce);
       const msg = respondFn.firstCall.args[0];
       assert.strictEqual(msg.type, 'workspaceFiles');
-      assert.deepStrictEqual(msg.payload.files, []);
+      assert.deepStrictEqual(msg.payload.files.map((file: { workspacePath: string }) => file.workspacePath), [
+        'shader-studio://textures/nebula',
+        'shader-studio://cubemaps/desert',
+      ]);
     });
   });
 
