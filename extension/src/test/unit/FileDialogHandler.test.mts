@@ -52,6 +52,8 @@ describe('cubemap source creation', () => {
     mocks.save.mockResolvedValue({ fsPath: '/shaders/cube.slang' });
   });
   it.each<[string, 'hooks' | 'native', string, ('2d' | 'cubemap')?]>([
+    ['wgsl-buffer', 'hooks', 'fn mainCubemap'],
+    ['wgsl-buffer', 'native', 'fn mainCubemap'],
     ['glsl-buffer', 'native', 'void mainCubemap'],
     ['glsl-buffer', 'native', 'void mainImage', '2d'],
     ['slang-compute', 'native', 'ComputeCompute', '2d'],

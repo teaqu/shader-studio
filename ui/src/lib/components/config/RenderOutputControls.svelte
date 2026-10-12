@@ -19,14 +19,11 @@
   {#if cubemap}<div>Six cubemap faces</div>
   {:else if discovery.error}<p class="error" role="alert">{discovery.error}</p>
   {:else}
-    <div class="outputs" aria-label="Detected output textures">
-      {#each discovery.outputs as output}<div>Output {output.slot}{output.name ? ` · ${output.name}` : ''}</div>{/each}
-    </div>
     {#if discovery.outputs.length > limit}<p class="error" role="alert">This format supports up to {limit} outputs on this device.</p>{/if}
   {/if}
 </section>
 <style>
-  .config-item, .outputs { display: flex; flex-direction: column; gap: 8px; }
+  .config-item { display: flex; flex-direction: column; gap: 8px; }
   h3 { margin: 0 0 8px; padding-bottom: 6px; font-size: 13px; border-bottom: 1px solid var(--vscode-panel-border); }
-  .outputs { font-size: 12px; } .error { color: var(--vscode-errorForeground); margin: 0; font-size: 12px; }
+  .error { color: var(--vscode-errorForeground); margin: 0; font-size: 12px; }
 </style>

@@ -34,6 +34,7 @@ export const WGSL_ENTRY_VERTEX = "vertexMain";
 export const WGSL_ENTRY_FRAGMENT = "fragmentMain";
 
 export interface WgslWrapOptions {
+  outputKind?: "2d" | "cubemap";
   passName?: string;
   commonCode?: string;
   channels?: SlangChannelBinding[];
@@ -374,11 +375,11 @@ function buildChannelPrelude(channels: SlangChannelBinding[] = [], fragmentStage
   const sorted = [...plan.channels].sort((a, b) => a.slot - b.slot);
   const lines: string[] = [
     'struct _ss_ChannelMetadata { size: vec2<u32>, time: f32, loaded: bool }',
-    buildChannelSamplingFunctions(sorted.map(channel => channel.kind === 'cubemap' ? 'texture-cube' : 'texture-2d'), 'wgsl', fragmentStage),
+    buildChannelSamplingFunctions(sorted.map(channel => (channel.kind === 'cubemap' || channel.outputKind === 'cubemap') ? 'texture-cube' : 'texture-2d'), 'wgsl', fragmentStage),
   ];
   for (const texture of plan.textures) {
     const textureVar = textureVarByBinding.get(texture.binding)!;
-    lines.push(`@group(0) @binding(${texture.binding}) var ${textureVar}: ${texture.kind === 'cubemap' ? 'texture_cube<f32>' : 'texture_2d<f32>'};`);
+    lines.push(`@group(0) @binding(${texture.binding}) var ${textureVar}: ${(texture.kind === 'cubemap' || texture.kind === 'buffer-cubemap') ? 'texture_cube<f32>' : 'texture_2d<f32>'};`);
   }
   for (const sampler of plan.samplers) {
     lines.push(`@group(0) @binding(${sampler.binding}) var ${samplerVarByBinding.get(sampler.binding)!}: sampler;`);
@@ -393,7 +394,7 @@ function buildChannelPrelude(channels: SlangChannelBinding[] = [], fragmentStage
       key: channel.key, slot: channel.slot,
       textureVar: textureVarByBinding.get(channel.textureBinding)!,
       samplerVar: samplerVarByBinding.get(channel.samplerBinding)!,
-      cube: channel.kind === 'cubemap',
+      cube: channel.kind === 'cubemap' || channel.outputKind === 'cubemap',
     }, fragmentStage));
   }
   lines.push(`fn _ss_initChannels() {\n${init.join('\n')}\n}`);
@@ -1021,6 +1022,36 @@ function assembleWgslImageSource(userSource: string, options: WgslWrapOptions = 
       afterCommon: storageDeclarations.afterCommon,
       requiredFeatures: hoisted.enableNames, directiveRanges: hoisted.directiveRanges,
     });
+  }
+  if (options.outputKind === "cubemap") {
+    const binding = plan.nextBinding + (options.storage?.length ?? 0);
+    const cubePrelude = `struct _ss_CubemapFaceUniforms { data: vec4u };
+@group(0) @binding(${binding}) var<uniform> _ss_cubeFace: _ss_CubemapFaceUniforms;
+fn cubemapDirection(pixel: vec2f) -> vec3f {
+  let uv = 2.0 * pixel / _ss_u.resolution.xy - 1.0;
+  switch _ss_cubeFace.data.x {
+    case 0u: { return normalize(vec3f(1.0, -uv.y, -uv.x)); }
+    case 1u: { return normalize(vec3f(-1.0, -uv.y, uv.x)); }
+    case 2u: { return normalize(vec3f(uv.x, 1.0, uv.y)); }
+    case 3u: { return normalize(vec3f(uv.x, -1.0, -uv.y)); }
+    case 4u: { return normalize(vec3f(uv.x, -uv.y, 1.0)); }
+    default: { return normalize(vec3f(-uv.x, -uv.y, -1.0)); }
+  }
+}
+`;
+    const body = `${prefix}${cubePrelude}${commonCode}`;
+    const entries = buildFullscreenEntryPoints('', false).source.replace(
+      'return mainImage(vec2<f32>(fragCoord.x, _ss_u.resolution.y - fragCoord.y));',
+      'return mainCubemap(fragCoord.xy, vec3f(0.0), cubemapDirection(fragCoord.xy));',
+    );
+    return {
+      source: `${body}\n${strippedUserSource}\n${storageDeclarations.afterCommon}${entries}`,
+      preludeLineCount: countLines(body) + 1,
+      userLineCount: strippedUserSource.split('\n').length,
+      ...commonRangeOf(`${prefix}${cubePrelude}`, strippedCommonCode),
+      requiredFeatures: hoisted.enableNames,
+      directiveRanges: hoisted.directiveRanges,
+    };
   }
   if (options.captureMode) {
     // Capture uniforms bind after the channel texture/sampler pairs and storage buffers.

@@ -5,6 +5,15 @@ import type { AudioVideoController } from '../../../../lib/AudioVideoController'
 import { tick } from 'svelte';
 import type { ConfigInput } from '@shader-studio/types';
 import { setRenderOutputMetadata } from '../../../../lib/state/renderOutputMetadata.svelte';
+import { setBufferOutputKinds } from '../../../../lib/state/bufferOutputKinds.svelte';
+
+it('distinguishes cubemap sources in the buffer picker', () => {
+  setBufferOutputKinds('picker-cube', { version: '1.0', passes: { Image: {}, Sky: { type: 'compute', path: 'sky.slang', outputKind: 'cubemap' } } });
+  const view = render(MiscTab, { shaderPath: 'picker-cube', availableBufferNames: ['Sky'], getWebviewUri: () => undefined, onSelect: vi.fn() });
+  expect(view.getByRole('button', { name: /Sky/ }).querySelector('.codicon-package')).toBeTruthy();
+  expect(view.getByRole('button', { name: /BufferA/ }).querySelector('.codicon-layers')).toBeTruthy();
+  view.unmount();
+});
 
 describe('MiscTab', () => {
   beforeEach(() => vi.stubGlobal('acquireVsCodeApi', undefined));
@@ -131,7 +140,7 @@ describe('MiscTab', () => {
       expect(layer).toHaveClass('input-select');
       await fireEvent.change(layer, { target: { value: '2' } });
       expect(props.onSelect).toHaveBeenCalledWith({ type: 'buffer', source: 'BufferCompute', layer: 2 });
-  });
+    });
 
     it('emits screen sampling changes', async () => {
       const props = { ...defaultProps(), tempInput: { type: 'screen' } as ConfigInput };

@@ -3,6 +3,14 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { tick } from 'svelte';
 import ChannelListItem from '../../../lib/components/config/ChannelListItem.svelte';
 import type { ConfigInput } from '@shader-studio/types';
+import { setBufferOutputKinds } from '../../../lib/state/bufferOutputKinds.svelte';
+
+it('shows the cubemap icon for the configured shader source', () => {
+  setBufferOutputKinds('list-cube', { version: '1.0', passes: { Image: {}, Sky: { path: 'sky.slang', outputKind: 'cubemap' } } });
+  const view = render(ChannelListItem, { shaderPath: 'list-cube', channelName: 'iChannel0', channelInput: { type: 'buffer', source: 'Sky' }, getWebviewUri: () => undefined, onEdit: vi.fn(), onRemove: vi.fn() });
+  expect(view.container.querySelector('.codicon-package')).toBeTruthy();
+  view.unmount();
+});
 
 const mockProps = {
   channelName: 'iChannel0',

@@ -7,6 +7,7 @@ import type { StorageBindingNode } from "../types/PassGraph";
 import type { GeometryType, VertexSpace } from "@shader-studio/types";
 
 export interface SlangCompileChannel {
+  outputKind?: "2d" | "cubemap";
   slot: number;
   key: string;
   kind?: "texture" | "video" | "cubemap" | "audio" | "buffer" | "keyboard";

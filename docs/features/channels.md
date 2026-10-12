@@ -309,7 +309,7 @@ In the channel editor, open **Misc** and select the source pass. A native WGSL/S
 }
 ```
 
-The buffer's **Output** section lists the inferred attachments and controls their shared format. Edit the fragment return type to add or remove attachments; neither that section nor Misc rewrites the shader. See [Multiple render targets](multiple-render-targets.md) for a two-output WGSL example. A selected attachment that disappears is shown as unavailable.
+The buffer's **Output** section controls the shared format. Choose an output in the receiving channel's **Buffer output** picker. Edit the fragment return type to add or remove attachments; neither that section nor Misc rewrites the shader. See [Multiple render targets](multiple-render-targets.md) for a two-output WGSL example. A selected attachment that disappears is shown as unavailable.
 
 For a compute pass with `outputLayers` greater than 1, set `layer` to select one texture-array layer. It defaults to 0 and must be less than the source pass's `outputLayers`:
 

@@ -114,3 +114,18 @@ describe("WgslCompiler", () => {
     compiler.dispose();
   });
 });
+
+
+it('wraps a WGSL cubemap shader and binds generated cubes as cube textures', async () => {
+  const source = 'fn mainCubemap(p: vec2f, o: vec3f, d: vec3f) -> vec4f { return vec4f(d, 1.0); }';
+  const result = await new WgslCompiler().compile(source, { passKind: 'render', outputKind: 'cubemap', channels: [{ key: 'history', slot: 0, kind: 'buffer', outputKind: 'cubemap' }] });
+  expect(result.success).toBe(true);
+  if (!result.success) {
+    return;
+  }
+  expect(result.wgsl).toContain('var historyTexture: texture_cube<f32>');
+  expect(result.wgsl).toContain('fn historySample(dir: vec3<f32>)');
+  expect(result.wgsl).toContain('return mainCubemap(fragCoord.xy, vec3f(0.0), cubemapDirection(fragCoord.xy))');
+  expect(result.wgsl).toContain('var<uniform> _ss_cubeFace');
+  expect(result.wgsl).not.toContain('return mainImage(');
+});

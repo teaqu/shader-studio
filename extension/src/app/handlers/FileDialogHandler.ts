@@ -150,6 +150,8 @@ export class FileDialogHandler {
           template = `fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {\n\n}\n`;
         } else if (payload.fileType === 'wgsl-compute') {
           template = `@compute @workgroup_size(8, 8, 1)\nfn compute(@builtin(global_invocation_id) dispatchThreadID: vec3u) {\n\n}\n`;
+        } else if (payload.outputKind === 'cubemap' && payload.fileType === 'wgsl-buffer') {
+          template = 'fn mainCubemap(fragCoord: vec2f, rayOri: vec3f, rayDir: vec3f) -> vec4f {\n  return vec4f(0.5 + 0.5 * rayDir, 1.0);\n}\n';
         } else if (payload.outputKind === 'cubemap' && payload.fileType === 'slang-buffer') {
           template = `float4 mainCubemap(float2 fragCoord, float3 rayOri, float3 rayDir) {\n    return float4(0.5 + 0.5 * rayDir, 1.0);\n}\n`;
         } else if (payload.outputKind === 'cubemap') {

@@ -6,6 +6,7 @@
   import ChannelPreview from './ChannelPreview.svelte';
 
   interface Props {
+    shaderPath?: string;
     channelName: string;
     channelInput: ConfigInput;
     getWebviewUri: (path: string) => string | undefined;
@@ -16,6 +17,7 @@
   }
 
   let {
+    shaderPath = '',
     channelName,
     channelInput,
     getWebviewUri,
@@ -145,7 +147,7 @@
   tabindex="0"
 >
   <div class="thumbnail">
-    <ChannelPreview {channelInput} {getWebviewUri} {audioVideoController} showControls={false} />
+    <ChannelPreview {shaderPath} {channelInput} {getWebviewUri} {audioVideoController} showControls={false} />
   </div>
 
   <div class="row-info">

@@ -75,7 +75,7 @@ Three path forms are supported:
 
 **Create** generates a source template using the shader mode preference. WGSL/Slang function rows appear under **Fragment shader**; choose the function this pass should run. **Add function…** inserts a hook or native entry point into that file, using the adjacent mode chooser. A native fragment can run without `mainImage`, and native templates use the generated vertex stage until you request a custom one. GLSL has no fragment function selector or Built-in/Native chooser because it uses the fixed `mainImage` hook.
 
-The pass sections are arranged as Fragment source/functions, Vertex shader, Channels, Geometry, Rendering, Resolution, and Output. Image omits the file chooser. **Output** selects 2D or Cubemap, its cubemap face size, the buffer format, and read-only [inferred output slots and names](multiple-render-targets.md).
+The pass sections are arranged as Fragment source/functions, Vertex shader, Channels, Geometry, Rendering, Resolution, and Output. Image omits the file chooser. **Output** selects 2D or Cubemap, its cubemap face size, and the buffer format. For a buffer with [multiple outputs](multiple-render-targets.md), choose which one to sample in the receiving channel’s **Buffer output** picker.
 
 **Resolution** (optional) — by default a buffer inherits the Image pass resolution exactly. You can override this in two ways:
 
@@ -90,11 +90,11 @@ The pass sections are arranged as Fragment source/functions, Vertex shader, Chan
 
 A cubemap stores the view in six directions as six square faces. Use a cubemap buffer to generate an environment or reflection texture that other passes can sample. Its face size is independent of the preview canvas size.
 
-GLSL fragment shaders and Slang fragment or compute shaders can generate cubemaps. WGSL cubemap generation is not supported yet.
+GLSL and WGSL fragment shaders and Slang fragment or compute shaders can generate cubemaps. WGSL compute cubemap outputs are not supported.
 
 ### Create and Preview a Cubemap
 
-1. Open a GLSL or Slang shader and choose **Config → + New → Cubemap**.
+1. Open a GLSL, Slang, or WGSL shader and choose **Config → + New → Cubemap**.
 2. In the new pass, choose **File → Change… → Create** to create a starter shader, or choose an existing file containing `mainCubemap`.
 3. In **Output**, set **Face size** (512 pixels by default).
 4. In **Preview**, choose **Face**, **Cross layout**, or **Environment** to inspect the result. The starter colors each direction differently.
@@ -119,9 +119,15 @@ float4 mainCubemap(float2 fragCoord, float3 rayOri, float3 rayDir) {
 }
 ```
 
+```wgsl
+fn mainCubemap(fragCoord: vec2f, rayOri: vec3f, rayDir: vec3f) -> vec4f {
+    return vec4f(rayDir * 0.5 + 0.5, 1.0);
+}
+```
+
 ### Sample the Cubemap in Another Pass
 
-In the receiving pass, add a channel such as `iChannel0`, open **Misc**, and select the cubemap pass. In GLSL, sample it with `texture(iChannel0, direction)`; in Slang, use `iChannel0.Sample(direction)`.
+In the receiving pass, add a channel such as `iChannel0`, open **Misc**, and select the cubemap pass. In GLSL, sample it with `texture(iChannel0, direction)`; in Slang, use `iChannel0.Sample(direction)`; in WGSL, use `iChannel0Sample(direction)`.
 
 For example, this GLSL Image shader views the cubemap along the positive Z direction. Place it in your main shader file after connecting `iChannel0`:
 

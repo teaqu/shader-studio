@@ -122,7 +122,7 @@ return;
         class:selected={tempInput?.type === "buffer" && tempInput.source === buf}
         onclick={() => selectBuffer(buf)}
       >
-        <ChannelPreview channelInput={{ type: "buffer", source: buf }} {getWebviewUri} />
+        <ChannelPreview {shaderPath} channelInput={{ type: "buffer", source: buf }} {getWebviewUri} />
         <div class="misc-card-label">{buf}</div>
       </button>
     {/each}

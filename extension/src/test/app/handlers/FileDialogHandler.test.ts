@@ -437,6 +437,22 @@ suite('FileDialogHandler Test Suite', () => {
       assert.strictEqual(respondFn.firstCall.args[0].payload.authoringMode, 'native');
     });
 
+    test('prefers the WGSL cubemap fragment hook over native fragment authoring', async () => {
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(false);
+      const writeStub = sandbox.stub(fs, 'writeFileSync');
+      sandbox.stub(vscode.window, 'showSaveDialog').resolves(vscode.Uri.file('/test/sky.wgsl'));
+
+      await handler.handleCreateFile(
+        { shaderPath: '/test/image.wgsl', suggestedPath: 'sky.wgsl', fileType: 'wgsl-buffer', requestId: 'cube-slang', outputKind: 'cubemap', authoringMode: 'native', passName: 'Sky' },
+        respondFn,
+      );
+
+      assert.strictEqual(writeStub.firstCall.args[1], 'fn mainCubemap(fragCoord: vec2f, rayOri: vec3f, rayDir: vec3f) -> vec4f {\n  return vec4f(0.5 + 0.5 * rayDir, 1.0);\n}\n');
+      assert.strictEqual(respondFn.firstCall.args[0].payload.entryPoints, undefined);
+      assert.strictEqual(respondFn.firstCall.args[0].payload.authoringMode, 'native');
+    });
+
     test('creates the Slang cubemap compute helper with uint2 direction coordinates and its entry point', async () => {
       const fs = require('fs');
       sandbox.stub(fs, 'existsSync').returns(false);

@@ -2261,7 +2261,16 @@ struct Particle {
       Sky: { path: "sky.slang", outputKind: "cubemap", faceSize: 24 },
     } };
     const graph = buildWgsl(config, { Sky: "fn mainImage(p: vec2f) -> vec4f { return vec4f(1); }" });
-    expect(graph.errors).toContain("Sky: cubemap buffer outputs currently require Slang");
+    expect(graph.errors).toEqual([]);
+    expect(graph.passes.find(pass => pass.name === "Sky")).toMatchObject({ outputKind: "cubemap", width: 24, height: 24 });
+    expect(graph.passes.find(pass => pass.name === "Image")?.channels[0]).toMatchObject({ outputKind: "cubemap" });
+  });
+
+  it('rejects WGSL compute cubemaps until the compute wrapper supports cube coordinates', () => {
+    const graph = buildWgsl({ version: '1.0', passes: {
+      Image: {}, Sky: { type: 'compute', path: 'sky.wgsl', outputKind: 'cubemap' },
+    } }, { Sky: '@compute @workgroup_size(1) fn draw() {}' });
+    expect(graph.errors).toContain('Sky: cubemap compute outputs currently require Slang');
   });
 });
 

@@ -114,7 +114,8 @@ test('named native buffer outputs are inferred, selectable in Misc, and persist 
  await page.getByTestId('shader-option-mrt-wgsl').click();
  await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
  await page.locator('[data-tab-name="BufferA"]').click();
- await expect(page.getByText('Output 2 · velocity',{exact:true})).toBeVisible();
+ await expect(page.getByText('Output 2 · velocity',{exact:true})).toHaveCount(0);
+ await expect(page.getByRole('region', { name: 'Output' }).getByLabel('Output format')).toBeVisible();
  await expect(page.getByRole('button',{name:'Add output'})).toHaveCount(0);
  await page.locator('[data-tab-name="Image"]').click();
  await expect(page.getByLabel('File',{exact:true})).toHaveCount(0);

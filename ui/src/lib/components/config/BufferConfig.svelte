@@ -790,7 +790,7 @@ return;
           <label class="resolution-label" for="output-kind-{bufferName}">Kind</label>
           <select id="output-kind-{bufferName}" aria-label="Output kind" value={bufferPassConfig?.outputKind ?? '2d'} onchange={(event) => setRenderOutputKind(event.currentTarget.value as '2d' | 'cubemap')}>
             <option value="2d">2D</option>
-            <option value="cubemap" disabled={language === 'wgsl'}>Cubemap</option>
+            <option value="cubemap">Cubemap</option>
           </select>
         </div>
         {#if bufferPassConfig?.outputKind === 'cubemap'}
@@ -854,6 +854,7 @@ return;
           <div class="channel-list">
             {#each configuredChannelNames as channelName}
               <ChannelListItem
+                {shaderPath}
                 {channelName}
                 channelInput={configuredInputs[channelName]!}
                 {getWebviewUri}
