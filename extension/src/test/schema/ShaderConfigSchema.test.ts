@@ -583,6 +583,19 @@ suite('Shader config JSON schema', () => {
     assertInvalid({ version: '1.0', passes: { Image: {}, BufferA: { path: 'a.wgsl', outputFormat: 'rgba8unorm' } } }, 'should be equal to one of the allowed values');
   });
 
+  test('accepts cubemap output settings on render and compute passes', () => {
+    assertValid({
+      version: '1.0',
+      passes: {
+        Image: { inputs: { sky: { type: 'buffer', source: 'Sky' } } },
+        Sky: { path: 'sky.glsl', outputKind: 'cubemap', faceSize: 512 },
+        ComputeSky: { type: 'compute', path: 'sky.wgsl', outputKind: 'cubemap', faceSize: 256, outputLayers: 6 },
+      },
+    });
+    assertInvalid({ version: '1.0', passes: { Image: {}, Sky: { path: 'sky.glsl', outputKind: 'cube' } } }, 'should be equal to one of the allowed values');
+    assertInvalid({ version: '1.0', passes: { Image: {}, Sky: { path: 'sky.glsl', faceSize: 0 } } }, 'should be >= 1');
+  });
+
   test('accepts bounded named render outputs and render-output channel selection', () => {
     assertValid({
       version: '1.0',

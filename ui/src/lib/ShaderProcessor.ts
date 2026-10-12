@@ -1,4 +1,6 @@
-import { getShaderOutputs } from "@shader-studio/types";
+import { createCubemapPreview } from "./cubemapPreview";
+import { getCubemapPreview } from "./state/cubemapPreview.svelte";
+import { getShaderOutputs, shaderLanguageForPath } from "@shader-studio/types";
 import { viewerCameraRuntimeConfig } from "./state/viewerCameraState.svelte";
 import { hookConfigForDebugPlan, nativeFragmentEntryPoint } from "./nativeRenderConfig";
 import { projectNativeRasterDisplay } from "@shader-studio/debug";
@@ -83,6 +85,14 @@ export class ShaderProcessor {
     reload: boolean = false,
   ): Promise<CompilationResult> {
     const { code, config, path, buffers } = message;
+    const selectedPreview = getCubemapPreview(path);
+    const cubemapPreview = selectedPreview.passName ? createCubemapPreview({
+      config: config ?? null,
+      passName: selectedPreview.passName,
+      language: message.language ?? shaderLanguageForPath(path) ?? "glsl",
+      mode: selectedPreview.mode,
+      face: selectedPreview.face,
+    }) : null;
     const scriptBundleError = message.scriptBundleError;
     const customUniforms = this.resolveCustomUniforms(message);
 
@@ -115,10 +125,12 @@ export class ShaderProcessor {
         slangModules: debugSlangModules,
         sourcePath: debugSourcePath,
         debugPlan,
-      } = this.getDebugCompileArgs(code, config ?? null, message.originalCode ?? code);
+      } = cubemapPreview
+        ? { code: cubemapPreview.code, config: cubemapPreview.config, passName: "Image", slangModules: undefined, sourcePath: undefined, debugPlan: undefined }
+        : this.getDebugCompileArgs(code, config ?? null, message.originalCode ?? code);
       const buffersToCompile = this.getCompileBuffers(buffers, debugPassName, codeToCompile, code);
 
-      if (codeToCompile !== code) {
+      if (!cubemapPreview && codeToCompile !== code) {
         const baselineFailure = await this.compileUninstrumentedBaseline(message, code, config ?? null, path, buffers);
         if (baselineFailure) {
           return this.withScriptCause(baselineFailure, scriptBundleError);

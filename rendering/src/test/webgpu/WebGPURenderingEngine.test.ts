@@ -1295,6 +1295,7 @@ describe("WebGPURenderingEngine", () => {
       passKind: "render",
       workgroupSize: [8, 8, 1],
       outputLayers: 1,
+      outputKind: "2d",
       hasOutput: true,
       modules: [{
         moduleName: "buffer_helpers",

@@ -12,14 +12,15 @@
     postMessage?: (message: ShaderMessage) => void; onMessage?: (handler: (event: MessageEvent) => void) => void;
     sourcePath: string; builtInSourcePath: string; passType: 'render' | 'compute'; hasNativeTemplate: boolean;
     outputCount: number; passSource: string; onCreated: (result: CreatedSource) => void;
+    outputKind?: '2d' | 'cubemap';
   }
   let { value, onPathChange, hasError, suggestedPath, bufferName, language, fileType, shaderPath, projectConfig,
-    postMessage, onMessage, onCreated }: Props = $props();
+    postMessage, onMessage, onCreated, outputKind }: Props = $props();
   const simpleControls = $derived(bufferName === 'common');
 </script>
 {#if !simpleControls}
   <ShaderFileControls {value} {onPathChange} {hasError} {suggestedPath} {language} {fileType} {shaderPath} {projectConfig}
-    inputId={`buffer-source-${bufferName}`} passName={bufferName} {postMessage} {onMessage} {onCreated} />
+    inputId={`buffer-source-${bufferName}`} passName={bufferName} {outputKind} {postMessage} {onMessage} {onCreated} />
 {:else}
 <PathInput inputId={`buffer-source-${bufferName}`} {value} {onPathChange} {hasError}
   selectLabel="Browse" fileExists={!!value}

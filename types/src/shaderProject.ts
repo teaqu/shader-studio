@@ -63,11 +63,16 @@ export function stageForPass(config: ShaderConfig | null, passName: string, path
 export function resourcesForPass(config: ShaderConfig | null, passName: string): AuthoringResource[] {
   const pass = config?.passes?.[passName];
   const inputs = pass && "inputs" in pass ? pass.inputs : undefined;
-  const resources: AuthoringResource[] = Object.entries(inputs ?? {}).map(([name, input], slot) => ({
-    name,
-    kind: input.type === "cubemap" ? "texture-cube" : "texture-2d",
-    slot,
-  }));
+  const resources: AuthoringResource[] = Object.entries(inputs ?? {}).map(([name, input], slot) => {
+    const source = input.type === "buffer" ? config?.passes?.[input.source] : undefined;
+    return {
+      name,
+      kind: input.type === "cubemap" || (source && "outputKind" in source && source.outputKind === "cubemap")
+        ? "texture-cube"
+        : "texture-2d",
+      slot,
+    };
+  });
   for (const [name, storage] of Object.entries(config?.storage ?? {})) {
     resources.push({ name, kind: "storage", elementType: storage.elementType });
   }

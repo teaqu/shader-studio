@@ -1,10 +1,11 @@
+import { resolveDefaultAssetPath } from "../DefaultAssets";
 import { WebSocket, WebSocketServer } from "ws";
 import { randomUUID } from 'node:crypto';
 import type { PreviewRegistry } from '../mcp/PreviewRegistry';
 import * as vscode from "vscode";
 import * as path from "path";
 import { fileURLToPath } from "url";
-import type { ShaderConfig } from "@shader-studio/types";
+import { SHADER_STUDIO_DEFAULT_ASSETS, shaderStudioDefaultAssetRelativePath, type ShaderConfig } from "@shader-studio/types";
 import { MessageTransport } from "./MessageTransport";
 import { ShaderProvider } from "../ShaderProvider";
 import { GlslFileTracker } from "../GlslFileTracker";
@@ -254,7 +255,10 @@ export class WebSocketTransport implements MessageTransport {
 
         // Resolve to absolute path
         let absolutePath: string;
-        if (/^https?:\/\//i.test(input.path)) {
+        const defaultAsset = resolveDefaultAssetPath(input.path, this.extensionPath);
+        if (defaultAsset) {
+          absolutePath = defaultAsset;
+        } else if (/^https?:\/\//i.test(input.path)) {
           absolutePath = input.path;
         } else if (input.path.startsWith('@/')) {
           const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -281,7 +285,10 @@ export class WebSocketTransport implements MessageTransport {
         if (value && !value.startsWith('http://') && !value.startsWith('https://')) {
           // Resolve the key (original path) to absolute, then convert
           let absolutePath: string;
-          if (key.startsWith('@/')) {
+          const defaultAsset = resolveDefaultAssetPath(key, this.extensionPath);
+          if (defaultAsset) {
+            absolutePath = defaultAsset;
+          } else if (key.startsWith('@/')) {
             const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
             absolutePath = workspaceFolder
               ? path.join(workspaceFolder.uri.fsPath, key.substring(2))
@@ -311,6 +318,12 @@ export class WebSocketTransport implements MessageTransport {
       // Browser clients need HTTP URLs due to CORS restrictions
       const config = vscode.workspace.getConfiguration('shader-studio');
       const port = config.get<number>('webServerPort') || 3000;
+      // Packaged images use the UI asset route: /textures is workspace-only.
+      for (const uri of Object.values(SHADER_STUDIO_DEFAULT_ASSETS)) {
+        if (normalizedPath === resolveDefaultAssetPath(uri, this.extensionPath)) {
+          return `http://localhost:${port}/${shaderStudioDefaultAssetRelativePath(uri)}`;
+        }
+      }
       return `http://localhost:${port}/textures/${encodeURIComponent(normalizedPath)}`;
     }
     return normalizedPath;

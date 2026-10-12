@@ -109,6 +109,16 @@ async function controlledByWorker(page) {
   }).toBe(true);
 }
 
+/**
+ * Let Playwright finish its evaluation before the foreground handler may
+ * activate a worker and replace this page's execution context.
+ */
+async function dispatchForeground(page) {
+  await page.evaluate(() => {
+    setTimeout(() => window.dispatchEvent(new Event('focus')), 0);
+  });
+}
+
 async function centrePixel(canvas) {
   const url = await canvas.evaluate((element) => element.toDataURL());
   const { data, width, height } = PNG.sync.read(Buffer.from(url.split(',')[1], 'base64'));
@@ -229,7 +239,7 @@ test('defers an automatic update while another app tab is open, then applies it 
 
     await otherTab.close();
     const reloaded = page.waitForEvent('load');
-    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await dispatchForeground(page);
     await reloaded;
 
     await expect(page.getByRole('status')).toHaveAttribute('title', /Build next-build/);

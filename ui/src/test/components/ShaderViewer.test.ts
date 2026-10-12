@@ -1,3 +1,4 @@
+import { setCubemapPreview, resetCubemapPreviews } from '../../lib/state/cubemapPreview.svelte';
 import { getViewerSession } from '../../lib/state/viewerSession.svelte';
 import { serialize } from 'node:v8';
 import { render, screen, fireEvent } from '@testing-library/svelte';
@@ -5623,6 +5624,23 @@ describe('ShaderViewer', () => {
       // No BufferA tab should exist
       expect(screen.queryByText('BufferA')).toBeFalsy();
     });
+  });
+
+  it('recompiles when a cubemap preview changes after loading a shader', async () => {
+    const { ShaderPipeline } = await import('../../lib/ShaderPipeline');
+    const recompile = vi.fn();
+    ShaderPipeline.prototype.recompileCurrentShader = recompile;
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+    const handler = vi.mocked(mockTransport.onMessage).mock.calls[0][0];
+    await handler({ data: { type: 'shaderSource', path: '/test/cube.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1); }', config: null, pathMap: {} } });
+    await tick();
+    setCubemapPreview('/test/cube.glsl', { passName: 'Sky', mode: 'face', face: 'positive-x' });
+    await tick();
+    expect(recompile).toHaveBeenCalledOnce();
+    resetCubemapPreviews();
   });
 
   describe('handleShaderMessage result paths', () => {

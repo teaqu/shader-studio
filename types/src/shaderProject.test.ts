@@ -105,6 +105,19 @@ describe("resourcesForPass", () => {
     ]);
     expect(resourcesForPass(null, "Image")).toEqual([]);
   });
+
+  it("uses a cubemap-producing buffer's texture shape for authoring", () => {
+    const cubemapBuffer = {
+      version: "1.0",
+      passes: {
+        Image: { inputs: { sky: { type: "buffer", source: "Sky" } } },
+        Sky: { path: "sky.glsl", outputKind: "cubemap" },
+      },
+    } as unknown as ShaderConfig;
+    expect(resourcesForPass(cubemapBuffer, "Image")).toEqual([
+      { name: "sky", kind: "texture-cube", slot: 0 },
+    ]);
+  });
 });
 
 describe("resourcesForSharedSource", () => {
