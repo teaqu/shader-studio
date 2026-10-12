@@ -10,6 +10,7 @@
     type SerializedDockview,
   } from "dockview-core";
   import "dockview-core/dist/styles/dockview.css";
+  import { setupDockviewTabs } from "../layout/dockviewTabs";
   import type { Transport } from "../transport/MessageTransport";
   import { setCurrentLayout, getPendingLayout, hasPendingLayout, clearPendingLayout } from "../state/layoutState.svelte";
   import type { SerializedLayout } from "@shader-studio/types";
@@ -77,151 +78,7 @@
 
   const cleanupMap = new Map<string, () => void>();
 
-  let internalDragActive = false;
-  let pointerDown = false;
-
-  function setDragActive(active: boolean) {
-    if (active) {
-      containerEl.classList.add("dv-drag-active");
-    } else {
-      containerEl.classList.remove("dv-drag-active");
-    }
-  }
-
-  function cancelActiveDrag() {
-    if (!internalDragActive) {
-      return;
-    }
-    internalDragActive = false;
-    setDragActive(false);
-  }
-
-  function handlePointerDown() {
-    pointerDown = true;
-  }
-
-  function handlePointerUp() {
-    pointerDown = false;
-    cancelActiveDrag();
-  }
-
-  function handleDragStart() {
-    internalDragActive = true;
-    cancelReveal();
-    clearTimeout(sashHoverTimer);
-    containerEl.classList.remove("dv-sash-hover");
-    setDragActive(true);
-  }
-
-  function handleDragEnter() {
-    if (internalDragActive) {
-      setDragActive(true);
-    }
-  }
-
-  function handleDragEnd() {
-    if (pointerDown) {
-      return;
-    }
-    cancelActiveDrag();
-  }
-
-  function handleContainerDragLeave(e: DragEvent) {
-    if (!internalDragActive) {
-      return;
-    }
-    const nextTarget = e.relatedTarget as Node | null;
-    if (!nextTarget || !containerEl.contains(nextTarget)) {
-      cancelActiveDrag();
-    }
-  }
-
-  function handleDocumentDragLeave(e: DragEvent) {
-    if (!internalDragActive) {
-      return;
-    }
-    const outsideWindow =
-      e.clientX <= 0 ||
-        e.clientY <= 0 ||
-        e.clientX >= window.innerWidth ||
-        e.clientY >= window.innerHeight;
-
-    if (outsideWindow) {
-      cancelActiveDrag();
-    }
-  }
-
-  function handleWindowBlur() {
-    cancelActiveDrag();
-  }
-
-  let sashHoverTimer: ReturnType<typeof setTimeout> | undefined;
-  let sashRevealTimer: ReturnType<typeof setTimeout> | undefined;
-  let topEdgeActive = false;
-  const TOP_EDGE_THRESHOLD = 8;
-  const REVEAL_DELAY = 300;
-
-  function revealSashHover() {
-    clearTimeout(sashHoverTimer);
-    containerEl.classList.add("dv-sash-hover");
-  }
-
-  function scheduleReveal() {
-    clearTimeout(sashHoverTimer);
-    clearTimeout(sashRevealTimer);
-    sashRevealTimer = setTimeout(revealSashHover, REVEAL_DELAY);
-  }
-
-  function cancelReveal() {
-    clearTimeout(sashRevealTimer);
-  }
-
-  function handleMouseOver(e: MouseEvent) {
-    const target = e.target as HTMLElement;
-    if (target.closest(".dv-sash") || target.closest(".dv-tabs-and-actions-container.dv-single-tab")) {
-      scheduleReveal();
-    }
-  }
-
-  function handleMouseOut(e: MouseEvent) {
-    const target = e.target as HTMLElement;
-    const related = e.relatedTarget as HTMLElement | null;
-
-    if (target.closest(".dv-sash") || target.closest(".dv-tabs-and-actions-container.dv-single-tab")) {
-      if (related?.closest(".dv-sash") || related?.closest(".dv-tabs-and-actions-container.dv-single-tab")) {
-        return;
-      }
-      if (topEdgeActive) {
-        return;
-      }
-      cancelReveal();
-      clearTimeout(sashHoverTimer);
-      sashHoverTimer = setTimeout(() => {
-        containerEl.classList.remove("dv-sash-hover");
-      }, 400);
-    }
-  }
-
-  function handleMouseMove(e: MouseEvent) {
-    const rect = containerEl.getBoundingClientRect();
-    const nearTop = e.clientY - rect.top < TOP_EDGE_THRESHOLD;
-
-    if (nearTop && !topEdgeActive) {
-      topEdgeActive = true;
-      scheduleReveal();
-    } else if (!nearTop && topEdgeActive) {
-      topEdgeActive = false;
-      cancelReveal();
-      const target = e.target as HTMLElement;
-      if (target.closest(".dv-sash") || target.closest(".dv-tabs-and-actions-container.dv-single-tab")) {
-        return;
-      }
-      clearTimeout(sashHoverTimer);
-      sashHoverTimer = setTimeout(() => {
-        containerEl.classList.remove("dv-sash-hover");
-      }, 400);
-    }
-  }
+  let disposeTabVisibility: (() => void) | undefined;
 
   class SvelteContentRenderer implements IContentRenderer {
     readonly element: HTMLElement;
@@ -686,6 +543,8 @@
       disableFloatingGroups: true,
     });
 
+    disposeTabVisibility = setupDockviewTabs(containerEl, api);
+
     // Embedded viewers keep their tabs inside their own dock.
     dropListener = api.onWillDrop((event) => {
       if (event.getData()?.viewId !== api?.id) {
@@ -699,8 +558,6 @@
 
     api.onDidLayoutChange(() => {
       if (layoutReady) {
-        internalDragActive = false;
-        setDragActive(false);
         setCurrentLayout(api!.toJSON() as unknown as SerializedLayout);
         checkPreviewAlone();
       }
@@ -732,19 +589,6 @@
       checkPreviewAlone();
     });
 
-    document.addEventListener("pointerdown", handlePointerDown, true);
-    document.addEventListener("pointerup", handlePointerUp, true);
-    containerEl.addEventListener("dragstart", handleDragStart);
-    containerEl.addEventListener("dragenter", handleDragEnter);
-    containerEl.addEventListener("dragleave", handleContainerDragLeave);
-    document.addEventListener("dragleave", handleDocumentDragLeave);
-    document.addEventListener("dragend", handleDragEnd);
-    window.addEventListener("blur", handleWindowBlur);
-
-    containerEl.addEventListener("mouseover", handleMouseOver);
-    containerEl.addEventListener("mouseout", handleMouseOut);
-    containerEl.addEventListener("mousemove", handleMouseMove);
-
     dispatch("ready", { api, resetLayout, showPreview });
     Promise.resolve().then(() => checkPreviewAlone());
   });
@@ -755,19 +599,7 @@
       cleanup();
     }
     dropListener?.dispose();
-    document.removeEventListener("pointerdown", handlePointerDown, true);
-    document.removeEventListener("pointerup", handlePointerUp, true);
-    clearTimeout(sashHoverTimer);
-    clearTimeout(sashRevealTimer);
-    containerEl?.removeEventListener("dragstart", handleDragStart);
-    containerEl?.removeEventListener("dragenter", handleDragEnter);
-    containerEl?.removeEventListener("dragleave", handleContainerDragLeave);
-    document.removeEventListener("dragleave", handleDocumentDragLeave);
-    document.removeEventListener("dragend", handleDragEnd);
-    window.removeEventListener("blur", handleWindowBlur);
-    containerEl?.removeEventListener("mouseover", handleMouseOver);
-    containerEl?.removeEventListener("mouseout", handleMouseOut);
-    containerEl?.removeEventListener("mousemove", handleMouseMove);
+    disposeTabVisibility?.();
     for (const cleanup of cleanupMap.values()) {
       cleanup();
     }
@@ -809,29 +641,4 @@
     --dv-drag-over-border-color: var(--vscode-focusBorder, #007fd4);
   }
 
-  /* Ensure groups are positioning context for absolute tab bars */
-  :global(.shader-studio-dockview-theme .dv-groupview) {
-    position: relative;
-  }
-
-  /* Hide single-tab headers — use position: absolute so they don't affect
-     content area height. This avoids layout shifts that break dockview's
-     render overlay position cache and drop-zone calculations. */
-  :global(.shader-studio-dockview-theme .dv-tabs-and-actions-container.dv-single-tab) {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 10;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.15s ease-out;
-  }
-
-  /* Reveal tabs on sash hover, top-edge hover, or drag */
-  :global(.dv-sash-hover .dv-tabs-and-actions-container.dv-single-tab),
-  :global(.dv-drag-active .dv-tabs-and-actions-container.dv-single-tab) {
-    opacity: 1;
-    pointer-events: auto;
-  }
 </style>
