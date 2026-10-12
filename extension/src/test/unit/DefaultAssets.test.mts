@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import path from 'node:path';
 import type * as vscode from 'vscode';
+import type { ShaderConfig } from '@shader-studio/types';
 
 const mocks = vi.hoisted(() => ({ findFiles: vi.fn(), getExtension: vi.fn() }));
 vi.mock('vscode', () => ({
@@ -84,4 +85,55 @@ describe('VS Code default images', () => {
     await handler.handleRequestWorkspaceFiles({ extensions: ['mp3'], shaderPath: '/main.glsl' }, respond, convert);
     expect(respond).toHaveBeenCalledWith({ type: 'workspaceFiles', payload: { files: [] } });
   });
+  it.each(['./local.png', '/images/local.png'])('keeps ordinary paths working alongside defaults: %s', async inputPath => {
+    const config = { version: '1.0' as const, passes: { Image: { inputs: { iChannel0: { type: 'texture' as const, path: inputPath } } } } };
+    const expected = path.isAbsolute(inputPath) ? inputPath : '/project/local.png';
+    expect(PathResolver.resolvePath('/project/main.glsl', inputPath)).toBe(expected);
+    const provider: ShaderProvider = Object.assign(Object.create(ShaderProvider.prototype), { messenger: { getWebview: () => webview } });
+    expect(provider['buildPathMap'](config, '/project/main.glsl')[inputPath]).toBe(convert(expected));
+    for (const shaderPath of ['/project/main.glsl', undefined]) {
+      const absolute = shaderPath ? expected : path.normalize(inputPath);
+      const result = await ConfigPathConverter.processConfigPaths({ type: 'shaderSource', path: shaderPath, config }, webview);
+      expect(result.config.passes.Image?.inputs?.iChannel0).toEqual({ type: 'texture', path: inputPath, resolved_path: convert(absolute) });
+    }
+    const transport: WebSocketTransport = Object.assign(Object.create(WebSocketTransport.prototype), { extensionPath: extensionRoot });
+    const result = transport['processConfigPaths']({ type: 'shaderSource', path: '/project/main.glsl', config, pathMap: { [inputPath]: convert(expected) } });
+    const url = `http://localhost:3000/textures/${encodeURIComponent(expected)}`;
+    expect(result.config.passes.Image?.inputs?.iChannel0).toEqual({ type: 'texture', path: inputPath, resolved_path: url });
+    expect(result.pathMap?.[inputPath]).toBe(url);
+  });
+  it('preserves remote browser texture URLs', () => {
+    const uri = 'https://example.com/image.png';
+    const config = { version: '1.0' as const, passes: { Image: { inputs: { iChannel0: { type: 'texture' as const, path: uri } } } } };
+    const transport: WebSocketTransport = Object.assign(Object.create(WebSocketTransport.prototype), { extensionPath: extensionRoot });
+    expect(transport['processConfigPaths']({ type: 'shaderSource', config }).config.passes.Image?.inputs?.iChannel0).toEqual({ type: 'texture', path: uri, resolved_path: uri });
+  });
+
+  it('ignores missing passes, inputs and paths when building preview maps', async () => {
+    const provider: ShaderProvider = Object.assign(Object.create(ShaderProvider.prototype), { messenger: { getWebview: () => webview } });
+    expect(provider['buildPathMap'](null, '/project/main.glsl')).toEqual({});
+    // Persisted configs can be partial while the user edits them.
+    for (const config of [
+      { version: '1.0' },
+      { version: '1.0', passes: { Image: null } },
+      { version: '1.0', passes: { Image: {} } },
+      { version: '1.0', passes: { Image: { inputs: null } } },
+      { version: '1.0', passes: { Image: { inputs: { iChannel0: null, iChannel1: { type: 'keyboard' }, iChannel2: { type: 'texture', path: '' } } } } },
+    ]) {
+      const partial = config as unknown as ShaderConfig;
+      expect(provider['buildPathMap'](partial, '/project/main.glsl')).toEqual({});
+      const result = await ConfigPathConverter.processConfigPaths({ type: 'shaderSource', path: '/project/main.glsl', config: partial }, webview);
+      expect(result.config).toEqual(partial);
+    }
+  });
+  it.each(['video', 'audio'] as const)('resolves ordinary %s paths and respects skipped video processing', async type => {
+    const input = { type, path: './media.mp4' };
+    const config = { version: '1.0' as const, passes: { Image: { inputs: { iChannel0: input } } } };
+    for (const skipVideoProcessing of [false, true]) {
+      const result = await ConfigPathConverter.processConfigPaths({ type: 'shaderSource', path: '/project/main.glsl', config }, webview, { skipVideoProcessing });
+      expect(result.config.passes.Image?.inputs?.iChannel0).toEqual(type === 'video' && skipVideoProcessing
+        ? input : { ...input, resolved_path: convert('/project/media.mp4') });
+    }
+  });
+
 });
