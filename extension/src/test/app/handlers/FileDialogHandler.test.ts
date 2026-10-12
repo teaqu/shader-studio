@@ -958,7 +958,8 @@ suite('FileDialogHandler Test Suite', () => {
       assert.ok(respondFn.calledOnce);
       const msg = respondFn.firstCall.args[0];
       assert.strictEqual(msg.type, 'workspaceFiles');
-      assert.strictEqual(msg.payload.files.length, 1);
+      assert.strictEqual(msg.payload.files.length, 3);
+      assert.deepStrictEqual(msg.payload.files.slice(2), mockFiles);
     });
 
     test('passes pathConverter through to scanner', async () => {
@@ -981,7 +982,7 @@ suite('FileDialogHandler Test Suite', () => {
       assert.strictEqual(capturedConverter!('/img.png'), 'http://example.com//img.png');
     });
 
-    test('responds with empty files array when scanner throws', async () => {
+    test('responds with default images when scanner throws', async () => {
       const WorkspaceFileScanner = require('../../../app/WorkspaceFileScanner');
       sandbox.stub(WorkspaceFileScanner.WorkspaceFileScanner, 'scanFiles').rejects(new Error('scan error'));
 
@@ -994,7 +995,10 @@ suite('FileDialogHandler Test Suite', () => {
       assert.ok(respondFn.calledOnce);
       const msg = respondFn.firstCall.args[0];
       assert.strictEqual(msg.type, 'workspaceFiles');
-      assert.deepStrictEqual(msg.payload.files, []);
+      assert.deepStrictEqual(msg.payload.files.map((file: { workspacePath: string }) => file.workspacePath), [
+        'shader-studio://textures/nebula',
+        'shader-studio://cubemaps/desert',
+      ]);
     });
   });
 

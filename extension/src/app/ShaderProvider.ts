@@ -1,3 +1,4 @@
+import { resolveDefaultAssetPath } from "./DefaultAssets";
 import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
@@ -449,9 +450,9 @@ export class ShaderProvider {
               if (input && typeof input === 'object' && 'path' in input && input.path) {
                 const originalPath = input.path as string;
                 // Resolve relative path to absolute
-                const absolutePath = path.isAbsolute(originalPath)
+                const absolutePath = resolveDefaultAssetPath(originalPath) ?? (path.isAbsolute(originalPath)
                   ? originalPath
-                  : path.join(configDir, originalPath);
+                  : path.join(configDir, originalPath));
                 // Convert to webview URI
                 const webviewUri = ConfigPathConverter.convertUriForClient(absolutePath, webview);
                 pathMap[originalPath] = webviewUri;
