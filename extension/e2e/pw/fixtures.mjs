@@ -245,8 +245,8 @@ export const test = base.extend({
       recordE2ePhase('host-ready', hostStartedAt, { vscodeKey });
       recordE2ePhase('fixture-setup', fixtureStartedAt, { vscodeKey });
 
-      const shaderFrame = async (timeout = 90_000) => waitFor(
-        () => findShownAppFrame(window.frames()),
+      const shaderFrame = async (timeout = 90_000, excludedFrames = new Set()) => waitFor(
+        () => findShownAppFrame(window.frames(), excludedFrames),
         { timeout, message: 'no frame hosting the Shader Studio app appeared' },
       );
 
