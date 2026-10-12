@@ -291,7 +291,8 @@ vec3 cubemapDirection(vec2 pixel, int face) {
       gl.linkProgram(program);
 
       // Poll without blocking — yields to the browser each frame.
-      // Hard setTimeout ensures we abort even if rAF freezes (context loss, Metal crash, bg tab).
+      // Keep a deadline even if animation frames stop, but check GPU completion
+      // before timing out: a hidden view can finish compiling without polling.
       const pollOutcome = await new Promise<'completed' | 'timeout'>(resolve => {
         let resolved = false;
         const done = (outcome: 'completed' | 'timeout') => {
@@ -299,9 +300,16 @@ vec3 cubemapDirection(vec2 pixel, int face) {
             resolved = true; resolve(outcome);
           }
         };
-        const timeoutId = setTimeout(() => done('timeout'), ASYNC_COMPILE_TIMEOUT_MS);
+        const timeoutId = setTimeout(() => {
+          const completed = !gl.isContextLost()
+            && gl.getProgramParameter(program!, ext.COMPLETION_STATUS_KHR);
+          done(completed ? 'completed' : 'timeout');
+        }, ASYNC_COMPILE_TIMEOUT_MS);
         let slowLogged = false;
         const poll = () => {
+          if (resolved) {
+            return;
+          }
           pollCount++;
           if (gl.isContextLost()) {
             clearTimeout(timeoutId);
