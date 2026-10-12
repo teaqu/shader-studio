@@ -10,12 +10,13 @@
     shaderPath: string; projectConfig?: ShaderConfig | null;
     postMessage?: (message: ShaderMessage) => void; onMessage?: (handler: (event: MessageEvent) => void) => void;
     sourcePath: string; builtInSourcePath: string; passType: 'render' | 'compute'; hasNativeTemplate: boolean;
+    outputCount: number; passSource: string; outputKind?: '2d' | 'cubemap';
     onCreated: (result: CreatedSource) => void;
     onOpen?: () => void;
   }
   let { value, onPathChange, hasError, suggestedPath, bufferName, language, fileType, shaderPath, projectConfig,
-    postMessage, onMessage, onCreated, onOpen }: Props = $props();
+    postMessage, onMessage, onCreated, onOpen, outputKind }: Props = $props();
 </script>
   <ShaderFileControls {value} {onPathChange} {hasError} {suggestedPath} {language} {fileType} {shaderPath} {projectConfig}
-    inputId={`buffer-source-${bufferName}`} passName={bufferName} {postMessage} {onMessage} {onCreated}
+    inputId={`buffer-source-${bufferName}`} passName={bufferName} {outputKind} {postMessage} {onMessage} {onCreated}
     summary={true} {onOpen} />

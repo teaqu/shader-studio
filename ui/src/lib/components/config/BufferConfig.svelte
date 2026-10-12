@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import CubemapPreviewControls from "./CubemapPreviewControls.svelte";
   import { untrack } from "svelte";
   import { getCommonShaderSource } from "../../state/commonSourceState.svelte";
   import type { MessageEvent as ShaderMessage } from "@shader-studio/types";
@@ -225,12 +226,17 @@
   let heightInput = $state<number | null>(null);
   let bufferWidthInput = $state('');
   let bufferHeightInput = $state('');
+  let cubemapFaceSizeInput = $state('512');
   let modelMeshNames = $state<string[]>([]);
   let modelMeshLoading = $state(false);
   let modelMeshError = $state<string | null>(null);
 
   $effect(() => {
     currentPath = "path" in config ? config.path : "";
+  });
+
+  $effect(() => {
+    cubemapFaceSizeInput = String(bufferPassConfig?.faceSize ?? 512);
   });
 
   $effect(() => {
@@ -303,6 +309,37 @@
 
   function updateBufferResolution(resolution: BufferResolution | undefined) {
     updateConfig({ ...bufferPassConfig, resolution });
+  }
+
+  function setRenderOutputKind(outputKind: '2d' | 'cubemap') {
+    if (!bufferPassConfig) {
+      return;
+    }
+    updateConfig(outputKind === 'cubemap'
+      ? { ...bufferPassConfig, outputKind, faceSize: bufferPassConfig.faceSize ?? 512, resolution: undefined, geometry: undefined, vertex: undefined, entryPoints: undefined, outputs: undefined }
+      : { ...bufferPassConfig, outputKind: undefined, faceSize: undefined });
+  }
+
+  function setRenderFaceSize(value: string) {
+    cubemapFaceSizeInput = value;
+    const faceSize = Number(value);
+    if (!bufferPassConfig || !Number.isInteger(faceSize) || faceSize < 1) {
+      return;
+    }
+    updateConfig({ ...bufferPassConfig, faceSize });
+  }
+
+  function setCubemapExecution(type: 'render' | 'compute') {
+    const base = {
+      path: 'path' in config ? config.path : '',
+      inputs: config.inputs,
+      outputKind: 'cubemap' as const,
+      faceSize: 'faceSize' in config ? config.faceSize ?? 512 : 512,
+      outputFormat: 'outputFormat' in config ? config.outputFormat : undefined,
+    };
+    updateConfig(type === 'compute'
+      ? { ...base, type: 'compute', outputLayers: 6 }
+      : base as BufferPass);
   }
 
   function handlePathChange(path: string) {
@@ -737,7 +774,7 @@ return;
 </script>
 
 {#snippet functions(stage: 'vertex' | 'fragment')}
-  {#if passType === 'render' && (stage === 'vertex' || language !== 'glsl')}
+  {#if passType === 'render' && bufferPassConfig?.outputKind !== 'cubemap' && (stage === 'vertex' || language !== 'glsl')}
       <RenderSourceControls {stage} pass={config as BufferPass | ImagePass} entryPoints={renderEntryPoints}
         {vertexSource} {passSource}
         {language} {fileType} sourcePath={ownedSourcePath} passName={bufferName}
@@ -756,6 +793,22 @@ return;
   <OutputFormatControl value={bufferPassConfig?.outputFormat ?? 'auto'} onchange={handleOutputFormat} />
 {/snippet}
 
+{#snippet renderOutputShape()}
+        <div class="resolution-row">
+          <label class="resolution-label" for="output-kind-{bufferName}">Kind</label>
+          <select id="output-kind-{bufferName}" aria-label="Output kind" value={bufferPassConfig?.outputKind ?? '2d'} onchange={(event) => setRenderOutputKind(event.currentTarget.value as '2d' | 'cubemap')}>
+            <option value="2d">2D</option>
+            <option value="cubemap" disabled={language === 'wgsl'}>Cubemap</option>
+          </select>
+        </div>
+        {#if bufferPassConfig?.outputKind === 'cubemap'}
+          <div class="resolution-row">
+            <label class="resolution-label" for="cubemap-face-size-{bufferName}">Face size</label>
+            <input id="cubemap-face-size-{bufferName}" aria-label="Cubemap face size" class="dim-input" type="number" min="1" step="1" value={cubemapFaceSizeInput} oninput={(event) => setRenderFaceSize(event.currentTarget.value)} />
+          </div>
+        {/if}
+{/snippet}
+
 <div class="buffer-config">
   <div class="buffer-details">
     {#if !isImagePass}
@@ -764,8 +817,8 @@ return;
         <BufferSourceControls value={currentPath} onPathChange={handlePathChange} hasError={!validation.isValid}
           {suggestedPath} {bufferName} {language} {fileType} {shaderPath} {projectConfig} {postMessage} {onMessage}
           sourcePath={nativeInsertionPath} builtInSourcePath={ownedSourcePath} {passType} {hasNativeTemplate}
-          onCreated={applyCreatedSource}
-          onOpen={openBufferInEditor} />
+          outputCount={Math.max(1, renderOutputs.length)} outputKind={bufferPassConfig?.outputKind} {passSource}
+          onCreated={applyCreatedSource} onOpen={openBufferInEditor} />
 
         {#if passType === 'compute'}
           <ComputePassControls
@@ -789,7 +842,7 @@ return;
       </div>
     {/if}
 
-    {#if bufferName !== 'common' && passType === 'render'}
+    {#if bufferName !== 'common' && passType === 'render' && bufferPassConfig?.outputKind !== 'cubemap'}
       {#if isImagePass && language !== 'glsl'}<div class="config-item"><h3 class="section-title">Fragment shader</h3>{@render functions('fragment')}</div>{/if}
       {#if passType === 'render'}
         <div class="config-item">
@@ -844,7 +897,7 @@ return;
       </div>
     {/if}
 
-    {#if bufferName !== 'common' && passType === 'render'}
+    {#if bufferName !== 'common' && passType === 'render' && bufferPassConfig?.outputKind !== 'cubemap'}
       <div class="config-item geometry-section">
         <PassGeometryControls
           geometry={selectedGeometry}
@@ -980,6 +1033,7 @@ return;
     {/if}
 
     {#if !isImagePass && bufferName !== "common" && passType !== 'compute'}
+      {#if bufferPassConfig?.outputKind !== 'cubemap'}
       <div class="config-item resolution-section">
         <h3 class="section-title">Resolution</h3>
         <div class="resolution-row">
@@ -1027,10 +1081,23 @@ return;
         {/if}
 
       </div>
+      {/if}
+    {/if}
+
+    {#if !isImagePass && "outputKind" in config && config.outputKind === 'cubemap'}
+    <CubemapPreviewControls {shaderPath} passName={bufferName} />
+  {/if}
+  {#if !isImagePass && language === 'slang' && ('outputKind' in config) && config.outputKind === 'cubemap'}
+      <div class="config-item"><h3 class="section-title">Cubemap execution</h3>
+        <select aria-label="Cubemap execution" value={passType} onchange={(event) => setCubemapExecution(event.currentTarget.value as 'render' | 'compute')}>
+          <option value="render">Fragment</option><option value="compute">Compute</option>
+        </select>
+      </div>
     {/if}
 
     {#if !isImagePass && bufferName !== 'common' && passType === 'render'}
       <RenderOutputControls source={passSource} {language} fragment={renderPassConfig?.entryPoints?.fragment}
+        children={renderOutputShape} cubemap={bufferPassConfig?.outputKind === 'cubemap'}
         format={bufferPassConfig?.outputFormat ?? 'auto'} maxAttachments={maxColorAttachments}
         maxBytes={maxColorAttachmentBytesPerSample} onchange={handleOutputFormat} />
     {/if}

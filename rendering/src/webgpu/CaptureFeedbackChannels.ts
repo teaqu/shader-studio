@@ -28,6 +28,7 @@ export function captureFeedbackChannels(
         return resource;
       }
       const layer = drawn?.layer ?? 0;
+      const cubemap = drawn?.cubemap === true || channel.outputKind === "cubemap";
       let layers = copies.get(source);
       if (!layers) {
         layers = new Map();
@@ -35,14 +36,14 @@ export function captureFeedbackChannels(
       }
       let texture = layers.get(layer);
       if (!texture) {
-        texture = allocateChannelSnapshot(device, source, `${channel.source}[${channel.output ?? 0}]`);
+        texture = allocateChannelSnapshot(device, source, `${channel.source}[${channel.output ?? 0}]`, cubemap);
         layers.set(layer, texture);
         encoder.copyTextureToTexture(
           { texture: source, ...(drawn?.layer !== undefined ? { origin: { z: drawn.layer } } : {}) },
-          { texture }, { width: source.width, height: source.height },
+          { texture }, { width: source.width, height: source.height, ...(cubemap ? { depthOrArrayLayers: 6 } : {}) },
         );
       }
-      return { ...resource, textureView: texture.createView() };
+      return { ...resource, textureView: cubemap ? texture.createView({ dimension: "cube" }) : texture.createView() };
     });
     if (copies.size > 0) {
       device.queue.submit([encoder.finish()]);
@@ -64,10 +65,10 @@ export function captureFeedbackChannels(
   }
 }
 
-function allocateChannelSnapshot(device: GPUDevice, source: GPUTexture, label: string): GPUTexture {
+function allocateChannelSnapshot(device: GPUDevice, source: GPUTexture, label: string, cubemap = false): GPUTexture {
   return device.createTexture({
     label: `variable-capture feedback snapshot: ${label}`,
-    size: { width: source.width, height: source.height }, format: source.format,
+    size: { width: source.width, height: source.height, ...(cubemap ? { depthOrArrayLayers: 6 } : {}) }, format: source.format,
     usage: (globalThis.GPUTextureUsage?.TEXTURE_BINDING ?? 0x04) | (globalThis.GPUTextureUsage?.COPY_DST ?? 0x02),
   });
 }

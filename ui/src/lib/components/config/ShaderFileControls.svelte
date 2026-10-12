@@ -13,11 +13,12 @@
     passName?: string;
     summary?: boolean;
     onOpen?: () => void;
+    outputKind?: '2d' | 'cubemap';
     onPathChange: (path: string) => void; onCreated: (source: CreatedSource) => void;
     postMessage?: (message: ViewerMessage) => void; onMessage?: (handler: (event: MessageEvent) => void) => void;
   }
   let { value, shaderPath, language, fileType, suggestedPath, inputId, projectConfig, hasError = false,
-    onPathChange, onCreated, postMessage, onMessage, passName, summary = false, onOpen }: Props = $props();
+    onPathChange, onCreated, postMessage, onMessage, passName, summary = false, onOpen, outputKind }: Props = $props();
   let open = $state(false);
   let pickerRoot = $state<HTMLDivElement>();
   let pickerButton = $state<HTMLButtonElement>();
@@ -77,7 +78,7 @@
   </div>
   <div class:picker-actions={summary}>
     <PathInput value="" hidePath={true} showSelectWhenHidden={true} {shaderPath} {suggestedPath} {fileType} {postMessage} {onMessage}
-      {passName} createAuthoringMode={fileType.endsWith('-compute') ? 'native' : getDefaultAuthoringMode()}
+      {passName} {outputKind} createAuthoringMode={fileType.endsWith('-compute') ? 'native' : getDefaultAuthoringMode()}
       selectLabel="Browse workspace…" createLabel={summary ? 'Create file…' : 'Create'} onCreated={accept} />
   </div>
   {#if summary}
@@ -118,7 +119,7 @@
     {:else if !value}
       <div class="empty-actions">
         <PathInput {value} hidePath={true} allowSelect={false} createLabel="Create file…"
-          {shaderPath} {suggestedPath} {fileType} {postMessage} {onMessage} {passName}
+          {shaderPath} {suggestedPath} {fileType} {postMessage} {onMessage} {passName} {outputKind}
           createAuthoringMode={fileType.endsWith('-compute') ? 'native' : getDefaultAuthoringMode()} onCreated={accept} />
       </div>
     {/if}

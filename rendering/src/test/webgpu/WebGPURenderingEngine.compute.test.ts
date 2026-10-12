@@ -379,6 +379,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
       passKind: "compute",
       workgroupSize: [8, 8, 1],
       outputLayers: 1,
+      outputKind: "2d",
       outputImageFormat: "rgba32f",
       hasOutput: false,
       entryPoint: "computeMainEntry",

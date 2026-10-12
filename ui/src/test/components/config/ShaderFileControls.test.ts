@@ -174,3 +174,16 @@ it.each(['Browse workspace…', 'Create file…'])('handles cancellation, errors
   expect(onCreated).toHaveBeenCalledWith(expect.objectContaining({ path: 'new.wgsl' }));
   expect(view.queryByRole('dialog')).toBeNull();
 });
+
+it.each([false, true])('preserves cubemap creation metadata with picker open=%s', async opened => {
+  const postMessage = vi.fn();
+  const view = render(ShaderFileControls, { value: '', summary: true, outputKind: 'cubemap', passName: 'Sky',
+    shaderPath: '/image.glsl', language: 'glsl', fileType: 'glsl-buffer', suggestedPath: 'sky.glsl',
+    inputId: 'sky-source', onPathChange: vi.fn(), onCreated: vi.fn(), postMessage });
+  if (opened) {
+    await fireEvent.click(view.getByRole('button', { name: 'Choose shader file' }));
+  }
+  await fireEvent.click(view.getByRole('button', { name: 'Create file…' }));
+  expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'createFile',
+    payload: expect.objectContaining({ outputKind: 'cubemap', passName: 'Sky' }) }));
+});

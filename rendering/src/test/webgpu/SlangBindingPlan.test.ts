@@ -58,6 +58,17 @@ describe("Slang binding plan", () => {
     expect(plan.channels[1].textureBinding).toBe(plan.channels[0].textureBinding);
     expect(new Set([plan.channels[0], plan.channels[2], plan.channels[3]].map(channel => channel.textureBinding)).size).toBe(3);
   });
+  it("shares cube-buffer aliases but never merges them with a 2D buffer view", () => {
+    const plan = buildSlangBindingPlan(getSlangChannels([
+      { kind: "buffer", slot: 0, key: "cube", source: "Environment", readFrom: "current-frame", outputKind: "cubemap" },
+      { kind: "buffer", slot: 1, key: "cubeAgain", source: "Environment", readFrom: "current-frame", outputKind: "cubemap" },
+      { kind: "buffer", slot: 2, key: "flat", source: "Environment", readFrom: "current-frame" },
+    ]));
+    expect(plan.textures).toHaveLength(2);
+    expect(plan.channels[0].textureBinding).toBe(plan.channels[1].textureBinding);
+    expect(plan.channels[2].textureBinding).not.toBe(plan.channels[0].textureBinding);
+    expect(plan.textures.find(texture => texture.kind === "buffer-cubemap")).toBeTruthy();
+  });
   it("keeps upload variants separate while sharing one texture with different wrap", () => {
     const plan = buildSlangBindingPlan(getSlangChannels([
       { kind: "texture", slot: 0, key: "a", path: "a.png" },

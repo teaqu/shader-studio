@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "path";
+import { resolveDefaultAssetPath } from "./DefaultAssets";
 
 /**
  * Resolves paths for shader files and their dependencies.
@@ -16,6 +17,11 @@ export class PathResolver {
    * @returns The resolved absolute path
    */
   public static resolvePath(shaderPath: string, targetPath: string): string {
+    const defaultAsset = resolveDefaultAssetPath(targetPath);
+    if (defaultAsset) {
+      return defaultAsset;
+    }
+
     const workspaceFolder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(shaderPath));
     const workspaceRoot = workspaceFolder?.uri.fsPath || path.dirname(shaderPath);
     

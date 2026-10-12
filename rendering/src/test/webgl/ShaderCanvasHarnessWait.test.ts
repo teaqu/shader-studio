@@ -50,6 +50,19 @@ describe("canvas readback deadline", () => {
     expect(collectPixelRegionResults).toHaveBeenCalledTimes(2);
   });
 
+  it("allows an explicit readback budget for a busy GPU corpus", async () => {
+    const result = { requestId: 23 };
+    const collectPixelRegionResults = vi.fn()
+      .mockReturnValueOnce([])
+      .mockReturnValueOnce([])
+      .mockReturnValue([result]);
+    const engine = { collectPixelRegionResults } as unknown as RenderingEngine;
+    vi.spyOn(performance, "now").mockReturnValueOnce(0).mockReturnValueOnce(0)
+      .mockReturnValueOnce(6_000).mockReturnValue(7_000);
+    await expect(waitForPixelRegion(engine, 23, 20_000)).resolves.toBe(result);
+    expect(collectPixelRegionResults).toHaveBeenCalledTimes(3);
+  });
+
   it("returns an already collected result without waiting for the deadline", async () => {
     const result = { requestId: 23 };
     const collectPixelRegionResults = vi.fn().mockReturnValue([result]);

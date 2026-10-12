@@ -223,6 +223,12 @@ export class ShaderPipeline {
           path: this.isBufferPass(renderPass) ? (renderPass as BufferPass).path : undefined,
           resolution: this.isBufferPass(renderPass) ? (renderPass as BufferPass).resolution : undefined,
           ...this.resolveOutputFormat(passName, pass),
+          ...(pass && "outputKind" in pass ? { outputKind: pass.outputKind, faceSize: pass.faceSize } : {}),
+          ...(Object.values(config?.passes ?? {}).some(source => source && "outputKind" in source && source.outputKind === "cubemap") ? {
+            cubemapSources: Object.entries(config?.passes ?? {})
+              .filter(([, source]) => source && "outputKind" in source && source.outputKind === "cubemap")
+              .map(([name]) => name),
+          } : {}),
         };
       })
       .filter((pass): pass is NonNullable<typeof pass> => pass !== null);
@@ -249,7 +255,7 @@ export class ShaderPipeline {
   }
 
   private getChannelTypes(pass: Pass, slotAssignments = assignInputSlots(pass.inputs)): ChannelSamplerType[] {
-    return resolveChannelSamplerTypes(pass.inputs, slotAssignments);
+    return resolveChannelSamplerTypes(pass.inputs, slotAssignments, pass.cubemapSources);
   }
 
   private async compileShaders(
@@ -292,6 +298,7 @@ export class ShaderPipeline {
         ({ headerLineCount: svelteHeaderLines, commonCodeLineCount, vertexRange } = this.shaderCompiler
           .wrapShaderToyCode(pass.shaderSrc, {
             geometry: pass.geometry,
+          outputKind: pass.outputKind,
             commonCode,
             slotAssignments,
             channelTypes,
@@ -302,6 +309,7 @@ export class ShaderPipeline {
           }));
         shader = await this.shaderCompiler.compileShaderAsync(pass.shaderSrc, {
           geometry: pass.geometry,
+          outputKind: pass.outputKind,
           commonCode,
           slotAssignments,
           channelTypes,
@@ -398,6 +406,7 @@ export class ShaderPipeline {
           && current
           && current.front?.mTex0?.mXres === size.width
           && current.front?.mTex0?.mYres === size.height
+          && (current.outputKind ?? "2d") === (pass.outputKind ?? "2d")
           && (current.requiresDepth ?? false) === requiresDepth
           && (current.outputFormat ?? "rgba32float") === outputFormat;
         if (matches) {
@@ -408,6 +417,7 @@ export class ShaderPipeline {
             size.height,
             requiresDepth,
             pass.outputFormat ?? "auto",
+            ...(pass.outputKind ? [pass.outputKind] : []),
           );
           nextPassBuffers[pass.name] = allocated;
           allocatedPassBuffers[pass.name] = allocated;

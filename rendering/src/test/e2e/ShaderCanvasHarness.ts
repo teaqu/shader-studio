@@ -70,9 +70,10 @@ function readbackStage(engine: RenderingEngineContract, requestId: number): stri
 export async function waitForPixelRegion(
   engine: RenderingEngineContract,
   requestId: number,
+  timeoutMs = 5_000,
 ): Promise<ReturnType<RenderingEngineContract["collectPixelRegionResults"]>[number]> {
   const startedAt = performance.now();
-  const deadline = startedAt + 5_000;
+  const deadline = startedAt + timeoutMs;
   while (performance.now() < deadline) {
     const result = engine.collectPixelRegionResults().find((candidate) => candidate.requestId === requestId);
     if (result) {
@@ -99,7 +100,10 @@ export async function waitForPixelRegion(
   );
 }
 
-export function createShaderCanvasHarness(language: ShaderLanguage): ShaderCanvasHarness {
+export function createShaderCanvasHarness(
+  language: ShaderLanguage,
+  { readbackTimeoutMs = 5_000 }: { readbackTimeoutMs?: number } = {},
+): ShaderCanvasHarness {
   const canvas = createCanvas();
   const engine = createEngine(language);
   engine.initialize(canvas, true);
@@ -168,7 +172,7 @@ export function createShaderCanvasHarness(language: ShaderLanguage): ShaderCanva
     if (readbackStage(engine, requestId) === "queued") {
       throw new Error(`${language} frame did not encode canvas readback request ${requestId}`);
     }
-    const result = await waitForPixelRegion(engine, requestId);
+    const result = await waitForPixelRegion(engine, requestId, readbackTimeoutMs);
     // Output of feedback and iFrame-driven fixtures depends on the exact frame
     // count, so a frame this harness did not ask for must fail loudly rather
     // than shift a pixel assertion or signature.

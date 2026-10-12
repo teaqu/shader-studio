@@ -16,6 +16,7 @@ export interface SlangComputePipelineDescriptor {
   height: number;
   hasOutput: boolean;
   outputLayers: number;
+  outputKind?: "2d" | "cubemap";
   workgroupSize: [number, number, number];
   entryPoint: string;
   dispatchCount: number;
@@ -44,6 +45,7 @@ export class SlangComputePipeline {
   private textures: GPUTexture[] = [];
   private fullOutputViews: GPUTextureView[] = [];
   private layerOutputViews: GPUTextureView[][] = [];
+  private cubeOutputViews: GPUTextureView[] = [];
   private textureIndex = 0;
   private rebuildGeneration = 0;
   private pendingTextureRetirements = new Set<GPUTexture>();
@@ -119,7 +121,8 @@ export class SlangComputePipeline {
         const views = this.createOutputViews(textures);
         this.textures = textures;
         this.fullOutputViews = views.full;
-        this.layerOutputViews = views.layers;
+    this.layerOutputViews = views.layers;
+    this.cubeOutputViews = views.cubes;
       } catch (error) {
         SlangComputePipeline.destroyTextureList(textures);
         throw error;
@@ -178,6 +181,7 @@ export class SlangComputePipeline {
       this.textures = nextTextures;
       this.fullOutputViews = nextViews.full;
       this.layerOutputViews = nextViews.layers;
+      this.cubeOutputViews = nextViews.cubes;
       this.textureIndex = 0;
       this.retireTexturesAfterSubmittedWork(previousTextures);
       return;
@@ -321,6 +325,14 @@ export class SlangComputePipeline {
     return this.layerOutputViews[1 - this.textureIndex]?.[layer] ?? null;
   }
 
+  getCurrentCubemapOutputView(): GPUTextureView | null {
+    return this.cubeOutputViews[this.textureIndex] ?? null;
+  }
+
+  getPreviousCubemapOutputView(): GPUTextureView | null {
+    return this.cubeOutputViews[1 - this.textureIndex] ?? null;
+  }
+
   swap(): void {
     if (this.textures.length > 0) {
       this.textureIndex = 1 - this.textureIndex;
@@ -334,7 +346,7 @@ export class SlangComputePipeline {
       return;
     }
     const nextTextures: GPUTexture[] = [];
-    let nextViews: { full: GPUTextureView[]; layers: GPUTextureView[][] };
+    let nextViews: { full: GPUTextureView[]; layers: GPUTextureView[][]; cubes: GPUTextureView[] };
     try {
       nextTextures.push(this.createOutputTexture(), this.createOutputTexture());
       nextViews = this.createOutputViews(nextTextures);
@@ -346,6 +358,7 @@ export class SlangComputePipeline {
     this.textures = nextTextures;
     this.fullOutputViews = nextViews.full;
     this.layerOutputViews = nextViews.layers;
+    this.cubeOutputViews = nextViews.cubes;
     this.textureIndex = 0;
     this.invalidateBindGroups();
     this.retireTexturesAfterSubmittedWork(previousTextures);
@@ -413,6 +426,7 @@ export class SlangComputePipeline {
   private createOutputViews(textures: GPUTexture[]): {
     full: GPUTextureView[];
     layers: GPUTextureView[][];
+    cubes: GPUTextureView[];
   } {
     const full = textures.map((texture) => this.descriptor.outputLayers > 1
       ? texture.createView({
@@ -429,7 +443,10 @@ export class SlangComputePipeline {
         arrayLayerCount: 1,
       }),
     ));
-    return { full, layers };
+    const cubes = this.descriptor.outputKind === "cubemap"
+      ? textures.map((texture) => texture.createView({ dimension: "cube", baseArrayLayer: 0, arrayLayerCount: 6 }))
+      : [];
+    return { full, layers, cubes };
   }
 
   private resetResources(): void {
@@ -462,6 +479,7 @@ export class SlangComputePipeline {
     this.textures = [];
     this.fullOutputViews = [];
     this.layerOutputViews = [];
+    this.cubeOutputViews = [];
     this.textureIndex = 0;
   }
 
