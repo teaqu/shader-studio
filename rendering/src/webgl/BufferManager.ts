@@ -17,6 +17,7 @@ export class BufferManager {
     height: number,
     requiresDepth: boolean = false,
     requestedFormat: BufferOutputFormat = "auto",
+    outputKind: "2d" | "cubemap" = "2d",
   ): Buffer {
     const outputFormat = requestedFormat === "rgba16float" ? "rgba16float" : "rgba32float";
     const textureFormat = outputFormat === "rgba16float"
@@ -24,8 +25,8 @@ export class BufferManager {
       : this.renderer.TEXFMT.C4F32;
     const filter = this.renderer.FILTER.LINEAR;
 
-    const frontTex = this.createFloatTexture(width, height, filter, textureFormat);
-    const backTex = this.createFloatTexture(width, height, filter, textureFormat);
+    const frontTex = this.createFloatTexture(width, height, filter, textureFormat, outputKind);
+    const backTex = this.createFloatTexture(width, height, filter, textureFormat, outputKind);
 
     if (!frontTex || !backTex) {
       if (frontTex) {
@@ -37,12 +38,12 @@ export class BufferManager {
       throw new Error("Failed to create ping-pong textures");
     }
 
-    const frontRT = this.renderer.CreateRenderTarget(
-      frontTex, null, null, null, null, requiresDepth
-    );
-    const backRT = this.renderer.CreateRenderTarget(
-      backTex, null, null, null, null, requiresDepth
-    );
+    const frontRT = outputKind === "cubemap"
+      ? this.renderer.CreateRenderTargetCubeMap(frontTex, null, false)
+      : this.renderer.CreateRenderTarget(frontTex, null, null, null, null, requiresDepth);
+    const backRT = outputKind === "cubemap"
+      ? this.renderer.CreateRenderTargetCubeMap(backTex, null, false)
+      : this.renderer.CreateRenderTarget(backTex, null, null, null, null, requiresDepth);
 
     if (!frontRT || !backRT) {
       if (frontRT) {
@@ -56,7 +57,11 @@ export class BufferManager {
       throw new Error(`Failed to create ${outputFormat} ping-pong render targets`);
     }
 
-    return { front: frontRT, back: backRT, requiresDepth, outputFormat };
+    const result: Buffer = { front: frontRT, back: backRT, requiresDepth, outputFormat, outputKind };
+    if (outputKind === "cubemap") {
+      this.clearNewBuffers(result, width, height);
+    }
+    return result;
   }
 
   public resizeBuffers(
@@ -64,7 +69,7 @@ export class BufferManager {
     newHeight: number,
     bufferResolutions?: Record<string, { width: number; height: number }>,
   ): void {
-    const oldBuffers = this.buffers;
+    const oldBuffers = { ...this.buffers };
     const newBuffers: Buffers = {};
 
     for (const name of Object.keys(this.buffers)) {
@@ -72,13 +77,18 @@ export class BufferManager {
         const bufW = bufferResolutions?.[name]?.width ?? newWidth;
         const bufH = bufferResolutions?.[name]?.height ?? newHeight;
         const oldBuffer = oldBuffers[name]!;
+        if (oldBuffer.outputKind === "cubemap" && oldBuffer.front?.mTex0?.mXres === bufW && oldBuffer.front.mTex0.mYres === bufH) {
+          newBuffers[name] = oldBuffer;
+          delete oldBuffers[name];
+          continue;
+        }
         const newBuffer = this.createPingPongBuffers(
-          bufW, bufH, oldBuffer.requiresDepth, oldBuffer.outputFormat,
+          bufW, bufH, oldBuffer.requiresDepth, oldBuffer.outputFormat, oldBuffer.outputKind,
         );
 
-        if (this.shouldCopyExistingBuffers(oldBuffers, name, newBuffer)) {
+        if (oldBuffer.outputKind !== "cubemap" && this.shouldCopyExistingBuffers(oldBuffers, name, newBuffer)) {
           this.copyExistingBuffers(oldBuffers[name]!, newBuffer);
-        } else {
+        } else if (oldBuffer.outputKind !== "cubemap") {
           this.clearNewBuffers(newBuffer, bufW, bufH);
         }
 
@@ -116,9 +126,9 @@ export class BufferManager {
     return this.renderer.CreateShader(vs, fs);
   }
 
-  private createFloatTexture(width: number, height: number, filter: number, format: number): PiTexture | null {
+  private createFloatTexture(width: number, height: number, filter: number, format: number, outputKind: "2d" | "cubemap"): PiTexture | null {
     return this.renderer.CreateTexture(
-      this.renderer.TEXTYPE.T2D,
+      outputKind === "cubemap" ? this.renderer.TEXTYPE.CUBEMAP : this.renderer.TEXTYPE.T2D,
       width,
       height,
       format,
@@ -187,10 +197,10 @@ export class BufferManager {
     height: number
   ): void {
     if (buffers.front) {
-      this.clearRenderTarget(buffers.front, width, height);
+      this.clearRenderTarget(buffers.front, width, height, buffers.outputKind);
     }
     if (buffers.back) {
-      this.clearRenderTarget(buffers.back, width, height);
+      this.clearRenderTarget(buffers.back, width, height, buffers.outputKind);
     }
   }
 
@@ -218,13 +228,21 @@ export class BufferManager {
   private clearRenderTarget(
     renderTarget: PiRenderTarget | null,
     width: number,
-    height: number
+    height: number,
+    outputKind?: "2d" | "cubemap",
   ): void {
     if (!renderTarget) {
       return;
     }
-    this.renderer.SetRenderTarget(renderTarget);
     this.renderer.SetViewport([0, 0, width, height]);
-    this.renderer.Clear(this.renderer.CLEAR.Color, [0, 0, 0, 0]);
+    if (outputKind === "cubemap") {
+      for (let face = 0; face < 6; face++) {
+        this.renderer.SetRenderTargetCubeMap(renderTarget, face);
+        this.renderer.Clear(this.renderer.CLEAR.Color, [0, 0, 0, 0]);
+      }
+    } else {
+      this.renderer.SetRenderTarget(renderTarget);
+      this.renderer.Clear(this.renderer.CLEAR.Color, [0, 0, 0, 0]);
+    }
   }
 }

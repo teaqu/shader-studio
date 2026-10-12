@@ -11,7 +11,7 @@ const createMockRenderer = (): PiRenderer => {
   return {
     FILTER: { LINEAR: 1, NONE: 0 },
     TEXFMT: { C4F32: 5, C4F16: 3 },
-    TEXTYPE: { T2D: 0 },
+    TEXTYPE: { T2D: 0, CUBEMAP: 2 },
     TEXWRP: { CLAMP: 0 },
 
     CreateTexture: vi.fn((type, width, height, format, filter, wrap, data) => {
@@ -29,6 +29,10 @@ const createMockRenderer = (): PiRenderer => {
       return texture;
     }),
 
+    CreateRenderTargetCubeMap: vi.fn((tex) => ({ mTex0: tex })),
+    SetRenderTargetCubeMap: vi.fn(),
+    Clear: vi.fn(),
+    CLEAR: { Color: 1 },
     CreateRenderTarget: vi.fn((tex, depth, stencil, msaa, flipY, autoResize) => {
       const rt = {
         mTex0: tex,
@@ -303,5 +307,58 @@ describe('BufferManager', () => {
       // Copy shader is not destroyed by dispose - it's kept for reuse
       expect(bufferManager.getPassBuffers()).toEqual({});
     });
+  });
+});
+
+
+describe("cubemap buffer allocation", () => {
+  it("allocates and clears both six-face targets, then disposes them once", () => {
+    const renderer = createMockRenderer();
+    const manager = new BufferManager(renderer);
+    const buffer = manager.createPingPongBuffers(32, 32, false, "rgba16float", "cubemap");
+    expect(buffer).toMatchObject({ outputKind: "cubemap", outputFormat: "rgba16float" });
+    expect(renderer.CreateTexture).toHaveBeenCalledWith(2, 32, 32, 3, 1, 0, null);
+    expect(renderer.CreateRenderTargetCubeMap).toHaveBeenCalledTimes(2);
+    expect(renderer.SetRenderTargetCubeMap).toHaveBeenCalledTimes(12);
+    expect(renderer.Clear).toHaveBeenCalledTimes(12);
+    manager.setPassBuffers({ Sky: buffer });
+    manager.dispose();
+    expect(renderer.DestroyTexture).toHaveBeenCalledTimes(2);
+    expect(renderer.DestroyRenderTarget).toHaveBeenCalledTimes(2);
+  });
+
+  it("clears every face on resize and preserves the output kind", () => {
+    const renderer = createMockRenderer();
+    const manager = new BufferManager(renderer);
+    manager.setPassBuffers({ Sky: manager.createPingPongBuffers(32, 32, false, "auto", "cubemap") });
+    vi.mocked(renderer.Clear).mockClear();
+    manager.resizeBuffers(64, 64);
+    expect(manager.getPassBuffers().Sky).toMatchObject({ outputKind: "cubemap", front: { mTex0: { mXres: 64 } } });
+    expect(renderer.DrawFullScreenTriangle_XY).not.toHaveBeenCalled();
+    expect(renderer.Clear).toHaveBeenCalledTimes(12);
+    expect(renderer.DestroyTexture).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps cubemap feedback when only the canvas size changes", () => {
+    const renderer = createMockRenderer();
+    const manager = new BufferManager(renderer);
+    const cube = manager.createPingPongBuffers(32, 32, false, "auto", "cubemap");
+    manager.setPassBuffers({ Sky: cube });
+    vi.mocked(renderer.Clear).mockClear();
+    manager.resizeBuffers(800, 600, { Sky: { width: 32, height: 32 } });
+    expect(manager.getPassBuffers().Sky).toBe(cube);
+    expect(renderer.Clear).not.toHaveBeenCalled();
+    expect(renderer.DestroyTexture).not.toHaveBeenCalled();
+    manager.dispose();
+    expect(renderer.DestroyTexture).toHaveBeenCalledTimes(2);
+  });
+
+  it("releases partial allocations when a cube framebuffer fails", () => {
+    const renderer = createMockRenderer();
+    vi.mocked(renderer.CreateRenderTargetCubeMap).mockReturnValueOnce(null);
+    const manager = new BufferManager(renderer);
+    expect(() => manager.createPingPongBuffers(32, 32, false, "auto", "cubemap")).toThrow("render targets");
+    expect(renderer.DestroyTexture).toHaveBeenCalledTimes(2);
+    expect(renderer.DestroyRenderTarget).toHaveBeenCalledTimes(1);
   });
 });

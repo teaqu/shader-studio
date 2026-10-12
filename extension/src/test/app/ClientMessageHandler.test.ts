@@ -348,7 +348,8 @@ suite('ClientMessageHandler Test Suite', () => {
       assert.ok(respondFn.calledOnce);
       const msg = respondFn.firstCall.args[0];
       assert.strictEqual(msg.type, 'workspaceFiles');
-      assert.strictEqual(msg.payload.files.length, 1);
+      assert.strictEqual(msg.payload.files.length, 3);
+      assert.deepStrictEqual(msg.payload.files.slice(2), mockFiles);
     });
 
     test('uses pathConverter for file URIs', async () => {
@@ -370,7 +371,7 @@ suite('ClientMessageHandler Test Suite', () => {
       assert.strictEqual(capturedConverter!('/path/to/file.png'), 'http://example.com//path/to/file.png');
     });
 
-    test('responds with empty files array on error', async () => {
+    test('responds with default images on error', async () => {
       sandbox.stub(WorkspaceFileScanner, 'scanFiles').rejects(new Error('scan error'));
 
       await handler.handle(
@@ -381,7 +382,10 @@ suite('ClientMessageHandler Test Suite', () => {
       assert.ok(respondFn.calledOnce);
       const msg = respondFn.firstCall.args[0];
       assert.strictEqual(msg.type, 'workspaceFiles');
-      assert.deepStrictEqual(msg.payload.files, []);
+      assert.deepStrictEqual(msg.payload.files.map((file: { workspacePath: string }) => file.workspacePath), [
+        'shader-studio://textures/nebula',
+        'shader-studio://cubemaps/desert',
+      ]);
     });
   });
 

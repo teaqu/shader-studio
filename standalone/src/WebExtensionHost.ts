@@ -326,6 +326,11 @@ export class WebExtensionHost {
         if (template === undefined) {
           return;
         }
+        if (payload.outputKind === 'cubemap' && payload.fileType === 'glsl-buffer') {
+          template = 'void mainCubemap(out vec4 fragColor, in vec2 fragCoord, in vec3 rayOri, in vec3 rayDir) {\n  fragColor = vec4(0.5 + 0.5 * rayDir, 1.0);\n}\n';
+        } else if (payload.outputKind === 'cubemap' && payload.fileType === 'slang-buffer') {
+          template = 'float4 mainCubemap(float2 fragCoord, float3 rayOri, float3 rayDir) {\n  return float4(0.5 + 0.5 * rayDir, 1.0);\n}\n';
+        }
         const requested = this.prompt('Create file', payload.suggestedPath)?.trim();
         if (!requested) {
           return;
@@ -340,11 +345,14 @@ export class WebExtensionHost {
         let entryPoints: { vertex?: string; fragment?: string; compute?: string } | undefined;
         let created = false;
         if (!this.workspace.exists(path)) {
-          if (authoringMode === 'native' && payload.fileType === 'wgsl-buffer') {
+          if (payload.outputKind === 'cubemap' && payload.fileType === 'slang-compute') {
+            template = '[shader("compute")]\n[numthreads(8, 8, 1)]\nvoid mainCompute(uint3 pixel : SV_DispatchThreadID) {\n  if (pixel.x >= uint(iResolution.x) || pixel.y >= uint(iResolution.y) || pixel.z >= 6) return;\n  float3 d = cubemapDirection(pixel.xy, pixel.z);\n  writeOutput(pixel.xy, pixel.z, float4(0.5 + 0.5 * d, 1.0));\n}\n';
+            entryPoints = { compute: 'mainCompute' };
+          } else if (authoringMode === 'native' && payload.outputKind !== 'cubemap' && payload.fileType === 'wgsl-buffer') {
             const native = createNativeFragmentSource('wgsl', '', passName, nativeOutputCount(payload.outputCount));
             template = native.text.trimStart();
             entryPoints = native.entryPoints;
-          } else if (authoringMode === 'native' && payload.fileType === 'slang-buffer') {
+          } else if (authoringMode === 'native' && payload.outputKind !== 'cubemap' && payload.fileType === 'slang-buffer') {
             const native = createNativeFragmentSource('slang', '', passName, nativeOutputCount(payload.outputCount));
             template = native.text.trimStart();
             entryPoints = native.entryPoints;

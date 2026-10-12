@@ -1,4 +1,5 @@
 export interface WebGLRenderLimits {
+  maxCubeSize?: number;
   maxWidth: number;
   maxHeight: number;
 }
@@ -15,6 +16,7 @@ export function getWebGLRenderLimits(gl: WebGL2RenderingContext): WebGLRenderLim
   const unbounded = Number.MAX_SAFE_INTEGER;
 
   return {
+    maxCubeSize: readPositiveParameter(gl, gl.MAX_CUBE_MAP_TEXTURE_SIZE),
     maxWidth: Math.min(
       maxTextureSize ?? unbounded,
       maxRenderbufferSize ?? unbounded,

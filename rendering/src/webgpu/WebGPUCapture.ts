@@ -36,7 +36,7 @@ interface WebGPUCaptureHost {
   geometry: Pick<WebGPUGeometry, "passCameraMatrices" | "resolvePassVertexCount">;
   channels: Pick<WebGPUChannels, "getChannelResources" | "getChannelUniforms">;
   storage: Pick<WebGPUStorage, "storageBuffers" | "storageLayouts">;
-  constraints: Pick<WebGPUDeviceConstraints, "resolveComputeWorkgroupLimits" | "resolveMaxOutputLayers" | "resolveMaxStorageBuffers">;
+  constraints: Pick<WebGPUDeviceConstraints, "maxTextureDimension2D" | "resolveComputeWorkgroupLimits" | "resolveMaxOutputLayers" | "resolveMaxStorageBuffers">;
   device: GPUDevice | null;
   compiler: AsyncSlangCompiler | null;
   timeManager: TimeManager;
@@ -152,6 +152,7 @@ export class WebGPUCapture {
       computeWorkgroupLimits: this.host.constraints.resolveComputeWorkgroupLimits(),
       maxOutputLayers: this.host.constraints.resolveMaxOutputLayers(),
       maxStorageBuffers: this.host.constraints.resolveMaxStorageBuffers(),
+      maxTextureDimension2D: this.host.constraints.maxTextureDimension2D,
     });
     return { passes: graph.passes, storage: graph.storage };
   }

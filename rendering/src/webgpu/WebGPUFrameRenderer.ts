@@ -255,7 +255,7 @@ export class WebGPUFrameRenderer {
 
       const targetView = pass.output === "canvas"
         ? (canvasTexture = this.host.context.getCurrentTexture()).createView()
-        : pipeline.getCurrentOutputView();
+        : pass.outputKind === "cubemap" ? pipeline.getCurrentCubemapFaceViews()[0] : pipeline.getCurrentOutputView();
       if (!targetView) {
         continue;
       }
@@ -277,41 +277,49 @@ export class WebGPUFrameRenderer {
       // its output; the samples themselves are not needed after the pass.
       const outputViews = pass.output === "canvas" ? [targetView] : pipeline.getCurrentOutputViews();
       this.host.storage.captureAt(encoder, pass.name, 'before', frameInput.frame);
-      const renderPass = encoder.beginRenderPass({
-        colorAttachments: outputViews.map((targetView, index) => {
-          const msaaView = pipeline.getMsaaView?.(index) ?? null;
-          return {
-            ...(msaaView ? { view: msaaView, resolveTarget: targetView, storeOp: "discard" as const } : { view: targetView, storeOp: "store" as const }),
-            clearValue: { r: clearR, g: clearG, b: clearB, a: clearA },
-            loadOp: "clear",
-          };
-        }),
-        ...(pipeline.getDepthView?.() ? {
-          depthStencilAttachment: { view: pipeline.getDepthView()!, depthClearValue: depthClearValue(renderState), depthLoadOp: "clear", depthStoreOp: "store" },
-        } : {}),
-      });
-      renderPass.setPipeline(pipeline.getPipeline()!);
-      renderPass.setBindGroup(0, bindGroup);
-      if (fullscreen) {
-        renderPass.draw(FULLSCREEN_VERTEX_COUNT);
-      } else if (pass.geometry === "vertices") {
-        // Non-indexed with no vertex buffers; mainVertex places every vertex.
-        renderPass.draw(verticesVertexCount(pass), geometryInstanceCount(pass));
-      } else if (mesh) {
-        renderPass.setVertexBuffer(0, mesh.vertexBuffer);
-        const topology = meshTopology(pass);
-        if (topology === "point-list") {
-          // Each unique vertex once, without the index buffer.
-          renderPass.draw(mesh.vertexCount, geometryInstanceCount(pass));
-        } else if (topology === "line-list") {
-          renderPass.setIndexBuffer(mesh.edgeIndexBuffer, mesh.indexFormat);
-          renderPass.drawIndexed(mesh.edgeIndexCount, geometryInstanceCount(pass));
+      const cubemapFaces = pass.outputKind === "cubemap" ? pipeline.getCurrentCubemapFaceViews() : null;
+      for (let cubeFace = 0; cubeFace < (cubemapFaces?.length ?? 1); cubeFace++) {
+        const faceOutputViews = cubemapFaces ? [cubemapFaces[cubeFace]!] : outputViews;
+        const renderPass = encoder.beginRenderPass({
+          colorAttachments: faceOutputViews.map((targetView, index) => {
+            const msaaView = pipeline.getMsaaView?.(index) ?? null;
+            return {
+              ...(msaaView ? { view: msaaView, resolveTarget: targetView, storeOp: "discard" as const } : { view: targetView, storeOp: "store" as const }),
+              clearValue: { r: clearR, g: clearG, b: clearB, a: clearA },
+              loadOp: "clear",
+            };
+          }),
+          ...(pipeline.getDepthView?.() ? {
+            depthStencilAttachment: { view: pipeline.getDepthView()!, depthClearValue: depthClearValue(renderState), depthLoadOp: "clear", depthStoreOp: "store" },
+          } : {}),
+        });
+        renderPass.setPipeline(pipeline.getPipeline()!);
+        if (cubemapFaces) {
+          renderPass.setBindGroup(0, bindGroup, [pipeline.getCubemapFaceOffset(cubeFace)]);
         } else {
-          renderPass.setIndexBuffer(mesh.indexBuffer, mesh.indexFormat);
-          renderPass.drawIndexed(mesh.indexCount, geometryInstanceCount(pass));
+          renderPass.setBindGroup(0, bindGroup);
         }
+        if (fullscreen) {
+          renderPass.draw(FULLSCREEN_VERTEX_COUNT);
+        } else if (pass.geometry === "vertices") {
+        // Non-indexed with no vertex buffers; mainVertex places every vertex.
+          renderPass.draw(verticesVertexCount(pass), geometryInstanceCount(pass));
+        } else if (mesh) {
+          renderPass.setVertexBuffer(0, mesh.vertexBuffer);
+          const topology = meshTopology(pass);
+          if (topology === "point-list") {
+          // Each unique vertex once, without the index buffer.
+            renderPass.draw(mesh.vertexCount, geometryInstanceCount(pass));
+          } else if (topology === "line-list") {
+            renderPass.setIndexBuffer(mesh.edgeIndexBuffer, mesh.indexFormat);
+            renderPass.drawIndexed(mesh.edgeIndexCount, geometryInstanceCount(pass));
+          } else {
+            renderPass.setIndexBuffer(mesh.indexBuffer, mesh.indexFormat);
+            renderPass.drawIndexed(mesh.indexCount, geometryInstanceCount(pass));
+          }
+        }
+        renderPass.end();
       }
-      renderPass.end();
       this.host.storage.captureAt(encoder, pass.name, 'after', frameInput.frame);
     }
 
