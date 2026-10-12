@@ -12,7 +12,7 @@ for sampling.
 ## Editor Support and Diagnostics
 
 Completion, hover, signature help, definitions, references, highlights, and symbol
-rename are available. See [Editor Assistance](language-servers.md) for instructions
+rename are available. See [Language Servers](language-servers.md) for instructions
 and the scope of rename in each editor. WGSL has no user-defined generics,
 function overloads, or import/include mechanism; put shared code in Common.
 

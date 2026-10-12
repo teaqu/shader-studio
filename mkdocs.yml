@@ -90,7 +90,7 @@ nav:
       - GLSL Support: features/glsl.md
       - Slang Support: features/slang.md
       - WGSL Support: features/wgsl.md
-      - Editor Assistance: features/language-servers.md
+      - Language Servers: features/language-servers.md
       - Code Snippets: features/code-snippets.md
       - Performance: features/performance.md
   - Debugging:

@@ -174,7 +174,7 @@ completion, hover, and navigation. Snippets cover `mainImage`, channel sampling,
 vertex hooks, and compute entry points. The editor reports basic errors before
 compilation; compiling checks the shader fully. See
 [WGSL editor support](wgsl.md#editor-support-and-diagnostics) for diagnostic limits
-and [Editor Assistance](language-servers.md) for rename and color editing.
+and [Language Servers](language-servers.md) for rename and color editing.
 
 ## Debugging WGSL Shaders
 

@@ -31,7 +31,7 @@ sampling rules and reserved-name diagnostics.
 Completion, hover, signature help, definitions, references, highlights, and symbol
 rename are available. Hover shows types for locals, parameters, struct fields,
 vector components, channel methods, and storage buffers. Signature help follows
-nested and generic calls. See [Editor Assistance](language-servers.md) for rename
+nested and generic calls. See [Language Servers](language-servers.md) for rename
 instructions and limitations.
 
 The editor reports errors and marks unused locals and parameters. Entry

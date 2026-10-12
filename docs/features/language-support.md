@@ -16,7 +16,7 @@ each language.
 | Signature help | Yes | Yes | Yes |
 | Color swatches | `vec3` / `vec4` | `float3` / `float4` | `vec3f` / `vec4f` and `vec3<f32>` / `vec4<f32>` |
 
-See [Editor Assistance](language-servers.md) for editor instructions and rename scope.
+See [Language Servers](language-servers.md) for editor instructions and rename scope.
 
 ## Rendering
 
