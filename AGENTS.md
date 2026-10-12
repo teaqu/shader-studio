@@ -94,6 +94,21 @@ Always prefer Svelte 5 conventions over Svelte 4. For example: runes over stores
 
 - Never add `Co-Authored-By` trailers or any other AI-generated attribution to
   commits or pull requests. This repository is not an AI billboard.
+  Name every new branch for its purpose, using prefixes such as `feat/`,
+  `fix/`, `docs/`, `test/`, `chore/`, or `refactor/`. Never use an AI tool or
+  vendor prefix, including `codex/`, `claude/`, `anthropic/`, `openai/`,
+  `chatgpt/`, `copilot/`, `gemini/`, `devin/`, `aider/`, `windsurf/`,
+  `codeium/`, or `jules/`; underscore and hyphen variants are rejected too,
+  case-insensitively. Override any default agent-prefixed branch name before
+  creating a branch or opening a PR. Use the user's existing Git author and
+  committer identity, never an AI tool identity.
+  Before publishing a new branch, run
+  `node .githooks/check-attribution.mjs --branch <branch-name>`; before pushing
+  commits, run
+  `node .githooks/check-attribution.mjs --range origin/main..HEAD --branch <branch-name>`
+  (substitute the PR's actual base ref). Fix violations before pushing. The
+  commit-message hook does not check branch names, and renaming a branch does
+  not remove attribution already present in commit messages or merge subjects.
   Enforced: `.githooks/commit-msg` (installed by `npm install` via
   `core.hooksPath`) rejects such commits locally, and the Attribution
   workflow fails any PR whose commits or branch name carry them. Never
