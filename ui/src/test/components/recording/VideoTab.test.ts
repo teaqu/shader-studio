@@ -17,6 +17,26 @@ describe('VideoTab', () => {
     await fireEvent.click(screen.getByRole('button', { name: 'Start recording' }));
     expect(defaultProps.onRecord).toHaveBeenCalledWith(expect.objectContaining({ mode: 'live', format: 'mp4' }));
   });
+  it('keeps mode controls before capability-dependent content during a probe', async () => {
+    vi.stubGlobal('MediaRecorder', { isTypeSupported: (mime: string) => mime.startsWith('video/webm') });
+    let finishProbe!: (formats: liveFormats.LiveVideoFormat[]) => void;
+    vi.spyOn(liveFormats, 'probeLiveVideoFormats').mockImplementationOnce(() => new Promise(resolve => {
+      finishProbe = resolve;
+    }));
+    render(VideoTab, { props: defaultProps });
+    const mode = screen.getByRole('group', { name: 'Video capture mode' });
+    const status = screen.getByRole('status');
+    // Probe messages must not move a mode button between pointerdown and pointerup.
+    expect(mode.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await fireEvent.pointerDown(screen.getByRole('button', { name: 'Render' }));
+    finishProbe(['mp4', 'webm']);
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+    await fireEvent.pointerUp(screen.getByRole('button', { name: 'Render' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Render' }));
+    expect(screen.getByText('Duration')).toBeInTheDocument();
+    expect(mode.compareDocumentPosition(screen.getByText('Format')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('disables recording if encoder probing fails', async () => {
     vi.spyOn(liveFormats, 'probeLiveVideoFormats').mockRejectedValue(new Error('encoder unavailable'));
     render(VideoTab, { props: defaultProps });

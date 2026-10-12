@@ -33,6 +33,7 @@
   let rawWorkgroupDraft = $state(['1', '1', '1']);
   let repeatsDraft = $state('1');
   let layersDraft = $state('1');
+  let faceSizeDraft = $state('512');
   let runOnce = $state(untrack(() => pass.dispatchOnce === true));
   let activeMode = $state<DispatchMode>(untrack(() => getMode(pass)));
 
@@ -46,7 +47,8 @@
       ? [String(dispatch.x), String(dispatch.y), String(dispatch.z)]
       : ['1', '1', '1'];
     repeatsDraft = String(pass.dispatchCount ?? 1);
-    layersDraft = String(pass.outputLayers ?? 1);
+    layersDraft = String(pass.outputKind === 'cubemap' ? 6 : pass.outputLayers ?? 1);
+    faceSizeDraft = String(pass.faceSize ?? 512);
     runOnce = pass.dispatchOnce === true;
     activeMode = getMode(pass);
   });
@@ -187,6 +189,24 @@
     }
   }
 
+  function setOutputKind(outputKind: '2d' | 'cubemap') {
+    commit(outputKind === 'cubemap'
+      ? { ...pass, outputKind, outputLayers: 6, faceSize: pass.faceSize ?? 512, resolution: undefined }
+      : { ...pass, outputKind: undefined, faceSize: undefined });
+  }
+
+  function commitFaceSize() {
+    const value = positiveInteger('faceSize', faceSizeDraft);
+    if (value !== null) {
+      commit({ ...pass, faceSize: value });
+    }
+  }
+
+  function updateFaceSize(value: string) {
+    faceSizeDraft = value;
+    commitFaceSize();
+  }
+
 </script>
 
 <section class="compute-controls" aria-label="Compute settings">
@@ -242,8 +262,14 @@
 
   <h3>Output</h3>
   {#if outputControls}{@render outputControls()}{/if}
-  <label>Output layers<input aria-label="Output layers" value={layersDraft} oninput={(event) => updateLayers(event.currentTarget.value)} /></label>
+  <label>Output kind<select aria-label="Output kind" value={pass.outputKind ?? '2d'} onchange={(event) => setOutputKind(event.currentTarget.value as '2d' | 'cubemap')}><option value="2d">2D</option><option value="cubemap" disabled={language === 'wgsl'}>Cubemap</option></select></label>
+  {#if pass.outputKind === 'cubemap'}
+    <label>Face size<input aria-label="Cubemap face size" value={faceSizeDraft} oninput={(event) => updateFaceSize(event.currentTarget.value)} /></label>
+  {:else}
+    <label>Output layers<input aria-label="Output layers" value={layersDraft} oninput={(event) => updateLayers(event.currentTarget.value)} /></label>
+  {/if}
   {#if errors.outputLayers}<p role="alert">{errors.outputLayers}</p>{/if}
+  {#if errors.faceSize}<p role="alert">{errors.faceSize}</p>{/if}
   {/if}
 </section>
 

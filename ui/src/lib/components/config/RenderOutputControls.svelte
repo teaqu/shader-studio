@@ -1,18 +1,23 @@
 <script lang="ts">
+  import type { Snippet } from "svelte";
   import { getShaderOutputs, type BufferOutputFormat, type ShaderLanguageId } from '@shader-studio/types';
   import OutputFormatControl from './OutputFormatControl.svelte';
   interface Props {
     source: string; language: ShaderLanguageId; fragment?: string; format: BufferOutputFormat;
+    children?: Snippet;
+    cubemap?: boolean;
     maxAttachments: number; maxBytes: number; onchange: (event: Event) => void;
   }
-  let { source, language, fragment, format, maxAttachments, maxBytes, onchange }: Props = $props();
+  let { source, language, fragment, format, maxAttachments, maxBytes, onchange, children, cubemap = false }: Props = $props();
   const discovery = $derived(getShaderOutputs(source, language, fragment));
   const limit = $derived(Math.min(maxAttachments, Math.floor(maxBytes / (format === 'rgba16float' ? 8 : 16))));
 </script>
 <section class="config-item" aria-label="Output">
   <h3 class="section-title">Output</h3>
+  {@render children?.()}
   <OutputFormatControl value={format} {onchange} />
-  {#if discovery.error}<p class="error" role="alert">{discovery.error}</p>
+  {#if cubemap}<div>Six cubemap faces</div>
+  {:else if discovery.error}<p class="error" role="alert">{discovery.error}</p>
   {:else}
     <div class="outputs" aria-label="Detected output textures">
       {#each discovery.outputs as output}<div>Output {output.slot}{output.name ? ` · ${output.name}` : ''}</div>{/each}

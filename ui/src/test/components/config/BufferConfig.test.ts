@@ -37,6 +37,36 @@ async function fileAction(container: HTMLElement, kind: 'create' | 'select') {
 }
 
 describe('BufferConfig', () => {
+  it.each([undefined, 64])('converts render output to cubemap and back (face size %s)', async faceSize => {
+    const onUpdate = vi.fn();
+    const view = render(BufferConfig, { bufferName: 'Sky', language: 'slang',
+      config: { path: 'sky.slang', faceSize, resolution: { width: 64, height: 32 },
+        geometry: { type: 'cube' }, vertex: 'vertex.slang' }, onUpdate, getWebviewUri: () => undefined });
+    await fireEvent.change(view.getByLabelText('Output kind'), { target: { value: 'cubemap' } });
+    expect(onUpdate).toHaveBeenLastCalledWith('Sky', expect.objectContaining({ outputKind: 'cubemap',
+      faceSize: faceSize ?? 512, resolution: undefined, geometry: undefined, vertex: undefined }));
+    const face = view.getByLabelText('Cubemap face size');
+    onUpdate.mockClear();
+    for (const value of ['0', '1.5']) {
+      await fireEvent.input(face, { target: { value } });
+      expect(onUpdate).not.toHaveBeenCalled();
+    }
+    await fireEvent.input(face, { target: { value: '32' } });
+    expect(onUpdate).toHaveBeenLastCalledWith('Sky', expect.objectContaining({ faceSize: 32 }));
+    await fireEvent.change(view.getByLabelText('Output kind'), { target: { value: '2d' } });
+    expect(onUpdate).toHaveBeenLastCalledWith('Sky', expect.objectContaining({ outputKind: undefined, faceSize: undefined }));
+  });
+
+  it('converts compute cubemaps back to fragment with their format and default face size', async () => {
+    const onUpdate = vi.fn();
+    const view = render(BufferConfig, { bufferName: 'Sky', language: 'slang', passType: 'compute',
+      config: { type: 'compute', path: 'sky.slang', outputKind: 'cubemap', outputFormat: 'rgba32float' },
+      onUpdate, getWebviewUri: () => undefined });
+    await fireEvent.change(view.getByLabelText('Cubemap execution'), { target: { value: 'render' } });
+    expect(onUpdate).toHaveBeenLastCalledWith('Sky', { path: 'sky.slang', inputs: undefined,
+      outputKind: 'cubemap', faceSize: 512, outputFormat: 'rgba32float' });
+  });
+
   it('offers file creation without insertion on a new WGSL buffer', async () => {
     const view = render(BufferConfig, { bufferName: 'BufferA', language: 'wgsl', shaderPath: '/shaders/image.wgsl',
       config: { path: '' }, onUpdate: vi.fn(), getWebviewUri: () => undefined, postMessage: vi.fn() });
@@ -456,6 +486,31 @@ describe('BufferConfig', () => {
       expect(mockPostMessage).toHaveBeenCalledOnce();
       expect(mockPostMessage.mock.calls[0][0].type).toBe('createFile');
       expect(mockPostMessage.mock.calls[0][0].payload.fileType).toBe('glsl-buffer');
+    });
+
+    it('passes cubemap output kind to the file creator', async () => {
+      const { container } = render(BufferConfig, {
+        bufferName: 'Sky', config: { path: '', inputs: {}, outputKind: 'cubemap', faceSize: 512 } as BufferPass,
+        onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri, postMessage: mockPostMessage,
+        suggestedPath: 'sky.glsl',
+      });
+      await fileAction(container, 'create');
+      expect(mockPostMessage.mock.calls[0][0]).toEqual(expect.objectContaining({
+        type: 'createFile', payload: expect.objectContaining({ outputKind: 'cubemap' }),
+      }));
+    });
+
+    it('converts a Slang cubemap fragment pass to six-layer compute', async () => {
+      const { getByLabelText } = render(BufferConfig, {
+        bufferName: 'Sky', language: 'slang',
+        config: { path: 'sky.slang', inputs: { noise: { type: 'texture', path: 'n.png' } }, outputKind: 'cubemap', faceSize: 256 } as BufferPass,
+        onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri,
+      });
+      await fireEvent.change(getByLabelText('Cubemap execution'), { target: { value: 'compute' } });
+      expect(mockOnUpdate).toHaveBeenLastCalledWith('Sky', expect.objectContaining({
+        type: 'compute', outputKind: 'cubemap', outputLayers: 6, faceSize: 256,
+        inputs: { noise: { type: 'texture', path: 'n.png' } },
+      }));
     });
 
     it('should create Slang fragment buffers with a Slang file type', async () => {

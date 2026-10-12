@@ -12,6 +12,7 @@ export type ChannelSamplerType = '2D' | 'Cube' | '3D';
 
 export interface ShaderWrapOptions {
   geometry?: GeometryType;
+  outputKind?: "2d" | "cubemap";
   commonCode?: string;
   slotAssignments?: SlotAssignment[];
   channelTypes?: ChannelSamplerType[];
@@ -170,6 +171,19 @@ ${instanceIndexContext}
 ${this.buildChannelMetadataDeclarations(types, channelCount)}
 `;
 
+    if (options.outputKind === "cubemap") {
+      header += `uniform int iCubemapFace;
+vec3 cubemapDirection(vec2 pixel, int face) {
+  vec2 p = 2.0 * pixel / iResolution.xy - 1.0;
+  if (face == 0) return normalize(vec3(1.0, -p.y, -p.x));
+  if (face == 1) return normalize(vec3(-1.0, -p.y, p.x));
+  if (face == 2) return normalize(vec3(p.x, 1.0, p.y));
+  if (face == 3) return normalize(vec3(p.x, -1.0, -p.y));
+  if (face == 4) return normalize(vec3(p.x, -p.y, 1.0));
+  return normalize(vec3(-p.x, -p.y, -1.0));
+}
+`;
+    }
     if (options.customUniformDeclarations) {
       header += options.customUniformDeclarations + "\n";
     }
@@ -183,7 +197,10 @@ ${this.buildChannelMetadataDeclarations(types, channelCount)}
     const coordinate = mesh || worldVertices
       ? `${MESH_FRAGMENT_CONTEXT.uv} * iResolution.xy`
       : "gl_FragCoord.xy";
-    const shaderCode = header + code + `\nvoid main() {\n mainImage(fragColor, ${coordinate});\n}`;
+    const entry = options.outputKind === "cubemap"
+      ? `mainCubemap(fragColor, gl_FragCoord.xy, vec3(0.0), cubemapDirection(gl_FragCoord.xy, iCubemapFace))`
+      : `mainImage(fragColor, ${coordinate})`;
+    const shaderCode = header + code + `\nvoid main() {\n ${entry};\n}`;
     const headerLineCount = (header.match(/\n/g) || []).length;
     const vertexBuilt = this.buildVertexSource(mesh, options);
     return {

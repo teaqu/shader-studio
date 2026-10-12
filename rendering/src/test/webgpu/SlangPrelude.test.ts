@@ -1,10 +1,41 @@
 import { describe, expect, it } from 'vitest';
 import { SHADER_STUDIO_BUILTIN_UNIFORMS } from '@shader-studio/types';
-import { findSlangChannelDeclarationCollisions, isolateSlangEntryPoints, SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX, wrapSlangImageSource } from '../../webgpu/SlangPrelude';
+import { findSlangChannelDeclarationCollisions, isolateSlangEntryPoints, SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX, wrapSlangComputeSource, wrapSlangImageSource } from '../../webgpu/SlangPrelude';
 
 const image = 'float4 mainImage(float2 fragCoord) { return float4(1); }';
 
 describe('wrapSlangImageSource', () => {
+  it('generates the cubemap fragment ABI and the six native face directions', () => {
+    const source = wrapSlangImageSource('float4 mainCubemap(float2 p, float3 o, float3 d) { return 1; }', { outputKind: 'cubemap' });
+    expect(source).toContain('mainCubemap(coord, float3(0.0), cubemapDirection(coord))');
+    for (const direction of [
+      'float3(1.0, -uv.y, -uv.x)', 'float3(-1.0, -uv.y, uv.x)',
+      'float3(uv.x, 1.0, uv.y)', 'float3(uv.x, -1.0, -uv.y)',
+      'float3(uv.x, -uv.y, 1.0)', 'float3(-uv.x, -uv.y, -1.0)',
+    ]) {
+      expect(source).toContain(direction);
+    }
+    expect(source).toContain('ConstantBuffer<CubemapFaceUniforms> _cubeFace');
+  });
+
+  it('provides compute cube direction and per-face output helpers', () => {
+    const source = wrapSlangComputeSource('[shader("compute")] [numthreads(1,1,1)] void draw(uint3 id : SV_DispatchThreadID) {}', {
+      hasOutput: true, outputLayers: 6, outputKind: 'cubemap', workgroupSize: [1, 1, 1],
+    });
+    expect(source).toContain('float3 cubemapDirection(uint2 pixel, uint face)');
+    expect(source).toContain('void writeOutput(uint2 pixel, uint face, float4 color)');
+  });
+
+  it('keeps cube writes in native coordinates while 2d array writes stay bottom-origin', () => {
+    const cube = wrapSlangComputeSource('[shader("compute")] [numthreads(1,1,1)] void draw(uint3 id : SV_DispatchThreadID) {}', {
+      hasOutput: true, outputLayers: 6, outputKind: 'cubemap', workgroupSize: [1, 1, 1],
+    });
+    const array = wrapSlangComputeSource('[shader("compute")] [numthreads(1,1,1)] void draw(uint3 id : SV_DispatchThreadID) {}', {
+      hasOutput: true, outputLayers: 2, outputKind: '2d', workgroupSize: [1, 1, 1],
+    });
+    expect(cube).toContain('_outTex.Store(uint3(pixel.x, pixel.y, face), color);');
+    expect(array).toContain('_outTex.Store(uint3(coord.x, h - 1 - coord.y, layer), color);');
+  });
   it.each(['fullscreen', 'vertices', 'cube'] as const)('includes a shared %s hook source only once', geometry => {
     const source = 'void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {}\n' + image;
     const wrapped = wrapSlangImageSource(source, { geometry, vertexCode: source });

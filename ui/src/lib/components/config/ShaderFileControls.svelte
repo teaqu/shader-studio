@@ -10,11 +10,12 @@
     value: string; shaderPath: string; language: ShaderLanguageId; fileType: FileDialogFileType;
     suggestedPath: string; inputId: string; projectConfig?: ShaderConfig | null; hasError?: boolean;
     passName?: string;
+    outputKind?: '2d' | 'cubemap';
     onPathChange: (path: string) => void; onCreated: (source: CreatedSource) => void;
     postMessage?: (message: ViewerMessage) => void; onMessage?: (handler: (event: MessageEvent) => void) => void;
   }
   let { value, shaderPath, language, fileType, suggestedPath, inputId, projectConfig, hasError = false,
-    onPathChange, onCreated, postMessage, onMessage, passName }: Props = $props();
+    onPathChange, onCreated, postMessage, onMessage, passName, outputKind }: Props = $props();
   let open = $state(false);
   const paths = $derived(configSourcePaths(projectConfig, shaderPath, language));
   function accept(source: CreatedSource) {
@@ -40,7 +41,7 @@ open = false;
  open = false; onPathChange(path);
 }}>{path}</button>{/each}</div>
       <PathInput value="" hidePath={true} showSelectWhenHidden={true} {shaderPath} {suggestedPath} {fileType} {postMessage} {onMessage}
-        {passName} createAuthoringMode={fileType.endsWith('-compute') ? 'native' : getDefaultAuthoringMode()} selectLabel="Browse workspace…" onCreated={accept} />
+        {passName} {outputKind} createAuthoringMode={fileType.endsWith('-compute') ? 'native' : getDefaultAuthoringMode()} selectLabel="Browse workspace…" onCreated={accept} />
     </div>
   </div>
 {/if}

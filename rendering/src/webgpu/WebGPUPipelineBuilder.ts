@@ -134,6 +134,7 @@ export async function buildWebGPUPipelines(
           ...(pass.geometry === "vertices" ? { vertexSpace: verticesSpace(pass) } : {}),
           workgroupSize: pass.workgroupSize,
           outputLayers: pass.outputLayers,
+          outputKind: pass.outputKind,
           hasOutput: pass.output === "texture",
           ...(pass.kind === "compute"
             ? { outputImageFormat: dependencies.constraints.wgslImageFormat(pass.resolvedOutputFormat ?? dependencies.bufferTextureFormat) }

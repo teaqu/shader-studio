@@ -1613,3 +1613,20 @@ describe("ShaderCompiler", () => {
     });
   });
 });
+
+
+describe("cubemap output wrapping", () => {
+  it("calls the Shadertoy cubemap ABI with per-face normalized rays", () => {
+    const source = new ShaderCompiler(createMockRenderer()).wrapShaderToyCode(
+      "void mainCubemap(out vec4 c, in vec2 p, in vec3 o, in vec3 d) { c = vec4(d, 1.0); }",
+      { outputKind: "cubemap" },
+    );
+    expect(source.wrappedCode).toContain("uniform int iCubemapFace;");
+    expect(source.wrappedCode).toContain("mainCubemap(fragColor, gl_FragCoord.xy, vec3(0.0), cubemapDirection(gl_FragCoord.xy, iCubemapFace))");
+    expect(source.wrappedCode).not.toContain("mainImage(fragColor");
+    for (const ray of ["1.0, -p.y, -p.x", "-1.0, -p.y, p.x", "p.x, 1.0, p.y", "p.x, -1.0, -p.y", "p.x, -p.y, 1.0", "-p.x, -p.y, -1.0"]) {
+      expect(source.wrappedCode).toContain(`normalize(vec3(${ray}))`);
+    }
+    expect(source.headerLineCount).toBe(source.wrappedCode.slice(0, source.wrappedCode.indexOf("void mainCubemap")).split("\n").length - 1);
+  });
+});
