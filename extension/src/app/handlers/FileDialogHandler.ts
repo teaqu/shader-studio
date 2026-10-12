@@ -1,3 +1,4 @@
+import { defaultAssetFiles } from "../DefaultAssets";
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
@@ -318,6 +319,7 @@ export class FileDialogHandler {
     respondFn: ResponseSender,
     pathConverter: (absPath: string) => string,
   ): Promise<void> {
+    const defaults = defaultAssetFiles(payload.extensions, this.extensionPath, pathConverter);
     try {
       Logger.trace('FileDialogHandler: scanning workspace files for '
         + (payload.extensions?.join(', ') ?? 'any extension'));
@@ -327,11 +329,11 @@ export class FileDialogHandler {
         pathConverter,
       );
       Logger.trace(`FileDialogHandler: found ${files.length} workspace files`);
-      respondFn({ type: "workspaceFiles", payload: { files } });
+      respondFn({ type: "workspaceFiles", payload: { files: [...defaults, ...files] } });
     } catch (error) {
       console.error(`FileDialogHandler: Failed to scan workspace files:`, error);
       this.logger.error(`Failed to scan workspace files: ${error}`);
-      respondFn({ type: "workspaceFiles", payload: { files: [] } });
+      respondFn({ type: "workspaceFiles", payload: { files: defaults } });
     }
   }
 
