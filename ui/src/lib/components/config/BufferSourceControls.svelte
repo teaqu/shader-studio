@@ -9,8 +9,7 @@
     suggestedPath: string; bufferName: string; language: ShaderLanguageId; fileType: FileDialogFileType;
     shaderPath: string; projectConfig?: ShaderConfig | null;
     postMessage?: (message: ShaderMessage) => void; onMessage?: (handler: (event: MessageEvent) => void) => void;
-    sourcePath: string; builtInSourcePath: string; passType: 'render' | 'compute'; hasNativeTemplate: boolean;
-    outputCount: number; passSource: string; outputKind?: '2d' | 'cubemap';
+    outputKind?: '2d' | 'cubemap';
     onCreated: (result: CreatedSource) => void;
     onOpen?: () => void;
   }
