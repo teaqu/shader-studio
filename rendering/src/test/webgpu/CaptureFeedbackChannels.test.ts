@@ -77,6 +77,16 @@ it("uses a recorded render bank even if the pipeline has swapped", () => {
   expect(pipeline.getCurrentOutputTexture).not.toHaveBeenCalled();
 });
 
+it("freezes all six cubemap faces and keeps a cube sampling view", () => {
+  const { device, source, pass, resources, copyTextureToTexture, created } = fixture();
+  pass.channels[0].outputKind = "cubemap";
+  const result = captureFeedbackChannels(device, pass, new Map(), resources.slice(0, 1), new Map([[0, { texture: source, cubemap: true }]]))!;
+  expect(device.createTexture).toHaveBeenCalledWith(expect.objectContaining({ size: { width: 8, height: 4, depthOrArrayLayers: 6 } }));
+  expect(copyTextureToTexture).toHaveBeenCalledWith({ texture: source }, expect.anything(), { width: 8, height: 4, depthOrArrayLayers: 6 });
+  expect(created[0]!.createView).toHaveBeenCalledWith({ dimension: "cube" });
+  result.destroy();
+});
+
 it("cleans already allocated snapshots when a later allocation fails", () => {
   const { device, source, pass, resources, created } = fixture();
   let calls = 0;

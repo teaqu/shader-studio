@@ -54,7 +54,7 @@ export class WebGPUPassFactory {
     const plan = buildSlangBindingPlan(channels);
     const extraBindings = storage.length + (pass.kind === "compute"
       ? 1 + Number(pass.output === "texture")
-      : Number(pass.geometry !== "fullscreen"));
+      : Number(pass.geometry !== "fullscreen") + Number(pass.outputKind === "cubemap"));
     validateSlangBindingBudget(pass.name, plan, this.host.device.limits, extraBindings, uniformBufferSize);
     return pass.kind === "compute"
       ? new SlangComputePipeline(this.host.device, {
@@ -63,6 +63,7 @@ export class WebGPUPassFactory {
         height: pass.height,
         hasOutput: pass.output === "texture",
         outputLayers: pass.outputLayers,
+        outputKind: pass.outputKind,
         workgroupSize: pass.workgroupSize,
         entryPoint: pass.entryPoint!,
         dispatchCount: pass.dispatchCount,
@@ -80,6 +81,7 @@ export class WebGPUPassFactory {
         width: pass.width,
         height: pass.height,
         output: pass.output === "canvas" ? "canvas" : "texture",
+        outputKind: pass.outputKind,
         geometry: pass.geometry,
         ...(pass.geometry === "vertices"
           ? { topology: verticesTopology(pass), vertexSpace: verticesSpace(pass) }
@@ -289,11 +291,15 @@ export class WebGPUPassFactory {
     const canvasWidth = Math.max(1, this.host.canvas.width);
     const canvasHeight = Math.max(1, this.host.canvas.height);
     for (const pass of passes) {
+      const configuredPass = config?.passes?.[pass.name];
+      const faceSize = (configuredPass as { faceSize?: number } | undefined)?.faceSize;
       const unclampedResolution = pass.output === "canvas"
         ? { width: canvasWidth, height: canvasHeight }
+        : pass.outputKind === "cubemap"
+          ? { width: faceSize ?? 512, height: faceSize ?? 512 }
         : resolvePassResolution({
           passName: pass.name,
-          passConfig: config?.passes?.[pass.name],
+          passConfig: configuredPass,
           canvasWidth,
           canvasHeight,
           // Resolution settings were already validated at compile time; a

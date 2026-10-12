@@ -77,6 +77,8 @@ export type ConfigInput = SystemAudioConfigInput | ScreenConfigInput | WebcamCon
 
 export type AspectRatioMode = '16:9' | '4:3' | '1:1' | 'fill' | 'auto';
 export type BufferOutputFormat = 'auto' | 'rgba16float' | 'rgba32float';
+/** Texture dimensionality produced by a pass. Omitted is a 2D texture. */
+export type BufferOutputKind = '2d' | 'cubemap';
 
 interface BaseImageResolutionSettings {
     scale?: number; // 0.25, 0.5, 1, 2, 4 (default: 1)
@@ -238,6 +240,9 @@ export interface BufferPass extends RenderPassSettings {
   vertex?: string;
   entryPoints?: RenderEntryPoints;
   outputFormat?: BufferOutputFormat;
+  outputKind?: BufferOutputKind;
+  /** Square edge length of each cubemap face. Defaults to 512 for cubemap outputs. */
+  faceSize?: number;
   /** Optional legacy labels by colour slot. Native output slots are inferred from the fragment code. */
   outputs?: { name?: string }[];
 }
@@ -285,6 +290,9 @@ export interface ComputePass {
     resolution?: BufferResolution;
     outputLayers?: number;
     outputFormat?: BufferOutputFormat;
+    outputKind?: BufferOutputKind;
+    /** Square edge length of each cubemap face. Defaults to 512 for cubemap outputs. */
+    faceSize?: number;
     dispatch?: ComputeDispatch;
     dispatchCount?: number;
     dispatchOnce?: boolean;

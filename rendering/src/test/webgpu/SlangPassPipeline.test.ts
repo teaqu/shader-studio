@@ -58,7 +58,7 @@ function fakeDevice(compilationMessages: Array<{ type: string; lineNum: number; 
       destroy: vi.fn(),
     })),
     createCommandEncoder: vi.fn(() => encoder),
-    queue: { submit: vi.fn() },
+    queue: { submit: vi.fn(), writeBuffer: vi.fn() },
     pushErrorScope: vi.fn(),
     popErrorScope: vi.fn(async () => null),
   } as unknown as GPUDevice & {
@@ -96,6 +96,47 @@ const storageB: StorageBindingNode = {
 };
 
 describe("SlangPassPipeline", () => {
+  it("creates six-face cube targets and immutable dynamic face offsets", async () => {
+    const device = fakeDevice();
+    const pass = createPass(device, { name: "Sky", width: 32, height: 32, output: "texture", outputKind: "cubemap", channels: [] });
+    await pass.rebuild("// wgsl");
+    expect(device.createTexture.mock.calls).toHaveLength(2);
+    expect(device.createTexture.mock.calls.map(([value]) => value.size)).toEqual([
+      { width: 32, height: 32, depthOrArrayLayers: 6 }, { width: 32, height: 32, depthOrArrayLayers: 6 },
+    ]);
+    const cubeBuffer = device.createBuffer.mock.calls.find(([value]) => value.size === 1536)?.[0];
+    expect(cubeBuffer).toEqual({ size: 1536, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    expect(pass.getCubemapFaceOffset(0)).toBe(0);
+    expect(pass.getCubemapFaceOffset(5)).toBe(1280);
+    expect(pass.getCurrentCubemapFaceViews()).toHaveLength(6);
+    expect(device.createBindGroupLayout.mock.calls[0]![0].entries).toContainEqual(expect.objectContaining({ buffer: expect.objectContaining({ hasDynamicOffset: true, minBindingSize: 16 }) }));
+  });
+
+  it("resizes cubemap feedback without copying 2D pixels and rebuilds cube views", async () => {
+    const device = fakeDevice();
+    const pass = createPass(device, { name: "Sky", width: 32, height: 32, output: "texture", outputKind: "cubemap", channels: [] });
+    await pass.rebuild("// wgsl");
+    const originalFace = pass.getCurrentCubemapFaceViews()[0];
+    const encoder = device.createCommandEncoder();
+
+    const finishResize = pass.encodeResize(64, 64, encoder);
+
+    expect(encoder.copyTextureToTexture).not.toHaveBeenCalled();
+    expect(pass.getOutputSize()).toEqual({ width: 64, height: 64 });
+    expect(pass.getCurrentCubemapFaceViews()).toHaveLength(6);
+    expect(pass.getCurrentCubemapFaceViews()[0]).not.toBe(originalFace);
+    finishResize?.();
+  });
+
+  it("includes the dynamic cubemap face uniform in the render bind group", async () => {
+    const device = fakeDevice();
+    const pass = createPass(device, { name: "Sky", width: 32, height: 32, output: "texture", outputKind: "cubemap", channels: [] });
+    await pass.rebuild("// wgsl");
+    pass.rebuildBindGroup([]);
+
+    const entries = device.createBindGroup.mock.calls[0]![0].entries;
+    expect(entries).toContainEqual(expect.objectContaining({ binding: 1, resource: expect.objectContaining({ size: 16 }) }));
+  });
   it("allocates a multisample resolve target for every native colour output", async () => {
     const device = fakeDevice();
     const pass = new SlangPassPipeline(device, "bgra8unorm", {

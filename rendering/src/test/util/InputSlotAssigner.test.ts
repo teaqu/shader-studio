@@ -186,3 +186,9 @@ describe("resolveChannelSamplerTypes", () => {
       .toEqual(["2D", "2D", "2D", "2D"]);
   });
 });
+
+
+it("infers cube samplers from buffer output sources without changing input kinds", () => {
+  const inputs = { sky: { type: "buffer", source: "Cubemap" }, flat: { type: "buffer", source: "BufferA" } };
+  expect(resolveChannelSamplerTypes(inputs, assignInputSlots(inputs), ["Cubemap"])).toEqual(["Cube", "2D", "2D", "2D"]);
+});

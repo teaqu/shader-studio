@@ -30,6 +30,20 @@ describe('compute config mutations', () => {
       }), 'ComputeSim', pass)).toEqual({});
     });
 
+    it.each([
+      [{ outputKind: 'cubemap', faceSize: 64, outputLayers: 6 }, {}],
+      [{ outputKind: 'cubemap' }, {}],
+      [{ outputKind: '2d' }, {}],
+      [{ outputKind: 'invalid' }, { outputKind: 'Output kind must be 2d or cubemap' }],
+      [{ faceSize: 0 }, { faceSize: 'Face size must be a positive integer' }],
+      [{ faceSize: 1.5 }, { faceSize: 'Face size must be a positive integer' }],
+      [{ outputKind: 'cubemap', outputLayers: 2 }, { outputLayers: 'Cubemap outputs always use six layers' }],
+    ])('validates cubemap config %j', (fields, errors) => {
+      // Malformed persisted config must produce diagnostics at this boundary.
+      const pass = { type: 'compute', path: 'sim.slang', ...fields } as ComputePass;
+      expect(validateComputePass(config(), 'ComputeSim', pass)).toEqual(errors);
+    });
+
     it('validates repeats, one-shot, and layers', () => {
       expect(validateComputePass(config(), 'ComputeSim', {
         type: 'compute',

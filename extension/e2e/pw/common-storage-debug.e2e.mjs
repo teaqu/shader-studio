@@ -1,6 +1,6 @@
 import { test, expect, workspacePath } from './fixtures.mjs';
 import { join } from 'node:path';
-import { replaceSource, expectCanvasPixels, setPreviewLocked, revertFixtureEditors, setParameterExpression } from './editor-actions.mjs';
+import { replaceSource, expectCanvasPixels, setPreviewLocked, revertFixtureEditors, setParameterExpression, unlockPreviewForCleanup } from './editor-actions.mjs';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { openConfigPanel } from './config-panel.mjs';
 test.use({ vscodeKey: 'common-storage-debug' });
@@ -89,6 +89,7 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
       await expect(frame.locator('.fn-name', { hasText: 'commonValue' })).toBeVisible();
       await expect(frame.getByLabel('Show capture errors')).toHaveCount(0);
     } finally {
+      await unlockPreviewForCleanup(vscode, await vscode.shaderFrame());
       await revertFixtureEditors(vscode, directory);
       for (const path of [root, common, config]) {
         rmSync(path, { force: true });
@@ -200,6 +201,7 @@ for (const language of ['wgsl', 'slang']) {
       await expect(row(frame, 'formula').locator('.var-value')).toHaveText('0.625');
       await expect(frame.getByLabel('Show capture errors')).toHaveCount(0);
     } finally {
+      await unlockPreviewForCleanup(vscode, await vscode.shaderFrame());
       await revertFixtureEditors(vscode, directory);
       rmSync(root, { force: true });
     }

@@ -349,7 +349,9 @@ describe("shader corpus through the UI transport layer", () => {
 
   beforeAll(async () => {
     for (const language of ["glsl", "slang", "wgsl"] as ShaderLanguage[]) {
-      rigs.set(language, await createRig(createShaderCanvasHarness(language)));
+      // The shared CI GPU processes the full corpus; retain exact pixel checks
+      // while allowing an issued readback enough time to finish mapping.
+      rigs.set(language, await createRig(createShaderCanvasHarness(language, { readbackTimeoutMs: 20_000 })));
     }
   });
 

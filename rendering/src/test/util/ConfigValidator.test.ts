@@ -292,6 +292,12 @@ describe("ConfigValidator", () => {
         const buffer = (pass: Record<string, unknown>) =>
           ConfigValidator.validateConfig({ version: "1.0", passes: { Image: {}, BufferA: { path: "a.glsl", ...pass } } } as never);
         const valid = { isValid: true, errors: [] };
+
+        it("validates cubemap output metadata", () => {
+          expect(buffer({ outputKind: "cubemap", faceSize: 512 })).toEqual(valid);
+          expect(buffer({ outputKind: "cube" })).toEqual({ isValid: false, errors: ["BufferA pass outputKind must be 2d or cubemap"] });
+          expect(buffer({ outputKind: "cubemap", faceSize: 0 })).toEqual({ isValid: false, errors: ["BufferA pass faceSize must be a positive integer"] });
+        });
         const nonFullscreen = [
           { type: "vertices" },
           { type: "vertices", space: "clip" },
@@ -1810,5 +1816,37 @@ describe("ConfigValidator", () => {
         }
       });
     });
+  });
+});
+
+
+describe("cubemap output restrictions", () => {
+  const makeConfig = (pass: Record<string, unknown>) => ({ version: "1.0", passes: { Image: {}, Cube: { path: "cube.glsl", outputKind: "cubemap", ...pass } } }) as unknown as ShaderConfig;
+  it.each([
+    [{ geometry: { type: "cube" } }, "fullscreen"],
+    [{ resolution: { width: 32, height: 32 } }, "faceSize rather than resolution"],
+    [{ faceSize: 1.5 }, "positive integer"],
+    [{ faceSize: Infinity }, "positive integer"],
+    [{ outputLayers: 5 }, "six outputLayers"],
+    [{ entryPoints: { fragment: "custom" } }, "native entryPoints"],
+    [{ vertex: "cube.vert.glsl" }, "cannot define vertex"],
+    [{ outputs: [{}] }, "multiple outputs"],
+    [{ outputKind: "2d", faceSize: 32 }, "requires cubemap"],
+    [{ outputKind: "volume" }, "2d or cubemap"],
+  ])("rejects incompatible cubemap configuration %j", (pass, message) => {
+    expect(ConfigValidator.validateConfig(makeConfig(pass)).errors.join("\n")).toContain(message);
+  });
+  it("accepts fullscreen fragment cubes and six-layer compute cubes", () => {
+    expect(ConfigValidator.validateConfig(makeConfig({ faceSize: 16 })).isValid).toBe(true);
+    expect(ConfigValidator.validateConfig(makeConfig({ type: "compute", outputLayers: 6, entryPoints: { compute: "main" } })).isValid).toBe(true);
+  });
+  it("rejects selectors for cube inputs and output fields on Image/common", () => {
+    const config = makeConfig({});
+    config.passes.Image.inputs = { sky: { type: "buffer", source: "Cube", layer: 0 } };
+    expect(ConfigValidator.validateConfig(config).errors.join("\n")).toContain("cannot select a layer");
+    for (const name of ["Image", "common"]) {
+      const invalid = { version: "1", passes: { Image: {}, [name]: { path: "cube", outputKind: "cubemap" } } } as unknown as ShaderConfig;
+      expect(ConfigValidator.validateConfig(invalid).errors.join("\n")).toContain("cannot define outputKind");
+    }
   });
 });

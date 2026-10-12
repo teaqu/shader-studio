@@ -21,4 +21,10 @@ describe.each(["wgslCacheKey", "pipelineCacheKey"] as const)("Slang %s dedup com
     const other = { ...texture, path: "b", wrap: "clamp" as const };
     expect(keys[key](pass(texture, texture), "", [])).toBe(keys[key](pass(other, other), "", []));
   });
+  it("distinguishes cube-producing pass code from a 2d pass", () => {
+    const config = { version: "1", passes: { Image: {}, Sky: { outputKind: "cubemap" as const } } } as unknown as import("@shader-studio/types").ShaderConfig;
+    const cube = buildSlangPassGraph({ imageCode: "float4 mainImage(float2 p) { return 1; }", config, buffers: { Sky: "float4 mainCubemap(float2 p, float3 o, float3 d) { return 1; }" }, canvasWidth: 2, canvasHeight: 2 }).passes.find((node) => node.name === "Sky")!;
+    const flat = { ...cube, outputKind: "2d" as const };
+    expect(keys[key](cube, "", [])).not.toBe(keys[key](flat, "", []));
+  });
 });

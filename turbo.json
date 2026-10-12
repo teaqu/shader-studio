@@ -8,6 +8,8 @@
     "vitest.config.ts",
     "vite.aliases.mjs",
     "vite.aliases.d.mts",
+    "standalone/public/assets/nebula-texture.png",
+    "standalone/public/assets/desert-cubemap-cross.png",
     "eslint.config.mjs",
     ".github/workflows/**",
     ".github/scripts/**"

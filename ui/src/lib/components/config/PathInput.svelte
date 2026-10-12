@@ -35,6 +35,7 @@
     passName?: string;
     geometryType?: string;
     outputCount?: number;
+    outputKind?: '2d' | 'cubemap';
     onCreated?: (result: {
       path: string;
       entryPoints?: { vertex?: string; fragment?: string; compute?: string };
@@ -75,6 +76,7 @@
     passName = undefined,
     geometryType = undefined,
     outputCount = undefined,
+    outputKind = undefined,
     onCreated = undefined,
     postMessage = undefined,
     onMessage = undefined,
@@ -178,7 +180,7 @@ onPathChange?.(event.data.payload.path);
     pendingRequestId = requestId;
     postMessage?.({
       type: 'createFile',
-      payload: { shaderPath, suggestedPath, fileType, requestId, authoringMode: createAuthoringMode ?? effectiveMode, passName, outputCount },
+      payload: { shaderPath, suggestedPath, fileType, requestId, authoringMode: createAuthoringMode ?? effectiveMode, passName, outputCount, outputKind },
     });
   }
 

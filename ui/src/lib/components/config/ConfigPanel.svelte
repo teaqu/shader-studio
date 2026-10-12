@@ -175,6 +175,29 @@
     }
   }
 
+  function addCubemapBuffer() {
+    const initialName = addRenderPass(configManager, "hooks");
+    if (!initialName || !configManager) {
+      return;
+    }
+    let bufferName = "Cubemap";
+    let suffix = 2;
+    while (configManager.getConfig()?.passes[bufferName]) {
+      bufferName = `Cubemap${suffix++}`;
+    }
+    configManager.renameBuffer(initialName, bufferName);
+    const pass = configManager.getConfig()?.passes[bufferName];
+    if (!pass || !('path' in pass)) {
+      return;
+    }
+    configManager.updateBuffer(bufferName, { ...pass, outputKind: 'cubemap', faceSize: 512 } as BufferPass);
+    config = configManager.getConfig();
+    if (config) {
+      onConfigChange(config);
+    }
+    switchTab(bufferName);
+  }
+
   function addComputePass() {
     if (!configManager) {
       return;
@@ -405,14 +428,19 @@
   });
 
   const renderOutputMetadata = $derived(discoverRenderOutputs(config, language, sourceForPass));
-  const renderOutputCounts = $derived(Object.fromEntries(Object.entries(renderOutputMetadata).map(([name, discovery]) => [name, discovery.outputs.length])));
+  const renderOutputCounts = $derived(Object.fromEntries(Object.entries(renderOutputMetadata)
+    .filter(([name]) => {
+      const pass = config?.passes[name];
+      return !pass || !('outputKind' in pass) || pass.outputKind !== 'cubemap';
+    })
+    .map(([name, discovery]) => [name, discovery.outputs.length])));
   $effect(() => {
  setRenderOutputMetadata(shaderPath, renderOutputMetadata);
 });
 
   let computeOutputLayerCounts = $derived.by(() => Object.fromEntries(
     Object.entries(config?.passes ?? {})
-      .filter(([name, pass]) => name !== 'Image' && name !== 'common' && (pass as ComputePass).type === 'compute')
+      .filter(([name, pass]) => name !== 'Image' && name !== 'common' && (pass as ComputePass).type === 'compute' && (pass as ComputePass).outputKind !== 'cubemap')
       .map(([name, pass]) => [name, (pass as ComputePass).outputLayers ?? 1]),
   ));
 
@@ -789,6 +817,7 @@
             bind:this={addMenu}
           >
             <button class="dropdown-item" role="menuitem" onclick={() => runAddMenuAction(addBuffer)}>Buffer</button>
+            {#if language !== 'wgsl'}<button class="dropdown-item" role="menuitem" onclick={() => runAddMenuAction(addCubemapBuffer)}>Cubemap</button>{/if}
             {#if SHADER_LANGUAGES[language].engine === "webgpu"}
               <button
                 class="dropdown-item"
@@ -873,7 +902,7 @@
           {language}
           passType={isComputeTab(activeTab) ? 'compute' : 'render'}
           onUpdate={(bufferName, updatedConfig) => {
-            if (isComputeTab(activeTab)) {
+            if ('type' in updatedConfig && updatedConfig.type === 'compute') {
               configManager?.updateComputePass(bufferName, updatedConfig as ComputePass);
             } else {
               configManager?.updateBuffer(bufferName, updatedConfig as BufferPass);

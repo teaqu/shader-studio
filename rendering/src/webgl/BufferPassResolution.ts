@@ -7,13 +7,19 @@ export interface BufferPassSize {
 }
 
 export function resolveBufferPassSize(
-  passConfig: { resolution?: BufferResolution } | undefined,
+  passConfig: { resolution?: BufferResolution; outputKind?: "2d" | "cubemap"; faceSize?: number } | undefined,
   canvasWidth: number,
   canvasHeight: number,
   limits?: WebGLRenderLimits | null,
 ): BufferPassSize {
   const width = Math.max(1, Math.round(canvasWidth));
   const height = Math.max(1, Math.round(canvasHeight));
+  if (passConfig?.outputKind === "cubemap") {
+    const requested = passConfig.faceSize ?? 512;
+    const size = clampSizeToWebGLRenderLimits(requested, requested, limits);
+    const faceSize = Math.min(size.width, size.height, limits?.maxCubeSize ?? Number.MAX_SAFE_INTEGER);
+    return { width: faceSize, height: faceSize };
+  }
   const resolution = passConfig?.resolution;
 
   if (!resolution) {

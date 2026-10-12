@@ -68,6 +68,33 @@ describe('standalone browser theme', () => {
     },
   );
 
+  it.each(['light', 'dark'] as const)(
+    'defines opaque context menu colours for the %s theme',
+    (theme) => {
+      const themeBlock = getThemeBlock(theme);
+      const properties = [
+        '--vscode-menu-background',
+        '--vscode-menu-foreground',
+        '--vscode-menu-border',
+        '--vscode-menu-selectionBackground',
+        '--vscode-menu-selectionForeground',
+        '--vscode-widget-shadow',
+      ];
+
+      for (const property of properties) {
+        expect(themeBlock, `${theme} theme is missing ${property}`).toMatch(
+          new RegExp(`${property}\\s*:\\s*[^;]+;`),
+        );
+      }
+
+      for (const property of ['--vscode-menu-background', '--vscode-menu-selectionBackground']) {
+        expect(themeBlock, `${theme} theme must define an opaque ${property}`).toMatch(
+          new RegExp(`${property}\\s*:\\s*#[0-9a-f]{6};`, 'i'),
+        );
+      }
+    },
+  );
+
   it('uses orange rather than the yellow editor warning token for pause warnings', () => {
     expect(appCss).toMatch(
       /\.menu-bar button\.warning\s*{[^}]*background-color:\s*var\(--shader-studio-warning-background\);/s,
