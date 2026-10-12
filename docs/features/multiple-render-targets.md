@@ -1,6 +1,6 @@
 # Multiple render targets
 
-A native WGSL or Slang buffer fragment can write several color textures in one draw. Each texture shares the buffer's resolution and floating-point output format. Image remains a single canvas output; GLSL MRT is not supported.
+Use multiple render targets when one buffer needs to produce several images at once, such as a scene color and a normal map. A native WGSL or Slang fragment function can write these images together. Each image is called an output or attachment. Each texture shares the buffer's resolution and floating-point output format. Image remains a single canvas output; GLSL MRT is not supported.
 
 Declare contiguous color locations starting at zero:
 
@@ -36,13 +36,13 @@ Shader Studio infers the attachment count, slots, and default names from the sel
 }
 ```
 
-Omitting an input's `output` selects attachment zero. Compute outputs continue to use `layer`; render attachments use `output`. The consuming channel still needs an explicit choice when you want a nonzero attachment: code discovery cannot decide which texture that channel should sample.
+Omitting an input's `output` selects attachment zero. Compute outputs continue to use `layer`; render attachments use `output`. Choose **Buffer output** in the receiving channel when you want any output other than zero.
 
 The buffer's **Output** section contains the shared **Output format** setting and reports invalid declarations or device limits. Output names and slots appear in the consuming channel's **Buffer output** picker. Add or remove fields in your fragment return type to change the attachments. The UI does not rewrite shader code or add attachments. Older `outputs` arrays remain optional labels by slot; they do not determine the count or create missing attachments.
 
 ![Buffer format and inferred output slots](../assets/images/render-outputs.png)
 
-Discovery reads the pass source and Common declarations. WGSL supports direct `@location(0)` returns, return structs, and aliases to those types. Slang supports direct `SV_Target` returns and structs with `SV_TargetN` fields. Slots must be unique and contiguous from zero; color values must be four-component float vectors. Missing functions, incomplete return declarations, and invalid slot layouts produce an error instead of inventing outputs. A Built-in `mainImage` pass has one color output; multiple attachments require a native fragment.
+Your fragment return type defines the available outputs, whether you declare it in the pass file or Common. WGSL supports direct `@location(0)` returns, return structs, and aliases to those types. Slang supports direct `SV_Target` returns and structs with `SV_TargetN` fields. Slots must be unique and contiguous from zero; color values must be four-component float vectors. If the output list is invalid, check that you have selected an existing fragment function and that its color locations start at zero with no gaps or duplicates. A Built-in `mainImage` pass has one color output; multiple attachments require a native fragment.
 
 ## Choose an Output in a Channel
 
@@ -88,10 +88,10 @@ Select **mainImage** in Image's fragment function rows if it previously used a n
 
 ## Limits and Debugging
 
-The available count depends on the device's attachment count and bytes per sample. `rgba16float` uses 8 bytes per attachment and `rgba32float` uses 16. Five `rgba16float` outputs therefore require at least five attachments and 40 bytes per sample. Shader Studio requests supported limits and reports an error when a configuration exceeds them. All attachments swap together for feedback and share resize/reset behavior.
+The available count depends on the device's attachment count and bytes per sample. `rgba16float` uses 8 bytes per attachment and `rgba32float` uses 16. Five `rgba16float` outputs therefore require at least five attachments and 40 bytes per sample. Shader Studio requests supported limits and reports an error when a configuration exceeds them. All outputs update together. Feedback reads the previous frame of each output; resizing or resetting clears their history together.
 
-Native previews and capture retain the authored vertex stage, interpolated inputs, viewer camera, and depth. Variable capture renders to scratch attachments and snapshots storage buffers, so it leaves live output textures and storage unchanged. Select the output in the debug panel to preview or post-process its color. Other fragment output fields remain intact during instrumentation.
+Select an output in the debug panel to preview its color or apply normalization and step controls. Debug previews use your shader’s vertex positions, interpolated inputs, camera, and depth. Capturing variable values does not change the live buffer outputs or storage values.
 
-Runnable WGSL and Slang examples are in `tests/fixtures/shader-corpus/*/native-mrt/`.
+Use the [two-output example above](#try-two-wgsl-outputs) to try the workflow without downloading a project.
 
 Shadertoy imports keep their single-output `mainImage` behavior and existing connections select output zero. Native MRT projects cannot be pasted directly into Shadertoy. Porting them requires splitting outputs into separate passes or packing several values into one texture; splitting can duplicate calculations and lose the benefit of writing several outputs in one draw. Shader Studio does not convert MRT projects automatically.

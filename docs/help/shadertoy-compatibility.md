@@ -70,4 +70,4 @@ These uniforms are provided by Shader Studio but are not part of the Shadertoy A
 
 ## Cubemap buffers
 
-Shadertoy cubemap fragment code using `mainCubemap(out vec4, in vec2, in vec3, in vec3)` can be used in a Cubemap pass. Copy its source into a GLSL file, choose **+ New → Cubemap**, and bind that file and its channels. Downstream Buffer inputs infer `samplerCube` from the source pass. See [Cubemap buffers](../features/config-buffers.md#cubemap-buffers) for face sizes, feedback, and previews.
+Shadertoy cubemap fragment code using `mainCubemap(out vec4, in vec2, in vec3, in vec3)` can be used in a Cubemap pass. Copy its source into a GLSL file, choose **+ New → Cubemap**, and bind that file and its channels. To sample the result in another pass, add a Buffer channel, select the cubemap pass in **Misc**, and use `texture(iChannel0, direction)` with a three-component direction. See [Cubemap buffers](../features/config-buffers.md#cubemap-buffers) for face sizes, feedback, and previews.
