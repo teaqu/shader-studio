@@ -247,7 +247,7 @@ With `test` on, a fragment is drawn only if its depth passes `compare` against w
 
 `samples` turns on multisample antialiasing for rasterised geometry: `1` (default) is off and `4` smooths the edges of triangles, lines and points. It applies to vertices, plane, cube, sphere and model geometry; fullscreen passes antialias in `mainImage` instead, so `samples` on fullscreen geometry is a config error. In the config panel it is the Antialiasing control under Rendering.
 
-Each pass draws into a multisampled target that is resolved into the pass output, so later passes, variable capture and the pixel inspector all see the smoothed image. WebGPU cannot multisample 32-bit float textures, so a multisampled buffer pass stores `rgba16float` in both renderers and reports a warning when it would otherwise be `rgba32float`. Multisampling uses four times the memory of the pass's colour and depth targets, so keep it to the passes that need it.
+Later passes, the Variable Inspector, and the Pixel Inspector all see the smoothed image. A buffer with multisampling uses `rgba16float` precision in every shader language; Shader Studio shows a warning if the buffer would otherwise use `rgba32float`. Multisampling substantially increases graphics memory use, so enable it only on passes that need smoother edges.
 
 ## Available Built-ins
 
@@ -290,7 +290,7 @@ All standard shader uniforms are available in the vertex shader:
 
 Every geometry exposes the post-`mainVertex`, perspective-correct interpolated UV as `iVertexUv`. Three-dimensional geometry, including vertices in world space, also exposes its world-space context:
 
-`iFrontFacing` reports whether the rasterized primitive is front-facing for vertices and mesh geometry. It is always `true` for fullscreen passes and for the synthetic fullscreen grid used by variable capture.
+`iFrontFacing` tells you whether you are looking at the front of a primitive drawn with Vertices or mesh geometry. It is always `true` for fullscreen passes and fullscreen variable captures.
 
 === "GLSL"
     The `mainImage` signature is unchanged, but the following globals are available:

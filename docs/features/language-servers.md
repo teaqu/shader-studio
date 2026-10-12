@@ -1,4 +1,4 @@
-# Language Servers
+# Editor Assistance
 
 Shader Studio includes editor support for GLSL, Slang, and WGSL. No additional
 shader extension is needed.

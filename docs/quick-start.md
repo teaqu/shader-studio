@@ -16,7 +16,7 @@ Open an existing `.glsl`, `.slang`, or `.wgsl` file, or create a new one and wri
 
 ## Step 3: Write Your Shader
 
-Shader Studio runs Shadertoy-style shaders. Your shader needs a `mainImage` function. If you created your shader with the **New Shader** button, you should see something like this:
+Start with a Shadertoy-style shader that defines `mainImage`, the function that computes each pixel's color. For Slang or WGSL, choose **Built-in** when creating the shader to follow these examples. [Native entry points](features/wgsl-authoring.md#native-entry-points-and-shared-files) are an alternative for more advanced shaders.
 
 === "GLSL"
     ```glsl
@@ -77,7 +77,7 @@ Shader Studio runs Shadertoy-style shaders. Your shader needs a `mainImage` func
 
     [Watch this video by The Art of Code](https://www.youtube.com/watch?v=u5HAYVHsasc) for a good beginner's introduction.
 
-## The Preview
+## Step 4: Open the Preview
 
 Click the <img src="../assets/shader-studio-icon.svg" width="16" height="16" style="vertical-align:middle;"> **Shader Studio** icon in the status bar and choose **Open Panel** (or **Open Window** for a separate window) to see your shader running.
 

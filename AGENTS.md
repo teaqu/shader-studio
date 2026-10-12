@@ -2,6 +2,32 @@
 
 Guide for AI agents working on this codebase.
 
+## Hosted User Documentation
+
+`docs/` is published as the Shader Studio user guide on GitHub Pages. Its readers
+are people using the installed extension or browser app to create shaders, not
+contributors who know this repository. They may never have opened GitHub or
+checked out the source. Every guide must be usable in that context.
+
+- Explain the user's goal, prerequisites, visible controls, steps, and expected
+  result. Use the labels actually shown in the version being documented.
+- Keep shader-language concepts, public APIs, settings, and `.sha.json` examples
+  when users need them to author their own shaders. Explain unfamiliar terms.
+  A user's shader/config file is different from a Shader Studio source file.
+- Do not send readers to repository paths, test fixtures, source modules, private
+  issue trackers, PRs, or implementation plans to complete a task. Provide a
+  self-contained example, a user-accessible download, or another hosted guide.
+- Describe observable behavior and useful limitations, not component ownership,
+  transports, instrumentation, test counts, coverage gates, or release checklists.
+  Keep contributor build/test instructions in `contributing/` or developer-facing
+  READMEs outside the published `docs/` tree. Preserve third-party license notices.
+- Update the guides in the feature PR that changes the workflow. Document only
+  what that branch supports; do not imply that another unmerged feature is
+  available. Keep related guides and navigation consistent.
+- For documentation edits, build with `mkdocs build --strict`, check links and
+  examples, and read the rendered pages as a user. Prose-only changes do not need
+  artificial unit tests or application builds; test any code behavior separately.
+
 ## Project Structure
 
 Monorepo with Turborepo. Key packages:
