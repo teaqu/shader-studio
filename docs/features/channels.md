@@ -153,7 +153,7 @@ Derivative expressions themselves (`ddx`, `dpdx`, etc.) still require fragment c
 
 | Field | GLSL | Slang | WGSL | Meaning |
 |---|---|---|---|---|
-| `.size` | `vec3` | `uint2` | `vec2u` | Texture dimensions; cubemaps report face dimensions. |
+| `.size` | `vec3` | `uint2` (volumes: `uint3`) | `vec2u` (volumes: `vec3u`) | Texture dimensions; cubemaps report face dimensions, volumes include depth. |
 | `.time` | `float` | `float` | `f32` | Audio/video playback position in seconds; zero for other inputs. |
 | `.loaded` | `int` (0/1) | `bool` | `bool` | A usable resource is available. |
 
@@ -172,6 +172,7 @@ Use a channel type based on what the shader needs to sample:
 | **Texture** | Static images, noise maps, lookup tables, masks | `sampler2D` |
 | **Video** | Moving footage sampled like an image | `sampler2D` |
 | **Audio** | FFT and waveform data from an audio file | `sampler2D` |
+| **Volume** | 3D density, noise, and color fields from KTX2 files | `sampler3D` sampled with a `vec3` coordinate |
 | **Cubemap** | Skyboxes and environment maps | `samplerCube` sampled with a `vec3` direction |
 | **Buffer** | Output from another pass, including feedback | `sampler2D` |
 | **Keyboard** | Pressed, held, and toggled key state | `sampler2D` |
@@ -356,10 +357,10 @@ The corresponding JSON setting is `outputFormat`:
 ```
 
 The Config panel exposes the same setting. Supported values are `auto`,
-`rgba16float`, and `rgba32float`; omission is the same as `auto`. Both backends
-honour the setting.
+`rgba16float`, and `rgba32float`; omission is the same as `auto`. The setting
+applies to GLSL, Slang, and WGSL.
 
-| Backend | Buffer format | Precision per component |
+| Shader language and setting | Buffer format | Precision per component |
 |---|---|---|
 | WebGL (GLSL), `auto` or `rgba32float` | `RGBA32F` | 32-bit float |
 | WebGL (GLSL), `rgba16float` | `RGBA16F` | 16-bit float |
@@ -512,7 +513,7 @@ using Screen to release capture. A page reload also needs a new selection from t
 browser picker. Screen capture needs HTTPS or localhost, and browser/operating
 system permission just like Webcam.
 
-Screen requests 1920 × 1080 video at 30 fps when the browser supports these capture preferences and uploads only newly presented frames. Sources that do not support these preferences keep their available resolution. The channel dimensions report the captured video size. Filter, wrap and vertical flip affect sampling in the shader; the small channel preview shows the original capture. Wrap changes are visible when UV coordinates leave the 0–1 range, and filtering differences appear at pixel edges or when scaling.
+Screen requests 1920 × 1080 video at 30 fps when the browser supports these capture preferences. Sources that do not support these preferences keep their available resolution. The channel dimensions report the captured video size. Filter, wrap and vertical flip affect sampling in the shader; the small channel preview shows the original capture. Wrap changes are visible when UV coordinates leave the 0–1 range, and filtering differences appear at pixel edges or when scaling.
 
 ### Shared Audio
 
@@ -536,6 +537,6 @@ through your speakers.
 
 ### Live inputs in VS Code
 
-Mic, Shared Audio, Webcam and Screen are greyed out in VS Code panels. Hover over an input for guidance on using Shader Studio in a browser. Start the web server from the Shader Studio status menu, then choose **Open in Browser** to use these inputs in your external browser. Shader edits continue to update the viewer through the extension’s existing connection.
+Mic, Shared Audio, Webcam and Screen are greyed out in VS Code panels. Hover over an input for guidance on using Shader Studio in a browser. Start the web server from the Shader Studio status menu, then choose **Open in Browser** to use these inputs in your external browser. Edits in VS Code continue to update your browser preview.
 
 Allow camera and microphone access for the localhost page in your browser when prompted. Shared Audio requires **Start sharing**, and Screen requires **Start screen sharing**. Sharing options depend on the browser; choose a routed audio input device if tab/system sharing is unavailable. Device choices, source permissions and sharing sessions are not saved in shader configs.

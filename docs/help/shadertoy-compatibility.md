@@ -69,8 +69,6 @@ These uniforms are provided by Shader Studio but are not part of the Shadertoy A
 | Microphone input | Real-time audio from microphone |
 | VR/AR | Immersive rendering modes |
 
-### Volume inputs
+## Volume inputs
 
-File-backed KTX2 3D volumes are supported as native `sampler3D` inputs
-in GLSL and `Texture3D<float4>` inputs in Slang and `texture_3d<f32>` inputs in WGSL. See [volume inputs](volume-inputs.md)
-for formats, axis orientation, limitations, and examples.
+To use a 3D texture, open a channel's settings, choose **Volumes**, and select a supported KTX2 file. Sample it with a three-component coordinate in GLSL, Slang, or WGSL. Shadertoy BIN files need conversion to KTX2 first. See [Volume inputs](volume-inputs.md) for downloadable samples, setup steps, and shader examples.

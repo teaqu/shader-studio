@@ -1,75 +1,108 @@
-# Volume / 3D texture inputs
+# Volume / 3D Texture Inputs
 
-Select **Volumes** in a channel's configuration and choose a `.ktx2` file. The
-preview shows dimensions and a density rendering you can rotate and zoom. Switch to **Slices** to inspect X, Y, or Z planes. **Linear**
-filtering interpolates between voxels in all three dimensions; **Nearest**
-selects individual voxels. **Repeat** or **Clamp** applies to X, Y, and Z.
+A volume texture stores values throughout a 3D grid. Use one for cloud density, 3D noise, or a color field that your shader samples with an X, Y, and Z coordinate. Volume inputs work in GLSL, Slang, and WGSL.
+
+## Load a Volume
+
+1. In VS Code, put a supported `.ktx2` volume file in your shader workspace. To try the example below, download the [axis-ramp sample](../assets/volume-input/axis-ramp.ktx2) into the same folder as your shader.
+2. Open **Config**, select the pass, and add or configure a channel such as `iChannel0`.
+3. Select **Volumes** and choose the file. You can also enter its path.
+4. Choose **Linear** filtering for smooth transitions between voxels (3D pixels), or **Nearest** to read individual voxels.
+5. Set **Wrap X / Y / Z** to **Repeat** for a tiling volume, or **Clamp** to keep coordinates outside the volume at its edges.
+
+The preview shows the volume's dimensions. Drag the 3D preview to rotate it, use **+ / −** to zoom, or **Reset view** to restore the camera. Switch to **Slices** to inspect individual layers along X, Y, or Z.
+
+The density preview shows R8 data as grayscale. For RGBA data, alpha controls density and RGB controls color. Your shader can interpret the same data differently, so its lighting and appearance may differ from the preview.
+
+## Try an Animated Slice
+
+Configure `iChannel0` with the axis-ramp sample, **Linear** filtering, and **Clamp** wrapping. Paste the matching example into a Built-in image shader. You should see a red/green gradient whose blue component changes as the sampled depth moves over time.
+
+=== "GLSL"
+    ```glsl
+    void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+        vec2 uv = fragCoord / iResolution.xy;
+        float depth = 0.5 + 0.5 * sin(iTime);
+        fragColor = texture(iChannel0, vec3(uv, depth));
+    }
+    ```
+
+=== "Slang"
+    ```slang
+    float4 mainImage(float2 fragCoord) {
+        float2 uv = fragCoord / iResolution.xy;
+        float depth = 0.5 + 0.5 * sin(iTime);
+        return iChannel0.SampleLevel(float3(uv, depth), 0.0);
+    }
+    ```
+
+=== "WGSL"
+    ```wgsl
+    fn mainImage(coord: vec2f) -> vec4f {
+        let uv = coord / iResolution.xy;
+        let depth = 0.5 + 0.5 * sin(iTime);
+        return iChannel0SampleLevel(vec3f(uv, depth), 0.0);
+    }
+    ```
+
+The three sample coordinates run from 0 to 1 across the volume. Read its width, height, and depth with GLSL `iCh0.size`, Slang `iChannel0.size`, or WGSL `iChannel0.size` (also available as `iChannel0Size()`). Named channels work too: a Slang channel named `density` is sampled with `density.SampleLevel(...)`; WGSL uses `densitySampleLevel(...)`.
+
+## Sample Volumes
+
+Download these files and select them in **Volumes**:
+
+| Sample | Contents | Suggested settings |
+| --- | --- | --- |
+| [Axis ramp](../assets/volume-input/axis-ramp.ktx2) | X, Y, and Z stored as red, green, and blue; useful for checking coordinates | Linear, Clamp |
+| [Cloud density](../assets/volume-input/cloud-density.ktx2) | A 48 × 48 × 48 grayscale density field | Linear, Clamp |
+| [Grayscale noise](../assets/volume-input/noise-grey.ktx2) | A 32 × 32 × 32 random grayscale field | Linear, Repeat |
+| [RGBA noise](../assets/volume-input/noise-rgba.ktx2) | A 32 × 32 × 32 field with independent random values in each component | Linear, Repeat |
+
+For a grayscale file, sample `.r` and use it for all three color components. For example, replace the last line of the GLSL example with:
+
+```glsl
+float density = texture(iChannel0, vec3(uv, depth)).r;
+fragColor = vec4(vec3(density), 1.0);
+```
+
+The noise files can replace Shadertoy-style 3D noise inputs, but contain different values, so the resulting pattern will differ. With **Linear** and **Repeat**, sampling at several scales can produce repeating fractal noise. These are random-value grids, not Perlin or Worley noise.
+
+The sample files are original assets provided under the [MIT license](../assets/volume-input/LICENSE.txt).
+
+## Supported Files and Limits
+
+- Use uncompressed 3D KTX2 with linear `R8_UNORM` or `R8G8B8A8_UNORM` data. Non-cubic dimensions are supported.
+- Arrays, cubemaps, compressed KTX2, floating-point formats, sRGB data, and custom channel swizzles are unsupported.
+- Only the highest-resolution texture level is sampled. Additional mip levels do not affect rendering.
+- The volume must fit your device's maximum 3D texture dimensions and a 256 MiB limit measured as four bytes per voxel.
+- These are inputs loaded from files. Shaders cannot generate 3D volume outputs.
+
+For exported data, store voxels with X changing fastest, then Y, then Z. Shader Studio does not flip Y or reinterpret the data based on `KTXorientation`. Red-only volumes return `(r, 0, 0, 1)` when sampled.
+
+Convert simulation data such as OpenVDB to a supported dense KTX2 grid before loading it. Shadertoy BIN volume files also require conversion to KTX2.
+
+If loading fails, check the message for an unsupported format, size limit, or missing file. The channel reports that it is not loaded and may sample opaque black until you choose a valid file. Check GLSL `iCh0.loaded != 0`, Slang `iChannel0.loaded`, or WGSL `iChannel0.loaded` when your shader needs to handle a missing volume.
+
+## Config File Example
+
+The Config panel saves your choices automatically. If you edit `.sha.json` yourself, an Image pass with a volume input looks like this:
 
 ```json
-"iChannel0": {
-  "type": "volume",
-  "path": "./density.ktx2",
-  "filter": "linear",
-  "wrap": "clamp"
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "inputs": {
+        "iChannel0": {
+          "type": "volume",
+          "path": "./axis-ramp.ktx2",
+          "filter": "linear",
+          "wrap": "clamp"
+        }
+      }
+    }
+  }
 }
 ```
 
-GLSL uses `texture(iChannel0, vec3(u, v, w))` or
-`texture(iCh0.sampler, vec3(u, v, w))`. Slang uses
-`iChannel0.SampleLevel(float3(u, v, w), 0.0)` and WGSL uses
-`iChannel0SampleLevel(vec3f(u, v, w), 0.0)`. GLSL `iCh0.size`, Slang
-`iChannel0.size`, and WGSL `iChannel0Size()` contain width, height, and depth.
-The corresponding loaded flag is false for a failed load. Named channels work
-as well (e.g. Slang `density.SampleLevel(...)` or WGSL `densitySampleLevel(...)`).
-
-## Supported files
-
-Volumes use the standard [KTX2 texture container](https://registry.khronos.org/KTX/specs/2.0/ktxspec.v2.html).
-Currently supported: uncompressed 3D `R8_UNORM` or `R8G8B8A8_UNORM`, with linear data.
-Arrays, cubemaps, supercompression (Basis, Zstd, Zlib), floating-point formats,
-sRGB, and custom channel swizzles are rejected with a diagnostic.
-
-The base mip level is uploaded. Additional mip levels are validated but are not
-used; the available filters are linear and nearest. Non-cubic volumes work.
-Voxels are stored X fastest, then Y, then Z, without an image-style Y flip.
-`KTXorientation` is logical metadata and does not change byte-to-texture mapping.
-Red-only textures sample as `(r, 0, 0, 1)`; previews display them as grayscale.
-Uploads are limited by the device's maximum 3D dimension and 256 MiB of expanded
-RGBA data. Load failures bind an opaque black 1×1×1 fallback where possible.
-
-KTX2 can store baked smoke/cloud density, noise, color fields, and other dense
-voxel grids. It does not run simulations and is not a sparse OpenVDB container.
-Export or convert simulation data to a supported dense KTX2 grid before loading.
-Shadertoy's internal BIN files are not supported; convert their voxel data to KTX2
-when porting a shader that uses a bundled Shadertoy volume.
-
-## Example
-
-Open `tests/fixtures/shader-corpus/glsl/volume-input/volume_glsl.glsl` or the corresponding `slang/volume-input/volume.slang` with the adjacent
-`volume_glsl.sha.json`. The included original `axis-ramp.ktx2` stores X/Y/Z in RGB;
-`generate.py` regenerates it. The image's blue channel changes as the sampled
-depth moves with time. These files use the repository's MIT license.
-
-For a richer visual demo, open `clouds.glsl` / `clouds.slang` for rotating,
-self-shadowed volume rendering, or `tomography.glsl` / `tomography.slang` for
-animated XY, YZ, and XZ cross-sections. Both sample the original baked 48³ R8
-`cloud-density.ktx2` asset, regenerated by `generate-density.py`.
-
-These are **file-backed inputs**. Generating 3D volume outputs is separate work
-tracked in issue #312.
-
-The channel picker opens an interactive 3D density preview: drag to rotate, use +/− to zoom, and Reset view to restore the camera. Switch to Slices to inspect exact voxel layers on X, Y, or Z. The preview treats R8 as grayscale density and RGBA alpha as density with RGB color; it does not reproduce a shader’s lighting or transfer function.
-
-## 3D noise replacements
-
-`noise-grey.ktx2` is a 32³ R8 random volume; `noise-rgba.ktx2` is a 32³ RGBA8
-volume with independent random R, G, B, and alpha channels. These original
-fixtures serve the same purpose as Shadertoy's grey/RGBA 3D noise inputs; their
-values are not byte-identical to Shadertoy's assets. `generate-noise.py` rebuilds
-both using fixed-seed integer PRNG streams. Use **linear** filtering and
-**repeat** wrapping. Interpolation produces periodic 3D value noise; multiple
-scaled samples produce fractal noise. This is not a Perlin or Worley dataset.
-
-Open `noise.glsl` / `noise.slang` / `noise.wgsl` for raw grayscale noise, fractal noise, and a
-low-frequency colour map. `noise-rgba.glsl` / `noise-rgba.slang` / `noise-rgba.wgsl` shows RGB noise,
-fractal red-channel noise, and the independently random alpha channel.
+See [Channels](../features/channels.md) for other input types and channel naming.
