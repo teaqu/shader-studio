@@ -74,6 +74,12 @@ describe("Slang shared resource bindings", () => {
 });
 
 describe("WebGPU sampler cache", () => {
+  it.each(["clamp", "repeat"] as const)("applies %s addressing to the volume depth axis", wrap => {
+    const createSampler = vi.fn(() => ({} as GPUSampler));
+    getWebGPUSampler({ createSampler } as unknown as GPUDevice, "linear", wrap);
+    const mode = wrap === "clamp" ? "clamp-to-edge" : "repeat";
+    expect(createSampler).toHaveBeenCalledWith(expect.objectContaining({ addressModeU: mode, addressModeV: mode, addressModeW: mode }));
+  });
   it("shares equivalent settings only within a device, preserving filter and wrap differences", () => {
     const createSampler = vi.fn(() => ({} as GPUSampler));
     const device = { createSampler } as unknown as GPUDevice;
@@ -84,6 +90,6 @@ describe("WebGPU sampler cache", () => {
     expect(getWebGPUSampler(device, "mipmap", "clamp")).not.toBe(linear);
     expect(getWebGPUSampler({ createSampler } as unknown as GPUDevice, "linear", "clamp")).not.toBe(linear);
     expect(createSampler).toHaveBeenCalledTimes(5);
-    expect(createSampler).toHaveBeenCalledWith({ magFilter: "linear", minFilter: "linear", addressModeU: "clamp-to-edge", addressModeV: "clamp-to-edge", mipmapFilter: "linear" });
+    expect(createSampler).toHaveBeenCalledWith({ magFilter: "linear", minFilter: "linear", addressModeU: "clamp-to-edge", addressModeV: "clamp-to-edge", addressModeW: "clamp-to-edge", mipmapFilter: "linear" });
   });
 });

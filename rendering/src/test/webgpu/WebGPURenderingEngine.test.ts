@@ -5071,6 +5071,7 @@ describe("WebGPURenderingEngine", () => {
       minFilter: "nearest",
       addressModeU: "repeat",
       addressModeV: "repeat",
+      addressModeW: "repeat",
     });
     expect(imagePipeline.rebuildBindGroup).toHaveBeenCalledWith([
       { slot: 0, textureView: { label: "bufferA-current" }, sampler },
