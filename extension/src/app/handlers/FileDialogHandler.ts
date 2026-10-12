@@ -1,3 +1,4 @@
+import { defaultAssetFiles } from "../DefaultAssets";
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
@@ -81,7 +82,7 @@ export class FileDialogHandler {
   }
 
   async handleCreateFile(
-    payload: { shaderPath: string; suggestedPath: string; fileType: string; requestId: string; authoringMode?: 'hooks' | 'native'; passName?: string; outputCount?: number; geometryType?: string; vertexSpace?: string },
+    payload: { shaderPath: string; suggestedPath: string; fileType: string; requestId: string; authoringMode?: 'hooks' | 'native'; passName?: string; outputCount?: number; outputKind?: '2d' | 'cubemap'; geometryType?: string; vertexSpace?: string },
     respondFn: ResponseSender,
   ): Promise<void> {
     try {
@@ -124,6 +125,9 @@ export class FileDialogHandler {
           template = `void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {\n}\n`;
         } else if (payload.fileType === 'slang-vertex') {
           template = `void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {\n\n}\n`;
+        } else if (payload.outputKind === 'cubemap' && payload.fileType === 'slang-compute') {
+          template = `[shader("compute")]\n[numthreads(8, 8, 1)]\nvoid mainCompute(uint3 pixel : SV_DispatchThreadID) {\n    if (pixel.x >= uint(iResolution.x) || pixel.y >= uint(iResolution.y) || pixel.z >= 6) return;\n    float3 d = cubemapDirection(pixel.xy, pixel.z);\n    writeOutput(pixel.xy, pixel.z, float4(0.5 + 0.5 * d, 1.0));\n}\n`;
+          entryPoints = { compute: 'mainCompute' };
         } else if (payload.authoringMode === 'native' && payload.fileType === 'slang-compute') {
           const native = createNativeComputeSource('slang', '', payload.passName ?? 'Compute');
           template = native.text;
@@ -132,11 +136,11 @@ export class FileDialogHandler {
           const native = createNativeComputeSource('wgsl', '', payload.passName ?? 'Compute');
           template = native.text;
           entryPoints = native.entryPoints;
-        } else if (payload.authoringMode === 'native' && payload.fileType === 'slang-buffer') {
+        } else if (payload.authoringMode === 'native' && payload.outputKind !== 'cubemap' && payload.fileType === 'slang-buffer') {
           const native = createNativeFragmentSource('slang', '', payload.passName ?? 'Buffer', nativeOutputCount(payload.outputCount));
           template = native.text.trimStart();
           entryPoints = native.entryPoints;
-        } else if (payload.authoringMode === 'native' && payload.fileType === 'wgsl-buffer') {
+        } else if (payload.authoringMode === 'native' && payload.outputKind !== 'cubemap' && payload.fileType === 'wgsl-buffer') {
           const native = createNativeFragmentSource('wgsl', '', payload.passName ?? 'Buffer', nativeOutputCount(payload.outputCount));
           template = native.text.trimStart();
           entryPoints = native.entryPoints;
@@ -148,6 +152,10 @@ export class FileDialogHandler {
           template = `fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {\n\n}\n`;
         } else if (payload.fileType === 'wgsl-compute') {
           template = `@compute @workgroup_size(8, 8, 1)\nfn compute(@builtin(global_invocation_id) dispatchThreadID: vec3u) {\n\n}\n`;
+        } else if (payload.outputKind === 'cubemap' && payload.fileType === 'slang-buffer') {
+          template = `float4 mainCubemap(float2 fragCoord, float3 rayOri, float3 rayDir) {\n    return float4(0.5 + 0.5 * rayDir, 1.0);\n}\n`;
+        } else if (payload.outputKind === 'cubemap') {
+          template = `void mainCubemap(out vec4 fragColor, in vec2 fragCoord, in vec3 rayOri, in vec3 rayDir) {\n    fragColor = vec4(0.5 + 0.5 * rayDir, 1.0);\n}\n`;
         } else if (payload.fileType === 'wgsl-buffer') {
           template = `fn mainImage(coord: vec2f) -> vec4f {\n    let st = coord / vec2f(iResolution.x, iResolution.y);\n    return vec4f(st, 0.0, 1.0);\n}\n`;
         } else if (payload.fileType === 'slang-buffer') {
@@ -312,6 +320,7 @@ export class FileDialogHandler {
     respondFn: ResponseSender,
     pathConverter: (absPath: string) => string,
   ): Promise<void> {
+    const defaults = defaultAssetFiles(payload.extensions, this.extensionPath, pathConverter);
     try {
       Logger.trace('FileDialogHandler: scanning workspace files for '
         + (payload.extensions?.join(', ') ?? 'any extension'));
@@ -321,11 +330,11 @@ export class FileDialogHandler {
         pathConverter,
       );
       Logger.trace(`FileDialogHandler: found ${files.length} workspace files`);
-      respondFn({ type: "workspaceFiles", payload: { files } });
+      respondFn({ type: "workspaceFiles", payload: { files: [...defaults, ...files] } });
     } catch (error) {
       console.error(`FileDialogHandler: Failed to scan workspace files:`, error);
       this.logger.error(`Failed to scan workspace files: ${error}`);
-      respondFn({ type: "workspaceFiles", payload: { files: [] } });
+      respondFn({ type: "workspaceFiles", payload: { files: defaults } });
     }
   }
 

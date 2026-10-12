@@ -16,6 +16,7 @@ export interface SlangPassPipelineDescriptor {
   width: number;
   height: number;
   output: "texture" | "canvas";
+  outputKind?: "2d" | "cubemap";
   /** Number of colour attachments for a native render buffer; defaults to one. */
   outputCount?: number;
   channels: SlangBindingChannel[];
@@ -153,6 +154,9 @@ export class SlangPassPipeline {
   private sampler: GPUSampler | null = null;
   private textures: GPUTexture[] = [];
   private outputViews: GPUTextureView[] = [];
+  private cubeOutputViews: GPUTextureView[] = [];
+  private cubeFaceViews: GPUTextureView[][] = [];
+  private cubeFaceBuffer: GPUBuffer | null = null;
   private textureIndex = 0;
   private rebuildGeneration = 0;
   private pendingTextureRetirements = new Set<GPUTexture>();
@@ -230,6 +234,12 @@ export class SlangPassPipeline {
       size: this.descriptor.uniformBufferSize ?? createShaderToyUniformLayout(getShaderToyChannelCount(this.descriptor.channels)).size,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
+    if (this.descriptor.outputKind === "cubemap") {
+      this.cubeFaceBuffer = this.device.createBuffer({ size: 256 * 6, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+      for (let face = 0; face < 6; face++) {
+        this.device.queue.writeBuffer(this.cubeFaceBuffer, face * 256, new Uint32Array([face, 0, 0, 0]));
+      }
+    }
     if (this.usesCameraUniforms()) {
       this.meshUniformBuffer = this.device.createBuffer({ size: MESH_UNIFORM_SIZE, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     }
@@ -241,7 +251,7 @@ export class SlangPassPipeline {
         for (let index = 0; index < this.outputCount() * 2; index++) {
           textures.push(this.createOutputTexture());
         }
-        this.outputViews = textures.map((texture) => texture.createView());
+        this.setOutputViews(textures);
         this.textures = textures;
       } catch (error) {
         SlangPassPipeline.destroyTextureList(textures);
@@ -253,6 +263,9 @@ export class SlangPassPipeline {
       // (the explicit layout requires those resources); rebuildBindGroup
       // creates it each frame once live resources are resolved.
       const entries: GPUBindGroupEntry[] = [{ binding: 0, resource: { buffer: this.uniformBuffer } }];
+      if (this.descriptor.outputKind === "cubemap" && this.cubeFaceBuffer) {
+        entries.push({ binding: buildSlangBindingPlan(this.descriptor.channels).nextBinding + (this.descriptor.storage?.length ?? 0), resource: { buffer: this.cubeFaceBuffer, size: 16 } });
+      }
       if (this.usesCameraUniforms() && this.meshUniformBuffer) {
         entries.push({ binding: 1, resource: { buffer: this.meshUniformBuffer } });
       }
@@ -343,31 +356,33 @@ export class SlangPassPipeline {
         SlangPassPipeline.destroyTextureList(newTextures);
         throw error;
       }
-      const copySize = {
-        width: Math.min(oldWidth, width),
-        height: Math.min(oldHeight, height),
-        depthOrArrayLayers: 1,
-      };
-      // WebGPU copy origins are top-left, while ShaderToy feedback content is
-      // authored in bottom-left coordinates. Offset the taller side so the
-      // overlapping logical bottom-left region stays anchored across resize.
-      const sourceOrigin = { x: 0, y: Math.max(0, oldHeight - height) };
-      const destinationOrigin = { x: 0, y: Math.max(0, height - oldHeight) };
-      try {
-        for (let index = 0; index < oldTextures.length; index++) {
-          encoder.copyTextureToTexture(
-            { texture: oldTextures[index], origin: sourceOrigin },
-            { texture: newTextures[index], origin: destinationOrigin },
-            copySize,
-          );
+      if (this.descriptor.outputKind !== "cubemap") {
+        const copySize = { width: Math.min(oldWidth, width), height: Math.min(oldHeight, height), depthOrArrayLayers: 1 };
+        // WebGPU copy origins are top-left, while ShaderToy feedback content is
+        // authored in bottom-left coordinates. Offset the taller side so the
+        // overlapping logical bottom-left region stays anchored across resize.
+        const sourceOrigin = { x: 0, y: Math.max(0, oldHeight - height) };
+        const destinationOrigin = { x: 0, y: Math.max(0, height - oldHeight) };
+        try {
+          for (let index = 0; index < oldTextures.length; index++) {
+            encoder.copyTextureToTexture(
+              { texture: oldTextures[index], origin: sourceOrigin },
+              { texture: newTextures[index], origin: destinationOrigin },
+              copySize,
+            );
+          }
+        } catch (error) {
+          SlangPassPipeline.destroyTextureList(newTextures);
+          throw error;
         }
-      } catch (error) {
-        SlangPassPipeline.destroyTextureList(newTextures);
-        throw error;
       }
       this.descriptor = { ...this.descriptor, width, height };
       this.textures = newTextures;
-      this.outputViews = newViews;
+      if (this.descriptor.outputKind === "cubemap") {
+        this.setOutputViews(newTextures);
+      } else {
+        this.outputViews = newViews;
+      }
       this.textureIndex = oldTextureIndex;
       this.resizeAttachments(width, height);
       return () => {
@@ -383,7 +398,7 @@ export class SlangPassPipeline {
     resources: SlangChannelResource[],
     storageBuffers?: Map<string, GPUBuffer>,
   ): void {
-    if (!this.pipeline || !this.uniformBuffer || !this.bindGroupLayout) {
+    if (!this.pipeline || !this.uniformBuffer || !this.bindGroupLayout || (this.descriptor.outputKind === "cubemap" && !this.cubeFaceBuffer)) {
       return;
     }
     const resolvedStorage = (this.descriptor.storage ?? []).map((node) => ({
@@ -399,6 +414,7 @@ export class SlangPassPipeline {
       this.pipeline,
       this.uniformBuffer,
       this.bindGroupLayout,
+      this.cubeFaceBuffer,
     ];
     for (const channel of sorted) {
       resourceIdentities.push(
@@ -428,6 +444,9 @@ export class SlangPassPipeline {
         binding: storageBaseBinding + node.binding,
         resource: { buffer: buffer! },
       });
+    }
+    if (this.descriptor.outputKind === "cubemap" && this.cubeFaceBuffer) {
+      entries.push({ binding: storageBaseBinding + (this.descriptor.storage?.length ?? 0), resource: { buffer: this.cubeFaceBuffer, size: 16 } });
     }
     if (this.usesCameraUniforms() && this.meshUniformBuffer) {
       entries.push({
@@ -535,6 +554,22 @@ export class SlangPassPipeline {
     return this.outputViews[this.outputTextureIndex(output, this.textureIndex)] ?? null;
   }
 
+  getCurrentCubemapOutputView(output = 0): GPUTextureView | null {
+    return this.cubeOutputViews[this.outputTextureIndex(output, this.textureIndex)] ?? null;
+  }
+
+  getPreviousCubemapOutputView(output = 0): GPUTextureView | null {
+    return this.cubeOutputViews[this.outputTextureIndex(output, 1 - this.textureIndex)] ?? null;
+  }
+
+  getCurrentCubemapFaceViews(output = 0): GPUTextureView[] {
+    return this.cubeFaceViews[this.outputTextureIndex(output, this.textureIndex)] ?? [];
+  }
+
+  getCubemapFaceOffset(face: number): number {
+    return Math.max(0, Math.min(5, face)) * 256;
+  }
+
   getCurrentOutputTexture(output = 0): GPUTexture | null {
     return this.textures[this.outputTextureIndex(output, this.textureIndex)] ?? null;
   }
@@ -571,7 +606,7 @@ export class SlangPassPipeline {
     }
     this.destroyTextures();
     this.textures = Array.from({ length: this.outputCount() * 2 }, () => this.createOutputTexture());
-    this.outputViews = this.textures.map((texture) => texture.createView());
+    this.setOutputViews(this.textures);
     this.textureIndex = 0;
   }
 
@@ -601,6 +636,9 @@ export class SlangPassPipeline {
     if (this.usesCameraUniforms()) {
       entries.push({ binding: storageBaseBinding + (this.descriptor.storage?.length ?? 0), visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: "uniform" } });
     }
+    if (this.descriptor.outputKind === "cubemap") {
+      entries.push({ binding: storageBaseBinding + (this.descriptor.storage?.length ?? 0), visibility: GPUShaderStage.FRAGMENT, buffer: { type: "uniform", hasDynamicOffset: true, minBindingSize: 16 } });
+    }
     return entries;
   }
 
@@ -624,7 +662,7 @@ export class SlangPassPipeline {
   ): GPUTexture {
     return this.device.createTexture({
       label: `${this.descriptor.name} output`,
-      size: { width, height },
+      size: this.descriptor.outputKind === "cubemap" ? { width, height, depthOrArrayLayers: 6 } : { width, height },
       format: this.targetFormat(),
       usage: GPUTextureUsage.RENDER_ATTACHMENT
         | GPUTextureUsage.TEXTURE_BINDING
@@ -672,6 +710,8 @@ export class SlangPassPipeline {
   private destroyUniformBuffer(): void {
     this.uniformBuffer?.destroy?.();
     this.uniformBuffer = null;
+    this.cubeFaceBuffer?.destroy?.();
+    this.cubeFaceBuffer = null;
     this.meshUniformBuffer?.destroy?.();
     this.meshUniformBuffer = null;
     this.depthTexture?.destroy?.();
@@ -697,6 +737,8 @@ export class SlangPassPipeline {
     this.retireTexturesAfterSubmittedWork(this.textures);
     this.textures = [];
     this.outputViews = [];
+    this.cubeOutputViews = [];
+    this.cubeFaceViews = [];
     this.textureIndex = 0;
   }
 
@@ -738,5 +780,13 @@ export class SlangPassPipeline {
     for (const texture of textures) {
       texture.destroy?.();
     }
+  }
+
+  private setOutputViews(textures: GPUTexture[]): void {
+    this.outputViews = textures.map((texture) => texture.createView());
+    this.cubeOutputViews = this.descriptor.outputKind === "cubemap"
+      ? textures.map((texture) => texture.createView({ dimension: "cube", baseArrayLayer: 0, arrayLayerCount: 6 })) : [];
+    this.cubeFaceViews = this.descriptor.outputKind === "cubemap"
+      ? textures.map((texture) => Array.from({ length: 6 }, (_, face) => texture.createView({ dimension: "2d", baseArrayLayer: face, arrayLayerCount: 1 }))) : [];
   }
 }

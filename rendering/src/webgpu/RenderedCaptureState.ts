@@ -10,6 +10,7 @@ export interface RenderedCaptureChannel {
 export interface RenderedCaptureBufferInput {
   texture: GPUTexture;
   layer?: number;
+  cubemap?: boolean;
 }
 
 export interface RenderedCaptureFrame {

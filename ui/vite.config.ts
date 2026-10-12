@@ -1,3 +1,4 @@
+import { defaultAssetsPlugin } from './viteDefaultAssets';
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { slangAssetManifestPlugin } from './viteSlangAssetManifest';
@@ -5,7 +6,7 @@ import { shaderStudioAliasEntries } from '../vite.aliases.mjs';
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [svelte(), slangAssetManifestPlugin()],
+  plugins: [svelte(), slangAssetManifestPlugin(), defaultAssetsPlugin()],
   base: './', // Use relative paths for assets
   resolve: {
     alias: shaderStudioAliasEntries,

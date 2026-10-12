@@ -93,3 +93,22 @@ describe("WebGPU sampler cache", () => {
     expect(createSampler).toHaveBeenCalledWith({ magFilter: "linear", minFilter: "linear", addressModeU: "clamp-to-edge", addressModeV: "clamp-to-edge", addressModeW: "clamp-to-edge", mipmapFilter: "linear" });
   });
 });
+
+
+describe("mixed volume and cubemap channels", () => {
+  it("retains distinct dimensions in GPU layouts and generated Slang", () => {
+    const channels = getSlangChannels([
+      { kind: "volume", slot: 0, key: "density", path: "density.ktx2" },
+      { kind: "buffer", slot: 1, key: "sky", source: "Sky", readFrom: "current-frame", outputKind: "cubemap" },
+      { kind: "texture", slot: 2, key: "image", path: "image.png" },
+    ]);
+    const plan = buildSlangBindingPlan(channels);
+    expect(plan.textures).toHaveLength(3);
+    expect(slangChannelLayoutEntries(plan, 2).filter(entry => entry.texture).map(entry => entry.texture?.viewDimension ?? "2d"))
+      .toEqual(["3d", "cube", "2d"]);
+    const source = wrapSlangImageSource("", { channels });
+    expect(source).toContain("Texture3D");
+    expect(source).toContain("TextureCube");
+    expect(source).toContain("Texture2D");
+  });
+});

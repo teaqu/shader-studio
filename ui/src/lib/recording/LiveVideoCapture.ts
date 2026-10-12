@@ -13,7 +13,12 @@ export async function createLiveVideoCapture(canvas: HTMLCanvasElement, fps: num
   signal.throwIfAborted();
   const width = canvas.width + (format === "mp4" ? canvas.width % 2 : 0);
   const height = canvas.height + (format === "mp4" ? canvas.height % 2 : 0);
-  const quality = new Quality({ quantizer: 12, bitrate: automaticVideoBitrate({ width, height, fps }) });
+  const bitrate = automaticVideoBitrate({ width, height, fps });
+  // AVC's quantizer setting can cap quality below its bitrate ceiling. Use
+  // variable bitrate for the same quality policy as rendered MP4 exports.
+  const quality = format === "mp4"
+    ? new Quality({ bitrate, bitrateMode: "variable" })
+    : new Quality({ quantizer: 12, bitrate });
   const codec = format === "mp4" ? "avc" : await canEncodeVideo("vp9", { width, height, quality, frameRate: fps }) ? "vp9" : "vp8";
   signal.throwIfAborted();
   const stable = captureFrame ? await createLivePreviewCanvas(canvas, captureFrame, fps, signal) : undefined;

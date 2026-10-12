@@ -17,7 +17,7 @@ export function wgslCacheKey(
   modules: Array<{ moduleName: string; path: string; source: string }> = [],
 ): string {
   const channels = buildSlangBindingPlan(getSlangChannels(pass.channels)).channels
-    .map(channel => [channel.slot, channel.key, channel.kind, channel.textureBinding, channel.samplerBinding]);
+    .map(channel => [channel.slot, channel.key, channel.kind, channel.outputKind, channel.textureBinding, channel.samplerBinding]);
   const storageLayout = storage.map((node) => [
     node.name,
     node.elementType,
@@ -39,6 +39,7 @@ export function wgslCacheKey(
     pass.workgroupSize,
     hasOutput,
     hasOutput ? pass.outputLayers : null,
+    hasOutput ? pass.outputKind : null,
     hasOutput ? pass.resolvedOutputFormat : null,
     customUniforms,
     modules,
@@ -53,7 +54,7 @@ export function pipelineCacheKey(
   modules: Array<{ moduleName: string; path: string; source: string }> = [],
 ): string {
   const channels = buildSlangBindingPlan(getSlangChannels(pass.channels)).channels
-    .map(channel => [channel.slot, channel.key, channel.kind, channel.textureBinding, channel.samplerBinding]);
+    .map(channel => [channel.slot, channel.key, channel.kind, channel.outputKind, channel.textureBinding, channel.samplerBinding]);
   const storageLayout = storage.map((node) => [
     node.name,
     node.binding,
@@ -83,6 +84,7 @@ export function pipelineCacheKey(
     pass.dispatchOnce,
     pass.output,
     pass.outputLayers,
+    pass.outputKind,
     pass.outputCount ?? 1,
     pass.resolvedOutputFormat,
     pass.kind === "render" ? renderPipelineStateKey(pass) : null,

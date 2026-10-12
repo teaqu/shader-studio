@@ -39,6 +39,7 @@ export class WebGPUChannels {
         const renderSource = this.host.session.passPipelines.get(channel.source);
         const computeSource = this.host.session.computePipelines.get(channel.source);
         const layer = channel.layer ?? 0;
+        const cubemap = channel.outputKind === "cubemap";
         // Image-only capture redraws after the feedback targets have swapped.
         // Reverse their roles to reproduce the picture that was submitted.
         const previousRenderOutput = completedFrame
@@ -48,12 +49,16 @@ export class WebGPUChannels {
           ? channel.readFrom !== "previous-frame" || !encodedComputePasses.has(channel.source)
           : channel.readFrom === "previous-frame" || !encodedComputePasses.has(channel.source);
         const textureView = computeSource
-          ? previousComputeOutput
-            ? computeSource.getPreviousLayerOutputView(layer)
-            : computeSource.getLayerOutputView(layer)
-          : previousRenderOutput
-            ? renderSource?.getPreviousOutputView(channel.output ?? 0)
-            : renderSource?.getCurrentOutputView(channel.output ?? 0);
+          ? cubemap
+            ? previousComputeOutput ? computeSource.getPreviousCubemapOutputView() : computeSource.getCurrentCubemapOutputView()
+            : previousComputeOutput
+              ? computeSource.getPreviousLayerOutputView(layer)
+              : computeSource.getLayerOutputView(layer)
+          : cubemap
+            ? previousRenderOutput ? renderSource?.getPreviousCubemapOutputView(channel.output ?? 0) : renderSource?.getCurrentCubemapOutputView(channel.output ?? 0)
+            : previousRenderOutput
+              ? renderSource?.getPreviousOutputView(channel.output ?? 0)
+              : renderSource?.getCurrentOutputView(channel.output ?? 0);
         if (!textureView) {
           return null;
         }
@@ -185,9 +190,15 @@ export class WebGPUChannels {
         this.setChannelResolution(channelResolution, channel.slot, handle?.width, handle?.height);
       } else if (channel.kind === "buffer") {
         const source = this.host.session.passPipelines.get(channel.source);
-        const view = channel.readFrom === "previous-frame"
-          ? source?.getPreviousOutputView(channel.output ?? 0)
-          : source?.getCurrentOutputView(channel.output ?? 0);
+        const compute = this.host.session.computePipelines.get(channel.source);
+        const cube = channel.outputKind === "cubemap";
+        const view = compute
+          ? channel.readFrom === "previous-frame"
+            ? cube ? compute.getPreviousCubemapOutputView() : compute.getPreviousLayerOutputView(channel.layer ?? 0)
+            : cube ? compute.getCurrentCubemapOutputView() : compute.getLayerOutputView(channel.layer ?? 0)
+          : channel.readFrom === "previous-frame"
+            ? cube ? source?.getPreviousCubemapOutputView(channel.output ?? 0) : source?.getPreviousOutputView(channel.output ?? 0)
+            : cube ? source?.getCurrentCubemapOutputView(channel.output ?? 0) : source?.getCurrentOutputView(channel.output ?? 0);
         channelLoaded[channel.slot] = view ? 1 : 0;
         const sourcePass = this.host.session.passGraph.find((candidate) => candidate.name === channel.source);
         this.setChannelResolution(channelResolution, channel.slot, sourcePass?.width, sourcePass?.height);

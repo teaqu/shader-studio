@@ -4,6 +4,7 @@ export interface SlangBindingChannel {
   slot: number;
   key: string;
   kind?: string;
+  outputKind?: "2d" | "cubemap";
   textureIdentity?: string;
   samplerIdentity?: string;
   sampleType?: "float" | "unfilterable-float";
@@ -13,7 +14,7 @@ export interface SlangBindingChannel {
 /** Stable source identities, never transient GPU views (fallbacks and feedback can change). */
 export function getSlangTextureIdentity(channel: RenderPassChannel): string {
   if (channel.kind === "buffer") {
-    return JSON.stringify([channel.kind, channel.source, channel.readFrom, channel.layer ?? 0, channel.output ?? 0]);
+    return JSON.stringify([channel.kind, channel.source, channel.readFrom, channel.outputKind ?? "2d", channel.layer ?? 0, channel.output ?? 0]);
   }
   if (channel.kind === "keyboard") {
     return "keyboard";
@@ -50,6 +51,7 @@ export function getSlangSamplerSettings(channel: RenderPassChannel): { filter: "
 export function getSlangChannels(channels: readonly RenderPassChannel[]) {
   return channels.map(channel => ({
     slot: channel.slot, key: channel.key, kind: channel.kind,
+    ...(channel.kind === "buffer" && channel.outputKind ? { outputKind: channel.outputKind } : {}),
     textureIdentity: getSlangTextureIdentity(channel),
     samplerIdentity: JSON.stringify(getSlangSamplerSettings(channel)),
     ...(channel.kind === "buffer" && channel.sampleType ? { sampleType: channel.sampleType } : {}),
@@ -64,13 +66,13 @@ export function buildSlangBindingPlan(channels: readonly SlangBindingChannel[]) 
   const textureBindings = new Map<string, number>();
   const samplerBindings = new Map<string, number>();
   const bindings = [...channels].sort((a, b) => a.slot - b.slot).map(channel => {
-    const textureKey = JSON.stringify([channel.kind === "cubemap" ? "cube" : channel.kind === "volume" ? "3d" : "2d", channel.sampleType ?? "float", channel.textureIdentity ?? { slot: channel.slot }]);
+    const textureKey = JSON.stringify([(channel.kind === "cubemap" || channel.outputKind === "cubemap") ? "cube" : channel.kind === "volume" ? "3d" : "2d", channel.sampleType ?? "float", channel.textureIdentity ?? { slot: channel.slot }]);
     const samplerKey = JSON.stringify([channel.samplerType ?? "filtering", channel.samplerIdentity ?? `slot:${channel.slot}`]);
     let textureBinding = textureBindings.get(textureKey);
     if (textureBinding === undefined) {
       textureBinding = nextBinding++;
       textureBindings.set(textureKey, textureBinding);
-      textures.push({ binding: textureBinding, slot: channel.slot, kind: channel.kind, sampleType: channel.sampleType });
+      textures.push({ binding: textureBinding, slot: channel.slot, kind: channel.outputKind === "cubemap" ? "buffer-cubemap" : channel.kind, sampleType: channel.sampleType });
     }
     let samplerBinding = samplerBindings.get(samplerKey);
     if (samplerBinding === undefined) {

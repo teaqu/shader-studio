@@ -163,10 +163,23 @@ export class PassRenderer {
 
     const resolveMultisample = this.beginMultisample(passConfig, target);
     if (!resolveMultisample) {
-      this.renderer.SetRenderTarget(target);
+      if (passConfig.outputKind !== "cubemap" || !target) {
+        this.renderer.SetRenderTarget(target);
+      }
     }
     try {
-      this.drawPass(passConfig, shader, uniforms, slotAssignments, textureBindings, customUniforms);
+      if (passConfig.outputKind === "cubemap" && target) {
+        // Publish only after all six faces finish, so self-feedback reads the
+        // complete previous cube and downstream passes see the complete new one.
+        for (let face = 0; face < 6; face++) {
+          this.renderer.SetRenderTargetCubeMap(target, face);
+          this.renderer.AttachShader(shader);
+          this.renderer.SetShaderConstant1I("iCubemapFace", face);
+          this.drawPass(passConfig, shader, uniforms, slotAssignments, textureBindings, customUniforms);
+        }
+      } else {
+        this.drawPass(passConfig, shader, uniforms, slotAssignments, textureBindings, customUniforms);
+      }
     } finally {
       resolveMultisample?.();
     }

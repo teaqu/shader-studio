@@ -1,3 +1,4 @@
+import { resetCubemapPreviews, setCubemapPreview, clearCubemapPreview } from "../lib/state/cubemapPreview.svelte";
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ShaderProcessor } from '../lib/ShaderProcessor';
 import type { RenderingEngine } from '../../../rendering/src/types';
@@ -10,6 +11,7 @@ describe('ShaderProcessor', () => {
   let mockShaderDebugManager: ShaderDebugManager;
 
   beforeEach(() => {
+    resetCubemapPreviews();
     // Mock ShaderDebugManager
     mockShaderDebugManager = {
       getState: vi.fn().mockReturnValue({
@@ -55,6 +57,38 @@ describe('ShaderProcessor', () => {
       mockRenderEngine,
       mockShaderDebugManager
     );
+  });
+
+  it("displays a selected cubemap without changing the original source and restores Image output", async () => {
+    const config: ShaderConfig = { version: "1", passes: { Image: {}, Cube: { path: "cube.glsl", outputKind: "cubemap" } } };
+    const message: ShaderSourceMessage = { type: "shaderSource", code: "original image", config, path: "/preview.glsl", buffers: { Cube: "original cube" } };
+    setCubemapPreview(message.path, { passName: "Cube", mode: "face", face: "positive-x" });
+    expect(await shaderProcessor.processMainShaderCompilation(message)).toMatchObject({ success: true });
+    expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledTimes(1);
+    expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(
+      expect.stringContaining("texture(iChannel0"),
+      expect.objectContaining({ passes: expect.objectContaining({ Image: { inputs: { iChannel0: { type: "buffer", source: "Cube", filter: "linear", wrap: "clamp" } } } }) }),
+      message.path, message.buffers, undefined, undefined,
+    );
+    expect(shaderProcessor.getImageShaderCode()).toBe("original image");
+    clearCubemapPreview(message.path);
+    await shaderProcessor.processMainShaderCompilation(message);
+    expect(mockRenderEngine.compileShaderPipeline).toHaveBeenLastCalledWith(message.code, config, message.path, message.buffers, undefined, undefined);
+  });
+
+  it("uses the host language for cubemap previews on virtual paths", async () => {
+    const config: ShaderConfig = { version: "1", passes: { Image: {}, Cube: { path: "cube.slang", outputKind: "cubemap" } } };
+    const path = "/virtual-shader";
+    setCubemapPreview(path, { passName: "Cube", mode: "face", face: "positive-x" });
+    await shaderProcessor.processMainShaderCompilation({ type: "shaderSource", code: "image", config, path, buffers: {}, language: "slang" });
+    expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(expect.stringContaining("iChannel0.Sample("), expect.anything(), path, {}, undefined, undefined);
+  });
+
+  it("ignores stale cubemap selections after their output becomes 2D", async () => {
+    setCubemapPreview("/preview.glsl", { passName: "Cube", mode: "face", face: "positive-x" });
+    const config: ShaderConfig = { version: "1", passes: { Image: {}, Cube: { path: "cube.glsl" } } };
+    await shaderProcessor.processMainShaderCompilation({ type: "shaderSource", code: "image", config, path: "/preview.glsl", buffers: {} });
+    expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith("image", config, "/preview.glsl", {}, undefined, undefined);
   });
 
   describe('constructor', () => {

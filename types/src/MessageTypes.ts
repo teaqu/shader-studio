@@ -339,6 +339,7 @@ export interface CreateFileMessage extends BaseMessage {
     geometryType?: string;
     /** Requested native render colour attachments (one when omitted). */
     outputCount?: number;
+    outputKind?: '2d' | 'cubemap';
   };
 }
 

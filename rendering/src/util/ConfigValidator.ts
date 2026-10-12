@@ -202,6 +202,13 @@ interface UnvalidatedPass {
   useViewerCamera?: unknown;
   path?: unknown;
   outputFormat?: unknown;
+  outputKind?: unknown;
+  faceSize?: unknown;
+  type?: unknown;
+  vertex?: unknown;
+  entryPoints?: unknown;
+  outputs?: unknown;
+  outputLayers?: unknown;
   geometry?: unknown;
   inputs?: unknown;
   resolution?: unknown;
@@ -234,6 +241,8 @@ export class ConfigValidator {
       errors.push('Config must have a passes object');
       return { isValid: false, errors };
     }
+
+    this.validateCubemapInputs(config.passes, errors);
 
     // Validate Image pass (required)
     if (!config.passes.Image || typeof config.passes.Image !== 'object') {
@@ -272,6 +281,9 @@ export class ConfigValidator {
   }
 
   private static validateImagePass(pass: UnvalidatedPass, errors: string[]): void {
+    if (pass.outputKind !== undefined || pass.faceSize !== undefined) {
+      errors.push("Image pass cannot define outputKind or faceSize");
+    }
     if (pass.outputFormat !== undefined) {
       errors.push("Image pass cannot define outputFormat");
     }
@@ -293,6 +305,7 @@ export class ConfigValidator {
     if (pass.outputFormat !== undefined && !['auto', 'rgba16float', 'rgba32float'].some((option) => option === pass.outputFormat)) {
       errors.push(`${passName} pass outputFormat must be auto, rgba16float, or rgba32float`);
     }
+    this.validateCubemapOutput(pass, passName, errors);
 
     errors.push(...validatePassRenderSettings(pass, passName));
     if (pass.useViewerCamera !== undefined && typeof pass.useViewerCamera !== "boolean") {
@@ -304,9 +317,56 @@ export class ConfigValidator {
     }
   }
 
+  private static validateCubemapInputs(passes: Record<string, unknown>, errors: string[]): void {
+    for (const [passName, pass] of Object.entries(passes)) {
+      if (!isPlainObject(pass) || !isPlainObject(pass.inputs)) {
+        continue;
+      }
+      for (const [channel, input] of Object.entries(pass.inputs ?? {})) {
+        if (!isPlainObject(input)) {
+          continue;
+        }
+        const source = input.type === "buffer" && typeof input.source === "string" ? passes[input.source] : undefined;
+        if (isPlainObject(source) && source.outputKind === "cubemap" && input.type === "buffer" && (input.layer !== undefined || input.output !== undefined)) {
+          errors.push(`${passName}: ${channel} cubemap buffers cannot select a layer or output attachment`);
+        }
+      }
+    }
+  }
+
+  private static validateCubemapOutput(pass: UnvalidatedPass, passName: string, errors: string[]): void {
+    if (pass.outputKind !== undefined && pass.outputKind !== '2d' && pass.outputKind !== 'cubemap') {
+      errors.push(`${passName} pass outputKind must be 2d or cubemap`);
+    }
+    if (pass.faceSize !== undefined && (!Number.isInteger(pass.faceSize) || (pass.faceSize as number) < 1)) {
+      errors.push(`${passName} pass faceSize must be a positive integer`);
+    }
+    if (pass.outputKind !== "cubemap") {
+      if (pass.faceSize !== undefined) {
+        errors.push(`${passName} pass faceSize requires cubemap outputKind`);
+      }
+      return;
+    }
+    if (pass.resolution !== undefined) {
+      errors.push(`${passName} cubemap pass uses faceSize rather than resolution`);
+    }
+    if (pass.geometry !== undefined && (!isPlainObject(pass.geometry) || pass.geometry.type !== "fullscreen")) {
+      errors.push(`${passName} cubemap pass only supports fullscreen geometry`);
+    }
+    if (pass.vertex !== undefined || (pass.type !== "compute" && pass.entryPoints !== undefined) || pass.outputs !== undefined) {
+      errors.push(`${passName} cubemap pass cannot define vertex, native entryPoints, or multiple outputs`);
+    }
+    if (pass.outputLayers !== undefined && pass.outputLayers !== 6) {
+      errors.push(`${passName} cubemap pass must have six outputLayers`);
+    }
+  }
+
   private static validateCommonPass(pass: UnvalidatedPass, errors: string[]): void {
     if (pass.path !== undefined && typeof pass.path !== "string") {
       errors.push("common pass path must be a string");
+    }
+    if (pass.outputKind !== undefined || pass.faceSize !== undefined) {
+      errors.push("common pass cannot define outputKind or faceSize");
     }
     if (pass.inputs !== undefined) {
       errors.push("common pass cannot define inputs");

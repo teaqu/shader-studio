@@ -39,6 +39,8 @@ export interface BuildSlangPassGraphOptions {
   computeWorkgroupLimits?: ComputeWorkgroupLimits;
   /** Maximum texture array layers for compute output; defaults to the WebGPU spec minimum of 256. */
   maxOutputLayers?: number;
+  /** Maximum cube-face extent supported by the active WebGPU device. */
+  maxTextureDimension2D?: number;
   /** Maximum storage buffers per shader stage for the warning threshold; defaults to 8. */
   maxStorageBuffers?: number;
 }
@@ -116,6 +118,47 @@ export function isComputePass(pass: unknown): pass is ComputePass {
   return isRecord(pass) && pass.type === "compute";
 }
 
+/**
+ * The graph is also used by capture and compile paths that do not run the UI
+ * validator, so keep cube-only constraints at this boundary as well.
+ */
+function validateCubemapPassConfig(name: string, pass: Record<string, unknown>, errors: string[]): boolean {
+  const errorCount = errors.length;
+  const faceSize = pass.faceSize;
+  if (faceSize !== undefined && (!Number.isInteger(faceSize) || (faceSize as number) < 1)) {
+    errors.push(`${name} cubemap pass faceSize must be a positive integer`);
+  }
+  if (pass.resolution !== undefined) {
+    errors.push(`${name} cubemap pass uses faceSize rather than resolution`);
+  }
+  if (pass.geometry !== undefined && (!isRecord(pass.geometry) || pass.geometry.type !== "fullscreen")) {
+    errors.push(`${name} cubemap pass only supports fullscreen geometry`);
+  }
+  if (pass.vertex !== undefined || (pass.type !== "compute" && pass.entryPoints !== undefined) || pass.outputs !== undefined) {
+    errors.push(`${name} cubemap pass cannot define vertex, native entryPoints, or multiple outputs`);
+  }
+  if (pass.outputLayers !== undefined && pass.outputLayers !== 6) {
+    errors.push(`${name} cubemap pass must have six outputLayers`);
+  }
+  return errors.length === errorCount;
+}
+
+function validateOutputFields(name: string, pass: Record<string, unknown>, errors: string[]): boolean {
+  const errorCount = errors.length;
+  const outputKind = pass.outputKind;
+  const faceSize = pass.faceSize;
+  if (outputKind !== undefined && outputKind !== "2d" && outputKind !== "cubemap") {
+    errors.push(`${name} pass outputKind must be 2d or cubemap`);
+  }
+  if (outputKind !== "cubemap" && faceSize !== undefined && (!Number.isInteger(faceSize) || (faceSize as number) < 1)) {
+    errors.push(`${name} pass faceSize must be a positive integer`);
+  }
+  if (outputKind !== "cubemap" && faceSize !== undefined) {
+    errors.push(`${name} pass faceSize requires cubemap outputKind`);
+  }
+  return errors.length === errorCount;
+}
+
 export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): RenderPassGraph {
   const canvasWidth = Math.max(1, Math.round(options.canvasWidth));
   const canvasHeight = Math.max(1, Math.round(options.canvasHeight));
@@ -150,11 +193,31 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       .filter(([name, passConfig]) => !SPECIAL_PASS_NAMES.has(name) && passConfig !== undefined)
       .map(([name]) => name),
   );
+  const invalidOutputPasses = new Set<string>();
+  for (const [name, pass] of passEntries) {
+    if (pass === undefined || !isRecord(pass)) {
+      continue;
+    }
+    if (name === "Image") {
+      if (pass.outputKind !== undefined || pass.faceSize !== undefined) {
+        errors.push("Image pass cannot define outputKind or faceSize");
+        invalidOutputPasses.add(name);
+      }
+    } else if (name === "common") {
+      if (pass.outputKind !== undefined || pass.faceSize !== undefined) {
+        errors.push("common pass cannot define outputKind or faceSize");
+        invalidOutputPasses.add(name);
+      }
+    } else if (!validateOutputFields(name, pass, errors)) {
+      invalidOutputPasses.add(name);
+    }
+  }
   // Collect all Slang source files so we can parse struct definitions and
   // auto-infer strides for custom types without needing compilation first.
   const allSources = [options.imageCode, commonCode, ...Object.values(options.buffers).filter((v): v is string => typeof v === "string")];
   const parsedStructs = language === "wgsl" ? parseWgslStructs(allSources) : parseSlangStructs(allSources);
   const outputLayersByPass = resolveOutputLayersByPass(passEntries, errors, options.maxOutputLayers ?? 256);
+  const outputKindsByPass = new Map(passEntries.map(([name, pass]) => [name, (pass as { outputKind?: "2d" | "cubemap" } | undefined)?.outputKind ?? "2d"] as const));
   const renderOutputsByPass = resolveRenderOutputs(passEntries, language, errors,
     Object.fromEntries(Object.entries(options.buffers).map(([name, source]) => [name, commonCode + '\n' + source])));
   const producerKinds = new Map(
@@ -172,7 +235,14 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
     if (SPECIAL_PASS_NAMES.has(name) || passConfig === undefined) {
       continue;
     }
+    if (invalidOutputPasses.has(name)) {
+      continue;
+    }
 
+    const outputKind = (passConfig as { outputKind?: "2d" | "cubemap" }).outputKind ?? "2d";
+    if (outputKind === "cubemap" && !validateCubemapPassConfig(name, passConfig as Record<string, unknown>, errors)) {
+      continue;
+    }
     const path = "path" in passConfig ? passConfig.path : undefined;
     const source = options.buffers[name] ?? "";
     if (source.trim() === "") {
@@ -182,19 +252,30 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       continue;
     }
 
-    const resolution = resolvePassResolution({
+    let resolution = resolvePassResolution({
       passName: name,
       passConfig,
       canvasWidth,
       canvasHeight,
       errors,
     });
+    if (outputKind === "cubemap" && language !== "slang") {
+      errors.push(`${name}: cubemap buffer outputs currently require Slang`);
+      continue;
+    }
+    if (outputKind === "cubemap") {
+      const faceSize = (passConfig as { faceSize?: number }).faceSize ?? 512;
+      const maxFaceSize = options.maxTextureDimension2D ?? Number.MAX_SAFE_INTEGER;
+      const clampedFaceSize = Math.min(faceSize, Math.max(1, Math.floor(maxFaceSize)));
+      resolution = { width: clampedFaceSize, height: clampedFaceSize };
+    }
     const inputs = passConfig.inputs ?? {};
     const channels = resolveChannels({
       passName: name,
       inputs,
       configuredBufferNames,
       outputLayersByPass,
+      outputKindsByPass,
       renderOutputsByPass,
       producerKinds,
       warnings,
@@ -246,6 +327,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
         geometry: "fullscreen",
         output: "none",
         outputLayers: outputLayersByPass.get(name) ?? 1,
+        outputKind,
         outputFormat: computeConfig.outputFormat,
         dispatch,
         dispatchCount,
@@ -286,6 +368,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       kind: "render",
       output: "texture",
       outputLayers: 1,
+      outputKind,
       ...renderOutputNodeFields(renderOutputsByPass.get(name)),
       outputFormat: "outputFormat" in passConfig ? passConfig.outputFormat : undefined,
       dispatchCount: 1,
@@ -303,6 +386,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
     inputs: imageConfig?.inputs ?? {},
     configuredBufferNames,
     outputLayersByPass,
+    outputKindsByPass,
     renderOutputsByPass,
     producerKinds,
     warnings,
@@ -340,6 +424,11 @@ function resolveOutputLayersByPass(
     }
     if (!isComputePass(passConfig)) {
       outputLayers.set(name, 1);
+      continue;
+    }
+
+    if ((passConfig as ComputePass).outputKind === "cubemap") {
+      outputLayers.set(name, 6);
       continue;
     }
 
@@ -999,6 +1088,7 @@ function resolveChannels(options: {
   inputs: Record<string, ConfigInput>;
   configuredBufferNames: Set<string>;
   outputLayersByPass: Map<string, number>;
+  outputKindsByPass: Map<string, "2d" | "cubemap">;
   renderOutputsByPass: ReadonlyMap<string, RenderOutputConfig>;
   producerKinds: ReadonlyMap<string, "compute" | "render">;
   warnings: string[];
@@ -1119,6 +1209,10 @@ function resolveChannels(options: {
     }
 
     const sourceKind = options.producerKinds.get(input.source);
+    if (options.outputKindsByPass.get(input.source) === "cubemap" && (input.layer !== undefined || input.output !== undefined)) {
+      options.errors.push(`${options.passName}: ${key} cubemap buffer "${input.source}" does not support layer or output selection`);
+      continue;
+    }
     if (sourceKind === "compute") {
       if (input.output !== undefined) {
         options.errors.push(`${options.passName}: ${key} output selection is only valid for render buffer "${input.source}"`);
@@ -1153,6 +1247,7 @@ function resolveChannels(options: {
       key,
       source: input.source,
       readFrom: "previous-frame",
+      ...(options.outputKindsByPass.get(input.source) === "cubemap" ? { outputKind: "cubemap" as const } : {}),
       ...(input.layer === undefined ? {} : { layer: input.layer }),
       ...(input.output === undefined ? {} : { output: input.output }),
       ...(input.filter === undefined ? {} : { filter: input.filter }),

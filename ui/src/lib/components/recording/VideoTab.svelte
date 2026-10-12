@@ -136,6 +136,14 @@
 </script>
 
 <div class="resolution-section">
+  <h4>Mode</h4>
+  <div class="scale-buttons" role="group" aria-label="Video capture mode">
+    <button class="resolution-option" class:active={captureMode === "live"} onclick={() => (captureMode = "live")}>Live</button>
+    <button class="resolution-option" class:active={captureMode === "render"} onclick={() => (captureMode = "render")}>Render</button>
+  </div>
+</div>
+
+<div class="resolution-section">
   <h4>Format</h4>
   <div class="scale-buttons">
     {#each ["mp4", "webm"] as const as format (format)}
@@ -154,13 +162,6 @@
       {formatLabel(videoFormat)} Live recording isn't supported here, so this will record {formatLabel(liveFallbackFormat)}.
     </p>
   {/if}
-</div>
-<div class="resolution-section">
-  <h4>Mode</h4>
-  <div class="scale-buttons" role="group" aria-label="Video capture mode">
-    <button class="resolution-option" class:active={captureMode === "live"} onclick={() => (captureMode = "live")}>Live</button>
-    <button class="resolution-option" class:active={captureMode === "render"} onclick={() => (captureMode = "render")}>Render</button>
-  </div>
 </div>
 {#if captureMode === "render"}
   <div class="resolution-section">

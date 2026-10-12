@@ -546,6 +546,20 @@ describe("SlangComputePipeline", () => {
     expect(compute.getPreviousLayerOutputView(3)).toBeNull();
   });
 
+  it("allocates six-layer cube output with reusable cube views for both feedback banks", async () => {
+    const device = fakeDevice();
+    const compute = new SlangComputePipeline(device, descriptor({ outputKind: "cubemap", outputLayers: 6 }));
+    await compute.rebuild("// wgsl");
+    expect(device.createTexture.mock.calls.map(([value]) => value.size)).toEqual([
+      { width: 320, height: 180, depthOrArrayLayers: 6 },
+      { width: 320, height: 180, depthOrArrayLayers: 6 },
+    ]);
+    expect(compute.getCurrentCubemapOutputView()).toEqual({ textureId: 0, descriptor: { dimension: "cube", baseArrayLayer: 0, arrayLayerCount: 6 } });
+    expect(compute.getPreviousCubemapOutputView()).toEqual({ textureId: 1, descriptor: { dimension: "cube", baseArrayLayer: 0, arrayLayerCount: 6 } });
+    compute.swap();
+    expect(compute.getCurrentCubemapOutputView()).toEqual({ textureId: 1, descriptor: { dimension: "cube", baseArrayLayer: 0, arrayLayerCount: 6 } });
+  });
+
   it("precreates and reuses every full and per-layer ping-pong output view", async () => {
     const device = fakeDevice();
     const compute = new SlangComputePipeline(device, descriptor({ outputLayers: 2 }));

@@ -64,7 +64,6 @@ These uniforms are provided by Shader Studio but are not part of the Shadertoy A
 
 | Feature | Notes |
 |---------|-------|
-| Cubemap buffer | Shadertoy's Cubemap buffer pass is not supported |
 | Webcam input | Live camera feed |
 | Microphone input | Real-time audio from microphone |
 | VR/AR | Immersive rendering modes |
@@ -72,3 +71,7 @@ These uniforms are provided by Shader Studio but are not part of the Shadertoy A
 ## Volume inputs
 
 To use a 3D texture, open a channel's settings, choose **Volumes**, and select a supported KTX2 file. Sample it with a three-component coordinate in GLSL, Slang, or WGSL. Shadertoy BIN files need conversion to KTX2 first. See [Volume inputs](volume-inputs.md) for downloadable samples, setup steps, and shader examples.
+
+## Cubemap buffers
+
+Shadertoy cubemap fragment code using `mainCubemap(out vec4, in vec2, in vec3, in vec3)` can be used in a Cubemap pass. Copy its source into a GLSL file, choose **+ New → Cubemap**, and bind that file and its channels. To sample the result in another pass, add a Buffer channel, select the cubemap pass in **Misc**, and use `texture(iChannel0, direction)` with a three-component direction. See [Cubemap buffers](../features/config-buffers.md#cubemap-buffers) for face sizes, feedback, and previews.

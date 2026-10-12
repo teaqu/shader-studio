@@ -271,6 +271,40 @@ float4 ${SLANG_ENTRY_FRAGMENT}(ShaderStudioVertexUvOut input) : SV_Target
 }
 `;
 
+function buildCubemapEntryPoints(binding: number): string {
+  return `${SLANG_VERTEX_UV_OUT}
+struct CubemapFaceUniforms { uint4 data; };
+[[vk::binding(${binding}, 0)]] ConstantBuffer<CubemapFaceUniforms> _cubeFace;
+float3 cubemapDirection(float2 pixel)
+{
+    float2 uv = 2.0 * pixel / _st.resolution.xy - 1.0;
+    if (_cubeFace.data.x == 0u) return normalize(float3(1.0, -uv.y, -uv.x));
+    if (_cubeFace.data.x == 1u) return normalize(float3(-1.0, -uv.y, uv.x));
+    if (_cubeFace.data.x == 2u) return normalize(float3(uv.x, 1.0, uv.y));
+    if (_cubeFace.data.x == 3u) return normalize(float3(uv.x, -1.0, -uv.y));
+    if (_cubeFace.data.x == 4u) return normalize(float3(uv.x, -uv.y, 1.0));
+    return normalize(float3(-uv.x, -uv.y, -1.0));
+}
+[shader("vertex")]
+ShaderStudioVertexUvOut ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID)
+{
+    float2 verts[3] = { float2(-1, -1), float2(3, -1), float2(-1, 3) };
+    ShaderStudioVertexUvOut output;
+    output.position = float4(verts[vertexID], 0, 1);
+    output.uv = verts[vertexID] * 0.5 + 0.5;
+    return output;
+}
+[shader("fragment")]
+float4 ${SLANG_ENTRY_FRAGMENT}(ShaderStudioVertexUvOut input) : SV_Target
+{
+    ${MESH_FRAGMENT_CONTEXT.uv} = input.uv;
+    ${MESH_FRAGMENT_CONTEXT.frontFacing} = true;
+    float2 coord = input.position.xy;
+    return mainCubemap(coord, float3(0.0), cubemapDirection(coord));
+}
+`;
+}
+
 export interface SlangChannelBinding extends SlangBindingChannel {
   slot: number;
   key: string;
@@ -288,6 +322,7 @@ export interface SlangWrapOptions {
   /** Space of vertices geometry; ignored for other geometry. Defaults to world. */
   vertexSpace?: VertexSpace;
   customUniforms?: SlangCustomUniformInfo[];
+  outputKind?: "2d" | "cubemap";
   /**
    * Variable-capture mode: adds the capture uniform block (selector index,
    * capture coordinate, grid size) and swaps the fragment entry for one that
@@ -306,6 +341,7 @@ export interface SlangComputeWrapOptions {
   storage?: StorageBindingNode[];
   workgroupSize: [number, number, number];
   outputLayers: number;
+  outputKind?: "2d" | "cubemap";
   hasOutput: boolean;
   customUniforms?: SlangCustomUniformInfo[];
   /** WGSL image format for compute output texture: "rgba16f" (default) or "rgba32f". */
@@ -370,8 +406,8 @@ float4 ${SLANG_ENTRY_FRAGMENT}(ShaderStudioVertexUvOut input) : SV_Target
 `;
 
 function buildChannelPrelude(channels: SlangChannelBinding[] = []): string {
-  return buildSlangChannels(channels.map(({ key, slot, kind }) => ({
-    name: key, slot, kind: kind === "cubemap" ? "texture-cube" : kind === "volume" ? "texture-3d" : "texture-2d",
+  return buildSlangChannels(channels.map(({ key, slot, kind, outputKind }) => ({
+    name: key, slot, kind: kind === "cubemap" || outputKind === "cubemap" ? "texture-cube" : kind === "volume" ? "texture-3d" : "texture-2d",
   })), { runtime: true, bindings: buildSlangBindingPlan(channels).channels });
 }
 
@@ -446,6 +482,10 @@ export function wrapSlangImageSource(userSource: string, options: SlangWrapOptio
     const capturePrelude = buildCapturePrelude(captureBinding);
     return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${capturePrelude}\n#line 1\n${userSource}\n${CAPTURE_ENTRY_POINTS}`;
   }
+  if (options.outputKind === "cubemap") {
+    const cubeBinding = buildSlangBindingPlan(options.channels ?? []).nextBinding + (options.storage?.length ?? 0);
+    return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}#line 1\n${userSource}\n${buildCubemapEntryPoints(cubeBinding)}`;
+  }
   // `#line 1` renumbers the line that follows it, so it must sit directly
   // above the user source (after commonCode and custom storage declarations)
   // to keep user diagnostics on the user's real line numbers.
@@ -473,24 +513,44 @@ function buildGeometryEntryPoints(options: SlangWrapOptions, meshBinding: number
   return { meshPrelude: "", entryPoints: buildFullscreenEntryPoints(vertexCode, hasAuthoredHook) };
 }
 
-function buildOutputPrelude(binding: number, outputLayers: number, imageFormat: "rgba16f" | "rgba32f" = "rgba16f"): string {
+function buildOutputPrelude(binding: number, outputLayers: number, imageFormat: "rgba16f" | "rgba32f" = "rgba16f", outputKind?: "2d" | "cubemap"): string {
   if (outputLayers > 1) {
+    // Compute shaders address pixels in native texture coordinates. Cube
+    // directions use those coordinates directly, while legacy 2D arrays keep
+    // ShaderToy's bottom-origin write convention.
+    const cubeOutput = outputKind === "cubemap";
+    const coordinate = cubeOutput ? "pixel" : "coord";
+    const layer = cubeOutput ? "face" : "layer";
+    const outputY = cubeOutput ? `${coordinate}.y` : `h - 1 - ${coordinate}.y`;
+    const cubeDirection = cubeOutput ? `
+float3 cubemapDirection(uint2 pixel, uint face)
+{
+    float2 uv = 2.0 * (float2(pixel) + 0.5) / iResolution.xy - 1.0;
+    if (face == 0u) return normalize(float3(1.0, -uv.y, -uv.x));
+    if (face == 1u) return normalize(float3(-1.0, -uv.y, uv.x));
+    if (face == 2u) return normalize(float3(uv.x, 1.0, uv.y));
+    if (face == 3u) return normalize(float3(uv.x, -1.0, -uv.y));
+    if (face == 4u) return normalize(float3(uv.x, -uv.y, 1.0));
+    return normalize(float3(-uv.x, -uv.y, -1.0));
+}
+` : "";
     return `// ---- shader-studio Slang compute output (generated) ----
 [[vk::binding(${binding}, 0)]]
 [[vk::image_format("${imageFormat}")]]
 WTexture2DArray<float4> _outTex;
+${cubeDirection}
 
-void writeOutput(uint2 coord, uint layer, float4 color)
+void writeOutput(uint2 ${coordinate}, uint ${layer}, float4 color)
 {
     uint w;
     uint h;
     uint layers;
     _outTex.GetDimensions(w, h, layers);
-    if (coord.x >= w || coord.y >= h || layer >= layers)
+    if (${coordinate}.x >= w || ${coordinate}.y >= h || ${layer} >= layers)
     {
         return;
     }
-    _outTex.Store(uint3(coord.x, h - 1 - coord.y, layer), color);
+    _outTex.Store(uint3(${coordinate}.x, ${outputY}, ${layer}), color);
 }
 `;
   }
@@ -565,7 +625,7 @@ export function wrapSlangComputeSource(userSource: string, options: SlangCompute
   const storageDeclarations = buildStorageDeclarations(storage, channels.length, "compute", buildSlangBindingPlan(channels).nextBinding);
   const outputBinding = buildSlangBindingPlan(channels).nextBinding + storage.length;
   const outputPrelude = options.hasOutput
-    ? buildOutputPrelude(outputBinding, options.outputLayers, options.outputImageFormat ?? "rgba16f")
+    ? buildOutputPrelude(outputBinding, options.outputLayers, options.outputImageFormat ?? "rgba16f", options.outputKind)
     : "";
   const dispatchBinding = outputBinding + (options.hasOutput ? 1 : 0);
   const dispatchPrelude = buildDispatchPrelude(dispatchBinding);
