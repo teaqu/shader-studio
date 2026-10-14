@@ -75,7 +75,7 @@ Three path forms are supported:
 
 **Create** generates a source template using the shader mode preference. WGSL/Slang function rows appear under **Fragment shader**; choose the function this pass should run. **Add function…** inserts a hook or native entry point into that file, using the adjacent mode chooser. A native fragment can run without `mainImage`, and native templates use the generated vertex stage until you request a custom one. GLSL has no fragment function selector or Built-in/Native chooser because it uses the fixed `mainImage` hook.
 
-The pass sections are arranged as Fragment source/functions, Vertex shader, Channels, Geometry, Rendering, Resolution, and Output. Image omits the file chooser. **Output** selects 2D or Cubemap, its cubemap face size, the buffer format, and read-only [inferred output slots and names](multiple-render-targets.md).
+The pass sections are arranged as Fragment source/functions, Channels, Geometry, Rendering, Resolution, Output, and Vertex shader. Image omits the file chooser. **Output** selects 2D or Cubemap, its cubemap face size, the buffer format, and read-only [inferred output slots and names](multiple-render-targets.md).
 
 **Resolution** (optional) — by default a buffer inherits the Image pass resolution exactly. You can override this in two ways:
 
@@ -176,7 +176,7 @@ Each buffer and Image pass can render with 2D or 3D geometry. Open the **Geometr
 | **Sphere** | A UV-mapped sphere. |
 | **Model** | A custom GLB mesh. |
 
-The **Vertex shader** section appears before Channels and Geometry. Choose **Built-in**, **Same file**, or **Separate file**. Separate file shows its path and **Change…** chooser; Same file hides the duplicate path. Vertex function rows come from the selected vertex source. **Add function…** inserts into that source. GLSL shows only Add when `mainVertex` is missing, without a function selector or mode chooser. See [Vertex Shaders](vertex-shaders.md) for details on writing vertex shaders and the `mainVertex` API, and [Vertices geometry](vertex-shaders.md#vertices-geometry) for `vertexCount`, `topology` and `space`.
+The **Vertex shader** section appears last: after Resolution for Image and after Output for render buffers. Choose **Built-in**, **Same file**, or **Separate file**. Separate file shows its path and **Change…** chooser; Same file hides the duplicate path. Vertex function rows come from the selected vertex source. **Add function…** inserts into that source. GLSL shows only Add when `mainVertex` is missing, without a function selector or mode chooser. See [Vertex Shaders](vertex-shaders.md) for details on writing vertex shaders and the `mainVertex` API, and [Vertices geometry](vertex-shaders.md#vertices-geometry) for `vertexCount`, `topology` and `space`.
 
 The **Rendering** section after Geometry sets the pass's **Blend** mode, and for every geometry but fullscreen its **Depth test**, **Depth write**, **Compare** and **Cull**. See [Render settings](vertex-shaders.md#render-settings).
 

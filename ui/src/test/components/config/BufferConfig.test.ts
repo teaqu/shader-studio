@@ -229,6 +229,25 @@ describe('BufferConfig', () => {
     expect(image.container.querySelector('[aria-label="Output format"]')).toBeNull();
   });
 
+  it.each(['glsl', 'slang', 'wgsl'] as const)('places Vertex shader last for %s Image and buffer passes', language => {
+    for (const isImagePass of [true, false]) {
+      const view = render(BufferConfig, {
+        bufferName: isImagePass ? 'Image' : 'BufferA', isImagePass, language,
+        config: isImagePass ? { inputs: {} } : { path: `a.${language}`, inputs: {} },
+        onUpdate: vi.fn(), getWebviewUri: () => undefined,
+      });
+      const titles = Array.from(view.container.querySelectorAll('.section-title')).map(title => title.textContent);
+      expect(titles).toEqual([
+        ...(language !== 'glsl' ? ['Fragment shader'] : []),
+        ...(!isImagePass ? ['Channels'] : []),
+        'Geometry', 'Rendering', 'Resolution',
+        ...(!isImagePass ? ['Output'] : []),
+        'Vertex shader',
+      ]);
+      view.unmount();
+    }
+  });
+
   it('opens the configured vertex shader in VS Code when overlay is closed', async () => {
     setEditorOverlayVisible(false);
     setOverlayActiveFile('Image');
@@ -414,7 +433,7 @@ describe('BufferConfig', () => {
       });
 
       const sectionTitles = Array.from(container.querySelectorAll('.section-title')).map((title) => title.textContent);
-      expect(sectionTitles).toEqual(['Vertex shader', 'Channels', 'Geometry', 'Rendering', 'Resolution', 'Output']);
+      expect(sectionTitles).toEqual(['Channels', 'Geometry', 'Rendering', 'Resolution', 'Output', 'Vertex shader']);
     });
   });
 
@@ -786,7 +805,7 @@ describe('BufferConfig', () => {
       });
 
       const sectionTitles = Array.from(container.querySelectorAll('.section-title')).map((title) => title.textContent);
-      expect(sectionTitles).toEqual(['Vertex shader', 'Channels', 'Geometry', 'Rendering', 'Depth testing', 'Resolution', 'Output']);
+      expect(sectionTitles).toEqual(['Channels', 'Geometry', 'Rendering', 'Depth testing', 'Resolution', 'Output', 'Vertex shader']);
     });
 
     it('defaults renderable passes to fullscreen and serializes a selected sphere', async () => {
@@ -1343,7 +1362,7 @@ describe('BufferConfig', () => {
         }
         expect(rendering.querySelector('details')!.contains(view.getByLabelText('Depth test'))).toBe(true);
         expect(Array.from(view.container.querySelectorAll('.section-title')).map((title) => title.textContent).filter((title) => title !== 'Channels'))
-          .toEqual(bufferName === 'Image' ? ['Vertex shader', 'Geometry', 'Rendering', 'Depth testing', 'Resolution'] : ['Vertex shader', 'Geometry', 'Rendering', 'Depth testing', 'Resolution', 'Output']);
+          .toEqual(bufferName === 'Image' ? ['Geometry', 'Rendering', 'Depth testing', 'Resolution', 'Vertex shader'] : ['Geometry', 'Rendering', 'Depth testing', 'Resolution', 'Output', 'Vertex shader']);
       });
 
       it('hides the depth section for fullscreen geometry and restores it for a mesh', async () => {
