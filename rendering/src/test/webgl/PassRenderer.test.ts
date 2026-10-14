@@ -44,6 +44,7 @@ const createMockResourceManager = () => ({
   getDefaultTexture: vi.fn().mockReturnValue(createMockTexture(1, 1)),
   updateKeyboardTexture: vi.fn(),
   getImageTextureCache: vi.fn(),
+  getVolumeTexture: vi.fn(),
   getCubemapTexture: vi.fn(),
   getVideoTexture: vi.fn(),
   getAudioTexture: vi.fn(),

@@ -47,7 +47,7 @@ describe('extension default asset packaging', () => {
       if (asset?.type !== 'asset') {
         throw new Error(`Missing ${fileName}`);
       }
-      // Compare bytes natively; deep equality enumerates millions of buffer entries.
+      // Compare bytes natively; deep object equality enumerates millions of buffer entries.
       const expected = readFileSync(new URL(`../../../standalone/public/${fileName}`, import.meta.url));
       expect(Buffer.from(asset.source).equals(expected), fileName).toBe(true);
     }

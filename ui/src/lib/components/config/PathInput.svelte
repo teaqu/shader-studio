@@ -20,6 +20,7 @@
     allowCreate?: boolean;
     allowSelect?: boolean;
     selectLabel?: string;
+    createLabel?: string;
     allowInsert?: boolean;
     showSelectWhenHidden?: boolean;
     insertLabel?: string;
@@ -61,6 +62,7 @@
     allowCreate = true,
     allowSelect = true,
     selectLabel = 'Select',
+    createLabel = 'Create',
     allowInsert = false,
     showSelectWhenHidden = false,
     insertLabel = 'Insert',
@@ -219,7 +221,7 @@ onPathChange?.(event.data.payload.path);
     <div class="input-actions">
       {#if (!hidePath || showSelectWhenHidden) && allowSelect}<button class="select-file-btn" onclick={handleSelect}>{selectLabel}</button>{/if}
       {#if showCreate}
-        <button class="create-file-btn" onclick={handleCreate}>Create</button>
+        <button class="create-file-btn" onclick={handleCreate}>{createLabel}</button>
       {/if}
       {#if allowInsert}
         {#if supportsNative && !fileType.endsWith('-compute')}

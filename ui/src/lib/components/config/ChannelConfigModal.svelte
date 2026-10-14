@@ -5,6 +5,7 @@
   import type { ConfigInput } from "@shader-studio/types";
   import MiscTab from "./tabs/MiscTab.svelte";
   import TextureTab from "./tabs/TextureTab.svelte";
+  import VolumeTab from "./tabs/VolumeTab.svelte";
   import CubemapTab from "./tabs/CubemapTab.svelte";
   import VideoTab from "./tabs/VideoTab.svelte";
   import AudioTab from "./tabs/AudioTab.svelte";
@@ -58,8 +59,8 @@
   let nameInput = $state("");
   let nameError = $state("");
 
-  type TabName = "Misc" | "Textures" | "Cubemaps" | "Videos" | "Audio";
-  const TABS: TabName[] = ["Misc", "Textures", "Cubemaps", "Videos", "Audio"];
+  type TabName = "Misc" | "Textures" | "Volumes" | "Cubemaps" | "Videos" | "Audio";
+  const TABS: TabName[] = ["Misc", "Textures", "Volumes", "Cubemaps", "Videos", "Audio"];
 
   let modalContent: HTMLElement = $state(null!);
   let tempInput: ConfigInput | undefined = $state(undefined);
@@ -77,6 +78,8 @@
         return "Misc";
       case "texture":
         return "Textures";
+      case "volume":
+        return "Volumes";
       case "cubemap":
         return "Cubemaps";
       case "video":
@@ -216,6 +219,9 @@
         case "Textures":
           tempInput = { type: "texture", path: "" };
           break;
+        case "Volumes":
+          tempInput = { type: "volume", path: "" };
+          break;
         case "Cubemaps":
           tempInput = { type: "cubemap", path: "" };
           break;
@@ -231,7 +237,7 @@
   }
 
   function updatePath(path: string, resolvedUri?: string) {
-    if (tempInput && (tempInput.type === "texture" || tempInput.type === "video" || tempInput.type === "cubemap" || tempInput.type === "audio")) {
+    if (tempInput && (tempInput.type === "texture" || tempInput.type === "video" || tempInput.type === "cubemap" || tempInput.type === "volume" || tempInput.type === "audio")) {
       const cleanPath = extractOriginalPath(path);
       const isPathChange = tempInput.path !== cleanPath;
       const preserveTimes = tempInput.type === "audio" && !isPathChange;
@@ -284,6 +290,10 @@
   }
 
   function updateFilter(filter: "linear" | "nearest" | "mipmap") {
+    if (tempInput?.type === "volume" && filter !== "mipmap") {
+      tempInput = { ...tempInput, filter };
+      autoSave();
+    }
     if (tempInput && (tempInput.type === "texture" || tempInput.type === "video" || tempInput.type === "cubemap")) {
       tempInput = { ...tempInput, filter };
       autoSave();
@@ -291,6 +301,10 @@
   }
 
   function updateWrap(wrap: "repeat" | "clamp") {
+    if (tempInput?.type === "volume") {
+      tempInput = { ...tempInput, wrap };
+      autoSave();
+    }
     if (tempInput && (tempInput.type === "texture" || tempInput.type === "video" || tempInput.type === "cubemap")) {
       tempInput = { ...tempInput, wrap };
       autoSave();
@@ -426,6 +440,10 @@
             onUpdateGrayscale={updateGrayscale}
           />
 
+        {:else if activeTab === "Volumes"}
+          <VolumeTab {tempInput} {shaderPath} {postMessage} {onMessage} {getWebviewUri}
+            onAssetSelect={handleAssetSelect} onUpdatePath={updatePath}
+            onUpdateFilter={updateFilter} onUpdateWrap={updateWrap} />
         {:else if activeTab === "Cubemaps"}
           <CubemapTab
             {tempInput}

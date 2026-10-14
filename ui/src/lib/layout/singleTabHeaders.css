@@ -1,0 +1,25 @@
+/* Ensure groups are positioning context for absolute tab bars */
+.dv-autohide-tabs .dv-groupview {
+  position: relative;
+}
+
+/* Hide single-tab headers — use position: absolute so they don't affect
+   content area height. This avoids layout shifts that break dockview's
+   render overlay position cache and drop-zone calculations. */
+.dv-autohide-tabs .dv-tabs-and-actions-container.dv-single-tab {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease-out;
+}
+
+/* Reveal tabs on sash hover, top-edge hover, or drag */
+.dv-sash-hover .dv-tabs-and-actions-container.dv-single-tab,
+.dv-drag-active .dv-tabs-and-actions-container.dv-single-tab {
+  opacity: 1;
+  pointer-events: auto;
+}

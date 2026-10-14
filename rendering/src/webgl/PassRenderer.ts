@@ -384,10 +384,10 @@ export class PassRenderer {
         } else if (input.type === 'audio') {
           resolutions.push(512, 2, 1);
         } else {
-          resolutions.push(texture.mXres, texture.mYres, 1);
+          resolutions.push(texture.mXres, texture.mYres, texture.mZres ?? 1);
         }
       } else if (texture) {
-        resolutions.push(texture.mXres, texture.mYres, 1);
+        resolutions.push(texture.mXres, texture.mYres, texture.mZres ?? 1);
       } else {
         resolutions.push(0, 0, 0);
       }

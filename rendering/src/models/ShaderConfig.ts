@@ -27,6 +27,15 @@ export interface KeyboardConfigInput {
   type: 'keyboard';
 }
 
+export interface VolumeConfigInput {
+    type: 'volume';
+    path: string;
+    resolved_path?: string;
+    filter?: "linear" | "nearest";
+    /** Applies to X, Y, and Z. */
+    wrap?: "repeat" | "clamp";
+}
+
 export interface VideoConfigInput {
   type: 'video';
   path: string;
@@ -36,4 +45,4 @@ export interface VideoConfigInput {
   muted?: boolean;
 }
 
-export type ConfigInput = BufferConfigInput | TextureConfigInput | KeyboardConfigInput | VideoConfigInput | CubemapConfigInput;
+export type ConfigInput = BufferConfigInput | TextureConfigInput | VolumeConfigInput | KeyboardConfigInput | VideoConfigInput | CubemapConfigInput;

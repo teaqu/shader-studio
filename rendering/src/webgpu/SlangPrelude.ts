@@ -308,7 +308,7 @@ float4 ${SLANG_ENTRY_FRAGMENT}(ShaderStudioVertexUvOut input) : SV_Target
 export interface SlangChannelBinding extends SlangBindingChannel {
   slot: number;
   key: string;
-  kind?: "texture" | "video" | "cubemap" | "audio" | "buffer" | "keyboard";
+  kind?: "texture" | "video" | "cubemap" | "volume" | "audio" | "buffer" | "keyboard";
 }
 
 export interface SlangWrapOptions {
@@ -407,7 +407,7 @@ float4 ${SLANG_ENTRY_FRAGMENT}(ShaderStudioVertexUvOut input) : SV_Target
 
 function buildChannelPrelude(channels: SlangChannelBinding[] = []): string {
   return buildSlangChannels(channels.map(({ key, slot, kind, outputKind }) => ({
-    name: key, slot, kind: kind === "cubemap" || outputKind === "cubemap" ? "texture-cube" : "texture-2d",
+    name: key, slot, kind: kind === "cubemap" || outputKind === "cubemap" ? "texture-cube" : kind === "volume" ? "texture-3d" : "texture-2d",
   })), { runtime: true, bindings: buildSlangBindingPlan(channels).channels });
 }
 

@@ -52,6 +52,8 @@ export function resolveTextureBindings({
     if (input.type === "texture" && input.path) {
       const imageCache = resourceManager.getImageTextureCache();
       textureBindings[slot] = imageCache[input.resolved_path || input.path] || imageCache[input.path] || defaultTexture;
+    } else if (input.type === "volume" && input.path) {
+      textureBindings[slot] = resourceManager.getVolumeTexture(input.resolved_path || input.path, input);
     } else if (input.type === "cubemap" && input.path) {
       // No 2D fallback: the slot's uniform is a samplerCube, so the default
       // texture there is an invalid binding rather than a blank channel.

@@ -1,8 +1,10 @@
 <script lang="ts">
+  import VolumePreview from "./VolumePreview.svelte";
   import type { MessageEvent as ShaderMessage } from "@shader-studio/types";
   import { onMount, onDestroy, untrack } from "svelte";
   import type { WorkspaceFileInfo } from "@shader-studio/types";
   import {
+    VOLUME_EXTENSIONS,
     AUDIO_EXTENSIONS,
     VIDEO_EXTENSIONS,
   } from "@shader-studio/types";
@@ -137,8 +139,11 @@
     );
   }
 
-  function getFileType(name: string): 'image' | 'video' | 'audio' {
+  function getFileType(name: string): 'image' | 'video' | 'audio' | 'volume' {
     const ext = name.split('.').pop()?.toLowerCase() ?? '';
+    if (VOLUME_EXTENSIONS.includes(ext)) {
+      return 'volume';
+    }
     if (VIDEO_EXTENSIONS.includes(ext)) {
       return 'video';
     }
@@ -297,6 +302,8 @@
                       e.currentTarget.pause(); e.currentTarget.currentTime = 0; 
                     }}
                   ></video>
+                {:else if getFileType(file.name) === 'volume'}
+                  <VolumePreview path={file.thumbnailUri} thumbnail={true} />
                 {:else if getFileType(file.name) === 'audio'}
                   <div class="audio-waveform-thumbnail">
                     <canvas
@@ -346,6 +353,8 @@
                       e.currentTarget.pause(); e.currentTarget.currentTime = 0; 
                     }}
                   ></video>
+                {:else if getFileType(file.name) === 'volume'}
+                  <VolumePreview path={file.thumbnailUri} thumbnail={true} />
                 {:else if getFileType(file.name) === 'audio'}
                   <div class="audio-waveform-thumbnail">
                     <canvas

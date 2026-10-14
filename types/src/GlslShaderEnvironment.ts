@@ -38,7 +38,7 @@ export function resolveGlslInputBindings(
     slot,
     key,
     isCustomName: key !== `iChannel${slot}`,
-    samplerType: inputs[key]?.type === "cubemap" ? "samplerCube" : "sampler2D",
+    samplerType: inputs[key]?.type === "cubemap" ? "samplerCube" : inputs[key]?.type === "volume" ? "sampler3D" : "sampler2D",
   }));
 }
 

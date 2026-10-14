@@ -69,7 +69,7 @@ export function resourcesForPass(config: ShaderConfig | null, passName: string):
       name,
       kind: input.type === "cubemap" || (source && "outputKind" in source && source.outputKind === "cubemap")
         ? "texture-cube"
-        : "texture-2d",
+        : input.type === "volume" ? "texture-3d" : "texture-2d",
       slot,
     };
   });

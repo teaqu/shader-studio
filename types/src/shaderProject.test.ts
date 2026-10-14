@@ -169,3 +169,7 @@ describe("resolveConfiguredPath", () => {
       .toBe("/ws/shared/x.glsl");
   });
 });
+
+it("exposes configured volumes to shader authoring as 3D resources", () => {
+  expect(resourcesForPass({ version: "1", passes: { Image: { inputs: { density: { type: "volume", path: "cloud.ktx2" } } } } }, "Image")).toEqual([{ name: "density", kind: "texture-3d", slot: 0 }]);
+});

@@ -1197,3 +1197,11 @@ describe("SlangComputePipeline", () => {
     expect(await compute.rebuild("// wgsl")).toEqual(["ComputeA: WGSL L53:4 unknown identifier 'nope'"]);
   });
 });
+
+it("declares volume channels as 3D bindings in compute pipelines", async () => {
+  const device = fakeDevice();
+  const pass = new SlangComputePipeline(device, descriptor({ channels: [{ slot: 0, key: "density", kind: "volume" }] }));
+  await pass.rebuild("// wgsl");
+  expect(device.createBindGroupLayout.mock.calls[0][0].entries[1]).toMatchObject({ binding: 1, texture: { viewDimension: "3d", sampleType: "float" } });
+  pass.dispose();
+});

@@ -572,6 +572,42 @@ suite('ConfigPathConverter Test Suite', () => {
   });
 
 
+  test('processConfigPaths processes volume input paths correctly', async () => {
+    const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/volume.bin');
+    mockWebview.asWebviewUri.returns(mockUri);
+
+    const originalMessage = {
+      type: 'shaderSource',
+      code: 'shader code',
+      config: {
+        version: '1.0',
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: {
+                type: 'volume',
+                path: '/absolute/path/to/volume.bin'
+              }
+            }
+          }
+        }
+      }
+    };
+
+    const processedMessage = await ConfigPathConverter.processConfigPaths(
+            originalMessage as any,
+            mockWebview
+    );
+
+    // Path is preserved, resolved_path has webview URI
+    assert.strictEqual((processedMessage.config.passes.Image.inputs as any).iChannel0.path, '/absolute/path/to/volume.bin');
+    assert.strictEqual((processedMessage.config.passes.Image.inputs as any).iChannel0.resolved_path, mockUri.toString());
+
+    // Original is not mutated
+    assert.strictEqual((originalMessage.config.passes.Image.inputs as any).iChannel0.path, '/absolute/path/to/volume.bin');
+    assert.strictEqual((originalMessage.config.passes.Image.inputs as any).iChannel0.resolved_path, undefined);
+  });
+
   test('processConfigPaths processes cubemap input paths correctly', async () => {
     const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/cubemap.png');
     mockWebview.asWebviewUri.returns(mockUri);

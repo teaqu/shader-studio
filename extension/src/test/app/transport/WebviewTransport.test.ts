@@ -497,6 +497,35 @@ suite('WebviewTransport Test Suite', () => {
       assert.strictEqual((roots[0] as vscode.Uri).fsPath, '/downloads');
     });
 
+    test('should add volume directory to localResourceRoots', async () => {
+      transport = new WebviewTransport();
+      transport.addPanel(mockPanel as any);
+
+      mockWebview.asWebviewUri.returns(vscode.Uri.parse('vscode-webview://webview-panel/volume.bin'));
+      mockWebview.options = { localResourceRoots: [] };
+
+      const message = {
+        type: 'shaderSource',
+        config: {
+          version: '1.0',
+          passes: {
+            Image: {
+              inputs: {
+                iChannel0: { type: 'volume', path: '/downloads/volume.bin' }
+              }
+            }
+          }
+        }
+      };
+
+      transport.send(message);
+      await flush();
+
+      const roots = mockWebview.options.localResourceRoots || [];
+      assert.strictEqual(roots.length, 1);
+      assert.strictEqual((roots[0] as vscode.Uri).fsPath, '/downloads');
+    });
+
     test('should add cubemap directory to localResourceRoots', async () => {
       transport = new WebviewTransport();
       transport.addPanel(mockPanel as any);

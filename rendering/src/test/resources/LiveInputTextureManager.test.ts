@@ -11,6 +11,7 @@ function backend(): TextureBackend<Texture> {
   return {
     createTexture: vi.fn(() => ({ id: ++id })),
     createTextureFromImage: vi.fn(() => ({ id: ++id })),
+    createVolumeTexture: vi.fn(() => null),
     createMipmaps: vi.fn(),
     updateTexture: vi.fn(),
     updateTextureFromImage: vi.fn(),
