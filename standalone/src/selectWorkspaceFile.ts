@@ -1,6 +1,6 @@
 import type { VirtualWorkspace } from './VirtualWorkspace';
-import { AUDIO_EXTENSIONS, CUBEMAP_EXTENSIONS, SCRIPT_EXTENSIONS, TEXTURE_EXTENSIONS, VIDEO_EXTENSIONS, shaderLanguageForPath } from '@shader-studio/types';
-const assetExtensions: Record<string, string[]> = { script: SCRIPT_EXTENSIONS, texture: TEXTURE_EXTENSIONS, video: VIDEO_EXTENSIONS, audio: AUDIO_EXTENSIONS, cubemap: CUBEMAP_EXTENSIONS, model: ['glb'] };
+import { VOLUME_EXTENSIONS, AUDIO_EXTENSIONS, CUBEMAP_EXTENSIONS, SCRIPT_EXTENSIONS, TEXTURE_EXTENSIONS, VIDEO_EXTENSIONS, shaderLanguageForPath } from '@shader-studio/types';
+const assetExtensions: Record<string, string[]> = { script: SCRIPT_EXTENSIONS, texture: TEXTURE_EXTENSIONS, video: VIDEO_EXTENSIONS, audio: AUDIO_EXTENSIONS, cubemap: CUBEMAP_EXTENSIONS, volume: VOLUME_EXTENSIONS, model: ['glb'] };
 export function selectableWorkspaceFile(path: string, fileType: string): boolean {
   const extensions = assetExtensions[fileType];
   return extensions ? extensions.includes(path.split('.').pop()?.toLowerCase() ?? '') : shaderLanguageForPath(path) === fileType.split('-')[0];

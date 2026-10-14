@@ -31,6 +31,7 @@
       case 'video': return 'Video';
       case 'audio': return 'Audio';
       case 'buffer': return 'Buffer';
+      case 'volume': return 'Volume';
       case 'cubemap': return 'Cubemap';
       case 'system-audio': return 'Shared Audio';
       case 'webcam': return 'Webcam';

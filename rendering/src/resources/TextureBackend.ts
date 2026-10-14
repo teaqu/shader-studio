@@ -1,3 +1,4 @@
+import type { VolumeTextureData } from "@shader-studio/types";
 export type TextureType = "2d" | "cubemap";
 export type TextureFormat = "rgba8" | "r8";
 export type TextureFilter = "linear" | "nearest" | "mipmap";
@@ -25,6 +26,7 @@ export interface ImageTextureOptions {
 }
 
 export interface TextureBackend<T> {
+  createVolumeTexture(volume: VolumeTextureData, filter: "linear" | "nearest", wrap: TextureWrap): T | null;
   createTexture(desc: CreateTextureDesc): T | null;
   createTextureFromImage(
     image: HTMLImageElement | HTMLVideoElement | HTMLCanvasElement[],

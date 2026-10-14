@@ -9,7 +9,7 @@ import { writeWorkspaceTypeDefs } from "../WorkspaceTypeDefs";
 import { Logger } from "../services/Logger";
 import { getConfigPathForShaderPath } from "../ShaderConfigPaths";
 import type { ErrorMessage } from "@shader-studio/types";
-import { GLSL_EXTENSIONS, SCRIPT_EXTENSIONS, TEXTURE_EXTENSIONS, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, CUBEMAP_EXTENSIONS, WGSL_EXTENSIONS, createShaderInsertion, insertionLanguage, createNativeComputeSource, createNativeFragmentSource, shaderLanguageForPath } from "@shader-studio/types";
+import { VOLUME_EXTENSIONS, GLSL_EXTENSIONS, SCRIPT_EXTENSIONS, TEXTURE_EXTENSIONS, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, CUBEMAP_EXTENSIONS, WGSL_EXTENSIONS, createShaderInsertion, insertionLanguage, createNativeComputeSource, createNativeFragmentSource, shaderLanguageForPath } from "@shader-studio/types";
 
 type ResponseSender = (message: { type: string; payload: unknown }) => void;
 
@@ -19,6 +19,7 @@ function fileTypeToFilters(fileType: string): { [name: string]: string[] } {
     case 'texture':  return { 'Texture files': TEXTURE_EXTENSIONS };
     case 'video':    return { 'Video files': VIDEO_EXTENSIONS };
     case 'audio':    return { 'Audio files': AUDIO_EXTENSIONS };
+    case 'volume': return { 'Volume files': VOLUME_EXTENSIONS };
     case 'cubemap':  return { 'Cubemap files': CUBEMAP_EXTENSIONS };
     case 'slang-vertex':
     case 'slang-buffer':

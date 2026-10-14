@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { BufferConfig } from '../lib/BufferConfig';
-import type { BufferPass, ImagePass, CubemapConfigInput } from '@shader-studio/types';
+import type { BufferPass, ImagePass, CubemapConfigInput, VolumeConfigInput } from '@shader-studio/types';
 
 describe('BufferConfig', () => {
   describe.each([
@@ -843,4 +843,17 @@ describe('BufferConfig', () => {
     });
   });
 
+});
+
+describe("volume input validation", () => {
+  it.each([{}, { filter: "nearest", wrap: "clamp" }, { filter: "linear", wrap: "repeat" }])("accepts supported dense volume options %j", options => {
+    const config = new BufferConfig("Image", {});
+    config.updateInputChannel("density", { type: "volume", path: "density.ktx2", ...options } as VolumeConfigInput);
+    expect(config.validate().isValid).toBe(true);
+  });
+  it.each([{ path: "" }, { path: 42 }, { filter: "mipmap" }, { wrap: "mirror" }])("rejects malformed volume options %j", options => {
+    const config = new BufferConfig("Image", {});
+    config.updateInputChannel("density", { type: "volume", path: "density.ktx2", ...options } as unknown as VolumeConfigInput);
+    expect(config.validate().isValid).toBe(false);
+  });
 });

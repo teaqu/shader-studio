@@ -1,4 +1,5 @@
 import type { TextureCache } from "../../resources/TextureCache";
+import { ktxVolume } from "../../../../types/test/ktxVolume";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { ResourceManager } from "../../resources/ResourceManager";
 import type { TextureBackend } from "../../resources/TextureBackend";
@@ -129,6 +130,7 @@ const createMockBackend = (): TextureBackend<PiTexture> => {
   return {
     createTexture: vi.fn(),
     createTextureFromImage: vi.fn(),
+    createVolumeTexture: vi.fn(() => null),
     createMipmaps: vi.fn(),
     updateTexture: vi.fn(),
     updateTextureFromImage: vi.fn(),
@@ -155,6 +157,27 @@ describe("ResourceManager", () => {
     vi.clearAllMocks();
     mockBackend = createMockBackend();
     resourceManager = new ResourceManager(mockBackend);
+  });
+
+  it("owns loaded volume resources, separates isolated compiles, and cleans them up", async () => {
+    const texture = createMockTexture();
+    vi.mocked(mockBackend.createVolumeTexture).mockReturnValue(texture);
+    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: true, arrayBuffer: async () => ktxVolume(1, 1, 1, 1, new Uint8Array([128])) } as Response);
+    try {
+      const options = { filter: "nearest" as const, wrap: "clamp" as const };
+      expect(resourceManager.getVolumeTexture("density.ktx2", options)).toBeNull();
+      expect(resourceManager.isVolumeLoaded("density.ktx2", options)).toBe(false);
+      expect(await resourceManager.loadVolumeTexture("density.ktx2", options)).toEqual({ texture, warning: undefined });
+      expect(resourceManager.getVolumeTexture("density.ktx2", options)).toBe(texture);
+      expect(resourceManager.isVolumeLoaded("density.ktx2", options)).toBe(true);
+      expect(resourceManager.createIsolated().getVolumeTexture("density.ktx2", options)).toBeNull();
+      resourceManager.cleanup();
+      expect(mockBackend.destroyTexture).toHaveBeenCalledWith(texture);
+      expect(resourceManager.getVolumeTexture("density.ktx2", options)).toBeNull();
+      expect(resourceManager.isVolumeLoaded("density.ktx2", options)).toBe(false);
+    } finally {
+      fetch.mockRestore();
+    }
   });
 
   describe("createIsolated", () => {

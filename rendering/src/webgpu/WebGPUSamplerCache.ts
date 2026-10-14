@@ -18,6 +18,7 @@ export function getWebGPUSampler(device: GPUDevice, filter: TextureFilter, wrap:
       minFilter: filter === "nearest" ? "nearest" : "linear",
       addressModeU: mode,
       addressModeV: mode,
+      addressModeW: mode,
       ...(filter === "mipmap" ? { mipmapFilter: "linear" as const } : {}),
     });
     cache.set(key, sampler);

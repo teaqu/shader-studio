@@ -1,5 +1,6 @@
+import { ktxVolume } from "../../../../../types/test/ktxVolume";
 import type { FunctionMock } from '../../FunctionMock';
-import { render, screen, fireEvent } from '@testing-library/svelte';
+import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import { configureHost, resetHost } from '../../../lib/state/hostState.svelte';
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { tick } from 'svelte';
@@ -308,6 +309,22 @@ describe('AssetBrowser', () => {
   });
 
   describe('File Type Thumbnails', () => {
+    it.each([true, false])('renders a volume canvas for same-folder=%s assets instead of an image', async isSameDirectory => {
+      const buffer = ktxVolume(1, 1, 1, 4);
+      vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, arrayBuffer: async () => buffer })));
+      try {
+        render(AssetBrowser, { extensions: ['ktx2'], shaderPath: '/test/shader.glsl', postMessage: mockPostMessage, onSelect: mockOnSelect });
+        simulateWorkspaceFiles([{ name: 'density.KTX2', workspacePath: '@/density.KTX2', thumbnailUri: 'webview://density.ktx2', isSameDirectory }]);
+        const card = await screen.findByRole('button', { name: /density\.KTX2/ });
+        await waitFor(() => expect(card.querySelector('canvas')).not.toBeNull());
+        expect(card.querySelector('img')).toBeNull();
+        await fireEvent.click(card);
+        expect(mockOnSelect).toHaveBeenCalledWith(isSameDirectory ? 'density.KTX2' : '@/density.KTX2', 'webview://density.ktx2');
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
     it('should render video element for video files', async () => {
       render(AssetBrowser, {
         extensions: ['mp4', 'webm'],

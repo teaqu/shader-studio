@@ -9,6 +9,7 @@ function mockBackend() {
   return {
     createTexture: vi.fn((): FakeTex => ({ id: next++ })),
     createTextureFromImage: vi.fn((): FakeTex => ({ id: next++ })),
+    createVolumeTexture: vi.fn(() => null),
     createMipmaps: vi.fn(),
     updateTexture: vi.fn(),
     updateTextureFromImage: vi.fn(),

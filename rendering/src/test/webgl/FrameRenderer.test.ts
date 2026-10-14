@@ -72,6 +72,7 @@ describe("FrameRenderer", () => {
       getAudioSampleRate: vi.fn(() => 44100),
       getAudioState: vi.fn(() => null),
       getVideoElement: vi.fn(() => undefined),
+      isVolumeLoaded: vi.fn(),
       getImageTextureCache: vi.fn(() => ({})),
       getCubemapTexture: vi.fn(() => null),
       getKeyboardTexture: vi.fn(() => null),

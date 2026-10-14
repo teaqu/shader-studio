@@ -21,6 +21,15 @@ export interface TextureConfigInput {
     grayscale?: boolean;
 }
 
+export interface VolumeConfigInput {
+    type: 'volume';
+    path: string;
+    resolved_path?: string;
+    filter?: "linear" | "nearest";
+    /** Applies to X, Y, and Z. */
+    wrap?: "repeat" | "clamp";
+}
+
 export interface VideoConfigInput {
     type: 'video';
     path: string;
@@ -73,7 +82,7 @@ export interface SystemAudioConfigInput {
     type: 'system-audio';
 }
 
-export type ConfigInput = SystemAudioConfigInput | ScreenConfigInput | WebcamConfigInput | MicrophoneConfigInput | BufferConfigInput | TextureConfigInput | VideoConfigInput | CubemapConfigInput | KeyboardConfigInput | AudioConfigInput;
+export type ConfigInput = SystemAudioConfigInput | ScreenConfigInput | WebcamConfigInput | MicrophoneConfigInput | BufferConfigInput | TextureConfigInput | VolumeConfigInput | VideoConfigInput | CubemapConfigInput | KeyboardConfigInput | AudioConfigInput;
 
 export type AspectRatioMode = '16:9' | '4:3' | '1:1' | 'fill' | 'auto';
 export type BufferOutputFormat = 'auto' | 'rgba16float' | 'rgba32float';

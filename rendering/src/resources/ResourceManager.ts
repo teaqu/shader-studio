@@ -1,3 +1,5 @@
+import { VolumeTextureManager } from "./VolumeTextureManager";
+import type { VolumeConfigInput } from "@shader-studio/types";
 import { ScreenCapture } from "./ScreenCapture";
 import type { CaptureLease } from "./SharedMediaCapture";
 import { browserAudioSupportWarning, SystemAudioCapture, type SystemAudioLease } from "./SystemAudioCapture";
@@ -17,6 +19,7 @@ export interface VideoLoadResult<T> {
 }
 
 export class ResourceManager<T> {
+  private readonly volumeTextureManager: VolumeTextureManager<T>;
   private readonly textureCache: TextureCache<T>;
   private readonly videoTextureManager: VideoTextureManager<T>;
   private readonly cubemapTextureManager: CubemapTextureManager<T>;
@@ -34,6 +37,7 @@ export class ResourceManager<T> {
     private readonly audioDeviceSelection = { deviceId: "default" },
     private readonly screenCapture = new ScreenCapture(),
   ) {
+    this.volumeTextureManager = new VolumeTextureManager(backend);
     this.textureCache = new TextureCache(backend);
     this.videoTextureManager = new VideoTextureManager(backend);
     this.cubemapTextureManager = new CubemapTextureManager(backend);
@@ -87,6 +91,18 @@ export class ResourceManager<T> {
     this.liveInputs.cleanup();
     this.liveInputs = new LiveInputTextureManager(this.backend, this.systemAudio, this.screenCapture);
     this.liveInputPaths.clear();
+  }
+
+  public getVolumeTexture(path: string, options: Pick<VolumeConfigInput, "filter" | "wrap"> = {}): T | null {
+    return this.volumeTextureManager.get(path, options);
+  }
+
+  public isVolumeLoaded(path: string, options: Pick<VolumeConfigInput, "filter" | "wrap"> = {}): boolean {
+    return this.volumeTextureManager.isLoaded(path, options);
+  }
+
+  public loadVolumeTexture(path: string, options: Pick<VolumeConfigInput, "filter" | "wrap"> = {}): Promise<{ texture: T | null; warning?: string }> {
+    return this.volumeTextureManager.load(path, options);
   }
 
   public getImageTextureCache(): Record<string, T> {
@@ -348,6 +364,7 @@ export class ResourceManager<T> {
     this.textureCache.cleanup();
     this.videoTextureManager.cleanup();
     this.cubemapTextureManager.cleanup();
+    this.volumeTextureManager.cleanup();
     this.audioTextureManager.cleanup();
     this.resetLiveInputs(preserveSystemAudio, preserveScreen);
     this.keyboardInput.cleanup();
@@ -365,6 +382,7 @@ export class ResourceManager<T> {
 
     this.textureCache.cleanup();
     this.cubemapTextureManager.cleanup();
+    this.volumeTextureManager.cleanup();
     this.keyboardInput.cleanup();
   }
 

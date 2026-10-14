@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "inputs": {
+        "iChannel0": {
+          "type": "volume",
+          "path": "../../assets/volume-input/noise-rgba.ktx2",
+          "filter": "linear",
+          "wrap": "repeat"
+        }
+      }
+    }
+  }
+}
