@@ -12,6 +12,7 @@
     type IContentRenderer,
   } from 'dockview-core';
   import 'dockview-core/dist/styles/dockview.css';
+  import { setupDockviewTabs } from '@shader-studio/ui/lib/layout/dockviewTabs';
   import { StandaloneLayoutController, type StandalonePanelId } from './StandaloneLayoutController';
   import { StandalonePanelSizing } from './StandalonePanelSizing';
   import { getViewerSession } from '@shader-studio/ui/lib/state/viewerSession.svelte';
@@ -45,6 +46,7 @@
   let controller = $state<StandaloneLayoutController | null>(null);
   let dockviewApi: DockviewApi | null = null;
   let panelSizing: StandalonePanelSizing | null = null;
+  let disposeTabVisibility: (() => void) | undefined;
   let dropDisposable: DockviewIDisposable | null = null;
   let removeViewportListener: (() => void) | null = null;
   let activeMobileTool = $state<HostedPanelId>('config');
@@ -140,6 +142,7 @@
       controller?.resetLayout();
       panelSizing?.reset();
     });
+    disposeTabVisibility = setupDockviewTabs(dockviewElement, dockviewApi);
     controller = new StandaloneLayoutController(dockviewApi, undefined, (path) => {
       transport?.getShaderExplorerHostApi().postMessage({ type: 'activateShader', path });
     });
@@ -161,6 +164,7 @@
   });
 
   onDestroy(() => {
+    disposeTabVisibility?.();
     removeViewportListener?.();
     removeViewportListener = null;
     panelSizing?.dispose();
