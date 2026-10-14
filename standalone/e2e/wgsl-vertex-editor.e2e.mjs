@@ -165,7 +165,9 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
       return (files.find(file => file.path.endsWith(`${stem}.${language}`)).contents.match(/(?:fn|void) mainVertex\(/g) ?? []).length;
     }).toBe(1);
     await page.reload();
-    await expect.poll(centerRed).toBeGreaterThan(240);
+    // The CI trace renders correctly just after 5s; a reload starts a fresh
+    // Slang compiler/device, so use the existing shader-compilation budget.
+    await expect.poll(centerRed, { timeout: 30_000 }).toBeGreaterThan(240);
   });
 }
 
