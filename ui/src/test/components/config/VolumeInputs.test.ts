@@ -42,6 +42,8 @@ describe("volume configuration", () => {
     await component.rerender({ ...props, isOpen: false });
     await component.rerender({ ...props, channelInput: saved });
     expect(screen.getByRole("tab", { name: "Volumes" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByLabelText("Filter")).toHaveClass("input-select");
+    expect(screen.getByLabelText("Wrap X / Y / Z")).toHaveClass("input-select");
     expect(screen.getByLabelText("Filter")).toHaveValue("nearest");
     expect(screen.getByLabelText("Wrap X / Y / Z")).toHaveValue("clamp");
   });

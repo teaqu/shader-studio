@@ -50,3 +50,38 @@ for (const [language, source] of Object.entries(shaders)) {
     await expect(page.getByRole('dialog', { name: /^iChannel0/ }).getByText('8 × 8 × 8 · RGBA8', { exact: true })).toBeVisible();
   });
 }
+
+for (const [name, uri, format] of [
+  ['Random Greyscale.ktx2', 'shader-studio://volumes/noise-grey', 'R8'],
+  ['Random RGBA.ktx2', 'shader-studio://volumes/noise-rgba', 'RGBA8'],
+]) {
+  test(`built-in ${name} is selectable and persists`, async ({ page }) => {
+    await page.goto('/');
+    await workspace(page, [
+      ['noise.glsl', 'void mainImage(out vec4 c, in vec2 p) { c = texture(iChannel0, vec3(p / iResolution.xy, 0.5)); }'],
+      ['noise.sha.json', JSON.stringify({ version: '1.0', passes: { Image: { inputs: { iChannel0: { type: 'volume', path: '' } } } } })],
+    ]);
+    await page.reload();
+    await page.getByTestId('shader-option-noise-glsl').click();
+    await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
+    await page.getByRole('button', { name: 'Configure iChannel0', exact: true }).click();
+    await page.getByRole('button', { name: `Volume slice preview ${name}`, exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: /^iChannel0/ });
+    await expect(dialog.getByText(`32 × 32 × 32 · ${format}`, { exact: true })).toBeVisible();
+    const filter = dialog.getByRole('combobox', { name: 'Filter', exact: true });
+    const wrap = dialog.getByRole('combobox', { name: 'Wrap X / Y / Z', exact: true });
+    for (const control of [filter, wrap]) {
+      await expect(control).toHaveCSS('border-radius', '4px');
+      await expect(control).toHaveCSS('padding-left', '12px');
+    }
+    await filter.selectOption('nearest');
+    await wrap.selectOption('clamp');
+    await expect.poll(async () => JSON.parse((await workspace(page))['/shaders/noise.sha.json']).passes.Image.inputs.iChannel0)
+      .toMatchObject({ type: 'volume', path: uri, filter: 'nearest', wrap: 'clamp' });
+    await page.reload();
+    await page.getByRole('button', { name: 'Configure iChannel0', exact: true }).click();
+    await expect(dialog.getByText(`32 × 32 × 32 · ${format}`, { exact: true })).toBeVisible();
+    await expect(filter).toHaveValue('nearest');
+    await expect(wrap).toHaveValue('clamp');
+  });
+}

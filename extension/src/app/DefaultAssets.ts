@@ -15,6 +15,8 @@ export function resolveDefaultAssetPath(uri: string, extensionPath?: string): st
 export function defaultAssetFiles(extensions: string[], extensionPath: string, convert: (filePath: string) => string): WorkspaceFileInfo[] {
   return [
     { name: 'Nebula Texture.png', uri: SHADER_STUDIO_DEFAULT_ASSETS.nebulaTexture },
+    { name: 'Random Greyscale.ktx2', uri: SHADER_STUDIO_DEFAULT_ASSETS.noiseGreyVolume },
+    { name: 'Random RGBA.ktx2', uri: SHADER_STUDIO_DEFAULT_ASSETS.noiseRgbaVolume },
     { name: 'Desert Cubemap.png', uri: SHADER_STUDIO_DEFAULT_ASSETS.desertCubemap },
   ].filter(asset => extensions.includes(path.extname(asset.name).slice(1)))
     .map(({ name, uri }) => ({
