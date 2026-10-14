@@ -29,9 +29,9 @@ for (const [language, execution] of [['glsl', 'render'], ['slang', 'render'], ['
     if (execution === 'compute') {
 await page.getByLabel('Cubemap execution').selectOption('compute');
 }
-    await page.getByRole('button', { name: 'Change…' }).first().click();
+    await page.getByRole('button', { name: 'Choose shader file' }).first().click();
     page.once('dialog', dialog => dialog.accept(`direction-cube.${language}`));
-    await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: 'Create', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: 'Create file…', exact: true }).click();
     const canvas = preview.locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
     // Slang startup can exceed the default 5s poll: CI traces render the expected
     // bytes at about 6s. Use the existing shader-compilation budget for first output.

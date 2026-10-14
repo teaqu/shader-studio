@@ -51,7 +51,6 @@
     MAX_INSTANCE_COUNT,
     MAX_VERTEX_COUNT,
     SHADER_LANGUAGES,
-    shaderLanguageForPath,
     vertexPassKey,
     getShaderOutputs,
   } from "@shader-studio/types";
@@ -67,7 +66,6 @@
   import RenderOutputControls from "./RenderOutputControls.svelte";
   import { getEditorOverlayVisible, setEditorOverlayVisible, setOverlayActiveFile } from "../../state/editorOverlayState.svelte";
   import { rememberDrawFields, takeDrawField } from "../../state/verticesDrawMemory.svelte";
-  import { getCurrentEditorSource } from "../../state/currentEditorSourceState.svelte";
   import type { AudioVideoController } from "../../AudioVideoController";
   import { listGlbMeshNames } from "../../../../../rendering/src/preview3d/GltfMeshLoader";
 
@@ -172,15 +170,8 @@
   const hasNativeTemplate = $derived(renderPassConfig?.entryPoints !== undefined);
   const outputDiscovery = $derived(getShaderOutputs((getCommonShaderSource()?.text ?? '') + '\n' + passSource, language, renderPassConfig?.entryPoints?.fragment));
   const renderOutputs = $derived(outputDiscovery.outputs);
-  const currentEditorSourcePath = $derived(getCurrentEditorSource(shaderPath));
-  const insertionSourcePath = $derived(
-    currentEditorSourcePath && shaderLanguageForPath(currentEditorSourcePath) === language
-      ? currentEditorSourcePath
-      : ('path' in config && config.path ? config.path : shaderPath),
-  );
   const ownedSourcePath = $derived(isImagePass ? shaderPath : bufferInsertionTarget(config as BufferPass, shaderPath,
     suggestedPath || shaderPath.replace(/\.[^.]+$/, '.' + bufferName.toLowerCase() + '.' + vertexExtension)));
-  const nativeInsertionPath = $derived('path' in config && config.path ? config.path : insertionSourcePath);
   let modelSelectionPending = $state(false);
   const modelGeometry = $derived(config.geometry?.type === 'model'
     ? config.geometry
@@ -735,6 +726,14 @@ return;
     }
   }
 
+  function openBufferInEditor() {
+    if (getEditorOverlayVisible()) {
+      setOverlayActiveFile(bufferName);
+    } else {
+      onOpenInNewTab(bufferName, 'active');
+    }
+  }
+
   function commitCompute(next: ComputePass): Record<string, string> {
     if (onComputeCommit) {
       return onComputeCommit(next);
@@ -808,8 +807,8 @@ return;
         {#if bufferName !== "common" && passType === "render" && language !== 'glsl'}<h3 class="section-title">Fragment shader</h3>{/if}
         <BufferSourceControls value={currentPath} onPathChange={handlePathChange} hasError={!validation.isValid}
           {suggestedPath} {bufferName} {language} {fileType} {shaderPath} {projectConfig} {postMessage} {onMessage}
-          sourcePath={nativeInsertionPath} builtInSourcePath={ownedSourcePath} {passType} {hasNativeTemplate}
-          outputCount={Math.max(1, renderOutputs.length)} outputKind={bufferPassConfig?.outputKind} {passSource} onCreated={applyCreatedSource} />
+          outputKind={bufferPassConfig?.outputKind}
+          onCreated={applyCreatedSource} onOpen={openBufferInEditor} />
 
         {#if passType === 'compute'}
           <ComputePassControls

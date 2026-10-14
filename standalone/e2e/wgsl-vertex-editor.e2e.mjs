@@ -47,7 +47,7 @@ for (const language of ['wgsl', 'slang']) {
     await page.getByRole('button', { name: '+ New', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Buffer', exact: true }).click();
     const main = page.locator('.tab-content .buffer-details > .config-item').first();
-    await main.getByRole('button', { name: 'Change…' }).click();
+    await main.getByRole('button', { name: 'Choose shader file' }).click();
     await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: sourcePath, exact: true }).click();
     await page.getByRole('group', { name: 'Fragment function controls' }).getByRole('button', { name: 'Add function…', exact: true }).click();
     await expect(page.getByRole('radio', { name: language === 'wgsl' ? '@fragment BufferAFragment' : '[shader(\"fragment\")] BufferAFragment' })).toBeChecked();
@@ -96,10 +96,10 @@ for (const language of ['wgsl', 'slang']) {
     await page.getByRole('menuitem', { name: 'Buffer', exact: true }).click();
     const main = page.locator('.tab-content .buffer-details > .config-item').first();
     page.once('dialog', dialog => dialog.accept(`owned.${language}`));
-    await main.getByRole('button', { name: 'Change…' }).click();
-    await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: 'Create', exact: true }).click();
-    await expect(main.getByLabel('File', { exact: true })).toHaveValue(new RegExp(`\\.${language}$`));
-    const configured = await main.getByLabel('File', { exact: true }).inputValue();
+    await main.getByRole('button', { name: 'Choose shader file' }).click();
+    await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: 'Create file…', exact: true }).click();
+    await expect(main.getByRole('button', { name: 'Choose shader file' })).toHaveText(`owned.${language}`);
+    const configured = await main.getByRole('button', { name: 'Choose shader file' }).getAttribute('title');
     const path = configured.startsWith('/') ? configured : `/shaders/${configured.replace(/^\.\//, '')}`;
     const vertex = page.locator('.config-item').filter({ has: page.getByRole('heading', { name: 'Vertex shader', exact: true }) });
     await vertex.getByRole('button', { name: 'Same file' }).click();
