@@ -22,13 +22,13 @@ describe('extension default asset packaging', () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
-  it('invalidates cached builds when shared default image sources change', () => {
+  it('invalidates cached builds when shared default asset sources change', () => {
     const turbo = JSON.parse(readFileSync(new URL('../../../turbo.json', import.meta.url), 'utf8')) as { globalDependencies: string[] };
     for (const uri of Object.values(SHADER_STUDIO_DEFAULT_ASSETS)) {
       expect(turbo.globalDependencies).toContain(`standalone/public/${shaderStudioDefaultAssetRelativePath(uri)}`);
     }
   });
-  it('emits the exact standalone image bytes at the shared catalog paths', async () => {
+  it('emits the exact standalone asset bytes at the shared catalog paths', async () => {
     const result = await build({
       configFile: false,
       publicDir: false,

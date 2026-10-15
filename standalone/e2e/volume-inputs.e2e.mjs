@@ -36,7 +36,7 @@ for (const [language, source] of Object.entries(shaders)) {
     await expect(page.getByRole('dialog', { name: /^iChannel0/ }).getByText('8 × 8 × 8 · RGBA8', { exact: true })).toBeVisible();
     await expect(page.getByLabel('3D volume preview; drag to rotate')).toBeVisible();
     await page.getByRole('button', { name: 'Slices', exact: true }).click();
-    await expect(page.getByRole('dialog', { name: /^iChannel0/ }).getByLabel('Volume slice preview')).toBeVisible();
+    await expect(page.getByRole('dialog', { name: /^iChannel0/ }).locator('.volume-preview:not(.thumbnail)').getByLabel('Volume slice preview')).toBeVisible();
     await page.getByRole('combobox', { name: 'Slice axis', exact: true }).selectOption('x');
     await page.getByRole('combobox', { name: 'Filter', exact: true }).selectOption('nearest');
     await page.getByRole('combobox', { name: 'Wrap X / Y / Z', exact: true }).selectOption('clamp');
