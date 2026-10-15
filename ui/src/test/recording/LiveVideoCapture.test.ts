@@ -118,6 +118,18 @@ it("propagates a direct MP4 sample failure and cancels once", async () => {
   expect(mocks.cancel).toHaveBeenCalledOnce();
   expect(mocks.finalize).not.toHaveBeenCalled();
 });
+it("reports encoded WebM presentation timestamps", async () => {
+  const onFrame = vi.fn();
+  mocks.finalize.mockImplementation(async () => {
+    const packet = mocks.config?.onEncodedPacket as (packet: { byteLength: number; timestamp: number }) => void;
+    packet({ byteLength: 4, timestamp: 0.25 });
+    packet({ byteLength: 4, timestamp: Number.NaN });
+  });
+  const capture = await createLiveVideoCapture(canvas(), 30, "webm", new AbortController().signal, undefined, { onFrame });
+  capture.stop();
+  await capture.result;
+  expect(onFrame).toHaveBeenCalledExactlyOnceWith(0.25);
+});
 it("uses stable GPU frames and disposes the bridge after finalization", async () => {
   const stableCanvas = canvas();
   const dispose = vi.fn();

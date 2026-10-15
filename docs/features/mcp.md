@@ -8,9 +8,9 @@ This feature requires the **VS Code extension**, a trusted workspace, and an AI 
 
 MCP is disabled by default.
 
-1. Open VS Code **Settings** and search for `shader-studio.mcp`.
-2. In **User** settings, enable **Shader Studio: Mcp Enabled**.
-3. Copy the automatically generated **Shader Studio: Mcp Token**. Keep it private: an assistant connected with this token can read and edit files available to your VS Code session.
+1. Run **Shader Studio: Connect AI Assistant** from the Command Palette.
+2. Enable MCP if prompted. The command shows whether the local endpoint is ready and offers client-specific configuration commands.
+3. Copy a client configuration with **Shader Studio: Copy Codex MCP Configuration** or **Shader Studio: Copy Claude Code MCP Configuration**. Keep the copied token private: an assistant connected with it can read and edit files available to your VS Code session.
 4. Open the shader you want help with and launch its Shader Studio preview.
 
 Once enabled, the connection starts automatically when you launch VS Code. You do not need to run a separate helper program. Turn off **Mcp Enabled** to disconnect assistants and stop access. If you change the token or port, reconnect your assistant using the new settings.
@@ -26,12 +26,13 @@ In your AI tool's MCP settings, add a server with these values:
 | Server URL | `http://127.0.0.1:51474/mcp` |
 | Authorization header | `Authorization: Bearer YOUR_PRIVATE_TOKEN` |
 
-Replace `YOUR_PRIVATE_TOKEN` with the token from VS Code. If your tool accepts JSON configuration, this is a common format:
+Replace `YOUR_PRIVATE_TOKEN` with the token copied by **Shader Studio: Copy Claude Code MCP Configuration**. Claude Code's local HTTP configuration is:
 
 ```json
 {
   "mcpServers": {
     "shader-studio": {
+      "type": "http",
       "url": "http://127.0.0.1:51474/mcp",
       "headers": { "Authorization": "Bearer YOUR_PRIVATE_TOKEN" }
     }
@@ -39,9 +40,19 @@ Replace `YOUR_PRIVATE_TOKEN` with the token from VS Code. If your tool accepts J
 }
 ```
 
-The exact setting names vary by AI tool; follow its instructions for adding a Streamable HTTP server and authorization header. Keep the token in private local settings, outside shared shader projects.
+For Codex, save the copied block in `~/.codex/config.toml`. Update an existing `shader-studio` block if one is present, then restart its MCP server from Codex settings:
 
-If another VS Code window is already using port `51474`, set **Shader Studio: Mcp Port** to an unused port in this workspace, then use that port in the server URL. A client running on another computer cannot use this local address.
+```toml
+[mcp_servers.shader-studio]
+url = "http://127.0.0.1:51474/mcp"
+http_headers = { Authorization = "Bearer YOUR_PRIVATE_TOKEN" }
+```
+
+For Claude Code, merge the copied `mcpServers` entry into `~/.claude.json` for user scope, preserving any existing settings and servers. Restart Claude Code and use `/mcp` to check the connection. Keep the token outside shared shader projects. See [Claude Code's MCP scopes](https://code.claude.com/docs/en/mcp#user-scope).
+
+Restart or reload the assistant after adding the server. Run **Shader Studio: Verify MCP Connection** to confirm the local endpoint accepts the current token, then ask the assistant to list Shader Studio previews; opening a preview first gives it a result to inspect. If another VS Code window is already using port `51474`, set **Shader Studio: Mcp Port** to an unused port in this workspace, then copy the configuration again. A client running on another computer cannot use this local address.
+
+The token is stored in VS Code Secret Storage. Use **Shader Studio: Regenerate MCP Token** if it was exposed, then copy fresh local client configuration and reconnect. Do not put a token in a shared workspace setting or repository.
 
 ## Ask for Help with a Shader
 
@@ -69,6 +80,8 @@ The assistant can wait for compilation and request an updated image after an edi
 
 Playback and uniform adjustments made through the connection are temporary. A running Script pass may replace a temporary uniform value. To keep a change with the shader, ask the assistant to edit its configuration or script. Seeking to a time does not replay earlier simulation steps; use **Reset** when you need to restart a simulation.
 
+`get_inputs` is a live-preview snapshot, not a frozen per-pass GPU capture. It reports built-ins available for the selected preview and identifies values unavailable for that view. When playback is paused, each custom uniform can include its `pausedValue`; it is `null` while playback is running. Custom uniform defaults and ranges are reported as unknown when the Script API has not declared them.
+
 ## Tools Available to Your Assistant
 
 You do not need to call these tools yourself. This reference explains what your assistant can do after connecting.
@@ -80,14 +93,36 @@ You do not need to call these tools yourself. This reference explains what your 
 | `read_file` / `update_file` | Read or edit an existing text file, checking for intervening changes |
 | `get_shader` | Read the shader shown in a selected preview |
 | `get_resources` | Find the shader's passes, associated files, and storage buffers |
+| `get_inputs` | Inspect current live preview inputs and whether a Script pass may overwrite a temporary custom-uniform value |
 | `get_settings` | Read the shader configuration and current preview settings |
 | `update_settings` | Try temporary playback, frame-rate, or uniform settings |
 | `get_diagnostics` / `get_logs` | Read shader errors, warnings, and Shader Studio or Script messages |
 | `capture_output` | Capture a PNG of the rendered result |
 | `set_playback` | Pause, resume, seek, or reset the shader |
 | `read_storage` | Inspect a range of values in a Slang or WGSL storage buffer |
+| `read_documentation` | Read bundled, version-matched MCP, uniforms, pass, channel, compute, storage, and render-output reference topics |
+| `create_file` | Create a new workspace text file when it does not already exist |
+| `select_shader` | Switch one explicitly selected preview to a shader path |
+| `inject_input` | Send canonical pointer and keyboard input events to one explicitly selected preview |
+| `start_input_recording` / `stop_input_recording` / `get_input_recording` | Capture and inspect a bounded timeline of live input events |
+| `replay_inputs` / `get_input_replay` / `cancel_input_replay` | Replay a recorded input timeline and inspect or cancel it |
+| `read_feedback` | Read a bounded feedback/pass pixel region when the selected backend exposes it |
+| `start_recording` / `stop_recording` / `get_recording` | Create and monitor a bounded live MP4 or WebM recording; completed artifacts are returned as MCP resources |
+| `start_frame_capture` / `get_frame_capture` / `cancel_frame_capture` | Capture up to eight PNG frames at requested wall-clock offsets, without creating a video |
 
 Capturing an image can advance feedback buffers. For stable comparisons of storage values, pause playback before inspecting them. Storage reads return up to 1,024 elements and 64 KiB at a time; GLSL storage inspection is unavailable.
+
+WebGL `read_feedback` returns the latest published feedback buffer as up to 4,096 RGBA pixels (64 KiB of float data), using a bottom-left origin. Finite samples are JSON numbers; non-finite samples are the strings `NaN`, `Infinity`, or `-Infinity`. WebGPU uses the separate `read_storage` tool for numerical storage inspection.
+
+## Input Automation and Recordings
+
+Input injection, replay, feedback reads, and video recording always require an explicit `previewId` from `list_previews`. This avoids sending interaction to the wrong preview when several are open. Input events use canonical `pointer_move`, `pointer_down`, `pointer_up`, `key_down`, `key_up`, and `release_all` records (up to 256 events per injection); pointer movement and down events require coordinates, while key events require a key code.
+
+An input recording captures interaction delivered to the selected preview. Replay can reset before it starts, but seeking cannot recreate feedback-buffer history. Use reset and replay from the beginning when comparing a simulation. A preview switch or recompilation is reported in recording metadata.
+
+`replay_inputs` uses the selected preview’s last input trace. Choose `from-current` to keep the current simulation state or `reset-and-play` to reset first. `start_recording` makes a Live MP4 or WebM artifact for 0.1–60 seconds at 1–60 fps and up to 1920×1080. Set `recordInputs` to preserve the paired input trace. Its output size does not resize the preview or reset its feedback state. `get_recording` reports output availability, requested and actual settings, frame timestamps, shader path, compile and render sequences, plus preview-switch and recompile flags. Actual dropped-frame statistics are `null` when the browser encoder cannot provide them. Read the completed `shader-studio://recordings/ID` resource (or the resource link returned by the tool) to retrieve the bounded artifact.
+
+`start_frame_capture` accepts one to eight sorted, unique requested offsets from 0 to 60 seconds and captures PNGs at up to 1920×1080 (800×450 by default). The job uses real elapsed wall time: each returned frame includes its requested timestamp and its actual elapsed timestamp, which can differ when rendering is late. It never seeks, so feedback advances naturally. Choose `reset-and-play` only when a fresh simulation is wanted; it performs a real reset and resume before capture. Completed frame images appear in requested-time order in the MCP response; metadata excludes image bytes.
 
 ## Use a Browser Preview
 
@@ -103,7 +138,7 @@ See [Open in Browser](web-server.md) for the preview setup.
 | --- | --- |
 | Cannot connect | Check that MCP is enabled, your workspace is trusted, and the URL uses the configured port. Open VS Code's **Output** panel and choose **Shader Studio** for startup errors. |
 | Port already in use | Choose another **Mcp Port** for this workspace and update your assistant's URL. |
-| Unauthorized / 401 | Copy the current **Mcp Token** into your assistant's authorization header. |
+| Unauthorized / 401 | Run **Shader Studio: Copy Codex MCP Configuration** or **Copy Claude Code MCP Configuration**, replace the local client block, then restart or reload the client. |
 | No preview found | Open a Shader Studio panel or a browser preview launched from VS Code. |
 | Wrong preview | Ask the assistant to list previews and select the shader you mean. |
 | File changed | Ask the assistant to read the file again before making the edit. |

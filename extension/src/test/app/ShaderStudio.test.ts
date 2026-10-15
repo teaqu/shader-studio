@@ -78,7 +78,7 @@ suite('Shader Studio Test Suite', () => {
       storagePath: '/mock/storage',
       globalStoragePath: '/mock/global/storage',
       logPath: '/mock/log',
-      secrets: {} as any,
+      secrets: { onDidChange: sandbox.stub().returns({ dispose: sandbox.stub() }) } as any,
       environmentVariableCollection: {} as any,
       storageUri: vscode.Uri.file('/mock/storage'),
       languageModelAccessInformation: {} as any,

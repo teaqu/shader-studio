@@ -28,7 +28,7 @@ describe('Local MCP', () => {
     const properties = manifest.contributes.configuration.properties;
     expect(properties['shader-studio.mcpEnabled']).toMatchObject({ default: false, scope: 'application' });
     expect(manifest.activationEvents).toContain('onStartupFinished');
-    expect(properties['shader-studio.mcpToken'].scope).toBe('application');
+    expect(properties).not.toHaveProperty('shader-studio.mcpToken');
     expect(() => new LocalMcpEndpoint({ call: vi.fn() }, 'short')).toThrow('16 characters');
   });
 

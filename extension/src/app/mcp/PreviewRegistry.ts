@@ -6,6 +6,7 @@ export interface PreviewConnection {
   id: string;
   kind: 'webview' | 'browser';
   send(message: ViewerRpcRequest): void;
+  sendSource?(message: unknown): Promise<void> | void;
 }
 
 interface PendingRequest {
@@ -32,6 +33,14 @@ export class PreviewRegistry {
         }
       }
     };
+  }
+
+  async sendSource(id: string, message: unknown): Promise<void> {
+    const connection = this.connections.get(id);
+    if (!connection?.sendSource) {
+      throw new Error('Preview does not support targeted shader selection.');
+    }
+    await connection.sendSource(message);
   }
 
   list(): { id: string; kind: PreviewConnection['kind'] }[] {

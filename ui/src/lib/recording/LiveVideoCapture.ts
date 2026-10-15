@@ -7,12 +7,21 @@ export interface LiveVideoCapture {
   stop(): void;
 }
 
+export interface LiveVideoCaptureOptions {
+  width?: number;
+  height?: number;
+  onFrame?: (timestamp: number) => void;
+  maxBytes?: number;
+}
+
 /** Encode the existing preview with explicit quality instead of MediaRecorder's rate control. */
-export async function createLiveVideoCapture(canvas: HTMLCanvasElement, fps: number, format: "mp4" | "webm", signal: AbortSignal, captureFrame?: () => Promise<ImageData>): Promise<LiveVideoCapture> {
+export async function createLiveVideoCapture(canvas: HTMLCanvasElement, fps: number, format: "mp4" | "webm", signal: AbortSignal, captureFrame?: () => Promise<ImageData>, options: LiveVideoCaptureOptions = {}): Promise<LiveVideoCapture> {
   const { Output, Mp4OutputFormat, WebMOutputFormat, BufferTarget, CanvasSource, MediaStreamVideoTrackSource, Quality, canEncodeVideo } = await import("mediabunny");
   signal.throwIfAborted();
-  const width = canvas.width + (format === "mp4" ? canvas.width % 2 : 0);
-  const height = canvas.height + (format === "mp4" ? canvas.height % 2 : 0);
+  const requestedWidth = options.width ?? canvas.width;
+  const requestedHeight = options.height ?? canvas.height;
+  const width = requestedWidth + (format === "mp4" ? requestedWidth % 2 : 0);
+  const height = requestedHeight + (format === "mp4" ? requestedHeight % 2 : 0);
   const bitrate = automaticVideoBitrate({ width, height, fps });
   // AVC's quantizer setting can cap quality below its bitrate ceiling. Use
   // variable bitrate for the same quality policy as rendered MP4 exports.
@@ -43,6 +52,7 @@ export async function createLiveVideoCapture(canvas: HTMLCanvasElement, fps: num
   let settled = false;
   let stopping = false;
   let packetCount = 0;
+  let encodedBytes = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let pending: Promise<void> = Promise.resolve();
   const release = () => {
@@ -81,8 +91,15 @@ export async function createLiveVideoCapture(canvas: HTMLCanvasElement, fps: num
       quality,
       latencyMode: "quality",
       contentHint: "detail",
-      onEncodedPacket: () => {
+      onEncodedPacket: packet => {
         packetCount++;
+        encodedBytes += packet?.byteLength ?? 0;
+        if (format === "webm" && Number.isFinite(packet?.timestamp)) {
+          options.onFrame?.(packet.timestamp);
+        }
+        if (options.maxBytes !== undefined && encodedBytes > options.maxBytes) {
+          void fail(new Error('Recording exceeds the artifact size limit.'));
+        }
       },
       transform: { width, height, fit: "fill" as const },
     };
@@ -102,7 +119,9 @@ export async function createLiveVideoCapture(canvas: HTMLCanvasElement, fps: num
       const add = () => {
         // Await each sample before scheduling another: encoder backpressure
         // cannot accumulate a queue or overlap additions.
-        pending = source.add((performance.now() - began) / 1000, 1 / fps);
+        const timestamp = (performance.now() - began) / 1000;
+        options.onFrame?.(timestamp);
+        pending = source.add(timestamp, 1 / fps);
         void pending.then(() => {
           if (!settled && !stopping) {
             timer = setTimeout(add, 1000 / fps);

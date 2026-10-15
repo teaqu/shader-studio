@@ -5,6 +5,7 @@ import path from 'node:path';
 import { workspace, Uri, type TestDocument } from './vscode';
 import { VscodeMcpApplication } from '../../src/app/mcp/VscodeMcpApplication';
 import { PreviewRegistry } from '../../src/app/mcp/PreviewRegistry';
+import { mcpEditGuard } from '../../src/app/mcp/McpEditGuard';
 import type { Messenger } from '../../src/app/transport/Messenger';
 import type { ShaderProvider } from '../../src/app/ShaderProvider';
 
@@ -51,6 +52,13 @@ afterEach(() => {
 });
 
 describe('VS Code MCP file and viewer application', () => {
+  it('exposes input snapshots and reports a preview that needs updating', async () => {
+    const request = vi.spyOn(previews, 'request');
+    const inputs = { scope: 'live-preview', builtins: { iMouse: [1, 2, 3, 4] }, customUniforms: [] };
+    request.mockResolvedValueOnce({ inputs } as never);
+    expect(await app.call('get_inputs', {}, signal())).toEqual({ previewId: 'preview', inputs });
+    await expect(app.call('get_inputs', {}, signal())).rejects.toThrow('Reload the preview');
+  });
   it('discovers compute resources and routes storage inspection and log reads', async () => {
     expect(await app.call('get_resources', {}, signal())).toMatchObject({ storage: { data: { count: 1 } }, passes: [{ kind: 'compute' }] });
     expect(await app.call('read_storage', { name: 'data' }, signal())).toMatchObject({ storageRead: { bytes: [42, 0, 0, 0] } });
@@ -93,10 +101,79 @@ describe('VS Code MCP file and viewer application', () => {
     const result = await app.call('update_file', { path: config.uri.fsPath, text: '{"passes":{}}', expectedRevision: read.revision, includePreview: true }, signal());
     expect(result).toMatchObject({ path: config.uri.fsPath, applied: true, dirty: true, compileSequence: 2, image: { data: 'pixels' } });
     expect(config.text).toBe('{"passes":{}}');
-    expect(provider.sendShaderFromDocument).toHaveBeenCalledWith(source);
+    expect(provider.sendShaderFromDocument).toHaveBeenCalledWith(source, { previewId: 'preview' });
     await expect(app.call('update_file', { path: config.uri.fsPath, text: 'stale', expectedRevision: read.revision }, signal())).rejects.toThrow('changed');
     const current = await app.call('read_file', { path: source.uri.fsPath }, signal());
     expect(await app.call('update_file', { path: source.uri.fsPath, text: source.text, expectedRevision: current.revision }, signal())).toMatchObject({ applied: true, dirty: false });
+  });
+
+  it('binds a dependency edit to the only preview root even without previewId', async () => {
+    const controls: TestDocument = {
+      uri: Uri.file(path.join(root, 'main.controls.glsl')), text: 'controls', isDirty: false,
+      getText() {
+        return this.text;
+      },
+      positionAt: offset => offset,
+    };
+    writeFileSync(controls.uri.fsPath, controls.text);
+    workspace.textDocuments.push(controls);
+    const read = await app.call('read_file', { path: controls.uri.fsPath }, signal());
+
+    const result = await app.call('update_file', { path: controls.uri.fsPath, text: 'updated controls', expectedRevision: read.revision }, signal());
+
+    expect(provider.sendShaderFromDocument).toHaveBeenCalledWith(source, { previewId: 'preview' });
+    expect(result).toMatchObject({ applied: true, editedPath: controls.uri.fsPath, previewPath: source.uri.fsPath });
+  });
+
+  it('selects and sends a shader only to the requested preview', async () => {
+    const alternate: TestDocument = {
+      uri: Uri.file(path.join(root, 'alternate.glsl')), text: 'alternate', isDirty: false,
+      getText() {
+        return this.text;
+      }, positionAt: offset => offset,
+    };
+    writeFileSync(alternate.uri.fsPath, alternate.text);
+    workspace.textDocuments.push(alternate);
+    const result = await app.call('select_shader', { previewId: 'preview', path: alternate.uri.fsPath }, signal());
+    expect(provider.sendShaderFromDocument).toHaveBeenCalledWith(alternate, { reload: true, previewId: 'preview' });
+    expect(result).toMatchObject({ previewId: 'preview', selectedPath: alternate.uri.fsPath, compileSequence: 2 });
+  });
+
+  it('reports when targeted selection did not dispatch a compilation', async () => {
+    sequence = undefined;
+    provider.sendShaderFromDocument.mockImplementationOnce(async () => undefined);
+    await expect(app.call('select_shader', { previewId: 'preview', path: source.uri.fsPath }, signal()))
+      .rejects.toThrow('No compilation was sent');
+  });
+
+  it('creates a new workspace file once and returns its revision', async () => {
+    const suppress = vi.spyOn(mcpEditGuard, 'armSuppression');
+    const result = await app.call('create_file', { path: 'generated.glsl', text: 'void main() {}' }, signal());
+    expect(result).toMatchObject({ path: path.join(root, 'generated.glsl'), revision: expect.any(String), dirty: true, created: true });
+    expect(workspace.textDocuments.find(document => document.uri.fsPath === result.path)?.text).toBe('void main() {}');
+    expect(suppress).toHaveBeenCalledWith(path.join(root, 'generated.glsl'), 'void main() {}');
+    await expect(app.call('create_file', { path: 'generated.glsl', text: 'again' }, signal())).rejects.toThrow('already exists');
+    await expect(app.call('create_file', { path: '../outside.glsl', text: '' }, signal())).rejects.toThrow('workspace');
+  });
+
+  it('rejects cancelled, invalid, untrusted, and rejected file creates', async () => {
+    const cancelled = new AbortController();
+    cancelled.abort();
+    await expect(app.call('create_file', { path: 'cancelled.glsl', text: '' }, cancelled.signal)).rejects.toThrow('cancelled');
+    await expect(app.call('create_file', { path: 'invalid.glsl', text: '\0' }, signal())).rejects.toThrow('Invalid');
+    workspace.isTrusted = false;
+    await expect(app.call('create_file', { path: 'untrusted.glsl', text: '' }, signal())).rejects.toThrow('Trust');
+    workspace.isTrusted = true;
+    workspace.rejectEdit = true;
+    await expect(app.call('create_file', { path: 'rejected.glsl', text: 'shader' }, signal())).rejects.toThrow('rejected');
+    expect(mcpEditGuard.take(path.join(root, 'rejected.glsl'), 'shader')).toBeUndefined();
+  });
+
+  it('requires configured automation and an explicit preview for automation operations', async () => {
+    await expect(app.call('read_recording_artifact', { id: 'missing' }, signal())).rejects.toThrow('storage is unavailable');
+    await expect(app.call('start_recording', {}, signal())).rejects.toThrow('explicit previewId');
+    await expect(app.call('start_recording', { previewId: 'preview' }, signal())).rejects.toThrow('automation is unavailable');
+    expect(new VscodeMcpApplication({ previews, getCompileSequence: () => sequence } as unknown as Messenger, provider as unknown as ShaderProvider, root)).toBeInstanceOf(VscodeMcpApplication);
   });
 
   it('serializes concurrent revisions and distinguishes applied edits from preview failures', async () => {
@@ -123,6 +200,7 @@ describe('VS Code MCP file and viewer application', () => {
     }
     workspace.rejectEdit = true;
     await expect(app.call('update_file', args, signal())).rejects.toThrow('rejected');
+    expect(mcpEditGuard.take(source.uri.fsPath, 'new')).toBeUndefined();
     source.text = '\0binary';
     await expect(app.call('read_file', args, signal())).rejects.toThrow('text document');
     await expect(app.call('update_file', args, signal())).rejects.toThrow('text document');

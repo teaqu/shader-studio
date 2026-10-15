@@ -148,6 +148,33 @@ describe("KeyboardManager", () => {
     });
   });
 
+  describe('injected input', () => {
+    it('maps stable DOM codes without dispatching a window event', () => {
+      keyboardManager.inject('KeyW', true);
+      expect(keyboardManager.getKeyHeld()[87]).toBe(255);
+      expect(keyboardManager.getKeyPressed()[87]).toBe(255);
+      keyboardManager.clearPressed();
+      keyboardManager.inject('KeyW', true);
+      expect(keyboardManager.getKeyPressed()[87]).toBe(0);
+      keyboardManager.inject('KeyW', false);
+      expect(keyboardManager.getKeyHeld()[87]).toBe(0);
+    });
+
+    it('supports Space and rejects layout-dependent names', () => {
+      keyboardManager.inject('Space', true);
+      expect(keyboardManager.getKeyHeld()[32]).toBe(255);
+      expect(() => keyboardManager.inject('w', true)).toThrow('Unsupported keyboard code');
+    });
+
+    it('accepts direct automation while physical input is disabled', () => {
+      keyboardManager.setEnabled(false);
+      keyboardManager.inject('KeyW', true);
+      expect(keyboardManager.getKeyHeld()[87]).toBe(255);
+      keyboardManager.releaseAll();
+      expect(keyboardManager.getKeyHeld()[87]).toBe(0);
+    });
+  });
+
   describe("keyup handling", () => {
     beforeEach(() => {
       keyboardManager.setupEventListeners();

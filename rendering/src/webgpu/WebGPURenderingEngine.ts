@@ -17,6 +17,8 @@ import { OrbitCamera } from "../preview3d/OrbitCamera";
 import { ResourceManager } from "../resources/ResourceManager";
 import type { PixelRegionResult } from "../types/PixelRegion";
 import type { RenderingEngine } from "../types/RenderingEngine";
+import type { FeedbackReadback, ViewerInputEvent, ViewerInputState } from '../types/ViewerInteraction';
+import type { ViewerInputListener } from '../types/ViewerInteraction';
 import { ConfigValidator } from "../util/ConfigValidator";
 import { FPSCalculator } from "../util/FPSCalculator";
 import { TimeManager } from "../util/TimeManager";
@@ -648,6 +650,39 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.keyboardManager.setEnabled(enabled);
     this.cameraManager.setEnabled(enabled);
     this.meshCamera.setInputEnabled(enabled);
+  }
+
+  injectInput(events: readonly ViewerInputEvent[]): ViewerInputState {
+    for (const event of events) {
+      switch (event.type) {
+        case 'pointer_move': case 'pointer_down': case 'pointer_up':
+          this.mouseManager.inject(event.type, event.x, event.y);
+          break;
+        case 'key_down':
+          this.keyboardManager.inject(event.code, true);
+          break;
+        case 'key_up':
+          this.keyboardManager.inject(event.code, false);
+          break;
+        case 'release_all':
+          this.mouseManager.releaseAll();
+          this.keyboardManager.releaseAll();
+          break;
+      }
+    }
+    return { mouse: this.getMouse(), heldCodes: this.keyboardManager.getHeldCodes().sort() };
+  }
+
+  subscribeInput(listener: ViewerInputListener): { dispose(): void } {
+    const mouse = this.mouseManager.onInput((type, x, y, source) => listener(type === 'pointer_up' ? { type, ...(x === undefined ? {} : { x, y }) } : { type, x: x!, y: y! }, source));
+    const keyboard = this.keyboardManager.onInput((code, down, source) => listener({ type: down ? 'key_down' : 'key_up', code }, source));
+    return { dispose: () => {
+      mouse.dispose(); keyboard.dispose();
+    } };
+  }
+
+  readFeedback(_pass: string, _x: number, _y: number, _width: number, _height: number): FeedbackReadback {
+    throw new Error('Feedback texture readback is currently available only in the WebGL renderer; use read_storage for WebGPU storage buffers.');
   }
 
   getCurrentFPS(): number {

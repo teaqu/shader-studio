@@ -1,4 +1,15 @@
-import type { ViewerRpcRequest, ViewerRpcResponse, ViewerSnapshot, ViewerCapture } from '@shader-studio/types';
+import type { ViewerRpcRequest, ViewerRpcResponse, ViewerSnapshot, ViewerCapture, ViewerAutomationOperation } from '@shader-studio/types';
+
+const automationOperations = new Set<ViewerRpcRequest['operation']>([
+  'select_shader', 'inject_input', 'start_input_recording', 'stop_input_recording', 'get_input_recording',
+  'replay_inputs', 'get_input_replay', 'cancel_input_replay', 'read_feedback',
+  'start_recording', 'stop_recording', 'get_recording', 'read_recording_chunk',
+  'start_frame_capture', 'get_frame_capture', 'cancel_frame_capture',
+]);
+const duringCompile = new Set<ViewerRpcRequest['operation']>([
+  'stop_recording', 'get_recording', 'read_recording_chunk', 'stop_input_recording',
+  'get_input_recording', 'get_input_replay', 'cancel_input_replay', 'get_frame_capture', 'cancel_frame_capture',
+]);
 
 export interface ViewerControlHost {
   snapshot(): ViewerSnapshot;
@@ -6,6 +17,7 @@ export interface ViewerControlHost {
   readStorage(payload: Record<string, unknown>): Promise<NonNullable<ViewerSnapshot['storageRead']>>;
   settings(payload: Record<string, unknown>): void;
   playback(payload: Record<string, unknown>): Promise<void> | void;
+  automation?(operation: ViewerAutomationOperation, payload: Record<string, unknown>, signal: AbortSignal): Promise<Record<string, unknown>> | Record<string, unknown>;
   respond(message: ViewerRpcResponse): void;
 }
 
@@ -15,7 +27,7 @@ export class ViewerControl {
   private completed = new Map<string, number>();
   private disposed = false;
   private commandQueue: Promise<void> = Promise.resolve();
-  private requests = new Map<string, { cancelled: boolean; started: number }>();
+  private requests = new Map<string, { cancelled: boolean; started: number; controller: AbortController }>();
 
   constructor(private readonly host: ViewerControlHost, private readonly timeoutMs = 12000) {}
 
@@ -40,6 +52,9 @@ export class ViewerControl {
 
   dispose(): void {
     this.disposed = true;
+    for (const request of this.requests.values()) {
+      request.controller.abort(new Error('Viewer closed.'));
+    }
   }
 
   handle(message: ViewerRpcRequest): void {
@@ -47,25 +62,35 @@ export class ViewerControl {
       const request = this.requests.get(message.requestId);
       if (request) {
         request.cancelled = true;
+        request.controller.abort(new Error('Request cancelled.'));
       }
       return;
     }
-    const request = { cancelled: false, started: Date.now() };
+    const request = { cancelled: false, started: Date.now(), controller: new AbortController() };
     this.requests.set(message.requestId, request);
     // Mutations and captures cannot overlap, but source messages must remain
     // free to complete while a request waits for its required compile.
     this.commandQueue = this.commandQueue.then(async () => {
       try {
-        await this.waitUntilReady(message.payload, request);
+        await this.waitUntilReady(message.payload, request, duringCompile.has(message.operation));
+        let automation: Record<string, unknown> | undefined;
         switch (message.operation) {
           case 'settings': this.host.settings(message.payload); break;
           case 'playback': await this.host.playback(message.payload); break;
           case 'get_state': case 'capture': case 'read_storage': break;
-          default: throw new Error('Unsupported viewer operation.');
+          default:
+            if (!automationOperations.has(message.operation) || !this.host.automation) {
+              throw new Error('Unsupported viewer operation.');
+            }
+            automation = await this.host.automation(message.operation as ViewerAutomationOperation, message.payload, request.controller.signal);
         }
         const result = message.operation === 'capture' ? await this.host.capture() : this.host.snapshot();
         if (message.operation === 'read_storage') {
           result.storageRead = await this.host.readStorage(message.payload);
+        }
+        request.controller.signal.throwIfAborted();
+        if (automation) {
+          result.automation = automation;
         }
         this.host.respond({ type: 'viewerRpcResponse', requestId: message.requestId, result });
       } catch (error) {
@@ -76,7 +101,7 @@ export class ViewerControl {
     });
   }
 
-  private async waitUntilReady(payload: Record<string, unknown>, request: { cancelled: boolean; started: number }): Promise<void> {
+  private async waitUntilReady(payload: Record<string, unknown>, request: { cancelled: boolean; started: number }, allowCompiling = false): Promise<void> {
     while (!this.disposed) {
       if (request.cancelled) {
         throw new Error('Request cancelled.');
@@ -92,7 +117,7 @@ export class ViewerControl {
       const requiredSequence = payload.requiredSequence;
       const sequenceReady = typeof requiredPath !== 'string' || typeof requiredSequence !== 'number'
         || (this.completed.get(requiredPath) ?? -1) >= requiredSequence;
-      if (!this.compiling && sequenceReady) {
+      if ((allowCompiling || !this.compiling) && sequenceReady) {
         return;
       }
       await new Promise(resolve => setTimeout(resolve, 20));

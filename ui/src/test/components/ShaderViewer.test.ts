@@ -222,6 +222,18 @@ vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
     getCurrentCustomUniforms() {
       return [];
     }
+    getDisplayedCustomUniforms() {
+      return this.getCurrentCustomUniforms();
+    }
+    getMouse() {
+      return [10, 20, 3, 4];
+    }
+    getChannelTimes() {
+      return [1, 2, 3, 4];
+    }
+    getAudioSampleRate() {
+      return 48000;
+    }
     getCustomUniformInfo() {
       return [];
     }
@@ -347,6 +359,18 @@ vi.mock('../../../../rendering/src/webgpu/WebGPURenderingEngine', () => {
     }
     getCurrentCustomUniforms() {
       return [];
+    }
+    getDisplayedCustomUniforms() {
+      return this.getCurrentCustomUniforms();
+    }
+    getMouse() {
+      return [10, 20, 3, 4];
+    }
+    getChannelTimes() {
+      return [1, 2, 3, 4];
+    }
+    getAudioSampleRate() {
+      return 48000;
     }
     getCustomUniformInfo() {
       return [];
@@ -844,6 +868,19 @@ describe('ShaderViewer', () => {
     expect(response.result).toMatchObject({ compiling: false, compileSequence: 2 });
   });
 
+  it.each(['glsl', 'wgsl', 'slang'])('exposes serializable live inputs for %s previews', async language => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await sendMessage({ type: 'shaderSource', language, path: `/test/main.${language}`, code: 'source', config: { passes: { Image: {} } } });
+    const result = await mcpCall('get_state');
+    expect(result.error).toBeUndefined();
+    expect(result.result.inputs).toMatchObject({ scope: 'live-preview', pass: 'Image', script: { path: null },
+      builtins: { iMouse: [10, 20, 3, 4], iChannelTime: [1, 2, 3, 4], iSampleRate: 48000 },
+      customUniforms: [],
+    });
+    expect(() => serialize(result)).not.toThrow();
+  });
+
   it('captures MCP images and reports missing shaders and encoding failures', async () => {
     render(ShaderViewer, { onInitialized: vi.fn() });
     await tick();
@@ -886,6 +923,17 @@ describe('ShaderViewer', () => {
     expect((await mcpCall('settings', { fpsLimit: 30, speed: 2, uniforms: { gain: 0.5, offset: [1, 2], enabled: false } })).error).toBeUndefined();
     expect(update).toHaveBeenCalledWith(expect.arrayContaining([{ name: 'gain', type: 'float', value: 0.5 }]));
     expect((await mcpCall('get_state')).result.fpsLimit).toBe(30);
+    expect((await mcpCall('get_state')).result.inputs).toMatchObject({
+      scope: 'live-preview', builtins: { iMouse: [10, 20, 3, 4], iChannelTime: [1, 2, 3, 4] },
+      customUniforms: expect.arrayContaining([expect.objectContaining({ name: 'gain', lastWriter: 'mcp', defaultValue: null, range: null })]),
+    });
+    await sendMessage({ type: 'customUniformValues', payload: { values: [{ name: 'gain', type: 'float', value: 0.9 }] } });
+    expect((await mcpCall('get_state')).result.inputs.customUniforms).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'gain', lastWriter: 'script' }),
+      expect.objectContaining({ name: 'offset', lastWriter: 'mcp' }),
+    ]));
+    await sendMessage({ type: 'shaderSource', path: '/test/other.glsl', code: 'source', config: { script: 'controls.ts', passes: { Image: {} } } });
+    expect((await mcpCall('get_state')).result.inputs.customUniforms[0]).toMatchObject({ lastWriter: 'unknown', scriptMayOverwrite: true });
     expect((await mcpCall('playback', { time: -1 })).error).toContain('non-negative');
     expect((await mcpCall('playback', { paused: true, time: 2, reset: true })).error).toBeUndefined();
     expect((await mcpCall('playback', { paused: false })).error).toBeUndefined();

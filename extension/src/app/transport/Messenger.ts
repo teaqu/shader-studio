@@ -45,7 +45,7 @@ export class Messenger {
   }
 
   // The transport envelope is intentionally opaque until its `type` is routed.
-  public send(message: any): void {
+  public async send(message: any, previewId?: string): Promise<void> {
     try {
       // Track shader config for error attribution
       if (message.type === "shaderSource") {
@@ -63,6 +63,10 @@ export class Messenger {
         }
       }
 
+      if (previewId) {
+        await this.previews.sendSource(previewId, message);
+        return;
+      }
       // Send to all transports
       this.transports.forEach((transport, index) => {
         try {

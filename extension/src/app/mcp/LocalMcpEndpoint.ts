@@ -15,7 +15,7 @@ export class LocalMcpEndpoint {
 
   constructor(private readonly application: McpApplication, private readonly token: string) {
     if (token.length < 16) {
-      throw new Error('Set shader-studio.mcpToken to a private token of at least 16 characters before enabling MCP.');
+      throw new Error('MCP requires a private token of at least 16 characters. Run Shader Studio: Regenerate MCP Token.');
     }
   }
 

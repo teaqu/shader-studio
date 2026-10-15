@@ -1,11 +1,11 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
-import { randomBytes } from 'node:crypto';
 import { Logger } from "./services/Logger";
 import { PanelManager } from "./PanelManager";
 import { ShaderProvider } from "./ShaderProvider";
 import { WebServer } from "./WebServer";
 import { LocalMcpEndpoint } from './mcp/LocalMcpEndpoint';
+import { McpConnection } from './mcp/McpConnection';
 import { VscodeMcpApplication } from './mcp/VscodeMcpApplication';
 import { WebSocketTransport } from "./transport/WebSocketTransport";
 import { ShaderExplorerProvider } from "./ShaderExplorerProvider";
@@ -27,6 +27,9 @@ export class ShaderStudio {
   private webServer: WebServer;
   private webSocketTransport: WebSocketTransport | null = null;
   private mcpEndpoint?: LocalMcpEndpoint;
+  private mcpConnection: McpConnection;
+  private mcpUrl?: string;
+  private mcpError?: string;
   private mcpConfiguration: Promise<void> = Promise.resolve();
   private disposed = false;
   private shaderProvider: ShaderProvider;
@@ -118,16 +121,25 @@ export class ShaderStudio {
 
     this.registerCommands();
     this.registerEventHandlers();
+    this.mcpConnection = new McpConnection(context, () => this.configureMcp(), () => ({
+      enabled: vscode.workspace.getConfiguration('shader-studio').get<boolean>('mcpEnabled', false),
+      trusted: vscode.workspace.isTrusted,
+      ready: this.mcpUrl !== undefined,
+      url: this.mcpUrl,
+      message: this.mcpError,
+    }));
     this.configureMcp();
     context.subscriptions.push(vscode.workspace.onDidGrantWorkspaceTrust(() => this.configureMcp()));
     context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
-      if (['mcpEnabled', 'mcpPort', 'mcpToken'].some(key => event.affectsConfiguration(`shader-studio.${key}`))) {
+      if (['mcpEnabled', 'mcpPort'].some(key => event.affectsConfiguration(`shader-studio.${key}`))) {
         this.configureMcp();
       }
     }));
   }
 
   private configureMcp(): void {
+    this.mcpUrl = undefined;
+    this.mcpError = undefined;
     this.mcpConfiguration = this.mcpConfiguration.then(async () => {
       this.webServer.setMcpHandler(undefined);
       await this.mcpEndpoint?.dispose();
@@ -139,21 +151,22 @@ export class ShaderStudio {
       if (!vscode.workspace.isTrusted) {
         throw new Error('Trust this workspace before enabling MCP.');
       }
-      const token = config.get<string>('mcpToken', '');
-      if (!token) {
-        // The resulting configuration event starts the endpoint with the saved token.
-        await config.update('mcpToken', randomBytes(32).toString('hex'), vscode.ConfigurationTarget.Global);
+      const token = await this.mcpConnection.getToken();
+      if (this.disposed) {
         return;
       }
-      const endpoint = new LocalMcpEndpoint(new VscodeMcpApplication(this.messenger, this.shaderProvider), token);
+      const endpoint = new LocalMcpEndpoint(new VscodeMcpApplication(this.messenger, this.shaderProvider, vscode.Uri.joinPath(this.context.globalStorageUri, 'mcp-recordings').fsPath), token);
       this.mcpEndpoint = endpoint;
       const port = await endpoint.start(config.get<number>('mcpPort', 51474));
       if (this.disposed) {
         await endpoint.dispose(); return;
       }
       this.webServer.setMcpHandler((req, res) => endpoint.handle(req, res));
+      this.mcpUrl = `http://127.0.0.1:${port}/mcp`;
       this.logger.info(`Local MCP ready at http://127.0.0.1:${port}/mcp. See the MCP setup documentation for client authentication.`);
     }).catch(error => {
+      this.mcpUrl = undefined;
+      this.mcpError = `Local MCP could not start: ${error instanceof Error ? error.message : String(error)}`;
       this.logger.error(`Local MCP could not start: ${error}`);
     });
   }
@@ -178,6 +191,8 @@ export class ShaderStudio {
 
   public dispose(): void {
     this.disposed = true;
+    this.mcpConnection.dispose();
+    this.mcpUrl = undefined;
     this.webServer.setMcpHandler(undefined);
     void this.mcpEndpoint?.dispose();
     this.webServer.stopWebServer();
@@ -437,8 +452,10 @@ export class ShaderStudio {
     });
 
     vscode.workspace.onDidChangeTextDocument((event) => {
-      this.compileController.handleTextDocumentChange(event);
-      this.handleConfigDocumentChange(event.document);
+      const handledByMcp = this.compileController.handleTextDocumentChange(event);
+      if (!handledByMcp) {
+        this.handleConfigDocumentChange(event.document);
+      }
     });
 
     vscode.workspace.onDidSaveTextDocument((document) => {

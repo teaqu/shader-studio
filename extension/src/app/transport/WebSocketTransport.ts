@@ -107,6 +107,13 @@ export class WebSocketTransport implements MessageTransport {
           }
           ws.send(JSON.stringify(message));
         },
+        sendSource: message => {
+          if (ws.readyState !== WebSocket.OPEN) {
+            throw new Error('Preview disconnected.');
+          }
+          const source = message as ConfigPathMessage;
+          ws.send(JSON.stringify(source.type === 'shaderSource' && source.config ? this.processConfigPaths(source) : source));
+        },
       });
       ws.once('close', () => unregisterPreview?.());
 

@@ -659,6 +659,57 @@ describe("RenderingEngine", () => {
     });
   });
 
+  describe('injected viewer input', () => {
+    it('routes input only to this engine and reports shader-facing state', () => {
+      const keyboard = { inject: vi.fn(), releaseAll: vi.fn(), getHeldCodes: vi.fn(() => ['KeyW']) };
+      const mouse = { inject: vi.fn(), releaseAll: vi.fn(), getMouse: vi.fn(() => new Float32Array([2, 3, 4, 5])) };
+      Object.defineProperty(renderingEngine, 'keyboardManager', { value: keyboard, configurable: true });
+      Object.defineProperty(renderingEngine, 'mouseManager', { value: mouse, configurable: true });
+      const state = renderingEngine.injectInput([{ type: 'pointer_down', x: 2, y: 3 }, { type: 'key_down', code: 'KeyW' }]);
+      expect(mouse.inject).toHaveBeenCalledWith('pointer_down', 2, 3);
+      expect(keyboard.inject).toHaveBeenCalledWith('KeyW', true);
+      expect(state).toEqual({ mouse: [2, 3, 4, 5], heldCodes: ['KeyW'] });
+      renderingEngine.injectInput([{ type: 'release_all' }]);
+      expect(mouse.releaseAll).toHaveBeenCalledOnce();
+      expect(keyboard.releaseAll).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('feedback readback', () => {
+    it('reads the published front buffer numerically and restores WebGL state', () => {
+      const framebuffer = {} as WebGLFramebuffer;
+      const previous = {} as WebGLFramebuffer;
+      const pixels = new Float32Array([.25, .5, .75, 1]);
+      const gl = {
+        READ_FRAMEBUFFER_BINDING: 1, PIXEL_PACK_BUFFER_BINDING: 2, PACK_ALIGNMENT: 3,
+        READ_FRAMEBUFFER: 4, PIXEL_PACK_BUFFER: 5, RGBA: 6, FLOAT: 7, NO_ERROR: 0,
+        isContextLost: () => false, getParameter: vi.fn((key: number) => key === 1 ? previous : key === 2 ? null : 4),
+        bindFramebuffer: vi.fn(), bindBuffer: vi.fn(), pixelStorei: vi.fn(),
+        readPixels: vi.fn((_x: number, _y: number, _w: number, _h: number, _f: number, _t: number, target: Float32Array) => target.set(pixels)),
+        getError: vi.fn(() => 0),
+      };
+      Object.defineProperty(renderingEngine, 'gl', { value: gl, configurable: true });
+      Object.defineProperty(renderingEngine, 'bufferManager', { value: { getPassBuffers: () => ({ BufferA: { front: { mObjectID: framebuffer, mTex0: { mXres: 1, mYres: 1 } }, outputFormat: 'rgba32float' } }) }, configurable: true });
+      expect(renderingEngine.readFeedback('BufferA', 0, 0, 1, 1)).toMatchObject({ phase: 'front/latest', values: [.25, .5, .75, 1] });
+      expect(gl.bindFramebuffer).toHaveBeenNthCalledWith(1, gl.READ_FRAMEBUFFER, framebuffer);
+      expect(gl.bindFramebuffer).toHaveBeenLastCalledWith(gl.READ_FRAMEBUFFER, previous);
+      expect(gl.pixelStorei).toHaveBeenCalledWith(gl.PACK_ALIGNMENT, 4);
+    });
+
+    it('bounds readback regions before touching WebGL', () => {
+      Object.defineProperty(renderingEngine, 'gl', { value: { isContextLost: () => false }, configurable: true });
+      expect(() => renderingEngine.readFeedback('BufferA', 0, 0, 4097, 1)).toThrow('at most 4096 pixels');
+    });
+
+    it('preserves non-finite feedback values for JSON callers', () => {
+      const framebuffer = {} as WebGLFramebuffer;
+      const gl: any = { READ_FRAMEBUFFER_BINDING: 1, PIXEL_PACK_BUFFER_BINDING: 2, PACK_ALIGNMENT: 3, PACK_ROW_LENGTH: 4, PACK_SKIP_ROWS: 5, PACK_SKIP_PIXELS: 6, READ_FRAMEBUFFER: 7, PIXEL_PACK_BUFFER: 8, RGBA: 9, FLOAT: 10, NO_ERROR: 0, isContextLost: () => false, getParameter: () => null, bindFramebuffer: vi.fn(), bindBuffer: vi.fn(), pixelStorei: vi.fn(), readPixels: (_a: any, _b: any, _c: any, _d: any, _e: any, _f: any, output: Float32Array) => output.set([NaN, Infinity, -Infinity, 1]), getError: () => 0 };
+      Object.defineProperty(renderingEngine, 'gl', { value: gl, configurable: true });
+      Object.defineProperty(renderingEngine, 'bufferManager', { value: { getPassBuffers: () => ({ BufferA: { front: { mObjectID: framebuffer, mTex0: { mXres: 1, mYres: 1 } } } }) }, configurable: true });
+      expect(renderingEngine.readFeedback('BufferA', 0, 0, 1, 1).values).toEqual(['NaN', 'Infinity', '-Infinity', 1]);
+    });
+  });
+
   describe("handleCanvasResize", () => {
     it("uses the resized canvas size directly when resolution scale is already applied by the UI", () => {
       const canvas = { width: 320, height: 180 };

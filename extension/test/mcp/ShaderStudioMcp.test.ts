@@ -10,10 +10,14 @@ const state = vi.hoisted(() => ({
   endpoints: [] as { start: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn>; handle: ReturnType<typeof vi.fn>; token: string }[],
   start: vi.fn(async () => 51474),
   mount: vi.fn(), update: vi.fn(), error: vi.fn(),
+  secret: undefined as string | undefined,
+  secretStore: vi.fn(),
 }));
 vi.mock('vscode', () => ({
   ExtensionMode: { Development: 2 }, ConfigurationTarget: { Global: 1 },
+  Uri: { joinPath: (base: { fsPath: string }, name: string) => ({ fsPath: `${base.fsPath}/${name}` }) },
   window: { registerWebviewViewProvider: vi.fn(() => ({ dispose() {} })) },
+  commands: { registerCommand: vi.fn(() => ({ dispose() {} })) },
   workspace: {
     get isTrusted() {
       return state.trusted;
@@ -62,7 +66,9 @@ function create() {
   vi.spyOn(prototype, 'registerEventHandlers').mockImplementation(() => {});
   vi.spyOn(prototype, 'startWebSocketTransport').mockImplementation(() => {});
   const output = { info: vi.fn(), error: state.error, debug: vi.fn(), trace: vi.fn() } as unknown as VSCode.LogOutputChannel;
-  const studio = new ShaderStudio({ subscriptions: [], extensionPath: '/extension', extensionMode: 2 } as unknown as VSCode.ExtensionContext, output, {} as DiagnosticSink);
+  const studio = new ShaderStudio({ subscriptions: [], extensionPath: '/extension', extensionMode: 2, globalStorageUri: { fsPath: '/storage' },
+    secrets: { get: async () => state.secret, store: state.secretStore, onDidChange: () => ({ dispose() {} }) },
+  } as unknown as VSCode.ExtensionContext, output, {} as DiagnosticSink);
   return { studio, settled: () => (studio as unknown as Lifecycle).mcpConfiguration };
 }
 function change(key = 'mcpEnabled') {
@@ -72,6 +78,10 @@ function change(key = 'mcpEnabled') {
 beforeEach(() => {
   vi.restoreAllMocks(); vi.clearAllMocks(); state.config = {}; state.trusted = true; state.endpoints = [];
   state.start.mockResolvedValue(51474);
+  state.secret = undefined;
+  state.secretStore.mockImplementation(async (_key: string, value: string) => {
+    state.secret = value;
+  });
   state.update.mockImplementation(async (key: string, value: unknown) => {
     state.config[key] = value;
   });
@@ -82,10 +92,10 @@ describe('extension MCP lifecycle', () => {
     const app = create(); await app.settled();
     expect(state.endpoints).toHaveLength(0);
     state.config.mcpEnabled = true; change(); await app.settled();
-    expect(state.update).toHaveBeenCalledWith('mcpToken', expect.stringMatching(/^[a-f0-9]{64}$/), 1);
-    change('mcpToken'); await app.settled();
+    expect(state.secretStore).toHaveBeenCalledWith('shader-studio.mcpToken', expect.stringMatching(/^[a-f0-9]{64}$/));
+    expect(state.update).not.toHaveBeenCalled();
     expect(state.endpoints).toHaveLength(1);
-    expect(state.endpoints[0].token).toBe(state.config.mcpToken);
+    expect(state.endpoints[0].token).toBe(state.secret);
     const handler = state.mount.mock.calls.at(-1)![0];
     handler('request', 'response');
     expect(state.endpoints[0].handle).toHaveBeenCalledWith('request', 'response');
@@ -100,7 +110,7 @@ describe('extension MCP lifecycle', () => {
     expect(state.endpoints).toHaveLength(2);
   });
   it('starts on startup and after trust is granted, and recovers from listen failures', async () => {
-    state.config = { mcpEnabled: true, mcpToken: 'existing-token' }; state.trusted = false;
+    state.config = { mcpEnabled: true }; state.secret = 'existing-token'; state.trusted = false;
     const app = create(); await app.settled(); expect(state.error).toHaveBeenCalledWith(expect.stringContaining('Trust'));
     state.trusted = true; state.start.mockRejectedValueOnce(new Error('Port occupied'));
     state.trust!(); await app.settled(); expect(state.error).toHaveBeenCalledWith(expect.stringContaining('Port occupied'));
@@ -108,7 +118,7 @@ describe('extension MCP lifecycle', () => {
     app.studio.dispose(); expect(state.endpoints[1].dispose).toHaveBeenCalledOnce();
   });
   it('closes a listener that finishes starting after the extension is disposed', async () => {
-    state.config = { mcpEnabled: true, mcpToken: 'existing-token' };
+    state.config = { mcpEnabled: true }; state.secret = 'existing-token';
     let resolveStart!: (port: number) => void;
     state.start.mockReturnValueOnce(new Promise<number>(resolve => {
       resolveStart = resolve;

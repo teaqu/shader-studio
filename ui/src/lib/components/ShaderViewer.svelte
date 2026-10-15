@@ -11,8 +11,13 @@
   import { ShaderLocker } from "../ShaderLocker";
   import { createTransport } from "../transport/TransportFactory";
   import { ViewerControl, validateViewerSettings } from '../ViewerControl';
+  import { ViewerInputs } from '../ViewerInputs';
+  import { ViewerRecording, type ViewerRecordingStart } from '../ViewerRecording';
+  import { ViewerInteraction } from '../ViewerInteraction';
+  import { ViewerFrameCapture, type FrameCaptureRequest } from '../ViewerFrameCapture';
+  import type { ViewerInputEvent } from '@shader-studio/rendering';
   import { ShaderRecorder } from '../recording/ShaderRecorder';
-  import type { ViewerSnapshot, ViewerCapture } from '@shader-studio/types';
+  import type { ViewerSnapshot, ViewerCapture, ViewerAutomationOperation } from '@shader-studio/types';
   import type { Transport } from "../transport/MessageTransport";
   import ShaderCanvas from "./ShaderCanvas.svelte";
   import MenuBar from "./MenuBar.svelte";
@@ -192,6 +197,7 @@
   let transport: Transport = createTransport();
   let mcpCompileSequence: number | null = null;
   let mcpRenderedSequence: number | null = null;
+  const viewerInputs = new ViewerInputs();
   const viewerControl = new ViewerControl({
     snapshot: viewerSnapshot,
     capture: captureViewerOutput,
@@ -203,6 +209,7 @@
       const { data, ...metadata } = await renderingEngine.readStorageBuffer(payload.name, Number(payload.start), Number(payload.count), undefined, 65536);
       return { ...metadata, bytes: Array.from(new Uint8Array(data)) };
     },
+    automation: runViewerAutomation,
     settings: updateViewerSettings,
     playback: updateViewerPlayback,
     respond: message => transport.postMessage($state.snapshot(message)),
@@ -1161,6 +1168,7 @@
       const prevShaderPath = shaderPath;
       const nextShaderPath = event.data.path || "";
       if (prevShaderPath && !shaderPathsEqual(nextShaderPath, prevShaderPath)) {
+        viewerInteraction?.dispose();
         clearCurrentEditorSource(prevShaderPath);
       }
       const isSameShader = nextShaderPath !== ""
@@ -1191,6 +1199,7 @@
       // first batch the host sends only values that changed, so every uniform
       // the script holds constant would never be heard from again.
       if (!event.data.scriptContextOmitted) {
+        viewerInputs.reset();
         customUniformValues = {};
         authoringUniformInfo = event.data.customUniformInfo ?? [];
         uniformTimestamps = {};
@@ -1269,6 +1278,7 @@
       const values: { name: string; type: string; value: number | number[] | boolean }[] = event.data.payload.values;
       if (renderingEngine) {
         renderingEngine.updateCustomUniformValues(values);
+        viewerInputs.record(values, 'script');
       }
       const now = performance.now();
       for (const v of values) {
@@ -1402,6 +1412,106 @@
     }
   }
 
+  let viewerInteraction: ViewerInteraction | undefined;
+  let interactionEngine: IRenderingEngine | undefined;
+  function interaction(): ViewerInteraction {
+    if (!viewerInteraction || interactionEngine !== renderingEngine) {
+      viewerInteraction?.dispose();
+      interactionEngine = renderingEngine;
+      viewerInteraction = new ViewerInteraction(renderingEngine, () => ({
+        path: shaderPath, compileSequence: mcpCompileSequence,
+        reset: () => updateViewerPlayback({ reset: true, paused: false }),
+      }));
+    }
+    return viewerInteraction;
+  }
+
+  const viewerRecording = new ViewerRecording({
+    snapshot: viewerSnapshot,
+    getCanvas: () => renderingEngine?.getCanvas() ?? null,
+    captureFrame: () => renderingEngine.captureCurrentFrame(),
+    getInputTimeline: () => viewerInteraction?.get() ?? null,
+    startInputRecording: () => interaction().start(),
+    stopInputRecording: () => viewerInteraction?.stop() ?? null,
+  });
+
+  const viewerFrameCapture = new ViewerFrameCapture({
+    snapshot: viewerSnapshot,
+    captureFrame: () => renderingEngine.captureCurrentFrame(),
+    reset: () => updateViewerPlayback({ reset: true, paused: false }),
+  });
+
+  async function runViewerAutomation(operation: ViewerAutomationOperation, payload: Record<string, unknown>, signal: AbortSignal): Promise<Record<string, unknown>> {
+    signal.throwIfAborted();
+    if (operation === 'select_shader') {
+      if (typeof payload.path !== 'string' || !payload.path) {
+        throw new Error('Provide a shader path.');
+      }
+      if (shaderLocker.isLocked()) {
+        shaderLocker.toggleLock();
+      }
+      shaderLocker.toggleLock(payload.path);
+      isLocked = true;
+      return { selectedPath: payload.path, locked: true };
+    }
+    if (operation === 'start_frame_capture') {
+      return { ...await viewerFrameCapture.start(payload as unknown as FrameCaptureRequest, signal) };
+    }
+    if (operation === 'get_frame_capture' || operation === 'cancel_frame_capture') {
+      if (operation === 'cancel_frame_capture') {
+        viewerFrameCapture.cancel(String(payload.id));
+      }
+      return { ...viewerFrameCapture.status(String(payload.id)) };
+    }
+    if (operation === 'start_recording') {
+      if (get(recordingStore).isRecording) {
+        throw new Error('A recording is already active in the viewer.');
+      }
+      return { ...await viewerRecording.start(payload as unknown as ViewerRecordingStart, signal) };
+    }
+    if (operation === 'stop_recording') {
+      viewerRecording.stop(String(payload.id));
+      return { ...viewerRecording.status(String(payload.id)) };
+    }
+    if (operation === 'get_recording') {
+      return { ...viewerRecording.status(String(payload.id)) };
+    }
+    if (operation === 'read_recording_chunk') {
+      return viewerRecording.readChunk(String(payload.id), Number(payload.offset), Number(payload.maxBytes));
+    }
+    if (operation === 'inject_input') {
+      return { ...interaction().inject(payload.events as ViewerInputEvent[]) };
+    }
+    if (operation === 'start_input_recording') {
+      return { ...interaction().start() };
+    }
+    if (operation === 'stop_input_recording' || operation === 'get_input_recording') {
+      const trace = operation === 'stop_input_recording' ? interaction().stop() : interaction().get();
+      if (!trace) {
+        throw new Error('No input recording exists. Call start_input_recording first.');
+      }
+      return { ...trace };
+    }
+    if (operation === 'replay_inputs') {
+      const trace = interaction().get();
+      if (!trace) {
+        throw new Error('No input recording exists. Call start_input_recording first.');
+      }
+      await interaction().replay(trace, payload.mode as 'from-current' | 'reset-and-play');
+      return { state: interaction().replayStatus(), feedbackRestored: false };
+    }
+    if (operation === 'get_input_replay' || operation === 'cancel_input_replay') {
+      if (operation === 'cancel_input_replay') {
+        interaction().cancel();
+      }
+      return { state: interaction().replayStatus(), feedbackRestored: false };
+    }
+    if (operation === 'read_feedback') {
+      return { ...renderingEngine.readFeedback(String(payload.pass), Number(payload.x), Number(payload.y), Number(payload.width), Number(payload.height)) };
+    }
+    throw new Error('Unsupported viewer automation operation.');
+  }
+
   function viewerSnapshot(): ViewerSnapshot {
     const tm = renderingEngine?.getTimeManager();
     return {
@@ -1412,6 +1522,7 @@
       paused: tm?.isPaused() ?? true, width: glCanvas?.width ?? 0, height: glCanvas?.height ?? 0,
       fpsLimit, speed: tm?.getSpeed() ?? 1,
       uniforms: renderingEngine?.getCurrentCustomUniforms() ?? [],
+      inputs: initialized ? viewerInputs.snapshot(renderingEngine, scriptInfo?.filename ?? null) : undefined,
       resources: viewerResources(),
     };
   }
@@ -1473,6 +1584,7 @@
     }
     if (changes.length) {
       renderingEngine.updateCustomUniformValues(changes);
+      viewerInputs.record(changes, 'mcp');
     }
   }
 
@@ -1786,6 +1898,9 @@
 
   onDestroy(() => {
     viewerControl.dispose();
+    viewerRecording.dispose();
+    viewerFrameCapture.dispose();
+    viewerInteraction?.dispose();
     liveCanvasSizeHold.dispose();
     captureSaveChannel?.dispose();
     captureSaveChannel = null;

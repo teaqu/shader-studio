@@ -179,7 +179,7 @@ vec4 col = texture(iChannel0, normalize(dir));
 
 ## Script-Driven Uniforms
 
-Add a `script` field to run a TypeScript or JavaScript file that computes custom uniform values each frame. The script exports named values; their types are inferred automatically:
+Add a `script` field to run a TypeScript or JavaScript file that computes custom uniform values. Export a `uniforms(ctx)` function returning named values; their types are inferred automatically:
 
 ```json
 {
@@ -195,11 +195,15 @@ Add a `script` field to run a TypeScript or JavaScript file that computes custom
 Example `uniforms.ts`:
 
 ```typescript
-export const uSpeed: float = iTime * 0.5;
-export const uColor: vec3 = [Math.sin(iTime), 0.5, 1.0];
+export function uniforms(ctx) {
+  return {
+    uSpeed: ctx.iTime * 0.5,
+    uColor: [Math.sin(ctx.iTime), 0.5, 1.0],
+  };
+}
 ```
 
-Available context variables: `iTime`, `iFrame`, `iResolution`, `iMouse`, `iDate`, `iChannelTime`, `iSampleRate`.
+Available context fields: `iTime`, `iFrame`, `iResolution`, `iMouse`, `iDate`, `iChannelTime`, `iSampleRate`. Read them from `ctx`; they are not globals. The script is polled at `scriptMaxPollingFps` (30 by default).
 
 Supported uniform types: `float`, `vec2`, `vec3`, `vec4`, `bool`.
 

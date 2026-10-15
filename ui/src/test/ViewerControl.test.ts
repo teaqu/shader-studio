@@ -93,3 +93,37 @@ describe('ViewerControl', () => {
     }
   });
 });
+
+describe('ViewerControl automation', () => {
+  it('allows job inspection during compilation but guards shader identity for input', async () => {
+    const { host } = fixture();
+    const automation = vi.fn(async () => ({ id: 'recording-1', state: 'finalizing' }));
+    const control = new ViewerControl({ ...host, automation });
+    control.compileStarted('/shader', 3);
+    control.handle(request('stop_recording', { id: 'recording-1' }));
+    await vi.waitFor(() => expect(host.respond).toHaveBeenCalledOnce());
+    expect(host.respond.mock.calls[0][0].result.automation.state).toBe('finalizing');
+    control.handle(request('inject_input', { expectedPath: '/other' }));
+    await vi.waitFor(() => expect(host.respond).toHaveBeenCalledTimes(2));
+    expect(host.respond.mock.calls[1][0].error).toContain('switched');
+    expect(automation).toHaveBeenCalledOnce();
+  });
+
+  it.each(['cancel', 'dispose'])('aborts an in-flight automation request on %s', async action => {
+    const { host } = fixture();
+    const automation = vi.fn((_operation, _payload, signal: AbortSignal) => new Promise<Record<string, unknown>>((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    }));
+    const control = new ViewerControl({ ...host, automation });
+    control.handle(request('start_recording'));
+    await vi.waitFor(() => expect(automation).toHaveBeenCalledOnce());
+    if (action === 'cancel') {
+      control.handle({ ...request('cancel'), requestId: 'start_recording' });
+    } else {
+      control.dispose();
+    }
+    await vi.waitFor(() => expect(host.respond).toHaveBeenCalledOnce());
+    expect(host.respond.mock.calls[0][0].error).toMatch(/cancelled|closed/);
+    expect(host.respond.mock.calls[0][0].result).toBeUndefined();
+  });
+});

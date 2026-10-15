@@ -113,6 +113,26 @@
       {
         "command": "shader-studio.resetLayout",
         "title": "Shader Studio: Reset Panel Layout"
+      },
+      {
+        "command": "shader-studio.connectAiAssistant",
+        "title": "Shader Studio: Connect AI Assistant"
+      },
+      {
+        "command": "shader-studio.copyCodexMcpConfig",
+        "title": "Shader Studio: Copy Codex MCP Configuration"
+      },
+      {
+        "command": "shader-studio.copyClaudeCodeMcpConfig",
+        "title": "Shader Studio: Copy Claude Code MCP Configuration"
+      },
+      {
+        "command": "shader-studio.regenerateMcpToken",
+        "title": "Shader Studio: Regenerate MCP Token"
+      },
+      {
+        "command": "shader-studio.verifyMcpConnection",
+        "title": "Shader Studio: Verify MCP Connection"
       }
     ],
     "keybindings": [
@@ -158,7 +178,7 @@
           "type": "boolean",
           "default": false,
           "scope": "application",
-          "description": "Enable local MCP tools for compatible AI agents. Disabled by default. Once enabled, starts automatically whenever Shader Studio starts and keeps running until disabled. A private mcpToken is generated on first enable."
+          "description": "Enable local MCP tools for compatible AI agents. Disabled by default. Once enabled, starts automatically whenever Shader Studio starts and keeps running until disabled. A private token is generated and stored in VS Code Secret Storage on first enable."
         },
         "shader-studio.mcpPort": {
           "type": "integer",
@@ -167,12 +187,6 @@
           "minimum": 1024,
           "maximum": 65535,
           "description": "Loopback port for the local MCP endpoint, available even without starting the browser preview server."
-        },
-        "shader-studio.mcpToken": {
-          "type": "string",
-          "default": "",
-          "scope": "application",
-          "description": "Private local MCP bearer token (at least 16 characters). Automatically generated when MCP is first enabled. Copy this token into your agent's local MCP configuration; never commit it to workspace settings."
         },
         "shader-studio.webServerPort": {
           "type": "number",

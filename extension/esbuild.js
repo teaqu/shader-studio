@@ -29,6 +29,28 @@ function copyAjvRuntime() {
 	}
 }
 
+/** Copy the agent-facing canonical docs beside the bundle for offline MCP resources. */
+function copyMcpDocumentation() {
+	const source = path.resolve(__dirname, '../docs');
+	const destination = path.resolve(__dirname, 'dist/docs');
+	const files = [
+		'features/mcp.md',
+		'features/uniforms.md',
+		'features/config-buffers.md',
+		'help/config-file.md',
+		'features/channels.md',
+		'features/compute.md',
+		'features/storage.md',
+		'features/multiple-render-targets.md',
+	];
+	fs.rmSync(destination, { recursive: true, force: true });
+	for (const file of files) {
+		const target = path.join(destination, file);
+		fs.mkdirSync(path.dirname(target), { recursive: true });
+		fs.copyFileSync(path.join(source, file), target);
+	}
+}
+
 /**
  * @type {import('esbuild').Plugin}
  */
@@ -45,6 +67,9 @@ const esbuildProblemMatcherPlugin = {
 				console.error(`    ${location.file}:${location.line}:${location.column}:`);
 			});
 			console.log('[watch] build finished');
+			if (result.errors.length === 0) {
+				copyMcpDocumentation();
+			}
 		});
 	},
 };

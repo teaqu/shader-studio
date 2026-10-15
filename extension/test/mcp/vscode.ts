@@ -8,10 +8,20 @@ export class Uri {
 export class Range {
   constructor(public readonly start: number, public readonly end: number) {}
 }
+export class Position {
+  constructor(public readonly line: number, public readonly character: number) {}
+}
 export class WorkspaceEdit {
   entries: { uri: Uri; range: Range; text: string }[] = [];
+  creates: Uri[] = [];
   replace(uri: Uri, range: Range, text: string): void {
     this.entries.push({ uri, range, text });
+  }
+  createFile(uri: Uri): void {
+    this.creates.push(uri);
+  }
+  insert(uri: Uri, _position: Position, text: string): void {
+    this.entries.push({ uri, range: new Range(0, 0), text });
   }
 }
 export interface TestDocument {
@@ -36,9 +46,18 @@ export const workspace = {
     if (this.rejectEdit) {
       return false;
     }
+    for (const uri of edit.creates) {
+      this.textDocuments.push({
+        uri, text: '', isDirty: true,
+        getText() {
+          return this.text;
+        },
+        positionAt: offset => offset,
+      });
+    }
     for (const entry of edit.entries) {
       const doc = await this.openTextDocument(entry.uri);
-      doc.text = entry.text;
+      doc.text = doc.text.slice(0, entry.range.start) + entry.text + doc.text.slice(entry.range.end);
       doc.isDirty = true;
     }
     return true;

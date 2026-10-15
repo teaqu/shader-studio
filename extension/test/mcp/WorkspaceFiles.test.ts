@@ -2,7 +2,7 @@ import { afterEach, describe, it, expect } from 'vitest';
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { resolveWorkspaceFile, textRevision } from '../../src/app/mcp/WorkspaceFiles';
+import { resolveNewWorkspaceFile, resolveWorkspaceFile, textRevision } from '../../src/app/mcp/WorkspaceFiles';
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -56,5 +56,16 @@ describe('WorkspaceFiles', () => {
     writeFileSync(file, 'x'.repeat(1_000_001));
     expect(() => resolveWorkspaceFile(file, [root])).toThrow('1 MB');
     expect(() => resolveWorkspaceFile('missing', [root])).toThrow();
+  });
+
+  it('resolves only new files with an existing workspace parent', () => {
+    const { root, file, parent } = fixture();
+    expect(resolveNewWorkspaceFile('new.glsl', [root])).toBe(path.join(root, 'new.glsl'));
+    expect(() => resolveNewWorkspaceFile(file, [root])).toThrow('already exists');
+    expect(() => resolveNewWorkspaceFile('../new.glsl', [root])).toThrow('workspace');
+    expect(() => resolveNewWorkspaceFile('missing/new.glsl', [root])).toThrow('Parent directory');
+    mkdirSync(path.join(root, '.git'));
+    expect(() => resolveNewWorkspaceFile('.git/new.glsl', [root])).toThrow('Git internal');
+    expect(() => resolveNewWorkspaceFile(path.join(parent, 'outside.glsl'), [root])).toThrow('workspace');
   });
 });

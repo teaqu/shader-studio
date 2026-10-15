@@ -32,6 +32,15 @@ export class WebviewTransport implements MessageTransport {
       id, kind: 'webview', send: message => {
         void panel.webview.postMessage(message);
       },
+      sendSource: async message => {
+        if ((message as { type?: string }).type === 'shaderSource') {
+          const converted = await ConfigPathConverter.processConfigPaths(message as any, panel.webview);
+          this.handleVideoResourceRoots(converted);
+          await panel.webview.postMessage(converted);
+        } else {
+          await panel.webview.postMessage(message);
+        }
+      },
     }));
   }
 

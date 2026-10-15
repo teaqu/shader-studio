@@ -300,6 +300,40 @@ describe("MouseManager", () => {
     });
   });
 
+  describe('injected input', () => {
+    it('uses top-left canvas pixels and preserves click-frame signs', () => {
+      const canvas = createMockCanvas(100, 80);
+      mouseManager.setupEventListeners(canvas);
+      mouseManager.inject('pointer_down', 10.9, 20.1);
+      expect(Array.from(mouseManager.getMouse())).toEqual([10, 60, 10, 60]);
+      mouseManager.inject('pointer_move', 30, 40);
+      expect(Array.from(mouseManager.getMouse())).toEqual([30, 40, 10, 60]);
+      mouseManager.inject('pointer_up', 30, 40);
+      expect(Array.from(mouseManager.getMouse())).toEqual([30, 40, -10, 60]);
+      mouseManager.endFrame();
+      expect(Array.from(mouseManager.getMouse())).toEqual([30, 40, -10, -60]);
+    });
+
+    it('clamps injected coordinates and releases input', () => {
+      const canvas = createMockCanvas(100, 80);
+      mouseManager.setupEventListeners(canvas);
+      mouseManager.inject('pointer_down', -1, 1000);
+      expect(Array.from(mouseManager.getMouse())).toEqual([0, 0, 0, 0]);
+      mouseManager.releaseAll();
+      expect(mouseManager.getMouse()[2]).toBe(0);
+    });
+
+    it('accepts direct automation while physical input is disabled', () => {
+      const canvas = createMockCanvas(100, 80);
+      mouseManager.setupEventListeners(canvas);
+      mouseManager.setEnabled(false);
+      mouseManager.inject('pointer_down', 10, 20);
+      expect(Array.from(mouseManager.getMouse())).toEqual([10, 60, 10, 60]);
+      mouseManager.releaseAll();
+      expect(mouseManager.getMouse()[2]).toBe(-10);
+    });
+  });
+
   describe("coordinate scaling", () => {
     it("should scale correctly when canvas size differs from display size", () => {
       // Canvas is 400x300 but displayed at 800x600

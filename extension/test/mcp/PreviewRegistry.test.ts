@@ -38,6 +38,17 @@ describe('PreviewRegistry', () => {
     registry.receive('a', { type: 'viewerRpcResponse', requestId: request.requestId, result: state });
   });
 
+  it('sends source only to the requested preview', async () => {
+    const registry = new PreviewRegistry();
+    const first = vi.fn(); const second = vi.fn();
+    registry.register({ id: 'a', kind: 'webview', send: vi.fn(), sendSource: first });
+    registry.register({ id: 'b', kind: 'browser', send: vi.fn(), sendSource: second });
+    await registry.sendSource('b', { type: 'shaderSource', path: '/second.glsl' });
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledWith({ type: 'shaderSource', path: '/second.glsl' });
+    await expect(registry.sendSource('missing', {})).rejects.toThrow('does not support');
+  });
+
   it('rejects failed, invalid, closed and unavailable viewers', async () => {
     const registry = new PreviewRegistry();
     await expect(registry.request('missing', 'get_state')).rejects.toThrow('disconnected');
