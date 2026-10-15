@@ -173,6 +173,31 @@ describe("KeyboardManager", () => {
       keyboardManager.releaseAll();
       expect(keyboardManager.getKeyHeld()[87]).toBe(0);
     });
+
+    it('reports injected and physical events, then stops after subscription disposal', () => {
+      keyboardManager.setupEventListeners();
+      const listener = vi.fn();
+      const subscription = keyboardManager.onInput(listener);
+      keyboardManager.inject('Digit4', true);
+      window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyA', keyCode: 65 } as any));
+      subscription.dispose();
+      keyboardManager.inject('Enter', true);
+      expect(listener).toHaveBeenNthCalledWith(1, 'Digit4', true, 'injected');
+      expect(listener).toHaveBeenNthCalledWith(2, 'KeyA', false, 'physical');
+    });
+
+    it('enumerates canonical held codes and emits physical releases on blur', () => {
+      keyboardManager.setupEventListeners();
+      const listener = vi.fn();
+      keyboardManager.onInput(listener);
+      keyboardManager.inject('ArrowLeft', true);
+      keyboardManager.inject('Digit2', true);
+      expect(keyboardManager.getHeldCodes()).toEqual(['ArrowLeft', 'Digit2']);
+      window.dispatchEvent(new Event('blur'));
+      expect(listener).toHaveBeenCalledWith('ArrowLeft', false, 'physical');
+      expect(listener).toHaveBeenCalledWith('Digit2', false, 'physical');
+      expect(keyboardManager.getHeldCodes()).toEqual([]);
+    });
   });
 
   describe("keyup handling", () => {

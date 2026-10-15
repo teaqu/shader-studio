@@ -673,6 +673,32 @@ describe("RenderingEngine", () => {
       expect(mouse.releaseAll).toHaveBeenCalledOnce();
       expect(keyboard.releaseAll).toHaveBeenCalledOnce();
     });
+
+    it('forwards canonical input events and removes both manager subscriptions', () => {
+      let mouseListener: ((type: 'pointer_move' | 'pointer_down' | 'pointer_up', x: number | undefined, y: number | undefined, source: 'physical' | 'injected') => void) | undefined;
+      let keyListener: ((code: string, down: boolean, source: 'physical' | 'injected') => void) | undefined;
+      const mouseDispose = vi.fn();
+      const keyDispose = vi.fn();
+      Object.defineProperty(renderingEngine, 'mouseManager', { value: { onInput: (listener: typeof mouseListener) => {
+        mouseListener = listener; return { dispose: mouseDispose };
+      } }, configurable: true });
+      Object.defineProperty(renderingEngine, 'keyboardManager', { value: { onInput: (listener: typeof keyListener) => {
+        keyListener = listener; return { dispose: keyDispose };
+      } }, configurable: true });
+      const listener = vi.fn();
+      const subscription = renderingEngine.subscribeInput(listener);
+      mouseListener!('pointer_up', undefined, undefined, 'physical');
+      mouseListener!('pointer_move', 4, 5, 'injected');
+      keyListener!('Space', true, 'injected');
+      expect(listener.mock.calls).toEqual([
+        [{ type: 'pointer_up' }, 'physical'],
+        [{ type: 'pointer_move', x: 4, y: 5 }, 'injected'],
+        [{ type: 'key_down', code: 'Space' }, 'injected'],
+      ]);
+      subscription.dispose();
+      expect(mouseDispose).toHaveBeenCalledOnce();
+      expect(keyDispose).toHaveBeenCalledOnce();
+    });
   });
 
   describe('feedback readback', () => {
@@ -707,6 +733,21 @@ describe("RenderingEngine", () => {
       Object.defineProperty(renderingEngine, 'gl', { value: gl, configurable: true });
       Object.defineProperty(renderingEngine, 'bufferManager', { value: { getPassBuffers: () => ({ BufferA: { front: { mObjectID: framebuffer, mTex0: { mXres: 1, mYres: 1 } } } }) }, configurable: true });
       expect(renderingEngine.readFeedback('BufferA', 0, 0, 1, 1).values).toEqual(['NaN', 'Infinity', '-Infinity', 1]);
+    });
+
+    it('rejects unavailable, unsupported, out-of-bounds, and driver-error feedback reads', () => {
+      Object.defineProperty(renderingEngine, 'gl', { value: null, configurable: true });
+      expect(() => renderingEngine.readFeedback('BufferA', 0, 0, 1, 1)).toThrow('context is lost');
+      const base = { isContextLost: () => false };
+      Object.defineProperty(renderingEngine, 'gl', { value: base, configurable: true });
+      Object.defineProperty(renderingEngine, 'bufferManager', { value: { getPassBuffers: () => ({}) }, configurable: true });
+      expect(() => renderingEngine.readFeedback('Missing', 0, 0, 1, 1)).toThrow('No readable');
+      const gl: any = { ...base, READ_FRAMEBUFFER_BINDING: 1, PIXEL_PACK_BUFFER_BINDING: 2, PACK_ALIGNMENT: 3, PACK_ROW_LENGTH: 4, PACK_SKIP_ROWS: 5, PACK_SKIP_PIXELS: 6, READ_FRAMEBUFFER: 7, PIXEL_PACK_BUFFER: 8, RGBA: 9, FLOAT: 10, NO_ERROR: 0, getParameter: () => null, bindFramebuffer: vi.fn(), bindBuffer: vi.fn(), pixelStorei: vi.fn(), readPixels: vi.fn(), getError: () => 4 };
+      Object.defineProperty(renderingEngine, 'gl', { value: gl, configurable: true });
+      Object.defineProperty(renderingEngine, 'bufferManager', { value: { getPassBuffers: () => ({ Cube: { outputKind: 'cubemap', front: { mObjectID: {}, mTex0: { mXres: 1, mYres: 1 } } }, BufferA: { front: { mObjectID: {}, mTex0: { mXres: 1, mYres: 1 } } } }) }, configurable: true });
+      expect(() => renderingEngine.readFeedback('Cube', 0, 0, 1, 1)).toThrow('Cubemap');
+      expect(() => renderingEngine.readFeedback('BufferA', 1, 0, 1, 1)).toThrow('outside');
+      expect(() => renderingEngine.readFeedback('BufferA', 0, 0, 1, 1)).toThrow('numerically');
     });
   });
 

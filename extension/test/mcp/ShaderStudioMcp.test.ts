@@ -12,12 +12,22 @@ const state = vi.hoisted(() => ({
   mount: vi.fn(), update: vi.fn(), error: vi.fn(),
   secret: undefined as string | undefined,
   secretStore: vi.fn(),
+  commands: new Map<string, () => unknown>(),
+  secretChange: undefined as undefined | ((event: { key: string }) => void),
+  textChange: undefined as undefined | ((event: { document: unknown }) => void),
+  compileChange: vi.fn(() => false),
 }));
 vi.mock('vscode', () => ({
   ExtensionMode: { Development: 2 }, ConfigurationTarget: { Global: 1 },
   Uri: { joinPath: (base: { fsPath: string }, name: string) => ({ fsPath: `${base.fsPath}/${name}` }) },
-  window: { registerWebviewViewProvider: vi.fn(() => ({ dispose() {} })) },
-  commands: { registerCommand: vi.fn(() => ({ dispose() {} })) },
+  window: {
+    registerWebviewViewProvider: vi.fn(() => ({ dispose() {} })), visibleTextEditors: [],
+    onDidChangeActiveTextEditor: () => ({ dispose() {} }), onDidChangeTextEditorSelection: () => ({ dispose() {} }),
+    showInformationMessage: vi.fn(async () => undefined), showWarningMessage: vi.fn(async () => undefined), showErrorMessage: vi.fn(),
+  },
+  commands: { registerCommand: (name: string, callback: () => unknown) => {
+    state.commands.set(name, callback); return { dispose() {} };
+  }, executeCommand: vi.fn() },
   workspace: {
     get isTrusted() {
       return state.trusted;
@@ -29,6 +39,10 @@ vi.mock('vscode', () => ({
     onDidChangeConfiguration: (callback: typeof state.change) => {
       state.change = callback; return { dispose() {} };
     },
+    onDidChangeTextDocument: (callback: typeof state.textChange) => {
+      state.textChange = callback; return { dispose() {} };
+    },
+    onDidSaveTextDocument: () => ({ dispose() {} }),
   },
 }));
 vi.mock('../../src/app/mcp/LocalMcpEndpoint', () => ({ LocalMcpEndpoint: class {
@@ -56,7 +70,9 @@ vi.mock('../../src/app/ErrorHandler', () => ({ ErrorHandler: class {
 } }));
 vi.mock('../../src/app/ConfigGenerator', () => ({ ConfigGenerator: class {} }));
 vi.mock('../../src/app/WorkspaceTypeDefs', () => ({ writeWorkspaceTypeDefs() {} }));
-vi.mock('../../src/app/CompileController', () => ({ CompileController: class {} }));
+vi.mock('../../src/app/CompileController', () => ({ CompileController: class {
+  handleTextDocumentChange = state.compileChange; handleActiveEditorChange() {} handleTextDocumentSave() {}
+} }));
 
 // Private lifecycle hooks are exposed only to await the extension's serialized configuration.
 type Lifecycle = { mcpConfiguration: Promise<void>; registerCommands(): void; registerEventHandlers(): void; startWebSocketTransport(): void };
@@ -67,7 +83,9 @@ function create() {
   vi.spyOn(prototype, 'startWebSocketTransport').mockImplementation(() => {});
   const output = { info: vi.fn(), error: state.error, debug: vi.fn(), trace: vi.fn() } as unknown as VSCode.LogOutputChannel;
   const studio = new ShaderStudio({ subscriptions: [], extensionPath: '/extension', extensionMode: 2, globalStorageUri: { fsPath: '/storage' },
-    secrets: { get: async () => state.secret, store: state.secretStore, onDidChange: () => ({ dispose() {} }) },
+    secrets: { get: async () => state.secret, store: state.secretStore, onDidChange: (callback: typeof state.secretChange) => {
+      state.secretChange = callback; return { dispose() {} };
+    } },
   } as unknown as VSCode.ExtensionContext, output, {} as DiagnosticSink);
   return { studio, settled: () => (studio as unknown as Lifecycle).mcpConfiguration };
 }
@@ -79,6 +97,7 @@ beforeEach(() => {
   vi.restoreAllMocks(); vi.clearAllMocks(); state.config = {}; state.trusted = true; state.endpoints = [];
   state.start.mockResolvedValue(51474);
   state.secret = undefined;
+  state.commands.clear(); state.secretChange = undefined; state.textChange = undefined; state.compileChange.mockReset(); state.compileChange.mockReturnValue(false);
   state.secretStore.mockImplementation(async (_key: string, value: string) => {
     state.secret = value;
   });
@@ -88,6 +107,21 @@ beforeEach(() => {
 });
 
 describe('extension MCP lifecycle', () => {
+  it('uses MCP command and document callbacks without broadcasting guarded edits', async () => {
+    const app = create(); await app.settled();
+    await state.commands.get('shader-studio.connectAiAssistant')!();
+    state.secretChange!({ key: 'shader-studio.mcpToken' }); await app.settled();
+    (ShaderStudio.prototype as unknown as { registerEventHandlers: { mockRestore(): void } }).registerEventHandlers.mockRestore();
+    (app.studio as unknown as { registerEventHandlers(): void }).registerEventHandlers();
+    const configChange = vi.spyOn(app.studio as unknown as { handleConfigDocumentChange(document: unknown): void }, 'handleConfigDocumentChange');
+    state.compileChange.mockReturnValueOnce(true);
+    state.textChange!({ document: { uri: { fsPath: '/workspace/main.sha.json' } } });
+    expect(configChange).not.toHaveBeenCalled();
+    state.compileChange.mockReturnValueOnce(false);
+    state.textChange!({ document: { uri: { fsPath: '/workspace/main.sha.json' } } });
+    expect(configChange).toHaveBeenCalledOnce();
+    app.studio.dispose();
+  });
   it('defaults off, generates a persistent token, mounts, reconfigures and shuts down', async () => {
     const app = create(); await app.settled();
     expect(state.endpoints).toHaveLength(0);

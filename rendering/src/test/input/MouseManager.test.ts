@@ -332,6 +332,33 @@ describe("MouseManager", () => {
       mouseManager.releaseAll();
       expect(mouseManager.getMouse()[2]).toBe(-10);
     });
+
+    it('reports injected input and rejects malformed automation', () => {
+      const canvas = createMockCanvas(100, 80);
+      mouseManager.setupEventListeners(canvas);
+      const listener = vi.fn();
+      const subscription = mouseManager.onInput(listener);
+      expect(() => mouseManager.inject('pointer_move')).toThrow('requires x and y');
+      expect(() => mouseManager.inject('pointer_down', Number.NaN, 4)).toThrow('must be finite');
+      mouseManager.inject('pointer_up');
+      expect(listener).toHaveBeenCalledWith('pointer_up', undefined, undefined, 'injected');
+      subscription.dispose();
+      mouseManager.inject('pointer_down', 3, 4);
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it('reports physical cancellation and injected release to input subscribers', () => {
+      const canvas = createMockCanvas(100, 80);
+      mouseManager.setupEventListeners(canvas);
+      const listener = vi.fn();
+      mouseManager.onInput(listener);
+      canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: 10, clientY: 20, pointerId: 1 }));
+      canvas.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1 }));
+      mouseManager.inject('pointer_down', 3, 4);
+      mouseManager.releaseAll();
+      expect(listener).toHaveBeenCalledWith('pointer_up', undefined, undefined, 'physical');
+      expect(listener).toHaveBeenCalledWith('pointer_up', undefined, undefined, 'injected');
+    });
   });
 
   describe("coordinate scaling", () => {

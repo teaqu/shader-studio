@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import type * as vscode from 'vscode';
+import * as vscode from 'vscode';
 import { WebSocket } from 'ws';
 import { WebviewTransport } from '../../src/app/transport/WebviewTransport';
 import { WebSocketTransport } from '../../src/app/transport/WebSocketTransport';
@@ -74,6 +74,12 @@ describe('MCP transport routing', () => {
     second.receive({ type: 'viewerRpcResponse', requestId: request.requestId, result: { path: 'wrong' } });
     first.receive({ type: 'viewerRpcResponse', requestId: request.requestId, result: { path: 'correct' } });
     await expect(result).resolves.toEqual({ path: 'correct' });
+    first.fake.webview.postMessage.mockClear(); second.fake.webview.postMessage.mockClear();
+    await registry.sendSource(id, { type: 'shaderSource', path: '/selected.glsl', config: {} });
+    expect(first.fake.webview.postMessage).toHaveBeenCalledWith({ type: 'shaderSource', path: '/selected.glsl', config: {} });
+    expect(second.fake.webview.postMessage).not.toHaveBeenCalled();
+    await registry.sendSource(id, { type: 'customUniformValues', payload: { values: { amount: 1 } } });
+    expect(first.fake.webview.postMessage).toHaveBeenLastCalledWith({ type: 'customUniformValues', payload: { values: { amount: 1 } } });
     expect(handler).not.toHaveBeenCalled();
     first.receive({ type: 'log', message: 'viewer log' }); expect(handler).toHaveBeenCalledOnce();
     first.fake.dispose(); expect(registry.list()).toHaveLength(1);
@@ -92,7 +98,21 @@ describe('MCP transport routing', () => {
     expect(messenger.getCompileSequence('/main')).toBe(4);
     messenger.send({ type: 'shaderSource', path: '/main' });
     expect(messenger.getCompileSequence('/main')).toBe(4);
-    messenger.close(); expect(transport.close).toHaveBeenCalledOnce();
+    const sendSource = vi.fn(async () => {});
+    messenger.previews.register({ id: 'selected', kind: 'webview', send: vi.fn(), sendSource });
+    return messenger.send({ type: 'customUniformValues', payload: { values: { amount: 1 } } }, 'selected').then(() => {
+      expect(sendSource).toHaveBeenCalledWith({ type: 'customUniformValues', payload: { values: { amount: 1 } } });
+      expect(transport.send).toHaveBeenCalledTimes(2);
+      messenger.close(); expect(transport.close).toHaveBeenCalledOnce();
+    });
+  });
+
+  it('maps packaged browser assets through the UI route', () => {
+    (vscode.workspace as unknown as { getConfiguration: () => { get: () => number } }).getConfiguration = () => ({ get: () => 4567 });
+    const transport = Object.create(WebSocketTransport.prototype) as WebSocketTransport;
+    (transport as unknown as { extensionPath: string }).extensionPath = '/extension';
+    expect(transport.convertUriForClient('/extension/ui-dist/assets/nebula-texture.png')).toBe('http://localhost:4567/assets/nebula-texture.png');
+    expect(transport.convertUriForClient('/workspace/image.png')).toBe('http://localhost:4567/textures/%2Fworkspace%2Fimage.png');
   });
 
   it('routes MCP directly over a connected browser socket and cleans up on disconnect', async () => {
@@ -120,12 +140,16 @@ describe('MCP transport routing', () => {
       }));
       const response = registry.request(registry.list()[0].id, 'get_state');
       await received; await expect(response).resolves.toEqual({ path: '/browser' });
+      const sourceMessage = new Promise<unknown>(resolve => client.once('message', data => resolve(JSON.parse(data.toString()))));
+      await registry.sendSource(registry.list()[0].id, { type: 'shaderSource', path: '/browser.glsl', config: {} });
+      await expect(sourceMessage).resolves.toMatchObject({ type: 'shaderSource', path: '/browser.glsl' });
       expect(handler).not.toHaveBeenCalled();
       client.send(JSON.stringify({ type: 'log', message: 'browser log' }));
       await vi.waitFor(() => expect(handler).toHaveBeenCalledOnce());
       const socket = [...(transport as unknown as { wsClients: Set<WebSocket> }).wsClients][0];
       Object.defineProperty(socket, 'readyState', { value: WebSocket.CLOSED, configurable: true });
       await expect(registry.request(registry.list()[0].id, 'get_state')).rejects.toThrow('disconnected');
+      await expect(registry.sendSource(registry.list()[0].id, { type: 'shaderSource', config: {} })).rejects.toThrow('disconnected');
       Reflect.deleteProperty(socket, 'readyState');
       client.close(); await vi.waitFor(() => expect(registry.list()).toEqual([]));
     } finally {

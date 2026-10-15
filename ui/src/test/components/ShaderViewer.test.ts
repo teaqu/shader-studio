@@ -29,6 +29,22 @@ import type { PixelInspectorState } from '../../lib/types/PixelInspectorState';
 import { get } from 'svelte/store';
 
 const mockConfigPanelStorageReset = vi.hoisted(() => vi.fn());
+// These partial host/engine doubles expose test-only hooks rather than the
+// full runtime interfaces, so their inspection arrays and constructor inputs use any.
+const mockMcpAutomation = vi.hoisted(() => ({
+  recordingHosts: [] as any[],
+  frameHosts: [] as any[],
+  recordingStart: vi.fn(async () => ({ id: 'recording-1', state: 'capturing' })),
+  recordingStop: vi.fn(),
+  recordingStatus: vi.fn(() => ({ id: 'recording-1', state: 'completed' })),
+  recordingChunk: vi.fn(() => ({ id: 'recording-1', data: 'Ynl0ZXM=', totalBytes: 5 })),
+  recordingDispose: vi.fn(),
+  frameStart: vi.fn(async () => ({ id: 'frames-1', state: 'capturing' })),
+  frameCancel: vi.fn(),
+  frameStatus: vi.fn(() => ({ id: 'frames-1', state: 'completed', frames: [] })),
+  frameDispose: vi.fn(),
+  interactionInstances: [] as any[],
+}));
 vi.mock('../../lib/components/config/ConfigPanel.svelte', async importOriginal => {
   const { default: ConfigPanel } = await importOriginal<typeof import('../../lib/components/config/ConfigPanel.svelte')>();
   return {
@@ -107,6 +123,40 @@ vi.mock('../../lib/RecordingManager', () => ({
     dispose = vi.fn();
     get isLiveRecording() {
       return mockIsLiveRecording();
+    }
+  },
+}));
+
+vi.mock('../../lib/ViewerRecording', () => ({
+  ViewerRecording: class {
+    constructor(host: any) {
+      mockMcpAutomation.recordingHosts.push(host);
+    }
+    start = mockMcpAutomation.recordingStart;
+    stop = mockMcpAutomation.recordingStop;
+    status = mockMcpAutomation.recordingStatus;
+    readChunk = mockMcpAutomation.recordingChunk;
+    dispose = mockMcpAutomation.recordingDispose;
+  },
+}));
+
+vi.mock('../../lib/ViewerFrameCapture', () => ({
+  ViewerFrameCapture: class {
+    constructor(host: any) {
+      mockMcpAutomation.frameHosts.push(host);
+    }
+    start = mockMcpAutomation.frameStart;
+    cancel = mockMcpAutomation.frameCancel;
+    status = mockMcpAutomation.frameStatus;
+    dispose = mockMcpAutomation.frameDispose;
+  },
+}));
+
+vi.mock('../../lib/ViewerInteraction', () => ({
+  ViewerInteraction: class {
+    constructor(engine: any, context: any) {
+      mockMcpAutomation.interactionInstances.push({ engine, context, inject: vi.fn(() => ({ heldCodes: [] })), start: vi.fn(() => ({ id: 'trace-1', events: [] })), stop: vi.fn(() => ({ id: 'trace-1', events: [] })), get: vi.fn(() => ({ id: 'trace-1', events: [] })), replay: vi.fn(async () => {}), replayStatus: vi.fn(() => 'idle'), cancel: vi.fn(), dispose: vi.fn() });
+      return mockMcpAutomation.interactionInstances.at(-1);
     }
   },
 }));
@@ -645,6 +695,9 @@ describe('ShaderViewer', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockMcpAutomation.recordingHosts.length = 0;
+    mockMcpAutomation.frameHosts.length = 0;
+    mockMcpAutomation.interactionInstances.length = 0;
     mockTransport.postMessage.mockImplementation(message => {
       if (message.type === 'viewerRpcResponse') {
         serialize(message);
@@ -866,6 +919,78 @@ describe('ShaderViewer', () => {
     const response = await mcpCall('get_state');
     expect(response.error).toBeUndefined();
     expect(response.result).toMatchObject({ compiling: false, compileSequence: 2 });
+  });
+
+  it('routes MCP recording and frame-capture operations through their live viewer hosts', async () => {
+    const view = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await loadShader();
+
+    const startFrames = await mcpCall('start_frame_capture', { times: [0], mode: 'from-current' });
+    expect(startFrames.result.automation).toMatchObject({ id: 'frames-1', state: 'capturing' });
+    expect(mockMcpAutomation.frameStart).toHaveBeenCalledWith({ times: [0], mode: 'from-current' }, expect.any(AbortSignal));
+    expect((await mcpCall('get_frame_capture', { id: 'frames-1' })).result.automation).toMatchObject({ state: 'completed' });
+    expect((await mcpCall('cancel_frame_capture', { id: 'frames-1' })).result.automation).toMatchObject({ state: 'completed' });
+    expect(mockMcpAutomation.frameCancel).toHaveBeenCalledWith('frames-1');
+
+    const startRecording = await mcpCall('start_recording', { format: 'webm', fps: 30 });
+    expect(startRecording.result.automation).toMatchObject({ id: 'recording-1', state: 'capturing' });
+    expect(mockMcpAutomation.recordingStart).toHaveBeenCalledWith({ format: 'webm', fps: 30 }, expect.any(AbortSignal));
+    expect((await mcpCall('stop_recording', { id: 'recording-1' })).result.automation).toMatchObject({ state: 'completed' });
+    expect(mockMcpAutomation.recordingStop).toHaveBeenCalledWith('recording-1');
+    expect((await mcpCall('get_recording', { id: 'recording-1' })).result.automation).toMatchObject({ state: 'completed' });
+    expect((await mcpCall('read_recording_chunk', { id: 'recording-1', offset: 0, maxBytes: 64 })).result.automation).toMatchObject({ data: 'Ynl0ZXM=' });
+    expect(mockMcpAutomation.recordingChunk).toHaveBeenCalledWith('recording-1', 0, 64);
+
+    const frameHost = mockMcpAutomation.frameHosts.at(-1);
+    const recordingHost = mockMcpAutomation.recordingHosts.at(-1);
+    expect(frameHost.snapshot()).toMatchObject({ path: '/test/shader.glsl' });
+    expect(recordingHost.snapshot()).toMatchObject({ path: '/test/shader.glsl' });
+    const engine = mockRecordingConstructor.mock.calls.at(-1)![3]();
+    engine.captureCurrentFrame = vi.fn(async () => new ImageData(1, 1));
+    expect(recordingHost.getCanvas()).toEqual(engine.getCanvas());
+    await expect(recordingHost.captureFrame()).resolves.toBeInstanceOf(ImageData);
+    await expect(frameHost.captureFrame()).resolves.toBeInstanceOf(ImageData);
+    expect(recordingHost.getInputTimeline()).toBeNull();
+    expect(recordingHost.startInputRecording()).toMatchObject({ id: 'trace-1' });
+    expect(recordingHost.getInputTimeline()).toMatchObject({ id: 'trace-1' });
+    expect(recordingHost.stopInputRecording()).toMatchObject({ id: 'trace-1' });
+    await frameHost.reset();
+    expect(mockPipelineHandleShaderMessage).toHaveBeenCalled();
+
+    view.unmount();
+    expect(mockMcpAutomation.recordingDispose).toHaveBeenCalledOnce();
+    expect(mockMcpAutomation.frameDispose).toHaveBeenCalledOnce();
+  });
+
+  it('routes MCP input, replay, feedback, selection, and active-recording failures', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await loadShader();
+
+    expect((await mcpCall('select_shader', {})).error).toContain('Provide a shader path');
+    expect((await mcpCall('select_shader', { path: '/test/other.glsl' })).result.automation).toEqual({ selectedPath: '/test/other.glsl', locked: true });
+    const input = await mcpCall('inject_input', { events: [{ type: 'pointer_move', x: 1, y: 2 }] });
+    expect(input.result.automation).toEqual({ heldCodes: [] });
+    const interaction = mockMcpAutomation.interactionInstances.at(-1);
+    expect(interaction.inject).toHaveBeenCalledWith([{ type: 'pointer_move', x: 1, y: 2 }]);
+    expect((await mcpCall('start_input_recording')).result.automation).toMatchObject({ id: 'trace-1' });
+    expect((await mcpCall('get_input_recording')).result.automation).toMatchObject({ id: 'trace-1' });
+    expect((await mcpCall('stop_input_recording')).result.automation).toMatchObject({ id: 'trace-1' });
+    expect((await mcpCall('replay_inputs', { mode: 'reset-and-play' })).result.automation).toEqual({ state: 'idle', feedbackRestored: false });
+    expect(interaction.replay).toHaveBeenCalledWith(expect.objectContaining({ id: 'trace-1' }), 'reset-and-play');
+    expect((await mcpCall('get_input_replay')).result.automation).toEqual({ state: 'idle', feedbackRestored: false });
+    expect((await mcpCall('cancel_input_replay')).result.automation).toEqual({ state: 'idle', feedbackRestored: false });
+    expect(interaction.cancel).toHaveBeenCalledOnce();
+
+    const engine = mockRecordingConstructor.mock.calls.at(-1)![3]();
+    engine.readFeedback = vi.fn(() => ({ pass: 'BufferA', data: [1, 2, 3, 4] }));
+    expect((await mcpCall('read_feedback', { pass: 'BufferA', x: 0, y: 0, width: 1, height: 1 })).result.automation).toEqual({ pass: 'BufferA', data: [1, 2, 3, 4] });
+    expect(engine.readFeedback).toHaveBeenCalledWith('BufferA', 0, 0, 1, 1);
+
+    recordingStore.startLiveRecording('mp4');
+    expect((await mcpCall('start_recording', { format: 'mp4' })).error).toContain('already active');
+    recordingStore.reset();
   });
 
   it.each(['glsl', 'wgsl', 'slang'])('exposes serializable live inputs for %s previews', async language => {

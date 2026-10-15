@@ -111,6 +111,43 @@ describe("WebGPURenderingEngine", () => {
     pixelRegionCapturerMock.constructor.mockClear();
   });
 
+  it('routes direct input, traces it, and reports WebGL-only feedback readback', () => {
+    const engine = new WebGPURenderingEngine(assets);
+    let mouseListener: ((type: 'pointer_move' | 'pointer_down' | 'pointer_up', x: number | undefined, y: number | undefined, source: 'physical' | 'injected') => void) | undefined;
+    let keyListener: ((code: string, down: boolean, source: 'physical' | 'injected') => void) | undefined;
+    const mouse = { inject: vi.fn(), releaseAll: vi.fn(), getMouse: () => new Float32Array([1, 2, 3, 4]), onInput: (listener: typeof mouseListener) => {
+      mouseListener = listener; return { dispose: vi.fn() };
+    } };
+    const keyboard = { inject: vi.fn(), releaseAll: vi.fn(), getHeldCodes: () => ['KeyA'], onInput: (listener: typeof keyListener) => {
+      keyListener = listener; return { dispose: vi.fn() };
+    } };
+    Object.assign(engine as any, { mouseManager: mouse, keyboardManager: keyboard });
+    expect(engine.injectInput([
+      { type: 'pointer_move', x: 2, y: 3 }, { type: 'pointer_down', x: 3, y: 4 }, { type: 'pointer_up' },
+      { type: 'key_down', code: 'KeyA' }, { type: 'key_up', code: 'KeyA' }, { type: 'release_all' },
+    ])).toEqual({ mouse: [1, 2, 3, 4], heldCodes: ['KeyA'] });
+    expect(mouse.inject).toHaveBeenCalledWith('pointer_move', 2, 3);
+    expect(mouse.inject).toHaveBeenCalledWith('pointer_down', 3, 4);
+    expect(mouse.inject).toHaveBeenCalledWith('pointer_up', undefined, undefined);
+    expect(keyboard.inject).toHaveBeenCalledWith('KeyA', true);
+    expect(keyboard.inject).toHaveBeenCalledWith('KeyA', false);
+    expect(mouse.releaseAll).toHaveBeenCalledOnce();
+    const listener = vi.fn();
+    const subscription = engine.subscribeInput(listener);
+    mouseListener!('pointer_up', undefined, undefined, 'physical');
+    mouseListener!('pointer_up', 6, 7, 'injected');
+    mouseListener!('pointer_move', 8, 9, 'physical');
+    keyListener!('KeyA', true, 'physical');
+    keyListener!('KeyA', false, 'injected');
+    expect(listener.mock.calls).toEqual([
+      [{ type: 'pointer_up' }, 'physical'], [{ type: 'pointer_up', x: 6, y: 7 }, 'injected'],
+      [{ type: 'pointer_move', x: 8, y: 9 }, 'physical'], [{ type: 'key_down', code: 'KeyA' }, 'physical'],
+      [{ type: 'key_up', code: 'KeyA' }, 'injected'],
+    ]);
+    subscription.dispose();
+    expect(() => engine.readFeedback('BufferA', 0, 0, 1, 1)).toThrow('only in the WebGL renderer');
+  });
+
   it.each([false, true])("captures BGRA as RGBA, initializing buffer passes when a frame has not been submitted: %s", async submitted => {
     vi.stubGlobal("ImageData", class {
       constructor(
