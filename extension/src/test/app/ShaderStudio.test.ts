@@ -780,6 +780,7 @@ suite('Shader Studio Test Suite', () => {
         languageId: 'glsl',
         fileName: '/mock/path/shader.glsl',
         uri: vscode.Uri.file('/mock/path/shader.glsl'),
+        getText: () => '// shader contents',
       },
     } as vscode.TextDocumentChangeEvent;
 
