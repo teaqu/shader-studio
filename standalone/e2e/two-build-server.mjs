@@ -30,6 +30,9 @@ export async function startTwoBuildServer(upstream) {
       if (nextBuild && url.pathname.endsWith('/app-build.json')) {
         body = Buffer.from(JSON.stringify({ buildId: 'next-build', channel: 'production' }));
       }
+      if (nextBuild && headers['content-type']?.includes('text/html')) {
+        body = Buffer.from(body.toString().replace('<head>', '<head><meta name="test-build" content="next-build">'));
+      }
       response.writeHead(upstreamResponse.status, { ...headers, 'cache-control': 'no-store' });
       response.end(body);
       } catch {
@@ -46,4 +49,3 @@ export async function startTwoBuildServer(upstream) {
     close: () => new Promise((resolve) => server.close(resolve)),
   };
 }
-
