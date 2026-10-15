@@ -38,12 +38,12 @@ describe('docs nav consistency', () => {
   });
 });
 
-describe('mobile preview instructions', () => {
+describe('contributor mobile preview instructions', () => {
   it('provides a one-command production preview behind the configured Tailscale endpoint', () => {
     const packageJson = JSON.parse(readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8')) as {
       scripts?: Record<string, string>;
     };
-    const guide = readFileSync(path.join(DOCS_ROOT, 'mobile-testing.md'), 'utf8');
+    const guide = readFileSync(path.join(REPO_ROOT, 'contributing', 'mobile-testing.md'), 'utf8');
 
     expect(packageJson.scripts?.['preview:mobile']).toBe(
       'npm run build:standalone && npm run preview -w @shader-studio/standalone -- --host 127.0.0.1 --port 4173',
@@ -53,7 +53,7 @@ describe('mobile preview instructions', () => {
   });
 
   it('describes the preview address generically instead of publishing a machine or tailnet name', () => {
-    const guide = readFileSync(path.join(DOCS_ROOT, 'mobile-testing.md'), 'utf8');
+    const guide = readFileSync(path.join(REPO_ROOT, 'contributing', 'mobile-testing.md'), 'utf8');
 
     expect(guide).not.toMatch(/[a-z0-9-]+\.[a-z0-9-]+\.ts\.net/i);
     expect(guide).toContain('https://<machine>.<tailnet>.ts.net:9443/');

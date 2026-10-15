@@ -1,6 +1,6 @@
 # GPU Storage
 
-Storage buffers keep data on the GPU between passes and frames. They are available to Slang and WGSL shaders through WebGPU. A compute pass can update a buffer, then a vertex or fragment pass can read the same allocation without copying it between passes. Making a buffer available does not cause every shader to process its contents.
+Storage buffers keep data, such as particle positions or simulation values, between passes and frames. They are available to Slang and WGSL shaders on devices with WebGPU support. A compute pass can update a buffer, then a vertex or fragment pass can read those values to draw the result. Your shader accesses the buffer by its configured name.
 
 ## Workspace layout
 
@@ -32,9 +32,9 @@ The upload does not convert text, infer a format or rearrange fields. Supply raw
 
 ## Inspecting values
 
-**Inspect** reads actual GPU data and is read-only. Scalars use a compact index/value list; vectors use a table with a narrow index column and separate component columns. For structs, select one numeric field at a time. The selected field is remembered for each buffer and shader.
+**Inspect** shows the buffer's current values without changing them. Scalars appear as an index/value list; vectors show each component in a separate column. For structs, select one numeric field at a time. The selected field is remembered for each buffer and shader.
 
-Use **Capture snapshot** for a single read, or **Start live** for updates up to twice per second. Reads do not overlap. Inspect pages of up to 16 elements using the first-element control and navigation buttons. Integer values can be shown in decimal or hexadecimal. Snapshot context includes the frame and capture point when available.
+Use **Capture snapshot** for a single read, or **Start live** for updates up to twice per second. Inspect pages of up to 16 elements using the first-element control and navigation buttons. Integer values can be shown in decimal or hexadecimal. Snapshot details include the frame and capture point when available.
 
 The **Capture point** choices refer to GPU execution, not file edits:
 

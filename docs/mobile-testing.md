@@ -1,44 +1,39 @@
-# Mobile Device Acceptance
+# Shader Studio on Phones and Tablets
 
-Use a production build through Tailscale Serve for private, trusted HTTPS without exposing the preview publicly. On the machine serving the preview, start it from the `mobile` branch:
+[Open Shader Studio in your browser](https://teaqu.github.io/shader-studio/app/) to edit and preview shaders on a phone or tablet. You do not need VS Code or a computer running Shader Studio.
 
-```sh
-npm run preview:mobile
-```
+Standalone mode is in alpha. Save regular [workspace backups](standalone.md#saving-and-browser-storage), especially before clearing browser data or moving to another device.
 
-Route HTTPS port 9443 on your tailnet to the preview server:
+## Open and Edit a Shader
 
-```sh
-tailscale serve --https=9443 --bg 4173
-```
+1. In **Explorer**, select an example or choose **New Shader**. Start with **GLSL** if your device does not support WebGPU.
+2. Tap **Editor** to change the shader. In the default **Hot** compile mode, the preview updates as you type.
+3. Tap **Preview** to see the result with more screen space.
+4. Tap **Tools** to open **Config**, **Debug**, **Frame Times**, or **Export**. Tools remembers your last selection.
 
-Open `https://<machine>.<tailnet>.ts.net:9443/` on a phone or tablet connected to the same tailnet, substituting the serving machine's MagicDNS name (`tailscale status` lists it). Stop the preview with Ctrl-C; remove only this route with `tailscale serve --https=9443 off`.
+Rotate your device when you need more room. You can also enable **Editor Overlay** from the preview menu to edit with the shader visible behind your code. Returning to a desktop-sized window restores your desktop panel arrangement.
 
-Confirm the build identifier in the header before recording results. The preview uses its own HTTPS origin, service-worker caches, local storage, and IndexedDB; it cannot replace production app data.
+## Add to Your Home Screen
 
-Record the device model, OS version, browser version, installed/Home Screen mode, build identifier, and result for every run. HTTPS is required for installation and reliable service-worker testing; LAN HTTP is not equivalent.
+Use your browser's **Install** or **Add to Home Screen** action when available. The exact menu depends on your device and browser. Open the app online first so it can download what it needs.
 
-## iPhone and iPad
+For Slang or WGSL offline use, choose **Workspace → Prepare Offline Compilers** and wait for **Ready offline** before disconnecting. These languages also require WebGPU support on your device. Installing the app does not add graphics features that your browser or device lacks.
 
-- Safari tab and Home Screen launch
-- 320–430 CSS px portrait and landscape
-- safe areas in every orientation
-- editor typing, selection handles, copy/paste, composition, and keyboard open/close
-- Explorer search/create/select, Preview, dedicated Editor, and editor overlay
-- Config, Debug touch pixel selection, Frame Times, and an available Export mode
-- background/resume, reload, and workspace persistence
-- export backup, replace-confirmed import, and save-failure/session-only messages
-- online launch, Prepare Offline Compilers, terminate, reopen offline, edit, render, save, and reload
-- build A to build B update with an unsaved edit queued before accepting
+## Keep Your Work
 
-## Android
+Your workspace is saved in the current browser and is not synced between devices. Check the save status before closing the app:
 
-Repeat the matrix in Chrome and in the installed app. Include touch drag/cancel, browser download behavior, storage persistence status, and WebGL/WebGPU capability messages.
+- **Saved** means your latest changes are stored in this browser.
+- **Session-only** means they will be lost when you close or reload the app. Export a backup before leaving.
+- A warning beside the save status explains any storage limitation. Open **Workspace** for backup and storage-protection actions.
 
-## Desktop Regression
+Use **Workspace → Export Workspace Backup** to download a copy. On another device, open Shader Studio and choose **Import Workspace Backup…**. Import asks before replacing that device's current workspace.
 
-Run the complete standalone Playwright suite, standalone and UI unit suites, full UI check, ESLint, and relevant rendering tests. Verify desktop Dockview layout persistence before and after crossing the phone breakpoint. Shared UI changes also require the relevant extension and Electron checks.
+## If the Preview Is Slow or Unavailable
 
-## Capability Limits
+- Lower the [resolution](features/resolution.md) or cap the [frame rate](features/performance.md) to reduce graphics load.
+- Close the debug tools when you do not need them.
+- If Slang or WGSL reports that WebGPU is unavailable, try a GLSL example or use a device and browser with WebGPU support.
+- Available recording formats depend on your browser. Use the choices offered in [Export](features/recording.md).
 
-GLSL remains the baseline offline path where WebGL is available. Slang and WGSL require both prepared compiler assets and device WebGPU support. Shader Studio reports those limits; an install alone does not imply WebGPU support or durable user storage.
+See [Standalone Mode](standalone.md) for settings, updates, backups, and feature limits.

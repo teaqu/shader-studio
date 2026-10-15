@@ -253,8 +253,8 @@ Buffer passes use a simpler fixed-size resolution:
 }
 ```
 
-Buffer passes accept `outputFormat` on both backends, as do WebGPU compute
-passes:
+GLSL, Slang, and WGSL buffer passes accept `outputFormat`, as do Slang and WGSL
+compute passes:
 
 | Value | Meaning |
 |---|---|
@@ -262,7 +262,7 @@ passes:
 | `rgba16float` | Explicit four-component 16-bit float storage |
 | `rgba32float` | Explicit four-component 32-bit float storage |
 
-If the requested format cannot be rendered or stored, pipeline creation reports
+If your device cannot use the requested format, Shader Studio reports
 an error rather than silently changing precision. The exceptions are a blended
 pass on a GPU that cannot blend 32-bit floats and a pass with `samples: 4`: both
 store `rgba16float` and show a warning. The `Image` canvas format is
