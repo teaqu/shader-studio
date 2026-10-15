@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, open, readFile, readdir, rename, stat, unlink } from 'node:fs/promises';
+import { mkdir, open, readFile, readdir, rename, rm, stat, unlink } from 'node:fs/promises';
 import * as path from 'node:path';
 
 const MAX_BYTES = 32 * 1024 * 1024;
 const CHUNK_BYTES = 256 * 1024;
 const artifactName = /^recording-[a-f0-9-]+\.(mp4|webm)$/;
+const partialArtifactName = /^recording-[a-f0-9-]+\.(mp4|webm)\.part$/;
+const PARTIAL_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 export interface RecordingArtifact {
   id: string;
@@ -79,6 +81,8 @@ export class McpRecordingArtifacts {
     }
     signal?.throwIfAborted();
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
+    await this.prune();
+    signal?.throwIfAborted();
     const id = randomUUID();
     const filePath = path.join(this.directory, `recording-${id}.${mimeType.slice(6)}`);
     const temporaryPath = `${filePath}.part`;
@@ -114,13 +118,28 @@ export class McpRecordingArtifacts {
   }
 
   private async prune(): Promise<void> {
-    const files = await Promise.all((await readdir(this.directory)).filter(name => artifactName.test(name)).map(async name => {
-      const filePath = path.join(this.directory, name);
-      return { filePath, modified: (await stat(filePath)).mtimeMs };
-    }));
-    files.sort((a, b) => b.modified - a.modified);
-    for (const file of files.slice(10)) {
-      await unlink(file.filePath);
+    const entries = await readdir(this.directory, { withFileTypes: true });
+    const candidates = entries.filter(entry => entry.isFile() && (artifactName.test(entry.name) || partialArtifactName.test(entry.name)));
+    const files = (await Promise.all(candidates.map(async entry => {
+      const filePath = path.join(this.directory, entry.name);
+      try {
+        return { filePath, partial: partialArtifactName.test(entry.name), modified: (await stat(filePath)).mtimeMs };
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          return null;
+        }
+        throw error;
+      }
+    }))).filter(file => file !== null);
+    // Another extension host can be writing in this directory. Only remove
+    // partial transfers old enough to be abandoned, never a recent transfer.
+    const expiredBefore = Date.now() - PARTIAL_MAX_AGE_MS;
+    for (const file of files.filter(file => file.partial && file.modified < expiredBefore)) {
+      await rm(file.filePath, { force: true });
+    }
+    const completed = files.filter(file => !file.partial).sort((a, b) => b.modified - a.modified);
+    for (const file of completed.slice(10)) {
+      await rm(file.filePath, { force: true });
       for (const [id, artifact] of this.artifacts) {
         if (artifact.path === file.filePath) {
           this.artifacts.delete(id);
