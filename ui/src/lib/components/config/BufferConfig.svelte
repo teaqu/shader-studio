@@ -1085,9 +1085,8 @@ return;
     {#if bufferName !== 'common' && passType === 'render' && bufferPassConfig?.outputKind !== 'cubemap'}
       <div class="config-item">
         <h3 class="section-title vertex-shader-title" ondblclick={openVertexShaderInOverlay}>Vertex shader</h3>
-        <VertexSourceControls pass={config as BufferPass | ImagePass} {passSource} {vertexSource} {language} {projectConfig}
+        <VertexSourceControls pass={config as BufferPass | ImagePass} {language} {projectConfig}
           onPathChange={handleVertexPathChange} onCommit={updateConfig} sourcePath={ownedSourcePath} passName={bufferName}
-          vertexSpace={verticesGeometry?.space ?? DEFAULT_VERTEX_SPACE} geometryType={selectedGeometry}
           fileType={vertexFileType} suggestedPath={vertexSuggestedPath} {shaderPath} {postMessage} {onMessage} />
         {#if config.vertex || renderPassConfig?.entryPoints?.vertex}{@render functions('vertex')}{/if}
       </div>

@@ -1159,7 +1159,13 @@ test('desktop pane sizes recover after the window is compressed and expanded', a
   await expect.poll(async () => (await config.boundingBox()).height).toBeGreaterThan(initialConfig.height);
 
   const panes = [explorer, editor, preview, config];
-  const preferred = await Promise.all(panes.map((pane) => pane.boundingBox()));
+  // Dockview may briefly detach a pane after a sash drag. Capture the baseline
+  // only once every pane is attached, before comparing sizes after resize.
+  let preferred;
+  await expect.poll(async () => {
+    preferred = await Promise.all(panes.map((pane) => pane.boundingBox()));
+    return preferred.every(box => box !== null && box.width > 100 && box.height > 100);
+  }).toBe(true);
   await page.setViewportSize({ width: 800, height: 500 });
   await expect.poll(async () => (await explorer.boundingBox()).width).toBeLessThan(preferred[0].width);
   await page.setViewportSize({ width: 1400, height: 900 });
