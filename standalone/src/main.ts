@@ -16,6 +16,8 @@ import { createPwaController } from './pwa';
 function defaultAssets(): WorkspaceFileInfo[] {
   return [
     { name: 'Nebula Texture.png', path: SHADER_STUDIO_DEFAULT_ASSETS.nebulaTexture },
+    { name: 'Random Greyscale.ktx2', path: SHADER_STUDIO_DEFAULT_ASSETS.noiseGreyVolume },
+    { name: 'Random RGBA.ktx2', path: SHADER_STUDIO_DEFAULT_ASSETS.noiseRgbaVolume },
     { name: 'Desert Cubemap.png', path: SHADER_STUDIO_DEFAULT_ASSETS.desertCubemap },
   ].map(({ name, path }) => ({
     name,

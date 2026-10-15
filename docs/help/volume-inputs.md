@@ -4,6 +4,8 @@ A volume texture stores values throughout a 3D grid. Use one for cloud density, 
 
 ## Load a Volume
 
+**Random Greyscale.ktx2** and **Random RGBA.ktx2** are built into Shader Studio in standalone and VS Code. Open **Volumes** and select either one to use 32 × 32 × 32 random noise without downloading a file.
+
 1. In VS Code, put a supported `.ktx2` volume file in your shader workspace. To try the example below, download the [axis-ramp sample](../assets/volume-input/axis-ramp.ktx2) into the same folder as your shader.
 2. Open **Config**, select the pass, and add or configure a channel such as `iChannel0`.
 3. Select **Volumes** and choose the file. You can also enter its path.
@@ -49,7 +51,7 @@ The three sample coordinates run from 0 to 1 across the volume. Read its width, 
 
 ## Sample Volumes
 
-Download these files and select them in **Volumes**:
+The two noise volumes are also available in the built-in list. Download these files to use them as workspace assets:
 
 | Sample | Contents | Suggested settings |
 | --- | --- | --- |
