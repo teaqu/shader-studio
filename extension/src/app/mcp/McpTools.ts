@@ -81,7 +81,11 @@ export async function createMcpServer(application: McpApplication): Promise<McpS
   register('read_storage', 'Read actual GPU storage bytes with element type, stride and frame metadata. WebGPU only. Pause first for a stable simulation snapshot. Maximum 64 KiB per read.', {
     previewId, name: z.string(), start: z.number().int().min(0).default(0), count: z.number().int().min(1).max(1024).default(16),
   }, true);
-  register('get_logs', 'Read recent extension, script console and viewer logs. Use after to continue from a cursor. Logs are bounded and retained only for this session.', {
+  register('start_log_collection', 'Explicitly start collecting extension, script console and viewer logs for a bounded duration. Off by default even when MCP is enabled. Starts a fresh shared collection, clearing earlier logs. Reproduce the problem after starting, then use get_logs.', {
+    duration: z.number().min(1).max(300).default(60).describe('Collection duration in seconds; stops automatically at expiry.'),
+  }, false);
+  register('stop_log_collection', 'Stop collecting logs and return retained entries. get_logs can read the bounded history until collection restarts or MCP is disabled.', {}, false);
+  register('get_logs', 'Read logs captured after start_log_collection; this read never starts collection. Returns collection status and expiry. Use after to continue from a cursor. At most 500 entries are retained in memory; disabling MCP clears them. previewId filters viewer entries and also includes unscoped extension/script logs.', {
     previewId, after: z.number().int().min(0).optional(), limit: z.number().int().min(1).max(200).default(100),
     level: z.enum(['debug', 'info', 'warning', 'error']).optional(),
   }, true);

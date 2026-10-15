@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import { WebSocket, WebSocketServer } from 'ws';
+import { PreviewRegistry } from '../../../app/mcp/PreviewRegistry';
 import { WebSocketTransport } from '../../../app/transport/WebSocketTransport';
 import { ShaderProvider } from '../../../app/ShaderProvider';
 import { WorkspaceFileScanner } from '../../../app/WorkspaceFileScanner';
@@ -216,17 +217,22 @@ suite('WebSocketTransport Test Suite', () => {
     const received: any[] = [];
     transport.onMessage(message => received.push(message));
 
+    const registry = new PreviewRegistry();
+    transport.attachPreviewRegistry(registry);
     (transport as any).wsServer.emit('connection', mockWsClient);
-    assert.ok(
-      (mockWsClient.once as sinon.SinonStub).getCalls().some(call => call.args[0] === 'close'),
-      'connection never registered its preview cleanup handler',
-    );
+    assert.strictEqual(registry.list().length, 1);
     const messageHandler = (mockWsClient.on as sinon.SinonStub)
       .getCalls().find(call => call.args[0] === 'message')?.args[1];
     assert.ok(messageHandler, 'connection never registered a message handler');
     await messageHandler(Buffer.from(JSON.stringify({ type: 'debugModeState', payload: { enabled: true } })));
 
     assert.deepStrictEqual(received, [{ type: 'debugModeState', payload: { enabled: true } }]);
+    const closeHandler = (mockWsClient.on as sinon.SinonStub)
+      .getCalls().find(call => call.args[0] === 'close')?.args[1];
+    assert.ok(closeHandler, 'connection never registered a close handler');
+    closeHandler(1000);
+    assert.deepStrictEqual(registry.list(), []);
+    assert.strictEqual(transport.hasActiveClients(), false);
   });
 
   test('client identification is not forwarded to the messenger handler', async () => {

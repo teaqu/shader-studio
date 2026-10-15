@@ -9,14 +9,48 @@ interface LogEntry {
   previewId?: string;
 }
 
-/** Bounded in-memory diagnostic history; never persisted or sent unsolicited. */
+/** Opt-in, time-bounded diagnostic history; never persisted or sent unsolicited. */
 export class McpLogs {
   private entries: LogEntry[] = [];
   private sequence = 0;
+  private enabled = false;
+  private expiresAt = 0;
+
+  setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+    if (!enabled) {
+      this.expiresAt = 0;
+      this.entries = [];
+    }
+  }
+
+  get collecting(): boolean {
+    return this.enabled && Date.now() < this.expiresAt;
+  }
+
+  start(duration = 60) {
+    if (!this.enabled) {
+      throw new Error('MCP is disabled.');
+    }
+    if (!Number.isFinite(duration) || duration < 1 || duration > 300) {
+      throw new Error('Log collection duration must be between 1 and 300 seconds.');
+    }
+    this.entries = [];
+    this.expiresAt = Date.now() + duration * 1000;
+    return this.read({});
+  }
+
+  stop() {
+    this.expiresAt = 0;
+    return this.read({});
+  }
 
   constructor(private readonly capacity = 500) {}
 
   append(source: LogEntry['source'], level: LogEntry['level'], message: string, previewId?: string): void {
+    if (!this.collecting) {
+      return;
+    }
     this.entries.push({ id: ++this.sequence, timestamp: new Date().toISOString(), source, level, message: message.slice(0, 4096), ...(previewId ? { previewId } : {}) });
     if (this.entries.length > this.capacity) {
       this.entries.shift();
@@ -32,12 +66,16 @@ export class McpLogs {
     const entries = matches.slice(0, limit);
     const hasMore = matches.length > entries.length;
     return {
+      collecting: this.collecting, expiresAt: this.expiresAt ? new Date(this.expiresAt).toISOString() : null,
       entries, nextCursor: hasMore ? entries[entries.length - 1].id : this.sequence, hasMore,
       droppedBeforeCursor: after > 0 && this.entries.length > 0 && after < this.entries[0].id - 1,
     };
   }
 
   recordViewer(previewId: string, message: Record<string, unknown>): void {
+    if (!this.collecting) {
+      return;
+    }
     const levels = { log: 'info', debug: 'debug', warning: 'warning', error: 'error' } as const;
     if (typeof message.type !== 'string' || !Object.hasOwn(levels, message.type)) {
       return;
@@ -58,7 +96,9 @@ export function scriptConsole(scriptPath?: string): Console {
   for (const method of ['log', 'info', 'debug', 'warn', 'error'] as const) {
     wrapped[method] = (...args: unknown[]) => {
       const level = method === 'warn' ? 'warning' : method === 'log' ? 'info' : method;
-      mcpLogs.append('script', level, `${scriptPath ?? 'uniform script'}: ${format(...args)}`);
+      if (mcpLogs.collecting) {
+        mcpLogs.append('script', level, `${scriptPath ?? 'uniform script'}: ${format(...args)}`);
+      }
       // Preserve the script's explicit console call as well as the retained copy.
       // eslint-disable-next-line no-console
       console[method](...args);

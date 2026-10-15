@@ -2207,6 +2207,7 @@ module.exports = Object.freeze({
     await editor.edit(builder => builder.replace(new vscode.Range(document.positionAt(0), document.positionAt(document.getText().length)), text));
     await document.save();
   },
+  "fee7fc1cd77b1b29d9ff11a3fdc6241c5166939f72c51e7d3149bf7cf0a0dcaa": async vscode => vscode.workspace.getConfiguration('shader-studio').update('mcpEnabled', true, vscode.ConfigurationTarget.Global),
   "ff80598fdb6eaa18fe143fb32a13ed61baef87f3e0623e61bd5c9bfad25144ec": async (vscode, paths) => {
         for (const path of paths) {
           await vscode.workspace.fs.delete(vscode.Uri.file(path), { useTrash: false }).then(undefined, () => {});

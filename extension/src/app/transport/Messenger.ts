@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { PreviewRegistry } from '../mcp/PreviewRegistry';
+import { mcpLogs } from '../mcp/McpLogs';
 import { MessageHandler } from "./MessageHandler";
 import { MessageTransport } from "./MessageTransport";
 import { ErrorHandler } from "../ErrorHandler";
@@ -15,7 +16,30 @@ function hasWebview(transport: MessageTransport): transport is WebviewTransportL
 }
 
 export class Messenger {
-  public readonly previews = new PreviewRegistry();
+  private previewRegistry?: PreviewRegistry;
+
+  public get previews(): PreviewRegistry {
+    if (!this.previewRegistry) {
+      throw new Error('MCP preview tracking is disabled.');
+    }
+    return this.previewRegistry;
+  }
+
+  public setMcpEnabled(enabled: boolean): void {
+    if (enabled === Boolean(this.previewRegistry)) {
+      return;
+    }
+    if (enabled) {
+      this.previewRegistry = new PreviewRegistry();
+    } else {
+      this.previewRegistry?.dispose();
+      this.previewRegistry = undefined;
+    }
+    mcpLogs.setEnabled(enabled);
+    for (const transport of this.transports) {
+      transport.attachPreviewRegistry?.(this.previewRegistry);
+    }
+  }
   private compileSequences = new Map<string, number>();
 
   public getCompileSequence(path: string): number | undefined {
@@ -81,12 +105,14 @@ export class Messenger {
   }
 
   public close(): void {
-    this.previews.dispose();
+    this.setMcpEnabled(false);
     this.transports.forEach(transport => transport.close());
   }
 
   public addTransport(transport: MessageTransport): void {
-    transport.attachPreviewRegistry?.(this.previews);
+    if (this.previewRegistry) {
+      transport.attachPreviewRegistry?.(this.previewRegistry);
+    }
     this.transports.push(transport);
     transport.onMessage((message) => this.messageHandler.handleMessage(message));
   }
@@ -94,6 +120,7 @@ export class Messenger {
   public removeTransport(transport: MessageTransport): void {
     const index = this.transports.indexOf(transport);
     if (index > -1) {
+      transport.attachPreviewRegistry?.(undefined);
       this.transports.splice(index, 1);
     }
   }

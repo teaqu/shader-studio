@@ -9,6 +9,7 @@ const state = vi.hoisted(() => ({
   trust: undefined as undefined | (() => void),
   endpoints: [] as { start: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn>; handle: ReturnType<typeof vi.fn>; token: string }[],
   start: vi.fn(async () => 51474),
+  setMcpEnabled: vi.fn(),
   mount: vi.fn(), update: vi.fn(), error: vi.fn(),
   secret: undefined as string | undefined,
   secretStore: vi.fn(),
@@ -63,7 +64,10 @@ vi.mock('../../src/app/ShaderExplorerViewProvider', () => ({ ShaderExplorerViewP
 vi.mock('../../src/app/GlslFileTracker', () => ({ GlslFileTracker: class {} }));
 vi.mock('../../src/app/ShaderCreator', () => ({ ShaderCreator: class {} }));
 vi.mock('../../src/app/transport/Messenger', () => ({ Messenger: class {
-  close() {}
+  setMcpEnabled = state.setMcpEnabled;
+  close() {
+    state.setMcpEnabled(false);
+  }
 } }));
 vi.mock('../../src/app/ErrorHandler', () => ({ ErrorHandler: class {
   dispose() {}
@@ -125,10 +129,12 @@ describe('extension MCP lifecycle', () => {
   it('defaults off, generates a persistent token, mounts, reconfigures and shuts down', async () => {
     const app = create(); await app.settled();
     expect(state.endpoints).toHaveLength(0);
+    expect(state.setMcpEnabled).not.toHaveBeenCalledWith(true);
     state.config.mcpEnabled = true; change(); await app.settled();
     expect(state.secretStore).toHaveBeenCalledWith('shader-studio.mcpToken', expect.stringMatching(/^[a-f0-9]{64}$/));
     expect(state.update).not.toHaveBeenCalled();
     expect(state.endpoints).toHaveLength(1);
+    expect(state.setMcpEnabled).toHaveBeenLastCalledWith(true);
     expect(state.endpoints[0].token).toBe(state.secret);
     const handler = state.mount.mock.calls.at(-1)![0];
     handler('request', 'response');
@@ -139,6 +145,7 @@ describe('extension MCP lifecycle', () => {
     expect(state.endpoints[0].dispose).toHaveBeenCalledOnce();
     state.config.mcpEnabled = false; change(); await app.settled();
     expect(state.endpoints[1].dispose).toHaveBeenCalledOnce();
+    expect(state.setMcpEnabled).toHaveBeenLastCalledWith(false);
     expect(state.mount).toHaveBeenLastCalledWith(undefined);
     app.studio.dispose(); change(); await app.settled();
     expect(state.endpoints).toHaveLength(2);
@@ -146,10 +153,28 @@ describe('extension MCP lifecycle', () => {
   it('starts on startup and after trust is granted, and recovers from listen failures', async () => {
     state.config = { mcpEnabled: true }; state.secret = 'existing-token'; state.trusted = false;
     const app = create(); await app.settled(); expect(state.error).toHaveBeenCalledWith(expect.stringContaining('Trust'));
+    expect(state.setMcpEnabled).not.toHaveBeenCalledWith(true);
     state.trusted = true; state.start.mockRejectedValueOnce(new Error('Port occupied'));
     state.trust!(); await app.settled(); expect(state.error).toHaveBeenCalledWith(expect.stringContaining('Port occupied'));
+    expect(state.setMcpEnabled).toHaveBeenLastCalledWith(false);
+    expect(state.endpoints[0].dispose).toHaveBeenCalledOnce();
     change(); await app.settled(); expect(state.endpoints).toHaveLength(2);
     app.studio.dispose(); expect(state.endpoints[1].dispose).toHaveBeenCalledOnce();
+  });
+  it('keeps tracking off when disabled while a listener is starting', async () => {
+    state.config = { mcpEnabled: true }; state.secret = 'existing-token';
+    let resolveStart!: (port: number) => void;
+    state.start.mockReturnValueOnce(new Promise<number>(resolve => {
+      resolveStart = resolve;
+    }));
+    const app = create(); await vi.waitFor(() => expect(state.start).toHaveBeenCalled());
+    state.config.mcpEnabled = false; change();
+    expect(state.setMcpEnabled).toHaveBeenLastCalledWith(false);
+    resolveStart(51474); await app.settled();
+    expect(state.setMcpEnabled).toHaveBeenLastCalledWith(false);
+    expect(state.mount).toHaveBeenLastCalledWith(undefined);
+    expect(state.endpoints[0].dispose).toHaveBeenCalledOnce();
+    app.studio.dispose();
   });
   it('closes a listener that finishes starting after the extension is disposed', async () => {
     state.config = { mcpEnabled: true }; state.secret = 'existing-token';

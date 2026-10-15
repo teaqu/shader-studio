@@ -5,6 +5,7 @@ import path from 'node:path';
 import { workspace, Uri, type TestDocument } from './vscode';
 import { VscodeMcpApplication } from '../../src/app/mcp/VscodeMcpApplication';
 import { PreviewRegistry } from '../../src/app/mcp/PreviewRegistry';
+import { mcpLogs } from '../../src/app/mcp/McpLogs';
 import { mcpEditGuard } from '../../src/app/mcp/McpEditGuard';
 import type { Messenger } from '../../src/app/transport/Messenger';
 import type { ShaderProvider } from '../../src/app/ShaderProvider';
@@ -48,10 +49,18 @@ beforeEach(() => {
   app = new VscodeMcpApplication({ previews, getCompileSequence: () => sequence } as unknown as Messenger, provider as unknown as ShaderProvider);
 });
 afterEach(() => {
-  previews.dispose(); rmSync(root, { recursive: true, force: true });
+  mcpLogs.setEnabled(false); previews.dispose(); rmSync(root, { recursive: true, force: true });
 });
 
 describe('VS Code MCP file and viewer application', () => {
+  it('only collects logs after the explicit start tool and stops without clearing the result', async () => {
+    mcpLogs.setEnabled(true);
+    expect(await app.call('get_logs', {}, signal())).toMatchObject({ collecting: false, entries: [] });
+    expect(await app.call('start_log_collection', {}, signal())).toMatchObject({ collecting: true });
+    mcpLogs.append('extension', 'info', 'requested');
+    expect(await app.call('stop_log_collection', {}, signal())).toMatchObject({ collecting: false, entries: [{ message: 'requested' }] });
+    expect(await app.call('start_log_collection', { duration: 2 }, signal())).toMatchObject({ collecting: true, entries: [] });
+  });
   it('exposes input snapshots and reports a preview that needs updating', async () => {
     const request = vi.spyOn(previews, 'request');
     const inputs = { scope: 'live-preview', builtins: { iMouse: [1, 2, 3, 4] }, customUniforms: [] };

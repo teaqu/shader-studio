@@ -96,7 +96,8 @@ You do not need to call these tools yourself. This reference explains what your 
 | `get_inputs` | Inspect current live preview inputs and whether a Script pass may overwrite a temporary custom-uniform value |
 | `get_settings` | Read the shader configuration and current preview settings |
 | `update_settings` | Try temporary playback, frame-rate, or uniform settings |
-| `get_diagnostics` / `get_logs` | Read shader errors, warnings, and Shader Studio or Script messages |
+| `get_diagnostics` | Read current shader errors and warnings |
+| `start_log_collection` / `get_logs` / `stop_log_collection` | Explicitly collect and read a bounded diagnostic log |
 | `capture_output` | Capture a PNG of the rendered result |
 | `set_playback` | Pause, resume, seek, or reset the shader |
 | `read_storage` | Inspect a range of values in a Slang or WGSL storage buffer |
@@ -115,6 +116,12 @@ Capturing an image can advance feedback buffers. For stable comparisons of stora
 WebGL `read_feedback` returns the latest published feedback buffer as up to 4,096 RGBA pixels (64 KiB of float data), using a bottom-left origin. Finite samples are JSON numbers; non-finite samples are the strings `NaN`, `Infinity`, or `-Infinity`. WebGPU uses the separate `read_storage` tool for numerical storage inspection.
 
 ## Input Automation and Recordings
+
+MCP preview tracking is active only while MCP is enabled in a trusted workspace. Disabling MCP detaches existing previews, cancels pending requests, and clears collected logs. Enabling it again discovers previews that are already open.
+
+Log collection is off by default, even with MCP enabled. Ask the assistant to call `start_log_collection` before reproducing a problem, then `get_logs` to inspect it. Collection automatically stops after 60 seconds by default; `duration` accepts 1–300 seconds. `stop_log_collection` ends it early. Reads never start or extend collection. One shared collection retains at most 500 messages of up to 4,096 characters each in memory; starting again clears the previous history. Stopped or expired results remain readable until the next start or until MCP is disabled. `previewId` filters viewer messages while still including extension and Script messages. Shader Studio's ordinary output and Script console behavior remain available independently of MCP collection.
+
+Screenshots, timed frames, videos, and input traces are captured only when explicitly requested. Merely enabling MCP or listing previews does not capture them.
 
 Input injection, replay, feedback reads, and video recording always require an explicit `previewId` from `list_previews`. This avoids sending interaction to the wrong preview when several are open. Input events use canonical `pointer_move`, `pointer_down`, `pointer_up`, `key_down`, `key_up`, and `release_all` records (up to 256 events per injection); pointer movement and down events require coordinates, while key events require a key code.
 

@@ -15,7 +15,15 @@ export class WebviewTransport implements MessageTransport {
   private previewIds = new Map<vscode.WebviewPanel, string>();
   private previewCleanups = new Map<vscode.WebviewPanel, () => void>();
 
-  public attachPreviewRegistry(registry: PreviewRegistry): void {
+  public attachPreviewRegistry(registry: PreviewRegistry | undefined): void {
+    if (this.previewRegistry === registry) {
+      return;
+    }
+    for (const cleanup of this.previewCleanups.values()) {
+      cleanup();
+    }
+    this.previewCleanups.clear();
+    this.previewIds.clear();
     this.previewRegistry = registry;
     for (const panel of this.panels) {
       this.registerPreview(panel);

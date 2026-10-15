@@ -26,6 +26,20 @@ describe('MCP automation tools', () => {
     }
   });
 
+  it('advertises opt-in logging and enforces bounded collection duration', async () => {
+    const { client, call } = await fixture();
+    const tools = (await client.listTools()).tools;
+    expect(tools.find(tool => tool.name === 'start_log_collection')?.annotations?.readOnlyHint).toBe(false);
+    expect(tools.find(tool => tool.name === 'get_logs')?.description).toContain('never starts collection');
+    expect((await client.callTool({ name: 'start_log_collection', arguments: {} })).isError).not.toBe(true);
+    expect(call).toHaveBeenLastCalledWith('start_log_collection', { duration: 60 }, expect.any(AbortSignal));
+    for (const duration of [0, 301]) {
+      expect((await client.callTool({ name: 'start_log_collection', arguments: { duration } })).isError).toBe(true);
+    }
+    expect((await client.callTool({ name: 'stop_log_collection', arguments: {} })).isError).not.toBe(true);
+    await client.close();
+  });
+
   it('validates frame jobs and returns their PNGs separately from metadata', async () => {
     const { client, call } = await fixture();
     const started = await client.callTool({ name: 'start_frame_capture', arguments: { previewId: 'one', times: [0, 1], mode: 'reset-and-play', width: 800, height: 450 } });

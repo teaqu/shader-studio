@@ -87,6 +87,8 @@ test('generic MCP edits files and captures both webview and server preview @gpu'
     };
     await expect.poll(async () => normalizedPath((await call('list_previews')).structuredContent.previews[0]?.path)).toBe(normalizedPath(shaderPath));
     const previewId = (await call('list_previews')).structuredContent.previews[0].id;
+    expect((await call('get_logs')).structuredContent).toMatchObject({ collecting: false, entries: [] });
+    expect((await call('start_log_collection', { duration: 300 })).structuredContent.collecting).toBe(true);
     const documentation = await call('read_documentation');
     expect(documentation.structuredContent.topics).toEqual(expect.arrayContaining([
       expect.objectContaining({ topic: 'configuration' }),
@@ -158,8 +160,10 @@ test('generic MCP edits files and captures both webview and server preview @gpu'
     const controls = `void mainImage(out vec4 c, in vec2 p) {
       vec4 state = texelFetch(iChannel0, ivec2(0), 0);
       float held = texelFetch(iChannel1, ivec2(32, 0), 0).r;
+      // The keyboard press row preserves a press even when release and down land between frames.
+      float pressed = texelFetch(iChannel1, ivec2(32, 1), 0).r;
       if (iFrame == 0) state = vec4(0);
-      if (held > 0.5 && state.y < 0.5 && state.z <= 0.0) { state.x += 1.0; state.w = 2.0; }
+      if (pressed > 0.5) { state.x += 1.0; if (state.z <= 0.0) state.w = 2.0; }
       state.w -= 8.0 * iTimeDelta;
       state.z = max(0.0, state.z + state.w * iTimeDelta);
       state.y = held;
@@ -294,6 +298,47 @@ test('generic MCP edits files and captures both webview and server preview @gpu'
     expect(pixel(await call('update_file', { path: bufferPath, text: 'fn mainImage(p: vec2f) -> vec4f { return vec4f(0, 0, 1, 1); }', expectedRevision: bufferRead.revision, previewId, includePreview: true }))).toEqual([0, 0, 255, 255]);
     expect((await call('get_logs', { previewId })).structuredContent.entries.length).toBeGreaterThan(0);
 
+    const stoppedLogs = (await call('stop_log_collection')).structuredContent;
+    expect(stoppedLogs.collecting).toBe(false);
+    expect(stoppedLogs.entries.length).toBeGreaterThan(0);
+    await call('capture_output', { previewId });
+    expect((await call('get_logs')).structuredContent.nextCursor).toBe(stoppedLogs.nextCursor);
+
+    // Toggling MCP reattaches the existing webview and browser without reopening them.
+    browser = await chromium.launch();
+    const togglePage = await browser.newPage();
+    await togglePage.goto(`http://127.0.0.1:${webPort}`);
+    await expect.poll(async () => (await call('list_previews')).structuredContent.previews.some(preview => preview.kind === 'browser' && preview.path)).toBe(true);
+    await vscode.evaluateInHost(async vscode => vscode.workspace.getConfiguration('shader-studio').update('mcpEnabled', false, vscode.ConfigurationTarget.Global));
+    await expect.poll(async () => {
+      try {
+        await fetch(url); return false;
+      } catch {
+        return true;
+      }
+    }).toBe(true);
+    await vscode.evaluateInHost(async vscode => vscode.workspace.getConfiguration('shader-studio').update('mcpEnabled', true, vscode.ConfigurationTarget.Global));
+    await expect.poll(async () => {
+      try {
+        return (await fetch(url)).status;
+      } catch {
+        return 0;
+      }
+    }).toBe(401);
+    const toggled = new Client({ name: 'toggle-agent', version: '1' });
+    await toggled.connect(new StreamableHTTPClientTransport(new URL(url), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }));
+    try {
+      const previews = (await toggled.callTool({ name: 'list_previews', arguments: {} })).structuredContent.previews;
+      expect(previews.map(preview => preview.kind)).toEqual(expect.arrayContaining(['webview', 'browser']));
+      for (const preview of previews) {
+        expect(preview.error).toBeUndefined();
+        expect(preview.path).toBeTruthy();
+      }
+      expect((await toggled.callTool({ name: 'get_logs', arguments: {} })).structuredContent).toMatchObject({ collecting: false, entries: [] });
+    } finally {
+      await toggled.close();
+    }
+
     // Persisted user settings restart MCP after a real extension-host restart.
     await revertFixtureEditors(vscode, directory);
     await client.close();
@@ -312,6 +357,7 @@ test('generic MCP edits files and captures both webview and server preview @gpu'
     const restarted = new Client({ name: 'reconnected-agent', version: '1' });
     await restarted.connect(new StreamableHTTPClientTransport(new URL(url), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }));
     expect((await restarted.listTools()).tools.some(tool => tool.name === 'read_storage')).toBe(true);
+    expect((await restarted.callTool({ name: 'get_logs', arguments: {} })).structuredContent).toMatchObject({ collecting: false, entries: [] });
     await restarted.close();
     await vscode.evaluateInHost(async vscode => vscode.workspace.getConfiguration('shader-studio').update('mcpEnabled', false, vscode.ConfigurationTarget.Global));
     await expect.poll(async () => {

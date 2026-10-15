@@ -31,6 +31,7 @@ export class ShaderStudio {
   private mcpUrl?: string;
   private mcpError?: string;
   private mcpConfiguration: Promise<void> = Promise.resolve();
+  private mcpConfigurationVersion = 0;
   private disposed = false;
   private shaderProvider: ShaderProvider;
   private messenger: Messenger;
@@ -138,6 +139,8 @@ export class ShaderStudio {
   }
 
   private configureMcp(): void {
+    const version = ++this.mcpConfigurationVersion;
+    this.messenger.setMcpEnabled(false);
     this.mcpUrl = undefined;
     this.mcpError = undefined;
     this.mcpConfiguration = this.mcpConfiguration.then(async () => {
@@ -145,26 +148,33 @@ export class ShaderStudio {
       await this.mcpEndpoint?.dispose();
       this.mcpEndpoint = undefined;
       const config = vscode.workspace.getConfiguration('shader-studio');
-      if (this.disposed || !config.get<boolean>('mcpEnabled', false)) {
+      if (this.disposed || version !== this.mcpConfigurationVersion || !config.get<boolean>('mcpEnabled', false)) {
         return;
       }
       if (!vscode.workspace.isTrusted) {
         throw new Error('Trust this workspace before enabling MCP.');
       }
       const token = await this.mcpConnection.getToken();
-      if (this.disposed) {
+      if (this.disposed || version !== this.mcpConfigurationVersion) {
         return;
       }
+      this.messenger.setMcpEnabled(true);
       const endpoint = new LocalMcpEndpoint(new VscodeMcpApplication(this.messenger, this.shaderProvider, vscode.Uri.joinPath(this.context.globalStorageUri, 'mcp-recordings').fsPath), token);
       this.mcpEndpoint = endpoint;
       const port = await endpoint.start(config.get<number>('mcpPort', 51474));
-      if (this.disposed) {
-        await endpoint.dispose(); return;
+      if (this.disposed || version !== this.mcpConfigurationVersion) {
+        this.messenger.setMcpEnabled(false);
+        await endpoint.dispose();
+        this.mcpEndpoint = undefined;
+        return;
       }
       this.webServer.setMcpHandler((req, res) => endpoint.handle(req, res));
       this.mcpUrl = `http://127.0.0.1:${port}/mcp`;
       this.logger.info(`Local MCP ready at http://127.0.0.1:${port}/mcp. See the MCP setup documentation for client authentication.`);
-    }).catch(error => {
+    }).catch(async error => {
+      this.messenger.setMcpEnabled(false);
+      await this.mcpEndpoint?.dispose();
+      this.mcpEndpoint = undefined;
       this.mcpUrl = undefined;
       this.mcpError = `Local MCP could not start: ${error instanceof Error ? error.message : String(error)}`;
       this.logger.error(`Local MCP could not start: ${error}`);

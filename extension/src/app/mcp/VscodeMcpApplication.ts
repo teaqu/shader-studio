@@ -50,6 +50,12 @@ export class VscodeMcpApplication implements McpApplication {
       }
       return this.automation.call(this.messenger.previews.select(args.previewId), operation, args, signal);
     }
+    if (operation === 'start_log_collection') {
+      return mcpLogs.start(args.duration as number | undefined);
+    }
+    if (operation === 'stop_log_collection') {
+      return mcpLogs.stop();
+    }
     if (operation === 'get_logs') {
       return mcpLogs.read(args);
     }

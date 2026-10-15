@@ -4,6 +4,7 @@ import { WebSocket } from 'ws';
 import { WebviewTransport } from '../../src/app/transport/WebviewTransport';
 import { WebSocketTransport } from '../../src/app/transport/WebSocketTransport';
 import { Messenger } from '../../src/app/transport/Messenger';
+import { mcpLogs } from '../../src/app/mcp/McpLogs';
 import { PreviewRegistry } from '../../src/app/mcp/PreviewRegistry';
 import type { ShaderProvider } from '../../src/app/ShaderProvider';
 import type { GlslFileTracker } from '../../src/app/GlslFileTracker';
@@ -21,7 +22,7 @@ vi.mock('../../src/app/transport/ConfigPathConverter', () => ({ ConfigPathConver
 vi.mock('../../src/app/PathResolver', () => ({ PathResolver: class {} }));
 
 afterEach(() => {
-  vi.restoreAllMocks(); vi.useRealTimers();
+  mcpLogs.setEnabled(false); vi.restoreAllMocks(); vi.useRealTimers();
 });
 function panel() {
   let receive: (message: unknown) => void = () => {};
@@ -38,6 +39,14 @@ function panel() {
 }
 
 describe('MCP transport routing', () => {
+  it('does not attach preview tracking while MCP is disabled', () => {
+    const messenger = new Messenger({} as vscode.LogOutputChannel, {} as ErrorHandler);
+    const transport = { attachPreviewRegistry: vi.fn(), send: vi.fn(), close: vi.fn(), onMessage: vi.fn(), hasActiveClients: () => true };
+    messenger.addTransport(transport);
+    expect(transport.attachPreviewRegistry).not.toHaveBeenCalled();
+    messenger.close();
+  });
+
   it('cleans up previews whose panels become unavailable while sending', () => {
     const transport = new WebviewTransport();
     const registry = new PreviewRegistry(); transport.attachPreviewRegistry(registry);
@@ -87,11 +96,44 @@ describe('MCP transport routing', () => {
     transport.removePanel(second.value);
   });
 
+  it('toggles existing panels, cancels pending requests and discards diagnostic collection', async () => {
+    const messenger = new Messenger({} as vscode.LogOutputChannel, {} as ErrorHandler);
+    const transport = new WebviewTransport(); const first = panel();
+    transport.addPanel(first.value); messenger.addTransport(transport);
+    expect(() => messenger.previews).toThrow('disabled');
+    messenger.setMcpEnabled(true);
+    const registry = messenger.previews;
+    expect(registry.list()).toHaveLength(1);
+    messenger.setMcpEnabled(true); expect(messenger.previews).toBe(registry);
+    expect(mcpLogs.read({}).collecting).toBe(false);
+    mcpLogs.start(); first.receive({ type: 'log', payload: 'collected' });
+    expect(mcpLogs.read({}).entries).toHaveLength(1);
+    const pending = registry.request(registry.select(), 'get_state');
+    const rejected = expect(pending).rejects.toThrow('closed');
+    messenger.setMcpEnabled(false); await rejected;
+    expect(registry.list()).toEqual([]);
+    expect(mcpLogs.read({})).toMatchObject({ collecting: false, entries: [] });
+    first.receive({ type: 'log', payload: 'disabled' });
+    expect(mcpLogs.read({}).entries).toEqual([]);
+    const handler = vi.fn(); transport.onMessage(handler);
+    transport.send({ type: 'reset' }); first.receive({ type: 'log', payload: 'ordinary' });
+    expect(first.fake.webview.postMessage).toHaveBeenLastCalledWith({ type: 'reset' });
+    expect(handler).toHaveBeenCalledOnce();
+    messenger.setMcpEnabled(true);
+    expect(messenger.previews).not.toBe(registry);
+    expect(messenger.previews.list()).toHaveLength(1);
+    expect(mcpLogs.read({}).collecting).toBe(false);
+    const nextRegistry = messenger.previews;
+    messenger.removeTransport(transport); expect(nextRegistry.list()).toEqual([]);
+    messenger.close(); transport.close();
+  });
+
   it('attaches the registry to transports and tracks source compile sequences', () => {
     const errors = { setShaderConfig: vi.fn() } as unknown as ErrorHandler;
     const messenger = new Messenger({} as vscode.LogOutputChannel, errors);
     const transport = { attachPreviewRegistry: vi.fn(), send: vi.fn(), close: vi.fn(), onMessage: vi.fn(), hasActiveClients: () => true };
     messenger.addTransport(transport);
+    messenger.setMcpEnabled(true);
     expect(transport.attachPreviewRegistry).toHaveBeenCalledWith(messenger.previews);
     transport.onMessage.mock.calls[0][0]({ type: 'log' }); expect(mocks.message).toHaveBeenCalled();
     messenger.send({ type: 'shaderSource', path: '/main', compileSequence: 4, config: {} });
@@ -124,14 +166,22 @@ describe('MCP transport routing', () => {
       resolveListening = resolve;
     });
     const transport = new WebSocketTransport(0, {} as ShaderProvider, {} as GlslFileTracker, {} as vscode.ExtensionContext, '/extension', resolveListening);
-    const registry = new PreviewRegistry(); transport.attachPreviewRegistry(registry);
+    const registry = new PreviewRegistry();
     transport.setAllowedWebServerPort(12345);
     const client = new WebSocket(`ws://127.0.0.1:${await listening}`, { origin: 'http://127.0.0.1:12345' });
     try {
       await new Promise<void>((resolve, reject) => {
         client.once('open', resolve); client.once('error', reject);
       });
+      expect(registry.list()).toEqual([]);
+      transport.attachPreviewRegistry(registry);
       expect(registry.list()[0].kind).toBe('browser');
+      transport.attachPreviewRegistry(undefined); expect(registry.list()).toEqual([]);
+      transport.attachPreviewRegistry(registry); transport.attachPreviewRegistry(registry);
+      expect(registry.list()).toHaveLength(1);
+      const replacement = new PreviewRegistry(); transport.attachPreviewRegistry(replacement);
+      expect(registry.list()).toEqual([]); expect(replacement.list()).toHaveLength(1);
+      transport.attachPreviewRegistry(registry); expect(replacement.list()).toEqual([]);
       const handler = vi.fn(); transport.onMessage(handler);
       const received = new Promise<unknown>(resolve => client.once('message', data => {
         const request = JSON.parse(data.toString());

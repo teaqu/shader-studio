@@ -1,5 +1,5 @@
 export interface MessageTransport {
-  attachPreviewRegistry?(registry: import('../mcp/PreviewRegistry').PreviewRegistry): void;
+  attachPreviewRegistry?(registry: import('../mcp/PreviewRegistry').PreviewRegistry | undefined): void;
   // Transport payloads are a versioned UI protocol shared with independently
   // deployed webviews; command-specific validation happens at each handler.
   send(message: any): void;

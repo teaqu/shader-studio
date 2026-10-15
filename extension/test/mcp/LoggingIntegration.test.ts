@@ -1,11 +1,14 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import type * as vscode from 'vscode';
 import { Logger } from '../../src/app/services/Logger';
 import { ScriptEvaluator } from '../../src/app/ScriptEvaluator';
 import { mcpLogs } from '../../src/app/mcp/McpLogs';
 
+afterEach(() => mcpLogs.setEnabled(false));
+
 describe('MCP diagnostic logging', () => {
   it('retains extension levels and script console output without changing script results', () => {
+    mcpLogs.setEnabled(true); mcpLogs.start();
     const output = { info: vi.fn(), debug: vi.fn(), trace: vi.fn(), warn: vi.fn(), error: vi.fn() };
     Logger.initialize(output as unknown as vscode.LogOutputChannel);
     const logger = Logger.getInstance();
