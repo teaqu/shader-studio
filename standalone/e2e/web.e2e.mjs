@@ -1095,17 +1095,21 @@ test('desktop pane sizes recover after the window is compressed and expanded', a
   const explorerBoundary = initialExplorer.x + initialExplorer.width;
   const sashes = page.locator('.standalone-dockview .dv-sash');
   let explorerSash;
+  let explorerSashLocator;
   let explorerSashDistance = Infinity;
   for (let index = 0; index < await sashes.count(); index += 1) {
     const candidate = await sashes.nth(index).boundingBox();
     const distance = candidate ? Math.abs(candidate.x + candidate.width / 2 - explorerBoundary) : Infinity;
     if (candidate && candidate.height > candidate.width && distance < explorerSashDistance) {
       explorerSash = candidate;
+      explorerSashLocator = sashes.nth(index);
       explorerSashDistance = distance;
     }
   }
   expect(explorerSash).toBeTruthy();
-  await page.mouse.move(explorerSash.x + explorerSash.width / 2, explorerSash.y + explorerSash.height / 2);
+  await explorerSashLocator.hover();
+  explorerSash = await explorerSashLocator.boundingBox();
+  expect(explorerSash).not.toBeNull();
   await page.mouse.down();
   await page.mouse.move(explorerSash.x + explorerSash.width / 2 + 170, explorerSash.y + explorerSash.height / 2, { steps: 20 });
   await page.mouse.up();
@@ -1121,33 +1125,45 @@ test('desktop pane sizes recover after the window is compressed and expanded', a
   const initialToolGroup = await toolGroup.boundingBox();
   const toolBoundary = initialToolGroup.y;
   let toolSash;
+  let toolSashLocator;
   let toolSashDistance = Infinity;
   for (let index = 0; index < await sashes.count(); index += 1) {
     const candidate = await sashes.nth(index).boundingBox();
     const distance = candidate ? Math.abs(candidate.y + candidate.height / 2 - toolBoundary) : Infinity;
     if (candidate && candidate.width > candidate.height && distance < toolSashDistance) {
       toolSash = candidate;
+      toolSashLocator = sashes.nth(index);
       toolSashDistance = distance;
     }
   }
   expect(toolSash).toBeTruthy();
-  await page.mouse.move(toolSash.x + toolSash.width / 2, toolSash.y + toolSash.height / 2);
+  // The panel headers can finish reflowing after Config opens. Hover waits for
+  // the sash to be stable so the drag cannot grab a tab at an old coordinate.
+  await toolSashLocator.hover();
+  toolSash = await toolSashLocator.boundingBox();
+  expect(toolSash).not.toBeNull();
   await page.mouse.down();
   await page.mouse.move(toolSash.x + toolSash.width / 2, toolSash.y + toolSash.height / 2 - 120, { steps: 20 });
   await page.mouse.up();
   await expect.poll(async () => (await config.boundingBox()).height).toBeGreaterThan(initialConfig.height);
 
   const panes = [explorer, editor, preview, config];
-  const preferred = await Promise.all(panes.map((pane) => pane.boundingBox()));
+  const preferred = [];
+  for (const pane of panes) {
+    await expect(pane).toBeVisible();
+    const bounds = await pane.boundingBox();
+    expect(bounds, 'every pane must have a visible size before compression').not.toBeNull();
+    preferred.push(bounds);
+  }
   await page.setViewportSize({ width: 800, height: 500 });
   await expect.poll(async () => (await explorer.boundingBox()).width).toBeLessThan(preferred[0].width);
   await page.setViewportSize({ width: 1400, height: 900 });
 
   for (const [pane, expected] of panes.map((pane, index) => [pane, preferred[index]])) {
-    await expect.poll(async () => Math.abs((await pane.boundingBox()).width - expected.width)).toBeLessThan(3);
-    await expect.poll(async () => Math.abs((await pane.boundingBox()).height - expected.height)).toBeLessThan(3);
-    await expect.poll(async () => (await pane.boundingBox()).width).toBeGreaterThan(100);
-    await expect.poll(async () => (await pane.boundingBox()).height).toBeGreaterThan(100);
+    await expect.poll(async () => Math.abs(((await pane.boundingBox())?.width ?? Infinity) - expected.width)).toBeLessThan(3);
+    await expect.poll(async () => Math.abs(((await pane.boundingBox())?.height ?? Infinity) - expected.height)).toBeLessThan(3);
+    await expect.poll(async () => ((await pane.boundingBox())?.width ?? 0)).toBeGreaterThan(100);
+    await expect.poll(async () => ((await pane.boundingBox())?.height ?? 0)).toBeGreaterThan(100);
   }
 });
 
