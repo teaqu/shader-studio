@@ -104,6 +104,7 @@ test.describe('WGSL inference through the native VS Code editor @gpu', () => {
       await focusNativeEditor(vscode, shaderPath, source.indexOf('normalize(uv)') + 'normalize(uv).'.length);
       await vscode.evaluateInHost(async (vscode) => vscode.commands.executeCommand('editor.action.triggerSuggest'));
       const widget = vscode.window.locator('.suggest-widget');
+      await expect(widget, 'member suggestions must be open before typing the filter').toBeVisible({ timeout: 30_000 });
       await vscode.window.keyboard.type('y', { delay: 80 });
       const yx = widget.locator('.label-name').filter({ hasText: /^yx$/ }).first();
       await expect(yx, 'normalize(uv). never produced inferred vector members').toBeVisible({ timeout: 30_000 });
