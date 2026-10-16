@@ -32,11 +32,52 @@ async function fileAction(container: HTMLElement, kind: 'create' | 'select') {
   if (direct) {
     await fireEvent.click(direct); return;
   }
-  await fireEvent.click(within(main).getByRole('button', { name: 'Change…' }));
+  await fireEvent.click(within(main).getByRole('button', { name: 'Choose shader file' }));
   await fireEvent.click(document.querySelector(`[role="dialog"] .${kind}-file-btn`)!);
 }
 
 describe('BufferConfig', () => {
+  it.each([false, true])('opens a buffer with overlay visible=%s', async overlay => {
+    setEditorOverlayVisible(overlay);
+    setOverlayActiveFile('Image');
+    const onOpenInNewTab = vi.fn();
+    const view = render(BufferConfig, { bufferName: 'BufferA', config: { path: 'a.glsl' },
+      onUpdate: vi.fn(), getWebviewUri: () => undefined, onOpenInNewTab });
+    await fireEvent.click(view.getByRole('button', { name: 'Open editor' }));
+    if (overlay) {
+      expect(getOverlayActiveFile()).toBe('BufferA');
+      expect(onOpenInNewTab).not.toHaveBeenCalled();
+    } else {
+      expect(onOpenInNewTab).toHaveBeenCalledExactlyOnceWith('BufferA', 'active');
+    }
+    setEditorOverlayVisible(false);
+    setOverlayActiveFile('Image');
+  });
+
+  it('disables opening a buffer without a shader file', () => {
+    const view = render(BufferConfig, { bufferName: 'BufferA', config: { path: '' },
+      onUpdate: vi.fn(), getWebviewUri: () => undefined });
+    expect(view.getByRole('button', { name: 'Open editor' })).toBeDisabled();
+  });
+
+  it('applies a newly created buffer file returned by the host', async () => {
+    const handlers: Array<(event: MessageEvent) => void> = [];
+    const postMessage = vi.fn();
+    const onUpdate = vi.fn();
+    const view = render(BufferConfig, { bufferName: 'BufferA', config: { path: '' },
+      onUpdate, getWebviewUri: () => undefined, postMessage, onMessage: handler => handlers.push(handler) });
+    await tick();
+    await fileAction(view.container, 'create');
+    await tick();
+    const requestId = postMessage.mock.calls.at(-1)![0].payload.requestId;
+    for (const handler of handlers) {
+      handler({ data: { type: 'fileSelected', payload: { requestId, path: 'created.glsl' } } } as MessageEvent);
+    }
+    await tick();
+    expect(onUpdate).toHaveBeenCalledWith('BufferA', expect.objectContaining({ path: 'created.glsl' }));
+    expect(view.getByRole('button', { name: 'Choose shader file' })).toHaveTextContent('created.glsl');
+  });
+
   it.each([undefined, 64])('converts render output to cubemap and back (face size %s)', async faceSize => {
     const onUpdate = vi.fn();
     const view = render(BufferConfig, { bufferName: 'Sky', language: 'slang',
@@ -72,7 +113,7 @@ describe('BufferConfig', () => {
       config: { path: '' }, onUpdate: vi.fn(), getWebviewUri: () => undefined, postMessage: vi.fn() });
     const main = getMainPathConfig(view.container);
     expect(main.querySelector('.file-row .insert-file-btn')).toBeNull();
-    await fireEvent.click(within(main).getByRole('button', { name: 'Change…' }));
+    await fireEvent.click(within(main).getByRole('button', { name: 'Choose shader file' }));
     expect(document.querySelector('[role="dialog"] .create-file-btn')).not.toBeNull();
     expect(main.querySelector('.file-row select[aria-label="Insert mode"]')).toBeNull();
   });
@@ -186,6 +227,25 @@ describe('BufferConfig', () => {
       bufferName: 'Image', config: { inputs: {} }, onUpdate: vi.fn(), getWebviewUri: () => undefined, isImagePass: true,
     });
     expect(image.container.querySelector('[aria-label="Output format"]')).toBeNull();
+  });
+
+  it.each(['glsl', 'slang', 'wgsl'] as const)('places Vertex shader last for %s Image and buffer passes', language => {
+    for (const isImagePass of [true, false]) {
+      const view = render(BufferConfig, {
+        bufferName: isImagePass ? 'Image' : 'BufferA', isImagePass, language,
+        config: isImagePass ? { inputs: {} } : { path: `a.${language}`, inputs: {} },
+        onUpdate: vi.fn(), getWebviewUri: () => undefined,
+      });
+      const titles = Array.from(view.container.querySelectorAll('.section-title')).map(title => title.textContent);
+      expect(titles).toEqual([
+        ...(language !== 'glsl' ? ['Fragment shader'] : []),
+        ...(!isImagePass ? ['Channels'] : []),
+        'Geometry', 'Rendering', 'Resolution',
+        ...(!isImagePass ? ['Output'] : []),
+        'Vertex shader',
+      ]);
+      view.unmount();
+    }
   });
 
   it('opens the configured vertex shader in VS Code when overlay is closed', async () => {
@@ -373,7 +433,7 @@ describe('BufferConfig', () => {
       });
 
       const sectionTitles = Array.from(container.querySelectorAll('.section-title')).map((title) => title.textContent);
-      expect(sectionTitles).toEqual(['Vertex shader', 'Channels', 'Geometry', 'Rendering', 'Resolution', 'Output']);
+      expect(sectionTitles).toEqual(['Channels', 'Geometry', 'Rendering', 'Resolution', 'Output', 'Vertex shader']);
     });
   });
 
@@ -432,16 +492,17 @@ describe('BufferConfig', () => {
       });
 
       const mainPathConfig = getMainPathConfig(container);
-      await fireEvent.click(within(mainPathConfig).getByRole('button', { name: 'Change…' }));
+      await fireEvent.click(within(mainPathConfig).getByRole('button', { name: 'Choose shader file' }));
       expect(document.querySelector('[role="dialog"] .create-file-btn')).toBeTruthy();
-      // Path input should also be visible alongside the create button
-      expect(mainPathConfig.querySelector('.config-input')).toBeTruthy();
+      // Manual path entry remains available inside the picker.
+      await fireEvent.click(within(mainPathConfig).getByText('Enter a path…'));
+      expect(within(document.querySelector('[role="dialog"]') as HTMLElement).getByLabelText('Shader file path')).toBeVisible();
     });
 
     it('should not show create file button when path has a value', () => {
       const config: BufferPass = { path: 'existing.glsl', inputs: {} };
 
-      const { container, queryByText, getByDisplayValue } = render(BufferConfig, {
+      const { container } = render(BufferConfig, {
         bufferName: 'BufferA',
         config,
         onUpdate: mockOnUpdate,
@@ -451,7 +512,7 @@ describe('BufferConfig', () => {
       });
 
       expect(container.querySelector('.create-file-btn')).toBeNull();
-      expect(getByDisplayValue('existing.glsl')).toBeTruthy();
+      expect(container.querySelector('.picker-button')).toHaveTextContent('existing.glsl');
     });
 
     it('should not show create file button for Image pass', () => {
@@ -604,7 +665,7 @@ describe('BufferConfig', () => {
         postMessage: mockPostMessage,
       });
 
-      await fireEvent.click(within(getMainPathConfig(container)).getByRole('button', { name: 'Change…' }));
+      await fireEvent.click(within(getMainPathConfig(container)).getByRole('button', { name: 'Choose shader file' }));
       expect(document.querySelector('[role="dialog"] .select-file-btn')).toBeTruthy();
     });
 
@@ -632,7 +693,7 @@ describe('BufferConfig', () => {
         postMessage: mockPostMessage,
       });
 
-      await fireEvent.click(within(getMainPathConfig(container)).getByRole('button', { name: 'Change…' }));
+      await fireEvent.click(within(getMainPathConfig(container)).getByRole('button', { name: 'Choose shader file' }));
       await fireEvent.click(document.querySelector('[role="dialog"] .select-file-btn')!);
       expect(mockPostMessage).toHaveBeenCalledOnce();
       expect(mockPostMessage.mock.calls[0][0].type).toBe('selectFile');
@@ -653,7 +714,7 @@ describe('BufferConfig', () => {
         shaderPath: '/shaders/image.slang',
       });
 
-      await fireEvent.click(within(getMainPathConfig(container)).getByRole('button', { name: 'Change…' }));
+      await fireEvent.click(within(getMainPathConfig(container)).getByRole('button', { name: 'Choose shader file' }));
       await fireEvent.click(document.querySelector('[role="dialog"] .select-file-btn')!);
 
       expect(mockPostMessage).toHaveBeenCalledWith({
@@ -682,8 +743,8 @@ describe('BufferConfig', () => {
       });
 
       const mainPathConfig = getMainPathConfig(container);
-      expect(mainPathConfig.querySelector('.config-input')).toHaveAttribute('placeholder', 'image.computea.slang');
-      await fireEvent.click(within(mainPathConfig).getByRole('button', { name: 'Change…' }));
+      expect(within(mainPathConfig).getByText('Choose file…')).toBeVisible();
+      await fireEvent.click(within(mainPathConfig).getByRole('button', { name: 'Choose shader file' }));
       await fireEvent.click(document.querySelector('[role="dialog"] .create-file-btn')!);
 
       expect(mockPostMessage).toHaveBeenCalledWith({
@@ -711,16 +772,16 @@ describe('BufferConfig', () => {
         passType: 'compute',
       });
 
-      await fireEvent.click(within(getMainPathConfig(container)).getByRole('button', { name: 'Change…' }));
+      await fireEvent.click(within(getMainPathConfig(container)).getByRole('button', { name: 'Choose shader file' }));
       await fireEvent.click(document.querySelector('[role="dialog"] .select-file-btn')!);
 
       expect(mockPostMessage.mock.calls[0][0].payload.fileType).toBe('glsl-compute');
     });
 
-    it('should show path input instead of create button for common buffer with existing path', () => {
+    it('shows the file summary instead of create for common with an existing path', () => {
       const config: BufferPass = { path: 'myshader.common.glsl', inputs: {} };
 
-      const { getByDisplayValue, queryByText } = render(BufferConfig, {
+      const { getAllByText, queryByText } = render(BufferConfig, {
         bufferName: 'common',
         config,
         onUpdate: mockOnUpdate,
@@ -730,7 +791,7 @@ describe('BufferConfig', () => {
       });
 
       expect(queryByText(/Create/)).toBeNull();
-      expect(getByDisplayValue('myshader.common.glsl')).toBeTruthy();
+      expect(getAllByText('myshader.common.glsl')[0]).toBeVisible();
     });
   });
 
@@ -744,7 +805,7 @@ describe('BufferConfig', () => {
       });
 
       const sectionTitles = Array.from(container.querySelectorAll('.section-title')).map((title) => title.textContent);
-      expect(sectionTitles).toEqual(['Vertex shader', 'Channels', 'Geometry', 'Rendering', 'Depth testing', 'Resolution', 'Output']);
+      expect(sectionTitles).toEqual(['Channels', 'Geometry', 'Rendering', 'Depth testing', 'Resolution', 'Output', 'Vertex shader']);
     });
 
     it('defaults renderable passes to fullscreen and serializes a selected sphere', async () => {
@@ -1301,7 +1362,7 @@ describe('BufferConfig', () => {
         }
         expect(rendering.querySelector('details')!.contains(view.getByLabelText('Depth test'))).toBe(true);
         expect(Array.from(view.container.querySelectorAll('.section-title')).map((title) => title.textContent).filter((title) => title !== 'Channels'))
-          .toEqual(bufferName === 'Image' ? ['Vertex shader', 'Geometry', 'Rendering', 'Depth testing', 'Resolution'] : ['Vertex shader', 'Geometry', 'Rendering', 'Depth testing', 'Resolution', 'Output']);
+          .toEqual(bufferName === 'Image' ? ['Geometry', 'Rendering', 'Depth testing', 'Resolution', 'Vertex shader'] : ['Geometry', 'Rendering', 'Depth testing', 'Resolution', 'Output', 'Vertex shader']);
       });
 
       it('hides the depth section for fullscreen geometry and restores it for a mesh', async () => {
@@ -1750,13 +1811,15 @@ describe('BufferConfig', () => {
     it('should update config when path is changed', async () => {
       const config: BufferPass = { path: 'old.glsl', inputs: {} };
 
-      const { getByDisplayValue, getByLabelText } = render(BufferConfig, {
+      const { getByDisplayValue, getByRole } = render(BufferConfig, {
         bufferName: 'BufferA',
         config,
         onUpdate: mockOnUpdate,
         getWebviewUri: mockGetWebviewUri,
       });
 
+      await fireEvent.click(getByRole('button', { name: 'Choose shader file' }));
+      await fireEvent.click(document.querySelector('.chooser-path summary')!);
       const pathInput = getByDisplayValue('old.glsl');
       await fireEvent.input(pathInput, { target: { value: 'new.glsl' } });
 
@@ -1802,13 +1865,15 @@ describe('BufferConfig', () => {
     it('should set pathInputFocused on focus and blur', async () => {
       const config: BufferPass = { path: 'test.glsl', inputs: {} };
 
-      const { getByDisplayValue } = render(BufferConfig, {
+      const { getByDisplayValue, getByRole } = render(BufferConfig, {
         bufferName: 'BufferA',
         config,
         onUpdate: mockOnUpdate,
         getWebviewUri: mockGetWebviewUri,
       });
 
+      await fireEvent.click(getByRole('button', { name: 'Choose shader file' }));
+      await fireEvent.click(document.querySelector('.chooser-path summary')!);
       const pathInput = getByDisplayValue('test.glsl');
       await fireEvent.focus(pathInput);
       // After focus, typing should be possible without being overridden

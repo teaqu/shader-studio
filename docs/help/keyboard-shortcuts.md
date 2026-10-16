@@ -11,7 +11,7 @@
 
 ## Editor Overlay
 
-Standard VS Code/Monaco shortcuts apply. Additional shortcuts:
+Use the usual editor shortcuts for selecting text, copying, pasting, and undoing edits. Additional shortcuts:
 
 | Shortcut | Action |
 |----------|--------|

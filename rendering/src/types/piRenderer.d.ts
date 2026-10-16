@@ -145,6 +145,7 @@ export interface PiTexture {
   mObjectID: WebGLTexture;
   mXres: number;
   mYres: number;
+  mZres?: number;
   mFormat: number;
   mType: number;
   mFilter: number;

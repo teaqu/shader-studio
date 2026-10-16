@@ -2,7 +2,7 @@
 
 ## Preview Is Blank
 
-- Confirm your shader has the correct signature: `void mainImage(out vec4 fragColor, in vec2 fragCoord)` for GLSL, `float4 mainImage(float2 fragCoord)` for Slang, or `fn mainImage(coord: vec2f) -> vec4f` for WGSL
+- For a Built-in shader, confirm the signature: `void mainImage(out vec4 fragColor, in vec2 fragCoord)` for GLSL, `float4 mainImage(float2 fragCoord)` for Slang, or `fn mainImage(coord: vec2f) -> vec4f` for WGSL. For a Native Slang or WGSL shader, select the intended fragment function in **Config → Fragment shader**; `mainImage` is not required.
 - Check the error tooltip near the play/pause button — a red indicator means compilation failed
 - Try closing and reopening the preview panel
 - Try **Refresh** from the options menu

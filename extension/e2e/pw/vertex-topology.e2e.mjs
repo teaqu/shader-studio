@@ -205,6 +205,10 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
     });
 
     test('edits vertices, blend, depth and cull in the config panel, keeps them after reload, and restores vertices fields after a mesh', async ({ vscode }) => {
+      // This full edit/reload/mesh journey uses the configured integration budget.
+      // CI spent 86s before reload, so the file's 90s cap cut the existing 30s
+      // cold-compiler pixel wait to 4s even though the renderer was progressing.
+      test.setTimeout(180_000);
       rmSync(fixtureDir, { recursive: true, force: true });
       mkdirSync(fixtureDir, { recursive: true });
       writeFileSync(shaderPath, IMAGE[language]);

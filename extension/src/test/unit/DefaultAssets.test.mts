@@ -14,7 +14,7 @@ import { FileDialogHandler } from '../../app/handlers/FileDialogHandler.js';
 import { ConfigPathConverter } from '../../app/transport/ConfigPathConverter.js';
 import { WebSocketTransport } from '../../app/transport/WebSocketTransport.js';
 import { ShaderProvider } from '../../app/ShaderProvider.js';
-import { resolveDefaultAssetPath } from '../../app/DefaultAssets.js';
+import { defaultAssetFiles, resolveDefaultAssetPath } from '../../app/DefaultAssets.js';
 import { PathResolver } from '../../app/PathResolver.js';
 import { WorkspaceFileScanner } from '../../app/WorkspaceFileScanner.js';
 import type { Logger } from '../../app/services/Logger.js';
@@ -59,6 +59,19 @@ describe('VS Code default images', () => {
     expect(files).toHaveLength(fails ? 2 : 3);
     expect(files.slice(0, 2)).toEqual(assets.map(([uri, filename]) => expect.objectContaining({ workspacePath: uri, thumbnailUri: convert(path.join(extensionRoot, 'ui-dist', 'assets', filename)), isSameDirectory: false })));
   });
+  it('lists the random volumes and resolves their stable paths for VS Code', async () => {
+    const files = defaultAssetFiles(['ktx2'], extensionRoot, convert);
+    expect(files.map(file => file.workspacePath)).toEqual([
+      'shader-studio://volumes/noise-grey', 'shader-studio://volumes/noise-rgba',
+    ]);
+    for (const file of files) {
+      const message = { type: 'shaderSource', path: '/project/main.glsl', config: { version: '1.0' as const, passes: { Image: { inputs: { iChannel0: { type: 'volume' as const, path: file.workspacePath } } } } } };
+      const result = await ConfigPathConverter.processConfigPaths(message, webview);
+      expect(result.config.passes.Image?.inputs?.iChannel0).toEqual({ type: 'volume', path: file.workspacePath, resolved_path: file.thumbnailUri });
+      expect(file.thumbnailUri).toMatch(/ui-dist[/\\]assets[/\\]noise-(grey|rgba)\.ktx2$/);
+    }
+  });
+
   it('leaves unknown assets and missing extension installations unresolved', () => {
     expect(resolveDefaultAssetPath('shader-studio://textures/unknown')).toBeNull();
     expect(resolveDefaultAssetPath('./local.png')).toBeNull();

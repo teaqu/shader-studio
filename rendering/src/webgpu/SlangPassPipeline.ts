@@ -53,6 +53,7 @@ export interface SlangChannelResource {
   /** Current source texture dimensions, used by dynamic cover-channel compute dispatch. */
   width?: number;
   height?: number;
+  depth?: number;
 }
 
 // Buffer (texture-output) passes render to float textures so feedback state

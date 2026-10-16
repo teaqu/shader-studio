@@ -181,6 +181,8 @@ export class BufferConfig {
       case 'cubemap':
         // Cubemaps use the same path and sampler options as textures.
         return this.validateTextureInput(candidate);
+      case 'volume':
+        return this.validateVolumeInput(candidate);
       case 'video':
         return this.validateVideoInput(candidate);
       case 'system-audio':
@@ -196,6 +198,12 @@ export class BufferConfig {
       default:
         return false;
     }
+  }
+
+  private validateVolumeInput(input: Record<string, unknown>): boolean {
+    return typeof input.path === 'string' && input.path.length > 0
+          && (input.filter === undefined || input.filter === 'linear' || input.filter === 'nearest')
+          && (input.wrap === undefined || input.wrap === 'repeat' || input.wrap === 'clamp');
   }
 
   private validateScreenInput(input: Record<string, unknown>): boolean {

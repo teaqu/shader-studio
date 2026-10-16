@@ -29,11 +29,13 @@ for (const [language, execution] of [['glsl', 'render'], ['slang', 'render'], ['
     if (execution === 'compute') {
 await page.getByLabel('Cubemap execution').selectOption('compute');
 }
-    await page.getByRole('button', { name: 'Change…' }).first().click();
+    await page.getByRole('button', { name: 'Choose shader file' }).first().click();
     page.once('dialog', dialog => dialog.accept(`direction-cube.${language}`));
-    await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: 'Create', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: 'Create file…', exact: true }).click();
     const canvas = preview.locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
-    await expect.poll(() => centerPixel(canvas)).toEqual([255, 128, 128, 255]);
+    // Slang startup can exceed the default 5s poll: CI traces render the expected
+    // bytes at about 6s. Use the existing shader-compilation budget for first output.
+    await expect.poll(() => centerPixel(canvas), { timeout: 30_000 }).toEqual([255, 128, 128, 255]);
     const saved = JSON.parse((await workspace(page))['/shaders/direction.sha.json']);
     expect(saved.passes.Cubemap).toMatchObject({ outputKind: 'cubemap', faceSize: 32 });
     expect((await workspace(page))[`/shaders/direction-cube.${language}`]).toContain(execution === 'compute' ? 'mainCompute' : 'mainCubemap');
@@ -46,7 +48,8 @@ await page.getByLabel('Cubemap execution').selectOption('compute');
     await expect.poll(() => centerPixel(canvas)).toEqual([255, 128, 128, 255]);
     await page.reload();
     const reloadedCanvas = page.getByTestId('web-preview').locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
-    await expect.poll(() => centerPixel(reloadedCanvas)).toEqual([255, 128, 128, 255]);
+    // Reload creates a fresh compiler/device; it needs the same startup budget.
+    await expect.poll(() => centerPixel(reloadedCanvas), { timeout: 30_000 }).toEqual([255, 128, 128, 255]);
     await page.locator('[data-tab-name="Cubemap"]').click();
     await expect(page.getByLabel('Cubemap face size')).toHaveValue('32');
     await expect(page.getByLabel('Output kind')).toHaveValue('cubemap');

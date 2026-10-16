@@ -101,7 +101,7 @@ export class RenderingEngine implements RenderingEngineInterface {
     this.renderer = piRenderer();
     this.renderer.Initialize(this.gl);
     this.shaderCompiler = new ShaderCompiler(this.renderer, this.gl);
-    this.resourceManager = new ResourceManager(new WebGLTextureBackend(this.renderer));
+    this.resourceManager = new ResourceManager(new WebGLTextureBackend(this.renderer, this.gl));
     this.bufferManager = new BufferManager(this.renderer);
     this.timeManager = new TimeManager();
     this.keyboardManager = new KeyboardManager();

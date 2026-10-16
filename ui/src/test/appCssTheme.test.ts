@@ -16,6 +16,12 @@ const channelControlThemeProperties = [
   '--vscode-input-border',
   '--vscode-focusBorder',
   '--vscode-badge-background',
+  '--vscode-tab-activeForeground',
+  '--vscode-tab-inactiveForeground',
+  '--vscode-tab-activeBackground',
+  '--vscode-tab-inactiveBackground',
+  '--vscode-tab-hoverForeground',
+  '--vscode-tab-hoverBackground',
 ];
 
 const bufferTabThemeProperties = [

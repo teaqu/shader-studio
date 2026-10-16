@@ -99,6 +99,12 @@ export class WebGPUChannels {
           width: handle.width,
           height: handle.height,
         });
+      } else if (channel.kind === "volume") {
+        const handle = this.host.session.resourceManager?.getVolumeTexture(channel.path, channel);
+        if (!handle) {
+          return null;
+        }
+        resources.push({ slot: channel.slot, textureView: handle.view, sampler: this.getChannelSampler(channel), width: handle.width, height: handle.height, depth: handle.depth });
       } else if (channel.kind === "cubemap") {
         const handle = this.host.session.resourceManager?.getCubemapTexture(channel.path);
         if (!handle) {
@@ -174,6 +180,10 @@ export class WebGPUChannels {
         const handle = this.host.session.resourceManager?.getImageTextureCache?.()[getSlangTextureIdentity(channel)];
         channelLoaded[channel.slot] = handle ? 1 : 0;
         this.setChannelResolution(channelResolution, channel.slot, handle?.width, handle?.height);
+      } else if (channel.kind === "volume") {
+        const handle = this.host.session.resourceManager?.getVolumeTexture(channel.path, channel);
+        channelLoaded[channel.slot] = this.host.session.resourceManager?.isVolumeLoaded(channel.path, channel) ? 1 : 0;
+        this.setChannelResolution(channelResolution, channel.slot, handle?.width, handle?.height, handle?.depth);
       } else if (channel.kind === "cubemap") {
         const handle = this.host.session.resourceManager?.getCubemapTexture?.(channel.path);
         channelLoaded[channel.slot] = handle ? 1 : 0;
@@ -211,13 +221,14 @@ export class WebGPUChannels {
     slot: number,
     width: number | undefined,
     height: number | undefined,
+    depth = 1,
   ): void {
     if (width === undefined || height === undefined) {
       return;
     }
     resolutions[slot * 3] = width;
     resolutions[slot * 3 + 1] = height;
-    resolutions[slot * 3 + 2] = 1;
+    resolutions[slot * 3 + 2] = depth;
   }
 
   resolveKeyboardHandle(skipInputUpdates: boolean): WebGPUTextureHandle | null {

@@ -162,7 +162,7 @@ export class WebviewTransport implements MessageTransport {
 
       for (const key of Object.keys(pass.inputs)) {
         const input = pass.inputs[key];
-        if (input?.path && (input.type === "video" || input.type === "texture" || input.type === "audio" || input.type === "cubemap")) {
+        if (input?.path && (input.type === "video" || input.type === "texture" || input.type === "audio" || input.type === "cubemap" || input.type === "volume")) {
           // If path is already a webview URI, we can't extract the original path easily
           // So we'll skip localResourceRoots handling for webview URIs
           if (!input.path.startsWith('vscode-webview://')) {

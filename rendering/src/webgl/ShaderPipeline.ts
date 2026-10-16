@@ -508,6 +508,14 @@ export class ShaderPipeline {
           if (result.warning) {
             warnings.push(result.warning);
           }
+        } else if (input?.type === "volume" && input.path) {
+          const result = await this.resourceManager.loadVolumeTexture(input.resolved_path || input.path, input);
+          if (this.cleanupLateResources()) {
+            return null;
+          }
+          if (result.warning) {
+            warnings.push(result.warning);
+          }
         } else if (input?.type === "cubemap" && input.path) {
           const cubemapOptions = {
             filter: input.filter,

@@ -9,6 +9,16 @@ import {
 import { expectStableFor } from './observable-state.mjs';
 import { waitForLanguageService } from './language-service-fixtures.mjs';
 
+// Single-tab headers are revealed by the user's top-edge hover, not by locator
+// visibility: opacity-zero headers still have boxes but cannot receive input.
+async function revealStandaloneTabs(page) {
+  const dock = page.locator('.standalone-dockview');
+  const bounds = await dock.boundingBox();
+  expect(bounds).not.toBeNull();
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + 2);
+  await expect(dock).toHaveClass(/dv-sash-hover/);
+}
+
 for (const pendingSave of [false, true]) {
   test(`buffer shaders are hidden by default and the explorer option survives reload (pending saves: ${pendingSave})`, async ({ page }) => {
     await page.goto('/');
@@ -72,6 +82,7 @@ test('highlights tab-group and split destinations while dragging in both themes'
       await page.getByRole('button', { name: 'Reset workspace layout', exact: true }).click();
       // Dockview positions its always-mounted content overlay on the next frame.
       await expect(page.getByTestId('web-preview')).toBeInViewport();
+      await revealStandaloneTabs(page);
       const source = await tab('aurora.glsl').locator('.dv-default-tab-content').boundingBox();
       const target = await page.getByTestId('web-preview').boundingBox();
       const x = destination === 'group' ? target.x + target.width / 2 : target.x + target.width - 10;
@@ -355,6 +366,7 @@ test('keeps one top-level Preview alive through docking, close/reopen, reset and
 
   const editorTab = page.locator('.dv-tab').filter({ hasText: /\.(glsl|frag|slang)$/ });
   const viewerTab = page.locator('.dv-tab').filter({ hasText: /^Preview$/ });
+  await revealStandaloneTabs(page);
   await viewerTab.locator('.dv-default-tab-action').click();
   await expect(preview).toBeHidden();
   await page.getByRole('button', { name: 'View', exact: true }).click();
@@ -363,6 +375,7 @@ test('keeps one top-level Preview alive through docking, close/reopen, reset and
   expect(await canvas.evaluate((element) => element === window.__originalViewerCanvas)).toBe(true);
   await expect(configTab).toBeVisible();
 
+  await revealStandaloneTabs(page);
   await editorTab.dragTo(viewerTab);
   const outerTabOrder = () => viewerTab.evaluate((tab) =>
     [...tab.closest('.dv-tabs-container').querySelectorAll('.dv-default-tab-content')].map((label) => label.textContent),
@@ -386,6 +399,7 @@ test('keeps one top-level Preview alive through docking, close/reopen, reset and
   expect(await canvas.evaluate((element) => element === window.__originalViewerCanvas)).toBe(true);
   await expect(configTab).toBeVisible();
 
+  await revealStandaloneTabs(page);
   await editorTab.locator('.dv-default-tab-action').click();
   await expect(editor).toBeHidden();
   await expect.poll(() => page.evaluate(() => {
@@ -409,6 +423,7 @@ test('tool panels dock with the editor, restore their group, and close and reope
   await preview.getByLabel('Toggle config panel').click();
   const config = tab('Config');
   await expect(config).toBeVisible();
+  await revealStandaloneTabs(page);
   await config.dragTo(tab('aurora.glsl'));
   const groupTitles = () => config.evaluate((element) =>
     [...element.closest('.dv-tabs-container').querySelectorAll('.dv-default-tab-content')].map((label) => label.textContent));
@@ -439,6 +454,7 @@ test('tool panels dock with the editor, restore their group, and close and reope
   await expect.poll(groupTitles).toEqual(['Config']);
   await expect(page.getByTestId('web-editor')).toBeVisible();
   await expect(page.locator('.config-panel')).toBeVisible();
+  await revealStandaloneTabs(page);
   await config.locator('.dv-default-tab-action').click();
   await expect(config).toHaveCount(0);
   await expect(preview.getByLabel('Toggle config panel')).not.toHaveClass(/active/);
@@ -461,10 +477,12 @@ test('tool panels dock with the editor, restore their group, and close and reope
     await toggle();
     const tool = tab(name);
     await expect(tool).toBeVisible();
+    await revealStandaloneTabs(page);
     await tool.dragTo(tab('aurora.glsl'));
     await expect.poll(() => tool.evaluate((element) =>
       [...element.closest('.dv-tabs-container').querySelectorAll('.dv-default-tab-content')].map((label) => label.textContent)))
       .toEqual(expect.arrayContaining([name, 'aurora.glsl']));
+    await revealStandaloneTabs(page);
     await tool.locator('.dv-default-tab-action').click();
     await expect(tool).toHaveCount(0);
     await toggle();
@@ -654,6 +672,7 @@ test('explicitly opens independent file editors and restores them after reload',
   await expect(aurora).toContainText('independent editor edit');
   await fileTab(/^desert-cubemap\.glsl$/).click();
   await expect(desert.locator('.monaco-editor')).toBeVisible();
+  await revealStandaloneTabs(page);
   await fileTab(/^desert-cubemap\.glsl$/).locator('.dv-default-tab-action').click();
   await expect(desert).toHaveCount(0);
   await fileTab(/^aurora\.glsl$/).click();
@@ -839,6 +858,7 @@ test('explorer Open Files reuses one editor and only reopens it when checked', a
     await expect(page.getByTestId('file-editor')).toHaveCount(0);
   }
   await page.getByLabel('Open Files', { exact: true }).uncheck();
+  await revealStandaloneTabs(page);
   await editorTab.locator('.dv-default-tab-action').click();
   await expect(editorTab).toHaveCount(0);
   await page.getByTestId('shader-option-aurora-glsl').click();
@@ -1031,6 +1051,7 @@ for (const first of ['config', 'debug']) {
     await expect.poll(groupTitles).toEqual(['Config', 'Debug']);
     await expect(page.locator(first === 'config' ? '.debug-panel' : '.config-panel')).toBeVisible();
     await tab('Config').click();
+    await revealStandaloneTabs(page);
     await tab('Config').locator('.dv-default-tab-action').click();
     await toggle('config');
     await expect.poll(groupTitles).toEqual(['Config', 'Debug']);
@@ -1091,24 +1112,13 @@ test('desktop pane sizes recover after the window is compressed and expanded', a
   const preview = page.getByTestId('web-preview');
   await expect(explorer).toBeVisible();
 
-  const initialExplorer = await explorer.boundingBox();
-  const explorerBoundary = initialExplorer.x + initialExplorer.width;
-  const sashes = page.locator('.standalone-dockview .dv-sash');
-  let explorerSash;
-  let explorerSashLocator;
-  let explorerSashDistance = Infinity;
-  for (let index = 0; index < await sashes.count(); index += 1) {
-    const candidate = await sashes.nth(index).boundingBox();
-    const distance = candidate ? Math.abs(candidate.x + candidate.width / 2 - explorerBoundary) : Infinity;
-    if (candidate && candidate.height > candidate.width && distance < explorerSashDistance) {
-      explorerSash = candidate;
-      explorerSashLocator = sashes.nth(index);
-      explorerSashDistance = distance;
-    }
-  }
-  expect(explorerSash).toBeTruthy();
+  // Match the split orientation rather than a global sash index: Dockview can
+  // reorder sashes when a panel opens and its tab headers finish reflowing.
+  const explorerSashLocator = page.locator(
+    '.standalone-dockview .dv-split-view-container.dv-horizontal > .dv-sash-container > .dv-sash',
+  ).first();
   await explorerSashLocator.hover();
-  explorerSash = await explorerSashLocator.boundingBox();
+  const explorerSash = await explorerSashLocator.boundingBox();
   expect(explorerSash).not.toBeNull();
   await page.mouse.down();
   await page.mouse.move(explorerSash.x + explorerSash.width / 2 + 170, explorerSash.y + explorerSash.height / 2, { steps: 20 });
@@ -1119,46 +1129,33 @@ test('desktop pane sizes recover after the window is compressed and expanded', a
   const config = page.locator('.config-panel');
   await expect(config).toBeVisible();
   const initialConfig = await config.boundingBox();
-  const toolGroup = page.locator('.standalone-dockview .dv-groupview').filter({
-    has: page.locator('.dv-default-tab-content', { hasText: /^Config$/ }),
-  });
-  const initialToolGroup = await toolGroup.boundingBox();
-  const toolBoundary = initialToolGroup.y;
-  let toolSash;
-  let toolSashLocator;
-  let toolSashDistance = Infinity;
-  for (let index = 0; index < await sashes.count(); index += 1) {
-    const candidate = await sashes.nth(index).boundingBox();
-    const distance = candidate ? Math.abs(candidate.y + candidate.height / 2 - toolBoundary) : Infinity;
-    if (candidate && candidate.width > candidate.height && distance < toolSashDistance) {
-      toolSash = candidate;
-      toolSashLocator = sashes.nth(index);
-      toolSashDistance = distance;
-    }
-  }
-  expect(toolSash).toBeTruthy();
-  // The panel headers can finish reflowing after Config opens. Hover waits for
-  // the sash to be stable so the drag cannot grab a tab at an old coordinate.
+  const toolSashLocator = page.locator(
+    '.standalone-dockview .dv-split-view-container.dv-vertical > .dv-sash-container > .dv-sash',
+  );
+  await expect(toolSashLocator).toHaveCount(1);
   await toolSashLocator.hover();
-  toolSash = await toolSashLocator.boundingBox();
+  const toolSash = await toolSashLocator.boundingBox();
   expect(toolSash).not.toBeNull();
+  expect(toolSash.width).toBeGreaterThan(toolSash.height);
   await page.mouse.down();
   await page.mouse.move(toolSash.x + toolSash.width / 2, toolSash.y + toolSash.height / 2 - 120, { steps: 20 });
   await page.mouse.up();
   await expect.poll(async () => (await config.boundingBox()).height).toBeGreaterThan(initialConfig.height);
 
   const panes = [explorer, editor, preview, config];
-  const preferred = [];
-  for (const pane of panes) {
-    await expect(pane).toBeVisible();
-    const bounds = await pane.boundingBox();
-    expect(bounds, 'every pane must have a visible size before compression').not.toBeNull();
-    preferred.push(bounds);
-  }
+  // Dockview may briefly detach a pane after a sash drag. Capture the baseline
+  // only once every pane is attached, before comparing sizes after resize.
+  let preferred;
+  await expect.poll(async () => {
+    preferred = await Promise.all(panes.map((pane) => pane.boundingBox()));
+    return preferred.every(box => box !== null && box.width > 100 && box.height > 100);
+  }).toBe(true);
   await page.setViewportSize({ width: 800, height: 500 });
   await expect.poll(async () => (await explorer.boundingBox()).width).toBeLessThan(preferred[0].width);
   await page.setViewportSize({ width: 1400, height: 900 });
 
+  // Dockview repositions its content overlay asynchronously after a resize.
+  // A temporarily detached pane must keep polling, not throw before it returns.
   for (const [pane, expected] of panes.map((pane, index) => [pane, preferred[index]])) {
     await expect.poll(async () => Math.abs(((await pane.boundingBox())?.width ?? Infinity) - expected.width)).toBeLessThan(3);
     await expect.poll(async () => Math.abs(((await pane.boundingBox())?.height ?? Infinity) - expected.height)).toBeLessThan(3);
@@ -1396,7 +1393,9 @@ test('records the live preview to WebM and remembers capture settings after relo
 
   await page.getByRole('button', { name: 'Start recording', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Stop & save', exact: true })).toBeVisible();
-  await expect(page.locator(".recording-panel")).toContainText("1s elapsed");
+  // The browser can skip the exact one-second label under load. Require a
+  // positive duration; the download below still verifies real WebM bytes.
+  await expect(page.locator('.recording-panel')).toContainText(/\b[1-9]\d*s elapsed\b/);
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Stop & save', exact: true }).click();
   const download = await downloadPromise;

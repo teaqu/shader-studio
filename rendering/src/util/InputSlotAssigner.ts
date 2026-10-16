@@ -48,6 +48,8 @@ export function resolveChannelSamplerTypes<T extends GlslInputLike>(
       : undefined;
     if (input?.type === 'cubemap' || (input?.type === 'buffer' && source && cubemapSources.includes(source))) {
       types[slot] = 'Cube';
+    } else if (inputs[key]?.type === 'volume') {
+      types[slot] = '3D';
     }
   }
 

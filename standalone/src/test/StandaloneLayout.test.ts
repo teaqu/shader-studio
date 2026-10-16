@@ -58,6 +58,54 @@ describe('StandaloneLayout', () => {
     renderers = []; willDrop = null; resetMobileShellState();
   });
 
+  describe('single-tab visibility', () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    async function setup() {
+      const result = render(StandaloneLayout, { props: { explorer: source('explorer'), editor: source('editor'), preview: source('preview') } });
+      await tick();
+      return { ...result, dock: result.container.querySelector('.standalone-dockview') as HTMLElement };
+    }
+
+    it('reveals at the top edge after 300ms and hides after leaving for 400ms', async () => {
+      const { dock } = await setup();
+      expect(dock.classList.contains('dv-autohide-tabs')).toBe(true);
+      await fireEvent.mouseMove(dock, { clientY: 3 });
+      vi.advanceTimersByTime(299);
+      expect(dock.classList.contains('dv-sash-hover')).toBe(false);
+      vi.advanceTimersByTime(1);
+      expect(dock.classList.contains('dv-sash-hover')).toBe(true);
+      await fireEvent.mouseMove(dock, { clientY: 100 });
+      vi.advanceTimersByTime(400);
+      expect(dock.classList.contains('dv-sash-hover')).toBe(false);
+    });
+
+    it('reveals over a divider and keeps tabs visible while dragging', async () => {
+      const { dock } = await setup();
+      const sash = document.createElement('div');
+      sash.className = 'dv-sash';
+      dock.append(sash);
+      await fireEvent.mouseOver(sash);
+      vi.advanceTimersByTime(300);
+      expect(dock.classList.contains('dv-sash-hover')).toBe(true);
+      await fireEvent.dragStart(sash);
+      expect(dock.classList.contains('dv-drag-active')).toBe(true);
+      await fireEvent.dragEnd(document);
+      expect(dock.classList.contains('dv-drag-active')).toBe(false);
+    });
+
+    it('cancels pending reveals and removes listeners on unmount', async () => {
+      const { dock, unmount } = await setup();
+      await fireEvent.mouseMove(dock, { clientY: 3 });
+      unmount();
+      vi.advanceTimersByTime(300);
+      expect(dock.classList.contains('dv-sash-hover')).toBe(false);
+      await fireEvent.dragStart(dock);
+      expect(dock.classList.contains('dv-drag-active')).toBe(false);
+    });
+  });
+
   it('keeps each snippet mounted once across reset and returns it on unmount', async () => {
     const result = render(StandaloneLayout, { props: { explorer: source('explorer'), editor: source('editor'), preview: source('preview') } });
     await tick();
