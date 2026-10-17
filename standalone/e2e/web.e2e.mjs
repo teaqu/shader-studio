@@ -2042,6 +2042,7 @@ test('standalone global settings disable and restore language service diagnostic
 for (const appearance of ['light', 'dark']) {
   test(`Pixel theme applies in ${appearance} mode and persists across reload`, async ({ page }) => {
     await page.goto('/');
+    await page.getByTestId('shader-option-aurora-glsl').click();
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     const settings = page.getByRole('dialog', { name: 'Settings', exact: true });
     await settings.getByRole('combobox', { name: 'Appearance', exact: true }).selectOption(appearance);
@@ -2049,7 +2050,18 @@ for (const appearance of ['light', 'dark']) {
     await expect(page.locator('html')).toHaveAttribute('data-studio-theme', 'pixel');
     await expect(page.locator('html')).toHaveAttribute('data-theme', appearance);
     await expect(settings).toHaveCSS('background-color', appearance === 'dark' ? 'rgb(34, 38, 61)' : 'rgb(242, 234, 216)');
-    await expect(settings.getByRole('button', { name: 'Done', exact: true })).toHaveCSS('box-shadow', appearance === 'dark' ? 'rgb(11, 14, 27) 2px 2px 0px 0px' : 'rgb(183, 168, 142) 2px 2px 0px 0px');
+    await expect(settings.getByRole('button', { name: 'Done', exact: true })).toHaveCSS('box-shadow', appearance === 'dark' ? 'rgb(17, 21, 39) 2px 2px 0px 0px' : 'rgb(215, 205, 187) 2px 2px 0px 0px');
+    const list = settings.locator('.settings-list');
+    const accent = appearance === 'dark' ? 'rgb(194, 166, 255)' : 'rgb(104, 66, 166)';
+    await expect.poll(() => list.evaluate(el => getComputedStyle(el, '::-webkit-scrollbar-thumb').backgroundColor)).toBe(accent);
+    expect(await list.evaluate(el => getComputedStyle(el, '::-webkit-scrollbar-thumb').borderRadius)).toBe('0px');
+    expect(await list.evaluate(el => getComputedStyle(el, '::-webkit-scrollbar').width)).toBe('12px');
+    await list.hover({ position: { x: 4, y: 20 } });
+    await page.mouse.wheel(0, 220);
+    await expect.poll(() => list.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+    const editorSlider = page.getByTestId('web-editor').locator('.monaco-scrollable-element > .scrollbar.vertical > .slider').first();
+    await expect(editorSlider).toHaveCSS('background-color', accent);
+    await expect(editorSlider).toHaveCSS('border-radius', '0px');
     await settings.getByRole('button', { name: 'Done', exact: true }).click();
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('data-studio-theme', 'pixel');
@@ -2058,6 +2070,8 @@ for (const appearance of ['light', 'dark']) {
     await expect(settings.getByRole('combobox', { name: 'Style', exact: true })).toHaveValue('pixel');
     await settings.getByRole('combobox', { name: 'Style', exact: true }).selectOption('classic');
     await expect(page.locator('html')).toHaveAttribute('data-studio-theme', 'classic');
+    expect(await list.evaluate(el => getComputedStyle(el, '::-webkit-scrollbar-thumb').backgroundColor)).not.toBe(accent);
+    await expect(editorSlider).not.toHaveCSS('background-color', accent);
     await expect(page.locator('html')).toHaveAttribute('data-theme', appearance);
   });
 }

@@ -6,11 +6,12 @@
   --pixel-hover: #3b4263;
   --pixel-ink: #eef0ff;
   --pixel-muted: #b3bad7;
-  --pixel-line: #697498;
+  --pixel-line: #3b435f;
+  --pixel-control-line: #697498;
   --pixel-accent: #c2a6ff;
   --pixel-on-accent: #23143e;
   --pixel-selected: #443666;
-  --pixel-shadow: #0b0e1b;
+  --pixel-shadow: #111527;
   --pixel-gold: #ffd478;
   --pixel-link: #8ee5cf;
 }
@@ -22,11 +23,12 @@
   --pixel-hover: #e8dec8;
   --pixel-ink: #302b42;
   --pixel-muted: #655b75;
-  --pixel-line: #8b7c96;
+  --pixel-line: #d7cddc;
+  --pixel-control-line: #8b7c96;
   --pixel-accent: #6842a6;
   --pixel-on-accent: #ffffff;
   --pixel-selected: #e4d8f7;
-  --pixel-shadow: #b7a88e;
+  --pixel-shadow: #d7cdbb;
   --pixel-gold: #885018;
   --pixel-link: #146756;
 }
@@ -50,10 +52,10 @@
   --vscode-tab-border: var(--pixel-line);
   --vscode-input-background: var(--pixel-raised);
   --vscode-input-foreground: var(--pixel-ink);
-  --vscode-input-border: var(--pixel-line);
+  --vscode-input-border: var(--pixel-control-line);
   --vscode-dropdown-background: var(--pixel-raised);
   --vscode-dropdown-foreground: var(--pixel-ink);
-  --vscode-dropdown-border: var(--pixel-line);
+  --vscode-dropdown-border: var(--pixel-control-line);
   --vscode-button-background: var(--pixel-accent);
   --vscode-button-foreground: var(--pixel-on-accent);
   --vscode-button-hoverBackground: var(--pixel-accent);
@@ -99,9 +101,9 @@
 }
 
 :root[data-studio-theme="pixel"] :where(dialog, .dropdown-menu, .options-menu) {
-  border: 2px solid var(--pixel-line);
+  border: 1px solid var(--pixel-line);
   border-radius: 2px;
-  box-shadow: 5px 5px 0 var(--pixel-shadow);
+  box-shadow: 3px 3px 0 var(--pixel-shadow);
 }
 
 :root[data-studio-theme="pixel"] :where(.standalone-toolbar > strong, dialog h2, dialog h3, .config-panel .section-title) {
@@ -133,4 +135,73 @@
 
 :root[data-studio-theme="pixel"] :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select) {
   box-shadow: inset 1px 1px 0 var(--pixel-shadow);
+}
+
+/* Native scroll areas, including dialogs and portalled channel pickers. */
+:root[data-studio-theme="pixel"]::-webkit-scrollbar,
+:root[data-studio-theme="pixel"] *::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+  background: var(--pixel-surface);
+}
+
+:root[data-studio-theme="pixel"]::-webkit-scrollbar-track,
+:root[data-studio-theme="pixel"] *::-webkit-scrollbar-track {
+  background: var(--pixel-surface);
+  border: 1px solid var(--pixel-line);
+}
+
+:root[data-studio-theme="pixel"]::-webkit-scrollbar-thumb,
+:root[data-studio-theme="pixel"] *::-webkit-scrollbar-thumb {
+  min-width: 28px;
+  min-height: 28px;
+  border: 2px solid var(--pixel-surface);
+  border-radius: 0;
+  background: var(--pixel-accent);
+  box-shadow: inset 1px 1px 0 var(--pixel-raised), inset -2px -2px 0 var(--pixel-shadow);
+}
+
+:root[data-studio-theme="pixel"]::-webkit-scrollbar-thumb:hover,
+:root[data-studio-theme="pixel"] *::-webkit-scrollbar-thumb:hover {
+  background: var(--pixel-gold);
+}
+
+:root[data-studio-theme="pixel"]::-webkit-scrollbar-thumb:active,
+:root[data-studio-theme="pixel"] *::-webkit-scrollbar-thumb:active {
+  background: var(--pixel-link);
+}
+
+:root[data-studio-theme="pixel"]::-webkit-scrollbar-corner,
+:root[data-studio-theme="pixel"] *::-webkit-scrollbar-corner {
+  background: var(--pixel-surface);
+}
+
+/* Keep native scrolling in engines that expose only standard scrollbar colors. */
+@supports not selector(::-webkit-scrollbar) {
+  :root[data-studio-theme="pixel"],
+  :root[data-studio-theme="pixel"] * {
+    scrollbar-color: var(--pixel-accent) var(--pixel-surface);
+  }
+}
+
+/* Monaco draws its own scrollbars rather than browser scrollbar pseudo-elements. */
+:root[data-studio-theme="pixel"] .editor-pane .monaco-scrollable-element > .scrollbar {
+  background: var(--pixel-surface);
+  box-shadow: inset 0 0 0 1px var(--pixel-line);
+}
+
+:root[data-studio-theme="pixel"] .editor-pane .monaco-scrollable-element > .scrollbar > .slider {
+  box-sizing: border-box;
+  border: 2px solid var(--pixel-surface);
+  border-radius: 0;
+  background: var(--pixel-accent);
+  box-shadow: inset 1px 1px 0 var(--pixel-raised), inset -2px -2px 0 var(--pixel-shadow);
+}
+
+:root[data-studio-theme="pixel"] .editor-pane .monaco-scrollable-element > .scrollbar > .slider:hover {
+  background: var(--pixel-gold);
+}
+
+:root[data-studio-theme="pixel"] .editor-pane .monaco-scrollable-element > .scrollbar > .slider.active {
+  background: var(--pixel-link);
 }
