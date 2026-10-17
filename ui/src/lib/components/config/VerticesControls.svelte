@@ -47,6 +47,6 @@
 <style>
   .resolution-row { display: flex; align-items: center; gap: 8px; }
   .resolution-label { min-width: 72px; font-size: 12px; }
-  select, input { flex: 1; min-width: 0; background: var(--vscode-input-background, #3c3c3c); color: var(--vscode-input-foreground, #ccc); border: 1px solid var(--vscode-input-border, #555); border-radius: 3px; padding: 4px 6px; font-size: 12px; }
+  select, input { flex: 1; min-width: 0; background: var(--vscode-input-background, #3c3c3c); color: var(--vscode-input-foreground, #ccc); border: 1px solid var(--vscode-input-border, #555); border-radius: var(--shader-studio-control-radius); padding: var(--shader-studio-control-padding); font-size: var(--shader-studio-font-size); min-height: var(--shader-studio-control-height); }
   .input-note { font-size: 11px; color: var(--vscode-descriptionForeground); }
 </style>

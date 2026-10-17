@@ -1,0 +1,95 @@
+/* Shared by the viewer, standalone shell and explorer. VS Code owns the palette. */
+:root,
+body {
+  --shader-studio-font-family: var(--vscode-font-family, "Segoe UI", sans-serif);
+  --shader-studio-font-size: var(--vscode-font-size, 13px);
+  --shader-studio-label-size: 12px;
+  --shader-studio-control-height: 26px;
+  --shader-studio-control-padding: 3px 8px;
+  --shader-studio-control-radius: 4px;
+  --shader-studio-control-line-height: 18px;
+  --shader-studio-toolbar-height: 24px;
+  --shader-studio-toolbar-padding: 2px 4px;
+  --shader-studio-tab-height: 35px;
+  --shader-studio-tab-padding: 0 12px;
+  --shader-studio-icon-size: 16px;
+  --shader-studio-space-1: 4px;
+  --shader-studio-space-2: 8px;
+  --shader-studio-space-3: 12px;
+  --shader-studio-space-4: 16px;
+  --shader-studio-menu-padding: 4px 12px;
+  --shader-studio-selected-background: var(--vscode-inputOption-activeBackground, var(--vscode-list-activeSelectionBackground, var(--vscode-button-secondaryBackground, var(--vscode-list-hoverBackground))));
+  --shader-studio-selected-foreground: var(--vscode-inputOption-activeForeground, var(--vscode-list-activeSelectionForeground, var(--vscode-foreground)));
+  --shader-studio-selected-border: var(--vscode-inputOption-activeBorder, var(--vscode-focusBorder));
+}
+
+body {
+  font-family: var(--shader-studio-font-family);
+  font-size: var(--shader-studio-font-size);
+}
+
+body.vscode-light,
+body.vscode-high-contrast-light {
+  color-scheme: light;
+}
+
+body.vscode-dark,
+body.vscode-high-contrast {
+  color-scheme: dark;
+}
+
+:where(button, input, select, textarea) {
+  box-sizing: border-box;
+  font-family: var(--shader-studio-font-family);
+  font-size: var(--shader-studio-font-size);
+  font-weight: 400;
+}
+
+:where(button) {
+  min-height: var(--shader-studio-control-height);
+  padding: var(--shader-studio-control-padding);
+  border-radius: var(--shader-studio-control-radius);
+  line-height: var(--shader-studio-control-line-height);
+}
+
+:where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]), select) {
+  height: var(--shader-studio-control-height);
+  min-height: var(--shader-studio-control-height);
+  padding: var(--shader-studio-control-padding);
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+  border-radius: var(--shader-studio-control-radius);
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground, var(--vscode-foreground));
+}
+
+:where(select) {
+  background: var(--vscode-dropdown-background, var(--vscode-input-background));
+  color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground));
+  border-color: var(--vscode-dropdown-border, var(--vscode-input-border, var(--vscode-panel-border)));
+}
+
+:where(input[type="checkbox"], input[type="radio"], input[type="range"]) {
+  accent-color: var(--vscode-focusBorder);
+}
+
+/* Focus is deliberately independent of selection, hover and validation states. */
+:where(button, input, select, textarea, [role="tab"], [role="button"]):focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+:where(button):disabled {
+  color: var(--vscode-disabledForeground, var(--vscode-descriptionForeground));
+  cursor: default;
+}
+
+@media (pointer: coarse) and (max-width: 767px) {
+  /* Portalled dialogs/menus are body children, outside the standalone shell. */
+  body:has(.standalone-app:not(.desktop-layout)),
+  .standalone-app:not(.desktop-layout) {
+    --shader-studio-control-height: 44px;
+    --shader-studio-toolbar-height: 44px;
+    --shader-studio-tab-height: 44px;
+    --shader-studio-font-size: max(16px, var(--vscode-font-size, 13px));
+  }
+}

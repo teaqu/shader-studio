@@ -2,6 +2,7 @@ export const SETTINGS_STORAGE_KEY = 'shader-studio.standalone.settings';
 export const CAMERA_STORAGE_KEY = 'shader-studio.webgpu.useViewerCamera';
 
 export const DEFAULT_SETTINGS = Object.freeze({
+  'layout.mobileMode': true,
   'preview.preventMouseDefaults': true,
   'webgpu.defaultRenderAuthoring': 'hooks' as 'hooks' | 'native',
   'webgpu.useViewerCamera': true,

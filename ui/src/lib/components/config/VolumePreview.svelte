@@ -126,7 +126,7 @@
   .interactive { cursor: grab; touch-action: none; image-rendering: auto; }
   .interactive:active { cursor: grabbing; }
   .view-controls { display: flex; gap: 6px; }
-  button { background: var(--vscode-button-secondaryBackground, #343434); color: var(--vscode-button-secondaryForeground, #eee); border: 1px solid transparent; border-radius: 3px; padding: 3px 8px; cursor: pointer; }
+  button { background: var(--vscode-button-secondaryBackground, #343434); color: var(--vscode-button-secondaryForeground, #eee); border: 1px solid transparent; border-radius: var(--shader-studio-control-radius); padding: var(--shader-studio-control-padding); cursor: pointer; min-height: var(--shader-studio-control-height); }
   button[aria-pressed="true"] { border-color: var(--vscode-focusBorder, #579bdb); }
   button:disabled { opacity: 0.5; cursor: default; }
   span { font-size: 11px; }

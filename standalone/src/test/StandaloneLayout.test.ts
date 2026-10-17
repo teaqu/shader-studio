@@ -1,6 +1,8 @@
 import { createRawSnippet, tick } from 'svelte';
 import { fireEvent, render, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { StandaloneSettings } from '../settings/StandaloneSettings';
+import { connectSettings } from '../settings/settingsState.svelte';
 import StandaloneLayout from '../StandaloneLayout.svelte';
 import { createDockview } from 'dockview-core';
 import { resetMobileShellState } from '../state/mobileShellState.svelte';
@@ -275,6 +277,24 @@ describe('StandaloneLayout', () => {
       await tick();
       expect(result.queryByRole('navigation', { name: 'Workspace panels' })).toBeNull();
       expect(result.component.isMobileLayout()).toBe(false);
+    });
+
+    it('reacts immediately to the global mobile-mode preference at a phone width', async () => {
+      const settings = new StandaloneSettings({ getItem: () => null, setItem: vi.fn() });
+      const disconnect = connectSettings(settings);
+      stubViewport(true);
+      const result = renderLayout();
+      await tick();
+      expect(result.component.isMobileLayout()).toBe(true);
+      settings.update('layout.mobileMode', false);
+      await tick();
+      expect(result.component.isMobileLayout()).toBe(false);
+      expect(result.queryByRole('navigation', { name: 'Workspace panels' })).toBeNull();
+      settings.update('layout.mobileMode', true);
+      await tick();
+      expect(result.component.isMobileLayout()).toBe(true);
+      expect(result.getByRole('navigation', { name: 'Workspace panels' })).toBeTruthy();
+      disconnect();
     });
 
     it('queries the phone breakpoint and stops listening on unmount', async () => {

@@ -86,8 +86,8 @@ describe('MiscTab', () => {
 
       const sectionLabels = container.querySelectorAll('.misc-section-label');
       expect(sectionLabels.length).toBe(2);
-      expect(sectionLabels[0].textContent).toBe('Buffer');
-      expect(sectionLabels[1].textContent).toBe('Other');
+      expect(sectionLabels[0].textContent).toBe('Buffer source');
+      expect(sectionLabels[1].textContent).toBe('Device inputs');
     });
   });
 

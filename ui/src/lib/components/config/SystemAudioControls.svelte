@@ -105,24 +105,27 @@
   select {
     max-width: 100%;
     min-width: 0;
-    padding: 8px 12px;
-    border: 1px solid var(--vscode-input-border, #3c3c3c);
-    border-radius: 4px;
-    background: var(--vscode-input-background, #2d2d2d);
-    color: var(--vscode-input-foreground, #cccccc);
-    font-size: 14px;
+    padding: var(--shader-studio-control-padding);
+    border: 1px solid var(--vscode-dropdown-border, #3c3c3c);
+    border-radius: var(--shader-studio-control-radius);
+    background: var(--vscode-dropdown-background, #2d2d2d);
+    color: var(--vscode-dropdown-foreground, #cccccc);
+    font-size: var(--shader-studio-font-size);
+    min-height: var(--shader-studio-control-height);
   }
   select:focus {
     outline: none;
     border-color: var(--vscode-focusBorder, #007acc);
   }
+  select:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
   .actions { display: flex; flex-wrap: wrap; gap: 6px; }
   .actions button {
     flex: 0 0 auto;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 12px;
-    line-height: 16px;
+    padding: var(--shader-studio-control-padding);
+    border-radius: var(--shader-studio-control-radius);
+    font-size: var(--shader-studio-font-size);
+    line-height: var(--shader-studio-control-line-height);
+    min-height: var(--shader-studio-control-height);
   }
   .actions button:focus-visible {
     outline: 2px solid var(--vscode-focusBorder, #007acc);

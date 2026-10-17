@@ -300,7 +300,7 @@
     width: 100%;
     box-sizing: border-box;
     min-width: 0;
-    font-size: 13px;
+    font-size: var(--shader-studio-font-size);
   }
   .capture-actions {
     justify-content: flex-start;

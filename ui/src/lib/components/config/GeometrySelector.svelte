@@ -37,7 +37,11 @@
     color: var(--vscode-foreground, #cccccc);
     border-bottom: 1px solid var(--vscode-panel-border, #3c3c3c);
   }
-  select { padding: 3px 6px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 4px; font-size: 12px; outline: none; }
+  select { padding: var(--shader-studio-control-padding); color: var(--vscode-dropdown-foreground); background: var(--vscode-dropdown-background); border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border)); border-radius: var(--shader-studio-control-radius); font-size: var(--shader-studio-font-size); outline: none; min-height: var(--shader-studio-control-height); }
+  select:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
   select:focus { border-color: var(--vscode-focusBorder, #007acc); }
   .viewer-camera-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--vscode-foreground, #cccccc); cursor: pointer; }
   .viewer-camera-row input { margin: 0; }

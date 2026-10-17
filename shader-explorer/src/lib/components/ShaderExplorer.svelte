@@ -537,32 +537,39 @@
     min-width: 0;
     flex: 1 1 auto;
     width: 100%;
-    padding: 3px 6px;
+    padding: var(--shader-studio-control-padding);
     background: var(--vscode-input-background);
     color: var(--vscode-input-foreground);
     border: 1px solid var(--vscode-input-border);
-    border-radius: 4px;
-    font-size: 12px;
+    border-radius: var(--shader-studio-control-radius);
+    font-size: var(--shader-studio-font-size);
     outline: none;
+    min-height: var(--shader-studio-control-height);
   }
+
+  .search-input:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
 
   .search-input:focus {
     border-color: var(--vscode-focusBorder);
   }
 
   .icon-button {
-    padding: 3px 6px;
+    padding: var(--shader-studio-toolbar-padding);
     background: var(--vscode-button-secondaryBackground);
     color: var(--vscode-button-secondaryForeground);
     border: none;
-    border-radius: 4px;
+    border-radius: var(--shader-studio-control-radius);
     cursor: pointer;
-    font-size: 13px;
+    font-size: var(--shader-studio-font-size);
     display: flex;
     align-items: center;
     justify-content: center;
     min-width: 26px;
-    line-height: 1;
+    line-height: var(--shader-studio-control-line-height);
+    min-height: var(--shader-studio-toolbar-height);
   }
 
   .icon-button:hover {
@@ -580,15 +587,22 @@
 
   .sort-select,
   .page-size-select {
-    padding: 3px 6px;
+    padding: var(--shader-studio-control-padding);
     background: var(--vscode-dropdown-background);
     color: var(--vscode-dropdown-foreground);
     border: 1px solid var(--vscode-dropdown-border);
-    border-radius: 4px;
-    font-size: 12px;
+    border-radius: var(--shader-studio-control-radius);
+    font-size: var(--shader-studio-font-size);
     cursor: pointer;
     outline: none;
+    min-height: var(--shader-studio-control-height);
   }
+
+  .sort-select:focus-visible,
+.page-size-select:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
 
   .sort-select:focus,
   .page-size-select:focus {
@@ -736,14 +750,14 @@
 
   .page-button {
     min-width: 24px;
-    height: 24px;
-    padding: 0 4px;
+    height: var(--shader-studio-control-height);
+    padding: var(--shader-studio-control-padding);
     background: var(--vscode-button-secondaryBackground);
     color: var(--vscode-button-secondaryForeground);
     border: 1px solid var(--vscode-button-border, transparent);
-    border-radius: 4px;
+    border-radius: var(--shader-studio-control-radius);
     cursor: pointer;
-    font-size: 12px;
+    font-size: var(--shader-studio-font-size);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -762,7 +776,7 @@
   .page-button.active {
     background: var(--vscode-button-background);
     color: var(--vscode-button-foreground);
-    font-weight: 600;
+    font-weight: 400;
   }
 
   .page-ellipsis {

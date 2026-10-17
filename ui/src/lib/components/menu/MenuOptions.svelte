@@ -545,12 +545,13 @@
   .mute-icon-btn {
     background: none;
     border: none;
-    padding: 2px;
+    padding: var(--shader-studio-toolbar-padding);
     cursor: pointer;
     color: inherit;
     display: flex;
     align-items: center;
     flex-shrink: 0;
+    min-height: var(--shader-studio-toolbar-height);
   }
 
   .mute-icon-btn.muted {
@@ -575,14 +576,15 @@
     align-items: center;
     gap: 8px;
     width: 100%;
-    padding: 5px 12px;
+    padding: var(--shader-studio-menu-padding);
     background: none;
     border: none;
     color: var(--vscode-menu-foreground, var(--vscode-editor-foreground));
     cursor: pointer;
-    font-size: 12px;
+    font-size: var(--shader-studio-font-size);
     text-align: left;
     box-sizing: border-box;
+    min-height: var(--shader-studio-control-height);
   }
 
   :global(.layout-submenu-portal .layout-submenu-item:hover),
@@ -630,11 +632,12 @@
 
   :global(.layout-submenu-portal .confirm-btn) {
     flex: 1;
-    font-size: 11px;
-    padding: 3px 8px;
-    border-radius: 2px;
+    font-size: var(--shader-studio-font-size);
+    padding: var(--shader-studio-control-padding);
+    border-radius: var(--shader-studio-control-radius);
     border: none;
     cursor: pointer;
+    min-height: var(--shader-studio-control-height);
   }
 
   :global(.layout-submenu-portal .confirm-yes) {
@@ -673,14 +676,15 @@
     align-items: center;
     gap: 8px;
     width: 100%;
-    padding: 5px 12px;
+    padding: var(--shader-studio-menu-padding);
     background: none;
     border: none;
     color: var(--vscode-menu-foreground, var(--vscode-editor-foreground));
     cursor: pointer;
-    font-size: 12px;
+    font-size: var(--shader-studio-font-size);
     text-align: left;
     box-sizing: border-box;
+    min-height: var(--shader-studio-control-height);
   }
 
   :global(.editor-submenu-portal .editor-submenu-item:hover),

@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { SETTING_DEFINITIONS } from './settingDefinitions';
   import type { StandaloneSettings } from './StandaloneSettings';
 
   interface Props { settings: StandaloneSettings; onClose: () => void; }
   let { settings, onClose }: Props = $props();
-  let values = $state({ ...settings.snapshot });
+  let values = $state(untrack(() => ({ ...settings.snapshot })));
   let search = $state('');
   let dialog: HTMLDialogElement;
   let searchInput: HTMLInputElement;
@@ -93,6 +93,7 @@
   .settings-list { max-height: 55vh; overflow-y: auto; padding-right: 8px; }
   .setting { display: grid; grid-template-columns: 1fr 90px; gap: 6px 16px; margin-bottom: 16px; align-items: center; }
   .setting small { grid-column: 1 / -1; } input[type='checkbox'] { justify-self: end; }
-  input, select { padding: 6px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); }
-  button { padding: 6px 12px; cursor: pointer; } footer { margin-top: 16px; }
+  input:not([type='checkbox']), select { padding: var(--shader-studio-control-padding); min-width: 0; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); min-height: var(--shader-studio-control-height); }
+  select { background: var(--vscode-dropdown-background, var(--vscode-input-background)); color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground)); border-color: var(--vscode-dropdown-border, var(--vscode-input-border)); }
+  button { padding: var(--shader-studio-control-padding); cursor: pointer; min-height: var(--shader-studio-control-height); } footer { margin-top: 16px; }
 </style>

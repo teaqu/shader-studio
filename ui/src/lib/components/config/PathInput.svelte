@@ -197,7 +197,7 @@ onPathChange?.(event.data.payload.path);
   }
 </script>
 
-<div class="input-group">
+<div class="input-group" class:actions-only={hidePath}>
   {#if !hidePath}<div class="input-row">
     <label for={inputId}>{label}</label>
     <input
@@ -233,24 +233,28 @@ onPathChange?.(event.data.payload.path);
         {#if !existingModes.includes(effectiveMode)}<button class="insert-file-btn" onclick={handleInsert}>{insertLabel}</button>{/if}
       {/if}
       {#if onClear}<button class="select-file-btn" onclick={onClear} disabled={!clearEnabled}>Clear</button>{/if}
-      {#if note}
-        <span class="input-note">{note}</span>
-      {/if}
     </div>
-  {:else if note}
-    <span class="input-note">{note}</span>
   {/if}
+  {#if note}<span class="input-note">{note}</span>{/if}
   {#if requestError}<p class="request-error" role="alert">{requestError}</p>{/if}
 </div>
 
 <style>
   .input-group {
     display: flex;
-    flex-direction: column;
-    gap: 4px;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+    min-width: 0;
+    container-type: inline-size;
   }
 
+  .input-group.actions-only { container-type: normal; }
+  .input-group.actions-only .input-actions select { min-width: 7em; }
+
   .input-row {
+    flex: 1 1 180px;
+    min-width: 0;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -259,19 +263,26 @@ onPathChange?.(event.data.payload.path);
   .input-row label {
     color: var(--vscode-foreground, #ccc);
     white-space: nowrap;
-    font-size: 14px;
+    font-size: var(--shader-studio-label-size);
   }
 
   .config-input {
     flex: 1;
+    min-width: 0;
     background: var(--vscode-input-background, #3c3c3c);
     color: var(--vscode-input-foreground, #cccccc);
     border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, #3c3c3c));
-    padding: 8px 12px;
-    font-size: 14px;
-    border-radius: 4px;
+    padding: var(--shader-studio-control-padding);
+    font-size: var(--shader-studio-font-size);
+    border-radius: var(--shader-studio-control-radius);
     outline: none;
+    min-height: var(--shader-studio-control-height);
   }
+
+  .config-input:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
 
   .config-input:focus {
     border-color: var(--vscode-focusBorder, #007acc);
@@ -282,28 +293,31 @@ onPathChange?.(event.data.payload.path);
   }
 
   .input-actions {
+    flex: 0 1 auto;
+    max-width: 100%;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 6px;
-    margin-top: 4px;
   }
-  .request-error { margin: 0; color: var(--vscode-errorForeground, #f48771); font-size: 12px; }
-  select { padding: 4px 6px; border-radius: 4px; font-size: 13px; color: var(--vscode-input-foreground, #ccc); background: var(--vscode-input-background, #3c3c3c); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, #3c3c3c)); }
+  .request-error { flex-basis: 100%; margin: 0; color: var(--vscode-errorForeground, #f48771); font-size: 12px; }
+  select { padding: var(--shader-studio-control-padding); border-radius: var(--shader-studio-control-radius); font-size: var(--shader-studio-font-size); color: var(--vscode-dropdown-foreground, #ccc); background: var(--vscode-dropdown-background, #3c3c3c); border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border, #3c3c3c)); min-height: var(--shader-studio-control-height); }
   select:focus { outline: 1px solid var(--vscode-focusBorder, #007acc); }
   button:disabled { opacity: 0.5; cursor: default; }
 
   .select-file-btn,
   .create-file-btn,
   .insert-file-btn {
-    padding: 4px 12px;
-    font-size: 13px;
+    padding: var(--shader-studio-control-padding);
+    font-size: var(--shader-studio-font-size);
     background: none;
     border: 1px solid var(--vscode-panel-border, #3c3c3c);
-    border-radius: 4px;
+    border-radius: var(--shader-studio-control-radius);
     color: var(--vscode-descriptionForeground, #888);
     cursor: pointer;
     white-space: nowrap;
     transition: all 0.15s;
+    min-height: var(--shader-studio-control-height);
   }
 
   .select-file-btn:hover,
@@ -314,8 +328,14 @@ onPathChange?.(event.data.payload.path);
   }
 
   .input-note {
+    flex-basis: 100%;
     font-size: 11px;
     color: var(--vscode-descriptionForeground, #888);
     font-style: italic;
+  }
+  @container (max-width: 300px) {
+    .input-row { display: contents; }
+    .input-row label { flex-basis: 100%; }
+    .config-input { flex: 1 1 120px; }
   }
 </style>

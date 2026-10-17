@@ -5,8 +5,9 @@
   interface Props {
     type: 'webcam' | 'screen' | 'microphone' | 'system-audio';
     audioVideoController?: AudioVideoController;
+    showLabel?: boolean;
   }
-  let { type, audioVideoController }: Props = $props();
+  let { type, audioVideoController, showLabel = true }: Props = $props();
   let canvas: HTMLCanvasElement | undefined = $state();
   let active = $state(false);
 
@@ -32,8 +33,8 @@
   <canvas bind:this={canvas} width="160" height="120" aria-label={type === 'webcam' ? 'Live webcam preview' : type === 'screen' ? 'Live screen preview' : type === 'system-audio' ? 'Live shared audio preview' : 'Live mic preview'} class:active></canvas>
   {#if !active}
     <div class="fallback">
-      <i class="codicon" class:codicon-device-camera={type === 'webcam' || type === 'screen'} class:codicon-mic={type === 'microphone'}></i>
-      <span>{type === 'webcam' ? 'Webcam' : type === 'screen' ? 'Screen' : type === 'system-audio' ? 'Shared Audio' : 'Mic'}</span>
+      <i aria-hidden="true" class="codicon" class:codicon-device-camera={type === 'webcam' || type === 'screen'} class:codicon-mic={type === 'microphone'} class:codicon-unmute={type === 'system-audio'}></i>
+      {#if showLabel}<span>{type === 'webcam' ? 'Webcam' : type === 'screen' ? 'Screen' : type === 'system-audio' ? 'Shared Audio' : 'Mic'}</span>{/if}
     </div>
   {/if}
 </div>

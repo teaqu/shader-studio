@@ -1,3 +1,5 @@
+import { getMobileModeEnabled } from '../settings/settingsState.svelte';
+
 /**
  * Phone navigation is deliberately independent from Dockview's persisted
  * desktop layout. A rotation or breakpoint transition must never rewrite the
@@ -9,7 +11,7 @@ let mobileViewport = $state(false);
 let mobilePanel = $state<MobileShellPanel>('preview');
 
 export function isMobileViewport(): boolean {
-  return mobileViewport;
+  return mobileViewport && getMobileModeEnabled();
 }
 
 export function setMobileViewport(value: boolean): void {

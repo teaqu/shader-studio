@@ -9,7 +9,7 @@
   import StandaloneLayout from './StandaloneLayout.svelte';
   import EditorPane from './EditorPane.svelte';
   import SettingsPanel from './settings/SettingsPanel.svelte';
-  import { connectSettings, getDefaultShaderMode } from './settings/settingsState.svelte';
+  import { connectSettings, getDefaultShaderMode, getMobileModeEnabled } from './settings/settingsState.svelte';
   import WorkspaceFilePicker from './WorkspaceFilePicker.svelte';
   import NewShaderModal from './NewShaderModal.svelte';
   import type { WebTransport, WorkspaceStorageStatus } from './WebTransport';
@@ -338,7 +338,7 @@
 <WorkspaceFilePicker />
 
 <svelte:window onclick={closeMenusOnOutsideClick} onkeydown={closeMenusOnEscape} />
-<div class="standalone-app" inert={updateLocked} aria-busy={updateLocked}>
+<div class="standalone-app" class:desktop-layout={!getMobileModeEnabled()} inert={updateLocked} aria-busy={updateLocked}>
   <header class="standalone-toolbar" aria-label="Standalone workspace">
     <strong>Shader Studio</strong>
     <div class="toolbar-menu">
@@ -470,7 +470,7 @@
 <style>
   .standalone-app { display: flex; flex-direction: column; height: 100%; min-height: 0; }
   .standalone-toolbar { position: relative; z-index: 10; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--vscode-panel-border); background: var(--vscode-sideBar-background); }
-  .standalone-toolbar button, .standalone-toolbar a { font: inherit; color: var(--vscode-foreground); background: transparent; border-radius: 4px; padding: 4px 8px; text-decoration: none; cursor: pointer; }
+  .standalone-toolbar button, .standalone-toolbar a { font: inherit; color: var(--vscode-foreground); background: transparent; border-radius: var(--shader-studio-control-radius); padding: var(--shader-studio-control-padding); text-decoration: none; cursor: pointer; min-height: var(--shader-studio-control-height); }
   .standalone-toolbar button:hover, .standalone-toolbar a:hover { background: var(--vscode-list-hoverBackground); }
   .standalone-toolbar a { border: 1px solid var(--vscode-panel-border); }
   .menu-trigger { display: inline-flex; align-items: center; gap: 6px; border: 0; }
@@ -483,9 +483,9 @@
   .dropdown-menu button:not([role="menuitemcheckbox"]) { display: block; }
   .dropdown-menu .danger-action { color: var(--vscode-errorForeground, #f48771); }
   .storage-notice { max-width: 280px; margin: 4px 0; padding: 8px 12px; font-size: 12px; line-height: 1.5; white-space: normal; color: var(--vscode-descriptionForeground); border-top: 1px solid var(--vscode-panel-border); }
-  .build-status .storage-warning-icon { display: flex; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent; color: var(--vscode-editorWarning-foreground, #cca700); cursor: pointer; }
+  .build-status .storage-warning-icon { display: flex; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent; color: var(--vscode-editorWarning-foreground, #cca700); cursor: pointer; min-height: var(--shader-studio-control-height); }
   .alpha-notice { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 3px 10px; font-size: 11px; text-align: center; color: var(--vscode-descriptionForeground); border-bottom: 1px solid var(--vscode-panel-border); }
-  .dismiss-alpha-notice { flex: 0 0 auto; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; color: inherit; background: transparent; font: inherit; font-size: 18px; line-height: 1; cursor: pointer; }
+  .dismiss-alpha-notice { flex: 0 0 auto; width: 24px; height: var(--shader-studio-control-height); padding: 0; border: 0; border-radius: var(--shader-studio-control-radius); color: inherit; background: transparent; font: inherit; font-size: 18px; line-height: var(--shader-studio-control-line-height); cursor: pointer; }
   .dismiss-alpha-notice:hover { background: var(--vscode-list-hoverBackground); }
   .panel-content { height: 100%; width: 100%; min-height: 0; min-width: 0; }
   .build-status { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; color: var(--vscode-descriptionForeground); font-size: 16px; }
@@ -494,14 +494,14 @@
   .visually-hidden { position: fixed; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
   @media (max-width: 767px) {
-    .standalone-app { height: 100dvh; }
-    .standalone-toolbar { min-height: 44px; padding: max(4px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) 4px max(8px, env(safe-area-inset-left)); }
-    .standalone-toolbar > strong { flex: 1; }
-    .standalone-toolbar > a { display: none; }
-    .standalone-toolbar button { min-height: 44px; }
-    .workspace-menu { padding-left: 0; border-left: 0; }
-    .dropdown-menu { position: fixed; top: max(54px, calc(env(safe-area-inset-top) + 50px)); right: 8px; left: 8px; max-height: calc(100dvh - 120px); overflow: auto; }
-    .alpha-notice { padding-inline: max(8px, env(safe-area-inset-left)) max(8px, env(safe-area-inset-right)); }
-    :global(.standalone-app .menu-bar .collapse-config, .standalone-app .menu-bar .collapse-debug, .standalone-app .menu-bar .collapse-record) { display: none; }
+    .standalone-app:not(.desktop-layout) { height: 100dvh; }
+    .standalone-app:not(.desktop-layout) .standalone-toolbar { min-height: 44px; padding: max(4px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) 4px max(8px, env(safe-area-inset-left)); }
+    .standalone-app:not(.desktop-layout) .standalone-toolbar > strong { flex: 1; }
+    .standalone-app:not(.desktop-layout) .standalone-toolbar > a { display: none; }
+    .standalone-app:not(.desktop-layout) .standalone-toolbar button { min-height: 44px; }
+    .standalone-app:not(.desktop-layout) .workspace-menu { padding-left: 0; border-left: 0; }
+    .standalone-app:not(.desktop-layout) .dropdown-menu { position: fixed; top: max(54px, calc(env(safe-area-inset-top) + 50px)); right: 8px; left: 8px; max-height: calc(100dvh - 120px); overflow: auto; }
+    .standalone-app:not(.desktop-layout) .alpha-notice { padding-inline: max(8px, env(safe-area-inset-left)) max(8px, env(safe-area-inset-right)); }
+    :global(.standalone-app:not(.desktop-layout) .menu-bar .collapse-config, .standalone-app:not(.desktop-layout) .menu-bar .collapse-debug, .standalone-app:not(.desktop-layout) .menu-bar .collapse-record) { display: none; }
   }
 </style>

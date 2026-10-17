@@ -84,3 +84,19 @@ it('persists the global canvas menu preference and broadcasts changes', async ()
   expect(emit).toHaveBeenLastCalledWith({ type: 'canvasInputSettings', payload: { preventMouseDefaults: false } });
   expect(new StandaloneSettings(backend).snapshot['preview.preventMouseDefaults']).toBe(false); controller.dispose();
 });
+
+it('persists the global mobile-mode override and resets it to automatic mobile layout', () => {
+  const data = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => data.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      data.set(key, value);
+    },
+  };
+  const settings = new StandaloneSettings(storage);
+  expect(settings.snapshot['layout.mobileMode']).toBe(true);
+  settings.update('layout.mobileMode', false);
+  expect(new StandaloneSettings(storage).snapshot['layout.mobileMode']).toBe(false);
+  settings.reset();
+  expect(new StandaloneSettings(storage).snapshot['layout.mobileMode']).toBe(true);
+});

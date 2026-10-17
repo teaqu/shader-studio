@@ -210,8 +210,9 @@
   .modal-title { font-weight: 600; font-size: 13px; color: var(--vscode-editor-foreground); }
   .close-btn {
     background: none; border: none; cursor: pointer;
-    color: var(--vscode-editor-foreground); font-size: 16px; line-height: 1; padding: 0;
+    color: var(--vscode-editor-foreground); font-size: 16px; line-height: var(--shader-studio-control-line-height); padding: 0;
     opacity: 0.7;
+    min-height: var(--shader-studio-toolbar-height);
   }
   .close-btn:hover { opacity: 1; }
   .profile-list { padding: 4px 0; flex: 1; overflow-y: auto; }
@@ -230,20 +231,24 @@
   .check-col { width: 16px; text-align: center; flex-shrink: 0; color: var(--vscode-editor-foreground); }
   .profile-name-btn {
     flex: 1; background: none; border: none; text-align: left;
-    cursor: pointer; color: var(--vscode-editor-foreground); font-size: 12px; padding: 0;
+    cursor: pointer; color: var(--vscode-editor-foreground); font-size: var(--shader-studio-font-size); padding: 0; min-height: var(--shader-studio-control-height);
   }
   .profile-row.active .profile-name-btn { cursor: default; }
   .rename-input {
-    flex: 1; font-size: 12px; padding: 2px 6px;
+    flex: 1; min-width: 0; font-size: var(--shader-studio-font-size); padding: var(--shader-studio-control-padding);
     background: var(--vscode-input-background);
     border: 1px solid var(--vscode-focusBorder);
-    border-radius: 2px; color: var(--vscode-input-foreground); outline: none;
+    border-radius: var(--shader-studio-control-radius); color: var(--vscode-input-foreground); outline: none; min-height: var(--shader-studio-control-height);
   }
+  .rename-input:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
   .rename-hint { font-size: 10px; color: var(--vscode-descriptionForeground, var(--vscode-editor-foreground)); opacity: 0.6; white-space: nowrap; }
   .icon-btn {
     background: none; border: none; cursor: pointer;
-    color: var(--vscode-editor-foreground); padding: 2px 4px; border-radius: 2px;
-    opacity: 0.5; display: flex; align-items: center;
+    color: var(--vscode-editor-foreground); padding: var(--shader-studio-toolbar-padding); border-radius: var(--shader-studio-control-radius);
+    opacity: 0.5; display: flex; align-items: center; min-height: var(--shader-studio-toolbar-height);
   }
   .icon-btn:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground)); }
   .save-current-btn:hover { color: var(--vscode-terminal-ansiGreen, #4caf50); opacity: 1; }
@@ -252,8 +257,8 @@
   .confirm-save-label { font-size: 11px; color: var(--vscode-editor-foreground); opacity: 0.8; white-space: nowrap; }
   .text-btn {
     background: none; border: 1px solid var(--vscode-panel-border, #3c3c3c);
-    border-radius: 3px; cursor: pointer; font-size: 11px;
-    color: var(--vscode-editor-foreground); padding: 1px 8px;
+    border-radius: var(--shader-studio-control-radius); cursor: pointer; font-size: var(--shader-studio-font-size);
+    color: var(--vscode-editor-foreground); padding: var(--shader-studio-control-padding); min-height: var(--shader-studio-control-height);
   }
   .text-btn:hover { background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground)); }
   .confirm-save-yes { border-color: var(--vscode-button-background); color: var(--vscode-button-background); }
@@ -265,16 +270,20 @@
   .footer-label { font-size: 10px; color: var(--vscode-descriptionForeground, var(--vscode-editor-foreground)); opacity: 0.6; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
   .footer-row { display: flex; gap: 8px; }
   .new-profile-input {
-    flex: 1; font-size: 12px; padding: 4px 8px;
+    flex: 1; min-width: 0; font-size: var(--shader-studio-font-size); padding: var(--shader-studio-control-padding);
     background: var(--vscode-input-background);
     border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
-    border-radius: 2px; color: var(--vscode-input-foreground); outline: none;
+    border-radius: var(--shader-studio-control-radius); color: var(--vscode-input-foreground); outline: none; min-height: var(--shader-studio-control-height);
   }
+  .new-profile-input:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
   .new-profile-input:focus { border-color: var(--vscode-focusBorder); }
   .save-btn {
     background: var(--vscode-button-background);
     border: 1px solid transparent; color: var(--vscode-button-foreground); cursor: pointer;
-    font-size: 12px; padding: 4px 14px; border-radius: 2px;
+    font-size: var(--shader-studio-font-size); padding: var(--shader-studio-control-padding); border-radius: var(--shader-studio-control-radius); min-height: var(--shader-studio-control-height);
   }
   .save-btn:hover:not(:disabled) { background: var(--vscode-button-hoverBackground); }
   .save-btn:disabled { opacity: 0.4; cursor: not-allowed; }

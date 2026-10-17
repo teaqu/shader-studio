@@ -344,12 +344,19 @@
   .value-input,
   .channel-select,
   .preset-trigger {
+    background: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+    border: 1px solid var(--vscode-dropdown-border);
+    border-radius: var(--shader-studio-control-radius);
+    padding: var(--shader-studio-control-padding);
+    font-size: var(--shader-studio-font-size);
+    min-height: var(--shader-studio-control-height);
+  }
+
+  .value-input {
     background: var(--vscode-input-background);
     color: var(--vscode-input-foreground);
-    border: 1px solid var(--vscode-input-border);
-    border-radius: 2px;
-    padding: 3px 6px;
-    font-size: 13px;
+    border-color: var(--vscode-input-border);
   }
 
   .expression-editor {
@@ -357,9 +364,11 @@
     min-width: 0;
     background: var(--vscode-input-background);
     border: 1px solid var(--vscode-input-border);
-    border-radius: 2px;
-    padding: 3px 6px;
-    font-size: 13px;
+    border-radius: var(--shader-studio-control-radius);
+    padding: var(--shader-studio-control-padding);
+    min-height: var(--shader-studio-control-height);
+    box-sizing: border-box;
+    font-size: var(--shader-studio-font-size);
     font-family: var(--vscode-editor-font-family, monospace);
     color: var(--vscode-input-foreground);
     white-space: nowrap;
@@ -457,13 +466,14 @@
   .preset-option {
     background: transparent;
     border: 0;
-    border-radius: 3px;
+    border-radius: var(--shader-studio-control-radius);
     color: var(--vscode-editor-foreground);
     cursor: pointer;
     font-family: var(--vscode-editor-font-family, monospace);
-    font-size: 12px;
-    padding: 6px 8px;
+    font-size: var(--shader-studio-font-size);
+    padding: var(--shader-studio-control-padding);
     text-align: left;
+    min-height: var(--shader-studio-control-height);
   }
 
   .preset-option:hover {
@@ -501,7 +511,7 @@
 
   .color-picker {
     width: 26px;
-    height: 24px;
+    height: var(--shader-studio-control-height);
     padding: 0;
     border: 1px solid var(--vscode-input-border);
     cursor: pointer;

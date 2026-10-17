@@ -11,6 +11,7 @@
     audioVideoController?: AudioVideoController;
     onUpdateMuted?: (muted: boolean) => void;
     showControls?: boolean;
+    showLiveLabel?: boolean;
   }
 
   let {
@@ -19,6 +20,7 @@
     audioVideoController = undefined as AudioVideoController | undefined,
     onUpdateMuted = undefined,
     showControls = true,
+    showLiveLabel = true,
   }: Props = $props();
 
   // Mute icon/title/action are config-driven (channelInput.muted), matching
@@ -302,7 +304,7 @@
       <div class="empty-icon">+</div>
     </div>
   {:else if channelInput.type === "webcam" || channelInput.type === "screen" || channelInput.type === "microphone" || channelInput.type === "system-audio"}
-    <LiveInputPreview type={channelInput.type} {audioVideoController} />
+    <LiveInputPreview type={channelInput.type} {audioVideoController} showLabel={showLiveLabel} />
   {:else if channelInput.type === "texture"}
     <!-- Texture preview -->
     <div class="texture-preview">
@@ -772,15 +774,15 @@
     border: none;
     color: white;
     cursor: pointer;
-    font-size: 13px;
-    padding: 3px 5px;
-    border-radius: 3px;
-    line-height: 1;
+    font-size: var(--shader-studio-font-size);
+    padding: var(--shader-studio-toolbar-padding);
+    border-radius: var(--shader-studio-control-radius);
+    line-height: var(--shader-studio-control-line-height);
     display: flex;
     align-items: center;
     justify-content: center;
     min-width: 24px;
-    height: 22px;
+    height: var(--shader-studio-toolbar-height);
     transition: background 0.15s ease;
   }
 

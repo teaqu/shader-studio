@@ -1,0 +1,44 @@
+.channel-pages { container-type: inline-size; }
+.channel-pages .channel-section { min-width: 0; margin: 0 0 20px; }
+.channel-pages .channel-section:last-child { margin-bottom: 0; }
+.channel-pages h3, .channel-pages .misc-section-label {
+  margin: 0 0 10px; font-size: var(--shader-studio-font-size); font-weight: 600;
+  line-height: 18px; color: var(--vscode-foreground); text-transform: none; letter-spacing: normal;
+}
+.channel-pages .channel-hint { margin: 8px 0 0; font-size: 12px; line-height: 18px; color: var(--vscode-descriptionForeground); }
+.channel-pages .channel-settings .input-row { margin-top: 0; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); }
+.channel-pages .channel-settings .input-group { min-width: 0; margin-bottom: 12px; }
+.channel-pages .channel-settings .input-group label { font-weight: 400; }
+.channel-pages .channel-settings .input-row:last-child .input-group { margin-bottom: 0; }
+.channel-pages .channel-details-grid { display: grid; gap: 20px; align-items: start; }
+.channel-pages .channel-details-grid .channel-section { margin-bottom: 0; }
+.channel-pages .channel-volume-settings { min-width: 0; }
+.channel-pages .channel-volume-settings .channel-section + .channel-section { margin-top: 20px; }
+.channel-pages .channel-preview-section { padding: 12px; border: 1px solid var(--vscode-panel-border); border-radius: 6px; background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); }
+.channel-pages .channel-preview-section .volume-preview { max-width: 100%; }
+.channel-pages .video-controls { margin-bottom: 20px; padding-top: 12px; border-top: 1px solid var(--vscode-panel-border); }
+.channel-pages .controls-label { display: block; margin-bottom: 8px; font-size: var(--shader-studio-font-size); font-weight: 600; color: var(--vscode-foreground); }
+.channel-pages .controls-row { flex-wrap: wrap; }
+.channel-pages .live-input-section { padding-top: 16px; border-top: 1px solid var(--vscode-panel-border); }
+@container (min-width: 520px) {
+  .channel-pages .channel-details-grid.has-preview { grid-template-columns: minmax(0, 1fr) 240px; }
+}
+
+/* One sampling form across buffer, screen, texture, cubemap, video and volume. */
+.channel-pages .channel-settings .sampling-fields,
+.channel-pages .channel-settings .sampling-options {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+  gap: 12px; max-width: 520px; margin: 0;
+}
+.channel-pages .channel-settings .sampling-field {
+  display: flex; flex-direction: column; gap: 6px; min-width: 0; margin: 0;
+}
+.channel-pages .channel-settings .sampling-field label {
+  font-size: var(--shader-studio-label-size); line-height: 18px; font-weight: 400;
+  color: var(--vscode-foreground);
+}
+.channel-pages .channel-settings .sampling-field select { width: 100%; min-width: 0; }
+.channel-pages .channel-settings .sampling-options { margin-top: 12px; }
+.channel-pages .channel-settings .sampling-options .input-group { margin: 0; }
+.channel-pages .channel-settings .sampling-options label { display: flex; align-items: center; gap: 8px; font-size: var(--shader-studio-label-size); font-weight: 400; }
+.channel-pages .channel-settings .sampling-extra { margin-top: 12px; max-width: 254px; }

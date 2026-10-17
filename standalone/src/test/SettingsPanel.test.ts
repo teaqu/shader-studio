@@ -89,3 +89,12 @@ it('restores the launching control focus and applies fallback editor choices', a
   expect(document.activeElement).toBe(launcher);
   launcher.remove();
 });
+
+it('exposes the mobile-mode preference in global settings', async () => {
+  const settings = new StandaloneSettings({ getItem: () => null, setItem: vi.fn() });
+  render(SettingsPanel, { settings, onClose: vi.fn() });
+  const mobile = screen.getByRole('checkbox', { name: 'Mobile mode' });
+  expect((mobile as HTMLInputElement).checked).toBe(true);
+  await fireEvent.click(mobile);
+  expect(settings.snapshot['layout.mobileMode']).toBe(false);
+});

@@ -453,3 +453,23 @@ test('a workspace backup exported on a phone restores the work after the workspa
   await page.getByTestId('shader-option-aurora-glsl').dispatchEvent('click');
   await expect(editor.locator('.view-lines')).toContainText('backed up');
 });
+
+test('global Mobile mode override keeps desktop layout across reload and can be re-enabled', async ({ page }) => {
+  await page.goto('/');
+  const nav = page.getByRole('navigation', { name: 'Workspace panels' });
+  await expect(nav).toBeVisible();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const settings = page.getByRole('dialog', { name: 'Settings', exact: true });
+  await settings.getByRole('checkbox', { name: 'Mobile mode', exact: true }).uncheck();
+  await settings.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(nav).toHaveCount(0);
+  await expect(page.locator('.standalone-app')).toHaveClass(/desktop-layout/);
+  await page.reload();
+  await expect(nav).toHaveCount(0);
+  await expect(page.locator('.standalone-app')).toHaveClass(/desktop-layout/);
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(settings.getByRole('checkbox', { name: 'Mobile mode', exact: true })).not.toBeChecked();
+  await settings.getByRole('checkbox', { name: 'Mobile mode', exact: true }).check();
+  await settings.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(nav).toBeVisible();
+});

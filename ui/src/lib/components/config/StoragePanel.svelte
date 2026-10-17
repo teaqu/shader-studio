@@ -202,13 +202,13 @@
   .storage-panel :global(input),
   .storage-panel :global(select) {
     font: inherit;
-    font-size: 12px;
+    font-size: var(--shader-studio-font-size);
     color: var(--storage-text);
     background: var(--storage-bg);
     border: 1px solid var(--storage-line);
-    border-radius: 4px;
-    padding: 5px 10px;
-    min-height: 32px;
+    border-radius: var(--shader-studio-control-radius);
+    padding: var(--shader-studio-control-padding);
+    min-height: var(--shader-studio-control-height);
     min-width: 0;
     max-width: 100%;
     box-sizing: border-box;
@@ -221,9 +221,14 @@
   }
   .storage-panel :global(button) {
     cursor: pointer;
-    height: 32px;
-    line-height: 18px;
+    height: var(--shader-studio-control-height);
+    line-height: var(--shader-studio-control-line-height);
     flex: 0 0 auto;
+  }
+  .storage-panel :global(select) {
+    color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground));
+    background: var(--vscode-dropdown-background, var(--vscode-input-background));
+    border-color: var(--vscode-dropdown-border, var(--storage-line));
   }
   .storage-panel :global(input[type="checkbox"]) {
     min-height: 0;
@@ -289,7 +294,7 @@
     width: 100%;
     text-align: left;
     margin: 3px 0;
-    padding: 10px;
+    padding: var(--shader-studio-control-padding);
     background: transparent;
     border: 0;
     overflow-wrap: anywhere;
@@ -317,12 +322,12 @@
     margin-bottom: 16px;
   }
   .storage-panel .tabs button {
-    height: 36px;
+    height: var(--shader-studio-tab-height);
     border: 0;
     border-bottom: 2px solid transparent;
     border-radius: 0;
     background: transparent;
-    padding: 0 2px 10px;
+    padding: var(--shader-studio-tab-padding);
     color: var(--storage-muted);
   }
   .storage-panel .tabs button[aria-selected="true"] {

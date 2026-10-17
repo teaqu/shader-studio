@@ -245,12 +245,13 @@
   .ctrl-btn {
     background: none;
     border: 1px solid transparent;
-    border-radius: 2px;
+    border-radius: var(--shader-studio-control-radius);
     color: var(--vscode-descriptionForeground);
     cursor: pointer;
-    font-size: 10px;
-    padding: 1px 4px;
+    font-size: var(--shader-studio-font-size);
+    padding: var(--shader-studio-toolbar-padding);
     line-height: 1.4;
+    min-height: var(--shader-studio-toolbar-height);
   }
 
   .ctrl-btn.has-input {
@@ -273,9 +274,9 @@
     background: var(--vscode-input-background);
     color: var(--vscode-input-foreground);
     border: 1px solid var(--vscode-input-border);
-    border-radius: 2px;
-    padding: 1px 3px;
-    font-size: 10px;
+    border-radius: var(--shader-studio-control-radius);
+    padding: var(--shader-studio-control-padding);
+    font-size: var(--shader-studio-font-size);
     width: 38px;
     height: 16px;
   }
@@ -313,14 +314,15 @@
     display: flex;
     align-items: center;
     gap: 3px;
-    padding: 0 3px;
+    padding: var(--shader-studio-control-padding);
     background: transparent;
     border: none;
-    border-radius: 3px;
+    border-radius: var(--shader-studio-control-radius);
     color: var(--vscode-errorForeground, #f48771);
     cursor: pointer;
-    font-size: 11px;
-    line-height: 1;
+    font-size: var(--shader-studio-font-size);
+    line-height: var(--shader-studio-control-line-height);
+    min-height: var(--shader-studio-control-height);
   }
 
   .issue-button:hover {

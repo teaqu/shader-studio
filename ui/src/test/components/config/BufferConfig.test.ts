@@ -210,6 +210,21 @@ describe('BufferConfig', () => {
     expect(container.querySelector(passType === 'compute' ? '.compute-controls select[aria-label="Output format"]' : '[aria-label="Output"] select[aria-label="Output format"]')).not.toBeNull();
   });
 
+  it.each(['wgsl', 'slang'] as const)('places %s Render output below Add Channel for Image and buffer passes', language => {
+    for (const isImagePass of [true, false]) {
+      const view = render(BufferConfig, {
+        bufferName: isImagePass ? 'Image' : 'BufferA', isImagePass, language,
+        config: isImagePass ? {} : { path: `a.${language}` },
+        onUpdate: vi.fn(), getWebviewUri: () => undefined,
+      });
+      const add = view.getByRole('button', { name: '+ Add Channel' });
+      const output = view.getByRole('heading', { name: 'Render output' });
+      expect(add.compareDocumentPosition(output) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(view.queryByRole('heading', { name: 'Fragment shader' })).toBeNull();
+      view.unmount();
+    }
+  });
+
   it('loads and updates producer output precision without showing it for Image', async () => {
     const onUpdate = vi.fn();
     const { getByLabelText } = render(BufferConfig, {
@@ -238,8 +253,8 @@ describe('BufferConfig', () => {
       });
       const titles = Array.from(view.container.querySelectorAll('.section-title')).map(title => title.textContent);
       expect(titles).toEqual([
-        ...(language !== 'glsl' ? ['Fragment shader'] : []),
         ...(!isImagePass ? ['Channels'] : []),
+        ...(language !== 'glsl' ? ['Render output'] : []),
         'Geometry', 'Rendering', 'Resolution',
         ...(!isImagePass ? ['Output'] : []),
         'Vertex shader',
