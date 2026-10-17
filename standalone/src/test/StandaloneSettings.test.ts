@@ -100,3 +100,17 @@ it('persists the global mobile-mode override and resets it to automatic mobile l
   settings.reset();
   expect(new StandaloneSettings(storage).snapshot['layout.mobileMode']).toBe(true);
 });
+
+it('persists Pixel style, rejects invalid styles and resets to Classic', () => {
+  const backend = storage();
+  const settings = new StandaloneSettings(backend);
+  expect(settings.snapshot['theme.style']).toBe('classic');
+  expect(settings.update('theme.style', 'pixel')).toBe(true);
+  expect(new StandaloneSettings(backend).snapshot['theme.style']).toBe('pixel');
+  for (const value of ['dark', '', null, true]) {
+    expect(settings.update('theme.style', value)).toBe(false);
+  }
+  expect(settings.snapshot['theme.style']).toBe('pixel');
+  settings.reset();
+  expect(new StandaloneSettings(backend).snapshot['theme.style']).toBe('classic');
+});

@@ -1,0 +1,136 @@
+/* Standalone-only skin. Light/dark still use the shared editor theme switch. */
+:root[data-studio-theme="pixel"][data-theme="dark"] {
+  --pixel-canvas: #171a2b;
+  --pixel-surface: #22263d;
+  --pixel-raised: #2e3450;
+  --pixel-hover: #3b4263;
+  --pixel-ink: #eef0ff;
+  --pixel-muted: #b3bad7;
+  --pixel-line: #697498;
+  --pixel-accent: #c2a6ff;
+  --pixel-on-accent: #23143e;
+  --pixel-selected: #443666;
+  --pixel-shadow: #0b0e1b;
+  --pixel-gold: #ffd478;
+  --pixel-link: #8ee5cf;
+}
+
+:root[data-studio-theme="pixel"][data-theme="light"] {
+  --pixel-canvas: #fff9ec;
+  --pixel-surface: #f2ead8;
+  --pixel-raised: #fffdf6;
+  --pixel-hover: #e8dec8;
+  --pixel-ink: #302b42;
+  --pixel-muted: #655b75;
+  --pixel-line: #8b7c96;
+  --pixel-accent: #6842a6;
+  --pixel-on-accent: #ffffff;
+  --pixel-selected: #e4d8f7;
+  --pixel-shadow: #b7a88e;
+  --pixel-gold: #885018;
+  --pixel-link: #146756;
+}
+
+:root[data-studio-theme="pixel"] {
+  --vscode-font-family: "Cascadia Mono", "Consolas", monospace;
+  --vscode-foreground: var(--pixel-ink);
+  --vscode-descriptionForeground: var(--pixel-muted);
+  --vscode-editor-background: var(--pixel-canvas);
+  --vscode-editor-foreground: var(--pixel-ink);
+  --vscode-sideBar-background: var(--pixel-surface);
+  --vscode-sideBar-foreground: var(--pixel-ink);
+  --vscode-panel-border: var(--pixel-line);
+  --vscode-editorGroupHeader-tabsBackground: var(--pixel-surface);
+  --vscode-tab-activeBackground: var(--pixel-canvas);
+  --vscode-tab-activeForeground: var(--pixel-ink);
+  --vscode-tab-inactiveBackground: var(--pixel-surface);
+  --vscode-tab-inactiveForeground: var(--pixel-muted);
+  --vscode-tab-hoverBackground: var(--pixel-hover);
+  --vscode-tab-hoverForeground: var(--pixel-ink);
+  --vscode-tab-border: var(--pixel-line);
+  --vscode-input-background: var(--pixel-raised);
+  --vscode-input-foreground: var(--pixel-ink);
+  --vscode-input-border: var(--pixel-line);
+  --vscode-dropdown-background: var(--pixel-raised);
+  --vscode-dropdown-foreground: var(--pixel-ink);
+  --vscode-dropdown-border: var(--pixel-line);
+  --vscode-button-background: var(--pixel-accent);
+  --vscode-button-foreground: var(--pixel-on-accent);
+  --vscode-button-hoverBackground: var(--pixel-accent);
+  --vscode-button-secondaryBackground: var(--pixel-raised);
+  --vscode-button-secondaryForeground: var(--pixel-ink);
+  --vscode-button-secondaryHoverBackground: var(--pixel-hover);
+  --vscode-focusBorder: var(--pixel-accent);
+  --vscode-inputOption-activeBackground: var(--pixel-selected);
+  --vscode-inputOption-activeForeground: var(--pixel-ink);
+  --vscode-inputOption-activeBorder: var(--pixel-accent);
+  --vscode-list-hoverBackground: var(--pixel-hover);
+  --vscode-toolbar-hoverBackground: var(--pixel-hover);
+  --vscode-menu-background: var(--pixel-surface);
+  --vscode-menu-foreground: var(--pixel-ink);
+  --vscode-menu-border: var(--pixel-line);
+  --vscode-menu-selectionBackground: var(--pixel-selected);
+  --vscode-menu-selectionForeground: var(--pixel-ink);
+  --vscode-textLink-foreground: var(--pixel-link);
+  --vscode-textLink-activeForeground: var(--pixel-link);
+  --vscode-notifications-background: var(--pixel-surface);
+  --vscode-notifications-border: var(--pixel-line);
+  --shader-studio-editor-foreground: var(--pixel-ink);
+  --shader-studio-editor-active-line-number: var(--pixel-ink);
+  --shader-studio-editor-cursor: var(--pixel-ink);
+  --shader-studio-editor-hover-background: var(--pixel-surface);
+  --shader-studio-editor-hover-border: var(--pixel-line);
+  --shader-studio-editor-status-background: var(--pixel-surface);
+  --shader-studio-editor-status-border: var(--pixel-line);
+}
+
+:root[data-studio-theme="pixel"] body {
+  --shader-studio-control-radius: 2px;
+}
+
+:root[data-studio-theme="pixel"] :where(.standalone-toolbar button, dialog button, .config-panel button, .recording-panel button, .new-shader-modal button, .options-menu) {
+  box-shadow: 2px 2px 0 var(--pixel-shadow);
+  border: 1px solid var(--pixel-line);
+  transition: none;
+}
+
+:root[data-studio-theme="pixel"] :where(.standalone-toolbar button, dialog button, .config-panel button, .recording-panel button):active:not(:disabled) {
+  box-shadow: inset 2px 2px 0 var(--pixel-shadow);
+}
+
+:root[data-studio-theme="pixel"] :where(dialog, .dropdown-menu, .options-menu) {
+  border: 2px solid var(--pixel-line);
+  border-radius: 2px;
+  box-shadow: 5px 5px 0 var(--pixel-shadow);
+}
+
+:root[data-studio-theme="pixel"] :where(.standalone-toolbar > strong, dialog h2, dialog h3, .config-panel .section-title) {
+  font-family: "Cascadia Mono", "Consolas", monospace;
+  font-weight: 700;
+  letter-spacing: 0.025em;
+}
+
+:root[data-studio-theme="pixel"] .standalone-toolbar > strong::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 10px;
+  background: var(--pixel-gold);
+  box-shadow: 4px -4px 0 var(--pixel-accent), 4px 4px 0 var(--pixel-link);
+}
+
+:root[data-studio-theme="pixel"] :is(.config-panel, .recording-panel) .tab-button {
+  box-shadow: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+}
+
+:root[data-studio-theme="pixel"] :is(.config-panel, .recording-panel) .tab-button.active {
+  border-bottom-color: var(--pixel-accent);
+  color: var(--pixel-accent);
+}
+
+:root[data-studio-theme="pixel"] :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select) {
+  box-shadow: inset 1px 1px 0 var(--pixel-shadow);
+}

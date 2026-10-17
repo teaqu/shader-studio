@@ -2,6 +2,10 @@ import { DEFAULT_SETTINGS, type StandaloneSettings, type StandaloneSettingsValue
 
 let values = $state<StandaloneSettingsValues>({ ...DEFAULT_SETTINGS });
 
+export function getInterfaceTheme() {
+  return values['theme.style'];
+}
+
 export function getMobileModeEnabled(): boolean {
   return values['layout.mobileMode'];
 }

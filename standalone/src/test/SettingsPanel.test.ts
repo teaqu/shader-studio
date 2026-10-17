@@ -98,3 +98,23 @@ it('exposes the mobile-mode preference in global settings', async () => {
   await fireEvent.click(mobile);
   expect(settings.snapshot['layout.mobileMode']).toBe(false);
 });
+
+it('offers Pixel style in the Theme section and shares the existing appearance preference', async () => {
+  const { applyThemeProfile, snapshotTheme } = await import('@shader-studio/ui/lib/stores/themeStore');
+  applyThemeProfile('light');
+  const settings = new StandaloneSettings({ getItem: () => null, setItem: vi.fn() });
+  render(SettingsPanel, { settings, onClose: vi.fn() });
+  expect(screen.getByRole('region', { name: 'Theme' })).toBeTruthy();
+  await fireEvent.change(screen.getByRole('combobox', { name: 'Style' }), { target: { value: 'pixel' } });
+  expect(settings.snapshot['theme.style']).toBe('pixel');
+  await fireEvent.change(screen.getByRole('combobox', { name: 'Appearance' }), { target: { value: 'dark' } });
+  expect(snapshotTheme()).toBe('dark');
+  await fireEvent.input(screen.getByRole('searchbox'), { target: { value: 'theme' } });
+  expect(screen.getByRole('combobox', { name: 'Style' })).toBeTruthy();
+  await fireEvent.input(screen.getByRole('searchbox'), { target: { value: 'appearance' } });
+  expect(screen.getByRole('combobox', { name: 'Appearance' })).toBeTruthy();
+  expect(screen.queryByRole('status')).toBeNull();
+  await fireEvent.click(screen.getByRole('button', { name: 'Reset all settings' }));
+  expect(settings.snapshot['theme.style']).toBe('classic');
+  applyThemeProfile('light');
+});

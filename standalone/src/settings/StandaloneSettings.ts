@@ -3,6 +3,7 @@ export const CAMERA_STORAGE_KEY = 'shader-studio.webgpu.useViewerCamera';
 
 export const DEFAULT_SETTINGS = Object.freeze({
   'layout.mobileMode': true,
+  'theme.style': 'classic' as 'classic' | 'pixel',
   'preview.preventMouseDefaults': true,
   'webgpu.defaultRenderAuthoring': 'hooks' as 'hooks' | 'native',
   'webgpu.useViewerCamera': true,
@@ -31,6 +32,9 @@ function availableStorage(): StorageBackend | undefined {
 }
 
 function valid(key: StandaloneSettingKey, value: unknown): boolean {
+  if (key === 'theme.style') {
+    return value === 'classic' || value === 'pixel';
+  }
   if (key === 'webgpu.defaultRenderAuthoring') {
     return value === 'hooks' || value === 'native';
   }

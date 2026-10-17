@@ -2038,3 +2038,26 @@ test('standalone global settings disable and restore language service diagnostic
   await dialog.getByLabel('GLSL language service', { exact: true }).check();
   await expect(editor.locator('.squiggly-error').first()).toBeVisible();
 });
+
+for (const appearance of ['light', 'dark']) {
+  test(`Pixel theme applies in ${appearance} mode and persists across reload`, async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    const settings = page.getByRole('dialog', { name: 'Settings', exact: true });
+    await settings.getByRole('combobox', { name: 'Appearance', exact: true }).selectOption(appearance);
+    await settings.getByRole('combobox', { name: 'Style', exact: true }).selectOption('pixel');
+    await expect(page.locator('html')).toHaveAttribute('data-studio-theme', 'pixel');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', appearance);
+    await expect(settings).toHaveCSS('background-color', appearance === 'dark' ? 'rgb(34, 38, 61)' : 'rgb(242, 234, 216)');
+    await expect(settings.getByRole('button', { name: 'Done', exact: true })).toHaveCSS('box-shadow', appearance === 'dark' ? 'rgb(11, 14, 27) 2px 2px 0px 0px' : 'rgb(183, 168, 142) 2px 2px 0px 0px');
+    await settings.getByRole('button', { name: 'Done', exact: true }).click();
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-studio-theme', 'pixel');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', appearance);
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await expect(settings.getByRole('combobox', { name: 'Style', exact: true })).toHaveValue('pixel');
+    await settings.getByRole('combobox', { name: 'Style', exact: true }).selectOption('classic');
+    await expect(page.locator('html')).toHaveAttribute('data-studio-theme', 'classic');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', appearance);
+  });
+}

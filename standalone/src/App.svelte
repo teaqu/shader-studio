@@ -9,7 +9,7 @@
   import StandaloneLayout from './StandaloneLayout.svelte';
   import EditorPane from './EditorPane.svelte';
   import SettingsPanel from './settings/SettingsPanel.svelte';
-  import { connectSettings, getDefaultShaderMode, getMobileModeEnabled } from './settings/settingsState.svelte';
+  import { connectSettings, getDefaultShaderMode, getMobileModeEnabled, getInterfaceTheme } from './settings/settingsState.svelte';
   import WorkspaceFilePicker from './WorkspaceFilePicker.svelte';
   import NewShaderModal from './NewShaderModal.svelte';
   import type { WebTransport, WorkspaceStorageStatus } from './WebTransport';
@@ -55,6 +55,12 @@
   let workspaceError = $state('');
   const disconnectSettings = connectSettings(transport.settings);
   onDestroy(disconnectSettings);
+  $effect(() => {
+    document.documentElement.dataset.studioTheme = getInterfaceTheme();
+    return () => {
+      delete document.documentElement.dataset.studioTheme;
+    };
+  });
   let settingsOpen = $state(false);
   let alphaNoticeVisible = $state(shouldShowAlphaNotice());
   let viewMenuOpen = $state(false);

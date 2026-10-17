@@ -6,6 +6,7 @@ import {
 } from '@shader-studio/types';
 import { configureHost } from '@shader-studio/ui';
 import '@shader-studio/ui/app.css';
+import './themes.css';
 import '@vscode/codicons/dist/codicon.css';
 import { getEditorPreferences } from './settings/settingsState.svelte';
 import App from './App.svelte';

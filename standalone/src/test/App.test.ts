@@ -90,6 +90,20 @@ function createStorage(): Storage {
 }
 
 describe('standalone App', () => {
+  it('applies and clears the standalone Pixel skin through global settings', async () => {
+    const transport = createTransport();
+    const { unmount } = render(App, { props: { transport } });
+    await tick();
+    expect(document.documentElement.dataset.studioTheme).toBe('classic');
+    transport.settings.update('theme.style', 'pixel');
+    await tick();
+    expect(document.documentElement.dataset.studioTheme).toBe('pixel');
+    transport.settings.reset();
+    await tick();
+    expect(document.documentElement.dataset.studioTheme).toBe('classic');
+    unmount();
+    expect(document.documentElement.dataset.studioTheme).toBeUndefined();
+  });
   it('uses the global Native mode when opening a new shader', async () => {
     const transport = createTransport();
     transport.settings.update('webgpu.defaultRenderAuthoring', 'native');
