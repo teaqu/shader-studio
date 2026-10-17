@@ -29,3 +29,9 @@ it.each([['model','/models/a.glb'],['script','/scripts/a.ts'],['texture','/image
   expect(selectableWorkspaceFile(path,type)).toBe(true);
   expect(selectableWorkspaceFile('/shaders/a.wgsl',type)).toBe(false);
 });
+
+it('volume selection accepts KTX2 case-insensitively and excludes internal BIN files', () => {
+  expect(selectableWorkspaceFile('/assets/noise.KTX2', 'volume')).toBe(true);
+  expect(selectableWorkspaceFile('/assets/noise.bin', 'volume')).toBe(false);
+  expect(selectableWorkspaceFile('/assets/noise.png', 'volume')).toBe(false);
+});

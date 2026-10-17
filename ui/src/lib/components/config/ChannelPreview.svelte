@@ -1,4 +1,5 @@
 <script lang="ts">
+  import VolumePreview from "./VolumePreview.svelte";
   import LiveInputPreview from "./LiveInputPreview.svelte";
   import { onDestroy } from "svelte";
   import type { ConfigInput } from "@shader-studio/types";
@@ -457,6 +458,8 @@
       <span class="buffer-letter">{(channelInput.source || 'B').replace(/^.*?([A-Za-z])$/, '$1').toUpperCase()}</span>
     </div>
 
+  {:else if channelInput.type === "volume"}
+    <VolumePreview path={channelInput.resolved_path || getWebviewUri(channelInput.path) || channelInput.path} />
   {:else if channelInput.type === "cubemap"}
     <!-- Cubemap preview -->
     <div class="texture-preview">

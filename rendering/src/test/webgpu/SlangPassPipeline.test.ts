@@ -2078,3 +2078,11 @@ describe("SlangPassPipeline", () => {
     });
   });
 });
+
+it("declares volume channels as 3D bindings in fragment pipelines", async () => {
+  const device = fakeDevice();
+  const pass = new SlangPassPipeline(device, "bgra8unorm", { name: "Image", width: 1, height: 1, output: "canvas", geometry: "fullscreen", storage: [], channels: [{ slot: 0, key: "density", kind: "volume" }] });
+  await pass.rebuild("// wgsl");
+  expect(device.createBindGroupLayout.mock.calls[0][0].entries[1]).toMatchObject({ binding: 1, texture: { viewDimension: "3d", sampleType: "float" } });
+  pass.dispose();
+});

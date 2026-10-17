@@ -30,10 +30,16 @@ function helpers(vscode, settingKey) {
     frame = await vscode.shaderFrame(); return frame;
   };
 
-  const overlayReady = () => expect.poll(
-    () => app().locator('.editor-overlay .monaco-editor').count(),
-    { message: 'Monaco overlay never rendered', timeout: 30_000 },
-  ).toBeGreaterThan(0);
+  const overlayReady = async () => {
+    await expect.poll(
+      () => app().locator('.editor-overlay .monaco-editor').count(),
+      { message: 'Monaco overlay never rendered', timeout: 30_000 },
+    ).toBeGreaterThan(0);
+    // Mounting Monaco does not mean its lazy hover provider is registered yet.
+    await expect(app().locator('.editor-wrapper')).toHaveAttribute(
+      'data-language-service-status', 'ready', { timeout: 30_000 },
+    );
+  };
 
   async function setLanguageServerEnabled(enabled) {
     await vscode.evaluateInHost(async (vscode, nextEnabled, key) => {
@@ -43,8 +49,6 @@ function helpers(vscode, settingKey) {
     }, enabled, settingKey);
     await refreshFrame();
     await overlayReady();
-    await expect.poll(() => app().locator('.editor-wrapper').getAttribute('data-language-service-status'))
-      .toBe('ready');
   }
 
   /**
@@ -81,19 +85,16 @@ function helpers(vscode, settingKey) {
   }
 
   async function hoverTextForToken(text, expected) {
+    await app().locator('body').press('Escape');
+    // Actually leave the previous token before entering it again. Repeatedly
+    // hovering the same coordinates after Escape need not trigger mouseenter.
+    await app().locator('.editor-overlay .monaco-editor .margin').first().hover();
     const { span, position } = await tokenTarget(text);
     const hover = app().locator('.editor-overlay .monaco-hover-content').first();
-    await expect.poll(async () => {
-      // Monaco can mount before its lazy language worker has registered the
-      // hover provider. Re-enter the token while waiting so readiness gets a
-      // fresh hover request instead of polling the result of the early miss.
-      await app().locator('body').press('Escape').catch(() => { /* nothing focused */ });
-      await span.hover({ position, timeout: 30_000 });
-      return (await hover.count()) ? hover.innerText() : '';
-    }, {
-      message: `Monaco hover for ${text} did not contain ${expected}`,
-      timeout: 30_000,
-    }).toMatch(expected);
+    await span.hover({ position, timeout: 30_000 });
+    // Wait for the asynchronous hover response without dismissing it on every
+    // polling iteration. This preserves Monaco's normal hover delay.
+    await expect(hover).toContainText(expected, { timeout: 30_000 });
     return hover.innerText();
   }
 

@@ -4,8 +4,8 @@
   import ShaderFileControls from './ShaderFileControls.svelte';
 
   interface Props {
-    pass: BufferPass | ImagePass; projectConfig?: ShaderConfig | null; passSource: string; vertexSource: string;
-    language: ShaderLanguageId; sourcePath: string; passName: string; vertexSpace: string; geometryType: string;
+    pass: BufferPass | ImagePass; projectConfig?: ShaderConfig | null;
+    language: ShaderLanguageId; sourcePath: string; passName: string;
     fileType: FileDialogFileType; suggestedPath: string; shaderPath: string;
     onPathChange: (path: string) => void; onCommit: (pass: BufferPass | ImagePass) => void;
     postMessage?: (message: ViewerMessage) => void; onMessage?: (handler: (event: MessageEvent) => void) => void;
@@ -26,7 +26,7 @@
 </script>
 
 <div class="source-options" class:has-file={mode === 'separate'} role="group" aria-label="Vertex source">
-  {#each [{ value: 'builtin', label: 'Built-in' }, { value: 'same', label: 'Same file' }, { value: 'separate', label: 'Separate file' }] as option}
+  {#each [{ value: 'builtin', label: 'Built-in' }, { value: 'same', label: 'Same file' }, { value: 'separate', label: 'Separate file' }] as option (option.value)}
     <button type="button" aria-pressed={mode === option.value} onclick={() => selectSource(option.value)}>{option.label}</button>
   {/each}
 </div>

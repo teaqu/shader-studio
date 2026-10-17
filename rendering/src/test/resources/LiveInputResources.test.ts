@@ -61,7 +61,8 @@ vi.mock("../../resources/ShaderKeyboardInput", () => ({ ShaderKeyboardInput: vi.
   return ({ getKeyboardTexture: vi.fn(), updateKeyboardTexture: vi.fn(), cleanup: vi.fn() });
 }) }));
 
-const backend: TextureBackend<Texture> = { createTexture: vi.fn(), createTextureFromImage: vi.fn(), createMipmaps: vi.fn(), updateTexture: vi.fn(), updateTextureFromImage: vi.fn(), destroyTexture: vi.fn() };
+const backend: TextureBackend<Texture> = { createTexture: vi.fn(), createTextureFromImage: vi.fn(), createVolumeTexture: vi.fn(() => null),
+  createMipmaps: vi.fn(), updateTexture: vi.fn(), updateTextureFromImage: vi.fn(), destroyTexture: vi.fn() };
 
 describe("ResourceManager live input routing", () => {
   let resources: ResourceManager<Texture>;

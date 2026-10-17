@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import type { Plugin } from 'vite';
 import { createRequire } from 'node:module';
 
-/** Ship the same source images as standalone in the extension's UI bundle. */
+/** Ship the same built-in assets as standalone in the extension's UI bundle. */
 export function defaultAssetsPlugin(): Plugin {
   return {
     name: 'shader-studio-default-assets',

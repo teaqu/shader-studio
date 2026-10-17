@@ -10,6 +10,8 @@
     "vite.aliases.d.mts",
     "standalone/public/assets/nebula-texture.png",
     "standalone/public/assets/desert-cubemap-cross.png",
+    "standalone/public/assets/noise-grey.ktx2",
+    "standalone/public/assets/noise-rgba.ktx2",
     "eslint.config.mjs",
     ".github/workflows/**",
     ".github/scripts/**"

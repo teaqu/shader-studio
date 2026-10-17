@@ -33,6 +33,7 @@ function mockBackend() {
       return texture;
     }),
 
+    createVolumeTexture: vi.fn(() => null),
     createMipmaps: vi.fn(),
 
     updateTexture: vi.fn(),

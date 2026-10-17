@@ -1,10 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildSlangPassGraph } from '@shader-studio/rendering/webgpu/SlangPassGraph';
-import { createDefaultWorkspaceFiles } from '../defaultWorkspace';
+import { createDefaultWorkspaceFiles, resolveDefaultAssetUrl } from '../defaultWorkspace';
 import { MemoryWorkspaceStore, VirtualWorkspace } from '../VirtualWorkspace';
 import { WebExtensionHost } from '../WebExtensionHost';
 
 describe('default workspace', () => {
+  it.each(['noise-grey', 'noise-rgba'])('resolves %s volumes under the deployed base URL', (name) => {
+    expect(resolveDefaultAssetUrl(`shader-studio://volumes/${name}`, 'https://example.test/studio/'))
+      .toBe(`https://example.test/studio/assets/${name}.ktx2`);
+  });
+
   it('does not seed video shaders or video inputs', () => {
     const files = createDefaultWorkspaceFiles();
     expect(files.filter(({ path }) => /\.(glsl|slang|wgsl)$/.test(path)).map(({ path }) => path))

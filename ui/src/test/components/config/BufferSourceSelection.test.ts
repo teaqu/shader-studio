@@ -1,13 +1,31 @@
 import { fireEvent, render, within } from '@testing-library/svelte';
 import { expect, it, vi } from 'vitest';
 import BufferConfig from '../../../lib/components/config/BufferConfig.svelte';
+import { getOverlayActiveFile, setOverlayActiveFile, setEditorOverlayVisible } from '../../../lib/state/editorOverlayState.svelte';
 
 const base = { bufferName: 'BufferA', language: 'wgsl' as const, shaderPath: '/shaders/image.wgsl', config: { path: 'a.wgsl' }, onUpdate: vi.fn(), getWebviewUri: () => undefined, postMessage: vi.fn() };
+it.each(['BufferA', 'common'])('opens %s through the same editor action as its tab', async bufferName => {
+  setEditorOverlayVisible(false);
+  const onOpenInNewTab = vi.fn();
+  const view = render(BufferConfig, { ...base, bufferName, onOpenInNewTab });
+  await fireEvent.click(view.getByRole('button', { name: 'Open editor' }));
+  expect(onOpenInNewTab).toHaveBeenCalledWith(bufferName, 'active');
+});
+it('switches an existing editor overlay to the selected buffer', async () => {
+  setEditorOverlayVisible(true);
+  setOverlayActiveFile('Image');
+  const onOpenInNewTab = vi.fn();
+  const view = render(BufferConfig, { ...base, onOpenInNewTab });
+  await fireEvent.click(view.getByRole('button', { name: 'Open editor' }));
+  expect(getOverlayActiveFile()).toBe('BufferA');
+  expect(onOpenInNewTab).not.toHaveBeenCalled();
+  setEditorOverlayVisible(false);
+});
 it('omits GLSL fragment controls while retaining buffer paths and optional vertex controls', () => {
   const view = render(BufferConfig, { ...base, language: 'glsl', config: { path: 'a.glsl' } });
   expect(view.queryByRole('heading', { name: 'Fragment shader' })).toBeNull();
   expect(view.queryByRole('group', { name: 'Fragment function controls' })).toBeNull();
-  expect(view.getByLabelText('File')).toHaveValue('a.glsl');
+  expect(view.getByText('a.glsl')).toBeVisible();
   expect(view.getByRole('heading', { name: 'Vertex shader' })).toBeVisible();
 });
 it('keeps output format in its own section after resolution', () => {
@@ -15,11 +33,11 @@ it('keeps output format in its own section after resolution', () => {
   expect(view.getByRole('region', { name: 'Output' }).contains(view.getByLabelText('Output format'))).toBe(true);
   expect(view.container.querySelector('.resolution-section')!.contains(view.getByLabelText('Output format'))).toBe(false);
 });
-it('always shows the current fragment path and offers config files through Change', async () => {
+it('shows the current fragment file and offers config files through the file picker', async () => {
   const onUpdate = vi.fn();
   const view = render(BufferConfig, { ...base, onUpdate, projectConfig: { version: '1.0', passes: { Image: {}, BufferB: { path: 'b.wgsl' } } } });
-  expect(view.getByLabelText('File')).toHaveValue('a.wgsl');
-  await fireEvent.click(view.getByRole('button', { name: 'Change…' }));
+  expect(view.getByText('a.wgsl')).toBeVisible();
+  await fireEvent.click(view.getByRole('button', { name: 'Choose shader file' }));
   await fireEvent.click(view.getByRole('button', { name: 'b.wgsl' }));
   expect(onUpdate).toHaveBeenCalledWith('BufferA', expect.objectContaining({ path: 'b.wgsl' }));
   expect(view.queryByRole('dialog')).toBeNull();

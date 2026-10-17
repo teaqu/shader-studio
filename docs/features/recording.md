@@ -29,7 +29,7 @@ continuous run rather than jumping directly to the selected time.
 
 Record shader output as an MP4 (H.264) or WebM file. **Live** records the
 existing preview until you choose **Stop & save**; it does not restart the
-shader or create another rendering engine. **Render** produces a deterministic
+shader. **Render** produces a deterministic
 clip at a chosen time, duration, and resolution.
 
 | Option | Description |
@@ -41,20 +41,11 @@ clip at a chosen time, duration, and resolution.
 | **FPS** | Screen, 24, 30, 60, or custom. In Render mode, Screen rounds to 24, 30, 60 or 120 fps |
 | **Resolution** | Current, 720p, 1080p, 4K, or custom in Render mode |
 
-Live recording uses WebCodecs when available, with explicit per-frame quality
-to preserve smooth shader gradients. MP4 dimensions are rounded up to even
-pixels to avoid encoder edge artifacts. WebM prefers VP9, with a VP8 fallback.
-Hosts without WebCodecs use MediaRecorder, so the formats offered depend
-on the host: a format it can't record is disabled, and a saved choice it can't
-record falls back to one it can, with a note in the panel. MP4 needs even
-dimensions; an odd custom size is rounded up and the panel tells you the saved
-size. Video quality is automatic. Live recordings and VP9 WebM Render exports
-request quantizer 12 to preserve detail; complex shaders can therefore produce
-larger files. WebM Render prefers VP9 and falls back to VP8 when needed.
-MP4 Render and bitrate fallback encoders use variable bitrate with a
-high ceiling (5 bits per pixel), so detailed, fast-changing shaders keep their
-detail while simple shaders stay small, because the encoder only spends what the
-content needs. Video stores colour at half resolution (4:2:0), so single-pixel
+Available formats depend on your browser or VS Code's recording support. Unavailable formats are disabled. If a saved format is no longer available, the panel chooses a supported one and explains the change.
+
+MP4 requires even pixel dimensions. If you choose an odd width or height, it is rounded up and the panel shows the saved size. Video quality adjusts automatically to preserve detail, so complex or fast-moving shaders can produce larger files.
+
+Video stores colour at half resolution (4:2:0), so single-pixel
 coloured detail softens in any video file; use a PNG screenshot when
 exact colour per pixel matters. Render mode shows separate preparation, rendering, encoding, and
 saving phases. Click **Cancel** to abort a Render recording. During a Live
@@ -90,13 +81,12 @@ duration, FPS, or resolution. Click **Record** to start.
 
 ## Capture state and settings
 
-Render captures freeze the shader source, pass configuration, buffers, language
-modules, source paths, and current custom-uniform values when capture begins.
+Render captures use the shader, pass settings, and current custom-uniform values
+from the moment capture begins.
 Later editor or script updates do not change a capture already in progress.
 
 Each output remembers its own settings across reloads. Encoding, browser
-capability, memory, and save failures are shown in the Recording panel. Saving
-remains visible until the host confirms completion.
+capability, memory, and save failures are shown in the Recording panel. Wait for saving to finish before closing the preview.
 
 ## Limitations
 

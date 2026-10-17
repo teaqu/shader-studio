@@ -241,8 +241,8 @@ describe('standalone App', () => {
     await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
     await fireEvent.click(screen.getByRole('button', { name: 'Download compilers for offline use' }));
     expect(pwa.prepareOffline).toHaveBeenCalledOnce();
-    await fireEvent.click(screen.getByRole('button', { name: 'Check for Updates' }));
-    expect(pwa.checkForUpdate).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('button', { name: 'Check for Updates' })).toBeNull();
+    expect(pwa.checkForUpdate).not.toHaveBeenCalled();
   });
 
   it.each(['declined', 'failed', 'unknown'])('remembers an automatic request across app launches: %s', async (result) => {
@@ -665,7 +665,7 @@ describe('standalone App', () => {
     await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
 
     expect(screen.queryByRole('button', { name: /offline/i })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Check for Updates' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Check for Updates' })).toBeNull();
   });
 
   it('hides update and offline actions where service workers are unavailable', async () => {

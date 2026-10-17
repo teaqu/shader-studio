@@ -1,4 +1,5 @@
 import type { VrEyeView } from "../webxr/WebXrFrameData";
+import { assignInputSlots } from "../util/InputSlotAssigner";
 import type { ShaderPipeline } from "./ShaderPipeline";
 import type { BufferManager } from "./BufferManager";
 import type { PassRenderer } from "./PassRenderer";
@@ -11,7 +12,6 @@ import type { MouseManager } from "../input/MouseManager";
 import type { CameraManager } from "../input/CameraManager";
 import type { CustomUniformManager, CustomUniform } from "./CustomUniformManager";
 import { FPSCalculator } from "../util/FPSCalculator";
-import { assignInputSlots } from "../util/InputSlotAssigner";
 
 export class FrameRenderer {
   private running = false;
@@ -145,6 +145,12 @@ export class FrameRenderer {
       channelLoaded[i] = resolved.loaded;
     }
 
+    for (const { slot, key } of assignInputSlots(pass.inputs)) {
+      const input = pass.inputs[key];
+      if (slot < 4 && input?.type === "volume") {
+        channelLoaded[slot] = this.resourceManager.isVolumeLoaded(input.resolved_path || input.path, input) ? 1 : 0;
+      }
+    }
     return {
       ...baseUniforms,
       res: passResolution,

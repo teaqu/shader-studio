@@ -703,6 +703,37 @@
         },
         {
           "type": "object",
+          "required": [
+            "type",
+            "path"
+          ],
+          "properties": {
+            "type": {
+              "const": "volume"
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Path to an uncompressed KTX2 3D volume (linear R8 or RGBA8)"
+            },
+            "filter": {
+              "enum": [
+                "linear",
+                "nearest"
+              ]
+            },
+            "wrap": {
+              "enum": [
+                "repeat",
+                "clamp"
+              ],
+              "description": "Wrapping on X, Y and Z"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
           "required": ["type", "path"],
           "properties": {
             "type": {

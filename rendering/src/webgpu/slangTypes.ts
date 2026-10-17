@@ -9,7 +9,7 @@ import type { GeometryType, VertexSpace } from "@shader-studio/types";
 export interface SlangCompileChannel {
   slot: number;
   key: string;
-  kind?: "texture" | "video" | "cubemap" | "audio" | "buffer" | "keyboard";
+  kind?: "texture" | "video" | "cubemap" | "volume" | "audio" | "buffer" | "keyboard";
 }
 
 /** Structured-clone-safe options shared by main-thread and worker compilers. */

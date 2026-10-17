@@ -414,7 +414,7 @@ describe("slang-multipass-test shader corpus", () => {
   });
 
   it("discovers every configured root shader", () => {
-    expect(projects).toHaveLength(177);
+    expect(projects).toHaveLength(192);
   });
 
   it("hot-reloads a shared native entry-point selection", { timeout: 30_000 }, async () => {

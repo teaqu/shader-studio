@@ -1,5 +1,6 @@
 import type {
   AudioConfigInput,
+  VolumeConfigInput,
   CubemapConfigInput,
   GeometryType,
   ShaderLanguageId,
@@ -14,6 +15,8 @@ export type RenderPassName = string;
 export type ChannelReadTiming = "previous-frame" | "current-frame";
 
 export type RenderPassChannel =
+  | { kind: "volume"; slot: number; key: string; path: string;
+      filter?: VolumeConfigInput["filter"]; wrap?: VolumeConfigInput["wrap"] }
   | {
       kind: "buffer";
       slot: number;

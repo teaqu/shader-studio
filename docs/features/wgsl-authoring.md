@@ -6,7 +6,15 @@ WGSL shaders require WebGPU support in your browser and device.
 
 ## Native entry points and shared files
 
-WGSL and Slang can keep vertex, fragment, and compute entry points in one source file. The config panel lists available functions as separate selectable rows under their stage. Select a fragment in **Fragment shader** and a vertex in **Vertex shader** independently. Compute passes have their own function rows. Either render stage can use an annotated function while the other keeps its generated adapter. Discovery reads the stage annotations in the source; saving a selection writes `entryPoints` in `.sha.json`. An omitted vertex selection uses the built-in vertex shader (and any configured `mainVertex` hook); an omitted fragment selection uses `mainImage`. Unselected native functions do not replace those adapters. Discovery does not create passes automatically.
+An entry point is the function a shader pass runs. WGSL marks these functions with `@vertex`, `@fragment`, or `@compute`; Slang uses `[shader("vertex")]`, `[shader("fragment")]`, or `[shader("compute")]`.
+
+You can keep these functions in one shader file and choose a different function for each pass. In **Config**, select the function under **Fragment shader**, **Vertex shader**, or the compute pass's function list. Add each pass you need with **+ New**; writing another function does not create a pass.
+
+You can also mix a native stage with a Built-in stage. With no custom vertex selection, Shader Studio uses its built-in vertex shader and any configured `mainVertex` hook. With no native fragment selection, it uses `mainImage`.
+
+### Try a Shared File
+
+Create a file named `shared.wgsl` in your shader workspace and paste in this example:
 
 ```wgsl
 @vertex fn fullscreen(@builtin(vertex_index) index: u32) -> @builtin(position) vec4f {
@@ -23,6 +31,8 @@ fn advance(@builtin(global_invocation_id) id: vec3u) {
     // Update configured storage here.
 }
 ```
+
+Save the following configuration as `shared.sha.json` beside it, then open `shared.wgsl` in the preview. You should see a red/green gradient with a constant blue component. The example compute function does no work until you add your own code.
 
 ```json
 {
@@ -43,7 +53,9 @@ fn advance(@builtin(global_invocation_id) id: vec3u) {
 }
 ```
 
-Open `shared.wgsl` as the Image source in this example. Each pass compiles its selected stages and reachable helpers using that pass’s configured channels, uniforms, and storage. Functions belonging to other passes are excluded, so they can use resources configured on their own pass. Common code and global initializer helpers are retained.
+Image and BufferA both select `fullscreen` and `image` from the same file; ComputeAdvance selects `advance`. Each pass uses its own configured channels, uniforms, and storage, so you can reuse a file with different inputs. Shared helpers can also live in a [Common pass](config-buffers.md#the-common-pass).
+
+### Choose Files and Functions
 
 For a buffer or compute pass, the **File** row shows its source path. **Change…** offers files already referenced by the config, **Browse workspace…**, and **Create**. Reuse a file containing the functions you need, or create a new one. Image always uses the main shader file and has no file chooser.
 
@@ -69,10 +81,9 @@ let worldNormal = (iNormalMatrix * vec4f(normal, 0.0)).xyz;
 
 A fullscreen vertex uses `@builtin(vertex_index)` instead of the mesh attributes. Changing geometry keeps your explicit stage selections; choose a compatible vertex when switching between mesh and fullscreen geometry.
 
-Native fragment inline previews and captures preserve the selected native fragment entry point and its authored input interface, including vertex-to-fragment varyings and depth-bearing outputs. Color outputs must be four-component floating-point vectors. Native buffer passes can declare [multiple render targets](multiple-render-targets.md), and debugging can select an attachment.
-Native fragment inputs are supplied by rasterization, so the debug panel identifies them as GPU-provided rather than displaying inspector defaults as values. Parameters of helper functions called from that fragment remain editable for inline debugging.
+Debugging a native fragment uses the vertex positions, interpolated inputs, and depth from your shader. Color outputs must be four-component floating-point vectors. Native buffers can write [multiple render targets](multiple-render-targets.md); choose an output in the debug panel to inspect its color.
 
-Runnable WGSL and Slang examples live in `tests/fixtures/shader-corpus/*/native-entrypoints/shared.*`; matching `samefile-hooks` examples demonstrate existing `mainVertex` and `mainImage` hooks in one source file. The adjacent `raster-varyings.*` projects exercise native mesh varyings and structured color/depth debugging.
+Inputs passed directly to a native fragment are marked **GPU-provided** and cannot be replaced with parameter controls. Parameters of helper functions remain editable for inline debugging. See [Vertex Shaders](vertex-shaders.md) for mesh examples and [Multiple Render Targets](multiple-render-targets.md#try-two-wgsl-outputs) for a complete two-output example.
 
 ## The `mainImage` Function
 

@@ -298,7 +298,7 @@ test('ci:full label changes retrigger the caller workflow', () => {
  */
 const notInputs = new Set([
   '.githooks', '.gitignore', '.vscode', 'AGENTS.md', 'CLAUDE.md', 'LICENSE', 'README.md',
-  'THIRD-PARTY-NOTICES.md', 'assets', 'docs', 'mkdocs.yml',
+  'THIRD-PARTY-NOTICES.md', 'assets', 'docs', 'contributing', 'mkdocs.yml',
   // Browser-only design references are not consumed by a build or test suite.
   'mockups', 'wireframes',
   // Static dead-code policy is always checked in CI; it does not change an E2E runtime.
@@ -384,6 +384,7 @@ test('Turbo selects the expected suites for representative changes', { timeout: 
     ['.github/workflows/verify.yml', all],
     ['vite.aliases.mjs', all],
     ['docs/index.md', []],
+    ['contributing/mobile-testing.md', []],
   ];
   for (const [file, expected] of cases) {
     assert.deepEqual(affected(file), [...expected].sort(), file);

@@ -2023,6 +2023,29 @@ describe("WebGPURenderingEngine", () => {
     return { device, compiler, canvas };
   }
 
+  it.each([true, false])("binds volume resources and passes XYZ dimensions and loaded status to uniforms (%s)", loaded => {
+    const engine = new WebGPURenderingEngine(assets);
+    stubEngineInternals(engine);
+    const handle = { width: 2, height: 3, depth: 4, view: { label: "volume" }, sampler: {} };
+    const getVolumeTexture = vi.fn(() => handle);
+    // The harness supplies internal graph/resource state to exercise public rendering and capture contracts.
+    const harness = engine as unknown as {
+      session: { resourceManager: unknown; passGraph: unknown[]; passPipelines: Map<string, unknown> };
+      device: { queue: { writeBuffer: ReturnType<typeof vi.fn> } };
+    };
+    harness.session.resourceManager = { getVolumeTexture, isVolumeLoaded: () => loaded, getAudioSampleRate: () => 44100 };
+    harness.session.passGraph = [{ name: "Image", width: 320, height: 180, output: "canvas", channels: [{ kind: "volume", slot: 0, key: "density", path: "density.bin", filter: "nearest", wrap: "clamp" }] }];
+    const pipeline = renderablePipeline({ getCurrentOutputView: () => null, getPreviousOutputView: () => null });
+    harness.session.passPipelines = new Map([["Image", pipeline]]);
+    engine.render(1000);
+    expect(getVolumeTexture).toHaveBeenCalledWith("density.bin", expect.objectContaining({ filter: "nearest", wrap: "clamp" }));
+    const uniforms = engine.getCaptureUniforms();
+    expect(uniforms.channelResolution?.slice(0, 3)).toEqual([2, 3, 4]);
+    expect(uniforms.channelLoaded?.[0]).toBe(loaded ? 1 : 0);
+    const packed = new DataView(harness.device.queue.writeBuffer.mock.calls.at(-1)![2] as ArrayBuffer);
+    expect(packed.getFloat32(UNIFORM_OFFSETS.iChannelResolution + 8, true)).toBe(4);
+  });
+
   describe("custom and remaining ShaderToy uniform parity", () => {
     it("compiles, exposes, preserves, and partially updates script uniforms", async () => {
       const engine = new WebGPURenderingEngine(assets);
@@ -5049,6 +5072,7 @@ describe("WebGPURenderingEngine", () => {
       minFilter: "nearest",
       addressModeU: "repeat",
       addressModeV: "repeat",
+      addressModeW: "repeat",
     });
     expect(imagePipeline.rebuildBindGroup).toHaveBeenCalledWith([
       { slot: 0, textureView: { label: "bufferA-current" }, sampler },

@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { replaceSource, expectCanvasPixels, setPreviewLocked, revertFixtureEditors, setParameterExpression, unlockPreviewForCleanup } from './editor-actions.mjs';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { openConfigPanel } from './config-panel.mjs';
+import { openShaderView } from './shader-view.mjs';
 test.use({ vscodeKey: 'common-storage-debug' });
 const directory = join(workspacePath, 'common-storage-debug');
 test.beforeEach(async ({ vscode }) => {
@@ -18,15 +19,6 @@ async function showFileAtLine(vscode, targetPath, line, { beside = false } = {})
     editor.selection = new vscode.Selection(position, position);
     editor.revealRange(new vscode.Range(position, position));
   }, targetPath, line, beside);
-}
-
-async function ensureShaderView(vscode) {
-  const hasPreview = await Promise.all(vscode.window.frames().map(async frame => (
-    (await frame.locator('.canvas-container').count().catch(() => 0)) > 0
-  ))).then(results => results.some(Boolean));
-  if (!hasPreview) {
-    await vscode.evaluateInHost(async vscode => vscode.commands.executeCommand('shader-studio.view'));
-  }
 }
 
 async function enableVariableInspector(vscode, frame) {
@@ -70,7 +62,7 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
     writeFileSync(config, JSON.stringify({ version: '1', passes: { common: { path: `common.${language}` }, Image: {} } }));
     try {
       await showFileAtLine(vscode, root, 1);
-      await ensureShaderView(vscode);
+      await openShaderView(vscode);
       let frame = await vscode.shaderFrame();
       await enableVariableInspector(vscode, frame);
       await setPreviewLocked(vscode, frame, true);
@@ -122,7 +114,7 @@ for (const [language, compute] of [['slang', false], ['slang', true], ['wgsl', f
     writeFileSync(config, JSON.stringify(storageConfig));
     try {
       await showFileAtLine(vscode, root, 1);
-      await ensureShaderView(vscode);
+      await openShaderView(vscode);
       let frame = await vscode.shaderFrame();
       await expectCanvasPixels(frame, [96, 255, 0]);
       await vscode.evaluateInHost(vscode => vscode.commands.executeCommand('notifications.clearAll'));
@@ -178,7 +170,7 @@ for (const language of ['wgsl', 'slang']) {
     writeFileSync(root, source);
     try {
       await showFileAtLine(vscode, root, 2);
-      await ensureShaderView(vscode);
+      await openShaderView(vscode);
       let frame = await vscode.shaderFrame();
       await setPreviewLocked(vscode, frame, false);
       await enableVariableInspector(vscode, frame);
@@ -222,7 +214,7 @@ test('Slang compute replay refuses subgroup results and recovers after an edit @
   } }));
   try {
     await showFileAtLine(vscode, root, 0);
-    await ensureShaderView(vscode);
+    await openShaderView(vscode);
     let frame = await vscode.shaderFrame();
     await setPreviewLocked(vscode, frame, false);
     await expectCanvasPixels(frame, [0,255,0]);
@@ -254,7 +246,7 @@ test('WGSL helper capture resolves array struct fields and shadowing @gpu', asyn
   writeFileSync(root, source);
   try {
     await showFileAtLine(vscode, root, 5);
-    await ensureShaderView(vscode);
+    await openShaderView(vscode);
     let frame = await vscode.shaderFrame();
     await setPreviewLocked(vscode, frame, false);
     await enableVariableInspector(vscode, frame);
@@ -282,7 +274,7 @@ test('WGSL unmatched brace reports an error and recovers without freezing @gpu',
   writeFileSync(root, source);
   try {
     await showFileAtLine(vscode, root, 1);
-    await ensureShaderView(vscode);
+    await openShaderView(vscode);
     let frame = await vscode.shaderFrame();
     await setPreviewLocked(vscode, frame, false);
     await enableVariableInspector(vscode, frame);

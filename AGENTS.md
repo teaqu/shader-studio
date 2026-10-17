@@ -2,6 +2,32 @@
 
 Guide for AI agents working on this codebase.
 
+## Hosted User Documentation
+
+`docs/` is published as the Shader Studio user guide on GitHub Pages. Its readers
+are people using the installed extension or browser app to create shaders, not
+contributors who know this repository. They may never have opened GitHub or
+checked out the source. Every guide must be usable in that context.
+
+- Explain the user's goal, prerequisites, visible controls, steps, and expected
+  result. Use the labels actually shown in the version being documented.
+- Keep shader-language concepts, public APIs, settings, and `.sha.json` examples
+  when users need them to author their own shaders. Explain unfamiliar terms.
+  A user's shader/config file is different from a Shader Studio source file.
+- Do not send readers to repository paths, test fixtures, source modules, private
+  issue trackers, PRs, or implementation plans to complete a task. Provide a
+  self-contained example, a user-accessible download, or another hosted guide.
+- Describe observable behavior and useful limitations, not component ownership,
+  transports, instrumentation, test counts, coverage gates, or release checklists.
+  Keep contributor build/test instructions in `contributing/` or developer-facing
+  READMEs outside the published `docs/` tree. Preserve third-party license notices.
+- Update the guides in the feature PR that changes the workflow. Document only
+  what that branch supports; do not imply that another unmerged feature is
+  available. Keep related guides and navigation consistent.
+- For documentation edits, build with `mkdocs build --strict`, check links and
+  examples, and read the rendered pages as a user. Prose-only changes do not need
+  artificial unit tests or application builds; test any code behavior separately.
+
 ## Project Structure
 
 Monorepo with Turborepo. Key packages:
@@ -94,6 +120,21 @@ Always prefer Svelte 5 conventions over Svelte 4. For example: runes over stores
 
 - Never add `Co-Authored-By` trailers or any other AI-generated attribution to
   commits or pull requests. This repository is not an AI billboard.
+  Name every new branch for its purpose, using prefixes such as `feat/`,
+  `fix/`, `docs/`, `test/`, `chore/`, or `refactor/`. Never use an AI tool or
+  vendor prefix, including `codex/`, `claude/`, `anthropic/`, `openai/`,
+  `chatgpt/`, `copilot/`, `gemini/`, `devin/`, `aider/`, `windsurf/`,
+  `codeium/`, or `jules/`; underscore and hyphen variants are rejected too,
+  case-insensitively. Override any default agent-prefixed branch name before
+  creating a branch or opening a PR. Use the user's existing Git author and
+  committer identity, never an AI tool identity.
+  Before publishing a new branch, run
+  `node .githooks/check-attribution.mjs --branch <branch-name>`; before pushing
+  commits, run
+  `node .githooks/check-attribution.mjs --range origin/main..HEAD --branch <branch-name>`
+  (substitute the PR's actual base ref). Fix violations before pushing. The
+  commit-message hook does not check branch names, and renaming a branch does
+  not remove attribution already present in commit messages or merge subjects.
   Enforced: `.githooks/commit-msg` (installed by `npm install` via
   `core.hooksPath`) rejects such commits locally, and the Attribution
   workflow fails any PR whose commits or branch name carry them. Never

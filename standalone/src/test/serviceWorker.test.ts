@@ -52,6 +52,7 @@ function createWorker(options: {
   );
   const network: Network = { files: new Map(), offline: false, held: new Map(), holds: new Set() };
   const fetches: string[] = [];
+  const fetchOptions: (RequestInit | undefined)[] = [];
   const self = {
     registration: { scope: SCOPE },
     location: { origin: ORIGIN },
@@ -86,9 +87,10 @@ function createWorker(options: {
       return undefined;
     },
   };
-  const fetch = async (input: string | Request): Promise<Response> => {
+  const fetch = async (input: string | Request, init?: RequestInit): Promise<Response> => {
     const url = resolve(input);
     fetches.push(url);
+    fetchOptions.push(init);
     if (network.holds.has(url)) {
       await new Promise<void>(release => network.held.set(url, release));
     }
@@ -142,7 +144,7 @@ function createWorker(options: {
     return response === null ? { intercepted: false as const } : { intercepted: true as const, response: await response };
   };
   const cacheName = `shader-studio-${options.channel ?? 'production'}-${options.buildId ?? 'b1'}`;
-  return { self, cacheStorage, network, fetches, lifecycle, message, request, cacheName };
+  return { self, cacheStorage, network, fetches, fetchOptions, lifecycle, message, request, cacheName };
 }
 
 function serveApp(network: Network) {
@@ -401,6 +403,39 @@ describe('generated service worker', () => {
   });
 
   describe('fetch', () => {
+    it('loads the current online shell on every navigation without replacing the installed offline shell', async () => {
+      const worker = createWorker({ required, optional });
+      serveApp(worker.network);
+      await worker.lifecycle('install');
+      worker.network.files.set(SCOPE, '<html>New build</html>');
+
+      for (let reload = 0; reload < 2; reload++) {
+        const result = await worker.request(SCOPE, { mode: 'navigate' });
+        expect(result.intercepted && await result.response?.text()).toBe('<html>New build</html>');
+        expect(worker.fetchOptions.at(-1)).toEqual({ cache: 'no-cache' });
+      }
+      expect(await (await worker.cacheStorage.get(worker.cacheName)!.match('./'))?.text()).toBe(SHELL_HTML);
+    });
+
+    it('falls back to the installed shell when an online navigation returns a server error', async () => {
+      const worker = createWorker({ required, optional });
+      serveApp(worker.network);
+      await worker.lifecycle('install');
+      worker.network.files.delete(SCOPE);
+
+      const result = await worker.request(SCOPE, { mode: 'navigate' });
+
+      expect(result.intercepted && await result.response?.text()).toBe(SHELL_HTML);
+    });
+
+    it('keeps a failed navigation response when no offline shell is installed', async () => {
+      const worker = createWorker({ required, optional });
+
+      const result = await worker.request(SCOPE, { mode: 'navigate' });
+
+      expect(result.intercepted && result.response?.status).toBe(404);
+    });
+
     it('serves cached assets without touching the network', async () => {
       const worker = createWorker({ required, optional });
       serveApp(worker.network);
