@@ -59,6 +59,14 @@ export class ClientMessageHandler {
   ): Promise<void> {
     this.logger.debug(`ClientMessageHandler: handling ${message.type}`);
 
+    // Global viewer preferences do not depend on the active shader project.
+    if (message.type === 'requestCanvasInputSettings') {
+      respondFn({ type: 'canvasInputSettings', payload: {
+        disableContextMenu: vscode.workspace.getConfiguration('shader-studio').get('preview.disableContextMenu', true),
+      } });
+      return;
+    }
+
     switch (message.type) {
       case 'updateConfig':
         await this.config.handleConfigUpdate(message.payload);
@@ -133,11 +141,6 @@ export class ClientMessageHandler {
         break;
       case 'requestShaderAuthoringSettings':
         respondFn({ type: 'shaderAuthoringSettings', payload: { defaultRenderAuthoring: vscode.workspace.getConfiguration('shader-studio').get('webgpu.defaultRenderAuthoring', 'hooks') } });
-        break;
-      case 'requestCanvasInputSettings':
-        respondFn({ type: 'canvasInputSettings', payload: {
-          disableContextMenu: vscode.workspace.getConfiguration('shader-studio').get('preview.disableContextMenu', true),
-        } });
         break;
       case 'requestViewerCameraSettings':
         respondFn({ type: 'viewerCameraSettings', payload: {

@@ -71,7 +71,9 @@ for (const language of ['glsl', 'wgsl']) {
       : 'fn mainImage(p: vec2f) -> vec4f { return vec4f(select(0.0, 1.0, iPointer.inside == 1), select(0.0, 1.0, (iPointer.held & 2) != 0), select(0.0, 1.0, iPointer.wheel.y > 0.0), 1.0); }';
     const canvas = await openShader(page, language, source);
     await expect(canvas).toBeVisible();
-    await page.evaluate(() => document.addEventListener('contextmenu', event => { window.__canvasMenuPrevented = event.defaultPrevented; }));
+    await page.evaluate(() => document.addEventListener('contextmenu', event => {
+      window.__canvasMenuPrevented = event.defaultPrevented;
+    }));
     const box = await canvas.boundingBox();
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await expect.poll(() => centrePixel(canvas)).toEqual([255, 0, 0]);

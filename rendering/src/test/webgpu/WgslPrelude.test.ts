@@ -93,6 +93,12 @@ function storageNode(name: string, binding: number, elementType: string, builtin
 }
 
 describe("wrapWgslImageSource uniform block", () => {
+  it("keeps pointer input out of the separate mesh uniform buffer", () => {
+    const { source } = wrapWgslImageSource("fn mainImage(coord: vec2f) -> vec4f { return vec4f(iPointer.position, 0, 1); }", { geometry: "cube" });
+    expect(wgslStructOffsets(source, "_ss_MeshUniforms")).toEqual(new Map([
+      ["model", 0], ["viewProjection", 64], ["normalMatrix", 128], ["cameraPosition", 192],
+    ]));
+  });
   it.each(['fullscreen', 'vertices', 'cube'] as const)('includes a shared %s hook source only once', geometry => {
     const source = 'fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {}\nfn mainImage(coord: vec2f) -> vec4f { return vec4f(1); }';
     const wrapped = wrapWgslImageSource(source, { geometry, vertexCode: source }).source;

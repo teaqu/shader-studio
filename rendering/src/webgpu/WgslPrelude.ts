@@ -437,7 +437,6 @@ function buildMeshPrelude(binding: number): string {
 struct _ss_MeshUniforms {
   model: mat4x4<f32>,
   viewProjection: mat4x4<f32>,
-  pointer: ShaderStudioPointer,
   normalMatrix: mat4x4<f32>,
   cameraPosition: vec4<f32>,
 }

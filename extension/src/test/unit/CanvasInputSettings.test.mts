@@ -15,4 +15,12 @@ describe('global canvas input preference', () => {
     expect(configuration.get).toHaveBeenCalledWith('preview.disableContextMenu', true);
     expect(respond).toHaveBeenCalledWith({ type: 'canvasInputSettings', payload: { disableContextMenu: value } });
   });
+  it('continues to route other viewer settings through the normal handler', async () => {
+    configuration.get.mockReturnValue(false);
+    const handler = Object.create(ClientMessageHandler.prototype) as ClientMessageHandler;
+    Reflect.set(handler, 'logger', { debug: vi.fn() });
+    const respond = vi.fn();
+    await handler.handle({ type: 'requestViewerCameraSettings' }, respond);
+    expect(respond).toHaveBeenCalledWith({ type: 'viewerCameraSettings', payload: { useViewerCamera: false } });
+  });
 });
