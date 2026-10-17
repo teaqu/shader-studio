@@ -107,6 +107,15 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(fetch(event.request));
     return;
   }
+  // Online reloads must see the deployed HTML even when other open tabs defer
+  // activation. Keep the installed shell intact as a coherent offline fallback.
+  if (event.request.mode === 'navigate') {
+    event.respondWith(fetch(event.request, { cache: 'no-cache' }).then(async (response) => {
+      if (response.ok) return response;
+      return await caches.open(CACHE).then((cache) => cache.match('./', { ignoreVary: true })) || response;
+    }).catch(() => caches.open(CACHE).then((cache) => cache.match('./', { ignoreVary: true }))));
+    return;
+  }
   event.respondWith(caches.open(CACHE).then((cache) => cache.match(event.request, { ignoreVary: true }).then((cached) => cached || fetch(event.request).then((response) => {
     if (response.ok && new URL(event.request.url).pathname.startsWith(self.registration.scope.replace(self.location.origin, ''))) caches.open(CACHE).then((cache) => cache.put(event.request, response.clone()));
     return response;

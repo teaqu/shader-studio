@@ -389,7 +389,6 @@
             </p>
           {/if}
           {#if pwaStatus.supported}
-            <button onclick={() => pwa?.checkForUpdate()}>Check for Updates</button>
             {#if pwaStatus.offlinePreparation.state === 'preparing'}
               <button onclick={() => pwa?.cancelOfflinePreparation()}>
                 Cancel Offline Preparation ({pwaStatus.offlinePreparation.completed}/{pwaStatus.offlinePreparation.total})
