@@ -2061,3 +2061,33 @@ for (const appearance of ['light', 'dark']) {
     await expect(page.locator('html')).toHaveAttribute('data-theme', appearance);
   });
 }
+
+for (const style of ['classic', 'pixel']) {
+  for (const appearance of ['light', 'dark']) {
+    test(`toolbar and search alignment: ${style} ${appearance}`, async ({ page }) => {
+      await page.goto('/');
+      await page.getByRole('button', { name: 'Settings', exact: true }).click();
+      const settings = page.getByRole('dialog', { name: 'Settings', exact: true });
+      const choices = settings.getByRole('region', { name: 'Theme', exact: true }).getByRole('combobox');
+      await expect(choices.nth(0)).toHaveAccessibleName('Style');
+      await expect(choices.nth(0)).toHaveValue('classic');
+      await expect(choices.nth(0).locator('option:checked')).toHaveText('VS Code');
+      await expect(choices.nth(1)).toHaveAccessibleName('Appearance');
+      await choices.nth(0).selectOption(style);
+      await choices.nth(1).selectOption(appearance);
+      await expect.soft(settings.getByRole('searchbox', { name: 'Search settings' })).toHaveCSS('line-height', '18px');
+      await settings.getByRole('button', { name: 'Done', exact: true }).click();
+      const toolbar = page.getByRole('banner', { name: 'Standalone workspace' });
+      const buttonBounds = await toolbar.getByRole('button', { name: 'Settings', exact: true }).boundingBox();
+      for (const name of ['Documentation', 'GitHub']) {
+        const link = toolbar.getByRole('link', { name, exact: true });
+        const bounds = await link.boundingBox();
+        expect(bounds.height).toBeCloseTo(buttonBounds.height, 0);
+        expect(bounds.y + bounds.height / 2).toBeCloseTo(buttonBounds.y + buttonBounds.height / 2, 0);
+        await expect(link).toHaveCSS('align-items', 'center');
+        await expect(link).toHaveCSS('justify-content', 'center');
+      }
+      await expect(page.getByPlaceholder('Search shaders...')).toHaveCSS('line-height', '18px');
+    });
+  }
+}

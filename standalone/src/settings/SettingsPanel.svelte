@@ -59,13 +59,6 @@
   <div class="settings-list">
     {#if !search.trim() || 'theme appearance light dark'.includes(search.trim().toLowerCase()) || visible.some((setting) => setting.group === 'Theme')}
       <section aria-label="Theme"><h3>Theme</h3>
-        <div class="setting">
-          <label for="setting-appearance">Appearance</label>
-          <select id="setting-appearance" value={$currentTheme} onchange={(event) => applyThemeProfile(event.currentTarget.value === 'dark' ? 'dark' : 'light')}>
-            <option value="light">Light</option><option value="dark">Dark</option>
-          </select>
-          <small>Light or dark colors for your workspace. Also follows the preview's theme switch.</small>
-        </div>
         {#each visible.filter((setting) => setting.group === 'Theme') as setting (setting.key)}
           <div class="setting">
             <label for={`setting-${setting.key}`}>{setting.label}</label>
@@ -75,6 +68,13 @@
             <small>{setting.description}</small>
           </div>
         {/each}
+        <div class="setting">
+          <label for="setting-appearance">Appearance</label>
+          <select id="setting-appearance" value={$currentTheme} onchange={(event) => applyThemeProfile(event.currentTarget.value === 'dark' ? 'dark' : 'light')}>
+            <option value="light">Light</option><option value="dark">Dark</option>
+          </select>
+          <small>Light or dark colors for your workspace. Also follows the preview's theme switch.</small>
+        </div>
       </section>
     {/if}
     {#each ['Preview', 'Language services', 'Editor'] as group}

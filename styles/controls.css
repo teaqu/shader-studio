@@ -53,6 +53,7 @@ body.vscode-high-contrast {
 }
 
 :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]), select) {
+  line-height: var(--shader-studio-control-line-height);
   height: var(--shader-studio-control-height);
   min-height: var(--shader-studio-control-height);
   padding: var(--shader-studio-control-padding);

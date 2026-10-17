@@ -476,7 +476,7 @@
 <style>
   .standalone-app { display: flex; flex-direction: column; height: 100%; min-height: 0; }
   .standalone-toolbar { position: relative; z-index: 10; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--vscode-panel-border); background: var(--vscode-sideBar-background); }
-  .standalone-toolbar button, .standalone-toolbar a { font: inherit; color: var(--vscode-foreground); background: transparent; border-radius: var(--shader-studio-control-radius); padding: var(--shader-studio-control-padding); text-decoration: none; cursor: pointer; min-height: var(--shader-studio-control-height); }
+  .standalone-toolbar button, .standalone-toolbar a { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; font: inherit; line-height: var(--shader-studio-control-line-height); color: var(--vscode-foreground); background: transparent; border-radius: var(--shader-studio-control-radius); padding: var(--shader-studio-control-padding); text-decoration: none; cursor: pointer; min-height: var(--shader-studio-control-height); }
   .standalone-toolbar button:hover, .standalone-toolbar a:hover { background: var(--vscode-list-hoverBackground); }
   .standalone-toolbar a { border: 1px solid var(--vscode-panel-border); }
   .menu-trigger { display: inline-flex; align-items: center; gap: 6px; border: 0; }
