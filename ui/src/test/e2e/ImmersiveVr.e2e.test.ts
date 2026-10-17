@@ -93,10 +93,16 @@ it("enters immersive VR from the UI, draws tracked asymmetric stereo rays and re
 
     const enter = target.querySelector<HTMLButtonElement>('button[aria-label="Enter VR"]')!;
     expect(enter).toBeTruthy();
+    const leftAxes = [0, 0, 0, 0];
+    const rightAxes = [0, 0, 0, 0];
     session.inputSources = [{
       handedness: "left",
       targetRaySpace: {} as XRSpace,
-      gamepad: { buttons: [{ value: 0.8 }], axes: [] } as unknown as Gamepad,
+      gamepad: { buttons: [{ value: 0.8 }], axes: leftAxes } as unknown as Gamepad,
+    } as XRInputSource, {
+      handedness: "right",
+      targetRaySpace: {} as XRSpace,
+      gamepad: { buttons: [], axes: rightAxes } as unknown as Gamepad,
     } as XRInputSource];
     enter.click();
     // Session setup crosses requestSession, makeXRCompatible and reference-space awaits.
@@ -108,7 +114,7 @@ it("enters immersive VR from the UI, draws tracked asymmetric stereo rays and re
 
     const frame = {
       session,
-      getViewerPose: () => ({ views: [makeView("left", -0.5, -0.25), makeView("right", 0.5, 0.25)] }),
+      getViewerPose: () => ({ transform: { matrix: identity() }, views: [makeView("left", -0.5, -0.25), makeView("right", 0.5, 0.25)] }),
       getPose: () => ({ transform: { matrix: identity() } }),
     } as unknown as XRFrame;
     session.render(1000, frame);
@@ -123,6 +129,23 @@ it("enters immersive VR from the UI, draws tracked asymmetric stereo rays and re
     expect(right[1]).toBeGreaterThan(left[1] + 20);
     expect(left[2]).toBeGreaterThan(190);
     expect(right[2]).toBeGreaterThan(190);
+
+    // Left thumbstick strafes both tracked eyes in the same world direction.
+    leftAxes[2] = 1;
+    session.render(1100, frame);
+    const movedLeft = rgba(gl, layer.framebuffer, 1);
+    const movedRight = rgba(gl, layer.framebuffer, 3);
+    expect(movedLeft[0]).toBeGreaterThan(left[0] + 20);
+    expect(movedRight[0]).toBeGreaterThan(right[0] + 20);
+    expect(movedLeft[2]).toBeGreaterThan(190);
+    leftAxes[2] = 0;
+    // Right thumbstick changes view direction once until released.
+    rightAxes[2] = 1;
+    session.render(1200, frame);
+    const turned = rgba(gl, layer.framebuffer, 1);
+    expect(turned[1]).toBeGreaterThan(movedLeft[1] + 20);
+    session.render(1300, frame);
+    expect(rgba(gl, layer.framebuffer, 1)).toEqual(turned);
 
     target.querySelector<HTMLButtonElement>('button[aria-label="Exit VR"]')!.click();
     await Promise.resolve();

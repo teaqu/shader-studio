@@ -43,6 +43,14 @@ To view the shader in a headset:
 3. Click **Enter VR** beside the desktop **VR** toggle and accept the browser's request to start the session.
 4. Click **Exit VR** to return to the desktop view.
 
+With Quest Touch controllers, use the **left thumbstick** to walk forward,
+backward, or sideways relative to where you are looking. Use the **right
+thumbstick** left or right to turn by 30°. Let it return to the centre before
+turning again. Movement is horizontal at up to two metres per second; it does
+not include collision detection. Physical head movement continues to work.
+Exiting VR resets the virtual position and turning offset. Controller ray
+positions and directions follow the same virtual movement as your view.
+
 If **Enter VR** is absent, check the browser, device, and page requirements above. You can still use the desktop VR preview without WebXR support. Headset and controller behavior can vary by device.
 
 Each eye receives its tracked ray origin and projection in `mainVR`. Ray origins

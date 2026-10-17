@@ -2,6 +2,7 @@ import type { FrameRenderer } from "../webgl/FrameRenderer";
 import type { PassRenderer } from "../webgl/PassRenderer";
 import { buildVrEyeView, readVrControllers } from "./WebXrFrameData";
 import { WebXrSession, type WebXrFrame } from "./WebXrSession";
+import { WebXrLocomotion } from "./WebXrLocomotion";
 
 /** Bridges one XR frame to one simulation update and one Image draw per eye. */
 export class WebXrRenderer {
@@ -9,6 +10,7 @@ export class WebXrRenderer {
   private restoreLoop = false;
   private disposed = false;
   private starting = false;
+  private locomotion = new WebXrLocomotion();
   private onEnded: ((error?: string) => void) | undefined;
 
   constructor(private gl: WebGL2RenderingContext, private frameRenderer: FrameRenderer, private passRenderer: PassRenderer, private updateFrame: (time: number) => void) {
@@ -19,10 +21,12 @@ export class WebXrRenderer {
         }
         this.restoreLoop = frameRenderer.isRunning();
         frameRenderer.stopRenderLoop();
+        this.locomotion.reset();
         passRenderer.xr.active = true;
       },
       frame: (time, data) => this.render(time, data),
       end: error => {
+        this.locomotion.reset();
         passRenderer.xr.reset();
         if (!this.disposed && !gl.isContextLost() && this.restoreLoop) {
           frameRenderer.startRenderLoop();
@@ -62,7 +66,10 @@ export class WebXrRenderer {
       void this.session.end();
       return;
     }
-    this.passRenderer.xr.controllers = readVrControllers(data.frame, data.reference);
+    const controllers = readVrControllers(data.frame, data.reference);
+    this.locomotion.update(time, data.pose?.transform?.matrix ?? null, controllers);
+    this.locomotion.transformControllers(controllers);
+    this.passRenderer.xr.controllers = controllers;
     // Desktop mirror/buffers are updated once, never once per eye.
     this.updateFrame(time);
     const gl = this.gl;
@@ -74,7 +81,9 @@ export class WebXrRenderer {
       for (const view of data.pose?.views ?? []) {
         const viewport = data.layer.getViewport(view);
         if (viewport && viewport.width > 0 && viewport.height > 0) {
-          this.frameRenderer.renderVrView(data.layer.framebuffer, buildVrEyeView(view, viewport));
+          const eye = buildVrEyeView(view, viewport);
+          this.locomotion.transformEye(eye);
+          this.frameRenderer.renderVrView(data.layer.framebuffer, eye);
         }
       }
     } finally {
