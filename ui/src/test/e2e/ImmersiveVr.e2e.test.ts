@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import { mount, tick, unmount } from "svelte";
-import VrPreviewButton from "../../lib/components/menu/VrPreviewButton.svelte";
-import { updateVrPreviewContext } from "../../lib/state/vrPreviewState.svelte";
+import VrPreviewButton from "../components/fixtures/VrPaneHarness.svelte";
+import { updateVrPreviewContext, updateVrNavigationSettings } from "../../lib/state/vrPreviewState.svelte";
 import { createShaderCanvasHarness } from "../../../../rendering/src/test/e2e/ShaderCanvasHarness";
 
 const identity = () => new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
@@ -81,6 +81,7 @@ it("enters immersive VR from the UI, draws tracked asymmetric stereo rays and re
   const component = mount(VrPreviewButton, { target });
   try {
     await harness.compile({ image: `
+      #define SHADER_STUDIO_VR_INPUTS
       void mainImage(out vec4 color, in vec2 coord) { color = vec4(1.0, 0.0, 0.0, 1.0); }
       void mainVR(out vec4 color, in vec2 coord, in vec3 origin, in vec3 direction) {
         color = vec4(origin.x * 0.5 + 0.5, direction.x * 0.5 + 0.5, iVRControllerButtons[0].x, 1.0);
@@ -90,15 +91,16 @@ it("enters immersive VR from the UI, draws tracked asymmetric stereo rays and re
     await Promise.resolve();
     await tick();
     expect(await harness.renderAndReadPixels()).toEqual(Array(4).fill([255, 0, 0, 255]));
-
-    const enter = target.querySelector<HTMLButtonElement>('button[aria-label="Enter VR"]')!;
+    target.querySelector<HTMLButtonElement>('button[aria-label="VR"]')!.click();
+    await tick();
+    const enter = [...target.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Enter VR')!;
     expect(enter).toBeTruthy();
     const leftAxes = [0, 0, 0, 0];
     const rightAxes = [0, 0, 0, 0];
     session.inputSources = [{
       handedness: "left",
       targetRaySpace: {} as XRSpace,
-      gamepad: { buttons: [{ value: 0.8 }], axes: leftAxes } as unknown as Gamepad,
+      gamepad: { buttons: [{ value: 0.8, touched: true }, { value: 0.6 }, { value: 0 }, { value: 1 }, { value: 0.4, touched: true }, { value: 0.2 }], axes: leftAxes } as unknown as Gamepad,
     } as XRInputSource, {
       handedness: "right",
       targetRaySpace: {} as XRSpace,
@@ -110,7 +112,7 @@ it("enters immersive VR from the UI, draws tracked asymmetric stereo rays and re
       await Promise.resolve();
     }
     await tick();
-    expect(target.querySelector('button[aria-label="Exit VR"]')).toBeTruthy();
+    expect([...target.querySelectorAll('button')].some(button => button.textContent === 'Exit VR')).toBe(true);
 
     const frame = {
       session,
@@ -130,9 +132,12 @@ it("enters immersive VR from the UI, draws tracked asymmetric stereo rays and re
     expect(left[2]).toBeGreaterThan(190);
     expect(right[2]).toBeGreaterThan(190);
 
-    // Left thumbstick strafes both tracked eyes in the same world direction.
+    // Default settings do not consume sticks for camera movement.
     leftAxes[2] = 1;
     session.render(1100, frame);
+    expect(rgba(gl, layer.framebuffer, 1)).toEqual(left);
+    updateVrNavigationSettings({ movement: true, turning: 'snap' });
+    session.render(1200, frame);
     const movedLeft = rgba(gl, layer.framebuffer, 1);
     const movedRight = rgba(gl, layer.framebuffer, 3);
     expect(movedLeft[0]).toBeGreaterThan(left[0] + 20);
@@ -141,18 +146,28 @@ it("enters immersive VR from the UI, draws tracked asymmetric stereo rays and re
     leftAxes[2] = 0;
     // Right thumbstick changes view direction once until released.
     rightAxes[2] = 1;
-    session.render(1200, frame);
+    session.render(1300, frame);
     const turned = rgba(gl, layer.framebuffer, 1);
     expect(turned[1]).toBeGreaterThan(movedLeft[1] + 20);
-    session.render(1300, frame);
+    session.render(1400, frame);
     expect(rgba(gl, layer.framebuffer, 1)).toEqual(turned);
 
-    target.querySelector<HTMLButtonElement>('button[aria-label="Exit VR"]')!.click();
+    await harness.compile({ image: `
+      #define SHADER_STUDIO_VR_INPUTS
+      void mainImage(out vec4 c, in vec2 p) { c = vec4(1, 0, 0, 1); }
+      void mainVR(out vec4 c, in vec2 p, in vec3 o, in vec3 d) {
+        c = vec4(iVRControllerFaceButtons[0].xy, iVRControllerTouches[0].x, iVRControllerFaceTouches[0].x);
+      }`, path: "immersive.glsl" });
+    session.render(1500, frame);
+    expect(rgba(gl, layer.framebuffer, 1)).toEqual([102, 51, 255, 255]);
+
+    [...target.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Exit VR')!.click();
     await Promise.resolve();
     await tick();
     harness.holdFrames();
     expect(await harness.renderAndReadPixels()).toEqual(Array(4).fill([255, 0, 0, 255]));
   } finally {
+    updateVrNavigationSettings({ movement: false, turning: 'off' });
     updateVrPreviewContext(null, "");
     await unmount(component);
     target.remove();

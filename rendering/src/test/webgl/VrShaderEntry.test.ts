@@ -31,6 +31,17 @@ describe("desktop mainVR entry", () => {
     const compiler = new ShaderCompiler({} as PiRenderer);
     expect(compiler.wrapShaderToyCode(image + vr).wrappedCode).not.toContain("uniform bool _ssVrPreview");
   });
+  it("keeps controller extensions opt-in in both shader stages", () => {
+    const compiler = new ShaderCompiler({} as PiRenderer);
+    const ordinary = compiler.wrapShaderToyCode(image + vr);
+    expect(ordinary.wrappedCode).not.toContain("#define iVR");
+    const custom = compiler.wrapShaderToyCode(image + vr, {
+      commonCode: "#define SHADER_STUDIO_VR_INPUTS",
+      vertexCode: "void mainVertex(int id, inout vec3 p, inout vec3 n, inout vec2 uv) { p.x += iVRControllerButtons[0].x; }",
+    });
+    expect(custom.wrappedCode).toContain("#define iVRControllerFaceButtons _ssVrControllerFaceButtons");
+    expect(custom.vertexSource).toContain("#define iVRControllerButtons _ssVrControllerButtons");
+  });
   it("wraps definitions in common code and explicit fullscreen geometry", () => {
     const compiler = new ShaderCompiler({} as PiRenderer);
     const wrapped = compiler.wrapShaderToyCode(image, { commonCode: vr, geometry: "fullscreen", vrPreview: true });

@@ -2,6 +2,28 @@ import { describe, expect, it } from "vitest";
 import { createShaderCanvasHarness } from "./ShaderCanvasHarness";
 
 describe("desktop mainVR rendering", () => {
+  it("does not reserve controller names or change mainImage in imported Shadertoy code", async () => {
+    const harness = createShaderCanvasHarness("glsl");
+    try {
+      await harness.compile({ image: `
+        const bool iVRActive = true;
+        const float iVRControllerButtons = 1.0;
+        uniform float iVRControllerAxes;
+        void mainImage(out vec4 c, in vec2 p) {
+          c = vec4(iVRActive ? 1.0 : 0.0, iVRControllerButtons, iVRControllerAxes, 1.0);
+        }
+        void mainVR(out vec4 c, in vec2 p, in vec3 origin, in vec3 direction) {
+          c = vec4(0.0, 0.0, 1.0, 1.0);
+        }` });
+      expect(await harness.renderAndReadPixels()).toEqual(Array(4).fill([255, 255, 0, 255]));
+      harness.engine.setVrPreviewEnabled?.(true);
+      expect(await harness.renderAndReadPixels()).toEqual(Array(4).fill([0, 0, 255, 255]));
+      harness.engine.setVrPreviewEnabled?.(false);
+      expect(await harness.renderAndReadPixels()).toEqual(Array(4).fill([255, 255, 0, 255]));
+    } finally {
+      harness.dispose();
+    }
+  });
   it("renders normalized rays and responds to desktop camera movement", async () => {
     const harness = createShaderCanvasHarness("glsl");
     try {

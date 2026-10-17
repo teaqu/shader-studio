@@ -1,23 +1,25 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, fireEvent, cleanup } from '@testing-library/svelte';
 import type { RenderingEngine } from '../../../../rendering/src/types/RenderingEngine';
-import VrPreviewButton from '../../lib/components/menu/VrPreviewButton.svelte';
-import { getVrPreviewState, toggleImmersiveVr, toggleVrPreview, updateVrPreviewContext } from '../../lib/state/vrPreviewState.svelte';
+import VrPreviewButton from './fixtures/VrPaneHarness.svelte';
+import { getVrPreviewState, toggleImmersiveVr, toggleVrPreview, updateVrPreviewContext, getVrNavigationSettings, updateVrNavigationSettings, setVrPanelVisible } from '../../lib/state/vrPreviewState.svelte';
 
 function engine(available = true): RenderingEngine {
-  return { isVrPreviewAvailable: vi.fn(() => available), setVrPreviewEnabled: vi.fn(), render: vi.fn() } as unknown as RenderingEngine;
+  return { isVrPreviewAvailable: vi.fn(() => available), setVrPreviewEnabled: vi.fn(), setVrNavigationSettings: vi.fn(), render: vi.fn() } as unknown as RenderingEngine;
 }
 
 afterEach(() => {
   cleanup();
   updateVrPreviewContext(null, '');
+  setVrPanelVisible(false);
+  updateVrNavigationSettings({ movement: false, turning: 'off', movementSpeed: 2, snapAngle: 30, turnSpeed: 90 });
 });
 
 describe('VR preview toggle', () => {
   it('is hidden when the engine has no mainVR preview', () => {
     updateVrPreviewContext(engine(false), 'image.glsl');
     const view = render(VrPreviewButton);
-    expect(view.queryByRole('button', { name: 'VR preview' })).toBeNull();
+    expect(view.queryByRole('button', { name: 'VR' })).toBeNull();
     toggleVrPreview();
     expect(getVrPreviewState().enabled).toBe(false);
   });
@@ -25,14 +27,16 @@ describe('VR preview toggle', () => {
     const renderer = engine();
     updateVrPreviewContext(renderer, 'image.glsl');
     const view = render(VrPreviewButton);
-    const button = view.getByRole('button', { name: 'VR preview' });
-    expect(button.getAttribute('aria-pressed')).toBe('false');
+    expect(view.queryByRole('region')).toBeNull();
+    await fireEvent.click(view.getByRole('button', { name: 'VR' }));
+    const button = view.getByRole('checkbox', { name: 'Desktop preview' }) as HTMLInputElement;
+    expect(button.checked).toBe(false);
     await fireEvent.click(button);
-    expect(button.getAttribute('aria-pressed')).toBe('true');
+    expect(button.checked).toBe(true);
     expect(renderer.setVrPreviewEnabled).toHaveBeenLastCalledWith(true);
     expect(renderer.render).toHaveBeenCalled();
     await fireEvent.click(button);
-    expect(button.getAttribute('aria-pressed')).toBe('false');
+    expect(button.checked).toBe(false);
   });
   it('keeps the displayed VR preview after a failed edit but clears a failed shader switch', () => {
     const renderer = engine();
@@ -72,6 +76,7 @@ describe('immersive VR controls', () => {
     const renderer = headset();
     updateVrPreviewContext(renderer, 'a');
     const view = render(VrPreviewButton);
+    await fireEvent.click(view.getByRole('button', { name: 'VR' }));
     await Promise.resolve();
     const enter = await view.findByRole('button', { name: 'Enter VR' });
     await fireEvent.click(enter);
@@ -92,6 +97,7 @@ describe('immersive VR controls', () => {
     });
     updateVrPreviewContext(renderer, 'a');
     const view = render(VrPreviewButton);
+    await fireEvent.click(view.getByRole('button', { name: 'VR' }));
     await Promise.resolve();
     await fireEvent.click(await view.findByRole('button', { name: 'Enter VR' }));
     expect((await view.findByRole('status')).textContent).toBe('Permission denied');
@@ -140,5 +146,40 @@ describe('immersive VR controls', () => {
     await toggleImmersiveVr();
     expect(renderer.enterVr).not.toHaveBeenCalled();
     expect(getVrPreviewState().supported).toBe(false);
+  });
+});
+
+describe('VR pane settings', () => {
+  it('keeps a restored pane informative when the current shader has no mainVR', () => {
+    updateVrPreviewContext(engine(false), 'ordinary.glsl');
+    setVrPanelVisible(true);
+    const view = render(VrPreviewButton);
+    expect(view.getByText(/Open a fullscreen GLSL shader/)).toBeTruthy();
+    expect((view.getByLabelText('Desktop preview') as HTMLInputElement).disabled).toBe(true);
+  });
+  it('keeps movement and turning off by default and applies independent controls', async () => {
+    const renderer = engine();
+    updateVrPreviewContext(renderer, 'a');
+    const view = render(VrPreviewButton);
+    await fireEvent.click(view.getByRole('button', { name: 'VR' }));
+    expect(view.getByText(/Headset unavailable/)).toBeTruthy();
+    expect((view.getByLabelText('Left stick movement') as HTMLInputElement).checked).toBe(false);
+    expect((view.getByLabelText('Right stick turning') as HTMLSelectElement).value).toBe('off');
+    await fireEvent.click(view.getByLabelText('Left stick movement'));
+    await fireEvent.change(view.getByLabelText('Movement speed (m/s)'), { target: { value: '3' } });
+    await fireEvent.change(view.getByLabelText('Right stick turning'), { target: { value: 'snap' } });
+    await fireEvent.change(view.getByLabelText('Snap angle (degrees)'), { target: { value: '45' } });
+    expect(renderer.setVrNavigationSettings).toHaveBeenLastCalledWith({ movement: true, movementSpeed: 3, turning: 'snap', snapAngle: 45, turnSpeed: 90 });
+    expect(JSON.parse(localStorage.getItem('shader-studio-vr-navigation-v1')!)).toMatchObject({ movement: true, turning: 'snap' });
+    await fireEvent.change(view.getByLabelText('Right stick turning'), { target: { value: 'smooth' } });
+    await fireEvent.change(view.getByLabelText('Turn speed (degrees/s)'), { target: { value: '120' } });
+    expect(getVrNavigationSettings().turnSpeed).toBe(120);
+    await fireEvent.click(view.getByRole('button', { name: 'Reset VR settings' }));
+    expect(getVrNavigationSettings()).toEqual({ movement: false, movementSpeed: 2, turning: 'off', snapAngle: 30, turnSpeed: 90 });
+    await fireEvent.keyDown(view.getByRole('region'), { key: 'Escape' });
+    expect(view.queryByRole('region')).toBeNull();
+    await fireEvent.click(view.getByRole('button', { name: 'VR' }));
+    await fireEvent.click(view.getByRole('button', { name: 'Close VR settings' }));
+    expect(view.queryByRole('region')).toBeNull();
   });
 });

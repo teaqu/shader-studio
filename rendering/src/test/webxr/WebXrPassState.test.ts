@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { WebXrPassState } from "../../webxr/WebXrPassState";
+import { WebXrPassState, vrInputDeclarations } from "../../webxr/WebXrPassState";
 
 const renderer = () => ({ SetShaderConstant1I: vi.fn(), SetShaderConstant4FV: vi.fn(), SetShaderConstantMat4F: vi.fn() });
 
@@ -8,9 +8,9 @@ describe("WebXrPassState", () => {
     const state = new WebXrPassState();
     const target = renderer();
     state.bind(target as never);
-    expect(target.SetShaderConstant1I).toHaveBeenCalledWith("iVRActive", 0);
+    expect(target.SetShaderConstant1I).toHaveBeenCalledWith("_ssVrActive", 0);
     expect(target.SetShaderConstant1I).toHaveBeenCalledWith("_ssVrImmersive", 0);
-    expect(target.SetShaderConstant4FV).toHaveBeenCalledTimes(4);
+    expect(target.SetShaderConstant4FV).toHaveBeenCalledTimes(7);
     expect(target.SetShaderConstantMat4F).not.toHaveBeenCalled();
   });
 
@@ -21,11 +21,26 @@ describe("WebXrPassState", () => {
     state.view = { viewport: { x: 3, y: 4, width: 5, height: 6 }, rayTransform: Float32Array.from({ length: 16 }, (_, index) => index) };
     const target = renderer();
     state.bind(target as never);
-    expect(target.SetShaderConstant1I).toHaveBeenCalledWith("iVRActive", 1);
+    expect(target.SetShaderConstant1I).toHaveBeenCalledWith("_ssVrActive", 1);
     expect(target.SetShaderConstant1I).toHaveBeenCalledWith("_ssVrImmersive", 1);
-    expect(target.SetShaderConstant4FV).toHaveBeenCalledWith("iVRControllerButtons[0]", state.controllers.buttons);
+    expect(target.SetShaderConstant4FV).toHaveBeenCalledWith("_ssVrControllerButtons[0]", state.controllers.buttons);
+    expect(target.SetShaderConstant4FV).toHaveBeenCalledWith("_ssVrControllerFaceButtons[0]", state.controllers.faceButtons);
+    expect(target.SetShaderConstant4FV).toHaveBeenCalledWith("_ssVrControllerTouches[0]", state.controllers.touches);
+    expect(target.SetShaderConstant4FV).toHaveBeenCalledWith("_ssVrControllerFaceTouches[0]", state.controllers.faceTouches);
     expect(target.SetShaderConstant4FV).toHaveBeenCalledWith("_ssVrViewport", [3, 4, 5, 6]);
     expect(target.SetShaderConstantMat4F).toHaveBeenCalledWith("_ssVrRayTransform", Array.from({ length: 16 }, (_, index) => index), true);
+  });
+
+  it("only injects private controller uniforms after explicit shader opt-in", () => {
+    for (const source of ["", "// #define SHADER_STUDIO_VR_INPUTS", "/* #define SHADER_STUDIO_VR_INPUTS */", "#define SHADER_STUDIO_VR_INPUTS 0"]) {
+      expect(vrInputDeclarations(source)).toBe("");
+    }
+    for (const source of ["#define SHADER_STUDIO_VR_INPUTS", "# define SHADER_STUDIO_VR_INPUTS 1 // opt-in"]) {
+      const declarations = vrInputDeclarations(source);
+      expect(declarations).toContain("uniform bool _ssVrActive;");
+      expect(declarations).toContain("#define iVRControllerButtons _ssVrControllerButtons");
+      expect(declarations).toContain("uniform vec4 _ssVrControllerFaceTouches[2];");
+    }
   });
 
   it("clears active view and controller data", () => {

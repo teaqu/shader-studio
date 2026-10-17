@@ -1,5 +1,6 @@
 import { WebXrRenderer } from "../webxr/WebXrRenderer";
 import { isImmersiveVrSupported } from "../webxr/WebXrSession";
+import type { VrNavigationSettings } from "../webxr/VrNavigationSettings";
 import { audioPreviewData, livePreviewData, controlSystemAudio, controlAudioInput } from "../resources/MediaPreview";
 import type { LiveInputType, LiveInputPreview } from "../resources/LiveInputTextureManager";
 import { piRenderer } from "../../../vendor/pilibs/src/piRenderer";
@@ -496,6 +497,10 @@ export class RenderingEngine implements RenderingEngineInterface {
 
   public async exitVr(): Promise<void> {
     await this.immersiveVr?.end();
+  }
+
+  public setVrNavigationSettings(settings: VrNavigationSettings): void {
+    this.immersiveVr?.setNavigationSettings(settings);
   }
 
   public isVrPreviewAvailable(): boolean {

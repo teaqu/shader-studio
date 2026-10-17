@@ -9,10 +9,13 @@ export interface VrControllerData {
   directions: Float32Array;
   buttons: Float32Array;
   axes: Float32Array;
+  faceButtons: Float32Array;
+  touches: Float32Array;
+  faceTouches: Float32Array;
 }
 
 export function emptyVrControllers(): VrControllerData {
-  return { positions: new Float32Array(8), directions: new Float32Array(8), buttons: new Float32Array(8), axes: new Float32Array(8) };
+  return { positions: new Float32Array(8), directions: new Float32Array(8), buttons: new Float32Array(8), axes: new Float32Array(8), faceButtons: new Float32Array(8), touches: new Float32Array(8), faceTouches: new Float32Array(8) };
 }
 
 /** WebXR projection matrices describe asymmetric perspective frusta, in column-major order. */
@@ -59,7 +62,12 @@ export function readVrControllers(frame: XRFrame, reference: XRReferenceSpace): 
     data.directions.set([-m[8], -m[9], -m[10], 1], offset);
     for (let i = 0; i < 4; i++) {
       data.buttons[offset + i] = finite(source.gamepad?.buttons[i]?.value, 0, 1);
+      data.touches[offset + i] = source.gamepad?.buttons[i]?.touched ? 1 : 0;
       data.axes[offset + i] = finite(source.gamepad?.axes[i], -1, 1);
+    }
+    for (let i = 0; i < 2; i++) {
+      data.faceButtons[offset + i] = finite(source.gamepad?.buttons[4 + i]?.value, 0, 1);
+      data.faceTouches[offset + i] = source.gamepad?.buttons[4 + i]?.touched ? 1 : 0;
     }
   }
   return data;

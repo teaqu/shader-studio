@@ -1,4 +1,4 @@
-import { VR_INPUT_DECLARATIONS } from "../webxr/WebXrPassState";
+import { vrInputDeclarations } from "../webxr/WebXrPassState";
 import { buildFragmentEntry } from "./VrShaderEntry";
 import { buildGlslNamedChannelDeclarations, type GeometryType, type MeshTopology, type VertexSpace, type VertexTopology } from "@shader-studio/types";
 import {
@@ -166,7 +166,7 @@ uniform float iChannelTime[${channelCount}];
 uniform float iSampleRate;
 uniform vec3 iCameraPos;
 uniform vec3 iCameraDir;
-${VR_INPUT_DECLARATIONS}
+${vrInputDeclarations(`${options.commonCode ?? ""}\n${code}`)}
 uniform int iVertexCount;
 uniform int iInstanceCount;
 ${CAMERA_MATRIX_UNIFORMS}
@@ -657,7 +657,7 @@ uniform float iChannelTime[${channelCount}];
 uniform float iSampleRate;
 uniform vec3 iCameraPos;
 uniform vec3 iCameraDir;
-${VR_INPUT_DECLARATIONS}
+${vrInputDeclarations(`${options.commonCode ?? ""}\n${options.vertexCode ?? ""}`)}
 uniform int iVertexCount;
 uniform int iInstanceCount;
 ${CAMERA_MATRIX_UNIFORMS}

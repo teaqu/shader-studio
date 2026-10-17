@@ -215,7 +215,7 @@ describe("SHADER_STUDIO_INDEXED_CHANNEL_METADATA_PATTERN_SOURCE", () => {
 
 
 it("exposes tracked VR inputs only to GLSL authoring", () => {
-  for (const name of ["iVRActive", "iVRControllerPosition", "iVRControllerDirection", "iVRControllerButtons", "iVRControllerAxes"]) {
+  for (const name of ["iVRActive", "iVRControllerPosition", "iVRControllerDirection", "iVRControllerButtons", "iVRControllerAxes", "iVRControllerFaceButtons", "iVRControllerTouches", "iVRControllerFaceTouches"]) {
     expect(shaderStudioBuiltinUniformNames("glsl")).toContain(name);
     expect(shaderStudioBuiltinUniformNames("slang")).not.toContain(name);
     expect(shaderStudioBuiltinUniformNames("wgsl")).not.toContain(name);

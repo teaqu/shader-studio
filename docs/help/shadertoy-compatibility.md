@@ -15,8 +15,8 @@ Use the desktop VR preview to look around a GLSL shader that defines `mainVR`, e
 
 1. Create a GLSL shader and leave **Image → Geometry** set to **Fullscreen**.
 2. Add both `mainImage` for the normal preview and `mainVR` for the view you can look around. The complete example below colors each viewing direction differently.
-3. Enable **VR** in the preview toolbar. Move with **W / A / S / D**, move vertically with **Q / E**, and look by dragging or pressing **I / J / K / L**.
-4. Turn **VR** off to return to `mainImage`. Opening another shader also turns it off.
+3. Open **VR** in the preview toolbar and enable **Desktop preview**. Move with **W / A / S / D**, move vertically with **Q / E**, and look by dragging or pressing **I / J / K / L**.
+4. Disable **Desktop preview** to return to `mainImage`. Opening another shader also turns it off.
 
 ```glsl
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
@@ -30,7 +30,11 @@ void mainVR(out vec4 fragColor, in vec2 fragCoord,
 }
 ```
 
-The **VR** toggle appears only when a fullscreen GLSL Image shader defines `mainVR`. If it is missing, check the function signature and geometry setting. Mesh passes continue to use `mainImage`; this VR workflow does not apply to Slang or WGSL.
+The **VR** button appears only when a fullscreen GLSL Image shader defines `mainVR`. If it is missing, check the function signature and geometry setting. Mesh passes continue to use `mainImage`; this VR workflow does not apply to Slang or WGSL.
+
+VR opens a docked tool pane, like Config and Debug. The button sits first in the
+right-hand toolbar group. It stays visible after the other tool buttons have
+collapsed, then moves into the options menu when the preview becomes very narrow.
 
 `rayOrigin` is the camera position and `rayDirection` is a normalized direction in world space. In desktop preview, they follow `iCameraPos` and `iCameraDir` with a 90° vertical field of view. Dragging also updates `iMouse`, which matters if your shader uses mouse input for another effect.
 
@@ -40,27 +44,45 @@ To view the shader in a headset:
 
 1. Open it in a browser with immersive WebXR support and connect a compatible headset.
 2. Use a secure page (HTTPS, or localhost for a preview opened from VS Code).
-3. Click **Enter VR** beside the desktop **VR** toggle and accept the browser's request to start the session.
-4. Click **Exit VR** to return to the desktop view.
+3. Open **VR**, click **Enter VR**, and accept the browser's request to start the session.
+4. In the VR pane, click **Exit VR** to return to the desktop view.
 
-With Quest Touch controllers, use the **left thumbstick** to walk forward,
-backward, or sideways relative to where you are looking. Use the **right
-thumbstick** left or right to turn by 30°. Let it return to the centre before
-turning again. Movement is horizontal at up to two metres per second; it does
-not include collision detection. Physical head movement continues to work.
+Movement and turning are **off by default**. In the VR pane, enable **Left
+stick movement** to walk relative to where you are looking, and choose the
+**Movement speed** in metres per second. Set **Right stick turning** to
+**Snap** (with a configurable angle) or **Smooth** (with a configurable speed),
+or leave it **Off**. Snap turning requires returning the stick to the centre
+before another turn. These settings are remembered in this browser. Movement
+is horizontal and does not include collision detection. Physical head movement continues to work.
 Exiting VR resets the virtual position and turning offset. Controller ray
 positions and directions follow the same virtual movement as your view.
 
 If **Enter VR** is absent, check the browser, device, and page requirements above. You can still use the desktop VR preview without WebXR support. Headset and controller behavior can vary by device.
 
 Each eye receives its tracked ray origin and projection in `mainVR`. Ray origins
-use metres in the WebXR reference space (floor-relative when available); rays
+use metres and follow the WebXR reference space (floor-relative when available)
+plus any navigation offset you enable; rays
 are normalized. `fragCoord` and `iResolution.xy` are local to the current eye.
 Buffer passes advance once per headset frame. Pausing freezes shader time and
 buffers while head tracking continues. Desktop camera controls do not move the
 headset view.
 
-These additional GLSL inputs are supplied during the session and reset on exit:
+### Optional Shader Studio controller inputs
+
+`mainImage` and `mainVR` remain compatible with Shadertoy. The controller inputs
+below are Shader Studio extensions. To enable them, add this line at the top
+of the shader (or Common code):
+
+```glsl
+#define SHADER_STUDIO_VR_INPUTS
+```
+
+Without that opt-in, the extra names are not injected into the compiled shader.
+Shaders using these inputs require adapting before running on Shadertoy.
+All raw inputs remain available when built-in movement or turning is disabled,
+and are not consumed or zeroed when navigation is enabled.
+
+These inputs are supplied during the session and reset on exit:
 
 | Uniform | Type | Description |
 |---------|------|-------------|
@@ -69,6 +91,23 @@ These additional GLSL inputs are supplied during the session and reset on exit:
 | `iVRControllerDirection[2]` | `vec4` | Normalized aim-ray direction; w = 1 when tracked |
 | `iVRControllerButtons[2]` | `vec4` | First four gamepad button values (0–1) |
 | `iVRControllerAxes[2]` | `vec4` | First four gamepad axes (-1–1) |
+| `iVRControllerFaceButtons[2]` | `vec4` | Primary and secondary face-button values in xy; zw are zero |
+| `iVRControllerTouches[2]` | `vec4` | Touch states for the first four buttons in xyzw (0 or 1) |
+| `iVRControllerFaceTouches[2]` | `vec4` | Primary and secondary face-button touch states in xy; zw are zero |
+
+For Quest controllers using the `xr-standard` mapping:
+
+| Input | Shader access (`hand` is 0 for left, 1 for right) |
+|---|---|
+| Trigger | `iVRControllerButtons[hand].x` (analog 0–1) |
+| Grip / squeeze | `iVRControllerButtons[hand].y` (analog 0–1) |
+| Thumbstick click | `iVRControllerButtons[hand].w` |
+| Thumbstick movement | `iVRControllerAxes[hand].zw` |
+| X / Y | `iVRControllerFaceButtons[0].xy` |
+| A / B | `iVRControllerFaceButtons[1].xy` |
+
+The system/menu buttons are reserved by the headset and are not exposed.
+Touch states are only available when supplied by the controller/runtime.
 
 Slot 0 is left and slot 1 right. Unhanded sources use the first free slot.
 Absent or untracked controllers supply zeroes. Button/axis order follows the

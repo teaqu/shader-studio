@@ -3,6 +3,7 @@ import type { PassRenderer } from "../webgl/PassRenderer";
 import { buildVrEyeView, readVrControllers } from "./WebXrFrameData";
 import { WebXrSession, type WebXrFrame } from "./WebXrSession";
 import { WebXrLocomotion } from "./WebXrLocomotion";
+import type { VrNavigationSettings } from "./VrNavigationSettings";
 
 /** Bridges one XR frame to one simulation update and one Image draw per eye. */
 export class WebXrRenderer {
@@ -40,6 +41,10 @@ export class WebXrRenderer {
 
   get active(): boolean {
     return this.session.active;
+  }
+
+  setNavigationSettings(settings: VrNavigationSettings): void {
+    this.locomotion.configure(settings);
   }
 
   async start(onEnded?: (error?: string) => void): Promise<void> {

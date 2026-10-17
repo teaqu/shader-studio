@@ -64,4 +64,16 @@ describe("WebXrFrameData", () => {
     const frame = { session: { inputSources: [{ handedness: "none", targetRaySpace: "missing" }] }, getPose: () => null };
     expect(Array.from(readVrControllers(frame as unknown as XRFrame, {} as XRReferenceSpace).positions)).toEqual(Array(8).fill(0));
   });
+
+  it("reads trigger, grip, stick click, face buttons and touch without changing handed slots", () => {
+    const values = [0.25, 0.75, 0, 1, 1, 0.5];
+    const source = { handedness: "right", targetRaySpace: {}, gamepad: { axes: [0, 0, -0.5, 0.7], buttons: values.map((value, i) => ({ value, touched: i % 2 === 0 })) } };
+    const frame = { session: { inputSources: [source] }, getPose: () => ({ transform: { matrix: matrix() } }) };
+    const result = readVrControllers(frame as unknown as XRFrame, {} as XRReferenceSpace);
+    expect(Array.from(result.buttons)).toEqual([0, 0, 0, 0, 0.25, 0.75, 0, 1]);
+    expect(Array.from(result.faceButtons)).toEqual([0, 0, 0, 0, 1, 0.5, 0, 0]);
+    expect(Array.from(result.touches)).toEqual([0, 0, 0, 0, 1, 0, 1, 0]);
+    expect(Array.from(result.faceTouches)).toEqual([0, 0, 0, 0, 1, 0, 0, 0]);
+    expect(result.axes[6]).toBeCloseTo(-0.5);
+  });
 });

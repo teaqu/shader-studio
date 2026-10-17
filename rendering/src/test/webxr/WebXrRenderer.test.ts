@@ -24,7 +24,7 @@ vi.mock("../../webxr/WebXrSession", () => ({
 
 vi.mock("../../webxr/WebXrFrameData", () => ({
   buildVrEyeView: vi.fn((view: any, viewport: any) => ({ viewport, rayTransform: new Float32Array(16), eye: view.eye })),
-  readVrControllers: vi.fn(() => ({ positions: new Float32Array(8), directions: new Float32Array(8), buttons: new Float32Array(8), axes: new Float32Array(8) })),
+  readVrControllers: vi.fn(() => ({ positions: new Float32Array(8), directions: new Float32Array(8), buttons: new Float32Array(8), axes: new Float32Array(8), faceButtons: new Float32Array(8), touches: new Float32Array(8), faceTouches: new Float32Array(8) })),
 }));
 
 import { buildVrEyeView, readVrControllers } from "../../webxr/WebXrFrameData";

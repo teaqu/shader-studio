@@ -1,4 +1,5 @@
 import type { VrControllerData, VrEyeView } from "./WebXrFrameData";
+import { normalizeVrNavigation, type VrNavigationSettings } from "./VrNavigationSettings";
 
 /** Session-local world transform; physical tracking and stereo separation stay intact. */
 export class WebXrLocomotion {
@@ -7,6 +8,13 @@ export class WebXrLocomotion {
   private z = 0;
   private lastTime: number | null = null;
   private turnReady = true;
+  private settings = normalizeVrNavigation(undefined);
+
+  configure(settings: VrNavigationSettings): void {
+    this.settings = normalizeVrNavigation(settings);
+    // A held stick must be released after changing turn settings.
+    this.turnReady = false;
+  }
 
   reset(): void {
     this.yaw = this.x = this.z = 0;
@@ -25,10 +33,14 @@ export class WebXrLocomotion {
     if (Math.abs(turn) < 0.25) {
       this.turnReady = true;
     }
-    if (Math.abs(turn) > 0.65 && this.turnReady) {
+    const snap = this.settings.turning === "snap" && Math.abs(turn) > 0.65 && this.turnReady;
+    const smooth = this.settings.turning === "smooth" && Math.abs(turn) > 0.18;
+    if (snap || smooth) {
       // Rotate around the head, rather than orbiting the reference-space origin.
       const [beforeX, beforeZ] = this.rotate(head[12], head[14]);
-      this.yaw -= Math.sign(turn) * Math.PI / 6;
+      const degrees = snap ? Math.sign(turn) * this.settings.snapAngle
+        : Math.sign(turn) * (Math.abs(turn) - 0.18) / 0.82 * this.settings.turnSpeed * dt;
+      this.yaw -= degrees * Math.PI / 180;
       const [afterX, afterZ] = this.rotate(head[12], head[14]);
       this.x += beforeX - afterX;
       this.z += beforeZ - afterZ;
@@ -37,7 +49,7 @@ export class WebXrLocomotion {
     const stickX = input.positions[3] ? input.axes[2] : 0;
     const stickY = input.positions[3] ? input.axes[3] : 0;
     const magnitude = Math.hypot(stickX, stickY);
-    if (magnitude <= 0.18) {
+    if (!this.settings.movement || magnitude <= 0.18) {
       return;
     }
     const strength = Math.min(1, (magnitude - 0.18) / 0.82);
@@ -45,7 +57,7 @@ export class WebXrLocomotion {
     const [forwardX, forwardZ] = length > 0.001
       ? this.rotate(-head[8] / length, -head[10] / length)
       : this.rotate(0, -1);
-    const distance = 2 * dt * strength / magnitude;
+    const distance = this.settings.movementSpeed * dt * strength / magnitude;
     this.x += (-forwardZ * stickX - forwardX * stickY) * distance;
     this.z += (forwardX * stickX - forwardZ * stickY) * distance;
   }

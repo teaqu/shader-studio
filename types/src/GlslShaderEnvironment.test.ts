@@ -32,6 +32,9 @@ describe("GLSL shader environment", () => {
       "uniform vec4 iVRControllerDirection[2];",
       "uniform vec4 iVRControllerButtons[2];",
       "uniform vec4 iVRControllerAxes[2];",
+      "uniform vec4 iVRControllerFaceButtons[2];",
+      "uniform vec4 iVRControllerTouches[2];",
+      "uniform vec4 iVRControllerFaceTouches[2];",
       "uniform int iVertexCount;",
       "uniform int iInstanceCount;",
       "uniform mat4 iViewMatrix;",
@@ -44,6 +47,7 @@ describe("GLSL shader environment", () => {
       "iSampleRate", "iCameraPos", "iCameraDir", "iVertexCount", "iInstanceCount",
       "iViewMatrix", "iProjectionMatrix", "iViewProjection",
       "iVRActive", "iVRControllerPosition", "iVRControllerDirection", "iVRControllerButtons", "iVRControllerAxes",
+      "iVRControllerFaceButtons", "iVRControllerTouches", "iVRControllerFaceTouches",
     ]));
   });
 

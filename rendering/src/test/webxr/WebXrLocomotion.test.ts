@@ -11,10 +11,16 @@ const controls = () => {
   return data;
 };
 const eye = (x = 0, z = 0) => ({ viewport: { x: 0, y: 0, width: 2, height: 2 }, rayTransform: head(x, z) });
+const enabledMovement = () => {
+  const movement = new WebXrLocomotion();
+  movement.configure({ movement: true, movementSpeed: 2, turning: "snap", snapAngle: 30, turnSpeed: 90 });
+  movement.reset();
+  return movement;
+};
 
 describe("WebXrLocomotion", () => {
   it("moves forward and strafes at two metres per second using headset heading", () => {
-    const movement = new WebXrLocomotion();
+    const movement = enabledMovement();
     const input = controls();
     input.axes[3] = -1;
     movement.update(0, head(), input);
@@ -41,7 +47,7 @@ describe("WebXrLocomotion", () => {
   });
 
   it("normalizes diagonal input and ignores drift and untracked controllers", () => {
-    const movement = new WebXrLocomotion();
+    const movement = enabledMovement();
     const input = controls();
     input.axes[2] = input.axes[3] = 1;
     movement.update(0, head(), input);
@@ -60,7 +66,7 @@ describe("WebXrLocomotion", () => {
   });
 
   it("snap turns once per deflection around the headset and rotates controllers with both eyes", () => {
-    const movement = new WebXrLocomotion();
+    const movement = enabledMovement();
     const input = controls();
     input.axes[6] = 1;
     movement.update(0, head(2, 3), input);
@@ -90,7 +96,7 @@ describe("WebXrLocomotion", () => {
   });
 
   it("turns left, requires neutral before another turn, and does not turn on missing right tracking", () => {
-    const movement = new WebXrLocomotion();
+    const movement = enabledMovement();
     const input = controls();
     input.axes[6] = -1;
     movement.update(0, head(), input);
@@ -110,7 +116,7 @@ describe("WebXrLocomotion", () => {
   });
 
   it("caps frame gaps, handles vertical gaze, and resets on session changes", () => {
-    const movement = new WebXrLocomotion();
+    const movement = enabledMovement();
     const input = controls();
     input.axes[3] = -1;
     const vertical = head();
@@ -129,5 +135,55 @@ describe("WebXrLocomotion", () => {
     const reset = eye();
     movement.transformEye(reset);
     expect(reset.rayTransform).toEqual(head());
+  });
+
+  it("leaves shader inputs and tracked rays unchanged by default", () => {
+    const movement = new WebXrLocomotion();
+    const input = controls();
+    input.axes[3] = -1;
+    input.axes[6] = 1;
+    const axes = new Float32Array(input.axes);
+    movement.update(0, head(), input);
+    movement.update(100, head(), input);
+    const view = eye();
+    movement.transformEye(view);
+    movement.transformControllers(input);
+    expect(view.rayTransform).toEqual(head());
+    expect(input.axes).toEqual(axes);
+  });
+
+  it("configures smooth turn speed and preserves head position while turning", () => {
+    const movement = new WebXrLocomotion();
+    movement.configure({ movement: false, movementSpeed: 5, turning: "smooth", snapAngle: 45, turnSpeed: 90 });
+    const input = controls();
+    input.axes[6] = 1;
+    movement.update(0, head(2, 3), input);
+    movement.update(100, head(2, 3), input);
+    const view = eye(2, 3);
+    movement.transformEye(view);
+    expect(view.rayTransform[0]).toBeCloseTo(Math.cos(Math.PI / 20));
+    expect(view.rayTransform[12]).toBeCloseTo(2);
+    expect(view.rayTransform[14]).toBeCloseTo(3);
+  });
+
+  it("configures speed and snap angle and releases a held turn when settings change", () => {
+    const movement = new WebXrLocomotion();
+    movement.configure({ movement: true, movementSpeed: 5, turning: "snap", snapAngle: 45, turnSpeed: 90 });
+    const input = controls();
+    input.axes[3] = -1;
+    input.axes[6] = 1;
+    movement.update(0, head(), input);
+    movement.update(100, head(), input);
+    const beforeRelease = eye();
+    movement.transformEye(beforeRelease);
+    expect(beforeRelease.rayTransform[0]).toBe(1);
+    expect(beforeRelease.rayTransform[14]).toBeCloseTo(-0.5);
+    input.axes[3] = input.axes[6] = 0;
+    movement.update(200, head(), input);
+    input.axes[6] = 1;
+    movement.update(300, head(), input);
+    const turned = eye();
+    movement.transformEye(turned);
+    expect(turned.rayTransform[0]).toBeCloseTo(Math.SQRT1_2);
   });
 });
