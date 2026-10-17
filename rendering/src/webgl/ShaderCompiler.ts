@@ -1,3 +1,4 @@
+import { GLSL_POINTER_DECLARATION } from "@shader-studio/types";
 import { buildGlslNamedChannelDeclarations, type GeometryType, type MeshTopology, type VertexSpace, type VertexTopology } from "@shader-studio/types";
 import {
   INSTANCE_INDEX,
@@ -156,6 +157,8 @@ uniform float iTimeDelta;
 uniform float iFrameRate;
 ${channelDeclarations}
 uniform vec4 iMouse;
+${GLSL_POINTER_DECLARATION}
+uniform ShaderStudioPointer iPointer;
 uniform int iFrame;
 uniform vec4 iDate;
 uniform float iChannelTime[${channelCount}];
@@ -645,6 +648,8 @@ uniform float iTime;
 uniform float iTimeDelta;
 uniform float iFrameRate;
 ${channelDeclarations}uniform vec4 iMouse;
+${GLSL_POINTER_DECLARATION}
+uniform ShaderStudioPointer iPointer;
 uniform int iFrame;
 uniform vec4 iDate;
 uniform float iChannelTime[${channelCount}];

@@ -731,6 +731,7 @@ export class RenderingEngine implements RenderingEngineInterface {
       frame: u.frame,
       res: u.res as number[],
       mouse: u.mouse as number[],
+      pointer: u.pointer,
       date: u.date as number[],
       cameraPos: u.cameraPos as number[],
       cameraDir: u.cameraDir as number[],

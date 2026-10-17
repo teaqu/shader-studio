@@ -77,6 +77,12 @@ suite('ClientMessageHandler Test Suite', () => {
     assert.ok(handler instanceof ClientMessageHandler);
   });
 
+  test('returns the global canvas context menu preference', async () => {
+    sandbox.stub(vscode.workspace, 'getConfiguration').returns({ get: sandbox.stub().withArgs('preview.preventMouseDefaults', true).returns(false) } as unknown as vscode.WorkspaceConfiguration);
+    await handler.handle({ type: 'requestCanvasInputSettings' }, respondFn);
+    sinon.assert.calledOnceWithExactly(respondFn, { type: 'canvasInputSettings', payload: { preventMouseDefaults: false } });
+  });
+
   suite('viewer camera settings', () => {
     test('returns the user-wide default on request', async () => {
       sandbox.stub(vscode.workspace, 'getConfiguration').returns({

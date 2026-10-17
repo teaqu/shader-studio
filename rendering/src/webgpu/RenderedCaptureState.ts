@@ -23,6 +23,7 @@ export interface RenderedCaptureFrame {
 function copyUniforms(uniforms: CaptureUniforms): CaptureUniforms {
   return {
     ...uniforms,
+    ...(uniforms.pointer ? { pointer: { ...uniforms.pointer, position: [...uniforms.pointer.position], wheel: [...uniforms.pointer.wheel], wheelDelta: [...uniforms.pointer.wheelDelta] } } : {}),
     res: [...uniforms.res], mouse: [...uniforms.mouse], date: [...uniforms.date],
     cameraPos: [...uniforms.cameraPos], cameraDir: [...uniforms.cameraDir],
     ...(uniforms.channelTime ? { channelTime: [...uniforms.channelTime] } : {}),

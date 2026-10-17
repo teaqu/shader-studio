@@ -59,6 +59,14 @@ export class ClientMessageHandler {
   ): Promise<void> {
     this.logger.debug(`ClientMessageHandler: handling ${message.type}`);
 
+    // Global viewer preferences do not depend on the active shader project.
+    if (message.type === 'requestCanvasInputSettings') {
+      respondFn({ type: 'canvasInputSettings', payload: {
+        preventMouseDefaults: vscode.workspace.getConfiguration('shader-studio').get('preview.preventMouseDefaults', true),
+      } });
+      return;
+    }
+
     switch (message.type) {
       case 'updateConfig':
         await this.config.handleConfigUpdate(message.payload);

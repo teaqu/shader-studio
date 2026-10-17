@@ -8,6 +8,7 @@ const createMockRenderer = () => ({
   CLEAR: { Color: 1, Zbuffer: 2 },
   CreateTexture: vi.fn(),
   SetShader: vi.fn(),
+  SetShaderConstant2F: vi.fn(),
   SetShaderConstant1F: vi.fn(),
   SetShaderConstant1I: vi.fn(),
   SetShaderConstant1FV: vi.fn(),

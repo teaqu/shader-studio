@@ -24,7 +24,7 @@ If an older installation keeps returning to a previous version after a reload, c
 3. To start your own shader, click **New Shader** in Shader Explorer, enter a unique name, choose **GLSL**, **Slang**, or **WGSL**, and click **Create Shader**. WGSL/Slang start in the configured **Default shader mode**; you can choose Built-in or Native for this shader.
 4. Open **Config** in the preview toolbar to add buffer passes, channels, or uniforms.
 
-Slang and WGSL require WebGPU support in your browser and device. The examples include all three languages, shaders using the bundled texture and cubemap, and **particle-swarm.wgsl**, which drives 16384 particles from WGSL [compute passes](features/compute.md) and storage buffers. Drag in its preview to pull the swarm towards the pointer.
+Slang and WGSL require WebGPU support in your browser and device. The examples include all three languages, shaders using the bundled texture and cubemap, and **particle-swarm.wgsl**, which drives 16384 particles from WGSL [compute passes](features/compute.md) and storage buffers. Left-drag in its preview to pull the swarm towards the pointer; right-drag to push particles away.
 
 See the [Quick Start](quick-start.md#step-3-write-your-shader) for example shader code and [Configure Buffers and Inputs](features/config-buffers.md) for pass configuration. Instructions that refer to VS Code commands or workspace files apply to the extension.
 

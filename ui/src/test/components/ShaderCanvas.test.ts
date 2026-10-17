@@ -1,5 +1,7 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/svelte';
+import { tick } from 'svelte';
+import { MouseManager } from '../../../../rendering/src/input/MouseManager';
 import '@testing-library/jest-dom';
 import ShaderCanvas from '../../lib/components/ShaderCanvas.svelte';
 import { resolutionStore } from '../../lib/stores/resolutionStore';
@@ -337,4 +339,44 @@ describe('ShaderCanvas Component', () => {
       expect(onCanvasClick).toHaveBeenCalledOnce();
     });
   });
+});
+
+it('applies the live global setting to menus, middle/back/forward clicks and scroll', async () => {
+  const { CanvasInputSettings } = await import('../../lib/state/canvasInputState.svelte');
+  let receive: (event: MessageEvent) => void = () => {};
+  const controller = new CanvasInputSettings({ onMessage: (handler: typeof receive) => {
+    receive = handler;
+  }, postMessage: () => {} } as unknown as import('../../lib/transport/MessageTransport').Transport);
+  const mouse = new MouseManager();
+  const { container } = render(ShaderCanvas, { onCanvasReady: canvas => mouse.setupEventListeners(canvas) });
+  const canvas = container.querySelector('canvas')!;
+  const menu = () => {
+    const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true }); canvas.dispatchEvent(event); return event.defaultPrevented;
+  };
+  try {
+    expect(menu()).toBe(true);
+    expect(canvas.dataset.preventMouseDefaults).toBe('true');
+    const actions = () => [
+      new WheelEvent('wheel', { deltaY: 1, cancelable: true }),
+      ...[1, 3, 4].flatMap(button => ['mousedown', 'auxclick'].map(type => new MouseEvent(type, { button, cancelable: true }))),
+    ];
+    for (const event of actions()) {
+      canvas.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+    }
+    receive({ data: { type: 'canvasInputSettings', payload: { preventMouseDefaults: false } } } as MessageEvent);
+    await tick();
+    expect(menu()).toBe(false);
+    expect(canvas.dataset.preventMouseDefaults).toBe('false');
+    for (const event of actions()) {
+      canvas.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(false);
+    }
+    expect(mouse.getPointer().wheel).toEqual([0, 2]);
+  } finally {
+    receive({ data: { type: 'canvasInputSettings', payload: { preventMouseDefaults: true } } } as MessageEvent);
+    await tick();
+    mouse.dispose();
+    controller.dispose();
+  }
 });

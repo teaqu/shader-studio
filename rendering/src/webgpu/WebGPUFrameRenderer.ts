@@ -50,7 +50,7 @@ interface WebGPUFrameRendererHost {
 
 type FrameUniformInput = Pick<
   ShaderToyUniformInput,
-  "time" | "timeDelta" | "frameRate" | "frame" | "mouse" | "date" | "cameraPos" | "cameraDir"
+  "time" | "timeDelta" | "frameRate" | "frame" | "mouse" | "pointer" | "date" | "cameraPos" | "cameraDir"
 >;
 
 /** Owns frameRenderer state and operations; dependencies stay live across compilation swaps. */
@@ -59,7 +59,7 @@ export class WebGPUFrameRenderer {
 
   pausedUniformInput: Pick<
     ShaderToyUniformInput,
-    "time" | "timeDelta" | "frameRate" | "frame" | "mouse" | "date" | "cameraPos" | "cameraDir"
+    "time" | "timeDelta" | "frameRate" | "frame" | "mouse" | "pointer" | "date" | "cameraPos" | "cameraDir"
   > | null = null;
 
   pausedCustomUniformValues: CaptureCustomUniform[] | null = null;
@@ -265,7 +265,7 @@ export class WebGPUFrameRenderer {
         : undefined;
       const captureUniforms: CaptureUniforms = {
         time: frameInput.time, timeDelta: frameInput.timeDelta, frameRate: frameInput.frameRate, frame: frameInput.frame,
-        res: [pass.width, pass.height, 1], mouse: Array.from(frameInput.mouse), date: Array.from(frameInput.date),
+        res: [pass.width, pass.height, 1], mouse: Array.from(frameInput.mouse), pointer: frameInput.pointer, date: Array.from(frameInput.date),
         cameraPos: Array.from(frameInput.cameraPos), cameraDir: Array.from(frameInput.cameraDir), ...this.host.channels.getChannelUniforms(pass),
       };
       const bufferInputs = renderedBufferInputs(pass.channels, this.host.session.passPipelines, this.host.session.computePipelines, encodedComputePasses);
@@ -403,6 +403,7 @@ export class WebGPUFrameRenderer {
         frameRate: this.host.fps.getRawFPS(),
         frame: this.host.timeManager.getFrame(),
         mouse: Array.from(this.host.mouseManager.getMouse()),
+        pointer: this.host.mouseManager.getPointer?.(),
         date: Array.from(this.host.timeManager.getCurrentDate()),
         cameraPos: Array.from(this.host.cameraManager.getCameraPos()),
         cameraDir: Array.from(this.host.cameraManager.getCameraDir()),
@@ -417,6 +418,7 @@ export class WebGPUFrameRenderer {
       frameRate: this.host.fps.getRawFPS(),
       frame: this.host.timeManager.getFrame(),
       mouse: this.host.mouseManager.getMouse(),
+      pointer: this.host.mouseManager.getPointer?.(),
       date: this.host.timeManager.getCurrentDate(),
       cameraPos: this.host.cameraManager.getCameraPos(),
       cameraDir: this.host.cameraManager.getCameraDir(),

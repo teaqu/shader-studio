@@ -114,6 +114,7 @@ export class FrameRenderer {
       // in place. Copying keeps a snapshot — the frozen pause uniforms in
       // particular — from tracking later pointer and camera movement.
       mouse: new Float32Array(this.mouseManager.getMouse()),
+      pointer: this.mouseManager.getPointer?.(),
       frame: this.timeManager.getFrame(),
       date: this.timeManager.getCurrentDate(),
       channelTime: [0, 0, 0, 0],

@@ -37,6 +37,7 @@ const WGSL_SCALAR_LAYOUT: Record<string, { align: number; size: number }> = {
   "vec2<u32>": { align: 8, size: 8 },
   "vec3<u32>": { align: 16, size: 12 },
   "vec4<u32>": { align: 16, size: 16 },
+  "ShaderStudioPointer": { align: 16, size: 48 },
   "mat4x4<f32>": { align: 16, size: 64 },
 };
 
@@ -92,6 +93,12 @@ function storageNode(name: string, binding: number, elementType: string, builtin
 }
 
 describe("wrapWgslImageSource uniform block", () => {
+  it("keeps pointer input out of the separate mesh uniform buffer", () => {
+    const { source } = wrapWgslImageSource("fn mainImage(coord: vec2f) -> vec4f { return vec4f(iPointer.position, 0, 1); }", { geometry: "cube" });
+    expect(wgslStructOffsets(source, "_ss_MeshUniforms")).toEqual(new Map([
+      ["model", 0], ["viewProjection", 64], ["normalMatrix", 128], ["cameraPosition", 192],
+    ]));
+  });
   it.each(['fullscreen', 'vertices', 'cube'] as const)('includes a shared %s hook source only once', geometry => {
     const source = 'fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {}\nfn mainImage(coord: vec2f) -> vec4f { return vec4f(1); }';
     const wrapped = wrapWgslImageSource(source, { geometry, vertexCode: source }).source;
@@ -780,6 +787,7 @@ describe("wrapWgslImageSource golden module", () => {
     expect(preludeLineCount).toBe(source.split("\n").findIndex(line => line.startsWith("fn mainImage(")));
     expect(source).toMatchInlineSnapshot(`
       "// ---- shader-studio WGSL prelude (generated) ----
+      struct ShaderStudioPointer { position: vec2f, inside: i32, held: i32, pressed: i32, released: i32, modifiers: i32, _padding: i32, wheel: vec2f, wheelDelta: vec2f, }
       struct _ss_ShaderToyUniforms {
         resolution: vec4<f32>,
         mouse: vec4<f32>,
@@ -798,6 +806,7 @@ describe("wrapWgslImageSource golden module", () => {
         viewMatrix: mat4x4<f32>,
         projectionMatrix: mat4x4<f32>,
         viewProjection: mat4x4<f32>,
+        pointer: ShaderStudioPointer,
         custom_myGain: vec4<f32>,
         custom_myFlag: i32,
       }
@@ -805,6 +814,7 @@ describe("wrapWgslImageSource golden module", () => {
       @group(0) @binding(0) var<uniform> _ss_u: _ss_ShaderToyUniforms;
       var<private> iResolution: vec3<f32>;
       var<private> iMouse: vec4<f32>;
+      var<private> iPointer: ShaderStudioPointer;
       var<private> iTime: f32;
       var<private> iTimeDelta: f32;
       var<private> iFrameRate: f32;
@@ -830,6 +840,7 @@ describe("wrapWgslImageSource golden module", () => {
       fn _ss_initGlobals() {
         iResolution = _ss_u.resolution.xyz;
         iMouse = _ss_u.mouse;
+        iPointer = _ss_u.pointer;
         iTime = _ss_u.time;
         iTimeDelta = _ss_u.timeDelta;
         iFrameRate = _ss_u.frameRate;
