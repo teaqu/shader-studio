@@ -57,6 +57,20 @@ describe('HostedPanels', () => {
     dock.addExisting('preview');
   });
 
+  it('docks VR with the tool panels and synchronizes close and restore', () => {
+    dock.addExisting('config');
+    const closed = vi.fn(), shown = vi.fn();
+    host.register('vr', { mount: vi.fn(), onClose: closed, onShow: shown });
+    host.setVisible('vr', true);
+    expect(dock.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'vr', title: 'VR', position: { referencePanel: 'config', direction: 'within' } }));
+    dock.activateAsUser('vr');
+    expect(host.getLastSelectedTool()).toBe('vr');
+    dock.removeAsUser('vr');
+    expect(closed).toHaveBeenCalledOnce();
+    host.showTool('vr');
+    expect(shown).toHaveBeenCalledOnce();
+  });
+
   it('attaches a panel registered after its restored renderer', () => {
     const renderer = host.createRenderer('debug');
     init(renderer);

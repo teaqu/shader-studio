@@ -32,6 +32,7 @@
   import type { AudioVideoController } from "../AudioVideoController";
   import { MenuOverlay } from './menu/MenuOverlay.svelte';
   import MenuOptions from './menu/MenuOptions.svelte';
+  import VrPreviewButton from "./menu/VrPreviewButton.svelte";
   import DisplayControls from './menu/DisplayControls.svelte';
 
   interface Props {
@@ -192,6 +193,7 @@
   const showConfigInOptions = $derived(menuBarWidth <= 390);
   const showRecordInOptions = $derived(menuBarWidth <= 370);
   const showLockInOptions = $derived(menuBarWidth <= 340);
+  const showVrInOptions = $derived(menuBarWidth <= 280);
 
   $effect(() => {
     if (!menuBarEl) {
@@ -483,6 +485,7 @@
     </div>
   </div>
   <div class="right-group">
+    {#if !showVrInOptions}<VrPreviewButton />{/if}
     <button
       class="collapse-config toolbar-icon-button"
       onclick={onToggleConfigPanel}
@@ -539,7 +542,7 @@
 
 <MenuOptions
   {optionsMenu} {layoutMenu} {editorMenu}
-  {hasShader} {previewVisible} {showLockInOptions} {showRecordInOptions} {showConfigInOptions} {showDebugInOptions}
+  {hasShader} {previewVisible} {showLockInOptions} {showRecordInOptions} {showConfigInOptions} {showDebugInOptions} {showVrInOptions}
   {isLocked} {isRecordingPanelVisible} {isConfigPanelVisible} {isDebugEnabled} {isDebugSupported} {isEditorOverlayVisible} {isVimModeEnabled}
   {showThemeButton} {theme} {showFullscreenButton} {compileMode} {compileModeIcons} {compileModeLabels} {audioVolume} {audioMuted}
   onShowPreview={onShowPreview} onConfig={handleConfig} onToggleLock={handleToggleLock} onToggleRecording={handleRecordingClick}

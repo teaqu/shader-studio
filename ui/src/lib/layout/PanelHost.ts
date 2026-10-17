@@ -1,7 +1,7 @@
 /** Optional shell-owned docking for the viewer's tool panels. */
 export const PANEL_HOST_CONTEXT = Symbol('shader-studio-panel-host');
 
-export type HostedPanelId = 'debug' | 'config' | 'performance' | 'recording';
+export type HostedPanelId = 'debug' | 'config' | 'performance' | 'recording' | 'vr';
 
 export interface HostedPanelDefinition {
   mount(container: HTMLElement): void | (() => void);

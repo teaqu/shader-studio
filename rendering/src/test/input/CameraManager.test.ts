@@ -52,6 +52,43 @@ describe("CameraManager", () => {
     });
   });
 
+  it("applies shared movement and keyboard turn speeds without changing boost", () => {
+    camera.setSpeeds(4, 90);
+    kb.press(87);
+    camera.update(0.5);
+    expect(camera.getCameraPos()[2]).toBeCloseTo(-2);
+    kb.press(16);
+    camera.update(0.5);
+    expect(camera.getCameraPos()[2]).toBeCloseTo(-8);
+    kb.releaseAll();
+    camera.reset();
+    kb.press(39);
+    camera.update(0.5);
+    expect(camera.getCameraDir()[0]).toBeCloseTo(Math.SQRT1_2);
+    camera.setSpeeds(4, 180);
+    camera.reset();
+    camera.update(0.5);
+    expect(camera.getCameraDir()[0]).toBeCloseTo(1);
+  });
+
+  it("scales mouse look sensitivity with the shared turn speed", () => {
+    const canvas = document.createElement('canvas');
+    canvas.setPointerCapture = vi.fn();
+    camera.setupEventListeners(canvas);
+    const drag = () => {
+      canvas.dispatchEvent(new MouseEvent('pointerdown', { button: 0, clientX: 0, clientY: 0 }));
+      canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 100, clientY: 0 }));
+    };
+    camera.setSpeeds(2, 90);
+    drag();
+    expect(camera.getCameraDir()[0]).toBeCloseTo(Math.sin(0.3));
+    camera.reset();
+    camera.setSpeeds(2, 180);
+    drag();
+    expect(camera.getCameraDir()[0]).toBeCloseTo(Math.sin(0.6));
+    camera.dispose();
+  });
+
   describe("WASD movement", () => {
     it("W should move forward (along -Z initially)", () => {
       kb.press(87); // W

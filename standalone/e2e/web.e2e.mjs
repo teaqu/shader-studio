@@ -1409,7 +1409,9 @@ test('records the live preview to WebM and remembers capture settings after relo
 
   await page.getByRole('button', { name: 'Start recording', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Stop & save', exact: true })).toBeVisible();
-  await expect(page.locator(".recording-panel")).toContainText("1s elapsed");
+  // Busy adapters can advance past one second between Playwright polls. The
+  // contract is that recording time advances, not that every second is seen.
+  await expect(page.locator(".recording-panel")).toContainText(/\b[1-9]\d*s elapsed\b/);
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Stop & save', exact: true }).click();
   const download = await downloadPromise;
