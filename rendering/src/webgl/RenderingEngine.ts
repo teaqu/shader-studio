@@ -1,3 +1,6 @@
+import { WebXrRenderer } from "../webxr/WebXrRenderer";
+import { isImmersiveVrSupported } from "../webxr/WebXrSession";
+import { normalizeVrNavigation, type VrNavigationSettings } from "../webxr/VrNavigationSettings";
 import { audioPreviewData, livePreviewData, controlSystemAudio, controlAudioInput } from "../resources/MediaPreview";
 import type { LiveInputType, LiveInputPreview } from "../resources/LiveInputTextureManager";
 import { piRenderer } from "../../../vendor/pilibs/src/piRenderer";
@@ -41,6 +44,8 @@ import {
 } from "./WebGLRenderLimits";
 
 export class RenderingEngine implements RenderingEngineInterface {
+  private immersiveVr: WebXrRenderer | null = null;
+  private navigationSettings = normalizeVrNavigation(undefined);
   private glCanvas: HTMLCanvasElement | null = null;
   private gl: WebGL2RenderingContext | null = null;
   private renderer!: PiRenderer;
@@ -72,13 +77,15 @@ export class RenderingEngine implements RenderingEngineInterface {
   private gpuStallStartMs: number | null = null;
 
   initialize(glCanvas: HTMLCanvasElement, preserveDrawingBuffer: boolean = false) {
+    this.immersiveVr?.dispose();
     this.frameRenderer?.setPostImageCallback?.(null);
     this.frameRenderer?.stopRenderLoop?.();
     this.pixelRegionCapturer?.dispose();
     this.pixelRegionCapturer = null;
     this.glCanvas = glCanvas;
 
-    const gl = piCreateGlContext(glCanvas, false, true, preserveDrawingBuffer, false);
+    // Request compatibility before shader allocation, avoiding XR GPU migration.
+    const gl = piCreateGlContext(glCanvas, false, true, preserveDrawingBuffer, false, Boolean(navigator.xr));
     if (!gl) {
       throw new Error("WebGL2 not supported");
     }
@@ -105,6 +112,7 @@ export class RenderingEngine implements RenderingEngineInterface {
     this.keyboardManager = new KeyboardManager();
     this.mouseManager = new MouseManager();
     this.cameraManager = new CameraManager(this.keyboardManager);
+    this.cameraManager.setSpeeds(this.navigationSettings.movementSpeed, this.navigationSettings.turnSpeed);
 
     this.customUniformManager = new CustomUniformManager();
 
@@ -146,6 +154,8 @@ export class RenderingEngine implements RenderingEngineInterface {
       glCanvas,
       new FPSCalculator(60, 10),
     );
+    this.immersiveVr = new WebXrRenderer(this.gl, this.frameRenderer, this.passRenderer, time => this.render(time));
+    this.immersiveVr.setNavigationSettings(this.navigationSettings);
     this.frameRenderer.setFramePacer((time) => this.shouldWaitForGpu(time));
     this.frameRenderer.setGpuFrameTimeSource(() => this.gpuFrameMs);
     const pixelRegionCapturer = new WebGLPixelRegionCapturer(this.gl);
@@ -383,6 +393,7 @@ export class RenderingEngine implements RenderingEngineInterface {
         return { success: false, errors: [error instanceof Error ? error.message : String(error)] };
       }
       this.passRenderer.installShaderCamera(path);
+      this.passRenderer.vrPreview.update(path, this.shaderPipeline.getPasses());
       const shaderTime = this.timeManager.getCurrentTime(performance.now());
       const paused = this.timeManager.isPaused();
       this.resourceManager.syncAllVideosToTime(shaderTime);
@@ -474,6 +485,35 @@ export class RenderingEngine implements RenderingEngineInterface {
 
   public async resetStorageBuffer(_name: string): Promise<void> {
     throw new Error('Storage buffers require WebGPU');
+  }
+
+  public isImmersiveVrSupported(): Promise<boolean> {
+    return isImmersiveVrSupported();
+  }
+
+  public async enterVr(onEnded?: (error?: string) => void): Promise<void> {
+    if (!this.immersiveVr) {
+      throw new Error("VR renderer is not initialized");
+    }
+    await this.immersiveVr.start(onEnded);
+  }
+
+  public async exitVr(): Promise<void> {
+    await this.immersiveVr?.end();
+  }
+
+  public setVrNavigationSettings(settings: VrNavigationSettings): void {
+    this.navigationSettings = normalizeVrNavigation(settings);
+    this.immersiveVr?.setNavigationSettings(this.navigationSettings);
+    this.cameraManager?.setSpeeds(this.navigationSettings.movementSpeed, this.navigationSettings.turnSpeed);
+  }
+
+  public isVrPreviewAvailable(): boolean {
+    return this.passRenderer.vrPreview.available;
+  }
+
+  public setVrPreviewEnabled(enabled: boolean): void {
+    this.passRenderer.vrPreview.setEnabled(enabled);
   }
 
   public setInputEnabled(enabled: boolean): void {
@@ -605,7 +645,9 @@ export class RenderingEngine implements RenderingEngineInterface {
   }
 
   public startRenderLoop(): void {
-    this.frameRenderer.startRenderLoop();
+    if (!this.immersiveVr?.active) {
+      this.frameRenderer.startRenderLoop();
+    }
   }
 
   public stopRenderLoop(): void {
@@ -616,8 +658,11 @@ export class RenderingEngine implements RenderingEngineInterface {
     if (this.frameRenderer) {
       const wasRunning = this.frameRenderer.isRunning();
       this.frameRenderer.setRunning(true);
-      this.frameRenderer.render(time);
-      this.frameRenderer.setRunning(wasRunning);
+      try {
+        this.frameRenderer.render(time);
+      } finally {
+        this.frameRenderer.setRunning(wasRunning);
+      }
     }
   }
 
@@ -929,6 +974,7 @@ export class RenderingEngine implements RenderingEngineInterface {
     this.pixelRegionCapturer = null;
     attempt(() => this.meshResources?.dispose());
     this.meshResources = null;
+    attempt(() => this.immersiveVr?.dispose());
     attempt(() => this.passRenderer?.dispose());
     attempt(() => this.bufferManager?.dispose());
     attempt(() => this.frameRenderer?.stopRenderLoop());

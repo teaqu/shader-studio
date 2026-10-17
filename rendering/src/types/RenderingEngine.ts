@@ -4,6 +4,7 @@ import type { CompilationResult, Pass } from "../models";
 import type { TimeManager } from "../util/TimeManager";
 import type { IVariableCapturer, CaptureUniforms, CaptureCustomUniform, CaptureCompileContext } from "../capture/VariableCapturer";
 import type { PixelRegionResult } from "./PixelRegion";
+import type { VrNavigationSettings } from "../webxr/VrNavigationSettings";
 
 export interface RenderingEngine {
   initialize(glCanvas: HTMLCanvasElement, preserveDrawingBuffer?: boolean): void;
@@ -26,6 +27,12 @@ export interface RenderingEngine {
   resetStorageBuffer(name: string): Promise<void>;
   writeStorageBuffer(name: string, start: number, data: ArrayBuffer): Promise<void>;
   setInputEnabled(enabled: boolean): void;
+  isVrPreviewAvailable?(): boolean;
+  setVrPreviewEnabled?(enabled: boolean): void;
+  isImmersiveVrSupported?(): Promise<boolean>;
+  enterVr?(onEnded?: (error?: string) => void): Promise<void>;
+  exitVr?(): Promise<void>;
+  setVrNavigationSettings?(settings: VrNavigationSettings): void;
   updateBufferAndRecompile(bufferName: string, bufferContent: string): Promise<CompilationResult | undefined>;
   getPasses(): (Pass | RenderPassNode)[];
   /** Effective colour-attachment limits of the installed WebGPU device. */

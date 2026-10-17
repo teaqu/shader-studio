@@ -1,13 +1,21 @@
 # Shadertoy Compatibility
 
 
-Shader Studio is built around Shadertoy-style fragment shaders. Your shader must define a `mainImage` function:
+Shader Studio is built around Shadertoy-style fragment shaders. For a conventional image shader, define a `mainImage` function:
 
 ```glsl
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     // your shader code
 }
 ```
+
+## VR shaders
+
+Fullscreen GLSL Image shaders can use `mainVR` for desktop preview and WebXR headsets. See [VR shaders](../features/vr.md) for setup, navigation, controller inputs and a downloadable interactive demo.
+
+### Optional Shader Studio controller inputs
+
+Controller inputs are Shader Studio additions and require `#define SHADER_STUDIO_VR_INPUTS`. Shaders using them need adapting before running on Shadertoy. Ordinary Shadertoy shaders keep their own identifiers without this opt-in. See the [controller input reference](../features/vr.md#controller-shader-inputs).
 
 ## Supported Uniforms
 
@@ -66,7 +74,7 @@ These uniforms are provided by Shader Studio but are not part of the Shadertoy A
 |---------|-------|
 | Webcam input | Live camera feed |
 | Microphone input | Real-time audio from microphone |
-| VR/AR | Immersive rendering modes |
+| AR | Immersive augmented-reality sessions |
 
 ## Volume inputs
 

@@ -23,6 +23,7 @@
     configClosed: void;
     performanceClosed: void;
     recordingClosed: void;
+    vrClosed: void;
     toolRestored: HostedPanelId;
   }>();
 
@@ -32,10 +33,12 @@
     mountConfig?: (container: HTMLElement) => (() => void) | void;
     mountPerformance?: (container: HTMLElement) => (() => void) | void;
     mountRecording?: (container: HTMLElement) => (() => void) | void;
+    mountVr?: (container: HTMLElement) => (() => void) | void;
     showDebugPanel?: boolean;
     showConfigPanel?: boolean;
     showPerformancePanel?: boolean;
     showRecordingPanel?: boolean;
+    showVrPanel?: boolean;
     transport?: Transport | null;
   }
 
@@ -45,10 +48,12 @@
     mountConfig = () => {},
     mountPerformance = () => {},
     mountRecording = () => {},
+    mountVr = () => {},
     showDebugPanel = false,
     showConfigPanel = false,
     showPerformancePanel = false,
     showRecordingPanel = false,
+    showVrPanel = false,
     transport = null as Transport | null,
   }: Props = $props();
 
@@ -114,6 +119,9 @@
         case "recording":
           mountFn = mountRecording;
           break;
+        case "vr":
+          mountFn = mountVr;
+          break;
         default:
           return;
       }
@@ -156,6 +164,9 @@
     }
     if (showRecordingPanel) {
       addRecordingPanel();
+    }
+    if (showVrPanel) {
+      setVrVisible(true);
     }
   }
 
@@ -203,7 +214,7 @@
       return;
     }
 
-    const tabRef = api.getPanel("config") ?? api.getPanel("performance");
+    const tabRef = api.getPanel("config") ?? api.getPanel("performance") ?? api.getPanel("vr");
     api.addPanel({
       id: "debug",
       component: "debug",
@@ -243,7 +254,7 @@
       return;
     }
 
-    const existingTab = api.getPanel("debug") ?? api.getPanel("performance");
+    const existingTab = api.getPanel("debug") ?? api.getPanel("performance") ?? api.getPanel("vr");
     if (existingTab) {
       // Config is tab 1: evict existing bottom panels, add config standalone, re-add within.
       const siblingIds = existingTab.api.group.panels
@@ -272,7 +283,7 @@
         api.addPanel({
           id: sid,
           component: sid,
-          title: sid.charAt(0).toUpperCase() + sid.slice(1),
+          title: sid === 'vr' ? 'VR' : sid.charAt(0).toUpperCase() + sid.slice(1),
           renderer: "always",
           position: { referencePanel: "config", direction: "within" },
           inactive: true,
@@ -323,7 +334,7 @@
       return;
     }
 
-    const tabRef = api.getPanel("debug") ?? api.getPanel("config");
+    const tabRef = api.getPanel("debug") ?? api.getPanel("config") ?? api.getPanel("vr");
     api.addPanel({
       id: "performance",
       component: "performance",
@@ -363,7 +374,7 @@
       return;
     }
 
-    const tabRef = api.getPanel("debug") ?? api.getPanel("config") ?? api.getPanel("performance");
+    const tabRef = api.getPanel("debug") ?? api.getPanel("config") ?? api.getPanel("performance") ?? api.getPanel("vr");
     api.addPanel({
       id: "recording",
       component: "recording",
@@ -402,6 +413,27 @@
       renderer: "always",
     });
     dispatch("previewVisibleChange", true);
+  }
+
+  function setVrVisible(visible: boolean): void {
+    if (panelHost) {
+      panelHost.setVisible('vr', visible);
+      return;
+    }
+    if (!api) {
+      return;
+    }
+    const panel = api.getPanel('vr');
+    if (!visible && panel) {
+      panelSnapshots.set('vr', api.toJSON());
+      programmaticRemoval = true;
+      api.removePanel(panel);
+      programmaticRemoval = false;
+    } else if (visible && !panel && !tryRestoreFromSnapshot('vr')) {
+      const reference = api.getPanel('config') ?? api.getPanel('debug') ?? api.getPanel('performance') ?? api.getPanel('recording');
+      api.addPanel({ id: 'vr', component: 'vr', title: 'VR', renderer: 'always',
+        position: { referencePanel: reference?.id ?? 'preview', direction: reference ? 'within' : 'right' }, initialWidth: 300 });
+    }
   }
 
   function resetLayout() {
@@ -507,6 +539,14 @@
     }
   });
 
+  $effect(() => {
+    const visible = showVrPanel;
+    const ready = layoutReady;
+    if ((api || panelHost) && ready) {
+      setVrVisible(visible);
+    }
+  });
+
   onMount(() => {
     if (panelHost) {
       hostedCleanups.push(
@@ -514,6 +554,7 @@
         panelHost.register('config', { mount: mountConfig, onClose: () => dispatch('configClosed'), onShow: () => dispatch('toolRestored', 'config') }),
         panelHost.register('performance', { mount: mountPerformance, onClose: () => dispatch('performanceClosed'), onShow: () => dispatch('toolRestored', 'performance') }),
         panelHost.register('recording', { mount: mountRecording, onClose: () => dispatch('recordingClosed'), onShow: () => dispatch('toolRestored', 'recording') }),
+        panelHost.register('vr', { mount: mountVr, onClose: () => dispatch('vrClosed'), onShow: () => dispatch('toolRestored', 'vr') }),
       );
       // The shell owns the Preview tab. Mount its content directly, without
       // creating a second dock inside the shell's panel.
@@ -579,10 +620,16 @@
       if (panel.id === "recording" && !programmaticRemoval && !isDestroying) {
         dispatch("recordingClosed");
       }
+      if (panel.id === "vr" && !programmaticRemoval && !isDestroying) {
+        dispatch("vrClosed");
+      }
       checkPreviewAlone();
     });
 
     api.onDidAddPanel((panel) => {
+      if (panel.id === 'vr') {
+        dispatch('toolRestored', 'vr');
+      }
       if (panel.id === "preview") {
         dispatch("previewVisibleChange", true);
       }

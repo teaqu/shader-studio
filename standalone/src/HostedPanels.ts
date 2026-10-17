@@ -11,6 +11,7 @@ const titles: Record<HostedPanelId, string> = {
   config: 'Config',
   performance: 'Frame Times',
   recording: 'Export',
+  vr: 'VR',
 };
 
 class HostedPanelRenderer implements IContentRenderer {
@@ -198,7 +199,7 @@ export class HostedPanels implements PanelHost {
     }
     // Tools share a tab group, including panels restored before registration.
     // Insert Config first without removing or moving the existing group.
-    const toolReference = (['config', 'debug', 'performance', 'recording'] as const)
+    const toolReference = (['config', 'debug', 'performance', 'recording', 'vr'] as const)
       .find((candidate) => candidate !== id && this.api?.getPanel(candidate));
     const referencePanel = toolReference ?? (this.api.getPanel('preview') ? 'preview' : undefined);
     this.api.addPanel({
@@ -225,5 +226,5 @@ export class HostedPanels implements PanelHost {
 }
 
 function isHostedPanelId(id: string): id is HostedPanelId {
-  return id === 'debug' || id === 'config' || id === 'performance' || id === 'recording';
+  return id === 'debug' || id === 'config' || id === 'performance' || id === 'recording' || id === 'vr';
 }
