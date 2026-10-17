@@ -26,9 +26,9 @@ describe('canvas preference broadcasts', () => {
       const event = (name: string) => ({ affectsConfiguration: (section: string) => section === name }) as vscode.ConfigurationChangeEvent;
       receive(event('unrelated'));
       expect(messenger.send).not.toHaveBeenCalled();
-      receive(event('shader-studio.preview.disableContextMenu'));
-      expect(get).toHaveBeenCalledWith('preview.disableContextMenu', true);
-      expect(messenger.send).toHaveBeenCalledExactlyOnceWith({ type: 'canvasInputSettings', payload: { disableContextMenu: value } });
+      receive(event('shader-studio.preview.preventMouseDefaults'));
+      expect(get).toHaveBeenCalledWith('preview.preventMouseDefaults', true);
+      expect(messenger.send).toHaveBeenCalledExactlyOnceWith({ type: 'canvasInputSettings', payload: { preventMouseDefaults: value } });
     } finally {
       manager.dispose();
     }

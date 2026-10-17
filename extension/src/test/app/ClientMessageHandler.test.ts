@@ -78,9 +78,9 @@ suite('ClientMessageHandler Test Suite', () => {
   });
 
   test('returns the global canvas context menu preference', async () => {
-    sandbox.stub(vscode.workspace, 'getConfiguration').returns({ get: sandbox.stub().withArgs('preview.disableContextMenu', true).returns(false) } as unknown as vscode.WorkspaceConfiguration);
+    sandbox.stub(vscode.workspace, 'getConfiguration').returns({ get: sandbox.stub().withArgs('preview.preventMouseDefaults', true).returns(false) } as unknown as vscode.WorkspaceConfiguration);
     await handler.handle({ type: 'requestCanvasInputSettings' }, respondFn);
-    sinon.assert.calledOnceWithExactly(respondFn, { type: 'canvasInputSettings', payload: { disableContextMenu: false } });
+    sinon.assert.calledOnceWithExactly(respondFn, { type: 'canvasInputSettings', payload: { preventMouseDefaults: false } });
   });
 
   suite('viewer camera settings', () => {

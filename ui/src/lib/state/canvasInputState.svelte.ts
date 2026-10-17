@@ -1,9 +1,9 @@
 import type { Transport } from '../transport/MessageTransport';
 
-let disableContextMenu = $state(true);
+let preventMouseDefaults = $state(true);
 
-export function getDisableCanvasContextMenu(): boolean {
-  return disableContextMenu;
+export function getPreventCanvasMouseDefaults(): boolean {
+  return preventMouseDefaults;
 }
 
 /** Keeps the global canvas preference synchronized with its host. */
@@ -13,8 +13,8 @@ export class CanvasInputSettings {
   constructor(transport: Transport) {
     transport.onMessage(({ data }) => {
       if (!this.disposed && data.type === 'canvasInputSettings'
-        && typeof data.payload?.disableContextMenu === 'boolean') {
-        disableContextMenu = data.payload.disableContextMenu;
+        && typeof data.payload?.preventMouseDefaults === 'boolean') {
+        preventMouseDefaults = data.payload.preventMouseDefaults;
       }
     });
     transport.postMessage({ type: 'requestCanvasInputSettings' });

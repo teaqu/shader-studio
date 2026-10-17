@@ -74,7 +74,7 @@ export class HostSettingsController {
       this.emitAuthoringSettings();
     }
     this.settingsSnapshot = settings;
-    if (previous['preview.disableContextMenu'] !== settings['preview.disableContextMenu']) {
+    if (previous['preview.preventMouseDefaults'] !== settings['preview.preventMouseDefaults']) {
       this.emitCanvasInputSettings();
     }
     if (previous['webgpu.useViewerCamera'] !== settings['webgpu.useViewerCamera']) {
@@ -89,7 +89,7 @@ export class HostSettingsController {
   }
 
   private emitCanvasInputSettings(): void {
-    this.emit({ type: 'canvasInputSettings', payload: { disableContextMenu: this.settings.snapshot['preview.disableContextMenu'] } });
+    this.emit({ type: 'canvasInputSettings', payload: { preventMouseDefaults: this.settings.snapshot['preview.preventMouseDefaults'] } });
   }
 
   private emitAuthoringSettings(): void {

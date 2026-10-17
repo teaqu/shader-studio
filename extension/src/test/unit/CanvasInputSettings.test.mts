@@ -12,8 +12,8 @@ describe('global canvas input preference', () => {
     Reflect.set(handler, 'logger', { debug: vi.fn() });
     const respond = vi.fn();
     await handler.handle({ type: 'requestCanvasInputSettings' }, respond);
-    expect(configuration.get).toHaveBeenCalledWith('preview.disableContextMenu', true);
-    expect(respond).toHaveBeenCalledWith({ type: 'canvasInputSettings', payload: { disableContextMenu: value } });
+    expect(configuration.get).toHaveBeenCalledWith('preview.preventMouseDefaults', true);
+    expect(respond).toHaveBeenCalledWith({ type: 'canvasInputSettings', payload: { preventMouseDefaults: value } });
   });
   it('continues to route other viewer settings through the normal handler', async () => {
     configuration.get.mockReturnValue(false);

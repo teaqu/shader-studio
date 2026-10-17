@@ -165,7 +165,7 @@ export interface RequestShaderAuthoringSettingsMessage extends BaseMessage { typ
 export interface ShaderAuthoringSettingsMessage extends BaseMessage { type: 'shaderAuthoringSettings'; payload: { defaultRenderAuthoring: WebGPUAuthoringMode }; }
 
 export interface RequestCanvasInputSettingsMessage extends BaseMessage { type: 'requestCanvasInputSettings'; }
-export interface CanvasInputSettingsMessage extends BaseMessage { type: 'canvasInputSettings'; payload: { disableContextMenu: boolean }; }
+export interface CanvasInputSettingsMessage extends BaseMessage { type: 'canvasInputSettings'; payload: { preventMouseDefaults: boolean }; }
 
 export interface RequestViewerCameraSettingsMessage extends BaseMessage {
   type: "requestViewerCameraSettings";

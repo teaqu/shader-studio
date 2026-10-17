@@ -62,7 +62,7 @@ export class ClientMessageHandler {
     // Global viewer preferences do not depend on the active shader project.
     if (message.type === 'requestCanvasInputSettings') {
       respondFn({ type: 'canvasInputSettings', payload: {
-        disableContextMenu: vscode.workspace.getConfiguration('shader-studio').get('preview.disableContextMenu', true),
+        preventMouseDefaults: vscode.workspace.getConfiguration('shader-studio').get('preview.preventMouseDefaults', true),
       } });
       return;
     }

@@ -457,6 +457,27 @@ describe("MouseManager", () => {
 });
 
 describe('iPointer', () => {
+  it('keeps reporting input while the global setting allows browser mouse defaults', () => {
+    const manager = new MouseManager();
+    const canvas = createMockCanvas();
+    canvas.dataset.preventMouseDefaults = 'false';
+    manager.setupEventListeners(canvas);
+    try {
+      const wheel = new WheelEvent('wheel', { deltaY: 8, cancelable: true });
+      canvas.dispatchEvent(wheel);
+      expect(wheel.defaultPrevented).toBe(false);
+      expect(manager.getPointer().wheel).toEqual([0, 8]);
+      for (const button of [1, 3, 4]) {
+        for (const type of ['mousedown', 'auxclick']) {
+          const event = new MouseEvent(type, { button, cancelable: true });
+          canvas.dispatchEvent(event);
+          expect(event.defaultPrevented).toBe(false);
+        }
+      }
+    } finally {
+      manager.dispose();
+    }
+  });
   function setup() {
     const manager = new MouseManager(); const canvas = createMockCanvas(); manager.setupEventListeners(canvas);
     const pointer = (type: string, buttons: number, extra: PointerEventInit = {}) => canvas.dispatchEvent(new PointerEvent(type, { clientX: 100, clientY: 100, pointerId: 1, buttons, ...extra }));

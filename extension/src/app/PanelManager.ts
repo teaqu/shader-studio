@@ -40,8 +40,8 @@ export class PanelManager {
       if (event.affectsConfiguration("shader-studio.webgpu.defaultRenderAuthoring")) {
         this.messenger.send({ type: "shaderAuthoringSettings", payload: { defaultRenderAuthoring: vscode.workspace.getConfiguration("shader-studio").get("webgpu.defaultRenderAuthoring", "hooks") } });
       }
-      if (event.affectsConfiguration("shader-studio.preview.disableContextMenu")) {
-        this.messenger.send({ type: "canvasInputSettings", payload: { disableContextMenu: vscode.workspace.getConfiguration("shader-studio").get("preview.disableContextMenu", true) } });
+      if (event.affectsConfiguration("shader-studio.preview.preventMouseDefaults")) {
+        this.messenger.send({ type: "canvasInputSettings", payload: { preventMouseDefaults: vscode.workspace.getConfiguration("shader-studio").get("preview.preventMouseDefaults", true) } });
       }
       if (event.affectsConfiguration("shader-studio.webgpu.useViewerCamera")) {
         const configuration = vscode.workspace.getConfiguration("shader-studio");

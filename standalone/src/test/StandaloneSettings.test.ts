@@ -76,11 +76,11 @@ it('reloads external preferences without writing them back to storage', () => {
 it('persists the global canvas menu preference and broadcasts changes', async () => {
   const { HostSettingsController } = await import('../settings/HostSettingsController');
   const backend = storage(); const settings = new StandaloneSettings(backend); const emit = vi.fn(); const controller = new HostSettingsController(settings, emit);
-  expect(settings.snapshot['preview.disableContextMenu']).toBe(true);
+  expect(settings.snapshot['preview.preventMouseDefaults']).toBe(true);
   expect(controller.handleMessage('requestCanvasInputSettings', {})).toBe(true);
-  expect(emit).toHaveBeenLastCalledWith({ type: 'canvasInputSettings', payload: { disableContextMenu: true } });
-  expect(settings.update('preview.disableContextMenu', 'false')).toBe(false);
-  settings.update('preview.disableContextMenu', false);
-  expect(emit).toHaveBeenLastCalledWith({ type: 'canvasInputSettings', payload: { disableContextMenu: false } });
-  expect(new StandaloneSettings(backend).snapshot['preview.disableContextMenu']).toBe(false); controller.dispose();
+  expect(emit).toHaveBeenLastCalledWith({ type: 'canvasInputSettings', payload: { preventMouseDefaults: true } });
+  expect(settings.update('preview.preventMouseDefaults', 'false')).toBe(false);
+  settings.update('preview.preventMouseDefaults', false);
+  expect(emit).toHaveBeenLastCalledWith({ type: 'canvasInputSettings', payload: { preventMouseDefaults: false } });
+  expect(new StandaloneSettings(backend).snapshot['preview.preventMouseDefaults']).toBe(false); controller.dispose();
 });

@@ -1,3 +1,4 @@
+import { preventCanvasMouseDefault } from "./CanvasInputDefaults";
 /**
  * Pointer input for iMouse, following Shadertoy's player: xy tracks the
  * pointer only while a button is held, zw hold the click position, z is
@@ -48,7 +49,7 @@ export class MouseManager {
     if (!this.enabled || !this.canvas) {
       return;
     }
-    e.preventDefault();
+    preventCanvasMouseDefault(this.canvas, e);
     const rect = this.canvas.getBoundingClientRect();
     // Normalize line units to 16 CSS pixels; page units follow the canvas size.
     const scaleX = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? rect.width : 1;
@@ -66,7 +67,7 @@ export class MouseManager {
 
   private readonly onAuxClick = (e: MouseEvent): void => {
     if (this.enabled && e.button !== 0) {
-      e.preventDefault();
+      preventCanvasMouseDefault(this.canvas, e);
     }
   };
 
