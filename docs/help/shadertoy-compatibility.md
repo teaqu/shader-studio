@@ -47,12 +47,9 @@ To view the shader in a headset:
 3. Open **VR**, click **Enter VR**, and accept the browser's request to start the session.
 4. In the VR pane, click **Exit VR** to return to the desktop view.
 
-Movement and turning are **off by default**. In the VR pane, enable **Left
-stick movement** to walk relative to where you are looking, and choose the
-**Movement speed** in metres per second. Set **Right stick turning** to
-**Snap** (with a configurable angle) or **Smooth** (with a configurable speed),
-or leave it **Off**. Snap turning requires returning the stick to the centre
-before another turn. These settings are remembered in this browser. Movement
+Movement and turning are **off by default**. **Enable headset navigation** switches on left-stick movement and your selected right-stick turning mode. Hold the left trigger to move three times faster, like holding Shift in desktop preview. Disable it to use both sticks for shader effects without moving or turning the camera. Physical head tracking stays active.
+Choose **Movement speed** in metres per second and set **Right stick turning** to **Snap**, **Smooth**, or **Off**. Turning off only the right stick keeps left-stick movement enabled. Snap turning requires returning the stick to the centre
+before another turn. These settings, including the enable switch, are remembered in this browser. Switching navigation off preserves the chosen speed, turn mode and angle for when you enable it again. Movement
 is horizontal and does not include collision detection. Physical head movement continues to work.
 Exiting VR resets the virtual position and turning offset. Controller ray
 positions and directions follow the same virtual movement as your view.
@@ -66,6 +63,29 @@ are normalized. `fragCoord` and `iResolution.xy` are local to the current eye.
 Buffer passes advance once per headset frame. Pausing freezes shader time and
 buffers while head tracking continues. Desktop camera controls do not move the
 headset view.
+
+### Controller Lab demo
+
+[Download Controller Lab](../assets/shaders/vr-controller-lab.glsl) and open it as a GLSL shader. In the VR pane, switch **Enable headset navigation** off, then enter VR. Hold a control to change the sculpture; release it to restore the base effect. Outside a headset, the overview cycles through a showcase automatically.
+
+| Control | Effect |
+|---|---|
+| Left trigger | Orange fire and surface turbulence |
+| Right trigger | Blue lightning veins |
+| Left grip | Inflate the sculpture |
+| Right grip | Morph the sphere into a cube |
+| Left stick | Move the sculpture horizontally and vertically |
+| Right stick | Twist the sculpture and shift its colour |
+| Left stick click | Neon wireframe |
+| Right stick click | Invert colours |
+| X | Rainbow surface |
+| Y | Halo ring |
+| A | Orbiting satellites |
+| B | Purple floor ripples |
+| Point either controller | Cyan / pink aim beams follow its tracked position and direction |
+| Touch a trigger, grip, stick or face button | Cyan / pink aura, when the runtime provides touch state |
+
+System/menu buttons remain reserved by the headset. This demo uses the optional Shader Studio inputs below and requires adapting before running on Shadertoy.
 
 ### Optional Shader Studio controller inputs
 
@@ -81,6 +101,8 @@ Without that opt-in, the extra names are not injected into the compiled shader.
 Shaders using these inputs require adapting before running on Shadertoy.
 All raw inputs remain available when built-in movement or turning is disabled,
 and are not consumed or zeroed when navigation is enabled.
+
+Use the **?** link in the VR pane to return to this reference.
 
 These inputs are supplied during the session and reset on exit:
 

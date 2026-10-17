@@ -33,8 +33,8 @@ export class WebXrLocomotion {
     if (Math.abs(turn) < 0.25) {
       this.turnReady = true;
     }
-    const snap = this.settings.turning === "snap" && Math.abs(turn) > 0.65 && this.turnReady;
-    const smooth = this.settings.turning === "smooth" && Math.abs(turn) > 0.18;
+    const snap = this.settings.movement && this.settings.turning === "snap" && Math.abs(turn) > 0.65 && this.turnReady;
+    const smooth = this.settings.movement && this.settings.turning === "smooth" && Math.abs(turn) > 0.18;
     if (snap || smooth) {
       // Rotate around the head, rather than orbiting the reference-space origin.
       const [beforeX, beforeZ] = this.rotate(head[12], head[14]);
@@ -57,7 +57,8 @@ export class WebXrLocomotion {
     const [forwardX, forwardZ] = length > 0.001
       ? this.rotate(-head[8] / length, -head[10] / length)
       : this.rotate(0, -1);
-    const distance = this.settings.movementSpeed * dt * strength / magnitude;
+    const sprint = input.buttons[0] > 0.5 ? 3 : 1;
+    const distance = this.settings.movementSpeed * sprint * dt * strength / magnitude;
     this.x += (-forwardZ * stickX - forwardX * stickY) * distance;
     this.z += (forwardX * stickX - forwardZ * stickY) * distance;
   }

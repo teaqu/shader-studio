@@ -46,6 +46,34 @@ describe("WebXrLocomotion", () => {
     expect(turned.rayTransform[12]).toBeCloseTo(0.4);
   });
 
+  it("triples speed while the left trigger is held and preserves raw shader inputs", () => {
+    const movement = enabledMovement();
+    const input = controls();
+    input.axes[3] = -1;
+    input.buttons[0] = 1;
+    movement.update(0, head(), input);
+    movement.update(100, head(), input);
+    const fast = eye();
+    movement.transformEye(fast);
+    expect(fast.rayTransform[14]).toBeCloseTo(-0.6);
+    expect(input.buttons[0]).toBe(1);
+    input.buttons[0] = 0;
+    movement.update(200, head(), input);
+    const released = eye();
+    movement.transformEye(released);
+    expect(released.rayTransform[14]).toBeCloseTo(-0.8);
+    movement.configure({ movement: false, movementSpeed: 2, turning: "snap", snapAngle: 30, turnSpeed: 90 });
+    input.buttons[0] = 1;
+    input.axes[6] = 0;
+    movement.update(300, head(), input);
+    input.axes[6] = 1;
+    movement.update(400, head(), input);
+    const disabled = eye();
+    movement.transformEye(disabled);
+    expect(disabled.rayTransform).toEqual(released.rayTransform);
+    expect(input.buttons[0]).toBe(1);
+  });
+
   it("normalizes diagonal input and ignores drift and untracked controllers", () => {
     const movement = enabledMovement();
     const input = controls();
@@ -154,7 +182,7 @@ describe("WebXrLocomotion", () => {
 
   it("configures smooth turn speed and preserves head position while turning", () => {
     const movement = new WebXrLocomotion();
-    movement.configure({ movement: false, movementSpeed: 5, turning: "smooth", snapAngle: 45, turnSpeed: 90 });
+    movement.configure({ movement: true, movementSpeed: 5, turning: "smooth", snapAngle: 45, turnSpeed: 90 });
     const input = controls();
     input.axes[6] = 1;
     movement.update(0, head(2, 3), input);

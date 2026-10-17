@@ -4,6 +4,8 @@ import VrPreviewButton from "../components/fixtures/VrPaneHarness.svelte";
 import { updateVrPreviewContext, updateVrNavigationSettings } from "../../lib/state/vrPreviewState.svelte";
 import { createShaderCanvasHarness } from "../../../../rendering/src/test/e2e/ShaderCanvasHarness";
 
+import controllerLab from "../../../../docs/assets/shaders/vr-controller-lab.glsl?raw";
+
 const identity = () => new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 
 class TestXrSession extends EventTarget {
@@ -32,18 +34,20 @@ class TestXrSession extends EventTarget {
 
 /** Browser-only WebXR fixture: it owns an actual texture-backed stereo framebuffer. */
 class TestXrLayer {
+  static eyeSize = 2;
+  private readonly eyeSize = TestXrLayer.eyeSize;
   readonly framebuffer: WebGLFramebuffer;
   constructor(_session: XRSession, gl: WebGL2RenderingContext) {
     const texture = gl.createTexture()!;
     gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 4, 2, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, this.eyeSize * 2, this.eyeSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
     this.framebuffer = gl.createFramebuffer()!;
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
   getViewport(view: XRView): XRViewport {
-    return { x: view.eye === "left" ? 0 : 2, y: 0, width: 2, height: 2 } as XRViewport;
+    return { x: view.eye === "left" ? 0 : this.eyeSize, y: 0, width: this.eyeSize, height: this.eyeSize } as XRViewport;
   }
 }
 
@@ -140,7 +144,8 @@ it("enters immersive VR from the UI, draws tracked asymmetric stereo rays and re
     session.render(1200, frame);
     const movedLeft = rgba(gl, layer.framebuffer, 1);
     const movedRight = rgba(gl, layer.framebuffer, 3);
-    expect(movedLeft[0]).toBeGreaterThan(left[0] + 20);
+    // The held left trigger boosts movement by 3x.
+    expect(movedLeft[0]).toBeGreaterThan(left[0] + 60);
     expect(movedRight[0]).toBeGreaterThan(right[0] + 20);
     expect(movedLeft[2]).toBeGreaterThan(190);
     leftAxes[2] = 0;
@@ -174,5 +179,83 @@ it("enters immersive VR from the UI, draws tracked asymmetric stereo rays and re
     Object.defineProperty(navigator, "xr", { configurable: true, value: originalXr });
     Object.defineProperty(xrGlobals, "XRWebGLLayer", { configurable: true, value: originalLayer });
     harness.dispose();
+  }
+});
+
+
+it("renders a distinct Controller Lab response for each supported Quest control with navigation disabled", async () => {
+  const harness = createShaderCanvasHarness("glsl");
+  const gl = harness.canvas.getContext("webgl2")!;
+  const originalXr = navigator.xr;
+  const originalLayer = (globalThis as typeof globalThis & { XRWebGLLayer?: typeof XRWebGLLayer }).XRWebGLLayer;
+  const session = new TestXrSession();
+  const buttons = [Array.from({ length: 6 }, () => ({ value: 0, touched: false })), Array.from({ length: 6 }, () => ({ value: 0, touched: false }))];
+  const axes = [Array(4).fill(0), Array(4).fill(0)];
+  TestXrLayer.eyeSize = 32;
+  Object.defineProperty(gl, "makeXRCompatible", { configurable: true, value: async () => {} });
+  Object.defineProperty(navigator, "xr", { configurable: true, value: { isSessionSupported: async () => true, requestSession: async () => session } });
+  Object.defineProperty(globalThis, "XRWebGLLayer", { configurable: true, value: TestXrLayer });
+  try {
+    await harness.compile({ image: controllerLab, path: "vr-controller-lab.glsl" });
+    harness.engine.setVrNavigationSettings?.({ movement: false, turning: 'off', movementSpeed: 2, snapAngle: 30, turnSpeed: 90 });
+    session.inputSources = ['left', 'right'].map((handedness, hand) => ({ handedness, targetRaySpace: {}, gamepad: { buttons: buttons[hand], axes: axes[hand] } })) as unknown as XRInputSource[];
+    await harness.engine.enterVr?.();
+    const frame = {
+      session,
+      getViewerPose: () => ({ transform: { matrix: identity() }, views: [makeView("left", -0.03, 0), makeView("right", 0.03, 0)] }),
+      getPose: () => ({ transform: { matrix: identity() } }),
+    } as unknown as XRFrame;
+    const layer = (harness.engine as unknown as { immersiveVr: { session: { layer: TestXrLayer } } }).immersiveVr.session.layer;
+    const read = () => {
+      session.render(1000, frame);
+      const pixels = new Uint8Array(64 * 32 * 4);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, layer.framebuffer);
+      gl.readPixels(0, 0, 64, 32, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      return pixels;
+    };
+    const baseline = read();
+    expect(baseline.some((value, index) => index % 4 !== 3 && value > 30)).toBe(true);
+    const effects: Uint8Array[] = [];
+    for (const [hand, button, name] of [[0, 0, 'left trigger'], [1, 0, 'right trigger'], [0, 1, 'left grip'], [1, 1, 'right grip'], [0, 3, 'left click'], [1, 3, 'right click'], [0, 4, 'X'], [0, 5, 'Y'], [1, 4, 'A'], [1, 5, 'B']] as const) {
+      buttons[hand][button].value = 1;
+      const changed = read();
+      expect(changed, name).not.toEqual(baseline);
+      effects.push(changed);
+      buttons[hand][button].value = 0;
+      expect(read(), `${name} released`).toEqual(baseline);
+    }
+    for (const hand of [0, 1]) {
+      for (const axis of [2, 3]) {
+        axes[hand][axis] = 0.7;
+        expect(read(), `hand ${hand} axis ${axis}`).not.toEqual(baseline);
+        axes[hand][axis] = 0;
+        expect(read()).toEqual(baseline);
+      }
+    }
+    for (const hand of [0, 1]) {
+      for (const button of [0, 1, 3, 4, 5]) {
+        buttons[hand][button].touched = true;
+        expect(read(), `hand ${hand} touch ${button}`).not.toEqual(baseline);
+        buttons[hand][button].touched = false;
+        expect(read()).toEqual(baseline);
+      }
+    }
+    const controllerPose = identity();
+    controllerPose[12] = 0.5;
+    const movedFrame = { ...frame, getPose: () => ({ transform: { matrix: controllerPose } }) } as unknown as XRFrame;
+    session.render(1000, movedFrame);
+    const movedBeam = new Uint8Array(64 * 32 * 4);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, layer.framebuffer);
+    gl.readPixels(0, 0, 64, 32, gl.RGBA, gl.UNSIGNED_BYTE, movedBeam);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    expect(movedBeam).not.toEqual(baseline);
+    expect(new Set(effects.map(pixels => Array.from(pixels).join(','))).size).toBe(effects.length);
+  } finally {
+    await harness.engine.exitVr?.();
+    harness.dispose();
+    TestXrLayer.eyeSize = 2;
+    Object.defineProperty(navigator, "xr", { configurable: true, value: originalXr });
+    Object.defineProperty(globalThis, "XRWebGLLayer", { configurable: true, value: originalLayer });
   }
 });
