@@ -12,7 +12,7 @@ afterEach(() => {
   cleanup();
   updateVrPreviewContext(null, '');
   setVrPanelVisible(false);
-  updateVrNavigationSettings({ movement: false, turning: 'off', movementSpeed: 2, snapAngle: 30, turnSpeed: 90 });
+  updateVrNavigationSettings({ movement: false, turning: 'snap', movementSpeed: 2, snapAngle: 30, turnSpeed: 90 });
 });
 
 describe('VR preview toggle', () => {
@@ -29,7 +29,7 @@ describe('VR preview toggle', () => {
     const view = render(VrPreviewButton);
     expect(view.queryByRole('region')).toBeNull();
     await fireEvent.click(view.getByRole('button', { name: 'VR' }));
-    const button = view.getByRole('checkbox', { name: 'Desktop preview' }) as HTMLInputElement;
+    const button = view.getByRole('switch', { name: 'Desktop preview' }) as HTMLInputElement;
     expect(button.checked).toBe(false);
     await fireEvent.click(button);
     expect(button.checked).toBe(true);
@@ -100,7 +100,7 @@ describe('immersive VR controls', () => {
     await fireEvent.click(view.getByRole('button', { name: 'VR' }));
     await Promise.resolve();
     await fireEvent.click(await view.findByRole('button', { name: 'Enter VR' }));
-    expect((await view.findByRole('status')).textContent).toBe('Permission denied');
+    expect((await view.findByRole('alert')).textContent).toBe('Permission denied');
     expect(getVrPreviewState().error).toBe('Permission denied');
     renderer.enterVr = vi.fn(async onEnded => {
       onEnded?.('Tracking lost');
@@ -165,8 +165,8 @@ describe('VR pane settings', () => {
     const controls = view.getByLabelText('Enable headset navigation') as HTMLInputElement;
     expect(controls.checked).toBe(false);
     await fireEvent.click(controls);
-    expect(getVrNavigationSettings()).toMatchObject({ movement: true, turning: 'off' });
-    await fireEvent.change(view.getByLabelText('Right stick turning'), { target: { value: 'smooth' } });
+    expect(getVrNavigationSettings()).toMatchObject({ movement: true, turning: 'snap' });
+    await fireEvent.click(view.getByRole('button', { name: 'Smooth' }));
     expect(controls.checked).toBe(true);
     await fireEvent.click(controls);
     expect(getVrNavigationSettings()).toMatchObject({ movement: false, turning: 'smooth' });
@@ -180,6 +180,26 @@ describe('VR pane settings', () => {
     expect(view.queryByText('Controller shader inputs')).toBeNull();
     expect(view.queryByLabelText('Left stick movement')).toBeNull();
   });
+  it('uses compact switches, a live speed slider and only Snap/Smooth turning', async () => {
+    updateVrPreviewContext(engine(), 'a');
+    const view = render(VrPreviewButton);
+    await fireEvent.click(view.getByRole('button', { name: 'VR' }));
+    const navigation = view.getByRole('switch', { name: 'Enable headset navigation' });
+    const speed = view.getByRole('slider', { name: 'Movement speed (m/s)' }) as HTMLInputElement;
+    expect(speed.disabled || speed.closest('fieldset')?.disabled).toBe(true);
+    expect(view.getByRole('button', { name: 'Snap' }).getAttribute('aria-pressed')).toBe('true');
+    expect(view.queryByRole('button', { name: 'Off' })).toBeNull();
+    expect(view.queryByText('Settings remembered')).toBeNull();
+    await fireEvent.click(navigation);
+    await fireEvent.input(speed, { target: { value: '4.5' } });
+    expect(view.getByText('4.5 m/s')).toBeTruthy();
+    expect(getVrNavigationSettings().movementSpeed).toBe(4.5);
+    await fireEvent.click(view.getByRole('button', { name: 'Smooth' }));
+    expect(view.getByRole('button', { name: 'Smooth' }).getAttribute('aria-pressed')).toBe('true');
+    await fireEvent.click(navigation);
+    expect(view.getByText(/Buttons and sticks are free for your shader/)).toBeTruthy();
+    expect(getVrNavigationSettings().turning).toBe('smooth');
+  });
   it('keeps movement and turning off by default and applies independent controls', async () => {
     const renderer = engine();
     updateVrPreviewContext(renderer, 'a');
@@ -187,18 +207,18 @@ describe('VR pane settings', () => {
     await fireEvent.click(view.getByRole('button', { name: 'VR' }));
     expect(view.getByText(/Headset unavailable/)).toBeTruthy();
     expect((view.getByLabelText('Enable headset navigation') as HTMLInputElement).checked).toBe(false);
-    expect((view.getByLabelText('Right stick turning') as HTMLSelectElement).value).toBe('off');
+    expect(view.getByRole('button', { name: 'Snap' }).getAttribute('aria-pressed')).toBe('true');
     await fireEvent.click(view.getByLabelText('Enable headset navigation'));
-    await fireEvent.change(view.getByLabelText('Movement speed (m/s)'), { target: { value: '3' } });
-    await fireEvent.change(view.getByLabelText('Right stick turning'), { target: { value: 'snap' } });
+    await fireEvent.input(view.getByLabelText('Movement speed (m/s)'), { target: { value: '3' } });
+    await fireEvent.click(view.getByRole('button', { name: 'Snap' }));
     await fireEvent.change(view.getByLabelText('Snap angle (degrees)'), { target: { value: '45' } });
     expect(renderer.setVrNavigationSettings).toHaveBeenLastCalledWith({ movement: true, movementSpeed: 3, turning: 'snap', snapAngle: 45, turnSpeed: 90 });
     expect(JSON.parse(localStorage.getItem('shader-studio-vr-navigation-v1')!)).toMatchObject({ movement: true, turning: 'snap' });
-    await fireEvent.change(view.getByLabelText('Right stick turning'), { target: { value: 'smooth' } });
+    await fireEvent.click(view.getByRole('button', { name: 'Smooth' }));
     await fireEvent.change(view.getByLabelText('Turn speed (degrees/s)'), { target: { value: '120' } });
     expect(getVrNavigationSettings().turnSpeed).toBe(120);
     await fireEvent.click(view.getByRole('button', { name: 'Reset VR settings' }));
-    expect(getVrNavigationSettings()).toEqual({ movement: false, movementSpeed: 2, turning: 'off', snapAngle: 30, turnSpeed: 90 });
+    expect(getVrNavigationSettings()).toEqual({ movement: false, movementSpeed: 2, turning: 'snap', snapAngle: 30, turnSpeed: 90 });
     await fireEvent.keyDown(view.getByRole('region'), { key: 'Escape' });
     expect(view.queryByRole('region')).toBeNull();
     await fireEvent.click(view.getByRole('button', { name: 'VR' }));

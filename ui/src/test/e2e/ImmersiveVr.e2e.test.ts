@@ -171,7 +171,7 @@ it("enters immersive VR from the UI, draws tracked asymmetric stereo rays and re
       void mainImage(out vec4 c, in vec2 p) { c = vec4(1, 0, 0, 1); }
       void mainVR(out vec4 c, in vec2 p, in vec3 o, in vec3 d) { c = vec4(o.y * 0.5 + 0.5, 0, 0, 1); }
     `, path: "immersive.glsl" });
-    updateVrNavigationSettings({ movement: true, turning: 'off' });
+    updateVrNavigationSettings({ movement: true, turning: 'snap' });
     const pitched = identity();
     pitched[9] = -1;
     pitched[10] = 0;
@@ -191,7 +191,7 @@ it("enters immersive VR from the UI, draws tracked asymmetric stereo rays and re
     harness.holdFrames();
     expect(await harness.renderAndReadPixels()).toEqual(Array(4).fill([255, 0, 0, 255]));
   } finally {
-    updateVrNavigationSettings({ movement: false, turning: 'off' });
+    updateVrNavigationSettings({ movement: false, turning: 'snap' });
     updateVrPreviewContext(null, "");
     await unmount(component);
     target.remove();
@@ -216,7 +216,7 @@ it("renders a distinct Controller Lab response for each supported Quest control 
   Object.defineProperty(globalThis, "XRWebGLLayer", { configurable: true, value: TestXrLayer });
   try {
     await harness.compile({ image: controllerLab, path: "vr-controller-lab.glsl" });
-    harness.engine.setVrNavigationSettings?.({ movement: false, turning: 'off', movementSpeed: 2, snapAngle: 30, turnSpeed: 90 });
+    harness.engine.setVrNavigationSettings?.({ movement: false, turning: 'snap', movementSpeed: 2, snapAngle: 30, turnSpeed: 90 });
     session.inputSources = ['left', 'right'].map((handedness, hand) => ({ handedness, targetRaySpace: {}, gamepad: { buttons: buttons[hand], axes: axes[hand] } })) as unknown as XRInputSource[];
     await harness.engine.enterVr?.();
     const frame = {

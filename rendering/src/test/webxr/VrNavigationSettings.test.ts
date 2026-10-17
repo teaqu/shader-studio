@@ -9,6 +9,10 @@ describe("VR navigation settings", () => {
     changed.movement = true;
     expect(DEFAULT_VR_NAVIGATION.movement).toBe(false);
   });
+  it("migrates the removed Off turn style without enabling navigation", () => {
+    const restored = normalizeVrNavigation(JSON.parse('{"movement":false,"turning":"off","snapAngle":45}'));
+    expect(restored).toMatchObject({ movement: false, turning: "snap", snapAngle: 45 });
+  });
   it("validates and bounds restored preferences", () => {
     expect(normalizeVrNavigation({ movement: true, movementSpeed: 100, turning: "smooth", snapAngle: 0, turnSpeed: Infinity }))
       .toEqual({ movement: true, movementSpeed: 10, turning: "smooth", snapAngle: 15, turnSpeed: 90 });

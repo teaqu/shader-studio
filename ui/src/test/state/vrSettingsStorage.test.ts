@@ -20,7 +20,7 @@ it('restores navigation independently of the selected shader or engine', async (
 it('falls back to disabled navigation for invalid saved JSON', async () => {
   localStorage.setItem(key, '{broken');
   const state = await import('../../lib/state/vrPreviewState.svelte');
-  expect(state.getVrNavigationSettings()).toMatchObject({ movement: false, turning: 'off' });
+  expect(state.getVrNavigationSettings()).toMatchObject({ movement: false, turning: 'snap' });
 });
 
 it('keeps navigation usable when storage access fails', async () => {
