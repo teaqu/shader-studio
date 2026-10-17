@@ -12,6 +12,7 @@ interface SettingDefinition {
 }
 export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
   { key: 'webgpu.defaultRenderAuthoring', label: 'Default shader mode', description: 'Default for new WGSL/Slang shaders, buffers, and source insertion. Choose Built-in hooks or Native entry points.', group: 'Preview', kind: 'choice', choices: [{ value: 'hooks', label: 'Built-in' }, { value: 'native', label: 'Native' }] },
+  { key: 'preview.preventMouseDefaults', label: 'Prevent default mouse actions', description: 'Prevent context menus, middle-click actions, back/forward navigation and page scrolling over the canvas. Shaders still receive mouse input when off.', group: 'Preview', kind: 'boolean' },
   { key: 'webgpu.useViewerCamera', label: 'Use viewer camera', description: 'Apply the viewer camera to mesh shaders by default. Individual shaders and passes can override this.', group: 'Preview', kind: 'boolean' },
   { key: 'navigateOnBufferSwitch', label: 'Open editor on buffer switch', description: 'Select the corresponding file when switching buffers in the preview.', group: 'Preview', kind: 'boolean' },
   ...(['glsl', 'slang', 'wgsl'] as const).map((language): SettingDefinition => ({ key: `languageServers.${language}.enabled`, label: `${language === 'slang' ? 'Slang' : language.toUpperCase()} language service`, description: 'Enable diagnostics, completion, hover, and navigation for this language.', group: 'Language services', kind: 'boolean' })),

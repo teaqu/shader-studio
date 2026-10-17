@@ -890,6 +890,16 @@ export function samplingStageWarnings(
 
 /** Declared result structures of builtins whose fields completion and hover can name. */
 const BUILTIN_RESULT_FIELDS: Readonly<Record<string, readonly { name: string; type: string; description: string }[]>> = {
+  ShaderStudioPointer: [
+    { name: "position", type: "vec2f", description: "Pointer position in canvas pixels, including hover; origin at bottom left." },
+    { name: "inside", type: "i32", description: "1 while the pointer is inside the canvas, otherwise 0." },
+    { name: "held", type: "i32", description: "Held buttons: 1 left, 2 right, 4 middle, 8 back, 16 forward." },
+    { name: "pressed", type: "i32", description: "Buttons pressed since the previous rendered frame." },
+    { name: "released", type: "i32", description: "Buttons released since the previous rendered frame." },
+    { name: "modifiers", type: "i32", description: "Modifier mask: 1 Shift, 2 Ctrl, 4 Alt, 8 Meta (Cmd)." },
+    { name: "wheel", type: "vec2f", description: "Accumulated scroll in CSS pixels; positive y scrolls down." },
+    { name: "wheelDelta", type: "vec2f", description: "Scroll accumulated since the previous rendered frame." },
+  ],
   __modfResult: [
     { name: "fract", type: "T", description: "Fractional part, with the argument's type." },
     { name: "whole", type: "T", description: "Whole part, with the argument's type." },
@@ -941,7 +951,8 @@ function expressionContext(environment: ShaderAuthoringEnvironment, includes: re
       ?? uniqueIntrinsicReturnType(environment.stage, name),
     aliasType: (name: string) => includes.flatMap((document) => document.symbols)
       .find((symbol) => symbol.kind === "type" && symbol.name === name)?.typeName,
-    fieldType: (owner: string, field: string) => includedFieldType(includes, owner, field),
+    fieldType: (owner: string, field: string) => includedFieldType(includes, owner, field)
+      ?? BUILTIN_RESULT_FIELDS[owner]?.find((item) => item.name === field)?.type,
   };
 }
 

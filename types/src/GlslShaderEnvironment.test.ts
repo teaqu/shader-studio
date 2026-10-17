@@ -1,3 +1,4 @@
+import { GLSL_POINTER_DECLARATION } from "./shader-environment/BuiltinUniforms";
 import { describe, expect, it } from "vitest";
 import {
   buildGlslCompatibilityUniformDeclarationLines,
@@ -21,6 +22,8 @@ describe("GLSL shader environment", () => {
       "uniform float iTimeDelta;",
       "uniform float iFrameRate;",
       "uniform vec4 iMouse;",
+      GLSL_POINTER_DECLARATION,
+      "uniform ShaderStudioPointer iPointer;",
       "uniform int iFrame;",
       "uniform vec4 iDate;",
       "uniform float iChannelTime[1024];",
@@ -43,7 +46,7 @@ describe("GLSL shader environment", () => {
     ]);
     expect(GLSL_STABLE_NAMES).toEqual(new Set([
       "fragColor", "HW_PERFORMANCE", "iResolution", "iTime", "iTimeDelta",
-      "iFrameRate", "iMouse", "iFrame", "iDate", "iChannelTime",
+      "iFrameRate", "iMouse", "iPointer", "ShaderStudioPointer", "iFrame", "iDate", "iChannelTime",
       "iSampleRate", "iCameraPos", "iCameraDir", "iVertexCount", "iInstanceCount",
       "iViewMatrix", "iProjectionMatrix", "iViewProjection",
       "iVRActive", "iVRControllerPosition", "iVRControllerDirection", "iVRControllerButtons", "iVRControllerAxes",

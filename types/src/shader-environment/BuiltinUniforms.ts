@@ -1,5 +1,22 @@
 import type { ShaderLanguageId } from "./ShaderLanguages";
 
+/** A snapshot of the canvas pointer, shared by every pass in one frame. */
+export interface PointerState {
+  position: [number, number];
+  inside: number;
+  held: number;
+  pressed: number;
+  released: number;
+  modifiers: number;
+  wheel: [number, number];
+  wheelDelta: [number, number];
+}
+
+// Explicit padding keeps Slang's constant-buffer and WGSL's uniform layouts identical.
+export const GLSL_POINTER_DECLARATION = "struct ShaderStudioPointer { vec2 position; int inside; int held; int pressed; int released; int modifiers; int _padding; vec2 wheel; vec2 wheelDelta; };";
+export const SLANG_POINTER_DECLARATION = "struct ShaderStudioPointer { float2 position; int inside; int held; int pressed; int released; int modifiers; int _padding; float2 wheel; float2 wheelDelta; };";
+export const WGSL_POINTER_DECLARATION = "struct ShaderStudioPointer { position: vec2f, inside: i32, held: i32, pressed: i32, released: i32, modifiers: i32, _padding: i32, wheel: vec2f, wheelDelta: vec2f, }";
+
 export type ShaderStudioBuiltinStage = "fragment" | "vertex" | "compute" | "geometry" | "tess-control" | "tess-evaluation";
 
 export interface ShaderStudioBuiltinUniform {
@@ -61,6 +78,8 @@ export const GLSL_STABLE_DECLARATION_LINES = Object.freeze([
   "uniform float iTimeDelta;",
   "uniform float iFrameRate;",
   "uniform vec4 iMouse;",
+  GLSL_POINTER_DECLARATION,
+  "uniform ShaderStudioPointer iPointer;",
   "uniform int iFrame;",
   "uniform vec4 iDate;",
   "uniform float iChannelTime[1024];",
@@ -84,7 +103,7 @@ export const GLSL_STABLE_DECLARATION_LINES = Object.freeze([
 
 export const GLSL_STABLE_NAMES: ReadonlySet<string> = new Set([
   "fragColor", "HW_PERFORMANCE", "iResolution", "iTime", "iTimeDelta",
-  "iFrameRate", "iMouse", "iFrame", "iDate", "iChannelTime",
+  "iFrameRate", "iMouse", "iPointer", "ShaderStudioPointer", "iFrame", "iDate", "iChannelTime",
   "iSampleRate", "iCameraPos", "iCameraDir", "iVertexCount", "iInstanceCount",
   "iViewMatrix", "iProjectionMatrix", "iViewProjection",
   "iVRActive", "iVRControllerPosition", "iVRControllerDirection", "iVRControllerButtons", "iVRControllerAxes",
@@ -203,6 +222,7 @@ export const SHADER_STUDIO_BUILTIN_UNIFORMS: readonly Readonly<ShaderStudioBuilt
   { name: "iTimeDelta", glslType: "float", slangType: "float", wgslType: "f32", slangDeclaration: "float iTimeDelta;", languages: ["glsl", "slang", "wgsl"], description: "Time since the previous frame in seconds." },
   { name: "iFrameRate", glslType: "float", slangType: "float", wgslType: "f32", slangDeclaration: "float iFrameRate;", languages: ["glsl", "slang", "wgsl"], description: "Current frames per second." },
   { name: "iMouse", glslType: "vec4", slangType: "float4", wgslType: "vec4f", slangDeclaration: "float4 iMouse;", languages: ["glsl", "slang", "wgsl"], description: "Mouse position in xy and click position in zw." },
+  { name: "iPointer", glslType: "ShaderStudioPointer", slangType: "ShaderStudioPointer", wgslType: "ShaderStudioPointer", slangDeclaration: `${SLANG_POINTER_DECLARATION}\nShaderStudioPointer iPointer;`, languages: ["glsl", "slang", "wgsl"], description: "Canvas pointer position, inside state, held/pressed/released button masks, modifiers, accumulated wheel and per-frame wheelDelta." },
   { name: "iFrame", glslType: "int", slangType: "int", wgslType: "i32", slangDeclaration: "int iFrame;", languages: ["glsl", "slang", "wgsl"], description: "Frame counter starting at zero." },
   { name: "iDate", glslType: "vec4", slangType: "float4", wgslType: "vec4f", slangDeclaration: "float4 iDate;", languages: ["glsl", "slang", "wgsl"], description: "Year, month, day, and seconds since midnight." },
   { name: "iChannelTime", glslType: "float[1024]", slangType: "float[1024]", languages: ["glsl"], description: "Playback time for each configured input channel." },
@@ -282,6 +302,7 @@ export const SLANG_RUNTIME_INTERNAL_NAMES = Object.freeze([
 export const SLANG_RUNTIME_UNIFORM_ALIAS_LINES = Object.freeze([
   `#define iResolution (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.resolution.xyz)`,
   `#define iMouse (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.mouse)`,
+  `#define iPointer (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.pointer)`,
   `#define iTime (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.time)`,
   `#define iTimeDelta (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.timeDelta)`,
   `#define iFrameRate (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.frameRate)`,

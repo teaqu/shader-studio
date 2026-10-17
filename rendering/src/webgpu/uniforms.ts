@@ -1,3 +1,4 @@
+import type { PointerState } from "@shader-studio/types";
 import { DEFAULT_INSTANCE_COUNT } from "@shader-studio/types";
 import {
   createShaderToyUniformLayout,
@@ -62,6 +63,7 @@ export interface ShaderToyUniformInput {
   frameRate: number;
   frame: number;
   mouse: ArrayLike<number>;
+  pointer?: PointerState;
   channelTime: ArrayLike<number>;
   channelLoaded: ArrayLike<number>;
   sampleRate: number;
@@ -133,6 +135,17 @@ export function packShaderToyUniforms(
   f32.set(input.viewMatrix ?? IDENTITY_MATRIX, offsets.iViewMatrix / 4);
   f32.set(input.projectionMatrix ?? IDENTITY_MATRIX, offsets.iProjectionMatrix / 4);
   f32.set(input.viewProjection ?? IDENTITY_MATRIX, offsets.iViewProjection / 4);
+
+  const pointer = input.pointer;
+  const pointerIndex = offsets.iPointer / 4;
+  f32.set(pointer?.position ?? [0, 0], pointerIndex);
+  i32[pointerIndex + 2] = pointer?.inside ?? 0;
+  i32[pointerIndex + 3] = pointer?.held ?? 0;
+  i32[pointerIndex + 4] = pointer?.pressed ?? 0;
+  i32[pointerIndex + 5] = pointer?.released ?? 0;
+  i32[pointerIndex + 6] = pointer?.modifiers ?? 0;
+  f32.set(pointer?.wheel ?? [0, 0], pointerIndex + 8);
+  f32.set(pointer?.wheelDelta ?? [0, 0], pointerIndex + 10);
 
   const valuesByName = new Map(customUniformValues.map((uniform) => [uniform.name, uniform.value]));
   for (const entry of customLayout.entries) {

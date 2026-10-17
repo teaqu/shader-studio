@@ -662,6 +662,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       timeDelta: this.timeManager.getDeltaTime(),
       frameRate: this.fps.getRawFPS(),
       mouse: Array.from(this.mouseManager.getMouse()),
+      pointer: this.mouseManager.getPointer?.(),
       frame: this.timeManager.getFrame(),
       date: Array.from(this.timeManager.getCurrentDate()),
       channelTime: new Array<number>(4).fill(0),

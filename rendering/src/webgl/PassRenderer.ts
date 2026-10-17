@@ -240,6 +240,12 @@ export class PassRenderer {
     this.renderer.SetShaderConstant1F("iTimeDelta", uniforms.timeDelta);
     this.renderer.SetShaderConstant1F("iFrameRate", uniforms.frameRate);
     this.renderer.SetShaderConstant4FV("iMouse", uniforms.mouse);
+    this.renderer.SetShaderConstant2F("iPointer.position", uniforms.pointer?.position ?? [0, 0]);
+    this.renderer.SetShaderConstant2F("iPointer.wheel", uniforms.pointer?.wheel ?? [0, 0]);
+    this.renderer.SetShaderConstant2F("iPointer.wheelDelta", uniforms.pointer?.wheelDelta ?? [0, 0]);
+    for (const field of ["inside", "held", "pressed", "released", "modifiers"] as const) {
+      this.renderer.SetShaderConstant1I(`iPointer.${field}`, uniforms.pointer?.[field] ?? 0);
+    }
     this.renderer.SetShaderConstant1I("iFrame", uniforms.frame);
     this.renderer.SetShaderConstant4FV("iDate", uniforms.date);
     this.renderer.SetShaderConstant1FV("iChannelTime", uniforms.channelTime);

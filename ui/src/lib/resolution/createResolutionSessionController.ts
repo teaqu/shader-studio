@@ -1,3 +1,4 @@
+import { CanvasInputSettings } from "../state/canvasInputState.svelte";
 import { AuthoringSettingsController } from '../config/AuthoringSettingsController';
 import { onMount } from 'svelte';
 import { ResolutionSessionController, type ControllerDeps } from './ResolutionSessionController.svelte';
@@ -7,6 +8,7 @@ import { ViewerCameraSettingsController } from '../config/ViewerCameraSettingsCo
 export function createResolutionSessionController(deps: ControllerDeps): ResolutionSessionController {
   const controller = new ResolutionSessionController(deps);
   onMount(() => {
+    const canvasInput = new CanvasInputSettings(deps.transport);
     const authoring = new AuthoringSettingsController(deps.transport);
     const settings = new ViewerCameraSettingsController(deps.transport, () => {
       if (deps.isInitialized() && deps.hasShader() && deps.currentConfig?.webgpu?.useViewerCamera === undefined) {
@@ -14,7 +16,7 @@ export function createResolutionSessionController(deps: ControllerDeps): Resolut
       }
     });
     return () => {
-      settings.dispose(); authoring.dispose();
+      canvasInput.dispose(); settings.dispose(); authoring.dispose();
     };
   });
   return controller;

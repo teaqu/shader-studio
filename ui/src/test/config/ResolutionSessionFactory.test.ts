@@ -31,7 +31,7 @@ it.each([
   createResolutionSessionController(deps);
   expect(listeners).toHaveLength(0);
   const dispose = lifecycle.mount!();
-  expect(postMessage.mock.calls.map(([message]) => message.type)).toEqual(['requestShaderAuthoringSettings', 'requestViewerCameraSettings']);
+  expect(postMessage.mock.calls.map(([message]) => message.type)).toEqual(['requestCanvasInputSettings', 'requestShaderAuthoringSettings', 'requestViewerCameraSettings']);
   const send = (type: string, payload: object) => listeners.forEach(listener => listener({ data: { type, payload } } as MessageEvent));
   send('viewerCameraSettings', { useViewerCamera: false });
   expect(recompileCurrentShader).toHaveBeenCalledTimes(shouldRecompile ? 1 : 0);
