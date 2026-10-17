@@ -26,6 +26,8 @@ import { clearCommonShaderSource, getCommonShaderSource } from '../../lib/state/
 import { setInspectorState } from '../../lib/state/pixelInspectorState.svelte';
 import type { PixelInspectorState } from '../../lib/types/PixelInspectorState';
 import { get } from 'svelte/store';
+import { PANEL_HOST_CONTEXT, type HostedPanelDefinition, type HostedPanelId } from '../../lib/layout/PanelHost';
+import { isVrPanelVisible, setVrPanelVisible, getVrPreviewState } from '../../lib/state/vrPreviewState.svelte';
 
 const mockConfigPanelStorageReset = vi.hoisted(() => vi.fn());
 vi.mock('../../lib/components/config/ConfigPanel.svelte', async importOriginal => {
@@ -619,6 +621,7 @@ describe('ShaderViewer', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    setVrPanelVisible(false);
     resetHost();
     mockTransport.getType = () => 'vscode';
     mockVCMFactory.reset();
@@ -660,6 +663,45 @@ describe('ShaderViewer', () => {
 
     expect(mockCreateTransport).toHaveBeenCalledTimes(1);
     expect(mockTransport.onMessage).toHaveBeenCalled();
+  });
+
+  it('synchronizes hosted VR tabs with the settings pane and clears them on viewer disposal', async () => {
+    const definitions = new Map<HostedPanelId, HostedPanelDefinition>();
+    const host = {
+      register: vi.fn((id: HostedPanelId, definition: HostedPanelDefinition) => {
+        definitions.set(id, definition);
+        return vi.fn();
+      }),
+      setVisible: vi.fn(),
+    };
+    const result = render(ShaderViewer, {
+      props: { onInitialized: vi.fn() },
+      context: new Map([[PANEL_HOST_CONTEXT, host]]),
+    });
+    await tick();
+    const vr = definitions.get('vr')!;
+    const target = document.createElement('div');
+    const cleanup = vr.mount(target);
+    vr.onShow?.();
+    await tick();
+    expect(isVrPanelVisible()).toBe(true);
+    expect(target.querySelector('[aria-label="Movement speed (m/s)"]')).toBeTruthy();
+    expect(host.setVisible).toHaveBeenLastCalledWith('vr', true);
+
+    vr.onClose();
+    await tick();
+    expect(isVrPanelVisible()).toBe(false);
+    expect(target.querySelector('[aria-label="Movement speed (m/s)"]')).toBeNull();
+
+    definitions.get('config')!.onShow?.();
+    await tick();
+    expect(get(configPanelStore).isVisible).toBe(true);
+    vr.onShow?.();
+    await tick();
+    cleanup?.();
+    result.unmount();
+    expect(isVrPanelVisible()).toBe(false);
+    expect(getVrPreviewState().available).toBe(false);
   });
 
   it('wires recording-panel capture actions to the initialized recording manager', async () => {
