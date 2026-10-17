@@ -178,6 +178,36 @@ test('a first install does not offer an update', async ({ page }) => {
   await expect(page.getByRole('status')).toHaveAttribute('title', /Build /);
 
   await expect(page.getByRole('button', { name: 'Update ready' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Check for Updates', exact: true })).toHaveCount(0);
+});
+
+test('normal reloads keep the latest online app while another tab delays worker activation', async ({ page, context, baseURL }) => {
+  const builds = await startTwoBuildServer(baseURL);
+  try {
+    await page.goto(`${builds.origin}/`);
+    await controlledByWorker(page);
+    await page.getByTestId('shader-option-aurora-glsl').click();
+    await replaceShader(page, 'void mainImage(out vec4 c, in vec2 p) { c = vec4(0.25); } // reload edit', 'reload edit');
+    const otherTab = await context.newPage();
+    await otherTab.goto(`${builds.origin}/`);
+    await controlledByWorker(otherTab);
+    builds.publishNextBuild();
+    await dispatchForeground(page);
+    await expect.poll(() => page.evaluate(() => navigator.serviceWorker.getRegistration()
+      .then(registration => Boolean(registration?.waiting)))).toBe(true);
+
+    // The old worker is still active. Ordinary reloads must fetch the new
+    // HTML, rather than revert to the old worker's cached shell.
+    for (let reload = 0; reload < 2; reload++) {
+      await page.reload();
+      await expect(page.locator('meta[name="test-build"]')).toHaveAttribute('content', 'next-build');
+      await expect(page.getByTestId('web-editor').locator('.view-lines')).toContainText('reload edit');
+    }
+    await otherTab.close();
+  } finally {
+    await builds.close();
+  }
 });
 
 for (const mobile of [false, true]) {

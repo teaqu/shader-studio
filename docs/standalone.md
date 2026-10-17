@@ -13,7 +13,9 @@ Your workspace saves automatically in this browser; it is not synced between dev
 
 A warning icon beside the save status explains storage limitations. Open **Workspace → Request storage protection** to ask the browser to keep your work when space runs low. Saving still works if protection is declined, but clearing site data always removes local work, even with protection enabled.
 
-Shader Studio checks for updates when you open or return to the app and when your connection comes back online. You can also choose **Workspace → Check for Updates**. When an update is ready, the app saves your changes and reloads; editing pauses briefly. Close other Shader Studio tabs to allow the update. Updates wait if saving is unavailable or fails, and do not delete your saved workspace.
+Shader Studio checks for updates automatically when you open or return to the app and when your connection comes back online. When an update is ready, the app saves your changes and reloads; editing pauses briefly. Close other Shader Studio tabs to allow the automatic update. Reloading while online opens the latest available version, even with other tabs open. If your connection is unavailable, Shader Studio opens its installed offline version. Automatic updates wait if saving is unavailable or fails, and do not delete your saved workspace.
+
+If an older installation keeps returning to a previous version after a reload, close all Shader Studio tabs and reopen the app once to finish its waiting update.
 
 ## Get Started
 
