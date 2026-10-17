@@ -5,6 +5,7 @@ import { normalizeVrNavigation, type VrNavigationSettings } from "./VrNavigation
 export class WebXrLocomotion {
   private yaw = 0;
   private x = 0;
+  private y = 0;
   private z = 0;
   private lastTime: number | null = null;
   private turnReady = true;
@@ -17,7 +18,7 @@ export class WebXrLocomotion {
   }
 
   reset(): void {
-    this.yaw = this.x = this.z = 0;
+    this.yaw = this.x = this.y = this.z = 0;
     this.lastTime = null;
     this.turnReady = true;
   }
@@ -53,14 +54,21 @@ export class WebXrLocomotion {
       return;
     }
     const strength = Math.min(1, (magnitude - 0.18) / 0.82);
-    const length = Math.hypot(head[8], head[10]);
+    const length = Math.hypot(head[8], head[9], head[10]);
     const [forwardX, forwardZ] = length > 0.001
       ? this.rotate(-head[8] / length, -head[10] / length)
       : this.rotate(0, -1);
+    const forwardY = length > 0.001 ? -head[9] / length : 0;
+    // Strafing stays level even when looking straight up or down.
+    const horizontalLength = Math.hypot(forwardX, forwardZ);
+    const [rightX, rightZ] = horizontalLength > 0.001
+      ? [-forwardZ / horizontalLength, forwardX / horizontalLength]
+      : this.rotate(1, 0);
     const sprint = input.buttons[0] > 0.5 ? 3 : 1;
     const distance = this.settings.movementSpeed * sprint * dt * strength / magnitude;
-    this.x += (-forwardZ * stickX - forwardX * stickY) * distance;
-    this.z += (forwardX * stickX - forwardZ * stickY) * distance;
+    this.x += (rightX * stickX - forwardX * stickY) * distance;
+    this.y -= forwardY * stickY * distance;
+    this.z += (rightZ * stickX - forwardZ * stickY) * distance;
   }
 
   transformEye(view: VrEyeView): void {
@@ -70,6 +78,7 @@ export class WebXrLocomotion {
       matrix[offset] = x + (offset === 12 ? this.x : 0);
       matrix[offset + 2] = z + (offset === 12 ? this.z : 0);
     }
+    matrix[13] += this.y;
   }
 
   transformControllers(input: VrControllerData): void {
@@ -79,6 +88,7 @@ export class WebXrLocomotion {
       }
       const [x, z] = this.rotate(input.positions[offset], input.positions[offset + 2]);
       input.positions[offset] = x + this.x;
+      input.positions[offset + 1] += this.y;
       input.positions[offset + 2] = z + this.z;
       const [dx, dz] = this.rotate(input.directions[offset], input.directions[offset + 2]);
       input.directions[offset] = dx;

@@ -74,6 +74,37 @@ describe("WebXrLocomotion", () => {
     expect(input.buttons[0]).toBe(1);
   });
 
+  it("moves up and down along gaze, keeps strafing horizontal, and moves controller origins with the camera", () => {
+    for (const pitch of [-1, 1, 0.6]) {
+      const movement = enabledMovement();
+      const input = controls();
+      input.axes[3] = -1;
+      const gaze = head();
+      gaze[9] = -pitch;
+      gaze[10] = Math.sqrt(1 - pitch * pitch);
+      movement.update(0, gaze, input);
+      movement.update(100, gaze, input);
+      const view = eye();
+      movement.transformEye(view);
+      expect(view.rayTransform[13]).toBeCloseTo(1.6 + pitch * 0.2);
+      expect(view.rayTransform[14]).toBeCloseTo(-gaze[10] * 0.2);
+      input.positions[1] = 1.2;
+      movement.transformControllers(input);
+      expect(input.positions[1]).toBeCloseTo(1.2 + pitch * 0.2);
+      input.axes[3] = 0;
+      input.axes[2] = 1;
+      movement.update(200, gaze, input);
+      const strafed = eye();
+      movement.transformEye(strafed);
+      expect(strafed.rayTransform[12]).toBeCloseTo(0.2);
+      expect(strafed.rayTransform[13]).toBeCloseTo(view.rayTransform[13]);
+      movement.reset();
+      const reset = eye();
+      movement.transformEye(reset);
+      expect(reset.rayTransform).toEqual(head());
+    }
+  });
+
   it("normalizes diagonal input and ignores drift and untracked controllers", () => {
     const movement = enabledMovement();
     const input = controls();

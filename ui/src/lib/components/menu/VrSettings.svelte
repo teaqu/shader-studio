@@ -32,7 +32,7 @@
     <div class="setting">
       <label class="toggle"><input type="checkbox" checked={navigationEnabled} aria-describedby="vr-navigation-help"
         onchange={event => updateVrNavigationSettings({ movement: event.currentTarget.checked })} /> <span>Enable headset navigation</span></label>
-      <small id="vr-navigation-help">Move with the left stick. Hold the left trigger to move faster.</small>
+      <small id="vr-navigation-help">Move where you look with the left stick, including up and down. Hold the left trigger to move faster.</small>
     </div>
     <label class="field">Movement speed (m/s)
       <input type="number" min="0.1" max="10" step="0.1" value={settings.movementSpeed} disabled={!settings.movement}

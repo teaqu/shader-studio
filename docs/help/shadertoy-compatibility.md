@@ -49,8 +49,7 @@ To view the shader in a headset:
 
 Movement and turning are **off by default**. **Enable headset navigation** switches on left-stick movement and your selected right-stick turning mode. Hold the left trigger to move three times faster, like holding Shift in desktop preview. Disable it to use both sticks for shader effects without moving or turning the camera. Physical head tracking stays active.
 Choose **Movement speed** in metres per second and set **Right stick turning** to **Snap**, **Smooth**, or **Off**. Turning off only the right stick keeps left-stick movement enabled. Snap turning requires returning the stick to the centre
-before another turn. These settings, including the enable switch, are remembered in this browser. Switching navigation off preserves the chosen speed, turn mode and angle for when you enable it again. Movement
-is horizontal and does not include collision detection. Physical head movement continues to work.
+before another turn. These settings, including the enable switch, are remembered in this browser. Switching navigation off preserves the chosen speed, turn mode and angle for when you enable it again. Movement follows where you look, including upward and downward when you tilt your head. Left/right strafing stays horizontal. Movement does not include collision detection. Physical head movement continues to work.
 Exiting VR resets the virtual position and turning offset. Controller ray
 positions and directions follow the same virtual movement as your view.
 

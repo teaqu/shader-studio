@@ -166,6 +166,25 @@ it("enters immersive VR from the UI, draws tracked asymmetric stereo rays and re
     session.render(1500, frame);
     expect(rgba(gl, layer.framebuffer, 1)).toEqual([102, 51, 255, 255]);
 
+    // Forward follows headset pitch, including vertical movement.
+    await harness.compile({ image: `
+      void mainImage(out vec4 c, in vec2 p) { c = vec4(1, 0, 0, 1); }
+      void mainVR(out vec4 c, in vec2 p, in vec3 o, in vec3 d) { c = vec4(o.y * 0.5 + 0.5, 0, 0, 1); }
+    `, path: "immersive.glsl" });
+    updateVrNavigationSettings({ movement: true, turning: 'off' });
+    const pitched = identity();
+    pitched[9] = -1;
+    pitched[10] = 0;
+    const pitchedFrame = { ...frame, getViewerPose: () => ({ transform: { matrix: pitched }, views: [makeView("left", -0.5, 0), makeView("right", 0.5, 0)] }) } as unknown as XRFrame;
+    leftAxes[2] = 0;
+    leftAxes[3] = -1;
+    session.render(1600, pitchedFrame);
+    const raised = rgba(gl, layer.framebuffer, 1)[0];
+    expect(raised).toBeGreaterThan(180);
+    pitched[9] = 1;
+    session.render(1700, pitchedFrame);
+    expect(rgba(gl, layer.framebuffer, 1)[0]).toBeLessThan(raised - 60);
+
     [...target.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Exit VR')!.click();
     await Promise.resolve();
     await tick();
