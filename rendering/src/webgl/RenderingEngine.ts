@@ -1,6 +1,6 @@
 import { WebXrRenderer } from "../webxr/WebXrRenderer";
 import { isImmersiveVrSupported } from "../webxr/WebXrSession";
-import type { VrNavigationSettings } from "../webxr/VrNavigationSettings";
+import { normalizeVrNavigation, type VrNavigationSettings } from "../webxr/VrNavigationSettings";
 import { audioPreviewData, livePreviewData, controlSystemAudio, controlAudioInput } from "../resources/MediaPreview";
 import type { LiveInputType, LiveInputPreview } from "../resources/LiveInputTextureManager";
 import { piRenderer } from "../../../vendor/pilibs/src/piRenderer";
@@ -45,6 +45,7 @@ import {
 
 export class RenderingEngine implements RenderingEngineInterface {
   private immersiveVr: WebXrRenderer | null = null;
+  private navigationSettings = normalizeVrNavigation(undefined);
   private glCanvas: HTMLCanvasElement | null = null;
   private gl: WebGL2RenderingContext | null = null;
   private renderer!: PiRenderer;
@@ -111,6 +112,7 @@ export class RenderingEngine implements RenderingEngineInterface {
     this.keyboardManager = new KeyboardManager();
     this.mouseManager = new MouseManager();
     this.cameraManager = new CameraManager(this.keyboardManager);
+    this.cameraManager.setSpeeds(this.navigationSettings.movementSpeed, this.navigationSettings.turnSpeed);
 
     this.customUniformManager = new CustomUniformManager();
 
@@ -153,6 +155,7 @@ export class RenderingEngine implements RenderingEngineInterface {
       new FPSCalculator(60, 10),
     );
     this.immersiveVr = new WebXrRenderer(this.gl, this.frameRenderer, this.passRenderer, time => this.render(time));
+    this.immersiveVr.setNavigationSettings(this.navigationSettings);
     this.frameRenderer.setFramePacer((time) => this.shouldWaitForGpu(time));
     this.frameRenderer.setGpuFrameTimeSource(() => this.gpuFrameMs);
     const pixelRegionCapturer = new WebGLPixelRegionCapturer(this.gl);
@@ -500,7 +503,9 @@ export class RenderingEngine implements RenderingEngineInterface {
   }
 
   public setVrNavigationSettings(settings: VrNavigationSettings): void {
-    this.immersiveVr?.setNavigationSettings(settings);
+    this.navigationSettings = normalizeVrNavigation(settings);
+    this.immersiveVr?.setNavigationSettings(this.navigationSettings);
+    this.cameraManager?.setSpeeds(this.navigationSettings.movementSpeed, this.navigationSettings.turnSpeed);
   }
 
   public isVrPreviewAvailable(): boolean {

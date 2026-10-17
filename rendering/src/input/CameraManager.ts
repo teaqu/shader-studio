@@ -58,7 +58,7 @@ export class CameraManager {
   private moveSpeed = 3.0;
   private sprintMultiplier = 3.0;
   private lookSpeed = 0.003;       // radians/pixel for mouse
-  private keyLookSpeed = 1.5;      // radians/sec for IJKL
+  private keyLookSpeed = 1.5;      // radians/sec for keyboard look
 
   private isMouseDown = false;
   private lastMouseX = 0;
@@ -71,6 +71,13 @@ export class CameraManager {
   private onPointerUp: ((e: PointerEvent) => void) | null = null;
 
   constructor(private keyboardManager: KeyboardManager) {}
+
+  /** The rendering engine supplies validated shared desktop/headset preferences. */
+  setSpeeds(movementSpeed: number, turnSpeed: number): void {
+    this.moveSpeed = movementSpeed;
+    this.keyLookSpeed = turnSpeed * Math.PI / 180;
+    this.lookSpeed = 0.003 * turnSpeed / 90;
+  }
 
   setupEventListeners(canvas: HTMLCanvasElement): void {
     this.dispose();

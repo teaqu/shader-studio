@@ -186,7 +186,11 @@ describe('VR pane settings', () => {
     await fireEvent.click(view.getByRole('button', { name: 'VR' }));
     const navigation = view.getByRole('switch', { name: 'Enable headset navigation' });
     const speed = view.getByRole('slider', { name: 'Movement speed (m/s)' }) as HTMLInputElement;
-    expect(speed.disabled || speed.closest('fieldset')?.disabled).toBe(true);
+    expect(speed.disabled).toBe(false);
+    expect(speed.closest('fieldset')).toBeNull();
+    await fireEvent.input(view.getByRole('slider', { name: 'Turn speed (degrees/s)' }), { target: { value: '135' } });
+    expect(getVrNavigationSettings().turnSpeed).toBe(135);
+    expect(view.getByText('135\u00b0/s')).toBeTruthy();
     expect(view.getByRole('button', { name: 'Snap' }).getAttribute('aria-pressed')).toBe('true');
     expect(view.queryByRole('button', { name: 'Off' })).toBeNull();
     expect(view.queryByText('Settings remembered')).toBeNull();
@@ -215,7 +219,7 @@ describe('VR pane settings', () => {
     expect(renderer.setVrNavigationSettings).toHaveBeenLastCalledWith({ movement: true, movementSpeed: 3, turning: 'snap', snapAngle: 45, turnSpeed: 90 });
     expect(JSON.parse(localStorage.getItem('shader-studio-vr-navigation-v1')!)).toMatchObject({ movement: true, turning: 'snap' });
     await fireEvent.click(view.getByRole('button', { name: 'Smooth' }));
-    await fireEvent.change(view.getByLabelText('Turn speed (degrees/s)'), { target: { value: '120' } });
+    await fireEvent.input(view.getByLabelText('Turn speed (degrees/s)'), { target: { value: '120' } });
     expect(getVrNavigationSettings().turnSpeed).toBe(120);
     await fireEvent.click(view.getByRole('button', { name: 'Reset VR settings' }));
     expect(getVrNavigationSettings()).toEqual({ movement: false, movementSpeed: 2, turning: 'snap', snapAngle: 30, turnSpeed: 90 });

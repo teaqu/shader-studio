@@ -8,7 +8,7 @@ Use the desktop VR preview to look around a GLSL shader that defines `mainVR`, e
 
 1. Create a GLSL shader and leave **Image → Geometry** set to **Fullscreen**.
 2. Add both `mainImage` for the normal preview and `mainVR` for the view you can look around. The complete example below colors each viewing direction differently.
-3. Open **VR** in the preview toolbar and enable **Desktop preview**. Move with **W / A / S / D**, move vertically with **Q / E**, and look by dragging or pressing **I / J / K / L**.
+3. Open **VR** in the preview toolbar and enable **Desktop preview**. Move with **W / A / S / D**, move vertically with **Q / E**, and look by dragging or pressing **arrow keys**.
 4. Disable **Desktop preview** to return to `mainImage`. Opening another shader also turns it off.
 
 ```glsl
@@ -41,7 +41,7 @@ To view the shader in a headset:
 4. In the VR pane, click **Exit VR** to return to the desktop view.
 
 Movement and turning are **off by default**. **Headset navigation** switches on left-stick movement and your selected right-stick turning mode. Hold the left trigger to move three times faster, like holding Shift in desktop preview. Disable it to use both sticks for shader effects without moving or turning the camera. Physical head tracking stays active.
-Drag the **Movement speed** slider to set metres per second. Under **Right stick turning**, choose **Snap** or **Smooth**. Use the main **Headset navigation** switch to disable movement and turning together. Snap is selected initially; navigation remains disabled until you switch it on. Snap turning requires returning the stick to the centre
+The **Movement speed** and **Turn speed** sliders apply to both desktop preview and headset navigation, and remain available when headset navigation is disabled. Movement speed uses metres per second. Turn speed sets desktop keyboard look and smooth headset turning in degrees per second; mouse-drag sensitivity scales with the same setting. Snap turning uses its angle instead. Under **Right stick turning**, choose **Snap** or **Smooth**. Use the main **Headset navigation** switch to disable movement and turning together. Snap is selected initially; navigation remains disabled until you switch it on. Snap turning requires returning the stick to the centre
 before another turn. These settings, including the enable switch, are remembered in this browser. Switching navigation off preserves the chosen speed, turn mode and angle for when you enable it again. Movement follows where you look, including upward and downward when you tilt your head. Left/right strafing stays horizontal. Movement does not include collision detection. Physical head movement continues to work.
 Exiting VR resets the virtual position and turning offset. Controller ray
 positions and directions follow the same virtual movement as your view.

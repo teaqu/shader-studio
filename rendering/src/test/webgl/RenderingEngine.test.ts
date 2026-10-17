@@ -59,6 +59,19 @@ describe("RenderingEngine", () => {
     expect(preview.enabled).toBe(false);
   });
 
+  it("shares validated movement and turn speeds with the desktop camera even when headset navigation is disabled", () => {
+    expect(() => renderingEngine.setVrNavigationSettings({ movement: false, movementSpeed: 4, turning: "snap", snapAngle: 30, turnSpeed: 120 })).not.toThrow();
+    const camera = { setSpeeds: vi.fn() };
+    const headset = { setNavigationSettings: vi.fn() };
+    Object.defineProperty(renderingEngine, 'cameraManager', { value: camera, configurable: true });
+    Object.defineProperty(renderingEngine, 'immersiveVr', { value: headset, configurable: true });
+    renderingEngine.setVrNavigationSettings({ movement: false, movementSpeed: 4, turning: "smooth", snapAngle: 30, turnSpeed: 120 });
+    expect(camera.setSpeeds).toHaveBeenLastCalledWith(4, 120);
+    expect(headset.setNavigationSettings).toHaveBeenLastCalledWith(expect.objectContaining({ movement: false, movementSpeed: 4, turnSpeed: 120 }));
+    renderingEngine.setVrNavigationSettings({ movement: false, movementSpeed: NaN, turning: "snap", snapAngle: 30, turnSpeed: Infinity });
+    expect(camera.setSpeeds).toHaveBeenLastCalledWith(2, 90);
+  });
+
   describe("config validation", () => {
     let mockPipeline: any;
 

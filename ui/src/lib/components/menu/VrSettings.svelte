@@ -34,14 +34,19 @@
       <label class="toggle"><span>Desktop preview</span><input type="checkbox" role="switch" checked={state.enabled} disabled={!state.available || state.immersive || state.busy} aria-describedby="vr-desktop-help" onchange={toggleVrPreview} /></label>
       <p id="vr-desktop-help" class="hint">Drag to look · WASD / QE · Hold Shift to move faster</p>
     </div>
+    <div class="shared-speeds" role="group" aria-label="Desktop and headset speeds">
+      <div class="speed-heading"><label for="vr-movement-speed">Movement speed</label><output for="vr-movement-speed">{settings.movementSpeed} m/s</output></div>
+      <input id="vr-movement-speed" aria-label="Movement speed (m/s)" type="range" min="0.1" max="10" step="0.1" value={settings.movementSpeed} oninput={event => updateVrNavigationSettings({ movementSpeed: event.currentTarget.valueAsNumber })} />
+      <div class="speed-heading"><label for="vr-turn-speed">Turn speed</label><output for="vr-turn-speed">{settings.turnSpeed}&deg;/s</output></div>
+      <input id="vr-turn-speed" aria-label="Turn speed (degrees/s)" type="range" min="15" max="180" step="1" value={settings.turnSpeed} oninput={event => updateVrNavigationSettings({ turnSpeed: event.currentTarget.valueAsNumber })} />
+      <p class="hint">Shared by desktop preview and headset navigation. Snap turning uses its angle.</p>
+    </div>
     <hr />
     <div class="setting">
       <label class="toggle"><span><strong>Headset navigation</strong><small>{settings.movement ? 'Enabled' : 'Disabled'}</small></span><input type="checkbox" role="switch" aria-label="Enable headset navigation" checked={settings.movement} aria-describedby="vr-navigation-help" onchange={event => updateVrNavigationSettings({ movement: event.currentTarget.checked })} /></label>
       <p id="vr-navigation-help" class="hint">Left stick follows your gaze, including up/down. Hold the left trigger to move faster.</p>
     </div>
     <fieldset disabled={!settings.movement} aria-label="Headset navigation settings">
-      <div class="speed-heading"><label for="vr-movement-speed">Movement speed</label><output for="vr-movement-speed">{settings.movementSpeed} m/s</output></div>
-      <input id="vr-movement-speed" aria-label="Movement speed (m/s)" type="range" min="0.1" max="10" step="0.1" value={settings.movementSpeed} oninput={event => updateVrNavigationSettings({ movementSpeed: event.currentTarget.valueAsNumber })} />
       <div class="turn-setting">
         <span id="vr-turning-label">Right stick turning</span>
         <div class="segments" role="group" aria-labelledby="vr-turning-label">
@@ -53,8 +58,6 @@
         <label class="field">Snap angle<select aria-label="Snap angle (degrees)" value={settings.snapAngle} onchange={event => updateVrNavigationSettings({ snapAngle: Number(event.currentTarget.value) })}>
           {#each [15, 30, 45, 60, 75, 90] as angle}<option value={angle}>{angle}°</option>{/each}
         </select></label>
-      {:else}
-        <label class="field">Turn speed<input aria-label="Turn speed (degrees/s)" type="number" min="15" max="180" step="15" value={settings.turnSpeed} onchange={event => updateVrNavigationSettings({ turnSpeed: event.currentTarget.valueAsNumber })} /></label>
       {/if}
     </fieldset>
     {#if !settings.movement}<p class="hint shader-note">Navigation off. Buttons and sticks are free for your shader.</p>{/if}
@@ -76,7 +79,7 @@
   .session-state { display: inline-flex; align-items: center; gap: 7px; color: var(--vscode-descriptionForeground, #aaa); }
   .dot { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: var(--vscode-descriptionForeground, #aaa); }
   .dot.ready { background: var(--vscode-testing-iconPassed, #73c991); }
-  button, select, input[type='number'] { font: inherit; color: inherit; background: var(--vscode-input-background, #333); border: 1px solid var(--vscode-input-border, #555); border-radius: 5px; padding: 6px 12px; }
+  button, select { font: inherit; color: inherit; background: var(--vscode-input-background, #333); border: 1px solid var(--vscode-input-border, #555); border-radius: 5px; padding: 6px 12px; }
   button { cursor: pointer; }
   .enter { color: var(--vscode-button-foreground, #fff); background: var(--vscode-button-background, #007acc); border-color: transparent; }
   .enter:hover:enabled { background: var(--vscode-button-hoverBackground, #0062a3); }
@@ -95,11 +98,12 @@
   .enter:disabled, input[role='switch']:disabled { opacity: 0.5; }
   output { color: var(--vscode-descriptionForeground, #aaa); font-variant-numeric: tabular-nums; }
   input[type='range'] { width: 100%; margin: 0; accent-color: var(--vscode-button-background, #007acc); }
+  .shared-speeds { display: grid; gap: 12px; }
   .turn-setting { display: grid; gap: 8px; }
   .segments { display: flex; gap: 3px; padding: 3px; border: 1px solid var(--vscode-panel-border, #444); border-radius: 6px; background: var(--vscode-sideBar-background, #252526); }
   .segments button { flex: 1; border: 0; border-radius: 4px; padding: 5px 8px; color: var(--vscode-descriptionForeground, #aaa); background: transparent; }
   .segments button[aria-pressed='true'] { color: var(--vscode-foreground, #ddd); background: var(--vscode-editor-background, #202020); box-shadow: 0 1px 3px #0002; }
-  .field select, .field input { width: 88px; min-width: 0; }
+  .field select { width: 88px; min-width: 0; }
   footer { margin-top: auto; display: flex; align-items: center; justify-content: flex-end; padding: 12px 18px; border-top: 1px solid var(--vscode-panel-border, #444); color: var(--vscode-descriptionForeground, #aaa); font-size: 11px; }
   .reset { border: 0; background: transparent; padding: 3px 0 3px 8px; color: inherit; }
   .error { margin: 0; color: var(--vscode-errorForeground, #f48771); }
