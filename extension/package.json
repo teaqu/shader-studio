@@ -179,6 +179,12 @@
         "shader-studio.webgpu.defaultRenderAuthoring": {
           "type": "string", "scope": "application", "enum": ["hooks", "native"], "enumDescriptions": ["Built-in mainImage/mainVertex hooks", "Native WGSL/Slang entry points"], "default": "hooks", "description": "Default mode for WGSL/Slang buffers and source insertion."
         },
+        "shader-studio.preview.disableContextMenu": {
+          "type": "boolean",
+          "default": true,
+          "scope": "application",
+          "description": "Disable the canvas context menu so right-click is available to shaders."
+        },
         "shader-studio.webgpu.useViewerCamera": {
           "type": "boolean",
           "scope": "application",

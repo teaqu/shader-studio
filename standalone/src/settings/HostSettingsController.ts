@@ -28,6 +28,9 @@ export class HostSettingsController {
   }
 
   handleMessage(type: string, payload: Record<string, unknown>): boolean {
+    if (type === 'requestCanvasInputSettings') {
+      this.emitCanvasInputSettings(); return true;
+    }
     if (type === 'requestShaderAuthoringSettings') {
       this.emitAuthoringSettings(); return true;
     }
@@ -71,6 +74,9 @@ export class HostSettingsController {
       this.emitAuthoringSettings();
     }
     this.settingsSnapshot = settings;
+    if (previous['preview.disableContextMenu'] !== settings['preview.disableContextMenu']) {
+      this.emitCanvasInputSettings();
+    }
     if (previous['webgpu.useViewerCamera'] !== settings['webgpu.useViewerCamera']) {
       this.emitViewerCameraSettings();
     }
@@ -80,6 +86,10 @@ export class HostSettingsController {
       || previous['editor.colorDecorators'] !== settings['editor.colorDecorators']) {
       this.emitLanguageServiceSettings();
     }
+  }
+
+  private emitCanvasInputSettings(): void {
+    this.emit({ type: 'canvasInputSettings', payload: { disableContextMenu: this.settings.snapshot['preview.disableContextMenu'] } });
   }
 
   private emitAuthoringSettings(): void {

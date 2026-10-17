@@ -72,3 +72,15 @@ it('reloads external preferences without writing them back to storage', () => {
   expect(listener).toHaveBeenCalledOnce();
   expect(write).not.toHaveBeenCalled();
 });
+
+it('persists the global canvas menu preference and broadcasts changes', async () => {
+  const { HostSettingsController } = await import('../settings/HostSettingsController');
+  const backend = storage(); const settings = new StandaloneSettings(backend); const emit = vi.fn(); const controller = new HostSettingsController(settings, emit);
+  expect(settings.snapshot['preview.disableContextMenu']).toBe(true);
+  expect(controller.handleMessage('requestCanvasInputSettings', {})).toBe(true);
+  expect(emit).toHaveBeenLastCalledWith({ type: 'canvasInputSettings', payload: { disableContextMenu: true } });
+  expect(settings.update('preview.disableContextMenu', 'false')).toBe(false);
+  settings.update('preview.disableContextMenu', false);
+  expect(emit).toHaveBeenLastCalledWith({ type: 'canvasInputSettings', payload: { disableContextMenu: false } });
+  expect(new StandaloneSettings(backend).snapshot['preview.disableContextMenu']).toBe(false); controller.dispose();
+});

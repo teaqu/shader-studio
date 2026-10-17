@@ -107,10 +107,10 @@ describe("packShaderToyUniforms", () => {
     expect(dv.getUint32(UNIFORM_OFFSETS.iVertexCount + 4, true)).toBe(1);
   });
 
-  it("starts custom uniforms after the camera matrices", () => {
+  it("starts custom uniforms after the pointer struct", () => {
     const layout = createSlangCustomUniformLayout([{ name: "gain", type: "float" }]);
-    expect(layout.entries[0].offset).toBe(UNIFORM_OFFSETS.iViewProjection + 64);
-    expect(SHADERTOY_UNIFORM_SIZE).toBe(UNIFORM_OFFSETS.iViewProjection + 64);
+    expect(layout.entries[0].offset).toBe(UNIFORM_OFFSETS.iPointer + 48);
+    expect(SHADERTOY_UNIFORM_SIZE).toBe(UNIFORM_OFFSETS.iPointer + 48);
   });
 
   it("lays out the three camera matrices as consecutive 64-byte slots after iVertexCount", () => {
@@ -119,7 +119,8 @@ describe("packShaderToyUniforms", () => {
       expect(offsets.iViewMatrix).toBe(offsets.iVertexCount + 16);
       expect(offsets.iProjectionMatrix).toBe(offsets.iViewMatrix + 64);
       expect(offsets.iViewProjection).toBe(offsets.iProjectionMatrix + 64);
-      expect(size).toBe(offsets.iViewProjection + 64);
+      expect(offsets.iPointer).toBe(offsets.iViewProjection + 64);
+      expect(size).toBe(offsets.iPointer + 48);
     }
   });
 
@@ -197,4 +198,15 @@ describe("packShaderToyUniforms", () => {
     expect(view.getFloat32(SHADERTOY_UNIFORM_SIZE + 4, true)).toBe(0);
     expect(view.getInt32(SHADERTOY_UNIFORM_SIZE + 8, true)).toBe(0);
   });
+});
+
+it('packs the pointer struct without overlapping custom uniforms for every channel count', () => {
+  for (const channelCount of [4, 17]) {
+    const pointer = { position: [1.5, 2.5] as [number, number], inside: 1, held: 31, pressed: 2, released: 4, modifiers: 15, wheel: [100, -200] as [number, number], wheelDelta: [3, -4] as [number, number] };
+    const input = { channelCount, width: 10, height: 10, time: 0, timeDelta: 0, frameRate: 60, frame: 0, mouse: [], channelTime: [], channelLoaded: [], sampleRate: 44100, date: [], channelResolution: [], cameraPos: [], cameraDir: [], pointer };
+    const buffer = packShaderToyUniforms(input, [{ name: 'gain', type: 'float' }], [{ name: 'gain', type: 'float', value: 0.75 }]);
+    const layout = createShaderToyUniformLayout(channelCount); const f = new Float32Array(buffer); const i = new Int32Array(buffer); const offset = layout.offsets.iPointer / 4;
+    expect([...f.slice(offset, offset + 2)]).toEqual([1.5, 2.5]); expect([...i.slice(offset + 2, offset + 8)]).toEqual([1, 31, 2, 4, 15, 0]); expect([...f.slice(offset + 8, offset + 12)]).toEqual([100, -200, 3, -4]); expect(f[layout.size / 4]).toBe(0.75);
+    expect([...new Int32Array(packShaderToyUniforms({ ...input, pointer: undefined })).slice(offset, offset + 12)]).toEqual(new Array(12).fill(0));
+  }
 });

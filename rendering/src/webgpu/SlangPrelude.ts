@@ -83,6 +83,7 @@ export interface ShaderToyUniformLayout {
     iViewMatrix: number;
     iProjectionMatrix: number;
     iViewProjection: number;
+    iPointer: number;
   };
 }
 
@@ -107,8 +108,8 @@ export function createShaderToyUniformLayout(channelCount: number): ShaderToyUni
   const iViewProjection = iProjectionMatrix + 64;
   return {
     channelCount: count,
-    size: iViewProjection + 64,
-    offsets: { iResolution: 0, iMouse: 16, iTime: 32, iTimeDelta: 36, iFrameRate: 40, iFrame: 44, iChannelTime, iChannelLoaded, iSampleRate, iDate, iChannelResolution, iCameraPos, iCameraDir, iVertexCount, iViewMatrix, iProjectionMatrix, iViewProjection },
+    size: iViewProjection + 64 + 48,
+    offsets: { iResolution: 0, iMouse: 16, iTime: 32, iTimeDelta: 36, iFrameRate: 40, iFrame: 44, iChannelTime, iChannelLoaded, iSampleRate, iDate, iChannelResolution, iCameraPos, iCameraDir, iVertexCount, iViewMatrix, iProjectionMatrix, iViewProjection, iPointer: iViewProjection + 64 },
   };
 }
 

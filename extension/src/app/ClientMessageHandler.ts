@@ -134,6 +134,11 @@ export class ClientMessageHandler {
       case 'requestShaderAuthoringSettings':
         respondFn({ type: 'shaderAuthoringSettings', payload: { defaultRenderAuthoring: vscode.workspace.getConfiguration('shader-studio').get('webgpu.defaultRenderAuthoring', 'hooks') } });
         break;
+      case 'requestCanvasInputSettings':
+        respondFn({ type: 'canvasInputSettings', payload: {
+          disableContextMenu: vscode.workspace.getConfiguration('shader-studio').get('preview.disableContextMenu', true),
+        } });
+        break;
       case 'requestViewerCameraSettings':
         respondFn({ type: 'viewerCameraSettings', payload: {
           useViewerCamera: vscode.workspace.getConfiguration('shader-studio').get('webgpu.useViewerCamera', true),

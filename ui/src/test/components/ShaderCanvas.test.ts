@@ -338,3 +338,23 @@ describe('ShaderCanvas Component', () => {
     });
   });
 });
+
+it('suppresses the canvas context menu according to the live global setting', async () => {
+  const { CanvasInputSettings } = await import('../../lib/state/canvasInputState.svelte');
+  let receive: (event: MessageEvent) => void = () => {};
+  const controller = new CanvasInputSettings({ onMessage: (handler: typeof receive) => {
+    receive = handler;
+  }, postMessage: () => {} } as unknown as import('../../lib/transport/MessageTransport').Transport);
+  const { container } = render(ShaderCanvas);
+  const canvas = container.querySelector('canvas')!;
+  const menu = () => {
+    const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true }); canvas.dispatchEvent(event); return event.defaultPrevented;
+  };
+  try {
+    expect(menu()).toBe(true);
+    receive({ data: { type: 'canvasInputSettings', payload: { disableContextMenu: false } } } as MessageEvent);
+    expect(menu()).toBe(false);
+  } finally {
+    receive({ data: { type: 'canvasInputSettings', payload: { disableContextMenu: true } } } as MessageEvent); controller.dispose();
+  }
+});

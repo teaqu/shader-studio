@@ -1,3 +1,4 @@
+import type { PointerState } from "@shader-studio/types";
 /// <reference types="@webgpu/types" />
 import type { ShaderCompiler, ChannelSamplerType } from '../webgl/ShaderCompiler';
 import type { PiShader } from '../types/piRenderer';
@@ -21,6 +22,7 @@ export interface CaptureUniforms {
   frame: number;
   res: number[];
   mouse: number[];
+  pointer?: PointerState;
   date: number[];
   cameraPos: number[];
   cameraDir: number[];
@@ -744,6 +746,12 @@ export class VariableCapturer implements IVariableCapturer {
     gl.uniform1f(gl.getUniformLocation(program, 'iFrameRate'), uniforms.frameRate);
     gl.uniform1i(gl.getUniformLocation(program, 'iFrame'), uniforms.frame);
     gl.uniform4fv(gl.getUniformLocation(program, 'iMouse'), uniforms.mouse);
+    gl.uniform2fv(gl.getUniformLocation(program, 'iPointer.position'), uniforms.pointer?.position ?? [0, 0]);
+    gl.uniform2fv(gl.getUniformLocation(program, 'iPointer.wheel'), uniforms.pointer?.wheel ?? [0, 0]);
+    gl.uniform2fv(gl.getUniformLocation(program, 'iPointer.wheelDelta'), uniforms.pointer?.wheelDelta ?? [0, 0]);
+    for (const field of ["inside", "held", "pressed", "released", "modifiers"] as const) {
+      gl.uniform1i(gl.getUniformLocation(program, `iPointer.${field}`), uniforms.pointer?.[field] ?? 0);
+    }
     gl.uniform4fv(gl.getUniformLocation(program, 'iDate'), uniforms.date);
     gl.uniform3fv(gl.getUniformLocation(program, 'iCameraPos'), uniforms.cameraPos);
     gl.uniform3fv(gl.getUniformLocation(program, 'iCameraDir'), uniforms.cameraDir);

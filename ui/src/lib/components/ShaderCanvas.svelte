@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getDisableCanvasContextMenu } from "../state/canvasInputState.svelte";
   import { onMount } from "svelte";
   import {
     aspectRatioStore,
@@ -165,6 +166,11 @@
   onclick={handleClick}
 >
   <canvas
+    oncontextmenu={(event) => {
+      if (getDisableCanvasContextMenu()) {
+        event.preventDefault();
+      }
+    }}
     bind:this={glCanvas}
     style:cursor={isInspectorActive ? 'crosshair' : undefined}
     onmousedown={(event) => {

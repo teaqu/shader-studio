@@ -179,13 +179,13 @@ describe("renderInputLimitations", () => {
           Image: { inputs: { iChannel0: { type: "audio", path: "a.mp3" }, iChannel1: { type: "keyboard" } } },
           BufferA: { path: "a.glsl", inputs: { iChannel0: { type: "video", path: "v.mp4" } } },
         },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- a partial config keeps the fixture focused on inputs
+
       } as any,
     });
 
     expect(kinds).toEqual(["mouse", "keyboard", "audio", "video"]);
     expect(describeRenderInputLimitations(kinds)).toBe(
-      "Render doesn't replay live input: iMouse stays at its idle value; keyboard, audio and video inputs aren't replayed on the export timeline. Use Live to capture interaction.",
+      "Render doesn't replay live input: Mouse input stays at its idle value; keyboard, audio and video inputs aren't replayed on the export timeline. Use Live to capture interaction.",
     );
   });
 
@@ -195,4 +195,8 @@ describe("renderInputLimitations", () => {
       "Render doesn't replay live input: audio input isn't replayed on the export timeline. Use Live to capture interaction.",
     );
   });
+});
+
+it('warns that offline Render cannot replay iPointer input', () => {
+  expect(renderInputLimitations({ code: 'float x = iPointer.position.x;', buffers: {}, config: null })).toEqual(['mouse']);
 });

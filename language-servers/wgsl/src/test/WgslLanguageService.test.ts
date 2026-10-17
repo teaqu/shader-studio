@@ -1197,6 +1197,12 @@ describe("WGSL member typing and hover gaps found by the corpus sweep", () => {
     return labelsAt(await open(text, overrides), text, access);
   };
 
+  it("completes pointer fields and infers vector members through them", async () => {
+    expect(await membersOf("", "iPointer.", {})).toEqual(expect.arrayContaining(["position", "held", "pressed", "released", "inside", "modifiers", "wheel", "wheelDelta"]));
+    expect(await membersOf("", "iPointer.position.", {})).toEqual(expect.arrayContaining(["x", "y", "xy"]));
+    expect(await membersOf("  let scroll = iPointer.wheelDelta;\n", "scroll.", {})).toEqual(expect.arrayContaining(["x", "y"]));
+  });
+
   it("types configured storage buffers for member completion, directly and through locals", async () => {
     const storage: Partial<ShaderAuthoringEnvironment> = { stage: "compute", resources: [
       { name: "bodies", kind: "storage", elementType: "Body" },

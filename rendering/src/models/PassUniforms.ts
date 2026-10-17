@@ -1,9 +1,11 @@
+import type { PointerState } from "@shader-studio/types";
 export interface PassUniforms {
   res: number[] | Float32Array;
   time: number;
   timeDelta: number;
   frameRate: number;
   mouse: number[] | Float32Array;
+  pointer?: PointerState;
   frame: number;
   date: number[] | Float32Array;
   channelTime: number[];    // Per-channel playback time

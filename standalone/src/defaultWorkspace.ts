@@ -79,7 +79,7 @@ const SOURCES: ReadonlyArray<{
     code: `// Particle Swarm: WGSL compute passes push 16384 particles through a
 // flow field and splat them into an atomic density grid; this Image pass
 // only reads that grid. Open Config to see the storage buffers and passes.
-// Drag in the preview to pull the swarm towards the pointer.
+// Left-drag to attract particles; right-drag to push them away.
 fn cellDensity(cell: vec2i) -> f32 {
 	return f32(atomicLoad(&density[densityIndex(cell)])) / PARTICLE_WEIGHT;
 }
@@ -249,11 +249,13 @@ fn advectParticles(@builtin(global_invocation_id) id: vec3u) {
 	// divergence-free, so tracking it keeps the swarm spread out instead of
 	// piling every particle into the same few streams.
 	var desired = flowField(position * aspect, iTime) * 0.08;
-	if (iMouse.z > 0.0) {
-		let toPointer = iMouse.xy / iResolution.xy - position;
+	if ((iPointer.held & 3) != 0) {
+		let toPointer = iPointer.position / iResolution.xy - position;
 		let distance = length(toPointer);
 		if (distance > 0.0001) {
-			desired += toPointer / distance * 0.25 * exp(-distance * 4.0);
+			// Right-click wins when both buttons are held.
+			let direction = select(1.0, -1.0, (iPointer.held & 2) != 0);
+			desired += direction * toPointer / distance * 0.25 * exp(-distance * 4.0);
 		}
 	}
 	velocity = mix(desired, velocity, exp(-dt * 6.0));

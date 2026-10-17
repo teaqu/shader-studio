@@ -13,6 +13,7 @@ These are always available — no declaration needed. Types differ slightly betw
 | `iTimeDelta` | `float` | `float` | `f32` | Time since the previous frame |
 | `iFrameRate` | `float` | `float` | `f32` | Current frames per second |
 | `iMouse` | `vec4` | `float4` | `vec4f` | As on Shadertoy: xy = pointer position while a button is held, zw = click position; z > 0 while held, w > 0 only on the click frame |
+| `iPointer` | struct | struct | struct | Hover, individual mouse buttons, modifiers and scrolling; see below |
 | `iFrame` | `int` | `int` | `i32` | Frame counter starting at zero |
 | `iDate` | `vec4` | `float4` | `vec4f` | Year, month, day, seconds since midnight |
 | `iChannelTime` | `float[1024]` | — | — | Playback time per input channel |
@@ -71,3 +72,28 @@ Types are inferred from the return value on the first call. Supported types: `fl
 ## Next
 
 [Time And Playback Controls](time-controls.md) — scrub, loop, and drive `iTime`
+
+## Mouse and trackpad input with iPointer
+
+Use `iPointer` in GLSL, Slang or WGSL without declaring it. `iMouse` keeps its Shadertoy behavior.
+
+| Field | Type in GLSL / Slang / WGSL | Meaning |
+|---|---|---|
+| `position` | `vec2` / `float2` / `vec2f` | Position in canvas pixels, including hover; origin at bottom left, like `iMouse.xy`. Captured drags can extend outside the canvas. |
+| `inside` | `int` / `int` / `i32` | 1 inside the canvas, otherwise 0 |
+| `held` | integer | Buttons currently held |
+| `pressed` | integer | Buttons pressed since the previous rendered frame |
+| `released` | integer | Buttons released since the previous rendered frame |
+| `modifiers` | integer | Shift = 1, Ctrl = 2, Alt = 4, Meta (Cmd on Mac) = 8 |
+| `wheel` | 2D float vector | Accumulated horizontal and vertical scroll in CSS pixels |
+| `wheelDelta` | 2D float vector | Scroll since the previous rendered frame |
+
+Button values are left = 1, right = 2, middle = 4, back = 8, forward = 16. Combine or test them with bit operations. For example, `(iPointer.held & 2) != 0` tests right-click in all three languages. `pressed` and `released` can both include a button clicked between frames. Every pass sees the same frame's events. Paused previews freeze pointer uniforms along with other inputs.
+
+Positive wheel x scrolls right and positive y scrolls down. Line-based wheel events use 16 CSS pixels per line; page-based events use the canvas's displayed dimensions. Wheel and trackpad scroll feed the shader while over the canvas and prevent page scrolling there. There is no separate scroll setting.
+
+The global **Disable canvas context menu** setting is on by default, keeping right-click available to the shader. In the browser app, open **Settings** and search for that label. In VS Code, search Settings for `shader-studio.preview.disableContextMenu`. Turn it off to restore right-click menus. The viewer's toolbar controls remain available. This preference applies across shaders.
+
+On macOS, Control-click is reserved for a context menu and may not expose the same events as a physical secondary click. Extra mouse buttons depend on the device, driver and browser. Trackpad pinch may arrive as scrolling with Ctrl set; it is not a separate gesture in this API. Touch has no hover; multi-touch and pen pressure are not exposed.
+
+The browser app's **Particle Swarm** example uses left-drag to attract particles and right-drag to repel them. Right-click takes precedence when both buttons are held. Saved browser workspaces retain their existing shader files; import a fresh example or update your copy to try the new controls.
