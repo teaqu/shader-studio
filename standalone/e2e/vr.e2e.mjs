@@ -23,7 +23,7 @@ test('VR uses a docked tool pane and preserves navigation settings after reload'
   const panel = page.getByRole('region', { name: 'VR settings' });
   await expect(panel).toBeVisible();
   await expect(panel.getByLabel('Left stick movement')).toHaveCount(0);
-  await expect(panel.getByRole('link', { name: 'VR documentation' })).toHaveAttribute('href', /#optional-shader-studio-controller-inputs$/);
+  await expect(panel.getByRole('link', { name: 'VR documentation' })).toHaveAttribute('href', /\/features\/vr\/$/);
   await expect(page.locator('.dv-tab').filter({ hasText: /^VR$/ })).toHaveCount(1);
   await expect(panel.getByLabel('Enable headset navigation')).not.toBeChecked();
   await expect(panel.getByLabel('Right stick turning')).toHaveValue('off');
@@ -44,7 +44,8 @@ test('VR uses a docked tool pane and preserves navigation settings after reload'
   await expect(panel.getByLabel('Right stick turning')).toBeDisabled();
   await panel.getByLabel('Enable headset navigation').check();
   await expect(panel.getByLabel('Snap angle (degrees)')).toHaveValue('45');
-  await panel.getByRole('button', { name: 'Close VR settings' }).click();
+  await expect(panel.getByRole('button', { name: 'Close VR settings' })).toHaveCount(0);
+  await button.click();
   await expect(panel).toHaveCount(0);
   await button.click();
   await expect(panel).toBeVisible();

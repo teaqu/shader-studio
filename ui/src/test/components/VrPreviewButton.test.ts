@@ -176,7 +176,7 @@ describe('VR pane settings', () => {
     expect(view.getByText(/Hold Shift to move faster/)).toBeTruthy();
     expect(view.getByText(/Hold the left trigger to move faster/)).toBeTruthy();
     const help = view.getByRole('link', { name: 'VR documentation' });
-    expect(help.getAttribute('href')).toBe('https://teaqu.github.io/shader-studio/docs/help/shadertoy-compatibility/#optional-shader-studio-controller-inputs');
+    expect(help.getAttribute('href')).toBe('https://teaqu.github.io/shader-studio/docs/features/vr/');
     expect(view.queryByText('Controller shader inputs')).toBeNull();
     expect(view.queryByLabelText('Left stick movement')).toBeNull();
   });
@@ -202,7 +202,8 @@ describe('VR pane settings', () => {
     await fireEvent.keyDown(view.getByRole('region'), { key: 'Escape' });
     expect(view.queryByRole('region')).toBeNull();
     await fireEvent.click(view.getByRole('button', { name: 'VR' }));
-    await fireEvent.click(view.getByRole('button', { name: 'Close VR settings' }));
+    expect(view.queryByRole('button', { name: 'Close VR settings' })).toBeNull();
+    await fireEvent.click(view.getByRole('button', { name: 'VR' }));
     expect(view.queryByRole('region')).toBeNull();
   });
 });

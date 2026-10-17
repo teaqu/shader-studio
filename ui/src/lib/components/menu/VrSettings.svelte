@@ -14,7 +14,7 @@
 <svelte:window onkeydown={handleKey} />
 
   <div class="panel" role="region" aria-label="VR settings">
-    <header><strong>VR</strong><a class="help" href="https://teaqu.github.io/shader-studio/docs/help/shadertoy-compatibility/#optional-shader-studio-controller-inputs" target="_blank" rel="noopener noreferrer" aria-label="VR documentation" title="VR documentation">?</a><button aria-label="Close VR settings" onclick={() => setVrPanelVisible(false)}>×</button></header>
+    <header><strong>VR</strong><a class="help" href="https://teaqu.github.io/shader-studio/docs/features/vr/" target="_blank" rel="noopener noreferrer" aria-label="VR documentation" title="VR documentation">?</a></header>
     <div class="setting">
       <label class="toggle"><input type="checkbox" checked={state.enabled} disabled={!state.available || state.immersive || state.busy}
         aria-describedby="vr-desktop-help" onchange={toggleVrPreview} /> <span>Desktop preview</span></label>
@@ -73,5 +73,4 @@
   small { font-size: 11px; line-height: 1.5; color: var(--vscode-descriptionForeground, #777); }
   input:disabled { opacity: 0.5; }
   .help { margin-left: auto; display: grid; place-items: center; width: 20px; height: 20px; border: 1px solid currentColor; border-radius: 50%; color: inherit; text-decoration: none; }
-  header button { margin-left: 8px; }
 </style>
