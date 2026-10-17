@@ -7,7 +7,7 @@ import { createShaderCanvasHarness } from "../../../../rendering/src/test/e2e/Sh
 beforeEach(() => setVrPanelVisible(false));
 afterEach(() => setVrPanelVisible(false));
 
-it("shows VR only for mainVR and switches the rendered entry through the preview button", async () => {
+it("keeps the VR pane accessible without mainVR and switches compatible previews", async () => {
   const harness = createShaderCanvasHarness("glsl");
   const target = document.createElement("div");
   document.body.append(target);
@@ -38,8 +38,15 @@ it("shows VR only for mainVR and switches the rendered entry through the preview
     await harness.compile({ image, path: "b.glsl" });
     updateVrPreviewContext(harness.engine, "b.glsl");
     await tick();
-    expect(target.querySelector('button[aria-label="VR"]')).toBeNull();
+    const paneButton = target.querySelector<HTMLButtonElement>('button[aria-label="VR"]')!;
+    expect(paneButton).not.toBeNull();
     expect(target.querySelector<HTMLInputElement>('input[type="checkbox"]')!.disabled).toBe(true);
+    paneButton.click();
+    await tick();
+    expect(target.querySelector('[aria-label="VR settings"]')).toBeNull();
+    paneButton.click();
+    await tick();
+    expect(target.querySelector('[aria-label="VR settings"]')!.textContent).toContain('Open a fullscreen GLSL shader');
   } finally {
     updateVrPreviewContext(null, "");
     await unmount(component);

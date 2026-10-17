@@ -45,9 +45,7 @@ export function setVrPanelVisible(visible: boolean): void {
 }
 
 export function toggleVrPanel(): void {
-  if (available) {
-    panelVisible = !panelVisible;
-  }
+  panelVisible = !panelVisible;
 }
 let shaderPath = '';
 let generation = 0;
