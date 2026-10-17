@@ -240,8 +240,11 @@ export class WebGPUStorage {
     }
   }
 
-  async readStorageBuffer(name: string, start: number, count: number, point?: StorageCapturePoint): Promise<StorageBufferSnapshot> {
+  async readStorageBuffer(name: string, start: number, count: number, point?: StorageCapturePoint, maxBytes = Infinity): Promise<StorageBufferSnapshot> {
     const { buffer, layout, offset, size } = this.resolveStorageRange(name, start, count);
+    if (size > maxBytes) {
+      throw new Error(`Storage read exceeds ${maxBytes} bytes. Request fewer elements.`);
+    }
     if (point) {
       return this.captures.request(name, start, count, point);
     }

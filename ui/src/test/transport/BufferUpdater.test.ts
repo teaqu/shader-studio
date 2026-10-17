@@ -38,6 +38,21 @@ describe('BufferUpdater', () => {
   });
 
   describe('updateBuffer', () => {
+    it('does not resolve an update until GPU recompilation and reporting finish', async () => {
+      const compile = Promise.withResolvers<{ success: boolean }>();
+      vi.mocked(mockRenderEngine.updateBufferAndRecompile).mockReturnValue(compile.promise);
+      let finished = false;
+      const update = Promise.resolve(bufferUpdater.updateBuffer('/buffers/BufferA.glsl', {}, 'source', 'BufferA')).then(() => {
+        finished = true;
+      });
+      await Promise.resolve();
+      expect(finished).toBe(false);
+      compile.resolve({ success: true });
+      await update;
+      expect(mockRenderEngine.startRenderLoop).toHaveBeenCalledOnce();
+      expect(mockTransport.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'log' }));
+    });
+
     beforeEach(() => {
       (mockRenderEngine.getPasses as any).mockReturnValue([
         { name: 'BufferA' },

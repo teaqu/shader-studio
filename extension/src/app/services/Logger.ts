@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { mcpLogs } from '../mcp/McpLogs';
 
 export class Logger {
   private static instance: Logger;
@@ -35,10 +36,12 @@ export class Logger {
   }
 
   public info(message: string): void {
+    mcpLogs.append('extension', 'info', message);
     this.outputChannel.info(message);
   }
 
   public debug(message: string): void {
+    mcpLogs.append('extension', 'debug', message);
     this.outputChannel.debug(message);
   }
 
@@ -54,40 +57,42 @@ export class Logger {
     // Check if this message was recently logged (debounce)
     const now = Date.now();
     const lastShown = this.recentMessages.get(message);
-    
+
     if (lastShown && (now - lastShown) < this.DEBOUNCE_MS) {
       // Skip this message - it was logged recently
       return;
     }
-    
+
     // Record this message as logged
     this.recentMessages.set(message, now);
-    
+
     // Clean up old messages from the map (prevent memory leak)
     this.cleanupOldMessages(now);
-    
+
     this.outputChannel.warn(message);
+    mcpLogs.append('extension', 'warning', message);
   }
 
   public error(message: string | Error): void {
     const messageText = message instanceof Error ? message.message : message;
-    
+
     // Check if this message was recently logged (debounce)
     const now = Date.now();
     const lastShown = this.recentMessages.get(messageText);
-    
+
     if (lastShown && (now - lastShown) < this.DEBOUNCE_MS) {
       // Skip this message - it was logged recently
       return;
     }
-    
+
     // Record this message as logged
     this.recentMessages.set(messageText, now);
-    
+
     // Clean up old messages from the map (prevent memory leak)
     this.cleanupOldMessages(now);
-    
+
     this.outputChannel.error(messageText);
+    mcpLogs.append('extension', 'error', messageText);
   }
 
   private cleanupOldMessages(now: number): void {

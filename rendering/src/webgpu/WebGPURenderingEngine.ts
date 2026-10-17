@@ -17,6 +17,8 @@ import { OrbitCamera } from "../preview3d/OrbitCamera";
 import { ResourceManager } from "../resources/ResourceManager";
 import type { PixelRegionResult } from "../types/PixelRegion";
 import type { RenderingEngine } from "../types/RenderingEngine";
+import type { FeedbackReadback, ViewerInputEvent, ViewerInputState } from '../types/ViewerInteraction';
+import type { ViewerInputListener } from '../types/ViewerInteraction';
 import { ConfigValidator } from "../util/ConfigValidator";
 import { FPSCalculator } from "../util/FPSCalculator";
 import { TimeManager } from "../util/TimeManager";
@@ -575,12 +577,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
   getCurrentConfig(): ShaderConfig | null {
     return this.session.currentConfig;
   }
-  async readStorageBuffer(name: string, start: number, count: number, point?: import('@shader-studio/types').StorageCapturePoint): Promise<StorageBufferSnapshot> {
+  async readStorageBuffer(name: string, start: number, count: number, point?: import('@shader-studio/types').StorageCapturePoint, maxBytes?: number): Promise<StorageBufferSnapshot> {
     if (point && !this.session.passGraph.some(pass => pass.name === point.pass)) {
       throw new Error('Capture pass is not available');
     }
     const frame = this.timeManager.getFrame();
-    const snapshot = await this.storage.readStorageBuffer(name, start, count, point);
+    const snapshot = await this.storage.readStorageBuffer(name, start, count, point, maxBytes);
     return { ...snapshot, frame: snapshot.frame ?? frame };
   }
 
@@ -648,6 +650,39 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.keyboardManager.setEnabled(enabled);
     this.cameraManager.setEnabled(enabled);
     this.meshCamera.setInputEnabled(enabled);
+  }
+
+  injectInput(events: readonly ViewerInputEvent[]): ViewerInputState {
+    for (const event of events) {
+      switch (event.type) {
+        case 'pointer_move': case 'pointer_down': case 'pointer_up':
+          this.mouseManager.inject(event.type, event.x, event.y);
+          break;
+        case 'key_down':
+          this.keyboardManager.inject(event.code, true);
+          break;
+        case 'key_up':
+          this.keyboardManager.inject(event.code, false);
+          break;
+        case 'release_all':
+          this.mouseManager.releaseAll();
+          this.keyboardManager.releaseAll();
+          break;
+      }
+    }
+    return { mouse: this.getMouse(), heldCodes: this.keyboardManager.getHeldCodes().sort() };
+  }
+
+  subscribeInput(listener: ViewerInputListener): { dispose(): void } {
+    const mouse = this.mouseManager.onInput((type, x, y, source) => listener(type === 'pointer_up' ? { type, ...(x === undefined ? {} : { x, y }) } : { type, x: x!, y: y! }, source));
+    const keyboard = this.keyboardManager.onInput((code, down, source) => listener({ type: down ? 'key_down' : 'key_up', code }, source));
+    return { dispose: () => {
+      mouse.dispose(); keyboard.dispose();
+    } };
+  }
+
+  readFeedback(_pass: string, _x: number, _y: number, _width: number, _height: number): FeedbackReadback {
+    throw new Error('Feedback texture readback is currently available only in the WebGL renderer; use read_storage for WebGPU storage buffers.');
   }
 
   getCurrentFPS(): number {
@@ -842,7 +877,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
     // Paused inputs are frozen in renderFrame, so a redraw reproduces the
     // picture on screen. While running, copy the next frame the render loop
     // draws, so the saved time/mouse/script values are the ones shown.
-    const redraw = () => this.frameRenderer.renderFrame(this.diagnostics.now(), true, true, copy);
+    // A capture immediately after compilation must initialize compute/buffer
+    // outputs before sampling Image. Later paused captures reuse those outputs.
+    const redraw = () => this.frameRenderer.renderFrame(
+      this.diagnostics.now(), true, this.session.hasSubmittedFrameForInstalledGeneration, copy,
+    );
     try {
       if (this.running && !this.timeManager.isPaused()) {
         await new Promise<void>((resolve) => {

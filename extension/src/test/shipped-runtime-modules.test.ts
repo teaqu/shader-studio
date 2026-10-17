@@ -5,10 +5,10 @@ import * as path from 'path';
 const extensionRoot = path.resolve(__dirname, '..', '..');
 
 /**
- * The VSIX is packaged with `--no-dependencies`, so it ships no node_modules at
- * all. Anything the bundler is told to leave external must therefore be
- * provided by the host at runtime, or the feature that imports it is dead in
- * every published release while working perfectly in the development host.
+ * The VSIX is packaged with `--no-dependencies`, except for runtime modules
+ * explicitly copied into dist/node_modules. Anything else the bundler leaves
+ * external must be provided by the host at runtime, or the feature is dead in
+ * every published release while working in the development host.
  *
  * That is exactly how custom uniform scripts shipped broken: `esbuild` was
  * external, absent from the VSIX, and every script load failed with
@@ -52,6 +52,25 @@ suite('Modules the packaged extension can resolve at runtime', () => {
       );
       assert.ok(fs.statSync(distWasm).size > 1_000_000, 'dist/esbuild.wasm is truncated');
     }
+  });
+
+  test('copies Ajv runtime modules emitted by generated MCP schema validators', () => {
+    const buildScript = readBuildScript();
+    assert.ok(buildScript.includes('copyAjvRuntime'), 'esbuild.js does not package Ajv runtime modules');
+
+    const validationError = path.join(extensionRoot, 'dist', 'node_modules', 'ajv', 'dist', 'runtime', 'validation_error.js');
+    if (fs.existsSync(path.join(extensionRoot, 'dist', 'extension.js'))) {
+      assert.ok(fs.existsSync(validationError), 'dist/extension.js was built without Ajv validation runtime support');
+    }
+  });
+
+  test('copies GLSL dependencies before vendoring Ajv runtime modules', () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(extensionRoot, 'package.json'), 'utf8'));
+    const packageCommand = manifest.scripts.package as string;
+    assert.ok(
+      packageCommand.indexOf('copy-glsl-to-dist') < packageCommand.indexOf('node esbuild.js --production'),
+      'copy-glsl-to-dist clears dist/node_modules after the Ajv runtime has been copied',
+    );
   });
 
   test('keeps dist assets out of the packaging ignore list', () => {

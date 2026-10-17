@@ -118,6 +118,28 @@ suite('VSIX runtime verification', () => {
       assert.deepStrictEqual(await checker.checkExtensionDirectory(root), []);
     });
 
+    test('accepts generated Ajv validators when their runtime modules ship in dist', async () => {
+      const root = writeExtension({
+        'dist/extension.js': `${'// padding\n'.repeat(20_000)}require("ajv/dist/runtime/validation_error");`,
+        'dist/esbuild.wasm': wasmAsset(),
+        'dist/node_modules/ajv/package.json': '{"name":"ajv"}',
+        'dist/node_modules/ajv/dist/runtime/validation_error.js': 'module.exports = {};',
+      });
+
+      assert.deepStrictEqual(await checker.checkExtensionDirectory(root), []);
+    });
+
+    test('rejects a generated validator when its copied package lacks the requested runtime module', async () => {
+      const root = writeExtension({
+        'dist/extension.js': `${'// padding\n'.repeat(20_000)}require("ajv/dist/runtime/validation_error");`,
+        'dist/esbuild.wasm': wasmAsset(),
+        'dist/node_modules/ajv/package.json': '{"name":"ajv"}',
+      });
+
+      const problems = await checker.checkExtensionDirectory(root);
+      assert.ok(problems.some((problem) => problem.includes('"ajv/dist/runtime/validation_error"')), problems.join('\n'));
+    });
+
     test('fails the package that shipped: no engine, and imports nothing provides', async () => {
       const root = writeExtension({
         'dist/extension.js': `${'// padding\n'.repeat(20_000)}await import("esbuild");`,

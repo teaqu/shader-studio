@@ -16,8 +16,12 @@ async function isEmbeddingShown(frame) {
 
 /** The shown frame hosting the Shader Studio app, found by content: VS Code's
  *  internal webview frame names differ across versions. */
-export async function findShownAppFrame(frames) {
+export async function findShownAppFrame(frames, excludedFrames = new Set()) {
   for (const frame of frames) {
+    // A disposed panel may remain visible until the workbench removes its iframe.
+    if (excludedFrames.has(frame)) {
+      continue;
+    }
     try {
       const canvas = frame.locator('.canvas-container').first();
       if (await canvas.isVisible() && await isEmbeddingShown(frame)) {

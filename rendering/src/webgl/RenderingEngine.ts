@@ -22,6 +22,8 @@ import { FPSCalculator } from "../util/FPSCalculator";
 import { ConfigValidator } from "../util/ConfigValidator";
 import type { PiRenderer, RenderingEngine as RenderingEngineInterface } from "../types";
 import type { ShaderConfig, ShaderLanguageId, StorageBufferSnapshot } from "@shader-studio/types";
+import type { FeedbackReadback, ViewerInputEvent, ViewerInputState } from '../types/ViewerInteraction';
+import type { ViewerInputListener } from '../types/ViewerInteraction';
 import type { ConfigInput } from "@shader-studio/types";
 import type { CompilationResult, Pass } from "../models";
 import { CustomUniformManager, type CustomUniform } from "./CustomUniformManager";
@@ -482,6 +484,85 @@ export class RenderingEngine implements RenderingEngineInterface {
     this.cameraManager.setEnabled(enabled);
   }
 
+  /** Applies input directly to this preview; no global DOM event is dispatched. */
+  public injectInput(events: readonly ViewerInputEvent[]): ViewerInputState {
+    for (const event of events) {
+      switch (event.type) {
+        case 'pointer_move': case 'pointer_down': case 'pointer_up':
+          this.mouseManager.inject(event.type, event.x, event.y);
+          break;
+        case 'key_down':
+          this.keyboardManager.inject(event.code, true);
+          break;
+        case 'key_up':
+          this.keyboardManager.inject(event.code, false);
+          break;
+        case 'release_all':
+          this.mouseManager.releaseAll();
+          this.keyboardManager.releaseAll();
+          break;
+      }
+    }
+    return { mouse: this.getMouse(), heldCodes: this.keyboardManager.getHeldCodes().sort() };
+  }
+
+  public subscribeInput(listener: ViewerInputListener): { dispose(): void } {
+    const mouse = this.mouseManager.onInput((type, x, y, source) => listener(type === 'pointer_up' ? { type, ...(x === undefined ? {} : { x, y }) } : { type, x: x!, y: y! }, source));
+    const keyboard = this.keyboardManager.onInput((code, down, source) => listener({ type: down ? 'key_down' : 'key_up', code }, source));
+    return { dispose: () => {
+      mouse.dispose(); keyboard.dispose();
+    } };
+  }
+
+  /** Reads numerical values from the published (front) WebGL feedback target. */
+  public readFeedback(pass: string, x: number, y: number, width: number, height: number): FeedbackReadback {
+    if (!this.gl || this.gl.isContextLost()) {
+      throw new Error('WebGL feedback is unavailable because the context is lost.');
+    }
+    validateFeedbackRectangle(x, y, width, height);
+    const buffer = this.bufferManager.getPassBuffers()[pass];
+    if (!buffer?.front?.mObjectID || !buffer.front.mTex0) {
+      throw new Error(`No readable 2D feedback buffer named ${pass}.`);
+    }
+    if (buffer.outputKind === 'cubemap') {
+      throw new Error('Cubemap feedback readback is not supported.');
+    }
+    const texture = buffer.front.mTex0;
+    if (x < 0 || y < 0 || x + width > texture.mXres || y + height > texture.mYres) {
+      throw new Error('Feedback rectangle is outside the published buffer.');
+    }
+    const gl = this.gl;
+    const previousFramebuffer = gl.getParameter(gl.READ_FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
+    const previousPack = gl.getParameter(gl.PIXEL_PACK_BUFFER_BINDING) as WebGLBuffer | null;
+    const previousAlignment = gl.getParameter(gl.PACK_ALIGNMENT) as number;
+    const previousRowLength = gl.getParameter(gl.PACK_ROW_LENGTH) as number;
+    const previousSkipRows = gl.getParameter(gl.PACK_SKIP_ROWS) as number;
+    const previousSkipPixels = gl.getParameter(gl.PACK_SKIP_PIXELS) as number;
+    try {
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, buffer.front.mObjectID);
+      gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+      gl.pixelStorei(gl.PACK_ALIGNMENT, 1);
+      gl.pixelStorei(gl.PACK_ROW_LENGTH, 0);
+      gl.pixelStorei(gl.PACK_SKIP_ROWS, 0);
+      gl.pixelStorei(gl.PACK_SKIP_PIXELS, 0);
+      const pixels = new Float32Array(width * height * 4);
+      gl.readPixels(x, y, width, height, gl.RGBA, gl.FLOAT, pixels);
+      const error = gl.getError();
+      if (error !== gl.NO_ERROR) {
+        throw new Error(`WebGL cannot read this feedback buffer numerically (0x${error.toString(16)}).`);
+      }
+      return { pass, phase: 'front/latest', origin: 'bottom-left', width, height, components: 4,
+        sourceFormat: buffer.outputFormat === 'rgba16float' ? 'rgba16float' : 'rgba32float', values: Array.from(pixels, feedbackValue) };
+    } finally {
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, previousFramebuffer);
+      gl.bindBuffer(gl.PIXEL_PACK_BUFFER, previousPack);
+      gl.pixelStorei(gl.PACK_ALIGNMENT, previousAlignment);
+      gl.pixelStorei(gl.PACK_ROW_LENGTH, previousRowLength);
+      gl.pixelStorei(gl.PACK_SKIP_ROWS, previousSkipRows);
+      gl.pixelStorei(gl.PACK_SKIP_PIXELS, previousSkipPixels);
+    }
+  }
+
   public async updateBufferAndRecompile(bufferName: string, bufferContent: string): Promise<CompilationResult | undefined> {
     // Get current passes to find the buffer
     const passes = this.shaderPipeline.getPasses();
@@ -939,5 +1020,19 @@ export class RenderingEngine implements RenderingEngineInterface {
     if (hasError) {
       throw firstError;
     }
+  }
+}
+
+function feedbackValue(value: number): number | 'NaN' | 'Infinity' | '-Infinity' {
+  if (Number.isFinite(value)) {
+    return value;
+  }
+  return Number.isNaN(value) ? 'NaN' : value < 0 ? '-Infinity' : 'Infinity';
+}
+
+function validateFeedbackRectangle(x: number, y: number, width: number, height: number): void {
+  if (!Number.isInteger(x) || !Number.isInteger(y) || !Number.isInteger(width) || !Number.isInteger(height)
+    || width < 1 || height < 1 || width * height > 4096) {
+    throw new Error('Feedback rectangle must be integer, non-empty, and at most 4096 pixels.');
   }
 }

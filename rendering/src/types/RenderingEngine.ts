@@ -4,6 +4,7 @@ import type { CompilationResult, Pass } from "../models";
 import type { TimeManager } from "../util/TimeManager";
 import type { IVariableCapturer, CaptureUniforms, CaptureCustomUniform, CaptureCompileContext } from "../capture/VariableCapturer";
 import type { PixelRegionResult } from "./PixelRegion";
+import type { FeedbackReadback, ViewerInputEvent, ViewerInputListener, ViewerInputState } from './ViewerInteraction';
 
 export interface RenderingEngine {
   initialize(glCanvas: HTMLCanvasElement, preserveDrawingBuffer?: boolean): void;
@@ -22,10 +23,13 @@ export interface RenderingEngine {
   /** Compile a complete, in-place Slang debug workspace when the backend supports Slang. */
   compileDebugPlan?(plan: DebugInstrumentationPlan, config?: ShaderConfig | null): Promise<CompilationResult | undefined>;
   getCurrentConfig(): ShaderConfig | null;
-  readStorageBuffer(name: string, start: number, count: number, point?: import('@shader-studio/types').StorageCapturePoint): Promise<StorageBufferSnapshot>;
+  readStorageBuffer(name: string, start: number, count: number, point?: import('@shader-studio/types').StorageCapturePoint, maxBytes?: number): Promise<StorageBufferSnapshot>;
   resetStorageBuffer(name: string): Promise<void>;
   writeStorageBuffer(name: string, start: number, data: ArrayBuffer): Promise<void>;
   setInputEnabled(enabled: boolean): void;
+  injectInput(events: readonly ViewerInputEvent[]): ViewerInputState;
+  subscribeInput(listener: ViewerInputListener): { dispose(): void };
+  readFeedback(pass: string, x: number, y: number, width: number, height: number): FeedbackReadback;
   updateBufferAndRecompile(bufferName: string, bufferContent: string): Promise<CompilationResult | undefined>;
   getPasses(): (Pass | RenderPassNode)[];
   /** Effective colour-attachment limits of the installed WebGPU device. */

@@ -71,3 +71,11 @@ test('findShownAppFrame treats a frame whose embedding element vanished as not s
 
   assert.equal(await findShownAppFrame([outer, app, shownOuter, shownApp]), shownApp);
 });
+
+test('findShownAppFrame excludes a closing panel even while its canvas is still visible', async () => {
+  const [closingOuter, closingApp] = webview('closing', { panelVisible: true });
+  const [openingOuter, openingApp] = webview('opening', { panelVisible: true });
+  const frames = [closingOuter, closingApp, openingOuter, openingApp];
+  assert.equal(await findShownAppFrame(frames, new Set([closingOuter, closingApp])), openingApp);
+  assert.equal(await findShownAppFrame([closingOuter, closingApp], new Set([closingApp])), null);
+});

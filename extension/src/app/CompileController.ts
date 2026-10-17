@@ -3,6 +3,7 @@ import { GlslFileTracker, isShaderDocument } from "./GlslFileTracker";
 import { ShaderProvider } from "./ShaderProvider";
 import { Messenger } from "./transport/Messenger";
 import type { ErrorMessage } from "@shader-studio/types";
+import { mcpEditGuard } from "./mcp/McpEditGuard";
 
 export type CompileMode = "hot" | "save" | "manual";
 
@@ -60,7 +61,14 @@ export class CompileController {
 
   public handleTextDocumentChange(
     event: vscode.TextDocumentChangeEvent,
-  ): void {
+  ): boolean {
+    const mcpPreviewPath = mcpEditGuard.take(event.document.uri.fsPath, event.document.getText());
+    if (mcpPreviewPath !== undefined) {
+      // MCP refreshes its explicitly selected preview after the WorkspaceEdit.
+      // Suppress this generic hot-reload event so a dependency cannot broadcast
+      // itself, or the root, to unrelated previews in the meantime.
+      return true;
+    }
     if (isShaderDocument(event.document)) {
       if (vscode.window.activeTextEditor?.document.uri.fsPath === event.document.uri.fsPath) {
         this.glslFileTracker.setLastViewedGlslFile(event.document.uri.fsPath);
@@ -68,12 +76,13 @@ export class CompileController {
       if (this.compileMode === "hot") {
         this.performShaderDocumentUpdate(event.document);
       }
-      return;
+      return false;
     }
 
     if (this.compileMode === "hot" && this.isScriptFile(event.document)) {
       this.handleScriptDocumentChange(event.document);
     }
+    return false;
   }
 
   public handleTextDocumentSave(

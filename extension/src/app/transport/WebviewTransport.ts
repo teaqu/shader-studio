@@ -1,4 +1,6 @@
 import * as vscode from "vscode";
+import { randomUUID } from 'node:crypto';
+import type { PreviewRegistry } from '../mcp/PreviewRegistry';
 import * as path from "path";
 import { MessageTransport } from "./MessageTransport";
 import { ConfigPathConverter } from "./ConfigPathConverter";
@@ -9,23 +11,73 @@ export class WebviewTransport implements MessageTransport {
   // VS Code delivers untyped JSON from independently versioned webviews.
   private messageHandler?: (message: any) => void;
   private panels: Set<vscode.WebviewPanel> = new Set();
+  private previewRegistry?: PreviewRegistry;
+  private previewIds = new Map<vscode.WebviewPanel, string>();
+  private previewCleanups = new Map<vscode.WebviewPanel, () => void>();
+
+  public attachPreviewRegistry(registry: PreviewRegistry | undefined): void {
+    if (this.previewRegistry === registry) {
+      return;
+    }
+    for (const cleanup of this.previewCleanups.values()) {
+      cleanup();
+    }
+    this.previewCleanups.clear();
+    this.previewIds.clear();
+    this.previewRegistry = registry;
+    for (const panel of this.panels) {
+      this.registerPreview(panel);
+    }
+  }
+
+  private registerPreview(panel: vscode.WebviewPanel): void {
+    if (!this.previewRegistry || this.previewCleanups.has(panel)) {
+      return;
+    }
+    const id = randomUUID();
+    this.previewIds.set(panel, id);
+    this.previewCleanups.set(panel, this.previewRegistry.register({
+      id, kind: 'webview', send: message => {
+        void panel.webview.postMessage(message);
+      },
+      sendSource: async message => {
+        if ((message as { type?: string }).type === 'shaderSource') {
+          const converted = await ConfigPathConverter.processConfigPaths(message as any, panel.webview);
+          this.handleVideoResourceRoots(converted);
+          await panel.webview.postMessage(converted);
+        } else {
+          await panel.webview.postMessage(message);
+        }
+      },
+    }));
+  }
 
   public addPanel(panel: vscode.WebviewPanel): void {
     this.panels.add(panel);
+    this.registerPreview(panel);
 
     panel.webview.onDidReceiveMessage(
-      (message) => this.messageHandler?.(message),
+      (message) => {
+        this.previewRegistry?.receive(this.previewIds.get(panel) ?? '', message);
+        if (message.type === 'viewerRpcResponse') {
+          return;
+        }
+        this.messageHandler?.(message);
+      },
       null,
       []
     );
 
     panel.onDidDispose(() => {
-      this.panels.delete(panel);
+      this.removePanel(panel);
       Logger.debug(`Webview panel disposed. Remaining panels: ${this.panels.size}`);
     });
   }
 
   public removePanel(panel: vscode.WebviewPanel): void {
+    this.previewCleanups.get(panel)?.();
+    this.previewCleanups.delete(panel);
+    this.previewIds.delete(panel);
     this.panels.delete(panel);
   }
 
@@ -74,11 +126,11 @@ export class WebviewTransport implements MessageTransport {
           panel.webview.postMessage(message);
           sentCount++;
         } else {
-          this.panels.delete(panel); // Clean up disposed panels
+          this.removePanel(panel); // Clean up disposed panels
         }
       } catch (error) {
         Logger.debug('Webview transport: panel disposed, message not sent');
-        this.panels.delete(panel);
+        this.removePanel(panel);
       }
     }
 
@@ -149,6 +201,7 @@ export class WebviewTransport implements MessageTransport {
       } catch (error) {
         // Panel may already be disposed
       }
+      this.removePanel(panel);
     }
     this.panels.clear();
   }

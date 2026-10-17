@@ -1112,21 +1112,14 @@ test('desktop pane sizes recover after the window is compressed and expanded', a
   const preview = page.getByTestId('web-preview');
   await expect(explorer).toBeVisible();
 
-  const initialExplorer = await explorer.boundingBox();
-  const explorerBoundary = initialExplorer.x + initialExplorer.width;
-  const sashes = page.locator('.standalone-dockview .dv-sash');
-  let explorerSash;
-  let explorerSashDistance = Infinity;
-  for (let index = 0; index < await sashes.count(); index += 1) {
-    const candidate = await sashes.nth(index).boundingBox();
-    const distance = candidate ? Math.abs(candidate.x + candidate.width / 2 - explorerBoundary) : Infinity;
-    if (candidate && candidate.height > candidate.width && distance < explorerSashDistance) {
-      explorerSash = candidate;
-      explorerSashDistance = distance;
-    }
-  }
-  expect(explorerSash).toBeTruthy();
-  await page.mouse.move(explorerSash.x + explorerSash.width / 2, explorerSash.y + explorerSash.height / 2);
+  // Match the split orientation rather than a global sash index: Dockview can
+  // reorder sashes when a panel opens and its tab headers finish reflowing.
+  const explorerSashLocator = page.locator(
+    '.standalone-dockview .dv-split-view-container.dv-horizontal > .dv-sash-container > .dv-sash',
+  ).first();
+  await explorerSashLocator.hover();
+  const explorerSash = await explorerSashLocator.boundingBox();
+  expect(explorerSash).not.toBeNull();
   await page.mouse.down();
   await page.mouse.move(explorerSash.x + explorerSash.width / 2 + 170, explorerSash.y + explorerSash.height / 2, { steps: 20 });
   await page.mouse.up();
@@ -1136,23 +1129,14 @@ test('desktop pane sizes recover after the window is compressed and expanded', a
   const config = page.locator('.config-panel');
   await expect(config).toBeVisible();
   const initialConfig = await config.boundingBox();
-  const toolGroup = page.locator('.standalone-dockview .dv-groupview').filter({
-    has: page.locator('.dv-default-tab-content', { hasText: /^Config$/ }),
-  });
-  const initialToolGroup = await toolGroup.boundingBox();
-  const toolBoundary = initialToolGroup.y;
-  let toolSash;
-  let toolSashDistance = Infinity;
-  for (let index = 0; index < await sashes.count(); index += 1) {
-    const candidate = await sashes.nth(index).boundingBox();
-    const distance = candidate ? Math.abs(candidate.y + candidate.height / 2 - toolBoundary) : Infinity;
-    if (candidate && candidate.width > candidate.height && distance < toolSashDistance) {
-      toolSash = candidate;
-      toolSashDistance = distance;
-    }
-  }
-  expect(toolSash).toBeTruthy();
-  await page.mouse.move(toolSash.x + toolSash.width / 2, toolSash.y + toolSash.height / 2);
+  const toolSashLocator = page.locator(
+    '.standalone-dockview .dv-split-view-container.dv-vertical > .dv-sash-container > .dv-sash',
+  );
+  await expect(toolSashLocator).toHaveCount(1);
+  await toolSashLocator.hover();
+  const toolSash = await toolSashLocator.boundingBox();
+  expect(toolSash).not.toBeNull();
+  expect(toolSash.width).toBeGreaterThan(toolSash.height);
   await page.mouse.down();
   await page.mouse.move(toolSash.x + toolSash.width / 2, toolSash.y + toolSash.height / 2 - 120, { steps: 20 });
   await page.mouse.up();
@@ -1409,7 +1393,9 @@ test('records the live preview to WebM and remembers capture settings after relo
 
   await page.getByRole('button', { name: 'Start recording', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Stop & save', exact: true })).toBeVisible();
-  await expect(page.locator(".recording-panel")).toContainText("1s elapsed");
+  // The browser can skip the exact one-second label under load. Require a
+  // positive duration; the download below still verifies real WebM bytes.
+  await expect(page.locator('.recording-panel')).toContainText(/\b[1-9]\d*s elapsed\b/);
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Stop & save', exact: true }).click();
   const download = await downloadPromise;

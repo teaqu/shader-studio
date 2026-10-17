@@ -82,7 +82,9 @@ describe('WebGPURenderingEngine storage inspection', () => {
     (engineOwners(engine).storage as unknown as { readStorageBuffer: typeof readStorageBuffer }).readStorageBuffer = readStorageBuffer;
 
     await expect(engine.readStorageBuffer('particles', 0, 1, point)).resolves.toMatchObject({ frame: 12 });
-    expect(readStorageBuffer).toHaveBeenCalledWith('particles', 0, 1, point);
+    expect(readStorageBuffer).toHaveBeenCalledWith('particles', 0, 1, point, undefined);
+    await engine.readStorageBuffer('particles', 0, 1, point, 65536);
+    expect(readStorageBuffer).toHaveBeenLastCalledWith('particles', 0, 1, point, 65536);
   });
 
   it('delegates resetting a WebGPU storage buffer to storage ownership', async () => {
