@@ -2051,6 +2051,21 @@ for (const appearance of ['light', 'dark']) {
     await expect(page.locator('html')).toHaveAttribute('data-theme', appearance);
     await expect(settings).toHaveCSS('background-color', appearance === 'dark' ? 'rgb(34, 38, 61)' : 'rgb(242, 234, 216)');
     await expect(settings.getByRole('button', { name: 'Done', exact: true })).toHaveCSS('box-shadow', appearance === 'dark' ? 'rgb(17, 21, 39) 2px 2px 0px 0px' : 'rgb(215, 205, 187) 2px 2px 0px 0px');
+    const pixelFontLoaded = await page.evaluate(async () => {
+      await document.fonts.load('12px "Shader Studio Pixel"');
+      return [...document.fonts].some(font => font.family.replaceAll('"', '') === 'Shader Studio Pixel' && font.status === 'loaded');
+    });
+    expect(pixelFontLoaded).toBe(true);
+    await expect(page.getByRole('button', { name: 'Settings', exact: true })).toHaveCSS('font-family', '"Shader Studio Pixel", monospace');
+    await expect(settings.getByRole('heading', { name: 'Settings', exact: true })).toHaveCSS('font-family', '"Shader Studio Pixel", monospace');
+    await expect(settings.getByRole('button', { name: 'Done', exact: true })).toHaveCSS('font-family', '"Shader Studio Pixel", monospace');
+    await expect(page.getByTestId('web-editor').locator('.view-lines')).not.toHaveCSS('font-family', '"Shader Studio Pixel", monospace');
+    const mobileMode = settings.getByRole('checkbox', { name: 'Mobile mode', exact: true });
+    await expect(mobileMode).toHaveCSS('border-radius', '0px');
+    await mobileMode.press('Space');
+    await expect(mobileMode).not.toBeChecked();
+    await mobileMode.press('Space');
+    await expect(mobileMode).toBeChecked();
     const list = settings.locator('.settings-list');
     const accent = appearance === 'dark' ? 'rgb(194, 166, 255)' : 'rgb(104, 66, 166)';
     await expect.poll(() => list.evaluate(el => getComputedStyle(el, '::-webkit-scrollbar-thumb').backgroundColor)).toBe(accent);
