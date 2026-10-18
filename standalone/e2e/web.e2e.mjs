@@ -9,9 +9,9 @@ import {
 import { expectStableFor } from './observable-state.mjs';
 import { waitForLanguageService } from './language-service-fixtures.mjs';
 
-test('Lumi Play loads its standalone artwork and animates Lumi, the orb and rain after reload', async ({ page }) => {
+test('Lumi loads its standalone artwork and animates Lumi, the orb and rain after reload', async ({ page }) => {
   await page.goto('/');
-  const shader = page.getByTestId('shader-option-lumi-play-glsl');
+  const shader = page.getByTestId('shader-option-lumi-glsl');
   await shader.click();
   const canvas = page.getByTestId('web-preview').locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
   const asset = await page.request.get('/assets/lumi-play.webp');
@@ -48,8 +48,11 @@ test('Lumi Play loads its standalone artwork and animates Lumi, the orb and rain
       .toBeGreaterThan(10);
     await expect.poll(async () => regionDifference(first, PNG.sync.read(await canvas.screenshot()), [.68, .05, .90, .60]))
       .toBeGreaterThan(10);
-    await expect.poll(async () => regionDifference(first, PNG.sync.read(await canvas.screenshot()), [.25, .05, .47, .43]))
-      .toBeGreaterThan(100);
+    // Motion must stay on her hoodie; the adjacent wall and plants stay still.
+    await expect.poll(async () => regionDifference(first, PNG.sync.read(await canvas.screenshot()), [.25, .40, .43, .62]))
+      .toBeGreaterThan(10);
+    expect(regionDifference(first, PNG.sync.read(await canvas.screenshot()), [.12, .18, .19, .50]))
+      .toBe(0);
     await expect(page.getByRole('button', { name: 'Copy error to clipboard', exact: true })).toHaveCount(0);
   }
 });

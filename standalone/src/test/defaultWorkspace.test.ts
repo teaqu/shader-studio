@@ -8,9 +8,9 @@ import { WebExtensionHost } from '../WebExtensionHost';
 describe('default workspace', () => {
   it('seeds Lumi Play with a standalone-only, correctly oriented artwork texture', async () => {
     const files = createDefaultWorkspaceFiles();
-    const shader = files.find(({ path }) => path === '/shaders/lumi-play.glsl');
+    const shader = files.find(({ path }) => path === '/shaders/lumi.glsl');
     expect(shader?.contents).toContain('void mainImage');
-    const config = JSON.parse(files.find(({ path }) => path === '/shaders/lumi-play.sha.json')!.contents);
+    const config = JSON.parse(files.find(({ path }) => path === '/shaders/lumi.sha.json')!.contents);
     expect(config.passes.Image.inputs.iChannel0).toEqual({
       type: 'texture', path: 'shader-studio://standalone/lumi-play',
       filter: 'linear', wrap: 'clamp', vflip: true,
@@ -18,8 +18,8 @@ describe('default workspace', () => {
     const store = new MemoryWorkspaceStore();
     const workspace = await VirtualWorkspace.open(store, files);
     const reloaded = await VirtualWorkspace.open(store, []);
-    expect(reloaded.readText('/shaders/lumi-play.glsl')).toBe(workspace.readText('/shaders/lumi-play.glsl'));
-    expect(reloaded.readText('/shaders/lumi-play.sha.json')).toBe(workspace.readText('/shaders/lumi-play.sha.json'));
+    expect(reloaded.readText('/shaders/lumi.glsl')).toBe(workspace.readText('/shaders/lumi.glsl'));
+    expect(reloaded.readText('/shaders/lumi.sha.json')).toBe(workspace.readText('/shaders/lumi.sha.json'));
     // Extension and Electron still use the shared manifest, which excludes Lumi.
     expect(Object.values(SHADER_STUDIO_DEFAULT_ASSETS)).not.toContain('shader-studio://standalone/lumi-play');
     expect(shaderStudioDefaultAssetRelativePath('shader-studio://standalone/lumi-play')).toBeNull();
@@ -46,7 +46,7 @@ describe('default workspace', () => {
         '/shaders/nebula-texture.glsl', '/shaders/desert-cubemap.glsl',
         '/shaders/glow-trails.glsl', '/shaders/glow-trails/trails.buffer.glsl',
         '/shaders/glow-trails/glow.buffer.glsl',
-        '/shaders/lumi-play.glsl',
+        '/shaders/lumi.glsl',
       ]);
     for (const file of files.filter(({ path }) => path.endsWith('.sha.json'))) {
       const config = JSON.parse(file.contents);

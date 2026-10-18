@@ -5,7 +5,7 @@ import {
   type ShaderConfig,
 } from '@shader-studio/types';
 import type { VirtualWorkspaceFile } from './VirtualWorkspace';
-import lumiPlaySource from './samples/lumi-play.glsl?raw';
+import lumiSource from './samples/lumi.glsl?raw';
 
 // This artwork is bundled by the browser app only, outside the shared manifest.
 export const STANDALONE_LUMI_PLAY_TEXTURE = 'shader-studio://standalone/lumi-play';
@@ -379,8 +379,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     ],
   },
   {
-    path: '/shaders/lumi-play.glsl',
-    code: lumiPlaySource,
+    path: '/shaders/lumi.glsl',
+    code: lumiSource,
     config: {
       version: '1.0',
       passes: {

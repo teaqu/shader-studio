@@ -21,20 +21,16 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     if(any(lessThan(sceneUV,vec2(0.)))||any(greaterThan(sceneUV,vec2(1.)))) {
         fragColor=vec4(.025,.023,.045,1.); return;
     }
-    // Soft, coherent head sway and breathing, anchored at her seated hips.
-    vec2 head=(sceneUV-vec2(.35,.76))/vec2(.16,.25);
-    float headMask=1.-smoothstep(.72,1.3,length(head));
-    vec2 torso=(sceneUV-vec2(.36,.49))/vec2(.19,.28);
-    float torsoMask=exp(-dot(torso,torso)*1.8)*smoothstep(.27,.60,sceneUV.y);
-    float sway=.0038*sin(t*.82)+.0008*sin(t*1.37);
-    float breath=.0016*sin(t*1.45);
-    vec2 handShift=vec2(.0018*sin(t*.82),.0012*sin(t*1.45));
-    float handMask=1.-smoothstep(.65,1.2,length((sceneUV-vec2(.555,.62))/vec2(.105,.15)));
+    // Subpixel breathing entirely inside the hoodie. A bounded polygon keeps
+    // the room, her face and the character silhouette fixed.
+    vec2 a=vec2(.245,.58), b=vec2(.335,.58), c=vec2(.39,.40), d=vec2(.25,.39);
+    float hoodieMask=max(inTriangle(sceneUV,a,b,c),inTriangle(sceneUV,a,c,d));
+    float hoodieEdge=min(min(segmentDistance(sceneUV,a,b),segmentDistance(sceneUV,b,c)),
+                         min(segmentDistance(sceneUV,c,d),segmentDistance(sceneUV,d,a)));
+    hoodieMask*=smoothstep(0.,.025,hoodieEdge);
     vec2 sampleUV=sceneUV;
-    sampleUV.x-=sway*headMask+sway*.35*torsoMask+handShift.x*handMask;
-    sampleUV.y-=breath*(headMask*.55+torsoMask)+handShift.y*handMask;
-    vec2 neck=sceneUV-vec2(.35,.67);
-    sampleUV+=vec2(-neck.y,neck.x)*(.007*sin(t*.68))*headMask;
+    sampleUV.x-=.00010*sin(t*.70)*hoodieMask;
+    sampleUV.y-=.00035*sin(t*.95)*hoodieMask;
     vec3 col=texture(iChannel0,sampleUV).rgb;
     vec3 cyan=vec3(.15,.85,1.), violet=vec3(.44,.24,1.), rose=vec3(1.,.25,.72);
     // Sliding water beads refract the room texture, with wet trails above them.
@@ -63,13 +59,13 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     float hue=.5+.5*sin(t*.8+sampleUV.x*160.-sampleUV.y*90.);
     col=mix(col,mix(violet,cyan,hue)*(.65+.2*sin(t*1.4)),clip*.6);
     // A real shader sphere floats just above the illustrated palm.
-    vec2 center=vec2(.581,.742)+handShift+vec2(.0015*sin(t*.65),.003*sin(t*1.05));
+    vec2 center=vec2(.581,.742)+vec2(.0015*sin(t*.65),.003*sin(t*1.05));
     vec2 q=(sceneUV-center)*vec2(imageAspect,1.)/.077;
     float angle=atan(q.y,q.x);
     float surface=1.+.014*sin(angle*5.+t*1.1)+.008*sin(angle*8.-t*.8);
     q/=surface;
     float r=length(q);
-    vec3 glowColor=mix(cyan,violet,.28+.12*sin(t*.45));
+    vec3 glowColor=mix(mix(rose,violet,.18+.08*sin(t*.45)),cyan,.12);
     col+=glowColor*.065*exp(-r*r*.7);
     col+=mix(glowColor,violet,.4)*.20*exp(-pow((r-1.)*10.,2.));
     if(r<1.) {
@@ -79,22 +75,20 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         // Transmit the real room through a moving water lens.
         vec2 bend=(-q*.023*z+waves*.0025*z)/vec2(imageAspect,1.);
         vec3 transmitted=texture(iChannel0,clamp(sampleUV+bend,vec2(.001),vec2(.999))).rgb;
-        vec3 color=mix(transmitted,col,.18)*vec3(.83,.96,1.04);
+        vec3 color=mix(transmitted,col,.18)*vec3(1.04,.89,1.02);
         float fresnel=.035+.70*pow(1.-z,3.);
-        vec3 reflection=mix(vec3(.19,.38,.55),vec3(.68,.86,1.),.5+.5*n.y);
+        vec3 reflection=mix(vec3(.28,.24,.48),vec3(.90,.80,1.),.5+.5*n.y);
         color=mix(color,reflection,fresnel);
         float ripple=pow(.5+.5*sin(q.y*17.+q.x*5.+sin(q.x*9.-t)*1.3-t*1.5),18.);
-        color+=vec3(.30,.65,.82)*ripple*.11*z;
+        color+=vec3(.85,.36,.69)*ripple*.11*z;
         // Luminous liquid ribbons curl through the transparent water.
         float magicFlow=angle*3.+z*9.+sin(q.y*5.-t*.7)*1.4-t*1.1;
         float caustic=pow(.5+.5*sin(magicFlow),20.);
         float fine=pow(.5+.5*sin(magicFlow*1.6+q.x*5.+t*.5),36.);
         float currentHue=.5+.5*sin(angle+z*2.+t*.25);
-        vec3 currentColor=currentHue<.5
-            ? mix(cyan,violet,currentHue*2.)
-            : mix(violet,rose,(currentHue-.5)*2.);
+        vec3 currentColor=mix(mix(rose,vec3(.72,.43,1.),currentHue*.6),cyan,.10+.15*currentHue);
         color+=currentColor*caustic*.65;
-        color+=vec3(.5,.94,1.)*fine*.25;
+        color+=vec3(.67,.82,1.)*fine*.25;
         // A little prism emblem drifts inside the water, using the app palette.
         float prismAngle=.12*sin(t*.45);
         vec2 prism=mat2(cos(prismAngle),-sin(prismAngle),sin(prismAngle),cos(prismAngle))*q;
@@ -103,12 +97,12 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         float triangleEdge=min(segmentDistance(prism,top,left),min(segmentDistance(prism,left,right),segmentDistance(prism,right,top)));
         float prismCut=segmentDistance(prism,vec2(-.20,.10),vec2(.05,-.25));
         float emblem=exp(-triangleEdge*110.)+exp(-prismCut*110.)*.55;
-        vec3 prismColor=mix(cyan,rose,clamp(prism.x+.5,0.,1.));
+        vec3 prismColor=mix(vec3(.75,.52,1.),rose,clamp(prism.x+.5,0.,1.));
         color+=prismColor*emblem*.43;
         color+=prismColor*exp(-triangleEdge*24.)*.055;
         float shine=pow(max(0.,dot(n,normalize(vec3(-.45,.6,1.2)))),95.);
-        color+=vec3(.85,.96,1.)*shine*.85;
-        color+=mix(cyan,violet,.5+.5*sin(angle+t*.5))*pow(1.-z,5.)*.7;
+        color+=vec3(1.,.88,.97)*shine*.85;
+        color+=mix(mix(rose,violet,.25+.2*sin(angle+t*.5)),cyan,.20)*pow(1.-z,5.)*.7;
         col=mix(col,color,1.-smoothstep(.98,1.,r));
     }
     for(int i=0;i<5;i++) {
@@ -116,10 +110,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         vec2 mote=vec2(cos(a),sin(a))*(1.2+.13*sin(f*2.+t*.4));
         float dropR=length(q-mote)/(.035+.012*sin(f));
         float light=exp(-dot(q-mote,q-mote)*300.);
-        col+=vec3(.25,.65,1.)*light*.20;
+        col+=vec3(1.,.40,.78)*light*.20;
         if(dropR<1.) {
             float dropZ=sqrt(1.-dropR*dropR);
-            col=mix(col,mix(col,cyan,.18)+vec3(.55,.85,1.)*pow(1.-dropZ,3.)*.5,1.-smoothstep(.8,1.,dropR));
+            col=mix(col,mix(col,rose,.18)+vec3(1.,.70,.93)*pow(1.-dropZ,3.)*.5,1.-smoothstep(.8,1.,dropR));
         }
     }
     fragColor=vec4(col,1.);
