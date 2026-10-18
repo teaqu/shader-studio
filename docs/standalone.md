@@ -47,7 +47,7 @@ An upload never replaces an existing file. If a filename is already present, ren
 Starter files and newly created shaders live at the workspace root. Existing standalone workspaces move files out of the old `/shaders` wrapper once and update their references. If a destination conflicts with an existing root file, the old folder is kept intact so nothing is overwritten.
 
 - Click a folder to expand or collapse it. Use the filter field to find a filename or path.
-- Ctrl/Cmd-click to toggle files in a selection, Shift-click to select a range, or use **Select** to select several files with ordinary clicks. Ctrl/Cmd+A selects all visible rows. Every selected row stays highlighted.
+- Ctrl/Cmd-click to toggle files in a selection or Shift-click to select a range. Ctrl/Cmd+A selects all visible rows. Every selected row stays highlighted.
 - Click shader source to open it in the editor and preview. Other text files, including `.sha.json` configs, open in editor tabs. Click an image, audio, or video asset to preview it; cubemap images show their face layout.
 - Use **New file** to enter a path, such as `/shared/common.glsl`. Use **New folder** to create an empty folder.
 - Drop device files onto a folder or select it and use **Upload Files** to add files there. Drop onto empty space to add files at the root. Drag files or folders within the tree to move them. When a file is selected, uploads go into its parent folder.

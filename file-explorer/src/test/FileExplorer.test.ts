@@ -50,20 +50,16 @@ it('supports Ctrl toggles, Shift ranges and selecting all files', async () => {
   expect(screen.getAllByRole('treeitem').every(row => row.getAttribute('aria-selected') === 'true')).toBe(true);
 });
 
-it('offers a visible Select mode that selects files without opening them', async () => {
+it('selects files with Ctrl without opening them or requiring a Select button', async () => {
   const { onOpen, api } = setup();
-  const button = screen.getByRole('button', { name: 'Select multiple files' });
-  await fireEvent.click(button);
-  await fireEvent.click(screen.getByRole('treeitem', { name: 'main.glsl' }));
-  await fireEvent.click(screen.getByRole('treeitem', { name: 'photo.png' }));
+  expect(screen.queryByRole('button', { name: 'Select multiple files' })).toBeNull();
+  await fireEvent.click(screen.getByRole('treeitem', { name: 'main.glsl' }), { ctrlKey: true });
+  await fireEvent.click(screen.getByRole('treeitem', { name: 'photo.png' }), { ctrlKey: true });
   expect(screen.getByRole('treeitem', { name: 'main.glsl' }).getAttribute('aria-selected')).toBe('true');
   expect(screen.getByRole('treeitem', { name: 'photo.png' }).getAttribute('aria-selected')).toBe('true');
   expect(screen.getByText('FILES')).toBeTruthy();
   expect(onOpen).not.toHaveBeenCalled();
   expect(api.readEditorFile).not.toHaveBeenCalled();
-  expect(button.getAttribute('aria-pressed')).toBe('true');
-  await fireEvent.click(button);
-  expect(button.getAttribute('aria-pressed')).toBe('false');
 });
 
 it('offers device selection in Files, defaults to root, and creates empty folders', async () => {

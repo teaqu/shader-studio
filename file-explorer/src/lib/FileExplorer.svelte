@@ -15,7 +15,6 @@
   let selected = $state('');
   let selection = $state(new Set<string>());
   let selectionAnchor = '';
-  let selectionMode = $state(false);
   let error = $state('');
   let pending = $state(false);
   let edit = $state<'new' | 'folder' | 'rename' | null>(null);
@@ -87,9 +86,9 @@
     if (pending) {
       return;
     }
-    selectPath(row.path, selectionMode && !event?.shiftKey ? { shiftKey: false, ctrlKey: true, metaKey: false } : event);
+    selectPath(row.path, event);
     context = null;
-    if (selectionMode || event?.ctrlKey || event?.metaKey || event?.shiftKey) {
+    if (event?.ctrlKey || event?.metaKey || event?.shiftKey) {
       return;
     }
     if (row.directory) {
@@ -384,7 +383,6 @@
   ondragleave={leaveDropTarget}>
   <div class="file-toolbar">
     <strong>FILES</strong>
-    <button title="Select multiple files without holding Ctrl" aria-label="Select multiple files" aria-pressed={selectionMode} disabled={pending} onclick={() => selectionMode = !selectionMode}>Select</button>
     <button title="Upload Files" aria-label="Upload Files" disabled={pending} onclick={() => uploadInput.click()}><i class="codicon codicon-cloud-upload"></i></button>
     <button title="New File" aria-label="New file" disabled={pending} onclick={() => beginEdit('new')}><i class="codicon codicon-new-file"></i></button>
     <button title="New Folder" aria-label="New folder" disabled={pending} onclick={() => beginEdit('folder')}><i class="codicon codicon-new-folder"></i></button>
@@ -459,7 +457,7 @@
   .file-tree { flex: 1; min-height: 0; overflow: auto; padding-bottom: 6px; }
   .file-row { display: flex; align-items: center; gap: 5px; width: 100%; text-align: left; height: 26px; white-space: nowrap; border-radius: 0; }
   .file-row span { overflow: hidden; text-overflow: ellipsis; }
-  .file-row.selected, .file-toolbar button[aria-pressed="true"] { color: var(--vscode-list-activeSelectionForeground, #fff); background: var(--vscode-list-activeSelectionBackground, var(--vscode-button-background, #094771)); }
+  .file-row.selected { color: var(--vscode-list-activeSelectionForeground, #fff); background: var(--vscode-list-activeSelectionBackground, var(--vscode-button-background, #094771)); }
   .file-row .codicon { flex-shrink: 0; font-size: 14px; }
   .file-row .codicon-code { color: #d7ba7d; }
   .file-row .codicon-file-media { color: #b4a1db; }

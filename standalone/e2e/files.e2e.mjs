@@ -49,9 +49,8 @@ test('selects multiple files, downloads selections and folders as ZIPs, and move
   await expect(pane.getByTitle('/multi-assets/multi-one.txt', { exact: true })).toBeVisible();
   await expect(pane.getByTitle('/multi-assets/multi-two.txt', { exact: true })).toBeVisible();
   await page.reload();
-  await pane.getByRole('button', { name: 'Select multiple files' }).click();
   await pane.getByTitle('/multi-assets/multi-one.txt', { exact: true }).click();
-  await pane.getByTitle('/multi-assets/multi-two.txt', { exact: true }).click();
+  await pane.getByTitle('/multi-assets/multi-two.txt', { exact: true }).click({ modifiers: ['Control'] });
   await expect(pane.getByTitle('/multi-assets/multi-one.txt', { exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(pane.getByTitle('/multi-assets/multi-two.txt', { exact: true })).toHaveAttribute('aria-selected', 'true');
   page.once('dialog', dialog => dialog.accept());
