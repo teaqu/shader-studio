@@ -1425,6 +1425,9 @@ module.exports = Object.freeze({
   "a8d5a6d8735adc2faf4c24694c0d87e821927683d2a88dc13f09fd447d01b0f5": async (vscode, path) => {
       await vscode.workspace.fs.delete(vscode.Uri.file(path)).then(undefined, () => {});
     },
+  "abb73f5bf26804c3e83caa0a9ffb5aeb1e5a6774d30c5e172608c1f714d35de3": vscode => {
+      setTimeout(() => vscode.commands.executeCommand('workbench.action.reloadWindow'), 100);
+    },
   "ac1126e19d37b0bc4bb092e5234d613a32702f977ab2cbbeea708d5dc2de2ea7": async (vscode, documentUri, expected) => {
       const found = vscode.languages.getDiagnostics(vscode.Uri.parse(documentUri)).find(item => item.message.toLocaleLowerCase().includes(expected.toLocaleLowerCase()));
       return found ? {
