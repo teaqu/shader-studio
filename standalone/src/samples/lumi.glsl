@@ -29,8 +29,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
                          min(segmentDistance(sceneUV,c,d),segmentDistance(sceneUV,d,a)));
     hoodieMask*=smoothstep(0.,.025,hoodieEdge);
     vec2 sampleUV=sceneUV;
-    sampleUV.x-=.00010*sin(t*.70)*hoodieMask;
-    sampleUV.y-=.00035*sin(t*.95)*hoodieMask;
+    sampleUV.x-=.00016*sin(t*.70)*hoodieMask;
+    sampleUV.y-=.00056*sin(t*.95)*hoodieMask;
     vec3 col=texture(iChannel0,sampleUV).rgb;
     vec3 cyan=vec3(.15,.85,1.), violet=vec3(.44,.24,1.), rose=vec3(1.,.25,.72);
     // Sliding water beads refract the room texture, with wet trails above them.
@@ -65,7 +65,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     float surface=1.+.014*sin(angle*5.+t*1.1)+.008*sin(angle*8.-t*.8);
     q/=surface;
     float r=length(q);
-    vec3 glowColor=mix(mix(rose,violet,.18+.08*sin(t*.45)),cyan,.12);
+    vec3 glowColor=mix(mix(rose,violet,.18+.08*sin(t*.45)),cyan,.24);
     col+=glowColor*.065*exp(-r*r*.7);
     col+=mix(glowColor,violet,.4)*.20*exp(-pow((r-1.)*10.,2.));
     if(r<1.) {
@@ -77,7 +77,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         vec3 transmitted=texture(iChannel0,clamp(sampleUV+bend,vec2(.001),vec2(.999))).rgb;
         vec3 color=mix(transmitted,col,.18)*vec3(1.04,.89,1.02);
         float fresnel=.035+.70*pow(1.-z,3.);
-        vec3 reflection=mix(vec3(.28,.24,.48),vec3(.90,.80,1.),.5+.5*n.y);
+        vec3 reflection=mix(vec3(.24,.27,.50),vec3(.82,.84,1.),.5+.5*n.y);
         color=mix(color,reflection,fresnel);
         float ripple=pow(.5+.5*sin(q.y*17.+q.x*5.+sin(q.x*9.-t)*1.3-t*1.5),18.);
         color+=vec3(.85,.36,.69)*ripple*.11*z;
@@ -86,7 +86,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         float caustic=pow(.5+.5*sin(magicFlow),20.);
         float fine=pow(.5+.5*sin(magicFlow*1.6+q.x*5.+t*.5),36.);
         float currentHue=.5+.5*sin(angle+z*2.+t*.25);
-        vec3 currentColor=mix(mix(rose,vec3(.72,.43,1.),currentHue*.6),cyan,.10+.15*currentHue);
+        vec3 currentColor=mix(mix(rose,vec3(.72,.43,1.),currentHue*.6),cyan,.22+.18*currentHue);
         color+=currentColor*caustic*.65;
         color+=vec3(.67,.82,1.)*fine*.25;
         // A little prism emblem drifts inside the water, using the app palette.
@@ -102,7 +102,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         color+=prismColor*exp(-triangleEdge*24.)*.055;
         float shine=pow(max(0.,dot(n,normalize(vec3(-.45,.6,1.2)))),95.);
         color+=vec3(1.,.88,.97)*shine*.85;
-        color+=mix(mix(rose,violet,.25+.2*sin(angle+t*.5)),cyan,.20)*pow(1.-z,5.)*.7;
+        color+=mix(mix(rose,violet,.25+.2*sin(angle+t*.5)),cyan,.32)*pow(1.-z,5.)*.7;
         col=mix(col,color,1.-smoothstep(.98,1.,r));
     }
     for(int i=0;i<5;i++) {
