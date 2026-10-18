@@ -9,6 +9,28 @@ function dropDeviceFiles(files: File[], target = screen.getByRole('tree')) {
   return fireEvent.drop(target, { dataTransfer: { types: ['Files'], files, getData: () => '' } });
 }
 
+it.each([[], null])('cancels device selection without changing the workspace (%s)', async files => {
+  const { api } = setup();
+  await fireEvent.change(screen.getByLabelText('Upload files'), { target: { files } });
+  expect(api.uploadFiles).not.toHaveBeenCalled();
+});
+
+it('disables device uploads while saving and reports a single-file completion', async () => {
+  const { api } = setup();
+  let finishUpload: () => void = () => {};
+  api.uploadFiles.mockImplementationOnce(() => new Promise<void>(resolve => {
+    finishUpload = resolve;
+  }));
+  const file = new File(['source'], 'single.glsl');
+  await fireEvent.change(screen.getByLabelText('Upload files'), { target: { files: [file] } });
+  expect(api.uploadFiles).toHaveBeenCalledWith([file], '/');
+  expect((screen.getByRole('button', { name: 'Upload Files' }) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.queryByText('Added 1 file to /.')).toBeNull();
+  finishUpload();
+  await screen.findByText('Added 1 file to /.');
+  expect((screen.getByRole('button', { name: 'Upload Files' }) as HTMLButtonElement).disabled).toBe(false);
+});
+
 it('supports Ctrl toggles, Shift ranges and selecting all files', async () => {
   setup();
   const main = screen.getByRole('treeitem', { name: 'main.glsl' });
