@@ -1,6 +1,7 @@
 import { PNG } from 'pngjs';
 import { expect, test } from '@playwright/test';
 import { putWorkspaceFiles, readWorkspaceFiles } from './workspace-store.mjs';
+import { useSharedShaderEditor } from './explorer-preferences.mjs';
 
 // Slang rendering needs a WebGPU adapter in headless Chromium.
 test.use({ launchOptions: { args: ['--enable-unsafe-webgpu'] } });
@@ -67,9 +68,8 @@ test('Viewing follows line rendering and restores the selected buffer when line 
   await preview.getByLabel('Toggle debug mode').click();
   await page.getByLabel('Toggle inline rendering', { exact: true }).click();
   const editor = page.locator('[data-testid="file-editor"][data-path="/line-buffer.glsl"]');
-  await editor.locator('.view-lines').click();
-  await page.keyboard.press('ControlOrMeta+Home');
-  await page.keyboard.press('ArrowDown');
+  // Click the line itself: ControlOrMeta+Home is not document start on macOS.
+  await editor.locator('.view-line').filter({ hasText: 'vec4 tint' }).click();
   await page.keyboard.press('End');
   await expect(page.getByLabel('Currently previewing A', { exact: true })).toHaveText('Viewing · L2');
   await expect(preview.locator('.preview-output-label')).toHaveText('line-cards.glsl › A · Line 2');
@@ -174,6 +174,8 @@ for (const [language, locked] of ['glsl', 'slang', 'wgsl'].flatMap(language => [
 for (const language of ['glsl', 'slang', 'wgsl']) {
   for (const source of ['common', 'vertex']) {
     test(`double-clicking ${language} ${source} keeps standalone responsive`, async ({ page }) => {
+      // The pass opens beside the shared editor, which the test checks after reload.
+      await useSharedShaderEditor(page);
       const pageErrors = [];
       page.on('pageerror', error => pageErrors.push(error.message));
       // Seed before the app mounts so its workspace autosave cannot overwrite the fixture.
@@ -277,6 +279,8 @@ test('a detached buffer retains its owner Common authoring context after preview
 
 test('navigating during an editor save preserves both shader files after reload', async ({ page }) => {
   const { workspace } = await import('./language-service-fixtures.mjs');
+  // Saves from the shared editor race the preview navigation it follows.
+  await useSharedShaderEditor(page);
   await page.addInitScript(() => {
     const schedule = window.setTimeout.bind(window);
     window.pendingEditorSaves = [];

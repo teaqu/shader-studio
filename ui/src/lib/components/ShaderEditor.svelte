@@ -918,7 +918,12 @@
     // - it would never react to another compile result. Editor creation applies
     // the current errors itself, so skipping the call here is safe.
     const currentErrors = errors;
-    if (editor) {
+    // Errors describe `shaderPath`. When the path and its errors change in the
+    // same flush, this runs before the model swap, and models are shared per
+    // file: another pane may still show the file this editor is leaving. The
+    // swap updates editorModelUri, which re-runs this for the right model.
+    const showingPath = !shaderPath || editorModelUri === monaco.Uri.file(shaderPath).toString();
+    if (editor && showingPath) {
       updateErrorMarkers(currentErrors);
     }
   });
