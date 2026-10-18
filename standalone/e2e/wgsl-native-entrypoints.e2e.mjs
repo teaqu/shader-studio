@@ -63,7 +63,7 @@ test('WGSL native Insert appends one buffer and one compute entry point, then pe
 
   // The saved project preference governs the single Buffer action.
   await page.getByRole('button', { name: '+ New' }).click();
-  await page.getByRole('menuitem', { name: 'Buffer' }).click();
+  await page.getByRole('menuitem', { name: 'Buffer', exact: true }).click();
   const buffer = page.locator('.tab-content').filter({ has: page.getByLabel('Render entry points') });
   await expect(buffer.getByRole('button', { name: 'Built-in', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await buffer.getByRole('button', { name: 'Choose shader file' }).click();
@@ -125,7 +125,7 @@ test('WGSL native render selector saves a deliberate fragment choice and hook cr
   await page.getByRole('combobox', { name: 'Fragment function' }).selectOption('fragmentB');
   await page.getByRole('radio', { name: 'Built-in / mainVertex' }).check();
   await page.getByRole('button', { name: '+ New' }).click();
-  await page.getByRole('menuitem', { name: 'Buffer' }).click();
+  await page.getByRole('menuitem', { name: 'Buffer', exact: true }).click();
 
   await expect.poll(async () => JSON.parse((await workspace(page))[`/${stem}.sha.json`])).toMatchObject({
     passes: { Image: { inputs: {} }, BufferA: { inputs: {} } },
@@ -265,7 +265,7 @@ test('new native WGSL Image compiles and makes native Buffer the default', async
 
   await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
   await page.getByRole('button', { name: '+ New' }).click();
-  await page.getByRole('menuitem', { name: 'Buffer' }).click();
+  await page.getByRole('menuitem', { name: 'Buffer', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Built-in', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(async () => JSON.parse((await workspace(page))['/native-image-created.sha.json']).passes.BufferA).toMatchObject({ entryPoints: {} });
 });
@@ -291,7 +291,7 @@ test('new native Slang Image compiles, then inserts Buffer and Compute into the 
 
   await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
   await page.getByRole('button', { name: '+ New' }).click();
-  await page.getByRole('menuitem', { name: 'Buffer' }).click();
+  await page.getByRole('menuitem', { name: 'Buffer', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Built-in', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Choose shader file' }).click();
   await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: '/native-slang-created.slang', exact: true }).click();

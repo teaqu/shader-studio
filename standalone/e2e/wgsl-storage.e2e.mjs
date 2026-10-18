@@ -146,7 +146,16 @@ test(`storage workspace saves structured layout and lifecycle changes and uses c
   await expect(config.getByRole('option', { name: 'After Seed', exact: true })).toHaveCount(0);
   await config.getByRole('tab', { name: 'Settings', exact: true }).click();
   const actionHeights = await config.locator('.storage-panel button:not([role="tab"]):not(nav button)').evaluateAll(items => items.map(item => Math.round(item.getBoundingClientRect().height)));
-  expect(new Set(actionHeights)).toEqual(new Set([32]));
+  // Every storage action uses the theme's shared control height.
+  const controlHeight = await page.evaluate(() => {
+    const probe = document.createElement('span');
+    probe.style.cssText = 'display:block;height:var(--shader-studio-control-height)';
+    document.body.append(probe);
+    const height = Math.round(probe.getBoundingClientRect().height);
+    probe.remove();
+    return height;
+  });
+  expect(new Set(actionHeights)).toEqual(new Set([controlHeight]));
   const inputTheme = await config.getByLabel('Element count').evaluate(item => {
     const style = getComputedStyle(item);
     const probe = document.createElement('span');

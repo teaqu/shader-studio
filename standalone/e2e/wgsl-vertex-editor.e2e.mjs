@@ -13,7 +13,7 @@ for (const language of ['wgsl', 'slang']) {
     await page.goto('/');
     await page.getByTestId(`shader-option-${stem}-${language}`).click();
     await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
-    await page.getByRole('button', { name: 'BufferA Remove BufferA', exact: true }).click();
+    await page.getByRole('button', { name: 'BufferA', exact: true }).click();
     const main = page.locator('.tab-content .buffer-details > .config-item').first();
     await page.getByRole('group', { name: 'Fragment function controls' }).getByRole('button', { name: 'Add function…', exact: true }).click();
     const path = `/owned-new.${language}`;
