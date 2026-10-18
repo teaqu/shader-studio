@@ -18,6 +18,7 @@ import {
 import { WebExtensionHost } from './WebExtensionHost';
 import { syncSettingsAcrossTabs } from './settings/syncSettingsAcrossTabs';
 import { StandaloneSettings } from './settings/StandaloneSettings';
+import { uploadWorkspaceFiles } from './workspaceUploads';
 
 const EXPLORER_STATE_KEY = 'shader-studio-explorer-state';
 
@@ -352,6 +353,10 @@ export class WebTransport implements Transport {
   /** A portable snapshot for user-initiated download; it includes pending edits. */
   async exportWorkspaceBackup(): Promise<string> {
     return (await this.workspace).exportBackup();
+  }
+
+  async uploadFiles(files: readonly File[]): Promise<void> {
+    await this.trackMessage(this.workspace.then(workspace => uploadWorkspaceFiles(workspace, files)), false);
   }
 
   /** Import requires `{ replace: true }` whenever there are existing files. */

@@ -76,6 +76,9 @@
       : `Work saves automatically. ${storageStatus.persisted === null ? 'Storage protection could not be confirmed.' : 'Storage protection is not enabled.'} The browser may remove local work if space runs low. Export workspace backups to keep a separate copy.`
     : '');
   let workspaceFileInput: HTMLInputElement;
+  let uploadFileInput: HTMLInputElement;
+  let uploadPending = $state(false);
+  let uploadStatus = $state('');
   const session = $derived(getViewerSession());
   const explorerApi = transport.getShaderExplorerHostApi();
   let shellMounted = false;
@@ -192,6 +195,27 @@
       workspaceError = error instanceof Error
         ? `Could not import workspace: ${error.message}`
         : 'Could not import the workspace. Your current work was not changed.';
+    }
+  }
+
+  async function uploadFiles(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const files = Array.from(input.files ?? []);
+    input.value = '';
+    workspaceMenuOpen = false;
+    if (!files.length) {
+      return;
+    }
+    workspaceError = '';
+    uploadStatus = '';
+    uploadPending = true;
+    try {
+      await transport.uploadFiles(files);
+      uploadStatus = `Added ${files.length} file${files.length === 1 ? '' : 's'} to /shaders/.`;
+    } catch (error) {
+      workspaceError = error instanceof Error ? `Upload failed: ${error.message}` : 'Could not upload files.';
+    } finally {
+      uploadPending = false;
     }
   }
 
@@ -366,6 +390,7 @@
       {#if workspaceMenuOpen}
         <div class="dropdown-menu" role="menu" aria-label="Workspace">
           <button onclick={resetLayout}>Reset workspace layout</button>
+          <button disabled={uploadPending} onclick={() => uploadFileInput.click()}>{uploadPending ? 'Uploading…' : 'Upload Files…'}</button>
           <button onclick={exportWorkspace}>Export Workspace Backup</button>
           <button onclick={() => workspaceFileInput.click()}>Import Workspace Backup…</button>
           {#if storageStatus?.backend === 'indexeddb' && storageStatus.persistSupported && !storageStatus.persisted}
@@ -433,6 +458,8 @@
     </span>
   </header>
   <input class="visually-hidden" bind:this={workspaceFileInput} type="file" accept="application/json,.json" onchange={importWorkspace} />
+  <input class="visually-hidden" aria-label="Upload files" bind:this={uploadFileInput} type="file" multiple onchange={uploadFiles} />
+  {#if uploadStatus}<p role="status">{uploadStatus}</p>{/if}
   {#if alphaNoticeVisible}
     <aside class="alpha-notice" data-testid="web-alpha-warning" role="note">
       <span>

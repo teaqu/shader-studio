@@ -482,9 +482,22 @@ export class WebExtensionHost {
       case 'requestLayout':
         this.emitViewer({ type: 'restoreLayout', payload: { layoutSlot: payload.layoutSlot ?? null, state: null } });
         return;
-      case 'requestWorkspaceFiles':
-        this.emitViewer({ type: 'workspaceFiles', payload: { files: [] } });
+      case 'requestWorkspaceFiles': {
+        const extensions = Array.isArray(payload.extensions)
+          ? payload.extensions.filter((value): value is string => typeof value === 'string').map(value => value.toLowerCase()) : [];
+        const shaderPath = typeof payload.shaderPath === 'string' ? payload.shaderPath : this.activeShaderPath ?? '';
+        const directory = virtualConfiguredPathHost.dirnameOf(shaderPath);
+        const files = this.workspace.list().filter(file =>
+          extensions.includes(file.path.split('.').pop()?.toLowerCase() ?? '') && file.contents.startsWith('data:'))
+          .map(file => ({
+            name: file.path.slice(file.path.lastIndexOf('/') + 1),
+            workspacePath: file.path,
+            thumbnailUri: file.contents,
+            isSameDirectory: virtualConfiguredPathHost.dirnameOf(file.path) === directory,
+          }));
+        this.emitViewer({ type: 'workspaceFiles', payload: { files } });
         return;
+      }
       default:
         return;
     }
@@ -846,18 +859,20 @@ export class WebExtensionHost {
     }
     try {
       const config = JSON.parse(this.workspace.readText(path)) as ShaderConfig;
-      this.resolveConfigAssets(config);
+      this.resolveConfigAssets(config, shaderPath);
       return { config };
     } catch {
       return { config: null, error: `Failed to parse config: ${path}` };
     }
   }
 
-  private resolveConfigAssets(config: ShaderConfig): void {
+  private resolveConfigAssets(config: ShaderConfig, shaderPath: string): void {
     for (const pass of Object.values(config.passes ?? {})) {
       for (const input of Object.values(pass?.inputs ?? {})) {
         if ('path' in input && typeof input.path === 'string') {
-          const resolved = this.resolveDefaultAsset(input.path);
+          const path = this.resolveSourcePath(shaderPath, input.path);
+          const contents = path && this.workspace.exists(path) ? this.workspace.readText(path) : null;
+          const resolved = contents?.startsWith('data:') ? contents : this.resolveDefaultAsset(input.path);
           if (resolved) {
             input.resolved_path = resolved;
           }

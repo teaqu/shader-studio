@@ -9,6 +9,42 @@ import {
 import { expectStableFor } from './observable-state.mjs';
 import { waitForLanguageService } from './language-service-fixtures.mjs';
 
+test('uploads shader files and assets through Workspace and keeps them after reload', async ({ page }) => {
+  const image = new PNG({ width: 1, height: 1 });
+  image.data.set([0, 255, 0, 255]);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Upload Files…', exact: true }).click();
+  await (await chooser).setFiles([
+    { name: 'uploaded.glsl', mimeType: 'text/plain', buffer: Buffer.from('void mainImage(out vec4 c, vec2 p) { c = texture(iChannel0, p / iResolution.xy); }') },
+    { name: 'uploaded.sha.json', mimeType: 'application/json', buffer: Buffer.from('{"version":"1.0","passes":{"Image":{"inputs":{"iChannel0":{"type":"texture","path":"photo.png"}}}}}') },
+    { name: 'photo.png', mimeType: 'image/png', buffer: PNG.sync.write(image) },
+  ]);
+  await expect(page.getByText('Added 3 files to /shaders/.')).toBeVisible();
+  await page.getByTestId('shader-option-uploaded-glsl').click();
+  await expect(page.getByTestId('web-editor')).toContainText('mainImage');
+  const expectGreen = async () => {
+    const canvas = page.getByTestId('web-preview').locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
+    await expect.poll(async () => {
+      const pixels = PNG.sync.read(await canvas.screenshot());
+      const offset = (Math.floor(pixels.height / 2) * pixels.width + Math.floor(pixels.width / 2)) * 4;
+      return [...pixels.data.subarray(offset, offset + 3)];
+    }).toEqual([0, 255, 0]);
+  };
+  await expectGreen();
+  await page.reload();
+  await expect(page.getByTestId('shader-option-uploaded-glsl')).toBeVisible();
+  await expectGreen();
+  const files = await readWorkspaceFiles(page);
+  expect(files.find(file => file.path === '/shaders/photo.png').contents).toMatch(/^data:image\/png;base64,/);
+  expect(files.find(file => file.path === '/shaders/uploaded.sha.json').contents).toContain('photo.png');
+  // A collision must leave the saved shader intact.
+  await page.getByLabel('Upload files', { exact: true }).setInputFiles({ name: 'uploaded.glsl', mimeType: 'text/plain', buffer: Buffer.from('overwrite') });
+  await expect(page.getByRole('alert').filter({ hasText: 'Upload failed:' })).toContainText('File already exists');
+  expect((await readWorkspaceFiles(page)).find(file => file.path === '/shaders/uploaded.glsl').contents).toContain('mainImage');
+});
+
 // Single-tab headers are revealed by the user's top-edge hover, not by locator
 // visibility: opacity-zero headers still have boxes but cannot receive input.
 async function revealStandaloneTabs(page) {

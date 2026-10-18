@@ -36,6 +36,7 @@ type TestTransport = WebTransport & {
   flush: ReturnType<typeof vi.fn>;
   exportWorkspaceBackup: ReturnType<typeof vi.fn>;
   importWorkspaceBackup: ReturnType<typeof vi.fn>;
+  uploadFiles: ReturnType<typeof vi.fn>;
   onPersistenceStatus: ReturnType<typeof vi.fn>;
   getStorageStatus: ReturnType<typeof vi.fn>;
   requestPersistentStorage: ReturnType<typeof vi.fn>;
@@ -50,6 +51,7 @@ function createTransport(): TestTransport {
     flush: vi.fn().mockResolvedValue(undefined),
     exportWorkspaceBackup: vi.fn().mockResolvedValue('{"workspace":true}'),
     importWorkspaceBackup: vi.fn().mockResolvedValue(undefined),
+    uploadFiles: vi.fn().mockResolvedValue(undefined),
     onPersistenceStatus: vi.fn((listener) => {
       listener({ state: 'saved' });
       return vi.fn();
@@ -90,6 +92,39 @@ function createStorage(): Storage {
 }
 
 describe('standalone App', () => {
+  it('opens the multi-file upload picker from Workspace and reports completion', async () => {
+    const transport = createTransport();
+    render(App, { props: { transport } });
+    const input = screen.getByLabelText('Upload files') as HTMLInputElement;
+    expect(input.multiple).toBe(true);
+    const click = vi.spyOn(input, 'click');
+    await fireEvent.click(screen.getByRole('button', { name: /^Workspace$/ }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Upload Files…' }));
+    expect(click).toHaveBeenCalledOnce();
+    const files = [new File(['source'], 'new.glsl'), new File(['image'], 'photo.png')];
+    await fireEvent.change(input, { target: { files } });
+    expect(transport.uploadFiles).toHaveBeenCalledWith(files);
+    await waitFor(() => expect(screen.getByText('Added 2 files to /shaders/.')).toBeTruthy());
+    expect(input.value).toBe('');
+  });
+
+  it('cancels uploads without changing the workspace', async () => {
+    const transport = createTransport();
+    render(App, { props: { transport } });
+    await fireEvent.change(screen.getByLabelText('Upload files'), { target: { files: [] } });
+    expect(transport.uploadFiles).not.toHaveBeenCalled();
+  });
+
+  it.each([new Error('Filename already exists'), 'failed'])('shows upload errors and enables another attempt', async error => {
+    const transport = createTransport();
+    transport.uploadFiles.mockRejectedValueOnce(error);
+    render(App, { props: { transport } });
+    await fireEvent.change(screen.getByLabelText('Upload files'), { target: { files: [new File(['x'], 'a.glsl')] } });
+    expect((await screen.findByRole('alert')).textContent).toContain(error instanceof Error ? error.message : 'Could not upload files.');
+    await fireEvent.click(screen.getByRole('button', { name: /^Workspace$/ }));
+    expect((screen.getByRole('button', { name: 'Upload Files…' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('uses the global Native mode when opening a new shader', async () => {
     const transport = createTransport();
     transport.settings.update('webgpu.defaultRenderAuthoring', 'native');

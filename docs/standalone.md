@@ -30,6 +30,14 @@ See the [Quick Start](quick-start.md#step-3-write-your-shader) for example shade
 
 ## Configure Sources and Outputs
 
+### Upload Files
+
+Open **Workspace → Upload Files…** to select shader sources, matching `.sha.json` configuration files, or assets from your device. You can select several files at once. Files are added to `/shaders/` in your browser workspace; your other work stays in place. Uploaded shaders appear in **Shader Explorer**. Upload each shader and its config together to keep their settings.
+
+In **Config**, choose an uploaded texture, cubemap, volume, audio, or video file from the channel's asset browser or **Browse** picker. Files uploaded together share a directory, so a config can refer to an asset by filename, such as `photo.png`. For buffer and vertex sources, use **Change…** to choose an uploaded source.
+
+An upload never replaces an existing file. If a filename is already present, rename the file on your device and select the files again. Uploads save in this browser and are included in workspace backups. Browser storage limits still apply; if saving fails, keep the original files and export a backup before closing the app. Files are stored locally in the browser and are not sent to a server.
+
 Image always uses the main shader file. Buffer and compute tabs show an editable **File** path with **Change…**: choose another file already used by the config, browse the virtual workspace, or create a source. Function rows show the available native entry points. **Add function…** writes to the file belonging to that stage and saves the selected function.
 
 Vertex sources use **Built-in**, **Same file**, or **Separate file**. Same file hides the duplicate path; Separate file shows it and reads vertex functions from there. Native render templates start with a fragment and use the generated vertex stage. Compute has native function rows and no Built-in/Native chooser.
@@ -71,6 +79,5 @@ In shader paths, `@/` means the top level of your browser workspace. For example
 - Script passes and their custom uniforms.
 - Model geometry assets.
 - Slang imports/includes.
-- Local workspace asset selection. The asset picker currently offers the bundled texture and cubemap.
 
 Use the VS Code extension for these features.
