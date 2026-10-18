@@ -10,13 +10,13 @@ test('active shader files open together, switch cleanly and can be disabled', as
   await page.goto('/__active_files__');
   const code = 'void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(1.0); }';
   await putWorkspaceFiles(page, [
-    ['/shaders/first.glsl', code], ['/shaders/second.glsl', code],
-    ['/shaders/first.buffer.glsl', code], ['/shaders/shared.buffer.glsl', code],
-    ['/shaders/first.sha.json', JSON.stringify({ passes: { Image: {}, A: { path: 'first.buffer.glsl' }, B: { path: 'shared.buffer.glsl' } } })],
-    ['/shaders/second.sha.json', JSON.stringify({ passes: { Image: {}, B: { path: 'shared.buffer.glsl' } } })],
+    ['/first.glsl', code], ['/second.glsl', code],
+    ['/first.buffer.glsl', code], ['/shared.buffer.glsl', code],
+    ['/first.sha.json', JSON.stringify({ passes: { Image: {}, A: { path: 'first.buffer.glsl' }, B: { path: 'shared.buffer.glsl' } } })],
+    ['/second.sha.json', JSON.stringify({ passes: { Image: {}, B: { path: 'shared.buffer.glsl' } } })],
   ].map(([path, contents]) => ({ path, contents, createdAt: 1, modifiedAt: 1 })));
   await page.goto('/');
-  const editor = path => page.locator(`[data-testid="file-editor"][data-path="/shaders/${path}"]`);
+  const editor = path => page.locator(`[data-testid="file-editor"][data-path="/${path}"]`);
   await page.getByTestId('shader-option-first-glsl').click();
   await expect(editor('first.glsl')).toBeVisible();
   await expect(editor('first.buffer.glsl')).toHaveCount(1);
@@ -54,9 +54,9 @@ test('Viewing follows line rendering and restores the selected buffer when line 
   await page.route('**/__line_cards__', route => route.fulfill({ contentType: 'text/html', body: '<html></html>' }));
   await page.goto('/__line_cards__');
   await putWorkspaceFiles(page, [
-    ['/shaders/line-cards.glsl', 'void mainImage(out vec4 color, in vec2 coord) { color = vec4(0.0, 1.0, 0.0, 1.0); }'],
-    ['/shaders/line-buffer.glsl', 'void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n  vec4 tint = vec4(0.0, 0.0, 1.0, 1.0);\n  fragColor = vec4(1.0, 0.0, 0.0, 1.0);\n}'],
-    ['/shaders/line-cards.sha.json', JSON.stringify({ version: '1', passes: { Image: {}, A: { path: 'line-buffer.glsl' } } })],
+    ['/line-cards.glsl', 'void mainImage(out vec4 color, in vec2 coord) { color = vec4(0.0, 1.0, 0.0, 1.0); }'],
+    ['/line-buffer.glsl', 'void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n  vec4 tint = vec4(0.0, 0.0, 1.0, 1.0);\n  fragColor = vec4(1.0, 0.0, 0.0, 1.0);\n}'],
+    ['/line-cards.sha.json', JSON.stringify({ version: '1', passes: { Image: {}, A: { path: 'line-buffer.glsl' } } })],
   ].map(([path, contents]) => ({ path, contents, createdAt: 1, modifiedAt: 1 })));
   await page.goto('/');
   await page.getByTestId('shader-option-line-cards-glsl').click();
@@ -66,7 +66,7 @@ test('Viewing follows line rendering and restores the selected buffer when line 
   await page.locator('[data-tab-name="A"]').dblclick();
   await preview.getByLabel('Toggle debug mode').click();
   await page.getByLabel('Toggle inline rendering', { exact: true }).click();
-  const editor = page.locator('[data-testid="file-editor"][data-path="/shaders/line-buffer.glsl"]');
+  const editor = page.locator('[data-testid="file-editor"][data-path="/line-buffer.glsl"]');
   await editor.locator('.view-lines').click();
   await page.keyboard.press('ControlOrMeta+Home');
   await page.keyboard.press('ArrowDown');
@@ -120,15 +120,15 @@ for (const [language, locked] of ['glsl', 'slang', 'wgsl'].flatMap(language => [
     const sample = language === 'glsl' ? 'texture(iChannel0, coord / iResolution.xy)'
       : language === 'slang' ? 'iChannel0.Sample(coord / iResolution.xy)' : 'iChannel0Sample(coord / iResolution.xy)';
     await putWorkspaceFiles(page, [
-      [`/shaders/main.${language}`, shader(`${vector}(1.0, 0.0, 0.0, 1.0)`)],
-      [`/shaders/green.${language}`, shader(`${vector}(0.0, 1.0, 0.0, 1.0)`)],
-      [`/shaders/blue.${language}`, shader(`${vector}(0.0, 0.0, 1.0, 1.0)`)],
-      [`/shaders/pass/buffer.${language}`, shader(sample)],
-      ['/shaders/main.sha.json', JSON.stringify({ version: '1.0', passes: {
+      [`/main.${language}`, shader(`${vector}(1.0, 0.0, 0.0, 1.0)`)],
+      [`/green.${language}`, shader(`${vector}(0.0, 1.0, 0.0, 1.0)`)],
+      [`/blue.${language}`, shader(`${vector}(0.0, 0.0, 1.0, 1.0)`)],
+      [`/pass/buffer.${language}`, shader(sample)],
+      ['/main.sha.json', JSON.stringify({ version: '1.0', passes: {
         Source: { path: `green.${language}` },
         BufferA: { path: `pass/buffer.${language}`, inputs: { iChannel0: { type: 'buffer', source: 'Source' } } }, Image: {},
       } })],
-      ['/shaders/pass/buffer.sha.json', JSON.stringify({ version: '1.0', passes: {
+      ['/pass/buffer.sha.json', JSON.stringify({ version: '1.0', passes: {
         Source: { path: `../blue.${language}` }, Image: { inputs: { iChannel0: { type: 'buffer', source: 'Source' } } },
       } })],
     ].map(([path, contents]) => ({ path, contents, createdAt: 1, modifiedAt: 1 })));
@@ -148,7 +148,7 @@ for (const [language, locked] of ['glsl', 'slang', 'wgsl'].flatMap(language => [
     }
     await preview.getByLabel('Toggle config panel').click();
     await page.locator('[data-tab-name="BufferA"]').dblclick();
-    await expect(page.locator(`[data-testid="file-editor"][data-path="/shaders/pass/buffer.${language}"] .monaco-editor`)).toBeVisible();
+    await expect(page.locator(`[data-testid="file-editor"][data-path="/pass/buffer.${language}"] .monaco-editor`)).toBeVisible();
     await expect(lock).toHaveAttribute('aria-pressed', String(locked));
     await expect.poll(pixel).toEqual([255, 0, 0]);
     await page.getByRole('button', { name: 'Preview BufferA', exact: true }).click();

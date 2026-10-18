@@ -14,8 +14,8 @@ describe('WebTransport', () => {
   it('defaults active files on, tracks two previews, and persists opting out', async () => {
     const transport = new WebTransport();
     const first = transport.createViewerTransport(), second = transport.createViewerTransport();
-    first.postMessage({ type: 'previewFilesChanged', payload: { shaderPath: '/shaders/aurora.glsl' } });
-    second.postMessage({ type: 'previewFilesChanged', payload: { shaderPath: '/shaders/glow-trails.glsl' } });
+    first.postMessage({ type: 'previewFilesChanged', payload: { shaderPath: '/aurora.glsl' } });
+    second.postMessage({ type: 'previewFilesChanged', payload: { shaderPath: '/glow-trails.glsl' } });
     await transport.flush();
     expect(getActiveShaderEditors()).toHaveLength(2);
     expect(getActiveShaderEditors()?.[1].files.length).toBeGreaterThan(1);
@@ -29,7 +29,7 @@ describe('WebTransport', () => {
 
   it('prompts only for unsaved edits, saving on acceptance and retaining on cancellation', async () => {
     const transport = new WebTransport();
-    const path = '/shaders/aurora.glsl';
+    const path = '/aurora.glsl';
     await transport.readEditorFile(path);
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     expect(await transport.confirmEditorClose(path)).toBe(true);
@@ -55,12 +55,12 @@ describe('WebTransport', () => {
 
   it('keeps the editor open and reports a failed save', async () => {
     const transport = new WebTransport();
-    await transport.readEditorFile('/shaders/aurora.glsl');
-    transport.markEditorDirty('/shaders/aurora.glsl');
+    await transport.readEditorFile('/aurora.glsl');
+    transport.markEditorDirty('/aurora.glsl');
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     const alert = vi.spyOn(window, 'alert').mockImplementation(() => {});
     vi.spyOn(transport, 'flush').mockRejectedValue(new Error('disk full'));
-    expect(await transport.confirmEditorClose('/shaders/aurora.glsl')).toBe(false);
+    expect(await transport.confirmEditorClose('/aurora.glsl')).toBe(false);
     expect(alert).toHaveBeenCalledWith(expect.stringContaining('kept open'));
     transport.dispose();
   });
