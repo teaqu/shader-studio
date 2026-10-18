@@ -383,6 +383,7 @@ test('Turbo selects the expected suites for representative changes', { timeout: 
     // Global dependencies select everything; documentation nothing.
     ['.github/workflows/verify.yml', all],
     ['vite.aliases.mjs', all],
+    ['styles/controls.css', all],
     ['docs/index.md', []],
     ['contributing/mobile-testing.md', []],
   ];
