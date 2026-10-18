@@ -626,7 +626,7 @@ ${WGSL_MESH_FRAGMENT_ENTRY_POINT}`,
   };
 }
 
-function buildFullscreenEntryPoints(vertexCode: string, hasAuthoredHook = false, vr = false): WgslEntryPoints {
+function buildFullscreenEntryPoints(vertexCode: string, hasAuthoredHook: boolean, vr: boolean): WgslEntryPoints {
   const hook = vertexCode.trim() ? vertexCode : "";
   if (hook !== "" || hasAuthoredHook) {
     return {

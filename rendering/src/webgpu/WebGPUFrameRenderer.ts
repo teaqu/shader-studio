@@ -77,8 +77,7 @@ export class WebGPUFrameRenderer {
   pendingScreenshotCopies: Array<(encoder: GPUCommandEncoder, texture: GPUTexture) => void> = [];
   private completedComputePasses: ReadonlySet<string> = new Set();
   /** The latest submitted frame's inputs, reused by headset eye draws. */
-  private latestFrameInput: FrameUniformInput | null = null;
-  private latestCustomUniformValues: CaptureCustomUniform[] | null = null;
+  private latestFrame: { input: FrameUniformInput; customValues: CaptureCustomUniform[] } | null = null;
 
   renderFrame(time: number, capture: boolean, imageOnly = false, captureCanvas?: (encoder: GPUCommandEncoder, texture: GPUTexture) => void): void {
     try {
@@ -117,8 +116,7 @@ export class WebGPUFrameRenderer {
     // captured when the pause began, so e.g. mouse movement can't keep
     // driving a "paused" shader.
     const { frameInput, frameCustomUniformValues } = this.resolveFrameUniforms(time, isPaused);
-    this.latestFrameInput = frameInput;
-    this.latestCustomUniformValues = frameCustomUniformValues;
+    this.latestFrame = { input: frameInput, customValues: frameCustomUniformValues };
 
     // A shader installed while paused still submits one complete initial
     // frame. TimeManager's frame stays at zero while paused, so the engine
@@ -387,15 +385,14 @@ export class WebGPUFrameRenderer {
   renderVrEye(view: VrEyeView, target: GPUTexture): boolean {
     const device = this.host.device;
     const pass = this.host.session.passGraph.find(candidate => candidate.name === "Image" && candidate.output === "canvas");
-    const pipeline = pass ? this.host.session.passPipelines.get(pass.name) : undefined;
+    const pipeline = this.host.session.passPipelines.get("Image");
     const gpuPipeline = pipeline?.getPipeline();
     const uniformBuffer = pipeline?.getUniformBuffer();
     const bindGroup = pipeline?.getBindGroup();
-    const frameInput = this.latestFrameInput;
-    if (!device || !pass || !gpuPipeline || !uniformBuffer || !bindGroup || !frameInput) {
+    if (!device || !pass || !gpuPipeline || !uniformBuffer || !bindGroup || !this.latestFrame) {
       return false;
     }
-    const customValues = this.latestCustomUniformValues ?? this.host.session.customUniformManager.getCurrentValues();
+    const { input: frameInput, customValues } = this.latestFrame;
     const camera = this.host.geometry.passCameraMatrices(pass);
     const data = packShaderToyUniforms({
       channelCount: getShaderToyChannelCount(pass.channels),

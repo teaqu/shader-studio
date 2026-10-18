@@ -55,6 +55,10 @@ describe("WebXrEyeCompositor", () => {
       .toThrow("failed to compile: bad shader");
     expect(compileFailure.deleteShader).toHaveBeenCalledWith("shader-11");
 
+    const silentFailure = gl({ getShaderParameter: vi.fn(() => false), getShaderInfoLog: vi.fn(() => null) });
+    expect(() => new WebXrEyeCompositor(silentFailure as unknown as WebGL2RenderingContext).draw(null, { x: 0, y: 0, width: 1, height: 1 }, source))
+      .toThrow("failed to compile: unknown error");
+
     const missingShader = gl({ createShader: vi.fn(() => null) });
     expect(() => new WebXrEyeCompositor(missingShader as unknown as WebGL2RenderingContext).draw(null, { x: 0, y: 0, width: 1, height: 1 }, source))
       .toThrow("could not create a shader");

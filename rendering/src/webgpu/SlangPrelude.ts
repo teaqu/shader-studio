@@ -225,7 +225,7 @@ MeshVertexOut ${SLANG_ENTRY_VERTEX}([[vk::location(0)]] float3 position : POSITI
 ${MESH_FRAGMENT_ENTRY_POINT}`;
 }
 
-function buildFullscreenEntryPoints(vertexCode: string, hasAuthoredHook = false, vr = false): string {
+function buildFullscreenEntryPoints(vertexCode: string, hasAuthoredHook: boolean, vr: boolean): string {
   if (!vertexCode.trim() && !hasAuthoredHook) {
     return buildEntryPoints(vr);
   }

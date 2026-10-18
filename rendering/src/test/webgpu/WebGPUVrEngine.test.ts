@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { engineOwners } from "./engineOwners";
-import { UNIFORM_OFFSETS } from "../../webgpu/SlangPrelude";
+import { SHADERTOY_UNIFORM_SIZE, UNIFORM_OFFSETS } from "../../webgpu/SlangPrelude";
 import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
 import type { VrEyeView } from "../../webxr/WebXrFrameData";
 import { WgslCompiler } from "../../webgpu/WgslCompiler";
@@ -230,6 +230,29 @@ describe("WebGPU VR engine", () => {
     fresh.engine.render(1000);
     createElement.mockImplementation((() => ({ getContext: () => null })) as never);
     expect(xrState.host.renderEye(eye, 0)).toBeNull();
+  });
+
+  it("returns no eye image when the graph has no canvas Image pass", () => {
+    const eye: VrEyeView = { viewport: { x: 0, y: 0, width: 4, height: 4 }, rayTransform: new Float32Array(16) };
+    const { engine, owners } = setup([{ name: "Image", width: 8, height: 8, output: "texture", kind: "render", geometry: "fullscreen", channels: [], source: VR_SOURCE }]);
+    engine.render(1000);
+    expect(xrState.host.renderEye(eye, 0)).toBeNull();
+    (owners.session as any).passGraph = [];
+    expect(xrState.host.renderEye(eye, 0)).toBeNull();
+  });
+
+  it("draws eyes with the latest frame's custom uniform values", () => {
+    const { engine, writeBuffer, owners } = setup();
+    install(engine);
+    const manager = owners.session.customUniformManager;
+    vi.spyOn(manager, "getUniformInfo").mockReturnValue([{ name: "gain", type: "float" }]);
+    const values = vi.spyOn(manager, "getCurrentValues").mockReturnValue([{ name: "gain", type: "float", value: 2.5 }]);
+    engine.render(1000);
+    values.mockReturnValue([{ name: "gain", type: "float", value: 9 }]);
+    writeBuffer.mockClear();
+    xrState.host.renderEye({ viewport: { x: 0, y: 0, width: 4, height: 4 }, rayTransform: new Float32Array(16) }, 0);
+    const data = writeBuffer.mock.calls[0][2] as ArrayBuffer;
+    expect(new Float32Array(data, SHADERTOY_UNIFORM_SIZE, 1)[0]).toBe(2.5);
   });
 
   it("clamps an eye to the device texture limit", () => {
