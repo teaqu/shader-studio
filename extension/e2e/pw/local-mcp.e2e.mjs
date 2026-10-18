@@ -236,7 +236,8 @@ test('generic MCP edits files and captures both webview and server preview @gpu'
     browser = undefined;
     await call('replay_inputs', { previewId, mode: 'reset-and-play' });
     await expect.poll(async () => (await call('get_input_replay', { previewId })).structuredContent.state).toBe('completed');
-    await expect.poll(async () => (await feedback())[0]).toBe(2);
+    const replayedTimeline = completed.inputTimeline.events.map(item => `${item.event.type}${item.event.code ? `:${item.event.code}` : ''}@${item.time.toFixed(3)}`).join(' ');
+    await expect.poll(async () => (await feedback())[0], { message: `replay did not count both Space presses; recorded timeline: ${replayedTimeline}` }).toBe(2);
 
     // Request a few timed PNGs without starting a video encoder.
     const frameJob = (await call('start_frame_capture', { previewId, times: [0, 0.1, 0.2], mode: 'reset-and-play', width: 80, height: 45 })).structuredContent;
