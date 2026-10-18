@@ -684,6 +684,24 @@ describe('WebTransport preview file and save edge cases', () => {
     expect(getActiveShaderEditors() ?? []).toHaveLength(0);
   });
 
+  it('focuses an explorer-selected pass that the tracked preview already has open', async () => {
+    const transport = tracking(new WebTransport());
+    transport.postMessage({ type: 'previewFilesChanged', payload: { shaderPath: '/glow-trails.glsl' } });
+    await transport.flush();
+    expect(getActiveShaderEditors()?.[0].files).toContain('/glow-trails/trails.buffer.glsl');
+    const explorer = transport.getShaderExplorerHostApi();
+    // The preview stays on its owner, so the selected pass is shown in its tab.
+    explorer.postMessage({ type: 'openShader', path: '/glow-trails/trails.buffer.glsl' });
+    await transport.flush();
+    expect(getSelectedEditor()).toBe('/glow-trails/trails.buffer.glsl');
+    resetShellState();
+    // Another shader is opened by the preview change, not by a direct selection.
+    explorer.postMessage({ type: 'openShader', path: '/aurora.glsl' });
+    await transport.flush();
+    expect(getSelectedEditor()).toBeNull();
+    transport.dispose();
+  });
+
   it('forgets a viewer that closes while its file report is pending and delegates editor state', async () => {
     const transport = tracking(new WebTransport());
     const viewer = transport.createViewerTransport();

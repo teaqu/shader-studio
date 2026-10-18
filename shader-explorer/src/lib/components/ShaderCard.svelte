@@ -33,6 +33,15 @@
   let width = $derived(layoutMode === 'row' ? (compact ? 72 : 96) : Math.round(cardSize * 2.286));
   let height = $derived(layoutMode === 'row' ? (compact ? 41 : 54) : Math.round(width * 9 / 16));
 
+  let cardElement = $state<HTMLDivElement | null>(null);
+  // A newly selected card can sit outside the scrolled list, such as a fork
+  // added above it, and its thumbnail only renders once it is visible.
+  $effect(() => {
+    if (selected) {
+      cardElement?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    }
+  });
+
   const openMenu = $derived(getOpenContextMenu());
   let menuElement = $state<HTMLDivElement | null>(null);
 
@@ -97,6 +106,7 @@
   class:compact
   class:selected
   data-testid={testId}
+  bind:this={cardElement}
   role="button"
   tabindex="0"
   aria-pressed={selected}

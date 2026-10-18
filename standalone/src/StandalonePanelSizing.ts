@@ -45,8 +45,12 @@ export class StandalonePanelSizing {
     }
     const panels = this.fixedPanels();
     const fixedGroups = new Set(panels.map((panel) => panel.api.group));
+    // A group stacked in a fixed panel's column (Files under the Explorer)
+    // takes that column's width, so only side-by-side groups absorb resizing.
+    const fixedColumns = [...fixedGroups].map(columnOf);
     const flexibleGroups = new Set(this.api.panels
-      .filter((panel) => panel.api.group.api.isVisible && !fixedGroups.has(panel.api.group))
+      .filter((panel) => panel.api.group.api.isVisible && !fixedGroups.has(panel.api.group)
+        && !fixedColumns.some((column) => sharesColumn(column, columnOf(panel.api.group))))
       .map((panel) => panel.api.group));
     // With no editor or other flexible group, let the remaining panels fill the workspace.
     if (!flexibleGroups.size) {
@@ -137,4 +141,16 @@ export class StandalonePanelSizing {
       this.storage?.setItem(PANEL_WIDTHS_STORAGE_KEY, JSON.stringify(this.widths));
     } catch { /* Resizing remains usable when browser storage is unavailable. */ }
   }
+}
+
+interface Column { left: number; right: number }
+
+function columnOf(group: { element?: HTMLElement }): Column | null {
+  const rect = group.element?.getBoundingClientRect();
+  return rect ? { left: rect.left, right: rect.right } : null;
+}
+
+/** Two groups in one column overlap horizontally; side-by-side groups do not. */
+function sharesColumn(first: Column | null, second: Column | null): boolean {
+  return Boolean(first && second) && Math.min(first!.right, second!.right) - Math.max(first!.left, second!.left) > 1;
 }
