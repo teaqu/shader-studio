@@ -1,6 +1,10 @@
 import { expect, test } from '@playwright/test';
 import { setDebugPanelControl } from './debug-panel-controls.mjs';
 import { workspace } from './language-service-fixtures.mjs';
+import { useSharedShaderEditor } from './explorer-preferences.mjs';
+
+// These tests edit through the shared editor rather than per-file editors.
+test.beforeEach(({ context }) => useSharedShaderEditor(context));
 
 async function openFixture(page, stem, source, config = { version: '1.0', passes: { Image: { inputs: {} } } }) {
   await page.route('**/__native_entrypoint_fixture__', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Fixture</title>' }));

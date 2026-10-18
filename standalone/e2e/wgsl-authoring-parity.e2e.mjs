@@ -1,5 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { workspace } from './language-service-fixtures.mjs';
+import { useSharedShaderEditor } from './explorer-preferences.mjs';
+
+// These tests edit through the shared editor rather than per-file editors.
+test.beforeEach(({ context }) => useSharedShaderEditor(context));
 
 async function openShader(page, basename, files) {
   // Seed before starting the app: its background saves must not race fixture writes.

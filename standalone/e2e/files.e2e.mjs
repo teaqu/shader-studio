@@ -4,6 +4,10 @@ import JSZip from 'jszip';
 import { readFile } from 'node:fs/promises';
 import { addShaderFiles, putWorkspaceFiles, readWorkspaceFiles, removeWorkspacePaths } from './workspace-store.mjs';
 import { dropDeviceFiles } from './file-drop.mjs';
+import { useSharedShaderEditor } from './explorer-preferences.mjs';
+
+// These tests edit through the shared editor rather than per-file editors.
+test.beforeEach(({ context }) => useSharedShaderEditor(context));
 
 test('selects multiple files, downloads selections and folders as ZIPs, and moves and deletes selections', async ({ page }, testInfo) => {
   await page.goto('/');
@@ -20,7 +24,7 @@ test('selects multiple files, downloads selections and folders as ZIPs, and move
   const one = pane.getByTitle('/multi-one.txt', { exact: true });
   const two = pane.getByTitle('/multi-two.txt', { exact: true });
   await one.click();
-  await two.click({ modifiers: ['Control'] });
+  await two.click({ modifiers: ['ControlOrMeta'] });
   await expect(one).toHaveAttribute('aria-selected', 'true');
   await expect(two).toHaveAttribute('aria-selected', 'true');
   // Selection must remain visible on every row after focus moves to another row.
@@ -42,7 +46,7 @@ test('selects multiple files, downloads selections and folders as ZIPs, and move
   const folderZip = await downloadZip('multi-assets.zip');
   expect([...await folderZip.file('multi-assets/pixel.png').async('uint8array')]).toEqual([0, 128, 255]);
   await one.click();
-  await two.click({ modifiers: ['Control'] });
+  await two.click({ modifiers: ['ControlOrMeta'] });
   await expect(one).toHaveAttribute('aria-selected', 'true');
   await expect(two).toHaveAttribute('aria-selected', 'true');
   await one.dragTo(pane.getByTitle('/multi-assets', { exact: true }));
@@ -50,7 +54,7 @@ test('selects multiple files, downloads selections and folders as ZIPs, and move
   await expect(pane.getByTitle('/multi-assets/multi-two.txt', { exact: true })).toBeVisible();
   await page.reload();
   await pane.getByTitle('/multi-assets/multi-one.txt', { exact: true }).click();
-  await pane.getByTitle('/multi-assets/multi-two.txt', { exact: true }).click({ modifiers: ['Control'] });
+  await pane.getByTitle('/multi-assets/multi-two.txt', { exact: true }).click({ modifiers: ['ControlOrMeta'] });
   await expect(pane.getByTitle('/multi-assets/multi-one.txt', { exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(pane.getByTitle('/multi-assets/multi-two.txt', { exact: true })).toHaveAttribute('aria-selected', 'true');
   page.once('dialog', dialog => dialog.accept());

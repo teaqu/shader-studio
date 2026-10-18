@@ -1,5 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { waitForLanguageService, workspace } from './language-service-fixtures.mjs';
+import { useSharedShaderEditor } from './explorer-preferences.mjs';
+
+// These tests edit through the shared editor rather than per-file editors.
+test.beforeEach(({ context }) => useSharedShaderEditor(context));
 
 const wideFixtures = [
   {

@@ -38,16 +38,19 @@ test('compute file and function rows add native code to their source and expose 
       const probe = document.createElement('span');
       probe.style.backgroundColor = 'var(--vscode-input-background)';
       probe.style.color = 'var(--vscode-input-foreground)';
+      probe.style.padding = 'var(--shader-studio-control-padding)';
       element.parentElement.append(probe);
       const expected = getComputedStyle(probe);
       const result = { background: actual.backgroundColor, color: actual.color,
-        expectedBackground: expected.backgroundColor, expectedColor: expected.color, padding: actual.padding };
+        expectedBackground: expected.backgroundColor, expectedColor: expected.color, padding: actual.padding,
+        expectedPadding: expected.padding };
       probe.remove();
       return result;
     });
     expect(styles.background).toBe(styles.expectedBackground);
     expect(styles.color).toBe(styles.expectedColor);
-    expect(styles.padding).toBe('8px 12px');
+    // Config controls share the theme's control padding.
+    expect(styles.padding).toBe(styles.expectedPadding);
   }
   await page.getByLabel('Compute output layer').selectOption('2');
   await page.reload();

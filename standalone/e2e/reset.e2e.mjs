@@ -1,6 +1,10 @@
 import { expect, test } from '@playwright/test';
 import { PNG } from 'pngjs';
 import { addShaderFiles } from './workspace-store.mjs';
+import { useSharedShaderEditor } from './explorer-preferences.mjs';
+
+// These tests edit through the shared editor rather than per-file editors.
+test.beforeEach(({ context }) => useSharedShaderEditor(context));
 
 const image = `void mainImage(out vec4 color, in vec2 fragCoord) {
   vec2 uv = fragCoord / iResolution.xy;

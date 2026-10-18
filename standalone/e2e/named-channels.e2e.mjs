@@ -25,8 +25,9 @@ async function expectGreen(page) {
     return [...data.subarray(offset, offset + 3)];
   }).toEqual([0, 255, 0]);
 }
-async function replaceSource(page, code) {
-  const editor = page.getByTestId('web-editor');
+async function replaceSource(page, path, code) {
+  // Active-file tracking (the default) opens each selected shader in its own editor.
+  const editor = page.locator(`[data-testid="file-editor"][data-path="${path}"]`);
   await editor.locator('.view-lines').click();
   await page.keyboard.press('ControlOrMeta+A');
   await page.keyboard.insertText(code);
@@ -46,7 +47,7 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
       [`named.${language}`, initial],
       ['named.sha.json', JSON.stringify({ version: '1', passes: { Image: { inputs: { albedo: { type: 'keyboard' } } } } })],
     ], `named-${language}`);
-    await replaceSource(page, good);
+    await replaceSource(page, `/named.${language}`, good);
     await expectGreen(page);
     await expect.poll(async () => (await workspace(page))['/named.' + language]).toBe(good);
     await page.reload();
@@ -62,7 +63,7 @@ test('WGSL named channel Load renders after editing and persists across reload',
     ['load.sha.json', JSON.stringify({ version: '1', passes: { Image: { inputs: { albedo: { type: 'keyboard' } } } } })],
   ], 'load-wgsl');
 
-  await replaceSource(page, good);
+  await replaceSource(page, '/load.wgsl', good);
   await expectGreen(page);
   await expect.poll(async () => (await workspace(page))['/load.wgsl']).toBe(good);
   await page.reload();
@@ -84,7 +85,7 @@ test('WGSL compute reports implicit sampling and recovers after an explicit-LOD 
   await page.getByTitle('Options', { exact: true }).click();
   await page.getByLabel('Hide buffer files', { exact: true }).uncheck();
   await page.getByTestId('shader-option-update-wgsl').click();
-  await replaceSource(page, valid);
+  await replaceSource(page, '/update.wgsl', valid);
   await expect.poll(async () => (await workspace(page))['/update.wgsl']).toBe(valid);
   await page.getByTestId('shader-option-stage-wgsl').click();
   await expectGreen(page);

@@ -1,5 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { workspace } from './language-service-fixtures.mjs';
+import { useSharedShaderEditor } from './explorer-preferences.mjs';
+
+// These tests edit through the shared editor rather than per-file editors.
+test.beforeEach(({ context }) => useSharedShaderEditor(context));
 
 // Headless Chromium needs this flag to expose a WebGPU adapter for Slang.
 test.use({ launchOptions: { args: ['--enable-unsafe-webgpu'] } });

@@ -1,6 +1,10 @@
 import { expect, test } from '@playwright/test';
 import { setDebugPanelControl } from './debug-panel-controls.mjs';
 import { addShaderFiles } from './workspace-store.mjs';
+import { useSharedShaderEditor } from './explorer-preferences.mjs';
+
+// These tests edit through the shared editor rather than per-file editors.
+test.beforeEach(({ context }) => useSharedShaderEditor(context));
 
 async function seedWorkspaceFiles(page, entries) {
   // Write the fixture before the app starts so its workspace persistence cannot

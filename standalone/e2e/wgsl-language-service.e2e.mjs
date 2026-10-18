@@ -5,6 +5,10 @@ import {
   readWorkspaceLayout,
   seedLegacyWorkspace,
 } from './workspace-store.mjs';
+import { useSharedShaderEditor } from './explorer-preferences.mjs';
+
+// These tests edit through the shared editor rather than per-file editors.
+test.beforeEach(({ context }) => useSharedShaderEditor(context));
 
 async function seedWorkspace(page, entries) {
   await addShaderFiles(page, entries);

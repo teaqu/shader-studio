@@ -1,6 +1,10 @@
 import { expect, test } from '@playwright/test';
 import { PNG } from 'pngjs';
 import { workspace } from './language-service-fixtures.mjs';
+import { useSharedShaderEditor } from './explorer-preferences.mjs';
+
+// These tests edit through the shared editor rather than per-file editors.
+test.beforeEach(({ context }) => useSharedShaderEditor(context));
 
 async function expectGreen(page) {
   const canvas = page.getByTestId('web-preview').locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
