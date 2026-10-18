@@ -380,7 +380,7 @@ test.describe('WGSL debug parity in the VS Code webview @gpu', () => {
       await showFileAtLine(vscode, imagePath, 1);
       await ensureShaderView(vscode);
       let frame = await vscode.shaderFrame();
-      await expect(frame.locator('.preview-output-label')).toContainText('image.wgsl', { timeout: 30_000 });
+      await expect(frame.locator('.main-container')).toHaveAttribute('data-shader-path', imagePath, { timeout: 30_000 });
       await enableVariableInspector(frame);
       await setPreviewLocked(frame, true);
 
@@ -394,13 +394,13 @@ test.describe('WGSL debug parity in the VS Code webview @gpu', () => {
       await setPreviewLocked(frame, false);
       await showFileAtLine(vscode, loopParametersPath, 4);
       frame = await vscode.shaderFrame();
-      const label = frame.locator('.preview-output-label');
-      await expect(label, `attempt ${attempt + 1}: the opened shader never showed`)
-        .toContainText('loop-parameters.wgsl', { timeout: 30_000 });
+      const viewer = frame.locator('.main-container');
+      await expect(viewer, `attempt ${attempt + 1}: the opened shader never showed`)
+        .toHaveAttribute('data-shader-path', loopParametersPath, { timeout: 30_000 });
       // The owner's answer is one host round trip behind; sample past it.
       for (let sample = 0; sample < 10; sample++) {
-        await expect(label, `attempt ${attempt + 1}: the owner's late refresh replaced the opened shader`)
-          .toContainText('loop-parameters.wgsl', { timeout: 1 });
+        await expect(viewer, `attempt ${attempt + 1}: the owner's late refresh replaced the opened shader`)
+          .toHaveAttribute('data-shader-path', loopParametersPath, { timeout: 1 });
         await frame.page().waitForTimeout(200);
       }
       await expect.poll(

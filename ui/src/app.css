@@ -1940,15 +1940,15 @@ canvas {
   .standalone-app .tab-content { padding: 8px; }
 }
 
-/* Shared Config and Export panel tabs. */
-:is(.config-panel, .recording-panel) .tab-navigation {
+/* Export panel tabs. The Config panel lays its passes out as cards (configPanel.css). */
+.recording-panel .tab-navigation {
   gap: 16px;
   padding: 0 16px;
   background: transparent;
 }
 
-:is(.config-panel, .recording-panel) .tab-navigation .tab-button,
-:is(.config-panel, .recording-panel) .tab-navigation .add-tab-btn {
+.recording-panel .tab-navigation .tab-button,
+.recording-panel .tab-navigation .add-tab-btn {
   min-height: var(--shader-studio-tab-height);
   padding: var(--shader-studio-tab-padding);
   background: transparent;
@@ -1960,14 +1960,14 @@ canvas {
   font-weight: 400;
 }
 
-:is(.config-panel, .recording-panel) .tab-navigation .tab-button.active {
+.recording-panel .tab-navigation .tab-button.active {
   background: transparent;
   border-bottom-color: var(--vscode-focusBorder);
   color: var(--vscode-foreground);
 }
 
-:is(.config-panel, .recording-panel) .tab-navigation .tab-button:hover,
-:is(.config-panel, .recording-panel) .tab-navigation .add-tab-btn:hover {
+.recording-panel .tab-navigation .tab-button:hover,
+.recording-panel .tab-navigation .add-tab-btn:hover {
   background: transparent;
   color: var(--vscode-foreground);
 }
