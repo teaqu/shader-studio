@@ -5,6 +5,10 @@ import {
   type ShaderConfig,
 } from '@shader-studio/types';
 import type { VirtualWorkspaceFile } from './VirtualWorkspace';
+import lumiPlaySource from './samples/lumi-play.glsl?raw';
+
+// This artwork is bundled by the browser app only, outside the shared manifest.
+export const STANDALONE_LUMI_PLAY_TEXTURE = 'shader-studio://standalone/lumi-play';
 
 const EMPTY_CONFIG: ShaderConfig = {
   version: '1.0',
@@ -374,6 +378,23 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
       },
     ],
   },
+  {
+    path: '/shaders/lumi-play.glsl',
+    code: lumiPlaySource,
+    config: {
+      version: '1.0',
+      passes: {
+        Image: {
+          inputs: {
+            iChannel0: {
+              type: 'texture', path: STANDALONE_LUMI_PLAY_TEXTURE,
+              filter: 'linear', wrap: 'clamp', vflip: true,
+            },
+          },
+        },
+      },
+    },
+  },
 ];
 
 export function createDefaultWorkspaceFiles(): VirtualWorkspaceFile[] {
@@ -398,6 +419,8 @@ export function createDefaultWorkspaceFiles(): VirtualWorkspaceFile[] {
 }
 
 export function resolveDefaultAssetUrl(path: string, baseUrl = document.baseURI): string | null {
-  const relativePath = shaderStudioDefaultAssetRelativePath(path);
+  const relativePath = path === STANDALONE_LUMI_PLAY_TEXTURE
+    ? 'assets/lumi-play.webp'
+    : shaderStudioDefaultAssetRelativePath(path);
   return relativePath ? new URL(relativePath, baseUrl).toString() : null;
 }
