@@ -19,7 +19,19 @@ Each shader in your workspace appears as a card showing a live-rendered thumbnai
 
 - **Click a card** to open the shader file in the editor and refresh its thumbnail preview.
 - **Right-click a card** to open a context menu with options to open the shader, open its config, or delete it.
-- **Open files on select** — when enabled, clicking a card opens the shader file in the editor. Toggle this off in the options panel if you prefer to browse thumbnails without switching files.
+- **Open file when selecting a shader** — when enabled, clicking a card opens the shader file in the editor. Turn this off to change the preview without opening its file. This control is hidden while **Only keep active shader files open** manages the editor tabs.
+
+## Keep Files with Their Preview
+
+Open **Explorer settings** (the gear button), find **Files**, and enable **Only keep active shader files open**. It is **on by default in standalone** and **off by default in VS Code**. VS Code also exposes it as `shader-studio.explorer.keepActiveShaderFiles` in Settings.
+
+The active preview opens its main shader, linked buffer, Common and vertex sources. The `.sha.json` config is not opened automatically. Switching to another shader opens that shader's files and closes shader tabs outside the active previews, including shader files you opened separately. Closing a tab does not delete its file. Other tabs, such as notes or a README, stay open.
+
+In VS Code, each preview maintains its own editor group. With two previews, switching one replaces its file set while the other preview's files stay open. A locked preview keeps its own files until its displayed shader changes or the preview closes. Standalone currently provides one preview pane.
+
+If an old file has **unsaved changes**, closing it asks first. VS Code uses its usual save dialog; **Cancel** keeps that file open. Standalone normally saves automatically, but pending or failed saves prompt you to save and close; cancelling or a failed save keeps the file open. Saved files close without a prompt. Cancelling does not undo the preview switch.
+
+Turning the setting off leaves the current tabs open and stops managing them. The feature uses each preview's known source files; it does not search other shaders' configs to guess ownership.
 
 ## Search and Sort
 
@@ -32,13 +44,15 @@ Each shader in your workspace appears as a card showing a live-rendered thumbnai
 
 ## Display Options
 
-Click the options button to expand the display settings panel:
+Click the gear button to open **Explorer settings** over the shader list. Settings are grouped into **Display**, **Filters**, and **Files** and save immediately. Close with the × button, Escape, or a click outside. **Reset to defaults** restores all Display, Filters and Files options, including the host-specific default for active shader files.
 
 - **Card size** — slider (100–1000px width) to control how large shader cards appear. Only available in grid layout mode.
-- **Layout** — toggle between **grid** (cards in a responsive grid) and **row** (cards in a single-column list with larger thumbnails).
-- **Page size** — dropdown to show 10, 20, 30, 50, or 100 shaders per page.
-- **Hide failed** — checkbox to hide shaders that failed to compile or render.
-- **Open files on select** — checkbox to control whether clicking a card opens the file in the editor.
+- **Layout** — toggle between **Grid** (cards in a responsive grid) and **List** (cards in a single-column list with larger thumbnails).
+- **Per page** — dropdown to show 10, 20, 30, 50, or 100 shaders per page.
+- **Hide buffer files** and **Hide vertex files** — hide matching buffer and vertex filenames from the explorer.
+- **Hide failed previews** — checkbox to hide shaders that failed to compile or render.
+- **Open file when selecting a shader** — controls whether clicking a card opens its file when automatic file management is off.
+- **Only keep active shader files open** — opens and retires file sets with the active previews, as described above.
 
 ## Refresh
 

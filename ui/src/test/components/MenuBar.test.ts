@@ -138,6 +138,17 @@ describe('MenuBar', () => {
     });
   });
 
+  it('explains the current lock state and click action on hover', async () => {
+    const { rerender } = renderMenuBar();
+    const button = screen.getByLabelText('Toggle lock');
+    expect(button).toHaveAttribute('title', 'Unlocked: linked buffer files keep this shader preview. Opening another shader switches the preview. Click to lock this shader.');
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+
+    await rerender({ ...defaultProps, isLocked: true });
+    expect(button).toHaveAttribute('title', 'Locked: preview stays on this shader while you edit other files. Click to unlock and follow the active shader file.');
+    expect(button).toHaveAttribute('aria-pressed', 'true');
+  });
+
   describe('volume slider', () => {
     it('should render volume slider in options menu and dispatch volume changes', async () => {
       renderMenuBar();
@@ -585,7 +596,7 @@ describe('MenuBar', () => {
     expect(profiles.switchTo).toHaveBeenCalledWith('focused');
   });
 
-  it('keeps the locked command available from the compact options menu', async () => {
+  it.each([false, true])('explains lock state (%s) in the compact options menu', async isLocked => {
     vi.stubGlobal('ResizeObserver', class {
       constructor(private readonly callback: ResizeObserverCallback) {}
       observe() {
@@ -595,12 +606,16 @@ describe('MenuBar', () => {
       disconnect() {}
     });
     try {
-      renderMenuBar({ ...defaultProps, isLocked: true });
+      renderMenuBar({ ...defaultProps, isLocked });
       await tick();
 
       await fireEvent.click(screen.getByLabelText('Open options menu'));
       const command = screen.getAllByLabelText('Toggle lock').at(-1)!;
-      expect(command).toHaveTextContent('Unlock');
+      expect(command).toHaveTextContent(isLocked ? 'Unlock' : 'Lock');
+      expect(command).toHaveAttribute('title', isLocked
+        ? 'Locked: preview stays on this shader while you edit other files. Click to unlock and follow the active shader file.'
+        : 'Unlocked: linked buffer files keep this shader preview. Opening another shader switches the preview. Click to lock this shader.');
+      expect(command).toHaveAttribute('aria-pressed', String(isLocked));
       await fireEvent.click(command);
       expect(defaultProps.onToggleLock).toHaveBeenCalledOnce();
     } finally {

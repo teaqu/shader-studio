@@ -12,10 +12,11 @@
     type IContentRenderer,
   } from 'dockview-core';
   import 'dockview-core/dist/styles/dockview.css';
-  import { setupDockviewTabs } from '@shader-studio/ui/lib/layout/dockviewTabs';
+  import { setupDockviewTabs, createShaderTab } from '@shader-studio/ui/lib/layout/dockviewTabs';
   import { StandaloneLayoutController, type StandalonePanelId } from './StandaloneLayoutController';
   import { StandalonePanelSizing } from './StandalonePanelSizing';
   import { getViewerSession } from '@shader-studio/ui/lib/state/viewerSession.svelte';
+  import { getActiveShaderEditors } from './state/shellState.svelte';
   import EditorPane from './EditorPane.svelte';
   import type { WebTransport } from './WebTransport';
   import { HostedPanels } from './HostedPanels';
@@ -55,6 +56,10 @@
 
   $effect(() => {
     controller?.setEditorPath(getViewerSession()?.shaderPath ?? '');
+  });
+
+  $effect(() => {
+    void controller?.syncShaderEditors(getActiveShaderEditors());
   });
 
   $effect(() => {
@@ -125,6 +130,8 @@
     sources.set('preview', previewSource);
 
     dockviewApi = createDockview(dockviewElement, {
+      defaultTabComponent: 'shader-tab',
+      createTabComponent: createShaderTab,
       createComponent: (options) => ['debug', 'config', 'performance', 'recording'].includes(options.name)
         ? hostedPanels.createRenderer(options.name as HostedPanelId)
         : options.name === 'file-editor' ? new FileEditorRenderer()
@@ -145,7 +152,7 @@
     disposeTabVisibility = setupDockviewTabs(dockviewElement, dockviewApi);
     controller = new StandaloneLayoutController(dockviewApi, undefined, (path) => {
       transport?.getShaderExplorerHostApi().postMessage({ type: 'activateShader', path });
-    });
+    }, path => transport?.confirmEditorClose(path) ?? Promise.resolve(true));
     // Establish the available size before assigning default panel widths.
     dockviewApi.layout(dockviewElement.clientWidth, dockviewElement.clientHeight);
     controller.initialize();

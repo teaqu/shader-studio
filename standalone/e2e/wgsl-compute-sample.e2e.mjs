@@ -21,7 +21,7 @@ test('the bundled WGSL compute sample renders its particle density grid', async 
   const explorer = page.getByTestId('web-shader-explorer');
   const sample = explorer.getByTestId('shader-option-particle-swarm-wgsl');
   await expect(sample).toBeVisible();
-  // Pass sources are hidden by the explorer's default "Hide Buffers" filter,
+  // Pass sources are hidden by the explorer's default "Hide buffer files" filter,
   // so the compute kernels never show up as broken shaders of their own.
   await expect(explorer.getByTestId('shader-option-swarm-buffer-wgsl')).toHaveCount(0);
   await expect(explorer.getByTestId('shader-option-common-buffer-wgsl')).toHaveCount(0);

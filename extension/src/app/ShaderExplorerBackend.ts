@@ -139,6 +139,13 @@ export class ShaderExplorerBackend {
         break;
       case "saveState":
         await this.context.workspaceState.update('shaderBrowser.state', message.state);
+        if (typeof message.state?.keepActiveShaderFiles === 'boolean') {
+          const configuration = vscode.workspace.getConfiguration('shader-studio');
+          if (configuration.get('explorer.keepActiveShaderFiles', false) !== message.state.keepActiveShaderFiles) {
+            await configuration.update('explorer.keepActiveShaderFiles', message.state.keepActiveShaderFiles,
+              vscode.workspace.workspaceFolders?.length ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global);
+          }
+        }
         break;
       case "newShader":
         await vscode.commands.executeCommand("shader-studio.newShader");
@@ -347,7 +354,7 @@ export class ShaderExplorerBackend {
     this.webview.postMessage({
       type: "shadersUpdate",
       shaders: shadersWithThumbnails,
-      savedState: savedState,
+      savedState: { ...(savedState ?? {}), keepActiveShaderFiles: vscode.workspace.getConfiguration('shader-studio').get('explorer.keepActiveShaderFiles', false) },
     });
   }
 

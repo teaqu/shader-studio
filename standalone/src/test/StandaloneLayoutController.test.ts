@@ -6,6 +6,34 @@ import {
   type StandaloneDockviewApi,
 } from '../StandaloneLayoutController';
 
+it('switches managed files, protects shared preview files and keeps cancelled closes', async () => {
+  const api = createApi();
+  const navigate = vi.fn();
+  const confirm = vi.fn(async (path: string) => path !== '/unsaved.glsl');
+  const controller = new StandaloneLayoutController(api, null, navigate, confirm);
+  controller.initialize();
+  controller.openEditor('/notes.txt');
+  controller.openEditor('/previous.glsl');
+  navigate.mockClear();
+  await controller.syncShaderEditors([{ shaderPath: '/one.glsl', files: ['/one.glsl', '/unsaved.glsl', '/shared.glsl'] },
+    { shaderPath: '/two.glsl', files: ['/two.glsl', '/shared.glsl'] }]);
+  expect(navigate).not.toHaveBeenCalled();
+  expect(api.getPanel('editor:/previous.glsl')).toBeUndefined();
+  await controller.syncShaderEditors([{ shaderPath: '/three.glsl', files: ['/three.glsl'] },
+    { shaderPath: '/two.glsl', files: ['/two.glsl', '/shared.glsl'] }]);
+  expect(api.getPanel('editor:/one.glsl')).toBeUndefined();
+  for (const path of ['/unsaved.glsl', '/shared.glsl', '/two.glsl', '/notes.txt', '/three.glsl']) {
+    expect(api.getPanel(`editor:${path}`)).toBeDefined();
+  }
+  expect(confirm).toHaveBeenCalledWith('/unsaved.glsl');
+  confirm.mockClear();
+  await controller.syncShaderEditors([{ shaderPath: '/three.glsl', files: ['/three.glsl'] }]);
+  expect(confirm).not.toHaveBeenCalledWith('/unsaved.glsl');
+  await controller.syncShaderEditors(null);
+  expect(api.getPanel('editor:/three.glsl')).toBeDefined();
+  controller.dispose();
+});
+
 function createApi(): StandaloneDockviewApi & { emitLayoutChange(): void; activate(id?: string): void; groupTogether(ids: string[]): void; remove(id: string): void } {
   let listener = () => {};
   let activeListener: (panel: { id: string } | undefined) => void = () => {};

@@ -4,9 +4,9 @@ Storage buffers keep data, such as particle positions or simulation values, betw
 
 ## Workspace layout
 
-Open the config panel's **Storage** tab. The buffer list selects one buffer at a time; the main area has **Settings** and **Inspect** tabs. Use **+ Add buffer** in the header to create a declaration.
+Open the config panel and select a card labeled **Storage buffer**, such as **particles**. Each storage buffer has its own card alongside the shader passes; selecting it opens its **Settings** and **Inspect** tabs directly. Use **+ New → Storage buffer** to create a declaration. This is also available when the shader has no storage yet.
 
-In **Settings**, edit the name, element count, layout and initialization. Changes stay in the current editor until you click **Apply changes**, either beside **+ Add buffer** or below the settings. Both buttons use the same validation and save action. The header button appears only while changes are pending. **Cancel** restores the saved settings. Apply or cancel before selecting another buffer or switching tabs; leaving the editor discards its pending changes.
+In **Settings**, edit the name, element count, layout and initialization. Changes stay in the current editor until you click **Apply changes**, either above or below the settings. Both buttons use the same validation and save action. The header button appears only while changes are pending. **Cancel** restores the saved settings. Apply or cancel before selecting another card or switching tabs; leaving the editor discards its pending changes. Renaming a buffer updates its card; deleting it removes the card.
 
 ## Element layout
 

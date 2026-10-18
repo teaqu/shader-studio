@@ -1,6 +1,8 @@
 import type { CubemapFace, CubemapPreviewMode } from '../cubemapPreview';
 
 export interface CubemapPreviewState {
+  /** General pass selection, rather than a cubemap-specific inspection mode. */
+  kind?: 'pass';
   passName: string | null;
   mode: CubemapPreviewMode;
   face: CubemapFace;
@@ -22,6 +24,14 @@ export function setCubemapPreview(shaderPath: string, value: Omit<CubemapPreview
 export function clearCubemapPreview(shaderPath: string): void {
   const previous = previews[shaderPath];
   previews[shaderPath] = { ...defaultState(), refresh: (previous?.refresh ?? 0) + 1 };
+}
+
+export function setPassPreview(shaderPath: string, passName: string): void {
+  if (passName === 'Image') {
+    clearCubemapPreview(shaderPath);
+  } else {
+    setCubemapPreview(shaderPath, { kind: 'pass', passName, mode: 'face', face: 'positive-z' });
+  }
 }
 
 export function resetCubemapPreviews(): void {

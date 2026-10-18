@@ -1,5 +1,5 @@
 import { getEditorDocument } from '../state/editorDocuments.svelte';
-import { getSelectedEditor, getRequestedEditor, getNewShaderVisible, getRequestedPanel, resetShellState, setNewShaderVisible } from '../state/shellState.svelte';
+import { getActiveShaderEditors, getSelectedEditor, getRequestedEditor, getNewShaderVisible, getRequestedPanel, resetShellState, setNewShaderVisible } from '../state/shellState.svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDefaultWorkspaceFiles } from '../defaultWorkspace';
 import { VirtualWorkspace } from '../VirtualWorkspace';
@@ -11,6 +11,59 @@ async function eventually(assertion: () => void): Promise<void> {
 }
 
 describe('WebTransport', () => {
+  it('defaults active files on, tracks two previews, and persists opting out', async () => {
+    const transport = new WebTransport();
+    const first = transport.createViewerTransport(), second = transport.createViewerTransport();
+    first.postMessage({ type: 'previewFilesChanged', payload: { shaderPath: '/shaders/aurora.glsl' } });
+    second.postMessage({ type: 'previewFilesChanged', payload: { shaderPath: '/shaders/glow-trails.glsl' } });
+    await transport.flush();
+    expect(getActiveShaderEditors()).toHaveLength(2);
+    expect(getActiveShaderEditors()?.[1].files.length).toBeGreaterThan(1);
+    first.dispose();
+    expect(getActiveShaderEditors()).toHaveLength(1);
+    transport.getShaderExplorerHostApi().postMessage({ type: 'saveState', state: { keepActiveShaderFiles: false } });
+    expect(getActiveShaderEditors()).toBeNull();
+    second.dispose();
+    transport.dispose();
+  });
+
+  it('prompts only for unsaved edits, saving on acceptance and retaining on cancellation', async () => {
+    const transport = new WebTransport();
+    const path = '/shaders/aurora.glsl';
+    await transport.readEditorFile(path);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    expect(await transport.confirmEditorClose(path)).toBe(true);
+    expect(confirm).not.toHaveBeenCalled();
+    transport.markEditorDirty(path);
+    expect(await transport.confirmEditorClose(path)).toBe(false);
+    let pending = true;
+    const detach = transport.registerPendingSave(() => {
+      if (pending) {
+        pending = false;
+        transport.postMessage({ type: 'updateShaderSource', payload: { path, code: 'saved changes' } });
+      }
+    });
+    confirm.mockReturnValue(true);
+    expect(await transport.confirmEditorClose(path)).toBe(true);
+    expect(await transport.readEditorFile(path)).toBe('saved changes');
+    confirm.mockClear();
+    expect(await transport.confirmEditorClose(path)).toBe(true);
+    expect(confirm).not.toHaveBeenCalled();
+    detach();
+    transport.dispose();
+  });
+
+  it('keeps the editor open and reports a failed save', async () => {
+    const transport = new WebTransport();
+    await transport.readEditorFile('/shaders/aurora.glsl');
+    transport.markEditorDirty('/shaders/aurora.glsl');
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    vi.spyOn(transport, 'flush').mockRejectedValue(new Error('disk full'));
+    expect(await transport.confirmEditorClose('/shaders/aurora.glsl')).toBe(false);
+    expect(alert).toHaveBeenCalledWith(expect.stringContaining('kept open'));
+    transport.dispose();
+  });
   beforeEach(() => {
     vi.restoreAllMocks();
     resetShellState();
@@ -449,6 +502,7 @@ it('requests active editor reuse for explorer opens and ignores missing paths', 
   resetShellState();
   const transport = new WebTransport();
   const explorer = transport.getShaderExplorerHostApi();
+  explorer.postMessage({ type: 'saveState', state: { keepActiveShaderFiles: false } });
   explorer.postMessage({ type: 'openShader', path: '/shaders/aurora.glsl' });
   await vi.waitFor(() => expect(getSelectedEditor()).toBe('/shaders/aurora.glsl'));
   expect(getRequestedEditor()).toBeNull();

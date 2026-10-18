@@ -16,11 +16,13 @@ export type TransportMessage<TMessage extends BaseMessage> = TMessage & (
 );
 
 export interface ShaderExplorerHostApi {
+  defaultKeepActiveShaderFiles?: boolean;
   postMessage(message: { type: string; [key: string]: unknown }): void;
   onMessage(handler: (event: MessageEvent) => void): () => void;
 }
 
 export interface Transport {
+  markEditorDirty?: (path: string) => void;
   /** Register an editor's pending-text save command with a host that owns persistence. */
   registerPendingSave?: (save: () => void) => () => void;
   applyWorkspaceEdit?: (

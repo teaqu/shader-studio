@@ -47,7 +47,7 @@ If a WGSL file declares more than one `@compute` entry point, set `entryPoints.c
 
 ## Storage Buffers
 
-Storage buffers hold persistent data across frames. Declare them in the **Storage** tab of the visual config:
+Storage buffers hold persistent data across frames. Choose **+ New → Storage buffer** in the visual config, then select that buffer's card to edit its declaration:
 
 | Field | Meaning |
 |-------|---------|

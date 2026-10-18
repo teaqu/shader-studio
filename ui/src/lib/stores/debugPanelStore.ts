@@ -15,9 +15,9 @@ export interface DebugPanelState {
 
 const DEFAULT_STATE: DebugPanelState = {
   isVisible: false,
-  isVariableInspectorEnabled: false,
-  isInlineRenderingEnabled: true,
-  isPixelInspectorEnabled: true,
+  isVariableInspectorEnabled: true,
+  isInlineRenderingEnabled: false,
+  isPixelInspectorEnabled: false,
   isPixelMarkerEnabled: true,
   isErrorsEnabled: false,
   normalizeMode: 'off',

@@ -91,6 +91,26 @@ describe('ShaderPipeline — overlay cursor gate', () => {
   });
 
   describe('locked shader-source admission', () => {
+    it('explicitly previews a linked file standalone without looking for an owner', () => {
+      (pipeline as unknown as { lastEvent: MessageEvent }).lastEvent = new MessageEvent('message', { data: {
+        type: 'shaderSource', path: '/main.glsl', bufferPathMap: { BufferA: '/linked.glsl' },
+      } });
+      pipeline.previewFileStandalone('/linked.glsl');
+      expect(mocks.transport.postMessage).toHaveBeenCalledWith({ type: 'refresh', payload: { path: '/linked.glsl' } });
+      expect(pipeline.getShaderMessageTarget({ path: '/linked.glsl' })).toEqual({ kind: 'main' });
+      expect(mocks.shaderLocker.isLocked()).toBe(false);
+    });
+    it.each(['BufferA', 'common'])('recognizes the current shader’s %s while unlocked, without guessing unrelated owners', passName => {
+      (pipeline as unknown as { lastEvent: MessageEvent }).lastEvent = new MessageEvent('message', { data: {
+        type: 'shaderSource', path: '/main.glsl', code: 'main',
+        bufferPathMap: { Image: '/main.glsl', [passName]: '/linked.glsl' },
+      } });
+      expect(pipeline.getShaderMessageTarget({ path: '/linked.glsl' })).toEqual({ kind: 'buffer', passName });
+      expect(pipeline.getShaderMessageTarget({ path: '/other/linked.glsl' })).toEqual({ kind: 'main' });
+      expect(pipeline.getShaderMessageTarget({ path: '/main.glsl' })).toEqual({ kind: 'main' });
+      expect(mocks.shaderLocker.isLocked()).toBe(false);
+    });
+
     it.each([
       ['GLSL', '/project/locked.glsl', '/project/other.glsl'],
       ['Slang', '/project/locked.slang', '/project/other.slang'],

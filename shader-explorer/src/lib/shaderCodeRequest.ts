@@ -16,6 +16,7 @@ export interface ShaderCodeResponse {
 }
 
 export interface ShaderExplorerHostApi {
+  defaultKeepActiveShaderFiles?: boolean;
   postMessage(message: { type: string; [key: string]: unknown }): void;
   onMessage?(handler: (event: MessageEvent) => void): () => void;
 }

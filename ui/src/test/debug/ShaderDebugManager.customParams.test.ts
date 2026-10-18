@@ -15,7 +15,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
   beforeEach(() => {
     manager = new ShaderDebugManager();
-    manager.toggleEnabled(); // inline rendering defaults to on
+    manager.setInlineRenderingEnabled(true);
+    manager.toggleEnabled();
     manager.setImageShaderCode(shader);
     manager.updateDebugLine(1, '  float d = length(p) - r;', '/path/shader.glsl');
   });

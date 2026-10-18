@@ -36,6 +36,7 @@
     scope?: string;
     language?: "wgsl" | "slang" | "glsl";
     passes?: Array<{ name: string; compute: boolean; dispatchOnce?: boolean }>;
+    showNavigation?: boolean;
   }
   let {
     storage,
@@ -48,6 +49,7 @@
     scope = "",
     language = "wgsl",
     passes = [],
+    showNavigation = true,
   }: Props = $props();
   let panel = $state<HTMLElement>();
   const id = $props.id();
@@ -71,10 +73,13 @@
 </script>
 
 <section class="storage-panel" bind:this={panel} aria-label="Storage buffers">
+  {#if showNavigation || (tab === 'settings' && pendingForm)}
   <header>
+    {#if showNavigation}
     <div>
       <h2>GPU storage</h2>
     </div>
+    {/if}
     <div class="header-actions">
       {#if tab === "settings" && pendingForm}<button
           class="primary"
@@ -82,15 +87,17 @@
           form={pendingForm}
           aria-label="Apply pending storage changes">Apply changes</button
         >{/if}
-      <button
+      {#if showNavigation}<button
         class="primary"
         onclick={addStorage}
         aria-label="Add storage buffer">+ Add buffer</button
-      >
+      >{/if}
     </div>
   </header>
+  {/if}
   {#if !names.length}<p>No storage buffers are configured.</p>
-  {:else}<div class="workspace">
+  {:else}<div class="workspace" class:detail-only={!showNavigation}>
+      {#if showNavigation}
       <nav aria-label="Storage buffers list">
         {#each names as name}<button
             aria-label="Select storage {name}"
@@ -101,6 +108,7 @@
             ></button
           >{/each}
       </nav>
+      {/if}
       <main>
         <div class="tabs" role="tablist" aria-label="Buffer view">
           <button
@@ -277,6 +285,8 @@
     grid-template-columns: 175px minmax(0, 1fr);
     flex: 1;
   }
+  .workspace.detail-only { grid-template-columns: minmax(0, 1fr); }
+  .workspace.detail-only main { padding: 12px 0; }
   nav {
     background: var(--storage-soft);
     padding: 10px;

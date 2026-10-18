@@ -1,4 +1,4 @@
-import { resetCubemapPreviews, setCubemapPreview, clearCubemapPreview } from "../lib/state/cubemapPreview.svelte";
+import { resetCubemapPreviews, setCubemapPreview, clearCubemapPreview, setPassPreview } from "../lib/state/cubemapPreview.svelte";
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ShaderProcessor } from '../lib/ShaderProcessor';
 import type { RenderingEngine } from '../../../rendering/src/types';
@@ -57,6 +57,40 @@ describe('ShaderProcessor', () => {
       mockRenderEngine,
       mockShaderDebugManager
     );
+  });
+
+  it.each(['glsl', 'slang', 'wgsl'] as const)('previews a %s buffer and returns to Image without persisting a temporary config', async language => {
+    const config: ShaderConfig = { version: '1', passes: { Image: {}, A: { path: `a.${language}` } } };
+    const message: ShaderSourceMessage = { type: 'shaderSource', code: 'image', path: `/main.${language}`, language, config, buffers: { A: 'buffer code' } };
+    setPassPreview(message.path, 'A');
+    await shaderProcessor.processMainShaderCompilation(message);
+    expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ passes: expect.objectContaining({ A: config.passes.A, Image: { inputs: { iChannel0: { type: 'buffer', source: 'A', filter: 'linear', wrap: 'clamp' } } } }) }), message.path, message.buffers, undefined, undefined);
+    expect(config.passes.Image).toEqual({});
+    setPassPreview(message.path, 'Image');
+    await shaderProcessor.processMainShaderCompilation(message);
+    expect(mockRenderEngine.compileShaderPipeline).toHaveBeenLastCalledWith('image', config, message.path, message.buffers, undefined, undefined);
+  });
+
+  it('line rendering takes priority over saved pass preview and returns to it when disabled', async () => {
+    const config: ShaderConfig = { version: '1', passes: { Image: {}, A: { path: 'a.glsl' } } };
+    const message: ShaderSourceMessage = { type: 'shaderSource', code: 'image', path: '/line.glsl', config, buffers: { A: 'buffer' } };
+    setPassPreview(message.path, 'A');
+    const inactive = vi.mocked(mockShaderDebugManager.getState).mock.results[0]?.value ?? mockShaderDebugManager.getState();
+    vi.mocked(mockShaderDebugManager.getState).mockReturnValue({ ...inactive, isEnabled: true, isActive: true, isInlineRenderingEnabled: true, currentLine: 2 });
+    vi.mocked(mockShaderDebugManager.modifyShaderForDebugging).mockReturnValue('line debug');
+    await shaderProcessor.processMainShaderCompilation(message);
+    expect(mockRenderEngine.compileShaderPipeline).toHaveBeenLastCalledWith('line debug', config, message.path, message.buffers, undefined, undefined);
+    vi.mocked(mockShaderDebugManager.getState).mockReturnValue({ ...inactive, isInlineRenderingEnabled: false });
+    vi.mocked(mockShaderDebugManager.modifyShaderForDebugging).mockReturnValue(null);
+    await shaderProcessor.debugCompile(message);
+    expect(mockRenderEngine.compileShaderPipeline).toHaveBeenLastCalledWith(expect.stringContaining('texture(iChannel0'), expect.objectContaining({ passes: expect.objectContaining({ A: config.passes.A }) }), message.path, message.buffers, undefined, undefined);
+  });
+
+  it('reports a failed pass preview instead of claiming a successful debug fallback', async () => {
+    setPassPreview('/main.glsl', 'A');
+    vi.mocked(mockRenderEngine.compileShaderPipeline).mockResolvedValue({ success: false, errors: ['bad buffer'] });
+    expect(await shaderProcessor.processMainShaderCompilation({ type: 'shaderSource', code: 'image', path: '/main.glsl', config: { version: '1', passes: { Image: {}, A: { path: 'a.glsl' } } }, buffers: {} })).toMatchObject({ success: false, errors: ['bad buffer'] });
+    expect(mockShaderDebugManager.setDebugError).not.toHaveBeenCalled();
   });
 
   it("displays a selected cubemap without changing the original source and restores Image output", async () => {

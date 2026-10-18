@@ -63,6 +63,8 @@ In multi-pass shaders, the active debug target is automatically determined by wh
 
 ## Toggling Inline Rendering
 
+When a selected line is being rendered, the config card for its pass shows **Viewing · L24** (using the current line number), and the canvas label identifies the shader, pass and line. Selecting another settings card does not change the debug target. The pass eye buttons are unavailable while line rendering controls the output; turn **Inline Rendering** off to return to the pass preview you chose before debugging.
+
 Inline rendering can be toggled independently from debug mode itself. When inline rendering is off but debug mode is still on:
 
 - The [normalization and step](normalization.md) controls still work — they apply to the full shader output
@@ -80,3 +82,7 @@ size, and aspect ratio selected in the toolbar or config panel.
 ## Next
 
 [Variable Inspector](variable-inspector.md) — capture and inspect all in-scope variables
+
+A small line icon on the **Debug** tab indicates that line rendering is enabled, even while another tab is selected. Turn off line rendering to hide the icon.
+
+For new settings, **Variable inspector** starts on; **Pixel inspector** and **Inline rendering** start off. Saved profiles keep their selected options. The inline rendering button uses the same line-and-arrow icon as the Debug tab indicator.

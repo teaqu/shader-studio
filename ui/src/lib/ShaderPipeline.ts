@@ -74,6 +74,7 @@ export class ShaderPipeline {
   private shaderDebugManager: ShaderDebugManager;
   private shaderProcessor: ShaderProcessor;
   private lastEvent: MessageEvent | null = null;
+  private standalonePreviewPath: string | null = null;
   private pendingShaderEvent: {
     event: MessageEvent;
     resolve: (result: CompilationResult | undefined) => void;
@@ -200,8 +201,11 @@ export class ShaderPipeline {
   public getShaderMessageTarget(
     message: Pick<ShaderSourceMessage, "path"> & Partial<Pick<ShaderSourceMessage, "code">>,
   ): ShaderMessageTarget | null {
+    if (this.standalonePreviewPath && this.pathsEqual(this.standalonePreviewPath, message.path)) {
+      return { kind: 'main' };
+    }
     if (!this.shaderLocker.isLocked()) {
-      return this.matchUnlockedVertexTarget(message) ?? { kind: 'main' };
+      return this.matchUnlockedSourceTarget(message) ?? { kind: 'main' };
     }
 
     const lockedPath = this.shaderLocker.getLockedShaderPath();
@@ -234,12 +238,12 @@ export class ShaderPipeline {
   }
 
   /**
-   * Recognises a vertex source without a lock. Prefer the viewed project's
+   * Recognises linked sources without a lock using only the viewed project's
    * buffer path map (authoritative, same predicate as the locked branch);
    * fall back to filename plus hook content for a cold vertex activation the
    * map cannot link. Anything else stays a main shader.
    */
-  private matchUnlockedVertexTarget(
+  private matchUnlockedSourceTarget(
     message: Pick<ShaderSourceMessage, "path"> & Partial<Pick<ShaderSourceMessage, "code">>,
   ): ShaderMessageTarget | null {
     const messagePath = message.path;
@@ -250,12 +254,14 @@ export class ShaderPipeline {
         return null;
       }
       const linked = Object.entries(currentMessage?.bufferPathMap ?? {}).find(
-        ([passName, passPath]) => parseVertexPassKey(passName) !== undefined
+        ([passName, passPath]) => passName !== 'Image'
           && this.pathsEqual(passPath, messagePath),
       );
-      const vertexName = linked ? parseVertexPassKey(linked[0]) : undefined;
-      if (vertexName !== undefined) {
-        return { kind: 'vertex', passName: vertexName };
+      if (linked) {
+        const vertexName = parseVertexPassKey(linked[0]);
+        return vertexName !== undefined
+          ? { kind: 'vertex', passName: vertexName }
+          : { kind: 'buffer', passName: linked[0] };
       }
       if (isVertexFileName(messagePath) && looksLikeVertexHook(message.code)) {
         return { kind: 'vertex' };
@@ -277,9 +283,8 @@ export class ShaderPipeline {
   }
 
   private async handleCommonBufferUpdate(_path: string, _buffers: Record<string, string>, _code: string): Promise<CompilationResult> {
-    // Common updates are only valid while locked; refresh the locked main shader
-    // so the pipeline picks up the updated common content.
-    this.refresh(this.shaderLocker.getLockedShaderPath());
+    // Refresh the known owner, including while unlocked.
+    this.refresh(this.shaderLocker.getLockedShaderPath() ?? this.lastEvent?.data.path);
     return { success: true };
   }
 
@@ -288,6 +293,7 @@ export class ShaderPipeline {
     event: MessageEvent
   ): Promise<CompilationResult | undefined> {
     this.lastEvent = event;
+    this.standalonePreviewPath = null;
 
     this.setDebugShaderContext(message);
 
@@ -586,6 +592,12 @@ export class ShaderPipeline {
       },
     };
     this.transport.postMessage(refreshMessage);
+  }
+
+  /** An explicit user choice bypasses linked-source inference for this response. */
+  public previewFileStandalone(path: string): void {
+    this.standalonePreviewPath = path;
+    this.refresh(path);
   }
 
   private isCursorFileAccepted(filePath: string, message?: ShaderSourceMessage): boolean {

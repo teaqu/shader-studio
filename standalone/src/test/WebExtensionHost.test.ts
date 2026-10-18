@@ -4,6 +4,21 @@ import { WebExtensionHost } from '../WebExtensionHost';
 import { MemoryWorkspaceStore, VirtualWorkspace } from '../VirtualWorkspace';
 import { StandaloneSettings } from '../settings/StandaloneSettings';
 
+it('collects only existing source files from the displayed shader config', async () => {
+  const code = 'void mainImage(out vec4 color, vec2 uv) { color = vec4(1.0); }';
+  const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), [
+    ['/main.glsl', code], ['/buffer.glsl', code], ['/common.glsl', code], ['/vertex.glsl', code], ['/uniforms.js', ''],
+    ['/main.sha.json', JSON.stringify({ script: 'uniforms.js', passes: { Image: { vertex: 'vertex.glsl' }, Common: { path: 'common.glsl' }, A: { path: 'buffer.glsl' }, B: { path: 'missing.glsl' } } })],
+    ['/unrelated.sha.json', JSON.stringify({ passes: { A: { path: 'main.glsl' } } })],
+  ].map(([path, contents]) => ({ path, contents, createdAt: 1, modifiedAt: 1 })));
+  const host = new WebExtensionHost(workspace);
+  expect(host.getShaderEditorFiles('/main.glsl')).toEqual(expect.arrayContaining(['/main.glsl', '/buffer.glsl', '/common.glsl', '/vertex.glsl', '/uniforms.js']));
+  expect(host.getShaderEditorFiles('/main.glsl')).toHaveLength(5);
+  workspace.writeText('/main.sha.json', '{bad');
+  expect(host.getShaderEditorFiles('/main.glsl')).toEqual(['/main.glsl']);
+  host.dispose();
+});
+
 async function createHost(options: ConstructorParameters<typeof WebExtensionHost>[1] = {}) {
   const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), [
     {
@@ -648,6 +663,24 @@ describe('WebExtensionHost', () => {
     restored.onViewerMessage(afterReload);
     await restored.start();
     expect(afterReload).toHaveBeenCalledWith(expect.objectContaining({ path: '/main.glsl' }));
+  });
+
+  it('opens an unlinked buffer with its own config without searching other shader configs', async () => {
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), []);
+    workspace.writeText('/main.glsl', 'main');
+    workspace.writeText('/other.glsl', 'other');
+    workspace.writeText('/buffer.glsl', 'buffer');
+    workspace.writeText('/main.sha.json', JSON.stringify({ version: '1', passes: { Image: {}, A: { path: 'buffer.glsl' } } }));
+    const ownConfig = { version: '1', passes: { Image: { resolution: { width: 64, height: 32 } } } };
+    workspace.writeText('/buffer.sha.json', JSON.stringify(ownConfig));
+    const host = new WebExtensionHost(workspace);
+    await host.handleExplorerMessage({ type: 'openShader', path: '/other.glsl' });
+    const read = vi.spyOn(workspace, 'readText');
+    const receive = vi.fn();
+    host.onViewerMessage(receive);
+    await host.handleExplorerMessage({ type: 'activateShader', path: '/buffer.glsl' });
+    expect(receive).toHaveBeenCalledWith(expect.objectContaining({ path: '/buffer.glsl', config: ownConfig }));
+    expect(read).not.toHaveBeenCalledWith('/main.sha.json');
   });
 
   it('activates explorer files on the viewer channel', async () => {

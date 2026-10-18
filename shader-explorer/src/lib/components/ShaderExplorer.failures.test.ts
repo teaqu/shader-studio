@@ -30,7 +30,7 @@ it('gives a hidden failed shader another chance when its files change', async ()
   const view = render(ShaderExplorer, { props: { hostApi } });
   await view.findByTestId('shader-option-ok-glsl');
   await fireEvent.click(view.getByTitle('Options'));
-  await fireEvent.click(view.getByLabelText('Hide Failed'));
+  await fireEvent.click(view.getByLabelText('Hide failed previews'));
   await waitFor(() => expect(view.queryByTestId('shader-option-broken-glsl')).toBeNull());
 
   // Same version resent: still failed, still hidden.

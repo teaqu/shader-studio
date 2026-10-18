@@ -12,6 +12,7 @@ import { GlslFileTracker } from "./GlslFileTracker";
 import { ClientMessageHandler } from "./ClientMessageHandler";
 import { ConfigChangeClassifier } from "./services/ConfigChangeClassifier";
 import { clearLoadedShaderProjectSnapshots } from "../language-services/ShaderAuthoringEnvironmentProvider";
+import { ActiveShaderEditors } from './ActiveShaderEditors';
 
 export class PanelManager {
   private panels: Set<vscode.WebviewPanel> = new Set();
@@ -19,6 +20,7 @@ export class PanelManager {
   private logger!: Logger;
   private webviewTransport: WebviewTransport;
   private clientHandler: ClientMessageHandler;
+  readonly activeShaderEditors = new ActiveShaderEditors();
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -28,9 +30,14 @@ export class PanelManager {
     private configChangeClassifier: ConfigChangeClassifier = new ConfigChangeClassifier(),
   ) {
     this.logger = Logger.getInstance();
+    context.subscriptions.push(this.activeShaderEditors);
+    void this.activeShaderEditors.setEnabled(vscode.workspace.getConfiguration('shader-studio').get('explorer.keepActiveShaderFiles', false));
     this.webviewTransport = new WebviewTransport();
     this.messenger.addTransport(this.webviewTransport);
     context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration('shader-studio.explorer.keepActiveShaderFiles')) {
+        void this.activeShaderEditors.setEnabled(vscode.workspace.getConfiguration('shader-studio').get('explorer.keepActiveShaderFiles', false));
+      }
       if (
         event.affectsConfiguration("shader-studio.languageServers")
         || event.affectsConfiguration("shader-studio.editor.colorDecorators")
@@ -170,6 +177,7 @@ export class PanelManager {
     });
 
     panel.onDidDispose(() => {
+      void this.activeShaderEditors.remove(panel);
       this.webviewTransport.removePanel(panel);
       this.panels.delete(panel);
       this.panelSlots.delete(panel);
@@ -250,6 +258,10 @@ export class PanelManager {
   // validates payloads after the panel-only command is handled here.
   private async handleWebviewMessage(message: any, panel: vscode.WebviewPanel): Promise<void> {
     this.logger.debug(`Webview message received: ${message.type}`);
+    if (message.type === 'previewFilesChanged') {
+      await this.activeShaderEditors.update(panel, message.payload);
+      return;
+    }
 
     if (message.type === "languageServiceReady") {
       await panel.webview.postMessage(this.languageServiceSettingsMessage());

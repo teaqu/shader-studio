@@ -911,6 +911,20 @@ describe('ShaderViewer', () => {
     return mockTransport.postMessage.mock.calls.find(([m]) => m.requestId === requestId)![0];
   }
 
+  it('reports the displayed shader and known linked files without duplicates', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await sendMessage({ type: 'shaderSource', path: '/test/main.glsl', code: 'source',
+      bufferPathMap: { A: '/test/buffer.glsl', B: '/test/buffer.glsl', common: '/test/common.glsl' } });
+    expect(mockTransport.postMessage).toHaveBeenCalledWith({ type: 'previewFilesChanged', payload: {
+      shaderPath: '/test/main.glsl', files: ['/test/main.glsl', '/test/buffer.glsl', '/test/common.glsl'],
+    } });
+    mockTransport.postMessage.mockClear();
+    await sendMessage({ type: 'shaderSource', path: '/test/main.glsl', code: 'changed source',
+      bufferPathMap: { A: '/test/buffer.glsl', B: '/test/buffer.glsl', common: '/test/common.glsl' } });
+    expect(mockTransport.postMessage.mock.calls.some(([message]) => message.type === 'previewFilesChanged')).toBe(false);
+  });
+
   it('keeps MCP responsive after rejecting an obsolete config echo', async () => {
     render(ShaderViewer, { onInitialized: vi.fn() });
     await tick();
@@ -1123,7 +1137,7 @@ describe('ShaderViewer', () => {
     });
     configPanelStore.setVisible(true);
     await tick();
-    await fireEvent.click(screen.getByRole('button', { name: 'Storage' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Storage buffer counter' }));
     await fireEvent.click(screen.getByRole('tab', { name: 'Inspect' }));
     await vi.waitFor(() => expect(screen.getByLabelText('Element 0 value')).toHaveTextContent('3'));
     await fireEvent.click(screen.getByRole('tab', { name: 'Settings' }));
@@ -1141,7 +1155,7 @@ describe('ShaderViewer', () => {
     });
     configPanelStore.setVisible(true);
     await tick();
-    expect(screen.queryByRole('button', { name: 'Storage' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Storage buffer particles' })).not.toBeInTheDocument();
     expect(mockConfigPanelStorageReset).toHaveBeenLastCalledWith(undefined);
   });
 
@@ -3154,6 +3168,57 @@ describe('ShaderViewer', () => {
 
     const varInspectorButtonAfterRemount = screen.getByLabelText('Toggle variable inspector');
     expect(varInspectorButtonAfterRemount.classList.contains('active')).toBe(false);
+  });
+
+  it.each([false, true])('preserves lock state (%s) when opening a buffer in the editor', async initiallyLocked => {
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await sendMessage({
+      type: 'shaderSource', path: '/test/shader.glsl', code: '',
+      config: { passes: { Image: {}, BufferA: { path: '/test/bufferA.glsl' } } },
+      bufferPathMap: { BufferA: '/test/bufferA.glsl' },
+    });
+    const lockButton = screen.getByLabelText('Toggle lock');
+    if (initiallyLocked) {
+      await fireEvent.click(lockButton);
+    }
+    mockTransport.postMessage.mockClear();
+
+    await fireEvent.click(screen.getByLabelText('Toggle config panel'));
+    await fireEvent.doubleClick(container.querySelector('[data-tab-name="BufferA"]')!);
+
+    expect(mockTransport.postMessage).toHaveBeenCalledWith({
+      type: 'navigateToBuffer',
+      payload: { bufferPath: '/test/bufferA.glsl', shaderPath: '/test/shader.glsl', mode: 'active' },
+    });
+    expect(mockTransport.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'shaderLockState' }));
+    expect(lockButton.classList.contains('active')).toBe(initiallyLocked);
+  });
+
+  it.each([false, true])('previews a file standalone while preserving manual lock state (%s)', async initiallyLocked => {
+    const { ShaderPipeline } = await import('../../lib/ShaderPipeline');
+    const previewFileStandalone = vi.fn();
+    ShaderPipeline.prototype.previewFileStandalone = previewFileStandalone;
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+    const handler = mockTransport.onMessage.mock.calls[0][0];
+    await handler({ data: { type: 'shaderSource', path: '/main.glsl', code: 'image',
+      config: { version: '1', passes: { Image: {}, BufferA: { path: 'a.glsl' } } }, bufferPathMap: { BufferA: '/a.glsl' } } });
+    await tick();
+    if (initiallyLocked) {
+      await fireEvent.click(screen.getByLabelText('Toggle lock'));
+    }
+    mockTransport.postMessage.mockClear();
+    await fireEvent.click(screen.getByLabelText('Toggle config panel'));
+    await fireEvent.contextMenu(container.querySelector('[data-tab-name="BufferA"]')!);
+    await fireEvent.click(screen.getByRole('menuitem', { name: 'Preview file standalone' }));
+    expect(previewFileStandalone).toHaveBeenCalledExactlyOnceWith('/a.glsl');
+    if (initiallyLocked) {
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({ type: 'shaderLockState', payload: { lockedShaderPath: '/a.glsl' } });
+    } else {
+      expect(mockTransport.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'shaderLockState' }));
+    }
   });
 
   it('uses host-resolved file paths for script double clicks', async () => {

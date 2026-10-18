@@ -718,7 +718,7 @@ describe('ShaderExplorer - Sorting Functionality', () => {
     });
 });
 
-describe('ShaderExplorer - Hide Failed Shaders', () => {
+describe('ShaderExplorer - Hide failed previews Shaders', () => {
     const createShader = (name: string) => ({
         path: `/test/${name}`,
         name,

@@ -1,5 +1,5 @@
 import { clearEditorDocuments, setEditorDocument } from './state/editorDocuments.svelte';
-import { selectEditor, requestEditor, requestPanel, setNewShaderVisible } from './state/shellState.svelte';
+import { selectEditor, requestEditor, requestPanel, setNewShaderVisible, setActiveShaderEditors, type ActiveShaderEditorSet } from './state/shellState.svelte';
 import type { BaseMessage } from '@shader-studio/types';
 import type {
   ShaderExplorerHostApi,
@@ -105,6 +105,48 @@ export class WebTransport implements Transport {
   private readonly pendingEditorSaves = new Set<() => void>();
   private readonly pendingMessages = new Set<Promise<void>>();
   private messageFailure: unknown;
+  private readonly previewFiles = new Map<string, ActiveShaderEditorSet>();
+  private keepActiveShaderFiles = (savedExplorerState({}) as { keepActiveShaderFiles?: boolean }).keepActiveShaderFiles ?? true;
+  private readonly dirtyEditors = new Map<string, number>();
+  private editorRevision = 0;
+
+  markEditorDirty(path: string): void {
+    this.dirtyEditors.set(path, ++this.editorRevision);
+  }
+
+  async confirmEditorClose(path: string): Promise<boolean> {
+    if (!this.dirtyEditors.has(path)) {
+      return true;
+    }
+    if (!window.confirm(`Save changes to ${path.split('/').pop()} and close it? Cancel keeps the file open.`)) {
+      return false;
+    }
+    try {
+      await this.flush();
+      return !this.dirtyEditors.has(path);
+    } catch {
+      window.alert(`Could not save ${path.split('/').pop()}. The file has been kept open.`);
+      return false;
+    }
+  }
+
+  private publishPreviewFiles(): void {
+    setActiveShaderEditors(this.keepActiveShaderFiles ? [...this.previewFiles.values()] : null);
+  }
+
+  private async updatePreviewFiles(id: string, payload: unknown): Promise<void> {
+    const path = (payload as { shaderPath?: unknown } | undefined)?.shaderPath;
+    if (typeof path !== 'string' || !path) {
+      return;
+    }
+    const host = await this.host;
+    if (!this.connected) {
+      return;
+    }
+    const files = host.getShaderEditorFiles(path);
+    this.previewFiles.set(id, { id, shaderPath: path, files });
+    this.publishPreviewFiles();
+  }
 
   registerPendingSave(save: () => void): () => void {
     this.pendingEditorSaves.add(save);
@@ -128,6 +170,13 @@ export class WebTransport implements Transport {
 
   postMessage<const TMessage extends BaseMessage>(message: TransportMessage<TMessage>): void {
     if (this.connected) {
+      if (message.type === 'previewFilesChanged') {
+        this.trackMessage(this.updatePreviewFiles('default', 'payload' in message ? message.payload : undefined));
+        return;
+      }
+      const editedPath = message.type === 'updateShaderSource' && 'payload' in message
+        ? (message.payload as { path?: string }).path : undefined;
+      const revision = editedPath ? this.dirtyEditors.get(editedPath) : undefined;
       if (message.type === 'extensionCommand' && 'payload' in message
         && (message.payload as { command?: string } | undefined)?.command === 'openShaderExplorer') {
         requestPanel('explorer');
@@ -157,6 +206,10 @@ export class WebTransport implements Transport {
           const payload = message.payload as { path?: string };
           if (payload.path) {
             setEditorDocument(payload.path, host.readEditorFile(payload.path));
+            await host.flush();
+            if (this.dirtyEditors.get(payload.path) === revision) {
+              this.dirtyEditors.delete(payload.path);
+            }
           }
         }
       }));
@@ -169,12 +222,22 @@ export class WebTransport implements Transport {
 
   /** Each viewer owns its listeners, while the shell owns the workspace. */
   createViewerTransport(): Transport {
+    const previewId = crypto.randomUUID();
     let disposed = false;
     const cleanups = new Set<() => void>();
     return {
       postMessage: message => {
         if (!disposed) {
-          this.postMessage(message);
+          if (message.type === 'previewFilesChanged') {
+            this.trackMessage(this.updatePreviewFiles(previewId, 'payload' in message ? message.payload : undefined).then(() => {
+              if (disposed) {
+                this.previewFiles.delete(previewId);
+                this.publishPreviewFiles();
+              }
+            }));
+          } else {
+            this.postMessage(message);
+          }
         }
       },
       onMessage: handler => {
@@ -184,12 +247,16 @@ export class WebTransport implements Transport {
       },
       dispose: () => {
         disposed = true;
+        this.previewFiles.delete(previewId);
+        this.publishPreviewFiles();
         for (const cleanup of cleanups) {
           cleanup();
         }
         cleanups.clear();
       },
       getType: () => this.getType(),
+      registerPendingSave: save => this.registerPendingSave(save),
+      markEditorDirty: path => this.markEditorDirty(path),
       isConnected: () => !disposed && this.isConnected(),
       getWorkspaceDocuments: language => this.getWorkspaceDocuments(language),
       applyWorkspaceEdit: (changes, isCurrent, commit, openTexts) =>
@@ -263,9 +330,15 @@ export class WebTransport implements Transport {
 
   getShaderExplorerHostApi(): ShaderExplorerHostApi {
     return {
+      defaultKeepActiveShaderFiles: true,
       postMessage: (message) => {
         if (this.connected) {
           if (message.type === 'saveState') {
+            const enabled = (message.state as { keepActiveShaderFiles?: unknown } | undefined)?.keepActiveShaderFiles;
+            if (typeof enabled === 'boolean' && enabled !== this.keepActiveShaderFiles) {
+              this.keepActiveShaderFiles = enabled;
+              this.publishPreviewFiles();
+            }
             // Preferences must be durable when the control changes, even if
             // thumbnail/workspace writes are queued when the page unloads.
             try {
@@ -279,7 +352,7 @@ export class WebTransport implements Transport {
             if (typeof message.path === 'string') {
               setEditorDocument(message.path, host.readEditorFile(message.path));
             }
-            if (this.connected && message.type === 'openShader' && typeof message.path === 'string'
+            if (this.connected && !this.keepActiveShaderFiles && message.type === 'openShader' && typeof message.path === 'string'
               && host.readEditorFile(message.path) !== null) {
               selectEditor(message.path);
             }

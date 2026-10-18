@@ -33,6 +33,7 @@ describe('ShaderDebugManager — variable preview', () => {
 
   beforeEach(() => {
     manager = new ShaderDebugManager();
+    manager.setInlineRenderingEnabled(true);
     manager.toggleEnabled();
     manager.setImageShaderCode(IMAGE_CODE);
   });

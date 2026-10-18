@@ -37,10 +37,36 @@
   let cardSize = $state(200); // Card width in pixels (100-1000)
   let layoutMode = $state<'grid' | 'row'>(compact ? 'row' : 'grid');
   let showOptions = $state(false);
+  const settingsId = $props.id();
+  let settingsButton = $state<HTMLButtonElement>();
+  let settingsPanel = $state<HTMLElement>();
+  let toolbarHeight = $state(38);
+  function resetSettings() {
+    sortBy = 'updated';
+    sortOrder = 'desc';
+    pageSize = 20;
+    cardSize = 200;
+    layoutMode = compact ? 'row' : 'grid';
+    hideFailedShaders = false;
+    hideBufferShaders = true;
+    hideVertexShaders = true;
+    openFilesOnSelect = true;
+    keepActiveShaderFiles = hostApi?.defaultKeepActiveShaderFiles ?? false;
+    currentPage = 1;
+  }
+  function closeSettings() {
+ showOptions = false; settingsButton?.focus();
+}
+  function dismissSettings(event: PointerEvent) {
+    if (showOptions && event.target instanceof Node && !settingsPanel?.contains(event.target) && !settingsButton?.contains(event.target)) {
+showOptions = false;
+}
+  }
   let hideFailedShaders = $state(false);
   let hideBufferShaders = $state(true);
   let hideVertexShaders = $state(true);
   let openFilesOnSelect = $state(true);
+  let keepActiveShaderFiles = $state(false);
   let failedShaders = $state(new Set<string>()); // Track failed shader paths
   let refreshKey = $state(0); // Only incremented on explicit refresh
   let refreshAll = $state(false); // Flag to force fresh rendering, ignoring cache
@@ -50,7 +76,7 @@
 
   // Persist state changes by sending to extension
   $effect(() => {
-    const state = { sortBy, sortOrder, pageSize, cardSize, hideFailedShaders, hideBufferShaders, hideVertexShaders, openFilesOnSelect, layoutMode, showOptions };
+    const state = { sortBy, sortOrder, pageSize, cardSize, hideFailedShaders, hideBufferShaders, hideVertexShaders, openFilesOnSelect, keepActiveShaderFiles, layoutMode, showOptions };
     if (vscode && stateRestored) {
       vscode.postMessage({ type: 'saveState', state });
     }
@@ -138,6 +164,7 @@
   }
 
   onMount(() => {
+    keepActiveShaderFiles = hostApi?.defaultKeepActiveShaderFiles ?? false;
     if (hostApi || typeof acquireVsCodeApi !== 'undefined') {
       vscode = hostApi ?? acquireVsCodeApi();
       searchScheduler = createShaderSearchScheduler(message => vscode?.postMessage({ ...message }));
@@ -163,7 +190,7 @@
 
   function handleMessage(event: MessageEvent) {
     const message = event.data;
-    
+
     switch (message.type) {
       case 'shadersUpdate':
         // Detect removed shaders — if one was deleted, activate the next one
@@ -183,7 +210,7 @@
         failedShaders = retainUnchangedFailures(failedShaders, oldList, newList);
         shaders = newList;
         shadersStore.set(shaders);
-        
+
         if (message.savedState) {
           if (message.savedState.sortBy) {
             sortBy = message.savedState.sortBy;
@@ -209,6 +236,9 @@
           if (typeof message.savedState.openFilesOnSelect === 'boolean') {
             openFilesOnSelect = message.savedState.openFilesOnSelect;
           }
+          if (typeof message.savedState.keepActiveShaderFiles === 'boolean') {
+            keepActiveShaderFiles = message.savedState.keepActiveShaderFiles;
+          }
           if (message.savedState.layoutMode === 'grid' || message.savedState.layoutMode === 'row') {
             layoutMode = message.savedState.layoutMode;
           }
@@ -216,7 +246,7 @@
             showOptions = message.savedState.showOptions;
           }
         }
-        
+
         stateRestored = true;
         if (search.trim() && searchScheduler) {
           const requestId = searchScheduler.schedule(search);
@@ -253,14 +283,14 @@
     if (!vscode) {
       return;
     }
-    
+
     failedShaders = new Set(); // Clear failed shaders list
     refreshAll = true; // Force components to ignore cache
     refreshKey++; // Force ShaderPreview components to remount and reload
     // Request fresh shader list from extension without cached thumbnails
     vscode.postMessage({ type: 'requestShaders', skipCache: true });
-    
-    // After shaders have had time to render and save thumbnails, 
+
+    // After shaders have had time to render and save thumbnails,
     // request the list again WITH cache to restore cached state
     setTimeout(() => {
       if (vscode) {
@@ -276,8 +306,13 @@
 
 </script>
 
-<div class="shader-explorer" data-testid={hostApi ? 'web-shader-explorer' : undefined}>
-  <div class="toolbar">
+<svelte:window onpointerdown={dismissSettings} onkeydown={(event) => {
+  if (showOptions && event.key === 'Escape') {
+ event.preventDefault(); closeSettings();
+}
+}} />
+<div class="shader-explorer" style={`--toolbar-height: ${toolbarHeight}px`} data-testid={hostApi ? 'web-shader-explorer' : undefined}>
+  <div class="toolbar" bind:clientHeight={toolbarHeight}>
       <div class="toolbar-actions">
         <div class="search-container">
           <input
@@ -287,13 +322,6 @@
             class="search-input"
           />
         </div>
-        <button
-          class="icon-button"
-          onclick={() => layoutMode = layoutMode === 'grid' ? 'row' : 'grid'}
-          title={layoutMode === 'grid' ? 'Row layout' : 'Grid layout'}
-        >
-          {layoutMode === 'grid' ? '☰' : '⊞'}
-        </button>
         <button
           class="icon-button"
           onclick={() => vscode?.postMessage({ type: 'togglePanel' })}
@@ -317,8 +345,9 @@
           class="icon-button"
           onclick={() => showOptions = !showOptions}
           title="Options"
+          aria-label="Explorer settings" aria-expanded={showOptions} aria-controls={settingsId} bind:this={settingsButton}
         >
-          {showOptions ? '✕' : '⚙'}
+          ⚙
         </button>
         <button class="icon-button" onclick={refreshShaders} title="Refresh">
           ↻
@@ -327,62 +356,35 @@
           {filteredShaders.length} shader{filteredShaders.length !== 1 ? 's' : ''}
         </div>
       </div>
-      {#if showOptions}
-      <div class="options-divider"></div>
-      <div class="toolbar-actions">
-        {#if layoutMode === 'grid'}
-          <div class="card-size-control">
-            <label for="card-size-slider" class="size-label">Size</label>
-            <input
-              id="card-size-slider"
-              type="range"
-              min="100"
-              max="1000"
-              step="10"
-              bind:value={cardSize}
-              class="card-size-slider"
-              title={`${cardSize}px`}
-            />
-          </div>
-        {/if}
-        <select class="sort-select" bind:value={sortBy}>
-          <option value="name">Name</option>
-          <option value="updated">Updated</option>
-          <option value="created">Created</option>
-        </select>
-        <button
-          class="icon-button sort-order-button"
-          onclick={toggleSortOrder}
-          title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
-        >
-          {sortOrder === 'asc' ? '↑' : '↓'}
-        </button>
-        <select class="page-size-select" bind:value={pageSize}>
-          <option value={10}>Show 10</option>
-          <option value={20}>Show 20</option>
-          <option value={30}>Show 30</option>
-          <option value={50}>Show 50</option>
-          <option value={100}>Show 100</option>
-        </select>
-        <label class="checkbox-control">
-          <input type="checkbox" bind:checked={hideBufferShaders} />
-          <span class="checkbox-label">Hide Buffers</span>
-        </label>
-        <label class="checkbox-control">
-          <input type="checkbox" bind:checked={hideVertexShaders} />
-          <span class="checkbox-label">Hide Vertex</span>
-        </label>
-        <label class="checkbox-control">
-          <input type="checkbox" bind:checked={hideFailedShaders} />
-          <span class="checkbox-label">Hide Failed</span>
-        </label>
-        <label class="checkbox-control">
-          <input type="checkbox" bind:checked={openFilesOnSelect} />
-          <span class="checkbox-label">Open Files</span>
-        </label>
-      </div>
-      {/if}
   </div>
+  {#if showOptions}
+    <section class="settings-popover" id={settingsId} bind:this={settingsPanel} aria-label="Explorer settings">
+      <header><strong>Explorer settings</strong><button class="icon-button" onclick={closeSettings} aria-label="Close Explorer settings">✕</button></header>
+      <fieldset><legend>Display</legend>
+        <div class="setting-row"><span>Layout</span><div class="layout-options" role="group" aria-label="Layout">
+          <button aria-pressed={layoutMode === 'row'} onclick={() => layoutMode = 'row'}>List</button>
+          <button aria-pressed={layoutMode === 'grid'} onclick={() => layoutMode = 'grid'}>Grid</button>
+        </div></div>
+        <label class="setting-row">Sort<select class="sort-select" bind:value={sortBy}><option value="name">Name</option><option value="updated">Updated</option><option value="created">Created</option></select><button class="icon-button" onclick={toggleSortOrder} title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}>{sortOrder === 'asc' ? '↑' : '↓'}</button></label>
+        <label class="setting-row">Per page<select class="page-size-select" bind:value={pageSize}>{#each [10,20,30,50,100] as size}<option value={size}>{size}</option>{/each}</select></label>
+        {#if layoutMode === 'grid'}<label class="setting-row">Card size<input aria-label="Card size" class="card-size-slider" type="range" min="100" max="1000" step="10" bind:value={cardSize} /><span>{cardSize}px</span></label>{/if}
+      </fieldset>
+      <fieldset><legend>Filters</legend>
+        <label class="checkbox-control"><input type="checkbox" bind:checked={hideBufferShaders} />Hide buffer files</label>
+        <label class="checkbox-control"><input type="checkbox" bind:checked={hideVertexShaders} />Hide vertex files</label>
+        <label class="checkbox-control"><input type="checkbox" bind:checked={hideFailedShaders} />Hide failed previews</label>
+      </fieldset>
+      <fieldset><legend>Files</legend>
+        <label class="checkbox-control"><input type="checkbox" bind:checked={keepActiveShaderFiles} aria-describedby={`${settingsId}-hint`} />Only keep active shader files open</label>
+        <p id={`${settingsId}-hint`}>Open each preview’s shader and linked files. Ask before closing unsaved changes.</p>
+        {#if !hostApi}<p>One file group per preview.</p>{/if}
+        {#if !keepActiveShaderFiles}
+          <label class="checkbox-control"><input type="checkbox" bind:checked={openFilesOnSelect} />Open file when selecting a shader</label>
+        {/if}
+      </fieldset>
+      <button class="reset-settings" onclick={resetSettings}>Reset to defaults</button>
+    </section>
+  {/if}
 
   <div class="content">
     {#if filteredShaders.length === 0}
@@ -425,7 +427,7 @@
           />
         {/each}
       </div>
-      
+
 {#snippet pagination()}
         <button
           class="page-button"
@@ -499,6 +501,7 @@
 
 <style>
   .shader-explorer {
+    position: relative;
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -573,10 +576,33 @@
     display: block;
   }
 
-  .options-divider {
-    border-top: 1px solid var(--vscode-panel-border);
-    margin: 2px -8px 6px -8px;
+  .reset-settings {
+    width: 100%; padding: 6px 8px; margin-top: 4px;
+    border: 1px solid var(--vscode-button-border, var(--vscode-panel-border));
+    border-radius: 4px; cursor: pointer;
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
   }
+  .reset-settings:hover { background: var(--vscode-button-secondaryHoverBackground); }
+  .settings-popover {
+    position: absolute; z-index: 20;
+    top: calc(var(--toolbar-height) + 4px); right: 8px;
+    width: min(320px, calc(100% - 16px));
+    max-height: calc(100% - var(--toolbar-height) - 12px);
+    box-sizing: border-box; overflow: auto; padding: 12px;
+    border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); border-radius: 6px;
+    background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+    color: var(--vscode-foreground); box-shadow: 0 4px 16px var(--vscode-widget-shadow, #0006); font-size: 12px;
+  }
+  .settings-popover header, .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+  .settings-popover fieldset { border: 0; border-top: 1px solid var(--vscode-panel-border); padding: 10px 0 0; margin: 0 0 14px; min-width: 0; }
+  .settings-popover fieldset:last-child { margin-bottom: 0; }
+  .settings-popover legend { text-transform: uppercase; font-size: 10px; letter-spacing: 1px; color: var(--vscode-descriptionForeground); padding: 0 8px 0 0; }
+  .settings-popover p { margin: 6px 0 10px 24px; color: var(--vscode-descriptionForeground); font-size: 11px; line-height: 1.5; }
+  .layout-options { display: flex; gap: 4px; flex-wrap: wrap; }
+  .layout-options button { padding: 4px 14px; border: 1px solid var(--vscode-button-border, transparent); border-radius: 3px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); cursor: pointer; }
+  .layout-options button[aria-pressed="true"] { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+  button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
 
   .sort-select,
   .page-size-select {
@@ -593,18 +619,6 @@
   .sort-select:focus,
   .page-size-select:focus {
     border-color: var(--vscode-focusBorder);
-  }
-
-  .card-size-control {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-
-  .size-label {
-    font-size: 11px;
-    color: var(--vscode-descriptionForeground);
-    white-space: nowrap;
   }
 
   .card-size-slider {
@@ -655,19 +669,15 @@
   .checkbox-control {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 8px;
+    margin-bottom: 8px;
+    line-height: 1.5;
     cursor: pointer;
     user-select: none;
   }
 
   .checkbox-control input[type="checkbox"] {
     cursor: pointer;
-  }
-
-  .checkbox-label {
-    font-size: 11px;
-    color: var(--vscode-foreground);
-    white-space: nowrap;
   }
 
   .shader-count {

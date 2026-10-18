@@ -1,4 +1,5 @@
 import type { FunctionMock } from '../../FunctionMock';
+import { getCubemapPreview, resetCubemapPreviews } from '../../../lib/state/cubemapPreview.svelte';
 import { render, fireEvent, waitFor } from '@testing-library/svelte';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -87,6 +88,7 @@ describe('ConfigPanel', () => {
   let mockOnFileSelect: FunctionMock;
 
   beforeEach(() => {
+    resetCubemapPreviews();
     vi.clearAllMocks();
     setEditorOverlayVisible(false);
     setOverlayActiveFile('Image');
@@ -113,6 +115,104 @@ describe('ConfigPanel', () => {
   }
 
   describe('rendering', () => {
+    it('moves Viewing with line rendering while preserving the selected settings card', async () => {
+      const config: ShaderConfig = { version: '1', passes: { Image: {}, A: { path: 'a.glsl' }, B: { path: 'b.glsl' } } };
+      const debugState = { isEnabled: true, isActive: true, isInlineRenderingEnabled: true, currentLine: 23, activeBufferName: 'A' };
+      const ui = render(ConfigPanel, { config, transport: mockTransport, shaderPath: '/line.glsl', debugState });
+      await fireEvent.click(ui.getByRole('button', { name: 'B' }));
+      expect(ui.getByLabelText('Currently previewing A')).toHaveTextContent('Viewing · L24');
+      expect(ui.getByRole('button', { name: 'B' })).toHaveAttribute('aria-pressed', 'true');
+      await ui.rerender({ debugState: { ...debugState, activeBufferName: 'B', currentLine: 7 } });
+      expect(ui.getByLabelText('Currently previewing B')).toHaveTextContent('Viewing · L8');
+      await ui.rerender({ debugState: { ...debugState, isInlineRenderingEnabled: false } });
+      expect(ui.getByLabelText('Currently previewing Image')).toHaveTextContent('Viewing');
+      expect(ui.getByRole('button', { name: 'Preview B' })).toBeEnabled();
+    });
+    it('storage cards select individual data without changing the preview or duplicating navigation', async () => {
+      const config: ShaderConfig = { version: '1.0', storage: {
+        particles: { count: 16, elementType: 'u32' }, density: { count: 8, elementType: 'u32' },
+      }, passes: { Image: {}, particles: { path: 'particles.wgsl' } } };
+      const ui = render(ConfigPanel, { config, transport: mockTransport, language: 'wgsl',
+        shaderPath: '/storage-cards.wgsl', onFileSelect: mockOnFileSelect });
+      await fireEvent.click(ui.getByRole('button', { name: 'Storage buffer density' }));
+      expect(ui.getByLabelText('Storage name')).toHaveValue('density');
+      expect(ui.queryByRole('navigation', { name: 'Storage buffers list' })).toBeNull();
+      expect(ui.queryByRole('button', { name: 'Storage' })).toBeNull();
+      expect(ui.queryByRole('button', { name: 'Add storage buffer' })).toBeNull();
+      expect(ui.getByLabelText('Currently previewing Image')).toBeVisible();
+      await fireEvent.click(ui.getByRole('button', { name: 'Storage buffer particles' }));
+      expect(ui.getByLabelText('Storage name')).toHaveValue('particles');
+      expect(mockOnFileSelect).not.toHaveBeenCalled();
+      await ui.rerender({ config: { ...config, storage: {} } });
+      expect(ui.getByRole('button', { name: 'Image' })).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it.each([true, false])('adds storage from New and selects it only on success (%s)', async success => {
+      const config: ShaderConfig = { version: '1.0', passes: { Image: {} } };
+      const ui = render(ConfigPanel, { config, transport: mockTransport, language: 'wgsl', shaderPath: '/add-storage.wgsl' });
+      await tick();
+      getLatestConfigManagerInstance().addStorageBuffer.mockImplementation(() => {
+        if (!success) {
+          return { name: null };
+        }
+        const changed = (ConfigManager as unknown as Mock).mock.calls.at(-1)?.[1];
+        changed({ ...config, storage: { storageA: { count: 1, elementType: 'u32' } } });
+        return { name: 'storageA' };
+      });
+      await fireEvent.click(ui.getByRole('button', { name: '+ New' }));
+      await fireEvent.click(ui.getByRole('menuitem', { name: 'Storage buffer' }));
+      expect(ui.queryByRole('menu')).toBeNull();
+      if (success) {
+        expect(ui.getByRole('button', { name: 'Storage buffer storageA' })).toHaveAttribute('aria-pressed', 'true');
+        expect(ui.getByLabelText('Storage name')).toHaveValue('storageA');
+      } else {
+        expect(ui.getByRole('button', { name: 'Image' })).toHaveAttribute('aria-pressed', 'true');
+        expect(ui.queryByLabelText('Storage name')).toBeNull();
+      }
+    });
+
+    it('pass cards distinguish settings selection from the preview eye', async () => {
+      const { getByRole, getByLabelText, getByText } = render(ConfigPanel, {
+        config: { version: '1.0', passes: { Image: {}, Glow: { path: 'glow.glsl' } } },
+        transport: mockTransport, shaderPath: '/cards.glsl', onFileSelect: mockOnFileSelect,
+      });
+      await tick();
+      await fireEvent.click(getByRole('button', { name: 'Glow' }));
+      expect(getByRole('button', { name: 'Glow' })).toHaveAttribute('aria-pressed', 'true');
+      expect(getByLabelText('Currently previewing Image')).toHaveTextContent('Viewing');
+      mockOnFileSelect.mockClear();
+      await fireEvent.click(getByRole('button', { name: 'Preview Glow' }));
+      expect(getCubemapPreview('/cards.glsl')).toMatchObject({ passName: 'Glow', kind: 'pass' });
+      expect(getByLabelText('Currently previewing Glow')).toHaveTextContent('Viewing');
+      expect(getByRole('button', { name: 'Preview Glow' })).toHaveAttribute('aria-pressed', 'true');
+      expect(mockOnFileSelect).not.toHaveBeenCalled();
+      await fireEvent.click(getByRole('button', { name: 'Preview Image' }));
+      expect(getByRole('button', { name: 'Glow' })).toHaveAttribute('aria-pressed', 'true');
+      expect(getByLabelText('Currently previewing Image')).toHaveTextContent('Viewing');
+      expect(getByText('Render buffer')).toBeVisible();
+      expect(getByText('Final image')).toBeVisible();
+      expect(mockTransport.postMessage).not.toHaveBeenCalled();
+    });
+
+    it('pass cards label compute, shared code, storage and script without preview eyes', async () => {
+      const { getByText, getByRole, queryByRole } = render(ConfigPanel, {
+        config: { version: '1.0', script: 'uniforms.ts', passes: {
+          Image: {}, common: { path: 'common.wgsl' }, Sim: { type: 'compute', path: 'sim.wgsl' },
+        } },
+        language: 'wgsl', transport: mockTransport, shaderPath: '/cards.wgsl',
+      });
+      await tick();
+      for (const name of ['Sim', 'Common', 'Script']) {
+        expect(getByRole('button', { name })).toBeVisible();
+        expect(queryByRole('button', { name: `Preview ${name}` })).toBeNull();
+      }
+      for (const label of ['Compute pass', 'Shared code', 'Uniform script']) {
+        expect(getByText(label)).toBeVisible();
+      }
+      await fireEvent.click(getByRole('button', { name: 'Sim' }));
+      expect(getByText('Direct preview is not available for compute passes.')).toBeVisible();
+    });
+
     it.each(['slang', 'wgsl'] as const)('shows transient first %s stages and preserves the other stage on selection', async language => {
       const source = language === 'slang'
         ? '[shader("vertex")] float4 firstVertex() { return float4(0); } [shader("fragment")] float4 firstFragment() { return float4(1); } [shader("fragment")] float4 secondFragment() { return float4(0); }'
@@ -274,7 +374,7 @@ describe('ConfigPanel', () => {
       expect(getByRole('button', { name: /^ComputeSim/ })).toBeInTheDocument();
     });
 
-    it('renders the Storage tab for Slang configurations', async () => {
+    it('opens a storage card directly for Slang configurations', async () => {
       const config: ShaderConfig = {
         version: '1.0',
         storage: { particles: { count: 1024, elementType: 'float4' } },
@@ -293,13 +393,13 @@ describe('ConfigPanel', () => {
       });
 
       await tick();
-      await fireEvent.click(getByRole('button', { name: 'Storage' }));
+      await fireEvent.click(getByRole('button', { name: 'Storage buffer particles' }));
 
-      expect(getByRole('heading', { name: 'GPU storage' })).toBeInTheDocument();
+      expect(getByRole('heading', { name: 'particles' })).toBeInTheDocument();
       expect(mockOnFileSelect).not.toHaveBeenCalled();
     });
 
-    it('renders the Storage tab for WGSL configurations', async () => {
+    it('opens a storage card directly for WGSL configurations', async () => {
       const config: ShaderConfig = {
         version: '1.0',
         storage: { particles: { count: 1024, elementType: 'float4' } },
@@ -318,9 +418,9 @@ describe('ConfigPanel', () => {
       });
 
       await tick();
-      await fireEvent.click(getByRole('button', { name: 'Storage' }));
+      await fireEvent.click(getByRole('button', { name: 'Storage buffer particles' }));
 
-      expect(getByRole('heading', { name: 'GPU storage' })).toBeInTheDocument();
+      expect(getByRole('heading', { name: 'particles' })).toBeInTheDocument();
       expect(mockOnFileSelect).not.toHaveBeenCalled();
     });
 
@@ -331,7 +431,7 @@ describe('ConfigPanel', () => {
         config: { version: '1.0', storage: { particles: { count: 1, elementType: 'u32' } }, passes: { Image: {}, Seed: { type: 'compute', path: 'seed.wgsl', dispatchOnce: true }, Simulate: { type: 'compute', path: 'simulate.wgsl' } } },
         language: 'wgsl', transport: mockTransport, shaderPath: '/test/image.wgsl', onReadStorage, onResetStorage,
       });
-      await fireEvent.click(getByRole('button', { name: 'Storage' }));
+      await fireEvent.click(getByRole('button', { name: 'Storage buffer particles' }));
       await fireEvent.click(getByRole('tab', { name: 'Inspect' }));
       await waitFor(() => expect(getByLabelText('Element 0 value')).toHaveTextContent('7'));
       expect(queryByRole('option', { name: 'Before Seed' })).not.toBeInTheDocument();
@@ -636,7 +736,7 @@ describe('ConfigPanel', () => {
   describe('tab ordering', () => {
     function tabLabels(container: HTMLElement): string[] {
       return Array.from(container.querySelectorAll('.tab-button'))
-        .map(el => el.textContent?.replace('×', '').trim() ?? '');
+        .map(el => el.querySelector('.tab-label')?.textContent?.trim() ?? '');
     }
 
     it('buffer tabs are sorted alphabetically', async () => {
@@ -1369,6 +1469,37 @@ describe('ConfigPanel', () => {
   });
 
   describe('buffer rename context menu', () => {
+    it('separates pass settings, pass preview, and standalone file preview', async () => {
+      const onPreviewFileStandalone = vi.fn();
+      const { container, getByRole, getByLabelText } = render(ConfigPanel, {
+        config: { version: '1', passes: { Image: {}, BufferA: { path: 'a.glsl' } } },
+        transport: mockTransport, shaderPath: '/main.glsl', onPreviewFileStandalone,
+      });
+      await tick();
+      await fireEvent.click(getTab(container, 'BufferA'));
+      expect(getCubemapPreview('/main.glsl').passName).toBeNull();
+      await fireEvent.contextMenu(getTab(container, 'BufferA'));
+      await fireEvent.click(getByRole('menuitem', { name: 'Preview this pass' }));
+      expect(getCubemapPreview('/main.glsl')).toMatchObject({ kind: 'pass', passName: 'BufferA' });
+      expect(getByLabelText('Currently previewing BufferA')).toBeInTheDocument();
+      expect(mockTransport.postMessage).not.toHaveBeenCalled();
+      await fireEvent.contextMenu(getTab(container, 'BufferA'));
+      expect(getByRole('menuitem', { name: 'Preview this pass' })).toBeDisabled();
+      await fireEvent.click(getByRole('menuitem', { name: 'Preview file standalone' }));
+      expect(onPreviewFileStandalone).toHaveBeenCalledExactlyOnceWith('BufferA');
+      await fireEvent.contextMenu(getTab(container, 'Image'));
+      await fireEvent.click(getByRole('menuitem', { name: 'Preview this pass' }));
+      expect(getCubemapPreview('/main.glsl').passName).toBeNull();
+    });
+
+    it('offers no pass preview for Common or Script', async () => {
+      const { container, queryByRole } = renderRenameableBuffers();
+      await tick();
+      for (const name of ['Common', 'Script']) {
+        await fireEvent.contextMenu(getTab(container, name));
+        expect(queryByRole('menuitem', { name: 'Preview this pass' })).toBeNull();
+      }
+    });
     function getTab(container: HTMLElement, tabName: string): HTMLButtonElement {
       const tab = Array.from(container.querySelectorAll<HTMLButtonElement>('button.tab-button')).find(
         (candidate) => candidate.querySelector('.tab-label')?.textContent === tabName,
@@ -1846,14 +1977,14 @@ describe('ConfigPanel', () => {
       expect(getByRole('menuitem', { name: 'Rename' })).toBeInTheDocument();
     });
 
-    it('does not show a context menu for Storage tab', async () => {
+    it('does not show a pass context menu for a storage card', async () => {
       const config: ShaderConfig = {
         version: '1.0',
         storage: { particles: { count: 1024, elementType: 'float4' } },
         passes: { Image: { inputs: {} } },
       } as any;
 
-      const { container, queryByRole } = render(ConfigPanel, {
+      const { getByRole, queryByRole } = render(ConfigPanel, {
         config,
         language: 'slang',
         pathMap: {},
@@ -1865,13 +1996,7 @@ describe('ConfigPanel', () => {
       });
       await tick();
 
-      // Need to get tab by finding the element
-      const storageTab = Array.from(container.querySelectorAll<HTMLButtonElement>('button.tab-button'))
-        .find(el => el.querySelector('.tab-label')?.textContent === 'Storage');
-      if (storageTab) {
-        await fireEvent.contextMenu(storageTab);
-        await tick();
-      }
+      await fireEvent.contextMenu(getByRole('button', { name: 'Storage buffer particles' }));
 
       expect(queryByRole('menu')).toBeNull();
     });

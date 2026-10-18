@@ -1,4 +1,5 @@
-import type { DockviewApi } from 'dockview-core';
+import { DefaultTab, type DockviewApi, type CreateComponentOptions } from 'dockview-core';
+import { debugPanelStore } from '../stores/debugPanelStore';
 import './singleTabHeaders.css';
 
 /** Shared single-tab hover and drag behavior for the VS Code and standalone docks. */
@@ -173,4 +174,24 @@ export function setupDockviewTabs(containerEl: HTMLElement, api: Pick<DockviewAp
     clearTimeout(sashRevealTimer);
     containerEl.classList.remove('dv-autohide-tabs', 'dv-sash-hover', 'dv-drag-active');
   };
+}
+
+/** Preserve native tab actions while exposing line rendering on the Debug tab. */
+export function createShaderTab(options: CreateComponentOptions): DefaultTab | undefined {
+  if (options.id !== 'debug') {
+    return undefined;
+  }
+  const tab = new DefaultTab();
+  const indicator = document.createElement('span');
+  indicator.className = 'shader-line-render-indicator';
+  indicator.setAttribute('role', 'img');
+  indicator.setAttribute('aria-label', 'Line rendering enabled');
+  indicator.title = 'Line rendering enabled';
+  indicator.innerHTML = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3h8M6 8h8M6 13h8" stroke="currentColor" stroke-width="1.5"/><path d="m1 5 3 3-3 3z" fill="currentColor"/></svg>';
+  tab.element.insertBefore(indicator, tab.element.lastChild);
+  const unsubscribe = debugPanelStore.subscribe(state => {
+    indicator.hidden = !state.isInlineRenderingEnabled;
+  });
+  tab.addDisposables({ dispose: unsubscribe });
+  return tab;
 }
