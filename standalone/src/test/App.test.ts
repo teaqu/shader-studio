@@ -108,11 +108,29 @@ describe('standalone App', () => {
     expect(input.value).toBe('');
   });
 
-  it('cancels uploads without changing the workspace', async () => {
+  it.each([[], null])('cancels uploads without changing the workspace (%s)', async files => {
     const transport = createTransport();
     render(App, { props: { transport } });
-    await fireEvent.change(screen.getByLabelText('Upload files'), { target: { files: [] } });
+    await fireEvent.change(screen.getByLabelText('Upload files'), { target: { files } });
     expect(transport.uploadFiles).not.toHaveBeenCalled();
+  });
+
+  it('disables uploads while a file is being added and reports a single-file completion', async () => {
+    const transport = createTransport();
+    let finishUpload!: () => void;
+    transport.uploadFiles.mockImplementationOnce(() => new Promise<void>(resolve => {
+      finishUpload = resolve;
+    }));
+    render(App, { props: { transport } });
+    const file = new File(['source'], 'single.glsl');
+    await fireEvent.change(screen.getByLabelText('Upload files'), { target: { files: [file] } });
+    expect(transport.uploadFiles).toHaveBeenCalledWith([file]);
+    await fireEvent.click(screen.getByRole('button', { name: /^Workspace$/ }));
+    expect((screen.getByRole('button', { name: 'Uploading…' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByText('Added 1 file to /shaders/.')).toBeNull();
+    finishUpload();
+    await screen.findByText('Added 1 file to /shaders/.');
+    expect((screen.getByRole('button', { name: 'Upload Files…' }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it.each([new Error('Filename already exists'), 'failed'])('shows upload errors and enables another attempt', async error => {
