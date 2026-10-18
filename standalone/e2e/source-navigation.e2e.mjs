@@ -110,7 +110,7 @@ test('clearing the workspace restores the default shaders after reload', async (
 
 for (const [language, locked] of ['glsl', 'slang', 'wgsl'].flatMap(language => [false, true].map(locked => [language, locked]))) {
   test(`opening a buffer respects the preview lock (${language}, ${locked})`, async ({ page }) => {
-    page.on('console', m => { if (m.text().includes('ZZTRACE')) console.log(language, locked, m.text()); });
+    const traces = []; page.on('console', m => { if (m.text().includes('ZZTRACE')) traces.push(m.text().slice(0, 400)); });
     await page.route('**/__buffer_lock__', route => route.fulfill({ contentType: 'text/html', body: '<html></html>' }));
     await page.goto('/__buffer_lock__');
     const shader = expression => language === 'glsl'
@@ -151,7 +151,11 @@ for (const [language, locked] of ['glsl', 'slang', 'wgsl'].flatMap(language => [
     await page.locator('[data-tab-name="BufferA"]').dblclick();
     await expect(page.locator(`[data-testid="file-editor"][data-path="/pass/buffer.${language}"] .monaco-editor`)).toBeVisible();
     await expect(lock).toHaveAttribute('aria-pressed', String(locked));
-    await expect.poll(pixel).toEqual([255, 0, 0]);
+    try {
+      await expect.poll(pixel).toEqual([255, 0, 0]);
+    } catch (error) {
+      throw new Error(`${error.message}\nTRACES:\n${traces.join('\n')}`);
+    }
     await page.getByRole('button', { name: 'Preview BufferA', exact: true }).click();
     await expect.poll(pixel).toEqual([0, 255, 0]);
     await expect(preview.locator('.preview-output-label')).toHaveText(`main.${language} › BufferA`);
