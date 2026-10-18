@@ -217,9 +217,9 @@ it('groups settings, hides redundant file controls and dismisses with Escape or 
   expect(view.getByLabelText('Open file when selecting a shader')).toBeTruthy();
   await fireEvent.click(view.getByLabelText('Only keep active shader files open'));
   expect(view.queryByLabelText('Open file when selecting a shader')).toBeNull();
-  await fireEvent.click(view.getByRole('button', { name: 'List', exact: true }));
+  await fireEvent.click(view.getByRole('button', { name: 'List' }));
   expect(view.queryByLabelText('Card size')).toBeNull();
-  await fireEvent.click(view.getByRole('button', { name: 'Grid', exact: true }));
+  await fireEvent.click(view.getByRole('button', { name: 'Grid' }));
   expect(view.getByLabelText('Card size')).toBeTruthy();
   await fireEvent.keyDown(window, { key: 'Escape' });
   expect(gear).toHaveFocus();
@@ -244,7 +244,7 @@ it.each([false, true])('resets all settings to host defaults (%s) and persists t
   await fireEvent.click(view.getByLabelText('Hide vertex files'));
   await fireEvent.click(view.getByLabelText('Hide failed previews'));
   await fireEvent.click(view.getByLabelText('Only keep active shader files open'));
-  await fireEvent.click(view.getByRole('button', { name: 'Grid', exact: true }));
+  await fireEvent.click(view.getByRole('button', { name: 'Grid' }));
   await fireEvent.input(view.getByLabelText('Card size'), { target: { value: '400' } });
   await fireEvent.change(view.getByLabelText('Per page'), { target: { value: '50' } });
   await fireEvent.click(view.getByRole('button', { name: 'Reset to defaults' }));

@@ -549,21 +549,20 @@ describe("shader corpus through the UI transport layer", () => {
       // Unlocked main: a real compile with a success post back.
       const mainMark = slangRig.transport.sent.length;
       const mainResult = await slangRig.open(gameOfLifePath);
-      expect(mainResult?.success).toBe(true);
+      expect(mainResult?.success, JSON.stringify(mainResult)).toBe(true);
       await pollTransport(slangRig.transport, mainMark, isLog, "unlocked main success log");
 
-      // Unlocked buffer: no buffer target exists unlocked, so the buffer
-      // source routes to main and a compilation verdict comes back.
-      expect(slangRig.pipeline.getShaderMessageTarget({ path: computeBufferPath })).toEqual({ kind: "main" });
+      // Linked buffers stay in the viewed shader even while unlocked.
+      expect(slangRig.pipeline.getShaderMessageTarget({ path: computeBufferPath })).toEqual({ kind: "buffer", passName: "ComputeLife" });
       const bufferMark = slangRig.transport.sent.length;
       const bufferCode = rawCorpusSource(computeBufferPath);
-      const bufferAsMain = await send(slangRig, shaderMessage(computeBufferPath, bufferCode, "slang"));
-      expect(bufferAsMain).toBeDefined();
+      const bufferUpdate = await send(slangRig, shaderMessage(computeBufferPath, bufferCode, "slang"));
+      expect(bufferUpdate).toBeUndefined();
       await pollTransport(
         slangRig.transport,
         bufferMark,
         (message) => message.type === "log" || message.type === "error",
-        "unlocked buffer-as-main verdict",
+        "unlocked linked-buffer verdict",
       );
 
       // Unlocked linked vertex: refreshes the viewed owner, and the host
