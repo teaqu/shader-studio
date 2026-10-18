@@ -28,6 +28,13 @@ function harness() {
 }
 
 describe("WebGPUStorage boundaries", () => {
+  it('enforces a readback byte limit before allocating a staging buffer', async () => {
+    const { storage, createBuffer } = harness();
+    storage.publishPreparedStorage(storage.prepareStorageBuffers([node()], 1));
+    createBuffer.mockClear();
+    await expect(storage.readStorageBuffer('particles', 0, 4, undefined, 8)).rejects.toThrow('Request fewer elements');
+    expect(createBuffer).not.toHaveBeenCalled();
+  });
   it('initializes new and reset allocations, but retains opted-out buffers on restart', () => {
     const { storage, createBuffer, queue, encoder, loseDevice } = harness();
     const keep = { ...node('keep'), initialData: 'AQIDBA==', resetOnRestart: false };

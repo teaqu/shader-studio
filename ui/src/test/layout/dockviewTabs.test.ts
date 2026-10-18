@@ -1,11 +1,37 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { setupDockviewTabs } from '../../lib/layout/dockviewTabs';
 
 const workspacePath = resolve(process.cwd(), 'ui/src/lib/layout/singleTabHeaders.css');
 const css = readFileSync(existsSync(workspacePath) ? workspacePath : resolve(process.cwd(), 'src/lib/layout/singleTabHeaders.css'), 'utf8');
 
 afterEach(() => document.body.replaceChildren());
+
+describe('divider drags', () => {
+  it('prevents native tab dragging from interrupting a divider resize', () => {
+    const dock = document.createElement('div');
+    const sash = document.createElement('div');
+    sash.className = 'dv-sash';
+    const child = document.createElement('span');
+    sash.append(child);
+    const tab = document.createElement('div');
+    dock.append(sash, tab);
+    document.body.append(dock);
+    const dispose = setupDockviewTabs(dock, { onDidLayoutChange: () => ({ dispose() {} }) });
+    try {
+      const dividerDown = new Event('pointerdown', { bubbles: true, cancelable: true });
+      child.dispatchEvent(dividerDown);
+      expect(dividerDown.defaultPrevented).toBe(true);
+      document.dispatchEvent(new Event('pointerup'));
+      const tabDown = new Event('pointerdown', { bubbles: true, cancelable: true });
+      tab.dispatchEvent(tabDown);
+      expect(tabDown.defaultPrevented).toBe(false);
+    } finally {
+      dispose();
+    }
+  });
+});
 
 describe('single-tab header styles', () => {
   function setup(single: boolean) {

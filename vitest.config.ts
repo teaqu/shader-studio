@@ -36,6 +36,7 @@ export default defineConfig({
       },
     },
     projects: [
+      'extension/vitest.mcp.config.ts',
       'types/vitest.config.ts',
       'extension/vitest.config.ts',
       'standalone/vitest.config.ts',

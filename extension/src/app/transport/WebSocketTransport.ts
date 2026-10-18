@@ -1,5 +1,7 @@
 import { resolveDefaultAssetPath } from "../DefaultAssets";
 import { WebSocket, WebSocketServer } from "ws";
+import { randomUUID } from 'node:crypto';
+import type { PreviewRegistry } from '../mcp/PreviewRegistry';
 import * as vscode from "vscode";
 import * as path from "path";
 import { fileURLToPath } from "url";
@@ -22,6 +24,54 @@ export class WebSocketTransport implements MessageTransport {
   private wsServer: WebSocketServer;
   private wsClients: Set<WebSocket> = new Set();
   private allowedBrowserOrigins = new Set<string>();
+  private previewRegistry?: PreviewRegistry;
+
+  private previewIds = new Map<WebSocket, string>();
+  private previewCleanups = new Map<WebSocket, () => void>();
+
+  public attachPreviewRegistry(registry: PreviewRegistry | undefined): void {
+    if (this.previewRegistry === registry) {
+      return;
+    }
+    for (const cleanup of this.previewCleanups.values()) {
+      cleanup();
+    }
+    this.previewCleanups.clear();
+    this.previewIds.clear();
+    this.previewRegistry = registry;
+    for (const client of this.wsClients) {
+      this.registerPreview(client);
+    }
+  }
+
+  private unregisterPreview(ws: WebSocket): void {
+    this.previewCleanups.get(ws)?.();
+    this.previewCleanups.delete(ws);
+    this.previewIds.delete(ws);
+  }
+
+  private registerPreview(ws: WebSocket): void {
+    if (!this.previewRegistry || ws.readyState !== WebSocket.OPEN || this.previewCleanups.has(ws)) {
+      return;
+    }
+    const id = randomUUID();
+    this.previewIds.set(ws, id);
+    this.previewCleanups.set(ws, this.previewRegistry.register({
+      id, kind: 'browser', send: message => {
+        if (ws.readyState !== WebSocket.OPEN) {
+          throw new Error('Preview disconnected.');
+        }
+        ws.send(JSON.stringify(message));
+      },
+      sendSource: message => {
+        if (ws.readyState !== WebSocket.OPEN) {
+          throw new Error('Preview disconnected.');
+        }
+        const source = message as ConfigPathMessage;
+        ws.send(JSON.stringify(source.type === 'shaderSource' && source.config ? this.processConfigPaths(source) : source));
+      },
+    }));
+  }
   // Browser clients may be older than the extension, so commands stay opaque
   // until ClientMessageHandler selects and validates their payload.
   private messageHandler?: (message: any) => void;
@@ -92,6 +142,7 @@ export class WebSocketTransport implements MessageTransport {
     this.wsServer.on("connection", (ws: WebSocket) => {
       Logger.trace(`WebSocket: Client connected. Total clients: ${this.wsClients.size + 1}`);
       this.wsClients.add(ws);
+      this.registerPreview(ws);
 
       // Create a per-connection ClientMessageHandler
       const clientHandler = new ClientMessageHandler(
@@ -112,6 +163,10 @@ export class WebSocketTransport implements MessageTransport {
         try {
           const messageStr = msg instanceof Buffer ? msg.toString() : msg;
           const data = JSON.parse(messageStr);
+          this.previewRegistry?.receive(this.previewIds.get(ws) ?? '', data);
+          if (data.type === 'viewerRpcResponse') {
+            return;
+          }
 
           // Handle client identification (legacy, kept for compatibility)
           if (data.type === 'clientInfo') {
@@ -140,6 +195,7 @@ export class WebSocketTransport implements MessageTransport {
       });
 
       ws.on("close", (code, reason) => {
+        this.unregisterPreview(ws);
         this.wsClients.delete(ws);
         Logger.debug(`WebSocket: client disconnected (code ${code}, `
           + `reason ${reason?.toString()}). Total clients: ${this.wsClients.size}`);
@@ -147,6 +203,7 @@ export class WebSocketTransport implements MessageTransport {
 
       ws.on("error", (error) => {
         console.error('WebSocket client error:', error);
+        this.unregisterPreview(ws);
         this.wsClients.delete(ws);
       });
 
@@ -326,6 +383,7 @@ export class WebSocketTransport implements MessageTransport {
   }
 
   public close(): void {
+    this.attachPreviewRegistry(undefined);
     this.wsClients.forEach(client => {
       if (client.readyState === WebSocket.OPEN) {
         client.close();

@@ -27,4 +27,7 @@ export * from './types';
 export * from './models';
 
 export type { RenderingEngine as RenderingEngineInterface } from './types/RenderingEngine';
+export type { FeedbackReadback, ViewerInputEvent, ViewerInputListener, ViewerInputSource, ViewerInputState } from './types/ViewerInteraction';
 export type { LiveInputPreview, LiveInputType } from './resources/LiveInputTextureManager';
+
+export { keyCodeForCode } from './input/KeyboardManager';

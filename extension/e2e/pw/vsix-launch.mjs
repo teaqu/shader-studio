@@ -93,13 +93,16 @@ export function cloneProductionVsixSeed({ seedExtensionsDir, extensionsDir, copy
 }
 
 /** Build launch arguments for a production VSIX with only the test bridge in development mode. */
-export function productionVsixLaunchArgs({ userDataDir, extensionsDir, bridgeExtensionPath, workspacePath }) {
+export function productionVsixLaunchArgs({ userDataDir, extensionsDir, bridgeExtensionPath, workspacePath, platform = process.platform }) {
   const profile = requiredPath(userDataDir, 'userDataDir');
   const extensions = requiredPath(extensionsDir, 'extensionsDir');
   const bridge = requiredPath(bridgeExtensionPath, 'bridgeExtensionPath');
   const workspace = requiredPath(workspacePath, 'workspacePath');
   const args = [
     '--no-sandbox',
+    // Disposable Linux test profiles have no unlocked desktop keyring. Secret
+    // Storage must not wait for a desktop prompt when the MCP tests enable it.
+    ...(platform === 'linux' ? ['--password-store=basic'] : []),
     '--disable-updates',
     '--skip-welcome',
     '--skip-release-notes',

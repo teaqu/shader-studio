@@ -23,8 +23,13 @@ export function setupDockviewTabs(containerEl: HTMLElement, api: Pick<DockviewAp
     setDragActive(false);
   }
 
-  function handlePointerDown() {
+  function handlePointerDown(event: Event) {
     pointerDown = true;
+    // A resizing divider moves beneath the pointer. Suppress the browser's
+    // native drag gesture so a revealed tab underneath cannot take it over.
+    if (event.target instanceof Element && event.target.closest('.dv-sash')) {
+      event.preventDefault();
+    }
   }
 
   function handlePointerUp() {

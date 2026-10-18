@@ -83,6 +83,7 @@ nav:
       - Compile Modes: features/compile-modes.md
       - Recording: features/recording.md
       - Open In Browser: features/web-server.md
+      - AI Agents (MCP): features/mcp.md
       - Shader Explorer: features/shader-explorer.md
       - 3D Camera: features/camera.md
       - VR Shaders: features/vr.md

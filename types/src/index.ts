@@ -4,6 +4,7 @@ export * from './ShaderOutputs';
 export * from './ShaderSourceTemplates';
 export * from './ShaderStageIsolation';
 export * from './MessageTypes';
+export * from './ViewerRpc';
 export * from './StorageInspection';
 export * from './StorageLayout';
 export * from './assetExtensions';

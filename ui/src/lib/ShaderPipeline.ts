@@ -161,7 +161,7 @@ export class ShaderPipeline {
         }
 
         this.syncStoredShaderContextForBufferUpdate(bufferName, code);
-        this.bufferUpdater.updateBuffer(path, buffers, code, bufferName, marker);
+        await this.bufferUpdater.updateBuffer(path, buffers, code, bufferName, marker);
         return undefined;
       }
 

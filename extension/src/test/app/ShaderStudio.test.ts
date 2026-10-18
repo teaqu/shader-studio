@@ -78,7 +78,7 @@ suite('Shader Studio Test Suite', () => {
       storagePath: '/mock/storage',
       globalStoragePath: '/mock/global/storage',
       logPath: '/mock/log',
-      secrets: {} as any,
+      secrets: { onDidChange: sandbox.stub().returns({ dispose: sandbox.stub() }) } as any,
       environmentVariableCollection: {} as any,
       storageUri: vscode.Uri.file('/mock/storage'),
       languageModelAccessInformation: {} as any,
@@ -780,6 +780,7 @@ suite('Shader Studio Test Suite', () => {
         languageId: 'glsl',
         fileName: '/mock/path/shader.glsl',
         uri: vscode.Uri.file('/mock/path/shader.glsl'),
+        getText: () => '// shader contents',
       },
     } as vscode.TextDocumentChangeEvent;
 

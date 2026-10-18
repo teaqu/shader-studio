@@ -98,6 +98,7 @@ test('covers every standalone gap project', () => {
 // Closing first keeps a single preview panel alive: every view command spawns
 // a panel, and stale panels keep capture loops running against the shared GPU.
 async function openShader(vscode, targetPath) {
+  const closingFrames = new Set(vscode.window.frames());
   await vscode.evaluateInHost(async (vscode, path) => {
     await vscode.commands.executeCommand('workbench.action.closeAllEditors');
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
@@ -106,6 +107,7 @@ async function openShader(vscode, targetPath) {
     });
     await vscode.commands.executeCommand('shader-studio.view');
   }, targetPath);
+  return closingFrames;
 }
 
 const pauseErrorClass = (frame) => frame.evaluate(
@@ -119,19 +121,21 @@ for (const project of projects) {
   test(`extension host compiles ${project.name}`, async ({ vscode }) => {
     // The frame is re-resolved on every read: panels come and go as shaders
     // open, and a captured handle dies with its webview.
-    const liveText = (read) => async () => read(await vscode.shaderFrame(10_000));
+    let closingFrames;
+    const currentFrame = () => vscode.shaderFrame(10_000, closingFrames);
+    const liveText = (read) => async () => read(await currentFrame());
 
-    await openShader(vscode, sentinelPath);
+    closingFrames = await openShader(vscode, sentinelPath);
     await expect.poll(liveText(errorTooltipText), {
       timeout: 60_000, message: 'sentinel shader never reported its error',
     }).toContain(SENTINEL_TOKEN);
 
-    await openShader(vscode, join(corpusRoot, project.name));
+    closingFrames = await openShader(vscode, join(corpusRoot, project.name));
     // Settles on the first compilation result for this project: either the
     // error state clears, or the tooltip stops describing the sentinel.
     // Hanging here means the project never produced a result at all.
     await expect.poll(async () => {
-      const frame = await vscode.shaderFrame(10_000);
+      const frame = await currentFrame();
       if (!(await pauseErrorClass(frame)).includes('error')) {
         return 'settled-clean';
       }
@@ -140,7 +144,7 @@ for (const project of projects) {
       timeout: 90_000, message: `${project.name} never produced a compilation result`,
     }).not.toBe('stale');
 
-    const frame = await vscode.shaderFrame(10_000);
+    const frame = await currentFrame();
     if (!(await pauseErrorClass(frame)).includes('error')) {
       return;
     }

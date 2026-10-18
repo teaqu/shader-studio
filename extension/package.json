@@ -113,6 +113,18 @@
       {
         "command": "shader-studio.resetLayout",
         "title": "Shader Studio: Reset Panel Layout"
+      },
+      {
+        "command": "shader-studio.connectAiAssistant",
+        "title": "Shader Studio: Connect AI Assistant"
+      },
+      {
+        "command": "shader-studio.regenerateMcpToken",
+        "title": "Shader Studio: Regenerate MCP Token"
+      },
+      {
+        "command": "shader-studio.verifyMcpConnection",
+        "title": "Shader Studio: Verify MCP Connection"
       }
     ],
     "keybindings": [
@@ -154,6 +166,20 @@
     "configuration": {
       "title": "Shader Studio",
       "properties": {
+        "shader-studio.mcpEnabled": {
+          "type": "boolean",
+          "default": false,
+          "scope": "application",
+          "description": "Enable local MCP tools for compatible AI agents. Disabled by default. Once enabled, starts automatically whenever Shader Studio starts and keeps running until disabled. A private token is generated and stored in VS Code Secret Storage on first enable."
+        },
+        "shader-studio.mcpPort": {
+          "type": "integer",
+          "default": 51474,
+          "scope": "window",
+          "minimum": 1024,
+          "maximum": 65535,
+          "description": "Loopback port for the local MCP endpoint, available even without starting the browser preview server."
+        },
         "shader-studio.webServerPort": {
           "type": "number",
           "default": 3000,
@@ -358,10 +384,10 @@
     "compile": "npm run build:ui && npm run build:shader-explorer && npm run build:code",
     "watch": "node esbuild.js --watch",
     "copy-glsl-to-dist": "rimraf dist/node_modules && cpx \"../node_modules/glsl-transpiler/**/*\" dist/node_modules/glsl-transpiler && cpx \"../node_modules/inherits/**/*\" dist/node_modules/inherits && cpx \"../node_modules/through2/**/*\" dist/node_modules/through2 && cpx \"../node_modules/through/**/*\" dist/node_modules/through && cpx \"../node_modules/glsl-tokenizer/**/*\" dist/node_modules/glsl-tokenizer && cpx \"../node_modules/glsl-parser/**/*\" dist/node_modules/glsl-parser && cpx \"../node_modules/xtend/**/*\" dist/node_modules/xtend && cpx \"../node_modules/subscript/**/*\" dist/node_modules/subscript && cpx \"../node_modules/prepr/**/*\" dist/node_modules/prepr && cpx \"../node_modules/pick-by-alias/**/*\" dist/node_modules/pick-by-alias && cpx \"../node_modules/strip-json-comments/**/*\" dist/node_modules/strip-json-comments && cpx \"../node_modules/parenthesis/**/*\" dist/node_modules/parenthesis && cpx \"../node_modules/object-assign/**/*\" dist/node_modules/object-assign && cpx \"../node_modules/jsep/**/*\" dist/node_modules/jsep && cpx \"../node_modules/escaper/**/*\" dist/node_modules/escaper && cpx \"../node_modules/expression-eval/**/*\" dist/node_modules/expression-eval && cpx \"../node_modules/core-util-is/**/*\" dist/node_modules/core-util-is && cpx \"../node_modules/balanced-match/**/*\" dist/node_modules/balanced-match && cpx \"../node_modules/readable-stream/**/*\" dist/node_modules/readable-stream && cpx \"../node_modules/isarray/**/*\" dist/node_modules/isarray && cpx \"../node_modules/string_decoder/**/*\" dist/node_modules/string_decoder && cpx \"../node_modules/process-nextick-args/**/*\" dist/node_modules/process-nextick-args && cpx \"../node_modules/util-deprecate/**/*\" dist/node_modules/util-deprecate",
-    "package": "npm run build:ui && npm run build:shader-explorer && node esbuild.js --production && npm run copy-glsl-to-dist",
+    "package": "npm run build:ui && npm run build:shader-explorer && npm run copy-glsl-to-dist && node esbuild.js --production",
     "vsce-package": "npm run package && vsce package --no-dependencies",
     "compile-tests": "npm run build:deps && rimraf out && tsc -p ./tsconfig.test.json",
-    "typecheck": "tsc -p tsconfig.test.json --noEmit",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit && tsc -p tsconfig.mcp.json",
     "watch-tests": "rimraf out && tsc -p . -w --outDir out",
     "build:code": "npm run build:deps && node esbuild.js && tsc -p ./",
     "build:deps": "turbo run build --filter=@shader-studio/types --filter=@shader-studio/language-server-core --filter=@shader-studio/glsl-analysis --filter=@shader-studio/glsl-language-server --filter=@shader-studio/slang-language-server --filter=@shader-studio/wgsl-analysis --filter=@shader-studio/wgsl-language-server --filter=@shader-studio/utils --filter=@shader-studio/debug --filter=@shader-studio/rendering",
@@ -391,25 +417,27 @@
     "@typescript-eslint/parser": "^8.31.1",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.5.2",
+    "ajv": "^6.12.6",
     "esbuild": "^0.28.1",
     "js-yaml": "^4.3.2",
+    "playwright": "^1.60.0",
     "sinon": "^21.0.0",
     "vscode-oniguruma": "^2.0.1",
-    "vscode-textmate": "^9.3.2",
-    "ajv": "^6.12.6",
-    "playwright": "^1.60.0"
+    "vscode-textmate": "^9.3.2"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.0",
     "@shader-studio/glsl-language-server": "*",
     "@shader-studio/language-server-core": "*",
     "@shader-studio/slang-language-server": "*",
-    "@shader-studio/wgsl-language-server": "*",
     "@shader-studio/types": "*",
     "@shader-studio/utils": "*",
+    "@shader-studio/wgsl-language-server": "*",
     "entities": "^6.0.1",
     "esbuild-wasm": "^0.24.0",
     "glsl-transpiler": "^3.0.3",
+    "vscode-languageserver-protocol": "3.18.2",
     "ws": "^8.18.3",
-    "vscode-languageserver-protocol": "3.18.2"
+    "zod": "^4.6.5"
   }
 }

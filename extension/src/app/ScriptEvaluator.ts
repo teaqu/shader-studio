@@ -1,6 +1,7 @@
 import * as vm from "vm";
 import { createRequire } from "module";
 import { Logger } from "./services/Logger";
+import { scriptConsole } from './mcp/McpLogs';
 
 export interface CustomUniformType {
   name: string;
@@ -89,7 +90,7 @@ export class ScriptEvaluator {
       // Create a sandbox with require support
       const sandbox: Record<string, unknown> = {
         __shaderUniforms: undefined,
-        console,
+        console: scriptConsole(scriptPath),
         setTimeout,
         setInterval,
         clearTimeout,
