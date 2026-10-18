@@ -25,6 +25,7 @@
     showSelectWhenHidden?: boolean;
     insertLabel?: string;
     hidePath?: boolean;
+    fragmentInsertMenu?: boolean;
     onClear?: () => void;
     existingModes?: ('hooks' | 'native')[];
     clearEnabled?: boolean;
@@ -67,6 +68,7 @@
     showSelectWhenHidden = false,
     insertLabel = 'Insert',
     hidePath = false,
+    fragmentInsertMenu = false,
     onClear = undefined,
     existingModes = [],
     clearEnabled = !!value,
@@ -186,13 +188,47 @@ onPathChange?.(event.data.payload.path);
     });
   }
 
-  function handleInsert() {
+  let insertPopover = $state<HTMLDivElement>();
+  let insertTrigger = $state<HTMLButtonElement>();
+  let insertMenuOpen = $state(false);
+
+  const insertPopoverId = $props.id();
+
+  function positionInsertMenu() {
+    if (!insertTrigger || !insertPopover) {
+      return;
+    }
+    const bounds = insertTrigger.getBoundingClientRect();
+    const width = Math.min(272, window.innerWidth - 16);
+    insertPopover.style.left = `${Math.max(8, Math.min(bounds.right - width, window.innerWidth - width - 8))}px`;
+    insertPopover.style.top = `${bounds.bottom + 6}px`;
+  }
+
+  function onInsertMenuToggle(event: ToggleEvent) {
+    insertMenuOpen = event.newState === 'open';
+    if (insertMenuOpen && insertTrigger && insertPopover) {
+      const bounds = insertTrigger.getBoundingClientRect();
+      const menuBounds = insertPopover.getBoundingClientRect();
+      if (menuBounds.bottom > window.innerHeight - 8) {
+        insertPopover.style.top = `${Math.max(8, bounds.top - menuBounds.height - 6)}px`;
+      }
+      insertPopover.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+    }
+  }
+
+  function insertFromMenu(mode: 'hooks' | 'native') {
+    insertPopover?.hidePopover?.();
+    insertTrigger?.focus();
+    handleInsert(mode);
+  }
+
+  function handleInsert(mode: 'hooks' | 'native' = effectiveMode) {
     requestError = null;
     const requestId = crypto.randomUUID();
     pendingRequestId = requestId;
     postMessage?.({
       type: 'insertShaderSource',
-      payload: { shaderPath, sourcePath: effectiveMode === 'hooks' ? builtInSourcePath ?? sourcePath : sourcePath, fileType, requestId, authoringMode: effectiveMode, passName, outputCount, geometryType, vertexSpace },
+      payload: { shaderPath, sourcePath: mode === 'hooks' ? builtInSourcePath ?? sourcePath : sourcePath, fileType, requestId, authoringMode: mode, passName, outputCount, geometryType, vertexSpace },
     });
   }
 </script>
@@ -224,13 +260,23 @@ onPathChange?.(event.data.payload.path);
         <button class="create-file-btn" onclick={handleCreate}>{createLabel}</button>
       {/if}
       {#if allowInsert}
-        {#if supportsNative && !fileType.endsWith('-compute')}
-        <select aria-label="Insert mode" value={effectiveMode} onchange={(event) => selectedMode = event.currentTarget.value as 'hooks' | 'native'}>
-          <option value="hooks">Built-in</option>
-          <option value="native">Native</option>
-        </select>
+        {#if fragmentInsertMenu && supportsNative && !fileType.endsWith('-compute')}
+          <button class="insert-file-btn" bind:this={insertTrigger} popovertarget={insertPopoverId} onclick={positionInsertMenu} aria-label="Add function" aria-expanded={insertMenuOpen}>+ Add&#8230;</button>
+          <div class="insert-menu" id={insertPopoverId} bind:this={insertPopover} popover="auto" role="group" aria-label="Add function" ontoggle={onInsertMenuToggle}>
+            <button class="insert-option" onclick={() => insertFromMenu('native')}>Native fragment function</button>
+            <button class="insert-option" disabled={existingModes.includes('hooks')} onclick={() => insertFromMenu('hooks')}>
+              <span>Built-in mainImage</span>{#if existingModes.includes('hooks')}<small>Already in this shader</small>{/if}
+            </button>
+          </div>
+        {:else}
+          {#if supportsNative && !fileType.endsWith('-compute')}
+            <select aria-label="Insert mode" value={effectiveMode} onchange={(event) => selectedMode = event.currentTarget.value as 'hooks' | 'native'}>
+              <option value="hooks">Built-in</option>
+              <option value="native">Native</option>
+            </select>
+          {/if}
+          {#if !existingModes.includes(effectiveMode)}<button class="insert-file-btn" onclick={() => handleInsert()}>{insertLabel}</button>{/if}
         {/if}
-        {#if !existingModes.includes(effectiveMode)}<button class="insert-file-btn" onclick={handleInsert}>{insertLabel}</button>{/if}
       {/if}
       {#if onClear}<button class="select-file-btn" onclick={onClear} disabled={!clearEnabled}>Clear</button>{/if}
     </div>
@@ -300,6 +346,18 @@ onPathChange?.(event.data.payload.path);
     align-items: center;
     gap: 6px;
   }
+  .insert-menu {
+    position: fixed; inset: auto; margin: 0; padding: 4px;
+    width: min(272px, calc(100vw - 16px)); max-height: calc(100dvh - 16px); overflow: auto;
+    border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border));
+    border-radius: var(--shader-studio-control-radius);
+    background: var(--vscode-menu-background, var(--vscode-sideBar-background));
+    color: var(--vscode-menu-foreground, var(--vscode-foreground));
+    box-shadow: 0 4px 12px var(--vscode-widget-shadow, rgb(0 0 0 / 20%));
+  }
+  .insert-option { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 6px 8px; min-height: var(--shader-studio-control-height); border: 0; border-radius: var(--shader-studio-control-radius); background: transparent; color: inherit; text-align: left; cursor: pointer; }
+  .insert-option:hover:not(:disabled) { background: var(--vscode-menu-selectionBackground); color: var(--vscode-menu-selectionForeground); }
+  .insert-option small { font-size: var(--shader-studio-label-size); font-family: var(--shader-studio-font-family); }
   .request-error { flex-basis: 100%; margin: 0; color: var(--vscode-errorForeground, #f48771); font-size: 12px; }
   select { padding: var(--shader-studio-control-padding); border-radius: var(--shader-studio-control-radius); font-size: var(--shader-studio-font-size); color: var(--vscode-dropdown-foreground, #ccc); background: var(--vscode-dropdown-background, #3c3c3c); border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border, #3c3c3c)); min-height: var(--shader-studio-control-height); }
   select:focus { outline: 1px solid var(--vscode-focusBorder, #007acc); }

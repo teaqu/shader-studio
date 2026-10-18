@@ -460,7 +460,7 @@ describe('BufferConfig', () => {
         language: 'wgsl', shaderPath: '/shaders/image.wgsl', postMessage: mockPostMessage,
       });
 
-      await fireEvent.click(container.querySelector('[aria-label="Fragment function controls"] .insert-file-btn')!);
+      await fireEvent.click(container.querySelector('[aria-label="Fragment function controls"] .insert-option')!);
 
       expect(mockPostMessage).toHaveBeenCalledWith(expect.objectContaining({
         type: 'insertShaderSource',
@@ -478,7 +478,7 @@ describe('BufferConfig', () => {
         language: 'slang', shaderPath: '/shaders/image.slang', postMessage: mockPostMessage,
       });
 
-      await fireEvent.click(container.querySelector('[aria-label="Fragment function controls"] .insert-file-btn')!);
+      await fireEvent.click(container.querySelector('[aria-label="Fragment function controls"] .insert-option')!);
       expect(mockPostMessage).toHaveBeenCalledWith(expect.objectContaining({
         type: 'insertShaderSource',
         payload: expect.objectContaining({ fileType: 'slang-buffer', authoringMode: 'native' }),

@@ -31,7 +31,7 @@
 </script>
 
 {#snippet addFunction(selectedStage: 'vertex' | 'fragment')}
-  <PathInput value="" hidePath={true} allowCreate={false} allowSelect={false} allowInsert={true} insertLabel="Add function…"
+  <PathInput value="" hidePath={true} allowCreate={false} allowSelect={false} allowInsert={true} fragmentInsertMenu={selectedStage === 'fragment'} insertLabel="Add function…"
     sourcePath={selectedStage === 'vertex' ? pass.vertex || sourcePath : sourcePath} fileType={selectedStage === 'vertex' ? `${language}-vertex` : fileType}
     geometryType={pass.geometry?.type ?? 'fullscreen'}
     existingModes={existingShaderModes(selectedStage === 'vertex' && pass.vertex && pass.vertex !== sourcePath ? vertexSource : passSource, language, selectedStage).includes('hooks') ? ['hooks'] : []}

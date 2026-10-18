@@ -108,7 +108,7 @@
   box-shadow: inset 2px 2px 0 var(--pixel-shadow);
 }
 
-:root[data-studio-theme="pixel"] :where(dialog, .dropdown-menu, .options-menu) {
+:root[data-studio-theme="pixel"] :where(dialog, .dropdown-menu, .options-menu, .insert-menu) {
   border: 1px solid var(--pixel-line);
   border-radius: 2px;
   box-shadow: 3px 3px 0 var(--pixel-shadow);
@@ -246,7 +246,7 @@
 }
 
 /* Stepped corners give panels and library tiles a sprite-like silhouette. */
-:root[data-studio-theme="pixel"] :where(dialog, .shader-card) {
+:root[data-studio-theme="pixel"] :where(dialog, .shader-card, .insert-menu) {
   border-radius: 0;
   clip-path: polygon(0 4px, 4px 4px, 4px 0, calc(100% - 4px) 0, calc(100% - 4px) 4px, 100% 4px, 100% calc(100% - 4px), calc(100% - 4px) calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 4px calc(100% - 4px), 0 calc(100% - 4px));
 }
@@ -309,4 +309,9 @@
 :root[data-studio-theme="pixel"] .shader-card:focus-visible {
   outline: 2px solid var(--pixel-accent);
   outline-offset: -3px;
+}
+
+:root[data-studio-theme="pixel"] .insert-menu .insert-option {
+  border: 0;
+  box-shadow: none;
 }
