@@ -475,7 +475,8 @@
   {/if}
   {#if workspaceError}<p role="alert">{workspaceError} <button aria-label="Dismiss workspace warning" title="Close warning" onclick={() => workspaceError = ''}>×</button></p>{/if}
   {#if pwaStatus.offlinePreparation.state === 'error' && dismissedOfflineError !== pwaStatus.offlinePreparation.message}
-    <p class="shell-status-error" role="alert">Offline preparation failed: {pwaStatus.offlinePreparation.message} <button aria-label="Dismiss offline warning" title="Close warning" onclick={() => dismissedOfflineError = pwaStatus.offlinePreparation.state === 'error' ? pwaStatus.offlinePreparation.message : ''}>×</button></p>
+    {@const offlineError = pwaStatus.offlinePreparation.message}
+    <p class="shell-status-error" role="alert">Offline preparation failed: {offlineError} <button aria-label="Dismiss offline warning" title="Close warning" onclick={() => dismissedOfflineError = offlineError}>×</button></p>
   {/if}
   <StandaloneLayout bind:this={layout} {hostedPanels} {transport}>
     {#snippet explorer()}

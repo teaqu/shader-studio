@@ -117,6 +117,41 @@ describe('standalone App', () => {
     await fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Files/ }));
     expect(layoutStub.togglePanel).toHaveBeenCalledWith('files');
   });
+  it('opens shaders through the explorer, other files in the editor, and closes deleted paths', async () => {
+    const transport = createTransport();
+    const explorer = { getShaders: vi.fn(), postMessage: vi.fn() };
+    transport.getShaderExplorerHostApi.mockReturnValue(explorer);
+    Object.assign(transport, { deleteWorkspacePath: vi.fn().mockResolvedValue(undefined) });
+    vi.spyOn(transport, 'onWorkspaceFiles').mockImplementation(listener => {
+      listener([{ path: '/main.glsl', asset: false }, { path: '/notes.txt', asset: false }] as never); return vi.fn();
+    });
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    render(App, { props: { transport } });
+    await fireEvent.click(screen.getByRole('treeitem', { name: /main\.glsl/ }));
+    expect(explorer.postMessage).toHaveBeenCalledWith({ type: 'openShader', path: '/main.glsl' });
+    await fireEvent.click(screen.getByRole('treeitem', { name: /notes\.txt/ }));
+    await waitFor(() => expect(layoutStub.openEditor).toHaveBeenCalledWith('/notes.txt'));
+    await fireEvent.click(screen.getByTitle('Delete selected files or folders'));
+    await waitFor(() => expect(layoutStub.closeEditorPaths).toHaveBeenCalledWith(['/notes.txt']));
+  });
+  it('shows hidden Files unchecked, closes View on a second press, and dismisses workspace and offline warnings', async () => {
+    layoutStub.isPanelVisible.mockImplementation(panel => panel !== 'files');
+    const transport = createTransport();
+    transport.exportWorkspaceBackup.mockRejectedValue(new Error('denied'));
+    render(App, { props: { transport, pwa: createPwa({ offlinePreparation: { state: 'error', message: 'network down' } }) } });
+    await fireEvent.click(screen.getByRole('button', { name: 'View' }));
+    expect(screen.getByRole('menuitemcheckbox', { name: /Files/ }).getAttribute('aria-checked')).toBe('false');
+    await fireEvent.click(screen.getByRole('button', { name: 'View' }));
+    expect(screen.queryByRole('menuitemcheckbox', { name: /Files/ })).toBeNull();
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Export Workspace Backup' }));
+    await waitFor(() => expect(screen.getByText(/Could not export the workspace/)).toBeTruthy());
+    await fireEvent.click(screen.getByRole('button', { name: 'Dismiss workspace warning' }));
+    expect(screen.queryByText(/Could not export the workspace/)).toBeNull();
+    expect(screen.getByText(/Offline preparation failed: network down/)).toBeTruthy();
+    await fireEvent.click(screen.getByRole('button', { name: 'Dismiss offline warning' }));
+    expect(screen.queryByText(/Offline preparation failed/)).toBeNull();
+  });
   it('shows an empty preview after all shader files are deleted', async () => {
     const transport = createTransport();
     vi.spyOn(transport, 'onWorkspaceFiles').mockImplementation(listener => {

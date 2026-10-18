@@ -45,6 +45,18 @@ vi.mock('dockview-core', () => ({
 
 vi.mock('dockview-core/dist/styles/dockview.css', () => ({}));
 
+const controllerArgs = vi.hoisted(() => ({ latest: [] as unknown[] }));
+vi.mock('../StandaloneLayoutController', async importOriginal => {
+  const actual = await importOriginal<typeof import('../StandaloneLayoutController')>();
+  class RecordingController extends actual.StandaloneLayoutController {
+    constructor(...args: ConstructorParameters<typeof actual.StandaloneLayoutController>) {
+      super(...args);
+      controllerArgs.latest = args;
+    }
+  }
+  return { ...actual, StandaloneLayoutController: RecordingController };
+});
+
 function source(name: string) {
   return createRawSnippet(() => ({ render: () => `<div data-source="${name}">${name}</div>` }));
 }
@@ -317,5 +329,32 @@ describe('StandaloneLayout', () => {
       expect(result.queryByRole('navigation', { name: 'Workspace panels' })).toBeNull();
       expect(result.component.isMobileLayout()).toBe(false);
     });
+  });
+
+  it('activates editor shaders, asks the transport before closing, and closes removed paths', async () => {
+    const postMessage = vi.fn();
+    const confirmEditorClose = vi.fn(async () => false);
+    const transport = { getShaderExplorerHostApi: () => ({ postMessage }), confirmEditorClose };
+    const { component } = render(StandaloneLayout, { props: {
+      explorer: source('explorer'), editor: source('editor'), preview: source('preview'), transport: transport as never,
+    } });
+    await tick();
+    const [, , activate, confirmClose] = controllerArgs.latest as [unknown, unknown, (path: string) => void, (path: string) => Promise<boolean>];
+    activate('/aurora.glsl');
+    expect(postMessage).toHaveBeenCalledWith({ type: 'activateShader', path: '/aurora.glsl' });
+    await expect(confirmClose('/aurora.glsl')).resolves.toBe(false);
+    expect(confirmEditorClose).toHaveBeenCalledWith('/aurora.glsl');
+    const { StandaloneLayoutController } = await import('../StandaloneLayoutController');
+    const close = vi.spyOn(StandaloneLayoutController.prototype, 'closeEditorPaths');
+    (component as unknown as { closeEditorPaths(paths: string[]): void }).closeEditorPaths(['/gone.glsl']);
+    expect(close).toHaveBeenCalledWith(['/gone.glsl']);
+  });
+
+  it('closes editors without a prompt when no transport is attached', async () => {
+    render(StandaloneLayout, { props: { explorer: source('explorer'), editor: source('editor'), preview: source('preview') } });
+    await tick();
+    const [, , activate, confirmClose] = controllerArgs.latest as [unknown, unknown, (path: string) => void, (path: string) => Promise<boolean>];
+    expect(() => activate('/aurora.glsl')).not.toThrow();
+    await expect(confirmClose('/aurora.glsl')).resolves.toBe(true);
   });
 });

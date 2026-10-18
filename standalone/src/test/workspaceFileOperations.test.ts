@@ -203,3 +203,20 @@ it('drops stale resolved image data after deleting a referenced asset', async ()
   } }));
   host.dispose();
 });
+
+it('creates folders, moves and bulk deletes through the transport, and uploads root assets', async () => {
+  const transport = new WebTransport();
+  try {
+    await transport.createWorkspaceFile('/loose.txt');
+    await transport.createWorkspaceFolder('/archive');
+    await transport.moveWorkspacePaths(['/loose.txt'], '/archive');
+    expect(await transport.readEditorFile('/loose.txt')).toBeNull();
+    expect(await transport.readEditorFile('/archive/loose.txt')).toBe('');
+    await transport.deleteWorkspacePaths(['/archive/loose.txt']);
+    expect(await transport.readEditorFile('/archive/loose.txt')).toBeNull();
+    const [asset] = await transport.uploadAssets([new File(['image'], 'top.png')], '/root.glsl');
+    expect(asset).toMatchObject({ name: 'top.png', workspacePath: '/top.png', isSameDirectory: true });
+  } finally {
+    transport.dispose();
+  }
+});

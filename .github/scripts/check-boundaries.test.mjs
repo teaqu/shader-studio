@@ -8,7 +8,10 @@ import { checkBoundaries } from "./check-boundaries.mjs";
 function fixture(packages) {
   const root = mkdtempSync(join(tmpdir(), "shader-studio-boundaries-"));
   mkdirSync(join(root, "language-servers"));
-  for (const [directory, manifest, source] of packages) {
+  // Every workspace the checker scans must exist; supply quiet ones a case omits.
+  const quiet = [["file-explorer", { name: "@shader-studio/file-explorer" }, ""]]
+    .filter(([directory]) => !packages.some(([present]) => present === directory));
+  for (const [directory, manifest, source] of [...packages, ...quiet]) {
     mkdirSync(join(root, directory), { recursive: true });
     writeFileSync(join(root, directory, "package.json"), JSON.stringify(manifest));
     if (typeof source === "string") {

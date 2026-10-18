@@ -88,4 +88,44 @@ describe('RenderEntryPointControls', () => {
     expect(onCommit).toHaveBeenCalledWith({ entryPoints: { vertex: 'vert' } });
   });
 
+
+  it('lists a missing configured function and labels a native mainImage among several choices', () => {
+    const { getByLabelText } = render(RenderEntryPointControls, {
+      pass: { inputs: {}, entryPoints: { fragment: 'removedFn' } }, stage: 'fragment', showFragmentHook: false, onCommit: vi.fn(),
+      entryPoints: [{ name: 'mainImage', stage: 'fragment' as const }, { name: 'other', stage: 'fragment' as const }],
+    });
+    const select = getByLabelText('Fragment function') as HTMLSelectElement;
+    expect(select.classList.contains('missing')).toBe(true);
+    expect([...select.options].map(option => option.textContent)).toEqual(['removedFn (missing)', 'mainImage (native)', 'other']);
+  });
+
+  it('asks for a choice when no fragment function is configured and the hook is unavailable', async () => {
+    const onCommit = vi.fn();
+    const { getByLabelText } = render(RenderEntryPointControls, {
+      pass: { inputs: {} }, stage: 'fragment', showFragmentHook: false, onCommit,
+      entryPoints: [{ name: 'only', stage: 'fragment' as const }],
+    });
+    const select = getByLabelText('Fragment function') as HTMLSelectElement;
+    expect(select.options[0].textContent).toBe('Choose function');
+    await fireEvent.change(select, { target: { value: 'only' } });
+    expect(onCommit).toHaveBeenCalledWith({ inputs: {}, entryPoints: { fragment: 'only' } });
+  });
+
+  it.each([
+    [{ fragment: 'gone' }, [], 'gone (missing)'],
+    [undefined, [], 'mainImage'],
+    [{ fragment: 'kept' }, [{ name: 'kept', stage: 'fragment' as const }], 'kept'],
+  ])('shows a single fragment choice as text (%j)', (configured, candidates, text) => {
+    const { getByLabelText } = render(RenderEntryPointControls, {
+      pass: { inputs: {}, entryPoints: configured }, stage: 'fragment', showFragmentHook: !configured, onCommit: vi.fn(), entryPoints: candidates,
+    });
+    expect(getByLabelText('Fragment function').textContent).toBe(text);
+  });
+
+  it('reports when no fragment function exists', () => {
+    const { getByText } = render(RenderEntryPointControls, {
+      pass: { inputs: {} }, stage: 'fragment', showFragmentHook: false, onCommit: vi.fn(), entryPoints: [],
+    });
+    expect(getByText('No function found')).toBeTruthy();
+  });
 });

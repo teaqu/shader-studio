@@ -659,3 +659,64 @@ it('delegates viewer document indexing and atomic edits while guarding disposed 
   transport.onMessage(receive);
   expect(receive).not.toHaveBeenCalled();
 });
+
+describe('WebTransport preview file and save edge cases', () => {
+  beforeEach(() => resetShellState());
+  const tracking = (transport: WebTransport) => {
+    transport.getShaderExplorerHostApi().postMessage({ type: 'saveState', state: { keepActiveShaderFiles: true } });
+    return transport;
+  };
+
+  it('tracks the shell viewer, ignores reports without a shader, and drops reports after disposal', async () => {
+    const transport = tracking(new WebTransport());
+    transport.postMessage({ type: 'previewFilesChanged', payload: { shaderPath: '' } });
+    transport.postMessage({ type: 'previewFilesChanged', payload: {} } as never);
+    transport.postMessage({ type: 'previewFilesChanged' } as never);
+    await transport.flush();
+    expect(getActiveShaderEditors() ?? []).toHaveLength(0);
+    transport.postMessage({ type: 'previewFilesChanged', payload: { shaderPath: '/aurora.glsl' } });
+    await transport.flush();
+    expect(getActiveShaderEditors()).toEqual([expect.objectContaining({ id: 'default', shaderPath: '/aurora.glsl' })]);
+    resetShellState();
+    transport.postMessage({ type: 'previewFilesChanged', payload: { shaderPath: '/glow-trails.glsl' } });
+    transport.dispose();
+    await Promise.resolve(); await Promise.resolve();
+    expect(getActiveShaderEditors() ?? []).toHaveLength(0);
+  });
+
+  it('forgets a viewer that closes while its file report is pending and delegates editor state', async () => {
+    const transport = tracking(new WebTransport());
+    const viewer = transport.createViewerTransport();
+    viewer.postMessage({ type: 'previewFilesChanged', payload: { shaderPath: '/aurora.glsl' } });
+    viewer.dispose();
+    await transport.flush();
+    expect(getActiveShaderEditors()).toEqual([]);
+    const live = transport.createViewerTransport();
+    const dirty = vi.spyOn(transport, 'markEditorDirty');
+    const pending = vi.spyOn(transport, 'registerPendingSave');
+    const save = vi.fn();
+    live.markEditorDirty?.('/aurora.glsl');
+    live.registerPendingSave?.(save)();
+    expect(dirty).toHaveBeenCalledWith('/aurora.glsl');
+    expect(pending).toHaveBeenCalledWith(save);
+    live.dispose(); transport.dispose();
+  });
+
+  it('keeps an editor dirty when it changes again while its save is written', async () => {
+    const transport = new WebTransport();
+    const path = '/aurora.glsl';
+    await transport.readEditorFile(path);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    try {
+      transport.markEditorDirty(path);
+      transport.postMessage({ type: 'updateShaderSource', payload: { path, code: 'first save' } });
+      transport.markEditorDirty(path);
+      transport.postMessage({ type: 'updateShaderSource', payload: { code: 'no target' } } as never);
+      await transport.flush();
+      expect(await transport.confirmEditorClose(path)).toBe(false);
+      expect(confirm).toHaveBeenCalledOnce();
+    } finally {
+      confirm.mockRestore(); transport.dispose();
+    }
+  });
+});

@@ -40,11 +40,11 @@ describe('Particle Swarm pointer forces', () => {
   it.each([1, 2, 3])('attracts with left and repels with right (buttons=%i)', { timeout: 30_000 }, async buttons => {
     const files = createDefaultWorkspaceFiles();
     const read = (path: string) => files.find(file => file.path === path)!.contents;
-    const config = JSON.parse(read('/shaders/particle-swarm.sha.json')) as ShaderConfig;
-    const common = read('/shaders/particle-swarm/common.buffer.wgsl');
+    const config = JSON.parse(read('/particle-swarm.sha.json')) as ShaderConfig;
+    const common = read('/particle-swarm/common.buffer.wgsl');
     // Isolate the bundled pointer force from the ambient flow, with a fixed
     // integration step because the harness deliberately freezes elapsed time.
-    const kernels = read('/shaders/particle-swarm/swarm.buffer.wgsl')
+    const kernels = read('/particle-swarm/swarm.buffer.wgsl')
       .replace('let dt = clamp(iTimeDelta, 0.0, 0.05);', 'let dt = 1.0 / 60.0;')
       .replace('var desired = flowField(position * aspect, iTime) * 0.08;', 'var desired = vec2f(0.0);');
     const harness = createShaderCanvasHarness('wgsl');
