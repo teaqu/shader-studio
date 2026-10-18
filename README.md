@@ -1,8 +1,8 @@
 # Shader Studio
 
-A GLSL, Slang, and WGSL shader IDE with hot reloading, debugging and much more.
+A GLSL, Slang, and WGSL shader IDE with hot reloading, debugging and more.
 
-Try Shader Studio in [Standalone web mode](https://teaqu.github.io/shader-studio/app/) in your browser.
+Try Shader Studio in [in your browser](https://teaqu.github.io/shader-studio/app/).
 
 ### VSCode Marketplace
  https://marketplace.visualstudio.com/items?itemName=teaqu.shader-studio. 
