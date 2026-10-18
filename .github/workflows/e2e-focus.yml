@@ -17,7 +17,10 @@ on:
           - standalone
           - vscode
           - vscode-gpu
+          - vscode-corpus
           - rendering
+          - rendering-corpus
+          - ui
       specs:
         description: Spec files or path filters, separated by spaces or commas (blank runs the whole suite)
         type: string
@@ -118,9 +121,36 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  rendering:
-    name: Rendering browser
-    if: ${{ inputs.suite == 'rendering' }}
+  vscode-corpus:
+    name: VS Code extension-host corpus
+    if: ${{ inputs.suite == 'vscode-corpus' }}
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install chromium
+      - run: npm run compile -w extension
+      - name: Run focused corpus tests
+        id: focus
+        run: node .github/scripts/e2e-focus.mjs
+      - name: Upload failure traces
+        if: ${{ failure() && steps.focus.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-focus-vscode-corpus
+          path: extension/.playwright/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
+
+  vitest-browser:
+    name: Vitest browser (${{ inputs.suite }})
+    if: ${{ inputs.suite == 'rendering' || inputs.suite == 'rendering-corpus' || inputs.suite == 'ui' }}
     runs-on: macos-15
     timeout-minutes: 45
     steps:
@@ -133,5 +163,5 @@ jobs:
       - run: node ui/scripts/ensure-slang-wasm.mjs
       - run: npx playwright install chromium
       - run: npm run build:deps -w extension
-      - name: Run focused rendering tests
+      - name: Run focused browser tests
         run: node .github/scripts/e2e-focus.mjs

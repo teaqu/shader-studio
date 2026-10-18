@@ -35,6 +35,23 @@ test('rendering runs Vitest browser files and names, without Playwright-only rep
     env: {},
   });
   assert.throws(() => focusCommand({ suite: 'rendering', repeat: '2' }), /only supported for Playwright/);
+  assert.deepEqual(focusCommand({ suite: 'rendering-corpus', specs: 'corpus' }).args,
+    ['vitest', 'run', '--config', 'vitest.corpus.config.mts', 'corpus']);
+  assert.deepEqual(focusCommand({ suite: 'ui', grep: 'Export tabs' }), {
+    cwd: 'ui',
+    command: 'npx',
+    args: ['vitest', 'run', '--config', 'vitest.browser.config.mts', '--testNamePattern', 'Export tabs'],
+    env: {},
+  });
+});
+
+test('the extension-host corpus runs its Playwright config against the shader corpus workspace', () => {
+  assert.deepEqual(focusCommand({ suite: 'vscode-corpus', specs: 'corpus-scripts', repeat: '2' }), {
+    cwd: 'extension',
+    command: 'npx',
+    args: ['playwright', 'test', '--config', './e2e/pw/playwright.corpus.config.mjs', 'corpus-scripts', '--repeat-each', '2'],
+    env: { SHADER_STUDIO_E2E_WORKSPACE: '../tests/fixtures/shader-corpus' },
+  });
 });
 
 test('rejects unknown suites and inputs that could escape the selected suite', () => {

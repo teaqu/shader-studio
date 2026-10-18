@@ -29,10 +29,10 @@ gh run watch "$(gh run list --workflow e2e-focus.yml --branch my-branch --limit 
 
 | Input | Meaning |
 | --- | --- |
-| `suite` | `standalone` (macOS Chromium with WebGPU), `vscode` (installed VSIX on Linux, `@gpu` specs skipped), `vscode-gpu` (installed VSIX on the macOS GPU runner, every selected spec), or `rendering` (rendering browser Vitest). |
+| `suite` | `standalone` (macOS Chromium with WebGPU), `vscode` (installed VSIX on Linux, `@gpu` specs skipped), `vscode-gpu` (installed VSIX on the macOS GPU runner, every selected spec), `vscode-corpus` (extension-host shader corpus), `rendering` (rendering browser Vitest), `rendering-corpus` (shader fixture corpus) or `ui` (UI transport browser tests). |
 | `specs` | Spec files or path filters separated by spaces or commas. Blank runs the whole suite. |
-| `grep` | Test title regular expression: Playwright `--grep`, or Vitest `--testNamePattern` for `rendering`. |
-| `repeat` | Runs each selected Playwright test up to 20 times. Not available for `rendering`. |
+| `grep` | Test title regular expression: Playwright `--grep`, or Vitest `--testNamePattern` for the Vitest suites. |
+| `repeat` | Runs each selected Playwright test up to 20 times. Not available for the Vitest suites (`rendering`, `rendering-corpus`, `ui`). |
 | `project` | Standalone Playwright project, such as `chromium`, `mobile-chromium` or `firefox-exports`. |
 
 Failed Playwright runs upload their traces as the `e2e-focus-*` artifact.

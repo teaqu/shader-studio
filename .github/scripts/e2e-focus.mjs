@@ -12,7 +12,17 @@ export const SUITES = Object.freeze({
   standalone: 'standalone',
   vscode: 'vscode',
   'vscode-gpu': 'vscode-gpu',
+  'vscode-corpus': 'vscode-corpus',
   rendering: 'rendering',
+  'rendering-corpus': 'rendering-corpus',
+  ui: 'ui',
+});
+
+/** Vitest browser suites, as each Verify step runs them. */
+const VITEST_SUITES = Object.freeze({
+  rendering: { cwd: 'rendering', config: 'vitest.browser.config.mts' },
+  'rendering-corpus': { cwd: 'rendering', config: 'vitest.corpus.config.mts' },
+  ui: { cwd: 'ui', config: 'vitest.browser.config.mts' },
 });
 
 const SPEC = /^[A-Za-z0-9_][A-Za-z0-9_.\-/]*$/;
@@ -74,15 +84,26 @@ export function focusCommand(inputs, environment = {}) {
     };
   }
 
-  if (suite === 'rendering') {
+  if (Object.hasOwn(VITEST_SUITES, suite)) {
     if (repeat > 1) {
       throw new Error('repeat is only supported for Playwright suites.');
     }
+    const { cwd, config } = VITEST_SUITES[suite];
     return {
-      cwd: 'rendering',
+      cwd,
       command: 'npx',
-      args: ['vitest', 'run', '--config', 'vitest.browser.config.mts', ...specs, ...(grep ? ['--testNamePattern', grep] : [])],
+      args: ['vitest', 'run', '--config', config, ...specs, ...(grep ? ['--testNamePattern', grep] : [])],
       env: {},
+    };
+  }
+
+  if (suite === 'vscode-corpus') {
+    // The extension-host corpus runs the compiled development extension, not the VSIX.
+    return {
+      cwd: 'extension',
+      command: 'npx',
+      args: ['playwright', 'test', '--config', './e2e/pw/playwright.corpus.config.mjs', ...playwrightFilters],
+      env: { SHADER_STUDIO_E2E_WORKSPACE: '../tests/fixtures/shader-corpus' },
     };
   }
 
