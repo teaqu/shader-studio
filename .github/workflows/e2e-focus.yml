@@ -1,0 +1,137 @@
+name: E2E focus
+
+# Reruns a few E2E specs on the same runners as Verify, for failures that only
+# reproduce in CI (a real GPU, macOS, the installed VSIX). It is a quick check
+# while iterating, not a merge gate: pull requests still run the full Verify.
+# Dispatch from the Actions tab or with:
+#   gh workflow run e2e-focus.yml --ref <branch> -f suite=standalone -f specs=web.e2e.mjs -f grep='Open Files'
+
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Which E2E host to run
+        type: choice
+        required: true
+        options:
+          - standalone
+          - vscode
+          - vscode-gpu
+          - rendering
+      specs:
+        description: Spec files or path filters, separated by spaces or commas (blank runs the whole suite)
+        type: string
+        default: ''
+      grep:
+        description: Test title regular expression (Playwright --grep, Vitest --testNamePattern)
+        type: string
+        default: ''
+      repeat:
+        description: Repeat each selected test this many times (Playwright suites, 1-20)
+        type: string
+        default: '1'
+      project:
+        description: Standalone Playwright project, such as chromium or mobile-chromium
+        type: string
+        default: chromium
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-focus-${{ github.ref_name }}-${{ inputs.suite }}
+  cancel-in-progress: true
+
+env:
+  FOCUS_SUITE: ${{ inputs.suite }}
+  FOCUS_SPECS: ${{ inputs.specs }}
+  FOCUS_GREP: ${{ inputs.grep }}
+  FOCUS_REPEAT: ${{ inputs.repeat }}
+  FOCUS_PROJECT: ${{ inputs.project }}
+
+jobs:
+  standalone:
+    name: Standalone (${{ inputs.project }})
+    if: ${{ inputs.suite == 'standalone' }}
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node ui/scripts/ensure-slang-wasm.mjs
+      - run: npm run build:deps -w extension
+      - run: npx playwright install chromium firefox
+      - name: Run focused standalone tests
+        id: focus
+        run: node .github/scripts/e2e-focus.mjs
+      - name: Upload failure traces
+        if: ${{ failure() && steps.focus.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-focus-standalone
+          path: standalone/test-results/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
+
+  vscode:
+    name: VS Code ${{ inputs.suite == 'vscode-gpu' && '(GPU)' || '(no GPU)' }}
+    if: ${{ inputs.suite == 'vscode' || inputs.suite == 'vscode-gpu' }}
+    runs-on: ${{ inputs.suite == 'vscode-gpu' && 'macos-15' || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build:deps -w extension
+      # Package the extension exactly as the Verify package job does.
+      - name: Package VSIX
+        working-directory: extension
+        run: npx --yes @vscode/vsce package --no-dependencies --out ../shader-studio-focus.vsix
+      - run: npx playwright install chromium
+      - name: Run focused VS Code tests
+        id: focus
+        env:
+          SHADER_STUDIO_E2E_VSIX: ${{ github.workspace }}/shader-studio-focus.vsix
+        shell: bash
+        run: |
+          if [ "${RUNNER_OS}" = Linux ]; then
+            # The virtual display has to be larger than the window it hosts.
+            xvfb-run -a --server-args="-screen 0 1920x1080x24" node .github/scripts/e2e-focus.mjs
+          else
+            node .github/scripts/e2e-focus.mjs
+          fi
+      - name: Upload failure traces
+        if: ${{ failure() && steps.focus.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-focus-${{ inputs.suite }}
+          path: extension/.playwright/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
+
+  rendering:
+    name: Rendering browser
+    if: ${{ inputs.suite == 'rendering' }}
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node ui/scripts/ensure-slang-wasm.mjs
+      - run: npx playwright install chromium
+      - run: npm run build:deps -w extension
+      - name: Run focused rendering tests
+        run: node .github/scripts/e2e-focus.mjs
