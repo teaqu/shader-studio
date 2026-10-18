@@ -21,11 +21,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     if(any(lessThan(sceneUV,vec2(0.)))||any(greaterThan(sceneUV,vec2(1.)))) {
         fragColor=vec4(.025,.023,.045,1.); return;
     }
-    // Gentle breathing stays inside the hoodie, fading before its silhouette.
+    // Keep the character and room still.
     vec2 sampleUV=sceneUV;
-    vec2 chest=(sceneUV-vec2(.345,.48))/vec2(.105,.16);
-    float breathMask=pow(max(0.,1.-dot(chest,chest)),2.);
-    sampleUV.y-=sin(t*1.15)*.0024*breathMask;
     vec3 col=texture(iChannel0,sampleUV).rgb;
     vec3 cyan=vec3(.15,.85,1.), violet=vec3(.44,.24,1.), rose=vec3(1.,.25,.72);
     // Sliding water beads refract the room texture, with wet trails above them.
