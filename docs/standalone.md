@@ -2,8 +2,7 @@
 
 [Open Shader Studio in your browser](https://teaqu.github.io/shader-studio/app/) to edit and preview shaders without installing VS Code or running the extension.
 
-!!! warning "Alpha"
-    Standalone mode is in alpha and has bugs and missing features compared with the VS Code extension. Your workspace is saved only in this browser. Clearing browser data deletes it.
+!!! Your workspace is saved only in this browser. Clearing browser data deletes it.
 
 ## Install and Offline Use
 
