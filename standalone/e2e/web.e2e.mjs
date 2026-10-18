@@ -1136,23 +1136,17 @@ test('desktop pane sizes recover after the window is compressed and expanded', a
   const config = page.locator('.config-panel');
   await expect(config).toBeVisible();
   const initialConfig = await config.boundingBox();
-  const toolGroup = page.locator('.standalone-dockview .dv-groupview').filter({
-    has: page.locator('.dv-default-tab-content', { hasText: /^Config$/ }),
-  });
-  const initialToolGroup = await toolGroup.boundingBox();
-  const toolBoundary = initialToolGroup.y;
-  let toolSash;
-  let toolSashDistance = Infinity;
-  for (let index = 0; index < await sashes.count(); index += 1) {
-    const candidate = await sashes.nth(index).boundingBox();
-    const distance = candidate ? Math.abs(candidate.y + candidate.height / 2 - toolBoundary) : Infinity;
-    if (candidate && candidate.width > candidate.height && distance < toolSashDistance) {
-      toolSash = candidate;
-      toolSashDistance = distance;
-    }
-  }
-  expect(toolSash).toBeTruthy();
-  await page.mouse.move(toolSash.x + toolSash.width / 2, toolSash.y + toolSash.height / 2);
+  const toolSashLocator = page.locator(
+    '.standalone-dockview .dv-split-view-container.dv-vertical > .dv-sash-container > .dv-sash',
+  );
+  await expect(toolSashLocator).toHaveCount(1);
+  await toolSashLocator.hover();
+  // Revealed tab headers must not take over the divider's drag gesture.
+  await expect(page.locator('.standalone-dockview')).toHaveClass(/dv-sash-hover/);
+  await toolSashLocator.hover();
+  const toolSash = await toolSashLocator.boundingBox();
+  expect(toolSash).not.toBeNull();
+  expect(toolSash.width).toBeGreaterThan(toolSash.height);
   await page.mouse.down();
   await page.mouse.move(toolSash.x + toolSash.width / 2, toolSash.y + toolSash.height / 2 - 120, { steps: 20 });
   await page.mouse.up();
