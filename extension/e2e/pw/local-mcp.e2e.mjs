@@ -353,9 +353,10 @@ test('generic MCP edits files and captures both webview and server preview @gpu'
     await revertFixtureEditors(vscode, directory);
     await client.close();
     const oldFrame = await vscode.shaderFrame();
-    await vscode.window.keyboard.press('F1');
-    await vscode.window.locator('.quick-input-widget input').fill('>Developer: Reload Window');
-    await vscode.window.keyboard.press('Enter');
+    // Reload from the host: the command palette cannot open while a webview holds focus.
+    await vscode.evaluateInHost(vscode => {
+      setTimeout(() => vscode.commands.executeCommand('workbench.action.reloadWindow'), 100);
+    });
     await expect.poll(() => oldFrame.isDetached()).toBe(true);
     await expect.poll(async () => {
       try {

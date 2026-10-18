@@ -50,7 +50,6 @@ async function enableVariableInspector(frame) {
     await frame.getByLabel('Toggle variable inspector').click();
   }
   await expect(frame.locator('.variables-section')).toBeVisible();
-  await setInlineRendering(frame, true);
 }
 
 async function setPreviewLocked(frame, locked) {
@@ -152,6 +151,8 @@ test.describe('WGSL debug parity in the VS Code webview @gpu', () => {
     let frame = await vscode.shaderFrame();
     await expect(frame.locator('.canvas-container canvas').first()).toBeVisible();
     await enableVariableInspector(frame);
+    // The function header (.fn-name) shows only with inline rendering, which starts off.
+    await setInlineRendering(frame, true);
     // Keep Image as the owning shader while following the cursor into Common.
     await setPreviewLocked(frame, true);
 
@@ -196,6 +197,8 @@ test.describe('WGSL debug parity in the VS Code webview @gpu', () => {
     let frame = await vscode.shaderFrame();
     await expect(frame.locator('.canvas-container canvas').first()).toBeVisible();
     await enableVariableInspector(frame);
+    // The function header (.fn-name) shows only with inline rendering, which starts off.
+    await setInlineRendering(frame, true);
 
     // Select the helper's loop, then relock so both controls re-plan that
     // selected scope instead of following later editor movement.
@@ -244,6 +247,8 @@ test.describe('WGSL debug parity in the VS Code webview @gpu', () => {
     let frame = await vscode.shaderFrame();
     await expectComputeOutput(frame);
     await enableVariableInspector(frame);
+    // The function header (.fn-name) shows only with inline rendering, which starts off.
+    await setInlineRendering(frame, true);
 
     // Image owns the preview and samples Compute's output. Lock before opening
     // the compute file so the capture plan keeps the real configured pass graph.
@@ -280,6 +285,8 @@ test.describe('WGSL debug parity in the VS Code webview @gpu', () => {
     let frame = await vscode.shaderFrame();
     await expect(frame.locator('.canvas-container canvas').first()).toBeVisible();
     await enableVariableInspector(frame);
+    // The function header (.fn-name) shows only with inline rendering, which starts off.
+    await setInlineRendering(frame, true);
     await setPreviewLocked(frame, true);
 
     await showFileAtLine(vscode, matrixPath, 2);
