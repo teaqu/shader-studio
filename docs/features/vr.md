@@ -23,11 +23,11 @@ void mainVR(out vec4 fragColor, in vec2 fragCoord,
 }
 ```
 
-The **VR** button appears only when a fullscreen GLSL Image shader defines `mainVR`. If it is missing, check the function signature and geometry setting. Mesh passes continue to use `mainImage`; this VR workflow does not apply to Slang or WGSL.
+The **VR** pane can be opened even without a VR shader. Desktop preview and headset entry require a fullscreen GLSL Image shader defining `mainVR`; otherwise, the pane explains what is needed and disables those controls. Check the function signature and geometry setting if they remain disabled. Mesh passes continue to use `mainImage`; this VR workflow does not apply to Slang or WGSL.
 
-VR opens a docked tool pane, like Config and Debug. The button sits first in the
-right-hand toolbar group. It stays visible after the other tool buttons have
-collapsed, then moves into the options menu when the preview becomes very narrow.
+VR opens a docked tool pane, like Config and Debug. **VR** is always available in
+the hamburger options menu. When a compatible VR shader is detected, a **VR**
+shortcut also appears at the far right of the preview toolbar.
 
 `rayOrigin` is the camera position and `rayDirection` is a normalized direction in world space. In desktop preview, they follow `iCameraPos` and `iCameraDir` with a 90° vertical field of view. Dragging also updates `iMouse`, which matters if your shader uses mouse input for another effect.
 

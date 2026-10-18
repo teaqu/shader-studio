@@ -6,8 +6,7 @@
   import type { CompileMode } from "../../stores/compileModeStore";
   import ProfileModal from "../ProfileModal.svelte";
   import { MenuOverlay } from "./MenuOverlay.svelte";
-  import { getVrPreviewState, isVrPanelVisible, toggleVrPanel } from '../../state/vrPreviewState.svelte';
-  const vr = $derived(getVrPreviewState());
+  import { isVrPanelVisible, toggleVrPanel } from '../../state/vrPreviewState.svelte';
   const vrVisible = $derived(isVrPanelVisible());
 
   interface Props {
@@ -20,7 +19,6 @@
     showRecordInOptions: boolean;
     showConfigInOptions: boolean;
     showDebugInOptions: boolean;
-    showVrInOptions?: boolean;
     isLocked: boolean;
     isRecordingPanelVisible: boolean;
     isConfigPanelVisible: boolean;
@@ -58,7 +56,6 @@
   let {
     optionsMenu, layoutMenu, editorMenu, hasShader, previewVisible,
     showLockInOptions, showRecordInOptions, showConfigInOptions, showDebugInOptions,
-    showVrInOptions = false,
     isLocked, isRecordingPanelVisible, isConfigPanelVisible, isDebugEnabled,
     isDebugSupported, isEditorOverlayVisible, isVimModeEnabled, showThemeButton,
     theme, showFullscreenButton, compileMode, compileModeIcons, compileModeLabels,
@@ -148,12 +145,10 @@
         <span>Export</span>
       </button>
     {/if}
-    {#if showVrInOptions && vr.available}
-      <button class="options-menu-item" class:active={vrVisible} aria-label="VR" onclick={() => {
-        toggleVrPanel();
-        optionsMenu.open = false;
-      }}>VR</button>
-    {/if}
+    <button class="options-menu-item" class:active={vrVisible} aria-label="VR" onclick={() => {
+      toggleVrPanel();
+      optionsMenu.open = false;
+    }}>VR</button>
     {#if showConfigInOptions}
       <button
         class="options-menu-item"
