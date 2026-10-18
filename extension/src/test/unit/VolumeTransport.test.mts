@@ -42,3 +42,35 @@ describe('volume transport resources', () => {
     expect(converted.config.passes.Image.inputs.iChannel0).toMatchObject({ path: 'assets/density.ktx2', resolved_path: 'client:/workspace/assets/density.ktx2' });
   });
 });
+
+const storageMessage = () => ({
+  type: 'shaderSource', path: '/workspace/shader.slang',
+  config: { version: '1.0', storage: {
+    data: { count: 4, elementType: 'uint', initialDataPath: 'data/values.bin' },
+    shared: { count: 4, elementType: 'uint', initialDataPath: '@/shared/table.bin' },
+    remote: { count: 4, elementType: 'uint', initialDataPath: 'https://example.com/r.bin' },
+    empty: { count: 4, elementType: 'uint', initialDataPath: '' },
+    zero: { count: 4, elementType: 'uint' },
+  } as Record<string, { count: number; elementType: string; initialDataPath?: string; resolved_path?: string }>, passes: { Image: {} } },
+});
+
+describe('storage initial data transport resources', () => {
+  it('adds each initial data file directory to webview resource roots', () => {
+    const webview = { options: { localResourceRoots: [] as Array<{ fsPath: string }> } };
+    const transport = new WebviewTransport() as unknown as { panels: Set<unknown>; handleVideoResourceRoots(message: ReturnType<typeof storageMessage>): void };
+    transport.panels = new Set([{ webview }]);
+    transport.handleVideoResourceRoots(storageMessage());
+    expect(webview.options.localResourceRoots.map(root => root.fsPath)).toEqual(expect.arrayContaining(['/workspace/data', '/workspace/shared']));
+  });
+
+  it('converts initial data paths for socket clients without needing other transport methods', () => {
+    const process = (WebSocketTransport.prototype as unknown as { processConfigPaths(message: ReturnType<typeof storageMessage>): ReturnType<typeof storageMessage> }).processConfigPaths;
+    const converted = process.call({ convertUriForClient: (value: string) => `client:${value}` }, storageMessage());
+    const storage = converted.config.storage;
+    expect(storage.data).toMatchObject({ initialDataPath: 'data/values.bin', resolved_path: 'client:/workspace/data/values.bin' });
+    expect(storage.shared.resolved_path).toBe('client:/workspace/shared/table.bin');
+    expect(storage.remote.resolved_path).toBe('client:https://example.com/r.bin');
+    expect(storage.empty.resolved_path).toBeUndefined();
+    expect(storage.zero.resolved_path).toBeUndefined();
+  });
+});

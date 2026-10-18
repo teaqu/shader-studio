@@ -20,6 +20,33 @@ type ConfigPathMessage = {
   pathMap?: Record<string, string>;
 } & Record<string, unknown>;
 
+/** Resolve a config asset path (default asset, URL, `@/`, file://, absolute or config-relative). */
+function resolveConfigAssetPath(
+  assetPath: string,
+  configDir: string,
+  extensionPath: string | undefined,
+  normalizeLocalPath: (filePath: string) => string,
+): string {
+  const defaultAsset = resolveDefaultAssetPath(assetPath, extensionPath);
+  if (defaultAsset) {
+    return defaultAsset;
+  }
+  if (/^https?:\/\//i.test(assetPath)) {
+    return assetPath;
+  }
+  if (assetPath.startsWith('@/')) {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    return workspaceFolder ? path.join(workspaceFolder.uri.fsPath, assetPath.substring(2)) : assetPath;
+  }
+  if (assetPath.startsWith('file://')) {
+    return normalizeLocalPath(assetPath);
+  }
+  if (path.isAbsolute(assetPath)) {
+    return assetPath;
+  }
+  return configDir ? path.join(configDir, assetPath) : assetPath;
+}
+
 export class WebSocketTransport implements MessageTransport {
   private wsServer: WebSocketServer;
   private wsClients: Set<WebSocket> = new Set();
@@ -276,7 +303,7 @@ export class WebSocketTransport implements MessageTransport {
 
     for (const declaration of Object.values(config.storage ?? {})) {
       if (declaration && typeof declaration.initialDataPath === 'string' && declaration.initialDataPath) {
-        declaration.resolved_path = this.convertUriForClient(this.resolveConfigAssetPath(declaration.initialDataPath, configDir));
+        declaration.resolved_path = this.convertUriForClient(resolveConfigAssetPath(declaration.initialDataPath, configDir, this.extensionPath, (value) => this.normalizeLocalPath(value)));
       }
     }
 
@@ -295,7 +322,7 @@ export class WebSocketTransport implements MessageTransport {
           continue;
         }
 
-        input.resolved_path = this.convertUriForClient(this.resolveConfigAssetPath(input.path, configDir));
+        input.resolved_path = this.convertUriForClient(resolveConfigAssetPath(input.path, configDir, this.extensionPath, (value) => this.normalizeLocalPath(value)));
       }
     }
 
@@ -328,28 +355,6 @@ export class WebSocketTransport implements MessageTransport {
     }
 
     return processedMessage;
-  }
-
-  /** Resolve a config asset path (default asset, URL, `@/`, file://, absolute or config-relative). */
-  private resolveConfigAssetPath(assetPath: string, configDir: string): string {
-    const defaultAsset = resolveDefaultAssetPath(assetPath, this.extensionPath);
-    if (defaultAsset) {
-      return defaultAsset;
-    }
-    if (/^https?:\/\//i.test(assetPath)) {
-      return assetPath;
-    }
-    if (assetPath.startsWith('@/')) {
-      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-      return workspaceFolder ? path.join(workspaceFolder.uri.fsPath, assetPath.substring(2)) : assetPath;
-    }
-    if (assetPath.startsWith('file://')) {
-      return this.normalizeLocalPath(assetPath);
-    }
-    if (path.isAbsolute(assetPath)) {
-      return assetPath;
-    }
-    return configDir ? path.join(configDir, assetPath) : assetPath;
   }
 
   // Legacy method for backward compatibility with tests
