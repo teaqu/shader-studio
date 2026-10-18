@@ -77,7 +77,7 @@ export class ShaderProvider {
 
   public async sendShaderFromEditor(
     editor: vscode.TextEditor,
-    options?: { reload?: boolean; previewId?: string; refreshRequestId?: number },
+    options?: { reload?: boolean; previewId?: string },
   ): Promise<void> {
     if (!this.messenger) {
       return;
@@ -123,7 +123,7 @@ export class ShaderProvider {
 
   public async sendShaderFromPath(
     shaderPath: string,
-    options?: { reload?: boolean; refreshRequestId?: number },
+    options?: { reload?: boolean },
   ): Promise<void> {
     if (!this.messenger) {
       return;
@@ -165,7 +165,7 @@ export class ShaderProvider {
   // Uses the current in-memory TextDocument content, including unsaved edits.
   public async sendShaderFromDocument(
     document: vscode.TextDocument,
-    options?: { reload?: boolean; previewId?: string; refreshRequestId?: number },
+    options?: { reload?: boolean; previewId?: string },
   ): Promise<void> {
     if (!this.messenger || !isShaderDocument(document)) {
       return;
@@ -535,7 +535,7 @@ export class ShaderProvider {
     shaderPath: string,
     code: string,
     sendNonMainShader: () => Promise<void>,
-    options?: { reload?: boolean; previewId?: string; refreshRequestId?: number },
+    options?: { reload?: boolean; previewId?: string },
     cursorPosition?: ShaderSourceMessage["cursorPosition"],
   ): Promise<boolean> {
     const language = (shaderLanguageForPath(shaderPath) ?? "glsl");
@@ -754,7 +754,7 @@ export class ShaderProvider {
     filePath: string,
     code: string,
     editor: vscode.TextEditor,
-    options?: { reload?: boolean; refreshRequestId?: number },
+    options?: { reload?: boolean },
   ): Promise<void> {
     const line = editor.selection?.active.line ?? 0;
     const message = this.buildNonMainImageShaderMessage(
@@ -777,7 +777,7 @@ export class ShaderProvider {
   private async sendNonMainImageShaderFromPath(
     filePath: string,
     code: string,
-    options?: { reload?: boolean; refreshRequestId?: number },
+    options?: { reload?: boolean },
   ): Promise<void> {
     const message = this.buildNonMainImageShaderMessage(
       filePath,
@@ -793,7 +793,7 @@ export class ShaderProvider {
     filePath: string,
     code: string,
     document: vscode.TextDocument,
-    options?: { reload?: boolean; refreshRequestId?: number },
+    options?: { reload?: boolean },
   ): Promise<void> {
     let cursorPosition: ShaderSourceMessage["cursorPosition"];
 

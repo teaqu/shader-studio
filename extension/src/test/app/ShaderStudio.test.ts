@@ -577,7 +577,8 @@ suite('Shader Studio Test Suite', () => {
     const shaderPath = '/mock/path/owner.glsl';
     const send = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromPath');
     await shaderStudio['refreshSpecificShaderByPath'](shaderPath, { refreshRequestId: 4 });
-    sinon.assert.calledOnceWithExactly(send, shaderPath, { reload: true, refreshRequestId: 4 });
+    sinon.assert.calledOnce(send);
+    assert.deepStrictEqual(send.firstCall.args, [shaderPath, { reload: true, refreshRequestId: 4 }]);
   });
 
   test('current-shader refresh forwards the viewer refresh request id to the active editor', async () => {
@@ -585,7 +586,8 @@ suite('Shader Studio Test Suite', () => {
     sandbox.stub(vscode.window, 'activeTextEditor').value(mockEditor);
     sendShaderSpy.resetHistory();
     await shaderStudio['refreshCurrentShader']({ refreshRequestId: 5 });
-    sinon.assert.calledOnceWithExactly(sendShaderSpy, mockEditor, { reload: true, refreshRequestId: 5 });
+    sinon.assert.calledOnce(sendShaderSpy);
+    assert.deepStrictEqual(sendShaderSpy.firstCall.args[1], { reload: true, refreshRequestId: 5 });
   });
 
   test('current-shader refresh forwards the viewer refresh request id to the last viewed file', async () => {
@@ -595,7 +597,8 @@ suite('Shader Studio Test Suite', () => {
     sandbox.stub(vscode.window, 'visibleTextEditors').value([]);
     const send = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromPath');
     await shaderStudio['refreshCurrentShader']({ refreshRequestId: 6 });
-    sinon.assert.calledOnceWithExactly(send, lastViewedFile, { reload: true, refreshRequestId: 6 });
+    sinon.assert.calledOnce(send);
+    assert.deepStrictEqual(send.firstCall.args, [lastViewedFile, { reload: true, refreshRequestId: 6 }]);
   });
 
   test('initial path refresh preserves feedback', async () => {

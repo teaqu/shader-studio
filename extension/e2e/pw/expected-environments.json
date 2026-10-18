@@ -775,6 +775,11 @@
     "environment": "gpu"
   },
   {
+    "id": "31c72dc6fa857874d0d2-bd62674b00b9dae462f4:",
+    "title": "wgsl-debug-parity.e2e.mjs › WGSL debug parity in the VS Code webview @gpu › keeps a newly opened shader after unlocking the preview from its owner's Common file",
+    "environment": "gpu"
+  },
+  {
     "id": "7357a8aa70c3fba65bd7-94c198c79cd62eff1da7:",
     "title": "wgsl-entrypoint.e2e.mjs › opens a WGSL entry point with a return type before and after reloading VS Code @gpu",
     "environment": "gpu"

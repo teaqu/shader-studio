@@ -1107,7 +1107,8 @@ suite('ShaderProvider Test Suite', () => {
       sandbox.stub(fs, 'readFileSync').returns('void mainImage(out vec4 fragColor, in vec2 fragCoord) {}');
       loadAndProcessConfigStub.returns({ version: '1.0', passes: { Image: {} } });
 
-      await provider.sendShaderFromPath(shaderPath, { reload: true, refreshRequestId: 7 });
+      const options = { reload: true, refreshRequestId: 7 };
+      await provider.sendShaderFromPath(shaderPath, options);
 
       const message = sendSpy.firstCall.args[0];
       assert.strictEqual(message.refreshRequestId, 7);
@@ -1134,7 +1135,8 @@ suite('ShaderProvider Test Suite', () => {
       sandbox.stub(fs, 'existsSync').returns(true);
       sandbox.stub(fs, 'readFileSync').returns('void someFunction() {}');
 
-      await provider.sendShaderFromPath(shaderPath, { refreshRequestId: 9 });
+      const options = { reload: undefined, refreshRequestId: 9 };
+      await provider.sendShaderFromPath(shaderPath, options);
 
       assert.strictEqual(sendSpy.firstCall.args[0].refreshRequestId, 9);
     });

@@ -362,7 +362,7 @@ export class ShaderStudio {
     this.context.subscriptions.push(
       vscode.commands.registerCommand(
         "shader-studio.refreshCurrentShader",
-        (options?: { reload?: boolean; refreshRequestId?: number }) => {
+        (options?: { reload?: boolean }) => {
           this.logger.info("shader-studio.refreshCurrentShader command executed");
           return this.refreshCurrentShader(options);
         },
@@ -374,7 +374,7 @@ export class ShaderStudio {
         "shader-studio.refreshSpecificShaderByPath",
         (
           shaderPath: string,
-          options?: { claimActiveAnalysisContext?: boolean; reload?: boolean; refreshRequestId?: number },
+          options?: { claimActiveAnalysisContext?: boolean; reload?: boolean },
         ) => {
           this.logger.info(
             `shader-studio.refreshSpecificShaderByPath command executed for: ${shaderPath}`,
