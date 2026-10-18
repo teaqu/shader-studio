@@ -2,8 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-// Phase 14: every docs page listed in the mkdocs Features nav must exist,
-// including the WGSL authoring guide.
+// Every docs page listed in the mkdocs Features nav must exist.
 const REPO_ROOT = path.resolve(__dirname, '..', '..', '..');
 const DOCS_ROOT = path.join(REPO_ROOT, 'docs');
 
@@ -13,8 +12,10 @@ function featuresNavFiles(): string[] {
 }
 
 describe('docs nav consistency', () => {
-  it('lists a WGSL authoring guide in the Features nav', () => {
-    expect(featuresNavFiles()).toContain('features/wgsl-authoring.md');
+  it('lists the shared language guide instead of redundant WGSL guides', () => {
+    expect(featuresNavFiles()).toContain('features/language-support.md');
+    expect(featuresNavFiles()).not.toContain('features/wgsl-authoring.md');
+    expect(featuresNavFiles()).not.toContain('features/wgsl.md');
   });
 
   it('every Features nav entry resolves to an existing file', () => {
@@ -24,14 +25,14 @@ describe('docs nav consistency', () => {
     expect(missing).toEqual([]);
   });
 
-  it('the WGSL guide covers the Slang differences from the spec', () => {
-    const guide = path.join(DOCS_ROOT, 'features', 'wgsl-authoring.md');
+  it('the shared language guide retains WGSL syntax differences', () => {
+    const guide = path.join(DOCS_ROOT, 'features', 'language-support.md');
     const text = readFileSync(guide, 'utf8');
     for (const topic of [
-      'mainImage',
+      'mainVertex',
       'ptr<function',
       'enable',
-      'Sample',
+      'sample2D',
     ]) {
       expect(text).toContain(topic);
     }
