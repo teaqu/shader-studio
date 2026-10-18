@@ -143,7 +143,13 @@ for (const [language, locked] of ['glsl', 'slang', 'wgsl'].flatMap(language => [
       const offset = (Math.floor(height / 2) * width + Math.floor(width / 2)) * 4;
       return [...data.subarray(offset, offset + 3)];
     };
-    await expect.poll(pixel).toEqual([255, 0, 0]);
+    try {
+      await expect.poll(pixel).toEqual([255, 0, 0]);
+    } catch (error) {
+      const label = await preview.locator('.preview-output-label').textContent().catch(() => '?');
+      const pressed = await page.locator('[data-testid^="shader-option-"][aria-pressed="true"]').evaluateAll(n => n.map(e => e.dataset.testid));
+      throw new Error(`${error.message}\nLABEL ${label} PRESSED ${pressed}\nTRACES:\n${traces.join('\n')}`);
+    }
     if (locked) {
       await lock.click();
     }
@@ -151,11 +157,7 @@ for (const [language, locked] of ['glsl', 'slang', 'wgsl'].flatMap(language => [
     await page.locator('[data-tab-name="BufferA"]').dblclick();
     await expect(page.locator(`[data-testid="file-editor"][data-path="/pass/buffer.${language}"] .monaco-editor`)).toBeVisible();
     await expect(lock).toHaveAttribute('aria-pressed', String(locked));
-    try {
-      await expect.poll(pixel).toEqual([255, 0, 0]);
-    } catch (error) {
-      throw new Error(`${error.message}\nTRACES:\n${traces.join('\n')}`);
-    }
+    await expect.poll(pixel).toEqual([255, 0, 0]);
     await page.getByRole('button', { name: 'Preview BufferA', exact: true }).click();
     await expect.poll(pixel).toEqual([0, 255, 0]);
     await expect(preview.locator('.preview-output-label')).toHaveText(`main.${language} › BufferA`);
