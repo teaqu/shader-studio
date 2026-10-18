@@ -390,8 +390,6 @@
     <button title="New Folder" aria-label="New folder" disabled={pending} onclick={() => beginEdit('folder')}><i class="codicon codicon-new-folder"></i></button>
   </div>
   <input hidden type="file" multiple aria-label="Upload files" bind:this={uploadInput} onchange={uploadSelection} />
-  <p class="drop-hint">Drop files to upload. Drag files into folders to move them.</p>
-  <p class="drop-hint">{selectionMode ? 'Click files to add or remove them from the selection.' : 'Ctrl/Cmd-click to select multiple files. Shift-click selects a range.'}</p>
   <input class="file-filter" aria-label="Filter workspace files" placeholder="Filter files…" bind:value={filter} />
   {#if edit}
     <form onsubmit={save} class="file-form">
@@ -472,7 +470,7 @@
   .file-form button { border: 1px solid var(--vscode-panel-border); margin-right: 6px; }
   [role="alert"], .empty { margin: 8px; overflow-wrap: anywhere; }
   [role="alert"] { color: var(--vscode-errorForeground); }
-  .drop-hint, .file-status { margin: 0 8px 6px; font-size: 11px; line-height: 1.4; color: var(--vscode-descriptionForeground); }
+  .file-status { margin: 0 8px 6px; font-size: 11px; line-height: 1.4; color: var(--vscode-descriptionForeground); }
   .drop-root { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; background: var(--vscode-list-dropBackground, var(--vscode-list-hoverBackground)); }
   .file-row.drop-folder { background: var(--vscode-list-dropBackground, var(--vscode-list-hoverBackground)); outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
   .file-context { position: fixed; z-index: 20000; display: grid; min-width: 160px; padding: 4px; background: var(--vscode-menu-background, var(--vscode-sideBar-background)); border: 1px solid var(--vscode-panel-border); box-shadow: 0 4px 12px #0005; }
