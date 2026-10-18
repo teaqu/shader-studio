@@ -10,7 +10,7 @@ import { HostSettingsController } from './settings/HostSettingsController';
 
 type HostMessage = { type: string; [key: string]: unknown };
 type MessageHandler = (message: HostMessage) => void;
-const DEFAULT_SHADER_PATH = '/shaders/aurora.glsl';
+const DEFAULT_SHADER_PATH = '/aurora.glsl';
 const ACTIVE_SHADER_PATH = '/.shader-studio/active-shader';
 const EXPLORER_STATE_PATH = '/.shader-studio/explorer-state.json';
 const PROFILE_INDEX_PATH = '/.shader-studio/profiles/index.json';
@@ -272,7 +272,7 @@ export class WebExtensionHost {
         }
         const extension = language === 'slang' ? '.slang' : language === 'wgsl' ? '.wgsl' : '.glsl';
         const requestedName = name.toLowerCase().endsWith(extension) ? name : `${name}${extension}`;
-        const path = `/shaders/${requestedName}`;
+        const path = `/${requestedName}`;
         if (this.workspace.exists(path)) {
           return;
         }

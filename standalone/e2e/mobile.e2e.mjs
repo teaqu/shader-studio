@@ -20,7 +20,7 @@ test('new shader opens blank and focused, validates its name, and saves the name
   await expect(dialog.getByRole('alert')).toHaveCount(0);
   await name.press('Enter');
   await expect(dialog).toBeHidden();
-  await expect.poll(async () => (await readWorkspaceFiles(page)).some(file => file.path === '/shaders/mobile-named.glsl')).toBe(true);
+  await expect.poll(async () => (await readWorkspaceFiles(page)).some(file => file.path === '/mobile-named.glsl')).toBe(true);
   await page.reload();
   await nav.getByRole('button', { name: 'Explorer' }).click();
   await expect(page.getByTestId('web-shader-explorer').getByTestId('shader-option-mobile-named-glsl')).toBeVisible();

@@ -9,14 +9,14 @@ it.each(['wgsl', 'slang', 'glsl'])('uses the global default for new %s shaders a
   settings.update('webgpu.defaultRenderAuthoring', 'native');
   const host = new WebExtensionHost(workspace, { settings });
   await host.handleViewerMessage({ type: 'createShader', payload: { name: 'native-default', language } });
-  const source = workspace.readText(`/shaders/native-default.${language}`);
+  const source = workspace.readText(`/native-default.${language}`);
   expect(source).toContain(language === 'glsl' ? 'mainImage' : 'ImageFragment');
   expect(source).not.toContain('ImageVertex');
-  const config = JSON.parse(workspace.readText('/shaders/native-default.sha.json'));
+  const config = JSON.parse(workspace.readText('/native-default.sha.json'));
   if (language !== 'glsl') {
     expect(config.passes.Image.entryPoints).toEqual({ fragment: 'ImageFragment' });
   }
   await host.handleViewerMessage({ type: 'createShader', payload: { name: 'explicit-hooks', language, authoringMode: 'hooks' } });
-  expect(workspace.readText(`/shaders/explicit-hooks.${language}`)).toContain('mainImage');
+  expect(workspace.readText(`/explicit-hooks.${language}`)).toContain('mainImage');
   host.dispose();
 });

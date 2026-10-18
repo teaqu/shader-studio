@@ -1,9 +1,106 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { afterEach, expect, it, vi } from 'vitest';
-import WorkspaceFiles from '../WorkspaceFiles.svelte';
-import type { WebTransport } from '../WebTransport';
-import type { WorkspaceFileEntry } from '../workspaceFiles';
+import WorkspaceFiles from '../lib/FileExplorer.svelte';
+import type { FileExplorerHost } from '../lib/FileExplorerHost';
+import type { WorkspaceFileEntry } from '../lib/FileExplorerHost';
+
+function dropDeviceFiles(files: File[], target = screen.getByRole('tree')) {
+  return fireEvent.drop(target, { dataTransfer: { types: ['Files'], files, getData: () => '' } });
+}
+
+it('supports Ctrl toggles, Shift ranges and selecting all files', async () => {
+  setup();
+  const main = screen.getByRole('treeitem', { name: 'main.glsl' });
+  const config = screen.getByRole('treeitem', { name: 'main.sha.json' });
+  const photo = screen.getByRole('treeitem', { name: 'photo.png' });
+  await fireEvent.click(main);
+  await fireEvent.click(config, { ctrlKey: true });
+  expect(main.getAttribute('aria-selected')).toBe('true');
+  expect(config.getAttribute('aria-selected')).toBe('true');
+  await fireEvent.click(config, { ctrlKey: true });
+  expect(config.getAttribute('aria-selected')).toBe('false');
+  await fireEvent.click(main);
+  await fireEvent.click(photo, { shiftKey: true });
+  expect(config.getAttribute('aria-selected')).toBe('true');
+  expect(photo.getAttribute('aria-selected')).toBe('true');
+  await fireEvent.keyDown(screen.getByRole('tree'), { key: 'a', ctrlKey: true });
+  expect(screen.getAllByRole('treeitem').every(row => row.getAttribute('aria-selected') === 'true')).toBe(true);
+});
+
+it('offers a visible Select mode that selects files without opening them', async () => {
+  const { onOpen, api } = setup();
+  const button = screen.getByRole('button', { name: 'Select multiple files' });
+  await fireEvent.click(button);
+  await fireEvent.click(screen.getByRole('treeitem', { name: 'main.glsl' }));
+  await fireEvent.click(screen.getByRole('treeitem', { name: 'photo.png' }));
+  expect(screen.getByRole('treeitem', { name: 'main.glsl' }).getAttribute('aria-selected')).toBe('true');
+  expect(screen.getByRole('treeitem', { name: 'photo.png' }).getAttribute('aria-selected')).toBe('true');
+  expect(screen.getByText('FILES')).toBeTruthy();
+  expect(onOpen).not.toHaveBeenCalled();
+  expect(api.readEditorFile).not.toHaveBeenCalled();
+  expect(button.getAttribute('aria-pressed')).toBe('true');
+  await fireEvent.click(button);
+  expect(button.getAttribute('aria-pressed')).toBe('false');
+});
+
+it('offers device selection in Files, defaults to root, and creates empty folders', async () => {
+  const { api } = setup();
+  const input = screen.getByLabelText('Upload files') as HTMLInputElement;
+  const choose = vi.spyOn(input, 'click');
+  await fireEvent.click(screen.getByRole('button', { name: 'Upload Files' }));
+  expect(choose).toHaveBeenCalledOnce();
+  await fireEvent.change(input, { target: { files: [] } });
+  expect(api.uploadFiles).not.toHaveBeenCalled();
+  const file = new File(['x'], 'new.png');
+  await fireEvent.change(input, { target: { files: [file] } });
+  await waitFor(() => expect(api.uploadFiles).toHaveBeenCalledWith([file], '/'));
+  await fireEvent.click(screen.getByRole('button', { name: 'New folder' }));
+  const path = screen.getByLabelText('New folder path');
+  expect((path as HTMLInputElement).value).toBe('/new-folder');
+  await fireEvent.input(path, { target: { value: '/assets' } });
+  await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  expect(api.createWorkspaceFolder).toHaveBeenCalledWith('/assets');
+});
+
+it('negotiates file drags without intercepting pane drags and ignores same-folder moves', async () => {
+  const { api } = setup();
+  const tree = screen.getByRole('tree');
+  const row = screen.getByRole('treeitem', { name: 'photo.png' });
+  const setData = vi.fn();
+  const transfer = { types: ['application/x-shader-studio-path'], files: [], getData: () => '/shaders/photo.png', setData, effectAllowed: '', dropEffect: '' };
+  await fireEvent.dragStart(row, { dataTransfer: transfer });
+  expect(setData).toHaveBeenCalledWith('application/x-shader-studio-path', '/shaders/photo.png');
+  expect(transfer.effectAllowed).toBe('move');
+  await fireEvent.dragOver(row, { dataTransfer: transfer });
+  expect(transfer.dropEffect).toBe('move');
+  await fireEvent.drop(row, { dataTransfer: transfer });
+  expect(api.renameWorkspacePath).not.toHaveBeenCalled();
+  const external = { ...transfer, types: ['Files'] };
+  await fireEvent.dragOver(tree, { dataTransfer: external });
+  expect(external.dropEffect).toBe('copy');
+  await fireEvent.dragLeave(tree);
+  await fireEvent.dragEnd(row);
+  await fireEvent.dragStart(row);
+  await fireEvent.dragOver(tree);
+  await fireEvent.drop(tree, { dataTransfer: { types: ['dockview'], files: [] } });
+  expect(api.uploadFiles).not.toHaveBeenCalled();
+});
+
+it('accepts dropped device files into a folder and moves internal file drags', async () => {
+  const { api, onPathsRemoved } = setup();
+  const image = new File(['image'], 'dropped.png');
+  const directory = screen.getByRole('treeitem', { name: 'shaders' });
+  await fireEvent.drop(directory, { dataTransfer: { types: ['Files'], files: [image], getData: () => '' } });
+  expect(api.uploadFiles).toHaveBeenCalledWith([image], '/shaders');
+  const photo = screen.getByRole('treeitem', { name: 'photo.png' });
+  expect(photo.getAttribute('draggable')).toBe('true');
+  await fireEvent.drop(screen.getByRole('tree'), { dataTransfer: {
+    types: ['application/x-shader-studio-path'], files: [], getData: () => '/shaders/photo.png',
+  } });
+  expect(api.renameWorkspacePath).toHaveBeenCalledWith('/shaders/photo.png', '/photo.png');
+  expect(onPathsRemoved).toHaveBeenCalledWith(['/shaders/photo.png']);
+});
 
 it('prevents a second file operation while an upload is still saving', async () => {
   const { api } = setup();
@@ -11,14 +108,14 @@ it('prevents a second file operation while an upload is still saving', async () 
   api.uploadFiles.mockImplementation(() => new Promise<void>(resolve => {
     finish = resolve;
   }));
-  await fireEvent.change(screen.getByLabelText('Upload to workspace folder'), { target: { files: [new File(['x'], 'a.png')] } });
+  await dropDeviceFiles([new File(['x'], 'a.png')]);
   const confirm = vi.spyOn(window, 'confirm');
   await fireEvent.keyDown(screen.getByRole('tree'), { key: 'Delete' });
   await fireEvent.click(screen.getByRole('treeitem', { name: 'photo.png' }));
   expect(confirm).not.toHaveBeenCalled();
   expect(api.readEditorFile).not.toHaveBeenCalled();
   finish();
-  await waitFor(() => expect((screen.getByRole('button', { name: 'Upload to folder' }) as HTMLButtonElement).disabled).toBe(false));
+  await waitFor(() => expect((screen.getByRole('button', { name: 'New folder' }) as HTMLButtonElement).disabled).toBe(false));
 });
 
 afterEach(() => {
@@ -38,17 +135,22 @@ function setup(initial: WorkspaceFileEntry[] = [{ path: '/shaders/main.glsl', as
     createWorkspaceFile: vi.fn(async (path: string) => {
       files = [...files, { path, asset: false }]; publish(files);
     }),
+    createWorkspaceFolder: vi.fn(async (path: string) => {
+      files = [...files, { path, asset: false, directory: true }]; publish(files);
+    }),
     renameWorkspacePath: vi.fn(async (from: string, to: string) => {
       files = files.map(file => ({ ...file, path: file.path === from ? to : file.path })); publish(files);
     }),
     deleteWorkspacePath: vi.fn(async (path: string) => {
       files = files.filter(file => file.path !== path && !file.path.startsWith(`${path}/`)); publish(files);
     }),
+    deleteWorkspacePaths: vi.fn().mockResolvedValue(undefined),
+    moveWorkspacePaths: vi.fn().mockResolvedValue(undefined),
     uploadFiles: vi.fn().mockResolvedValue([]),
   };
   const onOpen = vi.fn();
   const onPathsRemoved = vi.fn();
-  const app = render(WorkspaceFiles, { transport: api as unknown as WebTransport, onOpen, onPathsRemoved });
+  const app = render(WorkspaceFiles, { transport: api as unknown as FileExplorerHost, onOpen, onPathsRemoved });
   return { ...app, api, onOpen, onPathsRemoved, stop, publish: (next: WorkspaceFileEntry[]) => publish(next) };
 }
 
@@ -68,7 +170,7 @@ it('shows folders, filters files, collapses folders and opens text sources', asy
 it('creates nested files, cancels a form and renames a selected file', async () => {
   const { api, onOpen, onPathsRemoved } = setup();
   await fireEvent.click(screen.getByRole('button', { name: 'New file' }));
-  expect((screen.getByLabelText('New file path') as HTMLInputElement).value).toBe('/shaders/untitled.glsl');
+  expect((screen.getByLabelText('New file path') as HTMLInputElement).value).toBe('/untitled.glsl');
   await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   expect(screen.queryByLabelText('New file path')).toBeNull();
   await fireEvent.click(screen.getByRole('button', { name: 'New file' }));
@@ -99,19 +201,15 @@ it.each([true, false])('confirms deleting a folder and can cancel (confirmed: %s
   }
 });
 
-it('uploads into the selected folder, resets the file input and ignores cancellation', async () => {
+it('uploads dropped files into the target folder and ignores an empty drop', async () => {
   const { api } = setup();
-  await fireEvent.click(screen.getByRole('treeitem', { name: 'shaders' }));
-  const input = screen.getByLabelText('Upload to workspace folder') as HTMLInputElement;
-  const click = vi.spyOn(input, 'click');
-  await fireEvent.click(screen.getByRole('button', { name: 'Upload to folder' }));
-  expect(click).toHaveBeenCalledOnce();
-  await fireEvent.change(input, { target: { files: [] } });
+  const directory = screen.getByRole('treeitem', { name: 'shaders' });
+  await dropDeviceFiles([], directory);
   expect(api.uploadFiles).not.toHaveBeenCalled();
   const file = new File(['image'], 'photo.png');
-  await fireEvent.change(input, { target: { files: [file] } });
+  await dropDeviceFiles([file], directory);
   expect(api.uploadFiles).toHaveBeenCalledWith([file], '/shaders');
-  expect(input.value).toBe('');
+  expect(screen.getByRole('status').textContent).toContain('Added 1 file to /shaders.');
 });
 
 it.each(['data:image/png;base64,AA==', 'data:video/mp4;base64,AA==', 'data:audio/ogg;base64,AA==', 'data:application/octet-stream;base64,AA=='])('previews supported media or explains unavailable previews: %s', async contents => {
@@ -160,12 +258,49 @@ it('downloads assets directly and revokes temporary URLs for source downloads', 
   await fireEvent.click(screen.getByRole('menuitem', { name: 'Download' }));
   expect((click.mock.instances[0] as HTMLAnchorElement).getAttribute('href')).toBe('data:image/png;base64,AA==');
   expect(createObjectURL).not.toHaveBeenCalled();
+  await vi.waitFor(() => expect((screen.getByRole('button', { name: 'Download' }) as HTMLButtonElement).disabled).toBe(false));
   api.readEditorFile.mockResolvedValue('source');
   await fireEvent.click(screen.getByRole('treeitem', { name: 'main.glsl' }));
   await fireEvent.click(screen.getByRole('button', { name: 'Download' }));
+  await vi.runAllTimersAsync();
   expect(createObjectURL).toHaveBeenCalledOnce();
   await vi.runAllTimersAsync();
   expect(revokeObjectURL).toHaveBeenCalledWith('blob:download');
+});
+
+it('moves and deletes multiple selected paths and carries shader configs only once', async () => {
+  const { api, onPathsRemoved } = setup();
+  await fireEvent.click(screen.getByRole('treeitem', { name: 'main.glsl' }));
+  await fireEvent.click(screen.getByRole('treeitem', { name: 'main.sha.json' }), { ctrlKey: true });
+  await fireEvent.click(screen.getByRole('treeitem', { name: 'photo.png' }), { metaKey: true });
+  const transfer = {
+    types: ['application/x-shader-studio-path', 'application/x-shader-studio-paths'], files: [],
+    getData: (type: string) => type.endsWith('-paths') ? JSON.stringify(['/shaders/main.glsl', '/shaders/photo.png']) : '/shaders/main.glsl',
+  };
+  await fireEvent.drop(screen.getByRole('tree'), { dataTransfer: transfer });
+  expect(api.moveWorkspacePaths).toHaveBeenCalledWith(['/shaders/main.glsl', '/shaders/photo.png'], '/');
+  expect(onPathsRemoved).toHaveBeenCalledWith(['/shaders/main.glsl', '/shaders/main.sha.json', '/shaders/photo.png']);
+  await fireEvent.click(screen.getByRole('treeitem', { name: 'main.glsl' }));
+  await fireEvent.click(screen.getByRole('treeitem', { name: 'main.sha.json' }), { ctrlKey: true });
+  await fireEvent.click(screen.getByRole('treeitem', { name: 'photo.png' }), { ctrlKey: true });
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  await fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+  expect(api.deleteWorkspacePaths).toHaveBeenCalledWith(['/shaders/main.glsl', '/shaders/photo.png']);
+});
+
+it('downloads a selected folder as a ZIP and cleans up the download URL', async () => {
+  vi.useFakeTimers();
+  const createObjectURL = vi.fn().mockReturnValue('blob:archive');
+  const revokeObjectURL = vi.fn();
+  vi.stubGlobal('URL', { createObjectURL, revokeObjectURL });
+  const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  setup();
+  await fireEvent.click(screen.getByRole('treeitem', { name: 'shaders' }));
+  await fireEvent.click(screen.getByRole('button', { name: 'Download' }));
+  await vi.waitFor(() => expect(click).toHaveBeenCalledOnce());
+  expect((click.mock.instances[0] as HTMLAnchorElement).download).toBe('shaders.zip');
+  await vi.runAllTimersAsync();
+  expect(revokeObjectURL).toHaveBeenCalledWith('blob:archive');
 });
 
 it('shows missing-file and operation errors without leaving the UI busy', async () => {
@@ -174,11 +309,11 @@ it('shows missing-file and operation errors without leaving the UI busy', async 
   await fireEvent.click(screen.getByRole('treeitem', { name: 'photo.png' }));
   expect((await screen.findByRole('alert')).textContent).toContain('no longer exists');
   await fireEvent.click(screen.getByRole('button', { name: 'Download' }));
-  expect(screen.getByRole('alert').textContent).toContain('no longer exists');
+  expect((await screen.findByRole('alert')).textContent).toContain('no longer exists');
   api.uploadFiles.mockRejectedValue('failed');
-  await fireEvent.change(screen.getByLabelText('Upload to workspace folder'), { target: { files: [new File(['x'], 'a.png')] } });
+  await dropDeviceFiles([new File(['x'], 'a.png')]);
   expect(screen.getByRole('alert').textContent).toContain('Could not complete');
-  expect((screen.getByRole('button', { name: 'Upload to folder' }) as HTMLButtonElement).disabled).toBe(false);
+  expect((screen.getByRole('button', { name: 'New folder' }) as HTMLButtonElement).disabled).toBe(false);
 });
 
 it('supports keyboard selection, folder expansion, rename, context actions and deletion', async () => {
@@ -196,7 +331,7 @@ it('supports keyboard selection, folder expansion, rename, context actions and d
   expect(screen.getByLabelText('Rename or move path')).toBeTruthy();
   await fireEvent.keyDown(window, { key: 'Escape' });
   await fireEvent.contextMenu(screen.getByRole('treeitem', { name: 'shaders' }));
-  expect(screen.queryByRole('menuitem', { name: 'Download' })).toBeNull();
+  expect(screen.getByRole('menuitem', { name: 'Download' })).toBeTruthy();
   await fireEvent.click(screen.getByRole('menuitem', { name: 'Rename / Move…' }));
   expect(screen.getByLabelText('Rename or move path')).toBeTruthy();
   await fireEvent.keyDown(window, { key: 'Escape' });

@@ -14,18 +14,18 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
       await page.route('**/', route => route.fulfill({ contentType: 'text/html', body: '<html></html>' }));
       await page.goto('/');
       await putWorkspaceFiles(page, [
-        [`/shaders/aurora.${language}`, language === 'glsl'
+        [`/aurora.${language}`, language === 'glsl'
           ? 'void mainImage(out vec4 color, in vec2 coord) { color = vec4(1.0); }'
           : language === 'slang'
             ? 'float4 mainImage(float2 coord) { return float4(1.0); }'
             : 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(1.0); }'],
-        [`/shaders/shared.${language}`, '// shared functions'],
-        [`/shaders/vertex.${language}`, language === 'glsl'
+        [`/shared.${language}`, '// shared functions'],
+        [`/vertex.${language}`, language === 'glsl'
           ? 'void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {}'
           : language === 'slang'
             ? 'void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {}'
             : 'fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {}'],
-        ['/shaders/aurora.sha.json', JSON.stringify({ version: '1.0', passes: {
+        ['/aurora.sha.json', JSON.stringify({ version: '1.0', passes: {
           Image: { inputs: {}, vertex: `vertex.${language}` }, common: { path: `shared.${language}` },
         } })],
       ].map(([path, contents]) => ({ path, contents, createdAt: 1, modifiedAt: 1 })));
@@ -38,7 +38,7 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
       } else {
         await page.getByRole('heading', { name: 'Vertex shader', exact: true }).dblclick();
       }
-      const path = `/shaders/${source === 'common' ? 'shared' : 'vertex'}.${language}`;
+      const path = `/${source === 'common' ? 'shared' : 'vertex'}.${language}`;
       const editor = page.locator(`[data-testid="file-editor"][data-path="${path}"]`);
       await expect(editor.locator('.monaco-editor')).toBeVisible();
       await page.getByRole('button', { name: 'Workspace', exact: true }).click();
@@ -65,15 +65,15 @@ test('a detached buffer retains its owner Common authoring context after preview
   await page.route('**/__detached_common_context__', route => route.fulfill({ contentType: 'text/html', body: '<html></html>' }));
   await page.goto('/__detached_common_context__');
   await putWorkspaceFiles(page, [
-    ['/shaders/owner-a.glsl', 'void mainImage(out vec4 color, in vec2 coord) { color = vec4(1.0); }'],
-    ['/shaders/owner-a.common.glsl', 'vec4 ownerColor(float value) { return vec4(value); }'],
-    ['/shaders/owner-a.buffer.glsl', 'void mainImage(out vec4 color, in vec2 coord) { color = ownerColor(coord.x); }'],
-    ['/shaders/owner-a.sha.json', JSON.stringify({ version: '1.0', passes: {
+    ['/owner-a.glsl', 'void mainImage(out vec4 color, in vec2 coord) { color = vec4(1.0); }'],
+    ['/owner-a.common.glsl', 'vec4 ownerColor(float value) { return vec4(value); }'],
+    ['/owner-a.buffer.glsl', 'void mainImage(out vec4 color, in vec2 coord) { color = ownerColor(coord.x); }'],
+    ['/owner-a.sha.json', JSON.stringify({ version: '1.0', passes: {
       common: { path: 'owner-a.common.glsl' }, Image: { inputs: {} }, BufferA: { path: 'owner-a.buffer.glsl', inputs: {} },
     } })],
-    ['/shaders/owner-b.glsl', 'void mainImage(out vec4 color, in vec2 coord) { color = vec4(0.0, ownerColor(coord.x), 0.0, 1.0); }'],
-    ['/shaders/owner-b.common.glsl', 'float ownerColor(float value) { return 1.0; }'],
-    ['/shaders/owner-b.sha.json', JSON.stringify({ version: '1.0', passes: {
+    ['/owner-b.glsl', 'void mainImage(out vec4 color, in vec2 coord) { color = vec4(0.0, ownerColor(coord.x), 0.0, 1.0); }'],
+    ['/owner-b.common.glsl', 'float ownerColor(float value) { return 1.0; }'],
+    ['/owner-b.sha.json', JSON.stringify({ version: '1.0', passes: {
       common: { path: 'owner-b.common.glsl' }, Image: { inputs: {} },
     } })],
   ].map(([path, contents]) => ({ path, contents, createdAt: 1, modifiedAt: 1 })));
@@ -82,7 +82,7 @@ test('a detached buffer retains its owner Common authoring context after preview
   await page.getByTestId('shader-option-owner-a-glsl').click();
   await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
   await page.locator('[data-tab-name="BufferA"]').dblclick();
-  const bufferEditor = page.locator('[data-testid="file-editor"][data-path="/shaders/owner-a.buffer.glsl"]');
+  const bufferEditor = page.locator('[data-testid="file-editor"][data-path="/owner-a.buffer.glsl"]');
   await expect(bufferEditor.locator('.monaco-editor')).toBeVisible();
   await expect(bufferEditor.locator('.squiggly-error')).toHaveCount(0);
 
@@ -146,13 +146,13 @@ test('navigating during an editor save preserves both shader files after reload'
     window.holdEditorSaves = false; window.pendingEditorSaves.splice(0).forEach(save => save());
   });
   await expect.poll(() => workspace(page)).toMatchObject({
-    '/shaders/aurora.glsl': edited,
-    '/shaders/desert-cubemap.glsl': before['/shaders/desert-cubemap.glsl'],
+    '/aurora.glsl': edited,
+    '/desert-cubemap.glsl': before['/desert-cubemap.glsl'],
   });
   await page.reload();
   await page.getByTestId('shader-option-aurora-glsl').click();
   await expect(editor.locator('.view-lines')).toContainText('pending navigation edit');
   await page.getByTestId('shader-option-desert-cubemap-glsl').click();
   await expect(editor.locator('.view-lines')).toContainText('Drag in the preview');
-  expect((await workspace(page))['/shaders/desert-cubemap.glsl']).toBe(before['/shaders/desert-cubemap.glsl']);
+  expect((await workspace(page))['/desert-cubemap.glsl']).toBe(before['/desert-cubemap.glsl']);
 });

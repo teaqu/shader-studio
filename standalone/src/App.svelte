@@ -12,7 +12,7 @@
   import { connectSettings, getDefaultShaderMode } from './settings/settingsState.svelte';
   import WorkspaceFilePicker from './WorkspaceFilePicker.svelte';
   import NewShaderModal from './NewShaderModal.svelte';
-  import WorkspaceFiles from './WorkspaceFiles.svelte';
+  import { FileExplorer as WorkspaceFiles } from '@shader-studio/file-explorer';
   import type { WebTransport, WorkspaceStorageStatus } from './WebTransport';
   import {
     getSelectedEditor, selectEditor, getRequestedEditor, requestEditor, getNewShaderVisible, getRequestedPanel, requestPanel,
@@ -54,13 +54,14 @@
   setContext(PANEL_HOST_CONTEXT, hostedPanels);
   let layout = $state<StandaloneLayout>();
   let workspaceError = $state('');
+  let dismissedOfflineError = $state('');
   const disconnectSettings = connectSettings(transport.settings);
   onDestroy(disconnectSettings);
   let settingsOpen = $state(false);
   let alphaNoticeVisible = $state(shouldShowAlphaNotice());
   let viewMenuOpen = $state(false);
   let workspaceMenuOpen = $state(false);
-  let panelVisibility = $state({ explorer: true, editor: true, preview: true });
+  let panelVisibility = $state({ explorer: true, files: true, editor: true, preview: true });
   let persistenceStatus = $state<WorkspacePersistenceStatus>({ state: 'saving' });
   let pwaStatus = $state<PwaStatus>({
     supported: false,
@@ -71,30 +72,14 @@
   });
   let storageStatus = $state<WorkspaceStorageStatus | null>(null);
   let storageProtectionPending = $state(false);
+  let dismissedStorageWarning = $state('');
   const storageWarning = $derived(storageStatus && !storageStatus.persisted && !storageProtectionPending
     ? storageStatus.backend === 'session'
       ? 'Session-only: closing the app will lose your work. Export a workspace backup to keep it.'
       : `Work saves automatically. ${storageStatus.persisted === null ? 'Storage protection could not be confirmed.' : 'Storage protection is not enabled.'} The browser may remove local work if space runs low. Export workspace backups to keep a separate copy.`
     : '');
   let workspaceFileInput: HTMLInputElement;
-  let uploadFileInput: HTMLInputElement;
-  let uploadPending = $state(false);
-  let uploadStatus = $state('');
   let workspaceHasShaders = $state(true);
-  function initialExplorerMode(): 'files' | 'shaders' {
-    try {
-      return localStorage.getItem('shader-studio.explorer-mode') === 'files' ? 'files' : 'shaders';
-    } catch {
-      return 'shaders';
-    }
-  }
-  let explorerMode = $state(initialExplorerMode());
-  function selectExplorerMode(mode: 'files' | 'shaders') {
-    explorerMode = mode;
-    try {
-      localStorage.setItem('shader-studio.explorer-mode', mode);
-    } catch { /* Keep the selection for this session. */ }
-  }
   function openWorkspaceFile(path: string) {
     if (shaderLanguageForPath(path)) {
       explorerApi.postMessage({ type: 'openShader', path });
@@ -112,7 +97,7 @@
   onMount(() => {
     shellMounted = true;
     const stopFiles = transport.onWorkspaceFiles(files => {
-      workspaceHasShaders = files.some(file => shaderLanguageForPath(file.path));
+      workspaceHasShaders = files.some(file => !file.directory && shaderLanguageForPath(file.path));
     });
     void transport.getStorageStatus?.().then(async (status) => {
       storageStatus = status;
@@ -225,27 +210,6 @@
     }
   }
 
-  async function uploadFiles(event: Event) {
-    const input = event.currentTarget as HTMLInputElement;
-    const files = Array.from(input.files ?? []);
-    input.value = '';
-    workspaceMenuOpen = false;
-    if (!files.length) {
-      return;
-    }
-    workspaceError = '';
-    uploadStatus = '';
-    uploadPending = true;
-    try {
-      await transport.uploadFiles(files);
-      uploadStatus = `Added ${files.length} file${files.length === 1 ? '' : 's'} to /shaders/.`;
-    } catch (error) {
-      workspaceError = error instanceof Error ? `Upload failed: ${error.message}` : 'Could not upload files.';
-    } finally {
-      uploadPending = false;
-    }
-  }
-
   async function applyAutomaticUpdate() {
     if (!shellMounted || updateInProgress || updateApplied) {
       return;
@@ -302,6 +266,7 @@
   }
 
   async function prepareOffline() {
+    dismissedOfflineError = '';
     if (pwaStatus.offlinePreparation.state === 'error' || pwaStatus.offlinePreparation.state === 'cancelled') {
       await pwa?.retryOfflinePreparation();
     } else {
@@ -339,6 +304,7 @@
     if (viewMenuOpen) {
       panelVisibility = {
         explorer: layout?.isPanelVisible('explorer') ?? false,
+        files: layout?.isPanelVisible('files') ?? false,
         editor: layout?.isPanelVisible('editor') ?? false,
         preview: layout?.isPanelVisible('preview') ?? false,
       };
@@ -350,7 +316,7 @@
     viewMenuOpen = false;
   }
 
-  function togglePanel(panel: 'explorer' | 'editor' | 'preview') {
+  function togglePanel(panel: 'explorer' | 'files' | 'editor' | 'preview') {
     layout?.togglePanel(panel);
     panelVisibility[panel] = layout?.isPanelVisible(panel) ?? false;
     viewMenuOpen = false;
@@ -401,6 +367,9 @@
           <button role="menuitemcheckbox" aria-checked={panelVisibility.explorer} onclick={() => togglePanel('explorer')}>
             <span aria-hidden="true">{panelVisibility.explorer ? '✓' : ''}</span> Shader Explorer
           </button>
+          <button role="menuitemcheckbox" aria-checked={panelVisibility.files} onclick={() => togglePanel('files')}>
+            <span aria-hidden="true">{panelVisibility.files ? '✓' : ''}</span> Files
+          </button>
           <button role="menuitemcheckbox" aria-checked={panelVisibility.editor} onclick={() => togglePanel('editor')}>
             <span aria-hidden="true">{panelVisibility.editor ? '✓' : ''}</span> Editor
           </button>
@@ -417,7 +386,6 @@
       {#if workspaceMenuOpen}
         <div class="dropdown-menu" role="menu" aria-label="Workspace">
           <button onclick={resetLayout}>Reset workspace layout</button>
-          <button disabled={uploadPending} onclick={() => uploadFileInput.click()}>{uploadPending ? 'Uploading…' : 'Upload Files…'}</button>
           <button onclick={exportWorkspace}>Export Workspace Backup</button>
           <button onclick={() => workspaceFileInput.click()}>Import Workspace Backup…</button>
           {#if storageStatus?.backend === 'indexeddb' && storageStatus.persistSupported && !storageStatus.persisted}
@@ -439,6 +407,12 @@
                 The browser may remove local work if space runs low. Export workspace backups to keep a separate copy.
               {/if}
             </p>
+            {#if storageWarning && dismissedStorageWarning !== storageWarning}
+              <button aria-label="Dismiss storage warning" onclick={() => {
+                dismissedStorageWarning = storageWarning;
+                workspaceMenuOpen = false;
+              }}>Close storage warning ×</button>
+            {/if}
           {/if}
           {#if pwaStatus.supported}
             {#if pwaStatus.offlinePreparation.state === 'preparing'}
@@ -474,7 +448,7 @@
       {#if storageStatus?.backend !== 'session'}
         <i class="codicon {saveStatusIcon()}" class:spinning={persistenceStatus.state === 'saving'} aria-hidden="true"></i>
       {/if}
-      {#if storageWarning}
+      {#if storageWarning && dismissedStorageWarning !== storageWarning}
         <button class="storage-warning-icon" aria-label="Storage warning" aria-haspopup="menu" aria-expanded={workspaceMenuOpen} title={storageWarning} onclick={toggleWorkspaceMenu}>
           <i class="codicon codicon-warning" aria-hidden="true"></i>
         </button>
@@ -485,34 +459,25 @@
     </span>
   </header>
   <input class="visually-hidden" bind:this={workspaceFileInput} type="file" accept="application/json,.json" onchange={importWorkspace} />
-  <input class="visually-hidden" aria-label="Upload files" bind:this={uploadFileInput} type="file" multiple onchange={uploadFiles} />
-  {#if uploadStatus}<p role="status">{uploadStatus}</p>{/if}
   {#if alphaNoticeVisible}
     <aside class="alpha-notice" data-testid="web-alpha-warning" role="note">
       <span>
-        Standalone mode is in <strong>alpha</strong> and is buggy and missing features compared to the VS Code extension.
         Changes are saved only in this browser. Clearing browser data will delete them.
       </span>
-      <button class="dismiss-alpha-notice" aria-label="Dismiss alpha notice" title="Dismiss" onclick={dismissAlphaNotice}>×</button>
+      <button class="dismiss-alpha-notice" aria-label="Dismiss alpha notice" title="Close warning" onclick={dismissAlphaNotice}>×</button>
     </aside>
   {/if}
-  {#if workspaceError}<p role="alert">{workspaceError}</p>{/if}
-  {#if pwaStatus.offlinePreparation.state === 'error'}
-    <p class="shell-status-error" role="alert">Offline preparation failed: {pwaStatus.offlinePreparation.message}</p>
+  {#if workspaceError}<p role="alert">{workspaceError} <button aria-label="Dismiss workspace warning" title="Close warning" onclick={() => workspaceError = ''}>×</button></p>{/if}
+  {#if pwaStatus.offlinePreparation.state === 'error' && dismissedOfflineError !== pwaStatus.offlinePreparation.message}
+    <p class="shell-status-error" role="alert">Offline preparation failed: {pwaStatus.offlinePreparation.message} <button aria-label="Dismiss offline warning" title="Close warning" onclick={() => dismissedOfflineError = pwaStatus.offlinePreparation.state === 'error' ? pwaStatus.offlinePreparation.message : ''}>×</button></p>
   {/if}
   <StandaloneLayout bind:this={layout} {hostedPanels} {transport}>
     {#snippet explorer()}
-      <div class="explorer-pane">
-        <div class="explorer-tabs" role="tablist" aria-label="Explorer view">
-          <button role="tab" aria-selected={explorerMode === 'files'} onclick={() => selectExplorerMode('files')}>Files</button>
-          <button role="tab" aria-selected={explorerMode === 'shaders'} onclick={() => selectExplorerMode('shaders')}>Shaders</button>
-        </div>
-        <div class="explorer-content" class:inactive={explorerMode !== 'files'}>
-          <WorkspaceFiles {transport} onOpen={openWorkspaceFile} onPathsRemoved={paths => layout?.closeEditorPaths(paths)} />
-        </div>
-        <div class="explorer-content" class:inactive={explorerMode !== 'shaders'}>
-          <ShaderExplorer hostApi={explorerApi} compact={true} selectedShaderPath={session?.selectedShaderPath ?? ''} />
-        </div>
+      <ShaderExplorer hostApi={explorerApi} compact={true} selectedShaderPath={session?.selectedShaderPath ?? ''} />
+    {/snippet}
+    {#snippet files()}
+      <div class="panel-content" data-testid="web-files">
+        <WorkspaceFiles {transport} onOpen={openWorkspaceFile} onPathsRemoved={paths => layout?.closeEditorPaths(paths)} />
       </div>
     {/snippet}
     {#snippet editor()}
@@ -535,12 +500,6 @@
 </div>
 
 <style>
-  .explorer-pane { height: 100%; display: flex; flex-direction: column; min-height: 0; }
-  .explorer-tabs { display: flex; border-bottom: 1px solid var(--vscode-panel-border); background: var(--vscode-sideBar-background); }
-  .explorer-tabs button { flex: 1; padding: 8px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--vscode-descriptionForeground); cursor: pointer; font: inherit; font-size: 12px; }
-  .explorer-tabs button[aria-selected="true"] { border-bottom-color: var(--vscode-focusBorder); color: var(--vscode-foreground); }
-  .explorer-content { flex: 1; min-height: 0; overflow: hidden; }
-  .explorer-content.inactive { display: none; }
   .empty-workspace { padding: 24px; color: var(--vscode-descriptionForeground); }
   .standalone-app { display: flex; flex-direction: column; height: 100%; min-height: 0; }
   .standalone-toolbar { position: relative; z-index: 10; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--vscode-panel-border); background: var(--vscode-sideBar-background); }
@@ -559,7 +518,8 @@
   .storage-notice { max-width: 280px; margin: 4px 0; padding: 8px 12px; font-size: 12px; line-height: 1.5; white-space: normal; color: var(--vscode-descriptionForeground); border-top: 1px solid var(--vscode-panel-border); }
   .build-status .storage-warning-icon { display: flex; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent; color: var(--vscode-editorWarning-foreground, #cca700); cursor: pointer; }
   .alpha-notice { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 3px 10px; font-size: 11px; text-align: center; color: var(--vscode-descriptionForeground); border-bottom: 1px solid var(--vscode-panel-border); }
-  .dismiss-alpha-notice { flex: 0 0 auto; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; color: inherit; background: transparent; font: inherit; font-size: 18px; line-height: 1; cursor: pointer; }
+  .alpha-notice > span { min-width: 0; }
+  .dismiss-alpha-notice { flex: 0 0 auto; min-height: 28px; padding: 4px 8px; border: 0; border-radius: 4px; color: var(--vscode-foreground); background: transparent; font: inherit; cursor: pointer; }
   .dismiss-alpha-notice:hover { background: var(--vscode-list-hoverBackground); }
   .panel-content { height: 100%; width: 100%; min-height: 0; min-width: 0; }
   .build-status { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; color: var(--vscode-descriptionForeground); font-size: 16px; }

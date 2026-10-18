@@ -19,7 +19,8 @@ import { WebExtensionHost } from './WebExtensionHost';
 import { syncSettingsAcrossTabs } from './settings/syncSettingsAcrossTabs';
 import { StandaloneSettings } from './settings/StandaloneSettings';
 import { uploadWorkspaceFiles } from './workspaceUploads';
-import { createWorkspaceFile, deleteWorkspacePath, renameWorkspacePath, userWorkspaceFiles, type WorkspaceFileEntry } from './workspaceFiles';
+import { migrateStandaloneRoot } from './standaloneRoot';
+import { createWorkspaceFile, createWorkspaceFolder, deleteWorkspacePath, deleteWorkspacePaths, moveWorkspacePaths, renameWorkspacePath, userWorkspaceFiles, type WorkspaceFileEntry } from './workspaceFiles';
 
 const EXPLORER_STATE_KEY = 'shader-studio-explorer-state';
 
@@ -97,7 +98,10 @@ export class WebTransport implements Transport {
   readonly settings = new StandaloneSettings();
   private readonly stopSettingsSync = syncSettingsAcrossTabs(this.settings);
   private readonly session = createWorkspace();
-  private readonly workspace = this.session.then(({ workspace }) => workspace);
+  private readonly workspace = this.session.then(async ({ workspace }) => {
+    await migrateStandaloneRoot(workspace);
+    return workspace;
+  });
   private readonly host = this.workspace.then((workspace) => new WebExtensionHost(workspace, {
     resolveDefaultAsset: resolveDefaultAssetUrl,
     settings: this.settings,
@@ -361,7 +365,7 @@ export class WebTransport implements Transport {
     return (await this.workspace).exportBackup();
   }
 
-  async uploadFiles(files: readonly File[], directory = '/shaders'): Promise<string[]> {
+  async uploadFiles(files: readonly File[], directory = '/'): Promise<string[]> {
     let paths: string[] = [];
     await this.trackMessage(this.workspace.then(async workspace => {
       paths = await uploadWorkspaceFiles(workspace, files, directory);
@@ -370,7 +374,7 @@ export class WebTransport implements Transport {
   }
 
   async uploadAssets(files: readonly File[], shaderPath: string) {
-    const directory = shaderPath.slice(0, shaderPath.lastIndexOf('/')) || '/shaders';
+    const directory = shaderPath.slice(0, shaderPath.lastIndexOf('/')) || '/';
     const paths = await this.uploadFiles(files, directory);
     const workspace = await this.workspace;
     return paths.map(path => ({ name: path.slice(path.lastIndexOf('/') + 1), workspacePath: path,
@@ -402,6 +406,13 @@ export class WebTransport implements Transport {
     }), false);
   }
 
+  async createWorkspaceFolder(path: string): Promise<void> {
+    await this.trackMessage(this.workspace.then(async workspace => {
+      createWorkspaceFolder(workspace, path);
+      await workspace.flush();
+    }), false);
+  }
+
   async renameWorkspacePath(from: string, to: string): Promise<void> {
     await this.flush();
     await this.trackMessage(this.workspace.then(async workspace => {
@@ -421,6 +432,31 @@ export class WebTransport implements Transport {
       const deleted = deleteWorkspacePath(workspace, path);
       for (const file of deleted) {
         setEditorDocument(file, null);
+      }
+      (await this.host).refreshWorkspaceSelection();
+      await workspace.flush();
+    }), false);
+  }
+
+  async moveWorkspacePaths(paths: readonly string[], directory: string): Promise<void> {
+    await this.flush();
+    await this.trackMessage(this.workspace.then(async workspace => {
+      const moves = moveWorkspacePaths(workspace, paths, directory);
+      for (const move of moves) {
+        setEditorDocument(move.from, null);
+        setEditorDocument(move.to, workspace.readText(move.to));
+      }
+      (await this.host).refreshWorkspaceSelection(moves);
+      await workspace.flush();
+    }), false);
+  }
+
+  async deleteWorkspacePaths(paths: readonly string[]): Promise<void> {
+    await this.flush();
+    await this.trackMessage(this.workspace.then(async workspace => {
+      const deleted = deleteWorkspacePaths(workspace, paths);
+      for (const path of deleted) {
+        setEditorDocument(path, null);
       }
       (await this.host).refreshWorkspaceSelection();
       await workspace.flush();

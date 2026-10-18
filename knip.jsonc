@@ -17,6 +17,10 @@
   // workspace instead declares its static test roots alongside its application roots.
   "vitest": false,
   "workspaces": {
+    "file-explorer": {
+      "entry": ["src/index.ts", "src/test/**/*.{ts,svelte}", "vitest.config.ts"],
+      "project": ["src/**/*.{ts,svelte}"]
+    },
     "debug": {
       "entry": [
         "src/index.ts",

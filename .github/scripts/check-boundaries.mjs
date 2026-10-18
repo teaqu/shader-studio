@@ -79,7 +79,7 @@ const RELATIVE_CROSS_PACKAGE_EXCEPTIONS = new Set([
 
 function workspaceDirectories(root) {
   return [
-    "types", "standalone", "debug", "rendering", "utils", "extension", "ui", "shader-explorer", "monaco",
+    "types", "standalone", "file-explorer", "debug", "rendering", "utils", "extension", "ui", "shader-explorer", "monaco",
     ...readdirSync(join(root, "language-servers"), { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .map((entry) => join("language-servers", entry.name)),

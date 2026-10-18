@@ -53,7 +53,7 @@ function createTransport(): TestTransport {
     importWorkspaceBackup: vi.fn().mockResolvedValue(undefined),
     uploadFiles: vi.fn().mockResolvedValue(undefined),
     onWorkspaceFiles: vi.fn(listener => {
-      listener([{ path: '/shaders/main.glsl', asset: false }]); return vi.fn();
+      listener([{ path: '/main.glsl', asset: false }]); return vi.fn();
     }),
     onPersistenceStatus: vi.fn((listener) => {
       listener({ state: 'saved' });
@@ -95,31 +95,14 @@ function createStorage(): Storage {
 }
 
 describe('standalone App', () => {
-  it('switches between the file tree and shader gallery and remembers the selected view', async () => {
-    const transport = createTransport();
-    const app = render(App, { props: { transport } });
-    await fireEvent.click(screen.getByRole('tab', { name: 'Files' }));
-    expect(localStorage.getItem('shader-studio.explorer-mode')).toBe('files');
-    expect(screen.getByRole('tree', { name: 'Workspace file tree' })).toBeTruthy();
-    await fireEvent.click(screen.getByRole('tab', { name: 'Shaders' }));
-    expect(localStorage.getItem('shader-studio.explorer-mode')).toBe('shaders');
-    await fireEvent.click(screen.getByRole('tab', { name: 'Files' }));
-    app.unmount();
+  it('renders Files and Shader Explorer independently and toggles Files through View', async () => {
     render(App, { props: { transport: createTransport() } });
-    expect(screen.getByRole('tab', { name: 'Files' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByTestId('files-panel').querySelector('[role="tree"]')).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: 'Files' })).toBeNull();
+    await fireEvent.click(screen.getByRole('button', { name: 'View' }));
+    await fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Files/ }));
+    expect(layoutStub.togglePanel).toHaveBeenCalledWith('files');
   });
-
-  it('keeps the file explorer usable when preference storage is denied', async () => {
-    vi.stubGlobal('localStorage', { getItem: () => {
-      throw new Error('Denied');
-    }, setItem: () => {
-      throw new Error('Denied');
-    } });
-    render(App, { props: { transport: createTransport() } });
-    await fireEvent.click(screen.getByRole('tab', { name: 'Files' }));
-    expect(screen.getByRole('tab', { name: 'Files' }).getAttribute('aria-selected')).toBe('true');
-  });
-
   it('shows an empty preview after all shader files are deleted', async () => {
     const transport = createTransport();
     vi.spyOn(transport, 'onWorkspaceFiles').mockImplementation(listener => {
@@ -128,39 +111,6 @@ describe('standalone App', () => {
     render(App, { props: { transport } });
     await waitFor(() => expect(screen.getByText('Create or upload a shader to start previewing.')).toBeTruthy());
   });
-  it('opens the multi-file upload picker from Workspace and reports completion', async () => {
-    const transport = createTransport();
-    render(App, { props: { transport } });
-    const input = screen.getByLabelText('Upload files') as HTMLInputElement;
-    expect(input.multiple).toBe(true);
-    const click = vi.spyOn(input, 'click');
-    await fireEvent.click(screen.getByRole('button', { name: /^Workspace$/ }));
-    await fireEvent.click(screen.getByRole('button', { name: 'Upload Files…' }));
-    expect(click).toHaveBeenCalledOnce();
-    const files = [new File(['source'], 'new.glsl'), new File(['image'], 'photo.png')];
-    await fireEvent.change(input, { target: { files } });
-    expect(transport.uploadFiles).toHaveBeenCalledWith(files);
-    await waitFor(() => expect(screen.getByText('Added 2 files to /shaders/.')).toBeTruthy());
-    expect(input.value).toBe('');
-  });
-
-  it('cancels uploads without changing the workspace', async () => {
-    const transport = createTransport();
-    render(App, { props: { transport } });
-    await fireEvent.change(screen.getByLabelText('Upload files'), { target: { files: [] } });
-    expect(transport.uploadFiles).not.toHaveBeenCalled();
-  });
-
-  it.each([new Error('Filename already exists'), 'failed'])('shows upload errors and enables another attempt', async error => {
-    const transport = createTransport();
-    transport.uploadFiles.mockRejectedValueOnce(error);
-    render(App, { props: { transport } });
-    await fireEvent.change(screen.getByLabelText('Upload files'), { target: { files: [new File(['x'], 'a.glsl')] } });
-    expect((await screen.findByRole('alert')).textContent).toContain(error instanceof Error ? error.message : 'Could not upload files.');
-    await fireEvent.click(screen.getByRole('button', { name: /^Workspace$/ }));
-    expect((screen.getByRole('button', { name: 'Upload Files…' }) as HTMLButtonElement).disabled).toBe(false);
-  });
-
   it('uses the global Native mode when opening a new shader', async () => {
     const transport = createTransport();
     transport.settings.update('webgpu.defaultRenderAuthoring', 'native');
@@ -233,7 +183,11 @@ describe('standalone App', () => {
   it('dismisses the alpha notice and remembers that preference', async () => {
     const first = render(App, { transport: createTransport() });
 
-    await fireEvent.click(screen.getByRole('button', { name: 'Dismiss alpha notice' }));
+    const close = screen.getByRole('button', { name: 'Dismiss alpha notice' });
+    expect(close.textContent).toBe('×');
+    expect(screen.getByTestId('web-alpha-warning').textContent).not.toContain('Standalone mode is in');
+    expect(screen.getByTestId('web-alpha-warning').textContent).toContain('Changes are saved only in this browser. Clearing browser data will delete them.');
+    await fireEvent.click(close);
     expect(screen.queryByTestId('web-alpha-warning')).toBeNull();
     expect(localStorage.getItem('shader-studio.alpha-notice-dismissed')).toBe('true');
 
@@ -358,6 +312,8 @@ describe('standalone App', () => {
     await fireEvent.click(warning);
     expect(await screen.findByText(/Storage protection has not been granted/)).toBeTruthy();
     expect(transport.requestPersistentStorage).toHaveBeenCalledOnce();
+    await fireEvent.click(screen.getByRole('button', { name: 'Dismiss storage warning' }));
+    expect(screen.queryByRole('button', { name: 'Storage warning' })).toBeNull();
   });
   it('automatically requests storage protection when it has not been granted', async () => {
     const transport = createTransport();
@@ -395,7 +351,7 @@ describe('standalone App', () => {
     expect(screen.queryByRole('button', { name: 'Request storage protection' })).toBeNull();
     if (status.backend === 'session') {
       expect(screen.getByRole('button', { name: 'Storage warning' }).getAttribute('title')).toContain('closing the app');
-      expect(screen.queryByRole('button', { name: 'Dismiss storage warning' })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Dismiss storage warning' })).toBeTruthy();
     } else if (!status.persisted) {
       expect(screen.getByRole('button', { name: 'Storage warning' })).toBeTruthy();
     } else {
@@ -492,9 +448,9 @@ describe('standalone App', () => {
     expect(layoutStub.selectMobilePanel).toHaveBeenCalledWith('explorer');
     expect(layoutStub.showPanel).not.toHaveBeenCalled();
 
-    requestEditor('/shaders/mobile.glsl');
+    requestEditor('/mobile.glsl');
     await tick();
-    expect(layoutStub.openEditor).toHaveBeenCalledWith('/shaders/mobile.glsl');
+    expect(layoutStub.openEditor).toHaveBeenCalledWith('/mobile.glsl');
     expect(layoutStub.selectMobilePanel).toHaveBeenLastCalledWith('editor');
   });
 
@@ -502,10 +458,10 @@ describe('standalone App', () => {
     layoutStub.isMobileLayout.mockReturnValue(true);
     render(App, { props: { transport: createTransport() } });
 
-    selectEditor('/shaders/picked.glsl');
+    selectEditor('/picked.glsl');
     await tick();
 
-    expect(layoutStub.selectEditor).toHaveBeenCalledWith('/shaders/picked.glsl');
+    expect(layoutStub.selectEditor).toHaveBeenCalledWith('/picked.glsl');
     expect(layoutStub.selectMobilePanel).toHaveBeenLastCalledWith('editor');
     expect(getSelectedEditor()).toBeNull();
   });
@@ -513,10 +469,10 @@ describe('standalone App', () => {
   it('keeps the desktop layout when a shader is selected on a wide screen', async () => {
     render(App, { props: { transport: createTransport() } });
 
-    selectEditor('/shaders/picked.glsl');
+    selectEditor('/picked.glsl');
     await tick();
 
-    expect(layoutStub.selectEditor).toHaveBeenCalledWith('/shaders/picked.glsl');
+    expect(layoutStub.selectEditor).toHaveBeenCalledWith('/picked.glsl');
     expect(layoutStub.selectMobilePanel).not.toHaveBeenCalled();
   });
 
@@ -801,19 +757,28 @@ describe('standalone App', () => {
     await fireEvent.click(screen.getByRole('button', { name: 'Clear Workspace' }));
 
     await waitFor(() => {
-      expect(screen.getByRole('alert').textContent).toBe('Could not clear the workspace. Please try again.');
+      expect(screen.getByRole('alert').textContent).toContain('Could not clear the workspace. Please try again.');
     });
+    await fireEvent.click(screen.getByRole('button', { name: 'Dismiss workspace warning' }));
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('allows an offline preparation warning to be dismissed', async () => {
+    render(App, { props: { transport: createTransport(), pwa: createPwa({ offlinePreparation: { state: 'error', message: 'Network failed' } }) } });
+    expect((await screen.findByRole('alert')).textContent).toContain('Network failed');
+    await fireEvent.click(screen.getByRole('button', { name: 'Dismiss offline warning' }));
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('routes explorer selection to the active editor and consumes the request', async () => {
-    selectEditor('/shaders/aurora.glsl');
+    selectEditor('/aurora.glsl');
     render(App, { props: { transport: createTransport() } });
     await tick();
-    expect(layoutStub.selectEditor).toHaveBeenCalledWith('/shaders/aurora.glsl');
+    expect(layoutStub.selectEditor).toHaveBeenCalledWith('/aurora.glsl');
     expect(getSelectedEditor()).toBeNull();
-    selectEditor('/shaders/desert-cubemap.glsl');
+    selectEditor('/desert-cubemap.glsl');
     await tick();
-    expect(layoutStub.selectEditor).toHaveBeenLastCalledWith('/shaders/desert-cubemap.glsl');
+    expect(layoutStub.selectEditor).toHaveBeenLastCalledWith('/desert-cubemap.glsl');
     expect(getSelectedEditor()).toBeNull();
   });
 

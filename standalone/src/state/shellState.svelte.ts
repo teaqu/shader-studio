@@ -1,4 +1,4 @@
-export type StandalonePanel = 'explorer' | 'editor' | 'preview';
+export type StandalonePanel = 'explorer' | 'files' | 'editor' | 'preview';
 
 let newShaderVisible = $state(false);
 let requestedPanel = $state<StandalonePanel | null>(null);

@@ -32,7 +32,7 @@ See the [Quick Start](quick-start.md#step-3-write-your-shader) for example shade
 
 ### Upload Files
 
-Open **Workspace → Upload Files…** to select shader sources, matching `.sha.json` configuration files, or assets from your device. You can select several files at once. Files are added to `/shaders/` in your browser workspace; your other work stays in place. Uploaded shaders appear in **Shader Explorer**. Upload each shader and its config together to keep their settings.
+In the **Files** pane, use **Upload Files** or drag and drop shader sources, matching `.sha.json` configuration files, or assets from your device. You can select several files at once. Files are added to the workspace root by default, or to the selected folder; your other work stays in place. Uploaded shaders appear in **Shader Explorer**. Upload each shader and its config together to keep their settings.
 
 For an image, cubemap, volume, audio, or video input, open its channel in **Config** and select the matching tab. Click **Upload…** to choose a file from your device. It is saved beside the shader and selected for that channel automatically. You can also choose an asset already in the browser workspace. Cubemaps use a single T-cross image with six square faces, arranged four faces wide and three faces high.
 
@@ -42,13 +42,16 @@ An upload never replaces an existing file. If a filename is already present, ren
 
 ### File Explorer
 
-Select **Files** at the top of the left Explorer pane for a folder tree of your browser workspace. Select **Shaders** to return to shader thumbnails. The selected view is remembered after reload.
+**Files** is a separate dockable pane alongside **Shader Explorer**, available only in standalone. Use **View → Files** to show or hide it. Drag its header to move the pane; the layout is remembered after reload. No `/shaders` wrapper is required.
+
+Starter files and newly created shaders live at the workspace root. Existing standalone workspaces move files out of the old `/shaders` wrapper once and update their references. If a destination conflicts with an existing root file, the old folder is kept intact so nothing is overwritten.
 
 - Click a folder to expand or collapse it. Use the filter field to find a filename or path.
+- Ctrl/Cmd-click to toggle files in a selection, Shift-click to select a range, or use **Select** to select several files with ordinary clicks. Ctrl/Cmd+A selects all visible rows. Every selected row stays highlighted.
 - Click shader source to open it in the editor and preview. Other text files, including `.sha.json` configs, open in editor tabs. Click an image, audio, or video asset to preview it; cubemap images show their face layout.
-- Use **New file** to enter a path, such as `/shaders/shared/common.glsl`. Folders appear when they contain files.
-- Select a folder and use **Upload Files** to add files there. When a file is selected, uploads go into its parent folder.
-- Select a file or folder, then use **Rename**, **Delete**, or **Download** below the tree. The same actions are available by right-clicking. **F2** opens Rename and **Delete** asks before removing the selection. Download is available for individual files.
+- Use **New file** to enter a path, such as `/shared/common.glsl`. Use **New folder** to create an empty folder.
+- Drop device files onto a folder or select it and use **Upload Files** to add files there. Drop onto empty space to add files at the root. Drag files or folders within the tree to move them. When a file is selected, uploads go into its parent folder.
+- Select files or folders, then use **Delete** or **Download** below the tree, or right-click for the same actions. Downloads of multiple files or a folder produce one ZIP with the folder structure and asset bytes preserved; a single file downloads directly. Drag a selection onto a folder to move all selected items. **F2** opens Rename for a single selection and **Delete** asks before removing the selection.
 
 Rename accepts a full destination path, so it can also move files and folders. Renaming or deleting a shader includes its matching `.sha.json` config. Renaming does not rewrite references in other files: update any paths that refer to the renamed or moved item. Deleting a folder removes everything inside it after confirmation and cannot be undone; export a workspace backup first if you need a recovery copy.
 

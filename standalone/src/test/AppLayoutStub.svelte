@@ -7,7 +7,7 @@
     closeEditorPaths: vi.fn(),
     showPanel: vi.fn(),
     togglePanel: vi.fn(),
-    isPanelVisible: vi.fn((_panel: 'explorer' | 'editor' | 'preview') => true),
+    isPanelVisible: vi.fn((_panel: 'explorer' | 'files' | 'editor' | 'preview') => true),
     resetLayout: vi.fn(),
     isMobileLayout: vi.fn(() => false),
     selectMobilePanel: vi.fn(),
@@ -18,12 +18,12 @@
   import type { Snippet } from 'svelte';
 
   interface Props {
-    explorer: Snippet;
+    explorer: Snippet; files?: Snippet;
     editor: Snippet;
     preview: Snippet;
   }
 
-  let { explorer, editor, preview }: Props = $props();
+  let { explorer, files, editor, preview }: Props = $props();
 
   export function selectEditor(path: string) {
     layoutStub.selectEditor(path);
@@ -37,15 +37,15 @@
     layoutStub.closeEditorPaths(paths);
   }
 
-  export function showPanel(panel: 'explorer' | 'editor' | 'preview') {
+  export function showPanel(panel: 'explorer' | 'files' | 'editor' | 'preview') {
     layoutStub.showPanel(panel);
   }
 
-  export function togglePanel(panel: 'explorer' | 'editor' | 'preview') {
+  export function togglePanel(panel: 'explorer' | 'files' | 'editor' | 'preview') {
     layoutStub.togglePanel(panel);
   }
 
-  export function isPanelVisible(panel: 'explorer' | 'editor' | 'preview') {
+  export function isPanelVisible(panel: 'explorer' | 'files' | 'editor' | 'preview') {
     return layoutStub.isPanelVisible(panel);
   }
 
@@ -57,13 +57,14 @@
     return layoutStub.isMobileLayout();
   }
 
-  export function selectMobilePanel(panel: 'explorer' | 'editor' | 'preview' | 'tools') {
+  export function selectMobilePanel(panel: 'explorer' | 'files' | 'editor' | 'preview' | 'tools') {
     layoutStub.selectMobilePanel(panel);
   }
 </script>
 
 <div data-testid="standalone-layout-stub">
   <section data-testid="explorer-panel">{@render explorer()}</section>
+  <section data-testid="files-panel">{@render files?.()}</section>
   <section data-testid="editor-panel">{@render editor()}</section>
   <section data-testid="preview-panel">{@render preview()}</section>
 </div>

@@ -31,7 +31,7 @@ const SOURCES: ReadonlyArray<{
   buffers?: ReadonlyArray<{ path: string; code: string }>;
 }> = [
   {
-    path: '/shaders/aurora.glsl',
+    path: '/aurora.glsl',
     code: `void mainImage(out vec4 fragColor, in vec2 fragCoord)
 {
 	// Normalized pixel coordinates (from 0 to 1)
@@ -46,7 +46,7 @@ const SOURCES: ReadonlyArray<{
     config: EMPTY_CONFIG,
   },
   {
-    path: '/shaders/aurora-slang.slang',
+    path: '/aurora-slang.slang',
     code: `float4 mainImage(float2 fragCoord)
 {
 	// Normalized pixel coordinates (from 0 to 1)
@@ -61,7 +61,7 @@ const SOURCES: ReadonlyArray<{
     config: EMPTY_CONFIG,
   },
   {
-    path: '/shaders/aurora-wgsl.wgsl',
+    path: '/aurora-wgsl.wgsl',
     code: `fn mainImage(coord: vec2f) -> vec4f {
 	// Normalized pixel coordinates (from 0 to 1)
 	let uv = coord / iResolution.xy;
@@ -75,7 +75,7 @@ const SOURCES: ReadonlyArray<{
     config: EMPTY_CONFIG,
   },
   {
-    path: '/shaders/particle-swarm.wgsl',
+    path: '/particle-swarm.wgsl',
     code: `// Particle Swarm: WGSL compute passes push 16384 particles through a
 // flow field and splat them into an atomic density grid; this Image pass
 // only reads that grid. Open Config to see the storage buffers and passes.
@@ -146,7 +146,7 @@ fn mainImage(coord: vec2f) -> vec4f {
     },
     buffers: [
       {
-        path: '/shaders/particle-swarm/common.buffer.wgsl',
+        path: '/particle-swarm/common.buffer.wgsl',
         code: `// Shared by every pass. The storage buffers themselves (particles,
 // density) are declared in the Storage tab of the config, so no pass has
 // to declare them. GRID must stay in step with the density count there.
@@ -191,7 +191,7 @@ fn densityIndex(cell: vec2i) -> u32 {
 }`,
       },
       {
-        path: '/shaders/particle-swarm/swarm.buffer.wgsl',
+        path: '/particle-swarm/swarm.buffer.wgsl',
         code: `// Three compute kernels in one file. Each pass in the config picks its
 // kernel with entryPoint, and they run in config order every frame:
 // Seed (once) -> Fade -> Advect.
@@ -269,7 +269,7 @@ fn advectParticles(@builtin(global_invocation_id) id: vec3u) {
     ],
   },
   {
-    path: '/shaders/nebula-texture.glsl',
+    path: '/nebula-texture.glsl',
     code: `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec2 uv = fragCoord / iResolution.xy;
 	fragColor = vec4(texture(iChannel0, uv).rgb, 1.0);
@@ -277,7 +277,7 @@ fn advectParticles(@builtin(global_invocation_id) id: vec3u) {
     config: assetConfig('texture', SHADER_STUDIO_DEFAULT_ASSETS.nebulaTexture),
   },
   {
-    path: '/shaders/desert-cubemap.glsl',
+    path: '/desert-cubemap.glsl',
     code: `// Drag in the preview to look around.
 // Cubemap: Rogland Sunset by Greg Zaal / Poly Haven, released under CC0.
 // https://polyhaven.com/a/rogland_sunset
@@ -298,7 +298,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     config: assetConfig('cubemap', SHADER_STUDIO_DEFAULT_ASSETS.desertCubemap),
   },
   {
-    path: '/shaders/glow-trails.glsl',
+    path: '/glow-trails.glsl',
     code: `// Glow Trails: Trails (feedback) -> Glow (blur) -> Image.
 // Open Config to inspect the buffers. Drag in the preview to paint.
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
@@ -329,7 +329,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     },
     buffers: [
       {
-        path: '/shaders/glow-trails/trails.buffer.glsl',
+        path: '/glow-trails/trails.buffer.glsl',
         code: `// Trails reads its own previous frame through iChannel0.
 // Clear on restart; fade old ink before adding moving lights or mouse input.
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
@@ -354,7 +354,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 }`,
       },
       {
-        path: '/shaders/glow-trails/glow.buffer.glsl',
+        path: '/glow-trails/glow.buffer.glsl',
         code: `// Glow samples this frame's Trails output with a small blur kernel.
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 uv = fragCoord / iResolution.xy;

@@ -1,5 +1,5 @@
 import type { VirtualWorkspace } from './VirtualWorkspace';
-import { assertWorkspaceFolder, workspaceUserPath } from './workspaceFiles';
+import { assertWorkspaceFolder, workspaceFolderExists, workspaceUserPath } from './workspaceFiles';
 
 const textExtension = /\.(glsl|frag|vert|comp|slang|wgsl|json|js|ts|txt|csv)$/i;
 const assetMimeTypes: Record<string, string> = {
@@ -34,7 +34,7 @@ function readUpload(file: File): Promise<string> {
 
 /** Read and validate the whole selection before adding anything. Existing
  * files keep their names and contents, so config references stay intact. */
-export async function uploadWorkspaceFiles(workspace: VirtualWorkspace, files: readonly File[], directory = '/shaders'): Promise<string[]> {
+export async function uploadWorkspaceFiles(workspace: VirtualWorkspace, files: readonly File[], directory = '/'): Promise<string[]> {
   const base = directory === '/' ? '' : workspaceUserPath(directory);
   assertWorkspaceFolder(workspace, base);
   const paths = new Set<string>();
@@ -43,14 +43,14 @@ export async function uploadWorkspaceFiles(workspace: VirtualWorkspace, files: r
       throw new Error('Choose files with valid names.');
     }
     const path = workspaceUserPath(`${base}/${file.name}`);
-    if (paths.has(path) || workspace.exists(path) || workspace.list(path).length) {
+    if (paths.has(path) || workspace.exists(path) || workspaceFolderExists(workspace, path)) {
       throw new Error(`File already exists: ${file.name}. Rename it before uploading. No files were added.`);
     }
     paths.add(path);
     return { path, contents: await readUpload(file) };
   }));
   // Another upload can finish while these files are being read.
-  if (uploads.some(file => workspace.exists(file.path) || workspace.list(file.path).length)) {
+  if (uploads.some(file => workspace.exists(file.path) || workspaceFolderExists(workspace, file.path))) {
     throw new Error('An uploaded filename is now in use. No files were added.');
   }
   for (const file of uploads) {

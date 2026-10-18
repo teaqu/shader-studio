@@ -10,8 +10,8 @@ import {
 } from '../VirtualWorkspace';
 
 const seedFiles: VirtualWorkspaceFile[] = [
-  { path: '/shaders/first.glsl', contents: 'first', createdAt: 10, modifiedAt: 10 },
-  { path: '/shaders/first.sha.json', contents: '{}', createdAt: 10, modifiedAt: 10 },
+  { path: '/first.glsl', contents: 'first', createdAt: 10, modifiedAt: 10 },
+  { path: '/first.sha.json', contents: '{}', createdAt: 10, modifiedAt: 10 },
 ];
 
 /** A store whose writes never land, standing in for a reload that abandons
@@ -122,11 +122,11 @@ describe('VirtualWorkspace', () => {
     store.save = async () => {
       throw new Error('disk full');
     };
-    workspace.writeText('/shaders/main.glsl', 'first');
+    workspace.writeText('/main.glsl', 'first');
     await expect(workspace.flush()).rejects.toThrow('disk full');
     expect(workspace.persistenceStatus).toMatchObject({ state: 'error', error: expect.any(Error) });
     store.save = save;
-    workspace.writeText('/shaders/main.glsl', 'recovered');
+    workspace.writeText('/main.glsl', 'recovered');
     await workspace.flush();
     expect(workspace.persistenceStatus).toEqual({ state: 'saved' });
     expect(states).toEqual(expect.arrayContaining(['saved', 'saving', 'error']));
@@ -135,14 +135,14 @@ describe('VirtualWorkspace', () => {
 
   it('exports the current snapshot and imports only after explicit replacement confirmation', async () => {
     const source = await VirtualWorkspace.open(new MemoryWorkspaceStore(), []);
-    source.writeText('/shaders/exported.glsl', 'exported');
+    source.writeText('/exported.glsl', 'exported');
     const backup = source.exportBackup();
     const target = await VirtualWorkspace.open(new MemoryWorkspaceStore(), seedFiles);
 
     await expect(target.importBackup(backup)).rejects.toThrow('contains files');
     expect(target.list()).toEqual(seedFiles);
     await target.importBackup(backup, { replace: true });
-    expect(target.list()).toEqual([expect.objectContaining({ path: '/shaders/exported.glsl', contents: 'exported' })]);
+    expect(target.list()).toEqual([expect.objectContaining({ path: '/exported.glsl', contents: 'exported' })]);
   });
 
   it('does not alter memory or storage when backup validation or persistence fails', async () => {
@@ -177,7 +177,7 @@ describe('VirtualWorkspace', () => {
     store.save = async () => {};
     const backup = JSON.stringify({
       format: 'shader-studio-workspace', version: 1,
-      files: [{ path: '/shaders/imported.glsl', contents: 'imported', createdAt: 1, modifiedAt: 1 }],
+      files: [{ path: '/imported.glsl', contents: 'imported', createdAt: 1, modifiedAt: 1 }],
     });
 
     await expect(workspace.importBackup(backup, { replace: true })).rejects.toThrow('did not persist the imported backup');
@@ -209,11 +209,11 @@ describe('VirtualWorkspace', () => {
       .rejects.toThrow('disk full');
     store.save = save;
 
-    workspace.writeText('/shaders/first.glsl', 'after');
+    workspace.writeText('/first.glsl', 'after');
     await workspace.flush();
 
     expect(workspace.persistenceStatus).toEqual({ state: 'saved' });
-    expect((await VirtualWorkspace.open(store, [])).readText('/shaders/first.glsl')).toBe('after');
+    expect((await VirtualWorkspace.open(store, [])).readText('/first.glsl')).toBe('after');
   });
 
   it('reports a failed clear and rethrows it', async () => {
@@ -245,7 +245,7 @@ describe('VirtualWorkspace', () => {
     expect(states).toEqual(['saved']);
     detach();
 
-    workspace.writeText('/shaders/first.glsl', 'edited');
+    workspace.writeText('/first.glsl', 'edited');
     await workspace.flush();
 
     expect(states).toEqual(['saved']);
@@ -262,19 +262,19 @@ describe('VirtualWorkspace', () => {
   it('flush waits for a new write queued while an older write is in flight', async () => {
     const store = new GatedWorkspaceStore(seedFiles);
     const workspace = await VirtualWorkspace.open(store, seedFiles);
-    workspace.writeText('/shaders/first.glsl', 'first edit');
+    workspace.writeText('/first.glsl', 'first edit');
     await vi.waitFor(() => expect(store.saved).toHaveLength(1));
     let flushed = false;
     const barrier = workspace.flush().then(() => {
       flushed = true;
     });
-    workspace.writeText('/shaders/first.glsl', 'latest edit');
+    workspace.writeText('/first.glsl', 'latest edit');
     store.release();
     await new Promise(resolve => setTimeout(resolve, 0));
     expect(flushed).toBe(false);
     store.release();
     await barrier;
-    expect((await VirtualWorkspace.open(store, [])).readText('/shaders/first.glsl')).toBe('latest edit');
+    expect((await VirtualWorkspace.open(store, [])).readText('/first.glsl')).toBe('latest edit');
   });
 
   it('coalesces queued saves so a typing burst writes once more, not once each', async () => {
@@ -283,17 +283,17 @@ describe('VirtualWorkspace', () => {
     // full writes when only the last matters.
     const store = new GatedWorkspaceStore(seedFiles);
     const workspace = await VirtualWorkspace.open(store, seedFiles);
-    workspace.writeText('/shaders/first.glsl', 'a');
-    workspace.writeText('/shaders/first.glsl', 'ab');
-    workspace.writeText('/shaders/first.glsl', 'abc');
-    workspace.writeText('/shaders/first.glsl', 'abcd');
+    workspace.writeText('/first.glsl', 'a');
+    workspace.writeText('/first.glsl', 'ab');
+    workspace.writeText('/first.glsl', 'abc');
+    workspace.writeText('/first.glsl', 'abcd');
     await drain(store, workspace);
 
     // At most one write in flight plus one carrying the coalesced remainder;
     // without coalescing this is four.
     expect(store.saved.length).toBeLessThanOrEqual(2);
-    expect(store.saved.at(-1)!.find(file => file.path === '/shaders/first.glsl')!.contents).toBe('abcd');
-    expect((await VirtualWorkspace.open(store, [])).readText('/shaders/first.glsl')).toBe('abcd');
+    expect(store.saved.at(-1)!.find(file => file.path === '/first.glsl')!.contents).toBe('abcd');
+    expect((await VirtualWorkspace.open(store, [])).readText('/first.glsl')).toBe('abcd');
   });
 
   it('replays the last edit of a burst whose writes a reload abandoned', async () => {
@@ -303,23 +303,23 @@ describe('VirtualWorkspace', () => {
     const journal = new MemoryWorkspaceJournal();
     const workspace = await VirtualWorkspace.open(store, seedFiles, () => 20, journal);
     for (const text of ['b', 'bu', 'buf', 'buff', 'buffer edit']) {
-      workspace.writeText('/shaders/first.glsl', text);
+      workspace.writeText('/first.glsl', text);
     }
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     const reopened = await VirtualWorkspace.open(store, seedFiles, () => 30, journal);
-    expect(reopened.readText('/shaders/first.glsl')).toBe('buffer edit');
+    expect(reopened.readText('/first.glsl')).toBe('buffer edit');
   });
 
   it('allocates increasing timestamps for repeated edits under a fixed or rolled-back clock', async () => {
     let now = 10;
     const workspace = await VirtualWorkspace.open(new StalledWorkspaceStore(seedFiles), seedFiles, () => now);
-    workspace.writeText('/shaders/first.glsl', 'fixed one');
-    workspace.writeText('/shaders/first.glsl', 'fixed two');
+    workspace.writeText('/first.glsl', 'fixed one');
+    workspace.writeText('/first.glsl', 'fixed two');
     now = 2;
-    workspace.writeText('/shaders/first.glsl', 'rolled back');
+    workspace.writeText('/first.glsl', 'rolled back');
 
-    expect(workspace.stat('/shaders/first.glsl')).toMatchObject({
+    expect(workspace.stat('/first.glsl')).toMatchObject({
       createdAt: 10,
       modifiedAt: 13,
     });
@@ -329,8 +329,8 @@ describe('VirtualWorkspace', () => {
     const store = new GatedWorkspaceStore(seedFiles);
     const journal = new MemoryWorkspaceJournal();
     const workspace = await VirtualWorkspace.open(store, seedFiles, () => 20, journal);
-    workspace.writeText('/shaders/first.glsl', 'a');
-    workspace.writeText('/shaders/first.glsl', 'ab');
+    workspace.writeText('/first.glsl', 'a');
+    workspace.writeText('/first.glsl', 'ab');
     expect(journal.read()?.files.map(file => file.contents)).toEqual(['ab']);
     await drain(store, workspace);
     expect(journal.read()).toBeNull();
@@ -339,17 +339,17 @@ describe('VirtualWorkspace', () => {
   it('coalesces deletions and renames with the edits around them', async () => {
     const store = new GatedWorkspaceStore(seedFiles);
     const workspace = await VirtualWorkspace.open(store, seedFiles);
-    workspace.writeText('/shaders/second.glsl', 'second');
-    workspace.rename('/shaders/second.glsl', '/shaders/third.glsl');
-    workspace.delete('/shaders/first.sha.json');
+    workspace.writeText('/second.glsl', 'second');
+    workspace.rename('/second.glsl', '/third.glsl');
+    workspace.delete('/first.sha.json');
     await drain(store, workspace);
     const reopened = await VirtualWorkspace.open(store, []);
-    expect(reopened.list().map(file => file.path)).toEqual(['/shaders/first.glsl', '/shaders/third.glsl']);
+    expect(reopened.list().map(file => file.path)).toEqual(['/first.glsl', '/third.glsl']);
   });
 
   it.each(['glsl', 'slang', 'wgsl'])('commits all %s rename files in one persisted snapshot', async language => {
     const store = new MemoryWorkspaceStore();
-    const files = ['main', 'common'].map(name => ({ path: `/shaders/${name}.${language}`, contents: 'tone', createdAt: 1, modifiedAt: 1 }));
+    const files = ['main', 'common'].map(name => ({ path: `/${name}.${language}`, contents: 'tone', createdAt: 1, modifiedAt: 1 }));
     const workspace = await VirtualWorkspace.open(store, files);
     await workspace.applyTextTransaction(files.map(file => ({ path: file.path, before: 'tone', after: 'curve' })));
     expect((await VirtualWorkspace.open(store, [])).list().map(file => file.contents)).toEqual(['curve', 'curve']);
@@ -357,21 +357,21 @@ describe('VirtualWorkspace', () => {
 
   it('notifies listeners of committed transaction targets but not of rejected ones', async () => {
     const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), []);
-    workspace.writeText('/shaders/main.glsl', 'tone');
-    workspace.writeText('/shaders/common.glsl', 'tone');
+    workspace.writeText('/main.glsl', 'tone');
+    workspace.writeText('/common.glsl', 'tone');
     const listener = vi.fn();
     workspace.onDidChange(listener);
 
     await expect(workspace.applyTextTransaction([
-      { path: '/shaders/main.glsl', before: 'stale', after: 'curve' },
+      { path: '/main.glsl', before: 'stale', after: 'curve' },
     ])).rejects.toThrow('stale');
     expect(listener).not.toHaveBeenCalled();
 
     await workspace.applyTextTransaction([
-      { path: 'shaders/main.glsl', before: 'tone', after: 'curve' },
-      { path: '/shaders/common.glsl', before: 'tone', after: 'curve' },
+      { path: 'main.glsl', before: 'tone', after: 'curve' },
+      { path: '/common.glsl', before: 'tone', after: 'curve' },
     ]);
-    expect(listener).toHaveBeenCalledExactlyOnceWith(['/shaders/main.glsl', '/shaders/common.glsl']);
+    expect(listener).toHaveBeenCalledExactlyOnceWith(['/main.glsl', '/common.glsl']);
   });
 
   it('accepts a transaction whose stored copy lags an open buffer', async () => {
@@ -380,14 +380,14 @@ describe('VirtualWorkspace', () => {
     // must accept; comparing against the stored copy would falsely refuse.
     const store = new MemoryWorkspaceStore();
     const workspace = await VirtualWorkspace.open(store, []);
-    workspace.writeText('/shaders/main.glsl', 'tone');
+    workspace.writeText('/main.glsl', 'tone');
     await workspace.applyTextTransaction(
-      [{ path: '/shaders/main.glsl', before: 'tone-live', after: 'curve' }],
+      [{ path: '/main.glsl', before: 'tone-live', after: 'curve' }],
       () => true,
       () => {},
-      new Map([['/shaders/main.glsl', 'tone-live']]),
+      new Map([['/main.glsl', 'tone-live']]),
     );
-    expect(workspace.readText('/shaders/main.glsl')).toBe('curve');
+    expect(workspace.readText('/main.glsl')).toBe('curve');
   });
 
   it('still refuses when the open buffer moved after the edit was computed', async () => {
@@ -395,22 +395,22 @@ describe('VirtualWorkspace', () => {
     // can catch this genuine mid-flight change.
     const store = new MemoryWorkspaceStore();
     const workspace = await VirtualWorkspace.open(store, []);
-    workspace.writeText('/shaders/main.glsl', 'tone');
+    workspace.writeText('/main.glsl', 'tone');
     await expect(workspace.applyTextTransaction(
-      [{ path: '/shaders/main.glsl', before: 'tone', after: 'curve' }],
+      [{ path: '/main.glsl', before: 'tone', after: 'curve' }],
       () => true,
       () => {},
-      new Map([['/shaders/main.glsl', 'tone-moved']]),
+      new Map([['/main.glsl', 'tone-moved']]),
     )).rejects.toThrow('stale');
-    expect(workspace.readText('/shaders/main.glsl')).toBe('tone');
+    expect(workspace.readText('/main.glsl')).toBe('tone');
   });
 
   it('rejects a stale or missing target without changing or saving any target', async () => {
     const store = new MemoryWorkspaceStore();
     const workspace = await VirtualWorkspace.open(store, seedFiles);
-    for (const path of ['/shaders/first.sha.json', '/missing']) {
+    for (const path of ['/first.sha.json', '/missing']) {
       await expect(workspace.applyTextTransaction([
-        { path: '/shaders/first.glsl', before: 'first', after: 'changed' },
+        { path: '/first.glsl', before: 'first', after: 'changed' },
         { path, before: 'stale', after: 'changed' },
       ])).rejects.toThrow();
       expect(workspace.list()).toEqual(seedFiles);
@@ -425,11 +425,11 @@ describe('VirtualWorkspace', () => {
     store.save = async () => {
       throw new Error('disk full');
     };
-    await expect(workspace.applyTextTransaction([{ path: '/shaders/first.glsl', before: 'first', after: 'changed' }])).rejects.toThrow('disk full');
+    await expect(workspace.applyTextTransaction([{ path: '/first.glsl', before: 'first', after: 'changed' }])).rejects.toThrow('disk full');
     expect(workspace.list()).toEqual(seedFiles);
     expect(await store.load()).toEqual(seedFiles);
     store.save = save;
-    workspace.writeText('/shaders/first.glsl', 'recovered');
+    workspace.writeText('/first.glsl', 'recovered');
     await workspace.flush();
     expect((await store.load())?.[0].contents).toBe('recovered');
   });
@@ -447,10 +447,10 @@ describe('VirtualWorkspace', () => {
     store.save = async files => {
       saves++; await save(files); current = false;
     };
-    await workspace.applyTextTransaction([{ path: '/shaders/first.glsl', before: 'first', after: 'changed' }], () => current);
+    await workspace.applyTextTransaction([{ path: '/first.glsl', before: 'first', after: 'changed' }], () => current);
     expect(saves).toBe(1);
-    expect(workspace.readText('/shaders/first.glsl')).toBe('changed');
-    expect((await store.load())?.find(file => file.path === '/shaders/first.glsl')?.contents).toBe('changed');
+    expect(workspace.readText('/first.glsl')).toBe('changed');
+    expect((await store.load())?.find(file => file.path === '/first.glsl')?.contents).toBe('changed');
   });
 
   it('leaves memory untouched and reports when the store only partially persists', async () => {
@@ -472,16 +472,16 @@ describe('VirtualWorkspace', () => {
       },
     };
     const workspace = await VirtualWorkspace.open(store as unknown as MemoryWorkspaceStore, [
-      { path: '/shaders/first.glsl', contents: 'first', createdAt: 1, modifiedAt: 1 },
-      { path: '/shaders/second.glsl', contents: 'second', createdAt: 1, modifiedAt: 1 },
+      { path: '/first.glsl', contents: 'first', createdAt: 1, modifiedAt: 1 },
+      { path: '/second.glsl', contents: 'second', createdAt: 1, modifiedAt: 1 },
     ]);
     lieSaves = true;
     await expect(workspace.applyTextTransaction([
-      { path: '/shaders/first.glsl', before: 'first', after: 'changed' },
-      { path: '/shaders/second.glsl', before: 'second', after: 'changed' },
+      { path: '/first.glsl', before: 'first', after: 'changed' },
+      { path: '/second.glsl', before: 'second', after: 'changed' },
     ])).rejects.toThrow('did not persist');
-    expect(workspace.readText('/shaders/first.glsl')).toBe('first');
-    expect(workspace.readText('/shaders/second.glsl')).toBe('second');
+    expect(workspace.readText('/first.glsl')).toBe('first');
+    expect(workspace.readText('/second.glsl')).toBe('second');
   });
 
   it('advances the revision counter only on commit', async () => {
@@ -489,11 +489,11 @@ describe('VirtualWorkspace', () => {
     const workspace = await VirtualWorkspace.open(store, seedFiles);
     const committed = workspace.revisionCount;
     await expect(workspace.applyTextTransaction(
-      [{ path: '/shaders/first.glsl', before: 'stale', after: 'changed' }],
+      [{ path: '/first.glsl', before: 'stale', after: 'changed' }],
     )).rejects.toThrow('stale');
     expect(workspace.revisionCount).toBe(committed);
     await workspace.applyTextTransaction(
-      [{ path: '/shaders/first.glsl', before: 'first', after: 'changed' }],
+      [{ path: '/first.glsl', before: 'first', after: 'changed' }],
     );
     expect(workspace.revisionCount).toBe(committed + 1);
   });
@@ -502,15 +502,15 @@ describe('VirtualWorkspace', () => {
     const store = new MemoryWorkspaceStore();
     const first = await VirtualWorkspace.open(store, seedFiles, () => 20);
 
-    expect(first.readText('/shaders/first.glsl')).toBe('first');
-    first.writeText('/shaders/first.glsl', 'edited');
+    expect(first.readText('/first.glsl')).toBe('first');
+    first.writeText('/first.glsl', 'edited');
     await first.flush();
 
     const restored = await VirtualWorkspace.open(store, [
-      { path: '/shaders/new-default.glsl', contents: 'new default', createdAt: 30, modifiedAt: 30 },
+      { path: '/new-default.glsl', contents: 'new default', createdAt: 30, modifiedAt: 30 },
     ]);
-    expect(restored.readText('/shaders/first.glsl')).toBe('edited');
-    expect(restored.exists('/shaders/new-default.glsl')).toBe(false);
+    expect(restored.readText('/first.glsl')).toBe('edited');
+    expect(restored.exists('/new-default.glsl')).toBe(false);
   });
 
   it('replays an edit whose store save never committed', async () => {
@@ -520,11 +520,11 @@ describe('VirtualWorkspace', () => {
     const store = new StalledWorkspaceStore(seedFiles);
     const journal = new MemoryWorkspaceJournal();
     const workspace = await VirtualWorkspace.open(store, seedFiles, () => 20, journal);
-    workspace.writeText('/shaders/first.glsl', 'edited');
+    workspace.writeText('/first.glsl', 'edited');
 
     const reloaded = await VirtualWorkspace.open(store, seedFiles, () => 30, journal);
-    expect(reloaded.readText('/shaders/first.glsl')).toBe('edited');
-    expect(reloaded.readText('/shaders/first.sha.json')).toBe('{}');
+    expect(reloaded.readText('/first.glsl')).toBe('edited');
+    expect(reloaded.readText('/first.sha.json')).toBe('{}');
   });
 
   it('replays a creation and a deletion whose save never committed', async () => {
@@ -532,23 +532,23 @@ describe('VirtualWorkspace', () => {
     const journal = new MemoryWorkspaceJournal();
     let now = 20;
     const workspace = await VirtualWorkspace.open(store, seedFiles, () => now++, journal);
-    workspace.writeText('/shaders/second.glsl', 'second');
-    workspace.delete('/shaders/first.glsl');
+    workspace.writeText('/second.glsl', 'second');
+    workspace.delete('/first.glsl');
 
     const reloaded = await VirtualWorkspace.open(store, seedFiles, () => 99, journal);
-    expect(reloaded.readText('/shaders/second.glsl')).toBe('second');
-    expect(reloaded.exists('/shaders/first.glsl')).toBe(false);
+    expect(reloaded.readText('/second.glsl')).toBe('second');
+    expect(reloaded.exists('/first.glsl')).toBe(false);
   });
 
   it('drops the journal once the store has committed the same state', async () => {
     const store = new MemoryWorkspaceStore();
     const journal = new MemoryWorkspaceJournal();
     const workspace = await VirtualWorkspace.open(store, seedFiles, () => 20, journal);
-    workspace.writeText('/shaders/first.glsl', 'edited');
+    workspace.writeText('/first.glsl', 'edited');
     await workspace.flush();
 
     expect(journal.read()).toBeNull();
-    expect((await VirtualWorkspace.open(store, seedFiles, () => 30, journal)).readText('/shaders/first.glsl'))
+    expect((await VirtualWorkspace.open(store, seedFiles, () => 30, journal)).readText('/first.glsl'))
       .toBe('edited');
   });
 
@@ -558,17 +558,17 @@ describe('VirtualWorkspace', () => {
     const store = new MemoryWorkspaceStore();
     const journal = new MemoryWorkspaceJournal();
     journal.record({
-      files: [{ path: '/shaders/first.glsl', contents: 'stale', createdAt: 10, modifiedAt: 15 }],
-      deleted: [{ path: '/shaders/first.sha.json', at: 15 }],
+      files: [{ path: '/first.glsl', contents: 'stale', createdAt: 10, modifiedAt: 15 }],
+      deleted: [{ path: '/first.sha.json', at: 15 }],
     });
     await store.save([
-      { path: '/shaders/first.glsl', contents: 'newer', createdAt: 10, modifiedAt: 40 },
-      { path: '/shaders/first.sha.json', contents: '{}', createdAt: 10, modifiedAt: 40 },
+      { path: '/first.glsl', contents: 'newer', createdAt: 10, modifiedAt: 40 },
+      { path: '/first.sha.json', contents: '{}', createdAt: 10, modifiedAt: 40 },
     ]);
 
     const workspace = await VirtualWorkspace.open(store, seedFiles, () => 50, journal);
-    expect(workspace.readText('/shaders/first.glsl')).toBe('newer');
-    expect(workspace.exists('/shaders/first.sha.json')).toBe(true);
+    expect(workspace.readText('/first.glsl')).toBe('newer');
+    expect(workspace.exists('/first.sha.json')).toBe(true);
   });
 
   it('recovers a legacy tied journal with different text and advances its timestamp', async () => {
@@ -576,13 +576,13 @@ describe('VirtualWorkspace', () => {
     const journal = new MemoryWorkspaceJournal();
     await store.save(seedFiles);
     journal.record({
-      files: [{ path: '/shaders/first.glsl', contents: 'pending', createdAt: 10, modifiedAt: 10 }],
+      files: [{ path: '/first.glsl', contents: 'pending', createdAt: 10, modifiedAt: 10 }],
       deleted: [],
     });
 
     const workspace = await VirtualWorkspace.open(store, seedFiles, () => 5, journal);
-    expect(workspace.stat('/shaders/first.glsl')).toEqual({
-      path: '/shaders/first.glsl', contents: 'pending', createdAt: 10, modifiedAt: 11,
+    expect(workspace.stat('/first.glsl')).toEqual({
+      path: '/first.glsl', contents: 'pending', createdAt: 10, modifiedAt: 11,
     });
   });
 
@@ -593,7 +593,7 @@ describe('VirtualWorkspace', () => {
     journal.record({ files: [{ ...seedFiles[0]! }], deleted: [] });
 
     const workspace = await VirtualWorkspace.open(store, seedFiles, () => 5, journal);
-    expect(workspace.stat('/shaders/first.glsl')).toEqual(seedFiles[0]);
+    expect(workspace.stat('/first.glsl')).toEqual(seedFiles[0]);
     expect(journal.read()).toBeNull();
   });
 
@@ -616,21 +616,21 @@ describe('VirtualWorkspace', () => {
     const store = new MemoryWorkspaceStore();
     const journal = new MemoryWorkspaceJournal();
     const workspace = await VirtualWorkspace.open(store, seedFiles, () => 20, journal);
-    workspace.writeText('/shaders/first.glsl', 'edited');
+    workspace.writeText('/first.glsl', 'edited');
     expect(journal.read()?.files.map(file => file.contents)).toEqual(['edited']);
     await workspace.flush();
     expect(journal.read()).toBeNull();
 
     await expect(workspace.applyTextTransaction(
-      [{ path: '/shaders/first.glsl', before: 'stale', after: 'renamed' }],
+      [{ path: '/first.glsl', before: 'stale', after: 'renamed' }],
     )).rejects.toThrow('stale or duplicated');
     expect(journal.read()).toBeNull();
 
     await workspace.applyTextTransaction(
-      [{ path: '/shaders/first.glsl', before: 'edited', after: 'renamed' }],
+      [{ path: '/first.glsl', before: 'edited', after: 'renamed' }],
     );
     expect(journal.read()).toBeNull();
-    expect((await VirtualWorkspace.open(store, seedFiles, () => 30, journal)).readText('/shaders/first.glsl'))
+    expect((await VirtualWorkspace.open(store, seedFiles, () => 30, journal)).readText('/first.glsl'))
       .toBe('renamed');
   });
 
@@ -638,72 +638,72 @@ describe('VirtualWorkspace', () => {
     const stalled = new StalledWorkspaceStore(seedFiles);
     const journal = new MemoryWorkspaceJournal();
     (await VirtualWorkspace.open(stalled, seedFiles, () => 20, journal))
-      .writeText('/shaders/first.glsl', 'edited');
+      .writeText('/first.glsl', 'edited');
 
     const store = new MemoryWorkspaceStore();
     await store.save(seedFiles);
     const reloaded = await VirtualWorkspace.open(store, seedFiles, () => 30, journal);
-    expect(reloaded.readText('/shaders/first.glsl')).toBe('edited');
+    expect(reloaded.readText('/first.glsl')).toBe('edited');
     // Opening does not wait on the write, so the journal stands until it lands.
     expect(journal.read()?.files.map(file => file.contents)).toEqual(['edited']);
     await reloaded.flush();
     expect(journal.read()).toBeNull();
     expect((await VirtualWorkspace.open(store, seedFiles, () => 40, new MemoryWorkspaceJournal()))
-      .readText('/shaders/first.glsl')).toBe('edited');
+      .readText('/first.glsl')).toBe('edited');
   });
 
   it('clearing the workspace discards the journal with it', async () => {
     const store = new MemoryWorkspaceStore();
     const journal = new MemoryWorkspaceJournal();
     const workspace = await VirtualWorkspace.open(store, seedFiles, () => 20, journal);
-    workspace.writeText('/shaders/first.glsl', 'edited');
+    workspace.writeText('/first.glsl', 'edited');
     await workspace.clear();
 
     expect(journal.read()).toBeNull();
-    expect((await VirtualWorkspace.open(store, seedFiles, () => 30, journal)).readText('/shaders/first.glsl'))
+    expect((await VirtualWorkspace.open(store, seedFiles, () => 30, journal)).readText('/first.glsl'))
       .toBe('first');
   });
 
   it('normalizes paths and rejects traversal outside the workspace root', async () => {
     const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), seedFiles);
 
-    expect(workspace.readText('shaders/./first.glsl')).toBe('first');
+    expect(workspace.readText('./first.glsl')).toBe('first');
     expect(() => workspace.readText('../../outside.glsl')).toThrow('outside the virtual workspace');
   });
 
   it('lists files recursively with stable metadata', async () => {
     const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), seedFiles);
 
-    expect(workspace.list('/shaders')).toEqual(seedFiles);
+    expect(workspace.list('/')).toEqual(seedFiles);
   });
 
   it('creates, renames, and deletes files while preserving creation time', async () => {
     let now = 100;
     const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), [], () => now++);
 
-    workspace.writeText('/shaders/new.glsl', 'one');
-    workspace.writeText('/shaders/new.glsl', 'two');
-    workspace.rename('/shaders/new.glsl', '/shaders/renamed.glsl');
+    workspace.writeText('/new.glsl', 'one');
+    workspace.writeText('/new.glsl', 'two');
+    workspace.rename('/new.glsl', '/renamed.glsl');
 
-    expect(workspace.stat('/shaders/renamed.glsl')).toMatchObject({ createdAt: 100, modifiedAt: 101 });
-    expect(workspace.readText('/shaders/renamed.glsl')).toBe('two');
-    workspace.delete('/shaders/renamed.glsl');
-    expect(workspace.exists('/shaders/renamed.glsl')).toBe(false);
+    expect(workspace.stat('/renamed.glsl')).toMatchObject({ createdAt: 100, modifiedAt: 101 });
+    expect(workspace.readText('/renamed.glsl')).toBe('two');
+    workspace.delete('/renamed.glsl');
+    expect(workspace.exists('/renamed.glsl')).toBe(false);
   });
 
   it('reports missing files and refuses to overwrite on rename', async () => {
     const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), seedFiles);
-    workspace.writeText('/shaders/other.glsl', 'other');
+    workspace.writeText('/other.glsl', 'other');
 
     expect(() => workspace.readText('/missing.glsl')).toThrow('File not found');
-    expect(() => workspace.rename('/missing.glsl', '/shaders/new.glsl')).toThrow('File not found');
-    expect(() => workspace.rename('/shaders/first.glsl', '/shaders/other.glsl')).toThrow('already exists');
+    expect(() => workspace.rename('/missing.glsl', '/new.glsl')).toThrow('File not found');
+    expect(() => workspace.rename('/first.glsl', '/other.glsl')).toThrow('already exists');
   });
 
   it('clears persisted files so the next workspace is seeded again', async () => {
     const store = new MemoryWorkspaceStore();
     const workspace = await VirtualWorkspace.open(store, seedFiles);
-    workspace.writeText('/shaders/first.glsl', 'edited');
+    workspace.writeText('/first.glsl', 'edited');
     await workspace.clear();
 
     expect(workspace.list()).toEqual([]);
@@ -756,8 +756,8 @@ describe('VirtualWorkspace', () => {
 describe('LocalStorageWorkspaceJournal', () => {
   const key = 'shader-studio-workspace-journal';
   const record = {
-    files: [{ path: '/shaders/first.glsl', contents: 'edited', createdAt: 10, modifiedAt: 20 }],
-    deleted: [{ path: '/shaders/second.glsl', at: 20 }],
+    files: [{ path: '/first.glsl', contents: 'edited', createdAt: 10, modifiedAt: 20 }],
+    deleted: [{ path: '/second.glsl', at: 20 }],
   };
 
   function fakeStorage(entries: Record<string, string> = {}) {
@@ -794,8 +794,8 @@ describe('LocalStorageWorkspaceJournal', () => {
   it('drops entries that are not whole workspace files', () => {
     const storage = fakeStorage({
       [key]: JSON.stringify({
-        files: [{ path: '/shaders/first.glsl' }, ...record.files, 'nonsense'],
-        deleted: [{ path: '/shaders/second.glsl' }, ...record.deleted, null],
+        files: [{ path: '/first.glsl' }, ...record.files, 'nonsense'],
+        deleted: [{ path: '/second.glsl' }, ...record.deleted, null],
       }),
     });
     expect(new LocalStorageWorkspaceJournal(key, () => storage).read()).toEqual(record);
@@ -816,7 +816,7 @@ describe('LocalStorageWorkspaceJournal', () => {
       : storage);
     journal.record(record);
     full = true;
-    journal.record({ files: [{ path: '/shaders/first.glsl', contents: 'later', createdAt: 10, modifiedAt: 30 }], deleted: [] });
+    journal.record({ files: [{ path: '/first.glsl', contents: 'later', createdAt: 10, modifiedAt: 30 }], deleted: [] });
     full = false;
     expect(journal.read()).toBeNull();
   });

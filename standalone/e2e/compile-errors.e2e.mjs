@@ -81,7 +81,7 @@ for (const language of ['slang', 'wgsl']) {
           return pixel;
         })).toEqual(color);
         await expect(preview.getByLabel('Toggle pause')).not.toHaveClass(/error/);
-        expect(Boolean((await workspace(page))[`/shaders/${stem}.sha.json`])).toBe(configExists);
+        expect(Boolean((await workspace(page))[`/${stem}.sha.json`])).toBe(configExists);
       };
       await assertRendered();
       await page.reload();
@@ -92,10 +92,10 @@ for (const language of ['slang', 'wgsl']) {
       if (withVertex) {
         await expect(page.getByRole('radio', { name: `${annotation('vertex')} firstVertex`, exact: true })).toBeChecked();
       }
-      expect((await workspace(page))[`/shaders/${stem}.sha.json`]).toBeUndefined();
+      expect((await workspace(page))[`/${stem}.sha.json`]).toBeUndefined();
       await page.getByRole('radio', { name: `${annotation('fragment')} secondFragment`, exact: true }).check();
       await assertRendered([0, 255, 0, 255], true);
-      expect(JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`]).passes.Image.entryPoints).toEqual({
+      expect(JSON.parse((await workspace(page))[`/${stem}.sha.json`]).passes.Image.entryPoints).toEqual({
         ...(withVertex ? { vertex: 'firstVertex' } : {}), fragment: 'secondFragment',
       });
       await page.reload();

@@ -16,13 +16,13 @@ for (const language of ['wgsl', 'slang']) {
     await page.getByRole('button', { name: 'BufferA Remove BufferA', exact: true }).click();
     const main = page.locator('.tab-content .buffer-details > .config-item').first();
     await page.getByRole('group', { name: 'Fragment function controls' }).getByRole('button', { name: 'Add function…', exact: true }).click();
-    const path = `/shaders/owned-new.${language}`;
+    const path = `/owned-new.${language}`;
     await expect.poll(async () => (await workspace(page))[path]).toContain('BufferAFragment');
     await expect(page.getByRole('radio', { name: language === 'wgsl' ? '@fragment BufferAFragment' : '[shader(\"fragment\")] BufferAFragment' })).toBeChecked();
-    expect((await workspace(page))[`/shaders/${stem}.${language}`]).toBe(source);
+    expect((await workspace(page))[`/${stem}.${language}`]).toBe(source);
     await page.reload();
     await expect.poll(async () => (await workspace(page))[path]).toContain('BufferAFragment');
-    expect(JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`]).passes.BufferA.entryPoints).toEqual({ fragment: 'BufferAFragment' });
+    expect(JSON.parse((await workspace(page))[`/${stem}.sha.json`]).passes.BufferA.entryPoints).toEqual({ fragment: 'BufferAFragment' });
   });
   test(`Native defaults create fragment-only ${language} shaders and buffers, with Add and Built-in vertex reset`, async ({ page }) => {
     await page.goto('/');
@@ -36,8 +36,8 @@ for (const language of ['wgsl', 'slang']) {
     await dialog.getByLabel('Shader language').selectOption(language);
     await expect(dialog.getByLabel('Shader functions')).toHaveValue('native');
     await dialog.getByRole('button', { name: 'Create Shader' }).click();
-    const sourcePath = `/shaders/default-native.${language}`;
-    const configPath = '/shaders/default-native.sha.json';
+    const sourcePath = `/default-native.${language}`;
+    const configPath = '/default-native.sha.json';
     await expect.poll(async () => (await workspace(page))[sourcePath]).toContain('ImageFragment');
     expect((await workspace(page))[sourcePath]).not.toContain('ImageVertex');
     expect((await workspace(page))[sourcePath]).toContain('coord / iResolution.xy');
@@ -100,19 +100,19 @@ for (const language of ['wgsl', 'slang']) {
     await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: 'Create file…', exact: true }).click();
     await expect(main.getByRole('button', { name: 'Choose shader file' })).toHaveText(`owned.${language}`);
     const configured = await main.getByRole('button', { name: 'Choose shader file' }).getAttribute('title');
-    const path = configured.startsWith('/') ? configured : `/shaders/${configured.replace(/^\.\//, '')}`;
+    const path = configured.startsWith('/') ? configured : `/${configured.replace(/^\.\//, '')}`;
     const vertex = page.locator('.config-item').filter({ has: page.getByRole('heading', { name: 'Vertex shader', exact: true }) });
     await vertex.getByRole('button', { name: 'Same file' }).click();
     await expect(vertex.getByLabel('Insert mode')).toHaveValue('native');
     await vertex.getByLabel('Insert mode').selectOption('hooks');
     await vertex.getByRole('button', { name: 'Add function…', exact: true }).click();
     await expect.poll(async () => (await workspace(page))[path]).toContain('mainVertex(');
-    expect((await workspace(page))[`/shaders/${stem}.${language}`]).toBe(source);
+    expect((await workspace(page))[`/${stem}.${language}`]).toBe(source);
     await vertex.getByLabel('Insert mode').selectOption('native');
     await vertex.getByRole('button', { name: 'Add function…', exact: true }).click();
     await expect(page.getByRole('radio', { name: language === 'wgsl' ? '@vertex BufferAVertex2' : '[shader(\"vertex\")] BufferAVertex2' })).toBeChecked();
-    await expect.poll(async () => JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`]).passes.BufferA.entryPoints.vertex).toBe('BufferAVertex2');
-    expect((await workspace(page))[`/shaders/${stem}.${language}`]).toBe(source);
+    await expect.poll(async () => JSON.parse((await workspace(page))[`/${stem}.sha.json`]).passes.BufferA.entryPoints.vertex).toBe('BufferAVertex2');
+    expect((await workspace(page))[`/${stem}.${language}`]).toBe(source);
     await page.reload();
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await expect(page.getByRole('dialog', { name: 'Settings' }).getByLabel('Default shader mode')).toHaveValue('native');
@@ -189,7 +189,7 @@ for (const { name, option, extension, vertexPattern } of [
     await vertex.getByRole('button', { name: 'Change…' }).click();
     await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: 'Create', exact: true }).click();
     const vertexPath = await vertex.getByLabel('File', { exact: true }).inputValue();
-    const absoluteVertexPath = vertexPath.startsWith('/') ? vertexPath : `/shaders/${vertexPath.replace(/^\.\//, '')}`;
+    const absoluteVertexPath = vertexPath.startsWith('/') ? vertexPath : `/${vertexPath.replace(/^\.\//, '')}`;
     await expect(vertex.getByRole('button', { name: 'Separate file' })).toHaveAttribute('aria-pressed', 'true');
     await expect(vertex.getByLabel('File', { exact: true })).toHaveValue(vertexPath);
 

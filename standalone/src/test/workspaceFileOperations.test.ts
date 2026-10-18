@@ -2,7 +2,59 @@ import { expect, it, vi } from 'vitest';
 import { WebTransport } from '../WebTransport';
 import { WebExtensionHost } from '../WebExtensionHost';
 import { MemoryWorkspaceStore, VirtualWorkspace } from '../VirtualWorkspace';
-import { createWorkspaceFile, deleteWorkspacePath, renameWorkspacePath, userWorkspaceFiles, workspaceTree, workspaceUserPath } from '../workspaceFiles';
+import { createWorkspaceFile, createWorkspaceFolder, deleteWorkspacePath, deleteWorkspacePaths, moveWorkspacePaths, renameWorkspacePath, userWorkspaceFiles, workspaceTree, workspaceUserPath } from '../workspaceFiles';
+
+it('moves and deletes multiple selections once, including shader configs and selected descendants', async () => {
+  const ws = await VirtualWorkspace.open(new MemoryWorkspaceStore(), []);
+  ws.writeText('/main.glsl', 'source');
+  ws.writeText('/main.sha.json', '{}');
+  ws.writeText('/assets/photo.png', 'bytes');
+  createWorkspaceFolder(ws, '/assets/empty');
+  const moves = moveWorkspacePaths(ws, ['/main.glsl', '/main.sha.json', '/assets', '/assets/photo.png'], '/archive');
+  expect(moves.map(move => move.to)).toEqual(['/archive/main.glsl', '/archive/main.sha.json', '/archive/assets/photo.png']);
+  expect(userWorkspaceFiles(ws).some(file => file.path === '/archive/assets/empty')).toBe(true);
+  deleteWorkspacePaths(ws, ['/archive/main.glsl', '/archive/main.sha.json', '/archive/assets', '/archive/assets/photo.png']);
+  expect(userWorkspaceFiles(ws)).toEqual([]);
+});
+
+it('preflights every destination and source before changing a multi selection', async () => {
+  const ws = await VirtualWorkspace.open(new MemoryWorkspaceStore(), []);
+  ws.writeText('/one/a.txt', 'one');
+  ws.writeText('/two/a.txt', 'two');
+  const before = ws.list();
+  expect(() => moveWorkspacePaths(ws, ['/one/a.txt', '/two/a.txt'], '/target')).toThrow('same destination');
+  expect(ws.list()).toEqual(before);
+  expect(() => deleteWorkspacePaths(ws, ['/one/a.txt', '/missing.txt'])).toThrow('no longer exists');
+  expect(ws.list()).toEqual(before);
+  expect(moveWorkspacePaths(ws, ['/one/a.txt'], '/one')).toEqual([]);
+});
+
+it('creates empty folders that survive reopen, nested moves, backups and deletion', async () => {
+  const store = new MemoryWorkspaceStore();
+  const ws = await VirtualWorkspace.open(store, []);
+  createWorkspaceFolder(ws, '/assets/empty');
+  await ws.flush();
+  const reopened = await VirtualWorkspace.open(store, []);
+  expect(userWorkspaceFiles(reopened)).toEqual([{ path: '/assets/empty', asset: false, directory: true }]);
+  expect(workspaceTree(userWorkspaceFiles(reopened), new Set()).map(row => [row.path, row.directory])).toEqual([
+    ['/assets', true], ['/assets/empty', true],
+  ]);
+  expect(() => createWorkspaceFile(reopened, '/assets')).toThrow('already exists');
+  expect(() => createWorkspaceFolder(reopened, '/assets/empty')).toThrow('already exists');
+  renameWorkspacePath(reopened, '/assets', '/moved');
+  expect(userWorkspaceFiles(reopened)).toEqual([{ path: '/moved/empty', asset: false, directory: true }]);
+  const restored = await VirtualWorkspace.open(new MemoryWorkspaceStore(), []);
+  await restored.importBackup(reopened.exportBackup());
+  expect(userWorkspaceFiles(restored)).toEqual(userWorkspaceFiles(reopened));
+  deleteWorkspacePath(restored, '/moved');
+  expect(userWorkspaceFiles(restored)).toEqual([]);
+});
+
+it('does not expose malformed folder metadata as user files', async () => {
+  const ws = await workspace();
+  ws.writeText('/.shader-studio/folders/broken', '../escape');
+  expect(userWorkspaceFiles(ws)).toEqual([]);
+});
 
 async function workspace(paths: string[] = []) {
   return VirtualWorkspace.open(new MemoryWorkspaceStore(), paths.map(path => ({ path, contents: path.endsWith('.png') ? 'data:image/png;base64,AA==' : 'source', createdAt: 1, modifiedAt: 1 })));

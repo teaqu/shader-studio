@@ -1,6 +1,6 @@
 export const STANDALONE_LAYOUT_STORAGE_KEY = 'shader-studio.standalone-layout.v1';
 
-export type StandalonePanelId = 'explorer' | 'editor' | 'preview';
+export type StandalonePanelId = 'explorer' | 'files' | 'editor' | 'preview';
 export type MobileDockviewPanelId = StandalonePanelId | 'debug' | 'config' | 'performance' | 'recording' | 'vr';
 
 interface Disposable {
@@ -51,6 +51,7 @@ export interface LayoutStorage {
 const panelDefinitions: Record<StandalonePanelId, { title: string; position?: Record<string, string>; initialWidth?: number }> = {
   preview: { title: 'Preview' },
   explorer: { title: 'Shader Explorer', position: { referencePanel: 'preview', direction: 'left' }, initialWidth: 220 },
+  files: { title: 'Files', position: { referencePanel: 'explorer', direction: 'below' }, initialWidth: 220 },
   editor: { title: 'No file open', position: { referencePanel: 'explorer', direction: 'right' }, initialWidth: 820 },
 };
 
@@ -360,6 +361,7 @@ export class StandaloneLayoutController {
     this.addPanel('preview');
     this.addPanel('explorer');
     this.addPanel('editor');
+    this.addPanel('files');
     // Adding splits redistributes widths; apply the defaults after all panels exist.
     // Explorer and preview take fixed defaults so the editor keeps the remaining width.
     this.api.getPanel('explorer')?.api.setSize({ width: 260 });
@@ -416,6 +418,10 @@ export class StandaloneLayoutController {
       if (migrated) {
         this.writeLayout(constrainedLayout);
       }
+      if (isRecord(parsedLayout) && parsedLayout.filesPaneVersion !== 1 && !this.api.getPanel('files')) {
+        this.addPanel('files');
+        this.writeLayout(this.api.toJSON());
+      }
       return true;
     } catch {
       this.api.clear();
@@ -433,7 +439,7 @@ export class StandaloneLayoutController {
 
   private writeLayout(layout: unknown): void {
     try {
-      this.storage?.setItem(STANDALONE_LAYOUT_STORAGE_KEY, JSON.stringify(layout));
+      this.storage?.setItem(STANDALONE_LAYOUT_STORAGE_KEY, JSON.stringify(isRecord(layout) ? { ...layout, filesPaneVersion: 1 } : layout));
     } catch {
       // Persistence is an enhancement; quota and privacy failures must not affect the shell.
     }
