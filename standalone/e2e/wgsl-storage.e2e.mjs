@@ -274,9 +274,10 @@ test('Slang compute replay refuses subgroup results and recovers after an edit',
   }).toEqual([32, 0, 0]);
   await preview.getByLabel('Toggle debug mode').click();
   const panel = page.locator('.debug-panel');
-  if (await panel.locator('.variables-section').count() === 0) {
-    await panel.getByLabel('Toggle variable inspector').click();
-  }
+  // The line refusal comes from inline replay, which starts off; the variable
+  // inspector reports the capture error and the recovered value.
+  await setDebugPanelControl(page, 'Toggle variable inspector', true);
+  await setDebugPanelControl(page, 'Toggle inline rendering', true);
   await preview.getByLabel('Toggle lock', { exact: true }).click();
   await preview.getByLabel('Toggle config panel').click();
   await page.locator('.config-panel [data-tab-name="Compute"]').dblclick();

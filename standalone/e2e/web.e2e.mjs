@@ -10,6 +10,7 @@ import {
 import { expectStableFor } from './observable-state.mjs';
 import { waitForLanguageService } from './language-service-fixtures.mjs';
 import { closeExplorerSettings, openExplorerSettings, useSharedShaderEditor } from './explorer-preferences.mjs';
+import { sashAtLeftEdge } from './dock-sashes.mjs';
 
 test('drops shader files and assets at workspace root and keeps them after reload', async ({ page }) => {
   // Edits through the shared editor, which active-file tracking replaces.
@@ -337,8 +338,8 @@ test('runs a persistent virtual shader workspace in web mode', async ({ page }) 
   expect(explorerBox?.x).toBeLessThan(editorBox?.x ?? 0);
   expect(editorBox?.x).toBeLessThan(previewBox?.x ?? 0);
 
-  // The last outer sash is the Editor/Preview boundary.
-  const sash = page.locator('.standalone-dockview .dv-sash.dv-enabled:not(.standalone-panel-source *)').last();
+  // The Editor/Preview boundary is the sash on the preview's left edge.
+  const sash = await sashAtLeftEdge(page, previewBox.x);
   await expect(sash).toBeVisible();
   const sashBox = await sash.boundingBox();
   expect(sashBox).not.toBeNull();
@@ -452,7 +453,8 @@ test('keeps one top-level Preview alive through docking, close/reopen, reset and
   await expect.poll(() => page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem('shader-studio.standalone-layout.v1'));
     return Object.keys(saved.panels).sort();
-  })).toEqual(['config', 'explorer', 'preview']);
+    // The default layout keeps Files below the Explorer.
+  })).toEqual(['config', 'explorer', 'files', 'preview']);
   await page.reload();
   await expect(preview.locator('.canvas-container > canvas:not(.pixel-canvas-marker)')).toBeVisible();
   await expect(editor).toBeHidden();

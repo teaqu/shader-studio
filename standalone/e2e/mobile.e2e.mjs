@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { readWorkspaceFiles } from './workspace-store.mjs';
-import { useSharedShaderEditor } from './explorer-preferences.mjs';
+import { openExplorerSettings, useSharedShaderEditor } from './explorer-preferences.mjs';
+import { setDebugPanelControl } from './debug-panel-controls.mjs';
 
 // These tests edit through the shared editor rather than per-file editors.
 test.beforeEach(({ context }) => useSharedShaderEditor(context));
@@ -55,6 +56,8 @@ test('vertex visibility is default-on and the chosen option survives reload', as
   await page.reload();
   await nav.getByRole('button', { name: 'Explorer' }).click();
   await expect(explorer.getByTestId('shader-option-mesh-vert-glsl')).toBeVisible();
+  // Tapping outside the settings closes them, so reopen them if needed.
+  await openExplorerSettings(page);
   await expect(hideVertex).not.toBeChecked();
   await hideVertex.check();
   await expect(explorer.getByTestId('shader-option-mesh-vert-glsl')).toHaveCount(0);
@@ -313,6 +316,12 @@ test('a finger tap pins the pixel inspector, a second tap moves it, and tapping 
   // Narrow menu bars move the debug toggle into the options menu.
   await preview.getByLabel('Open options menu', { exact: true }).click();
   await page.getByLabel('Toggle debug mode', { exact: true }).locator('visible=true').click();
+  // The pixel inspector starts off; turn it on in the Debug tool before tapping.
+  await nav.getByRole('button', { name: 'Tools' }).click();
+  await page.getByRole('navigation', { name: 'Tools' }).getByRole('button', { name: 'Debug' }).click();
+  await setDebugPanelControl(page, 'Toggle inspector', true);
+  await nav.getByRole('button', { name: 'Preview' }).click();
+  await expect(canvas).toBeVisible();
 
   // Touch points are whole CSS pixels, so derive the expected canvas pixel
   // from the rounded point with the inspector's own mapping.

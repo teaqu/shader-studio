@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { addShaderFiles } from './workspace-store.mjs';
+import { sashAtLeftEdge } from './dock-sashes.mjs';
 
 const shader = `
 void mainImage(out vec4 c, in vec2 p) { c = vec4(1, 0, 0, 1); }
@@ -73,12 +74,7 @@ test('detected VR stays at the far right of a narrow preview and remains accessi
   // Resize the real split on the preview's left edge, keeping the desktop workspace
   // active. Other panes (Explorer, Files) add their own dividers to the layout.
   const bounds = await preview.boundingBox();
-  const sashes = page.locator('.standalone-dockview .dv-sash.dv-enabled:not(.standalone-panel-source *)');
-  const distances = await sashes.evaluateAll((elements, left) => elements.map(element => {
-    const box = element.getBoundingClientRect();
-    return box.height > box.width ? Math.abs(box.x + box.width / 2 - left) : Infinity;
-  }), bounds.x);
-  const sash = sashes.nth(distances.indexOf(Math.min(...distances)));
+  const sash = await sashAtLeftEdge(page, bounds.x);
   const split = await sash.boundingBox();
   expect(bounds).not.toBeNull();
   expect(split).not.toBeNull();

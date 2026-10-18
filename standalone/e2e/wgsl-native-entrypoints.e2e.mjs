@@ -420,9 +420,9 @@ for (const language of ['wgsl', 'slang']) {
 
     await preview.getByLabel('Toggle debug mode').click();
     const panel = page.locator('.debug-panel');
-    if (await panel.locator('.variables-section').count() === 0) {
-      await panel.getByLabel('Toggle variable inspector').click();
-    }
+    // The grayscale check below reads the inline preview, which starts off.
+    await setDebugPanelControl(page, 'Toggle variable inspector', true);
+    await setDebugPanelControl(page, 'Toggle inline rendering', true);
     if (language === 'wgsl') {
       await editor.locator('.view-line').filter({ hasText: 'let value =' }).click();
     } else {

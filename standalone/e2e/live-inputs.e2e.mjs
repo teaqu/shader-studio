@@ -140,10 +140,11 @@ for (const language of ['glsl', 'wgsl', 'slang']) {
       if (source === 'device') {
         await expectGreen(page);
         const deviceSelect = page.getByLabel('Audio device');
+        // Selects are dropdowns, so they follow VS Code's dropdown tokens.
         await deviceSelect.evaluate(e => {
-          e.style.setProperty('--vscode-input-background', 'rgb(45, 45, 45)');
-          e.style.setProperty('--vscode-input-foreground', 'rgb(204, 204, 204)');
-          e.style.setProperty('--vscode-input-border', 'rgb(60, 60, 60)');
+          e.style.setProperty('--vscode-dropdown-background', 'rgb(45, 45, 45)');
+          e.style.setProperty('--vscode-dropdown-foreground', 'rgb(204, 204, 204)');
+          e.style.setProperty('--vscode-dropdown-border', 'rgb(60, 60, 60)');
           e.style.setProperty('--vscode-focusBorder', 'rgb(0, 122, 204)');
         });
         await expect(deviceSelect).toHaveCSS('background-color', 'rgb(45, 45, 45)');

@@ -144,9 +144,10 @@ for (const language of ['glsl', 'wgsl', 'slang']) {
     ]) {
       await page.evaluate(theme => {
         const style = document.querySelector('.misc-grid').style;
-        style.setProperty('--vscode-input-background', theme.background);
-        style.setProperty('--vscode-input-foreground', theme.foreground);
-        style.setProperty('--vscode-input-border', theme.border);
+        // Selects are dropdowns, so they follow VS Code's dropdown tokens.
+        style.setProperty('--vscode-dropdown-background', theme.background);
+        style.setProperty('--vscode-dropdown-foreground', theme.foreground);
+        style.setProperty('--vscode-dropdown-border', theme.border);
         style.setProperty('--vscode-focusBorder', 'rgb(0, 122, 204)');
       }, theme);
       for (const label of ['Filter:', 'Wrap:']) {
