@@ -499,6 +499,8 @@
   /* Touch: comfortable targets, and 16px inputs so phones don't zoom on focus. */
   @media (pointer: coarse) {
     .recording-panel :global(button),
+    .recording-panel :global(.tab-navigation button),
+    .recording-panel :global(.scale-buttons button),
     .recording-panel :global(.recording-custom-res) {
       min-height: 44px;
     }

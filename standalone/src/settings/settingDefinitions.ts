@@ -1,15 +1,18 @@
 import type { StandaloneSettingKey } from './StandaloneSettings';
 
-interface SettingDefinition {
+interface SettingDefinitionBase {
   key: StandaloneSettingKey;
   label: string;
   description: string;
-  group: 'Theme' | 'Preview' | 'Language services' | 'Editor';
   kind: 'boolean' | 'number' | 'choice';
   choices?: readonly { value: string; label: string }[];
   min?: number;
   max?: number;
 }
+type SettingDefinition = SettingDefinitionBase & (
+  | { group: 'Theme'; kind: 'choice'; choices: readonly { value: string; label: string }[] }
+  | { group: 'Preview' | 'Language services' | 'Editor' }
+);
 export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
   { key: 'theme.style', label: 'Style', description: 'VS Code keeps the familiar studio controls. Pixel adds an arcade palette, crisp edges and raised buttons in both light and dark mode.', group: 'Theme', kind: 'choice', choices: [{ value: 'classic', label: 'VS Code' }, { value: 'pixel', label: 'Pixel' }] },
   { key: 'layout.mobileMode', label: 'Mobile mode', description: 'Use the mobile layout on narrow screens. Turn off to keep desktop docking and controls at every window size.', group: 'Preview', kind: 'boolean' },

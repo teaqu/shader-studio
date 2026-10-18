@@ -6,6 +6,7 @@ import { flushSync, mount, unmount } from "svelte";
 import RecordingPanel from "../../lib/components/recording/RecordingPanel.svelte";
 import { recordingStore } from "../../lib/stores/recordingStore";
 import { resetCapturePreferences } from "../../lib/state/capturePreferences.svelte";
+import "../../app.css";
 
 // Real browser layout of the capture panel in narrow hosts (#36): phone
 // widths and narrow VS Code panels. Boxes are measured, not snapshotted.
@@ -107,8 +108,8 @@ describe.each([320, 390])("capture panel at %i px", (width) => {
       click(host, "Video");
       click(host, "Render");
 
-      for (const name of ["Live", "Render", "Render video"]) {
-        expect(button(host, name).getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+      for (const name of ["Screenshot", "Video", "GIF", "Live", "Render", "Render video"]) {
+        expect(button(host, name).getBoundingClientRect().height, name).toBeGreaterThanOrEqual(44);
       }
       const input = host.querySelector<HTMLInputElement>(".recording-custom-res-input")!;
       expect(input.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);

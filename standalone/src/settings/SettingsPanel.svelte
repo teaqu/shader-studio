@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
-  import { currentTheme, applyThemeProfile } from '../../../ui/src/lib/stores/themeStore';
+  import { currentTheme, applyThemeProfile } from '@shader-studio/ui/lib/stores/themeStore';
   import { SETTING_DEFINITIONS } from './settingDefinitions';
   import type { StandaloneSettings } from './StandaloneSettings';
 
@@ -62,15 +62,15 @@
         {#each visible.filter((setting) => setting.group === 'Theme') as setting (setting.key)}
           <div class="setting">
             <label for={`setting-${setting.key}`}>{setting.label}</label>
-            <select id={`setting-${setting.key}`} value={String(values[setting.key])} onchange={(event) => settings.update(setting.key, event.currentTarget.value)}>
-              {#each setting.choices ?? [] as choice}<option value={choice.value}>{choice.label}</option>{/each}
+            <select id={`setting-${setting.key}`} bind:value={() => String(values[setting.key]), (value) => settings.update(setting.key, value)}>
+              {#each setting.choices as choice}<option value={choice.value}>{choice.label}</option>{/each}
             </select>
             <small>{setting.description}</small>
           </div>
         {/each}
         <div class="setting">
           <label for="setting-appearance">Appearance</label>
-          <select id="setting-appearance" value={$currentTheme} onchange={(event) => applyThemeProfile(event.currentTarget.value === 'dark' ? 'dark' : 'light')}>
+          <select id="setting-appearance" bind:value={() => $currentTheme, (value) => applyThemeProfile(value === 'dark' ? 'dark' : 'light')}>
             <option value="light">Light</option><option value="dark">Dark</option>
           </select>
           <small>Light or dark colors for your workspace. Also follows the preview's theme switch.</small>
