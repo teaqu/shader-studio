@@ -53,6 +53,12 @@
   let dropDisposable: DockviewIDisposable | null = null;
   let removeViewportListener: (() => void) | null = null;
   let activeMobileTool = $state<HostedPanelId>('config');
+  const MOBILE_TOOLS = [['config', 'Config'], ['debug', 'Debug'], ['performance', 'Frame Times'], ['recording', 'Export'], ['vr', 'VR']] as const;
+  const MOBILE_DESTINATIONS = [['explorer', 'Explorer'], ['editor', 'Editor'], ['preview', 'Preview'], ['tools', 'Tools']] as const;
+  const EXPLORER_SECTIONS = [['explorer', 'Shaders'], ['files', 'Files']] as const;
+  type ExplorerSection = typeof EXPLORER_SECTIONS[number][0];
+  /** Explorer and Files share one phone destination; this remembers which was last open. */
+  let explorerSection = $state<ExplorerSection>('explorer');
   const mobilePanel = $derived(getMobilePanel());
   const mobileViewport = $derived(isMobileViewport());
 
@@ -69,7 +75,7 @@
       return;
     }
     if (!mobileViewport) {
-      controller.restoreDesktopPanels();
+      controller.restoreDesktopPanels(() => panelSizing?.refresh());
       panelSizing?.refresh();
       return;
     }
@@ -82,6 +88,24 @@
     controller.showMobilePanel(mobilePanel);
     panelSizing?.refresh();
   });
+
+  $effect(() => {
+    if (isExplorerSection(mobilePanel)) {
+      explorerSection = mobilePanel;
+    }
+  });
+
+  function isExplorerSection(panel: MobileShellPanel): panel is ExplorerSection {
+    return panel === 'explorer' || panel === 'files';
+  }
+
+  function isDestinationCurrent(panelId: MobileShellPanel): boolean {
+    return panelId === 'explorer' ? isExplorerSection(mobilePanel) : mobilePanel === panelId;
+  }
+
+  function selectDestination(panelId: MobileShellPanel): void {
+    setMobilePanel(panelId === 'explorer' && files ? explorerSection : panelId);
+  }
 
   const sources = new Map<StandalonePanelId, HTMLElement>();
 
@@ -248,7 +272,7 @@
   {#if mobileViewport}
     {#if mobilePanel === 'tools'}
       <nav class="mobile-tools-navigation" aria-label="Tools">
-        {#each ([['config', 'Config'], ['debug', 'Debug'], ['performance', 'Frame Times'], ['recording', 'Export'], ['vr', 'VR']] as const) as [panelId, label]}
+        {#each MOBILE_TOOLS as [panelId, label]}
           <button
             class:active={activeMobileTool === panelId}
             aria-current={activeMobileTool === panelId ? 'page' : undefined}
@@ -257,12 +281,23 @@
         {/each}
       </nav>
     {/if}
+    {#if files && isExplorerSection(mobilePanel)}
+      <nav class="mobile-tools-navigation" aria-label="Explorer sections">
+        {#each EXPLORER_SECTIONS as [panelId, label]}
+          <button
+            class:active={mobilePanel === panelId}
+            aria-current={mobilePanel === panelId ? 'page' : undefined}
+            onclick={() => setMobilePanel(panelId)}
+          >{label}</button>
+        {/each}
+      </nav>
+    {/if}
     <nav class="mobile-panel-navigation" aria-label="Workspace panels">
-      {#each ([['explorer', 'Explorer'], ['files', 'Files'], ['editor', 'Editor'], ['preview', 'Preview'], ['tools', 'Tools']] as const) as [panelId, label]}
+      {#each MOBILE_DESTINATIONS as [panelId, label]}
         <button
-          class:active={mobilePanel === panelId}
-          aria-current={mobilePanel === panelId ? 'page' : undefined}
-          onclick={() => setMobilePanel(panelId)}
+          class:active={isDestinationCurrent(panelId)}
+          aria-current={isDestinationCurrent(panelId) ? 'page' : undefined}
+          onclick={() => selectDestination(panelId)}
         >{label}</button>
       {/each}
     </nav>
@@ -305,7 +340,7 @@
     .mobile-layout .standalone-dockview :global(.dv-tabs-and-actions-container) { display: none; }
     .mobile-panel-navigation {
       display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 2px;
       flex: 0 0 auto;
       padding: 6px max(8px, env(safe-area-inset-right)) 6px max(8px, env(safe-area-inset-left));
