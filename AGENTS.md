@@ -87,6 +87,10 @@ CI requires each newly added or renamed runtime TypeScript/Svelte source file to
 
 For rendering pipeline bugs, keep WebGL and WebGPU/Slang coverage in sync when applicable. If an issue appears in one pipeline and the equivalent behavior exists in the other, add or verify tests for both paths rather than only testing the pipeline where the bug was first observed.
 
+### CI-only E2E failures
+
+When an E2E failure only reproduces in CI (WebGPU on the macOS GPU runner, the installed VSIX, CI timing), rerun just the affected specs with the manually dispatched **E2E focus** workflow instead of pushing for a full run. See [contributing/ci-e2e-focus.md](contributing/ci-e2e-focus.md). It verifies a fix quickly; the pull request's full **Test** run still decides whether the change can merge.
+
 ## Extension Development Builds
 
 Do not run the full root `npm run build` merely to prepare changes for manual testing in the Extension Development Host. Both VS Code launch configurations use the default build task, which runs `extension`'s `compile` script and rebuilds/copies the UI bundle when the user launches or restarts the extension with the green debug button.
