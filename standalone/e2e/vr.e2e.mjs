@@ -70,9 +70,15 @@ test('VR uses a docked tool pane and preserves navigation settings after reload'
 test('detected VR stays at the far right of a narrow preview and remains accessible through the menu', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'VR', exact: true })).toBeVisible();
   const preview = page.getByTestId('web-preview');
-  const sash = page.locator('.standalone-dockview .dv-sash.dv-enabled:not(.standalone-panel-source *)').last();
-  // Resize the real editor/preview split, keeping the desktop workspace active.
+  // Resize the real split on the preview's left edge, keeping the desktop workspace
+  // active. Other panes (Explorer, Files) add their own dividers to the layout.
   const bounds = await preview.boundingBox();
+  const sashes = page.locator('.standalone-dockview .dv-sash.dv-enabled:not(.standalone-panel-source *)');
+  const distances = await sashes.evaluateAll((elements, left) => elements.map(element => {
+    const box = element.getBoundingClientRect();
+    return box.height > box.width ? Math.abs(box.x + box.width / 2 - left) : Infinity;
+  }), bounds.x);
+  const sash = sashes.nth(distances.indexOf(Math.min(...distances)));
   const split = await sash.boundingBox();
   expect(bounds).not.toBeNull();
   expect(split).not.toBeNull();

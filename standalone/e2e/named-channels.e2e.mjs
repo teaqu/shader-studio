@@ -84,6 +84,9 @@ test('WGSL compute reports implicit sampling and recovers after an explicit-LOD 
   await expect(page.getByTestId('shader-option-stage-wgsl').locator('.shader-error')).toBeVisible();
   await page.getByTitle('Options', { exact: true }).click();
   await page.getByLabel('Hide buffer files', { exact: true }).uncheck();
+  // The settings popover covers the list until it is closed.
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('region', { name: 'Explorer settings' })).toHaveCount(0);
   await page.getByTestId('shader-option-update-wgsl').click();
   await replaceSource(page, '/update.wgsl', valid);
   await expect.poll(async () => (await workspace(page))['/update.wgsl']).toBe(valid);

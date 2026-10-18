@@ -70,9 +70,18 @@ for (const [name, uri, format] of [
     await expect(dialog.getByText(`32 × 32 × 32 · ${format}`, { exact: true })).toBeVisible();
     const filter = dialog.getByRole('combobox', { name: 'Filter', exact: true });
     const wrap = dialog.getByRole('combobox', { name: 'Wrap X / Y / Z', exact: true });
+    // Channel controls use the theme's shared control padding.
+    const controlPaddingLeft = await page.evaluate(() => {
+      const probe = document.createElement('span');
+      probe.style.padding = 'var(--shader-studio-control-padding)';
+      document.body.append(probe);
+      const value = getComputedStyle(probe).paddingLeft;
+      probe.remove();
+      return value;
+    });
     for (const control of [filter, wrap]) {
       await expect(control).toHaveCSS('border-radius', '4px');
-      await expect(control).toHaveCSS('padding-left', '12px');
+      await expect(control).toHaveCSS('padding-left', controlPaddingLeft);
     }
     await filter.selectOption('nearest');
     await wrap.selectOption('clamp');

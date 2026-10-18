@@ -9,6 +9,7 @@ import {
 } from './workspace-store.mjs';
 import { expectStableFor } from './observable-state.mjs';
 import { waitForLanguageService } from './language-service-fixtures.mjs';
+import { useSharedShaderEditor } from './explorer-preferences.mjs';
 
 test('drops shader files and assets at workspace root and keeps them after reload', async ({ page }) => {
   const image = new PNG({ width: 1, height: 1 });
@@ -244,6 +245,8 @@ test('desert sky and ground stay continuous when looking around and after reload
 });
 
 test('captures variables while debugging a cubemap shader', async ({ page }) => {
+  // Edits through the shared editor, which active-file tracking replaces.
+  await useSharedShaderEditor(page);
   const captureFailures = [];
   page.on('console', (message) => {
     if (message.text().includes('[VariableCapture] Shader compile failed')) {
@@ -276,6 +279,8 @@ test('captures variables while debugging a cubemap shader', async ({ page }) => 
 });
 
 test('captures WGSL variables while debugging', async ({ page }) => {
+  // Edits through the shared editor, which active-file tracking replaces.
+  await useSharedShaderEditor(page);
   const captureFailures = [];
   page.on('console', (message) => {
     if (message.text().includes('[VariableCapture] Shader compile failed')) {
@@ -306,6 +311,8 @@ test('captures WGSL variables while debugging', async ({ page }) => {
 });
 
 test('runs a persistent virtual shader workspace in web mode', async ({ page }) => {
+  // Edits through the shared editor, which active-file tracking replaces.
+  await useSharedShaderEditor(page);
   const languageWorkerRequests = new Set();
   page.on('request', (request) => {
     const url = request.url();
