@@ -16,6 +16,7 @@ describe('ShaderDebugManager - Slang language mode', () => {
 
   beforeEach(() => {
     manager = new ShaderDebugManager();
+    manager.setInlineRenderingEnabled(true);
     manager.setLanguage('slang');
     manager.setImageShaderCode(slangShader);
   });
@@ -340,6 +341,7 @@ void update(uint3 tid : SV_DispatchThreadID)
 
   it('generates GLSL debug output when language is glsl', () => {
     const glslManager = new ShaderDebugManager();
+    glslManager.setInlineRenderingEnabled(true);
     const glslShader = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   vec2 uv = fragCoord / iResolution.xy;
   vec3 col = vec3(uv, 0.5);

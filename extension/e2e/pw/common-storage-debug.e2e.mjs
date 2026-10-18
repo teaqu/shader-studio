@@ -120,7 +120,7 @@ for (const [language, compute] of [['slang', false], ['slang', true], ['wgsl', f
       await vscode.evaluateInHost(vscode => vscode.commands.executeCommand('notifications.clearAll'));
       await expect(frame.getByLabel('Toggle debug mode', { exact: true }).first()).toBeEnabled();
       await openConfigPanel(frame);
-      await frame.locator('.config-panel').getByRole('button', { name: 'Storage', exact: true }).click();
+      await frame.locator('.config-panel').getByRole('button', { name: 'Storage buffer values', exact: true }).click();
       await frame.locator('.config-panel').getByRole('tab', { name: 'Inspect', exact: true }).click();
       const inspector = frame.getByLabel('Inspect values', { exact: true });
       const value = inspector.getByLabel('Element 0 value', { exact: true });

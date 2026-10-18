@@ -5,6 +5,172 @@ import { putWorkspaceFiles, readWorkspaceFiles } from './workspace-store.mjs';
 // Slang rendering needs a WebGPU adapter in headless Chromium.
 test.use({ launchOptions: { args: ['--enable-unsafe-webgpu'] } });
 
+test('active shader files open together, switch cleanly and can be disabled', async ({ page }) => {
+  await page.route('**/__active_files__', route => route.fulfill({ contentType: 'text/html', body: '<html></html>' }));
+  await page.goto('/__active_files__');
+  const code = 'void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(1.0); }';
+  await putWorkspaceFiles(page, [
+    ['/shaders/first.glsl', code], ['/shaders/second.glsl', code],
+    ['/shaders/first.buffer.glsl', code], ['/shaders/shared.buffer.glsl', code],
+    ['/shaders/first.sha.json', JSON.stringify({ passes: { Image: {}, A: { path: 'first.buffer.glsl' }, B: { path: 'shared.buffer.glsl' } } })],
+    ['/shaders/second.sha.json', JSON.stringify({ passes: { Image: {}, B: { path: 'shared.buffer.glsl' } } })],
+  ].map(([path, contents]) => ({ path, contents, createdAt: 1, modifiedAt: 1 })));
+  await page.goto('/');
+  const editor = path => page.locator(`[data-testid="file-editor"][data-path="/shaders/${path}"]`);
+  await page.getByTestId('shader-option-first-glsl').click();
+  await expect(editor('first.glsl')).toBeVisible();
+  await expect(editor('first.buffer.glsl')).toHaveCount(1);
+  await expect(editor('shared.buffer.glsl')).toHaveCount(1);
+  await expect(editor('first.sha.json')).toHaveCount(0);
+  await page.getByTestId('shader-option-second-glsl').click();
+  await expect(editor('second.glsl')).toBeVisible();
+  await expect(editor('first.glsl')).toHaveCount(0);
+  await expect(editor('first.buffer.glsl')).toHaveCount(0);
+  await expect(editor('shared.buffer.glsl')).toHaveCount(1);
+  const toolbar = page.getByTestId('web-shader-explorer').locator('.toolbar');
+  const before = await toolbar.boundingBox();
+  await page.getByTitle('Options', { exact: true }).click();
+  const settings = page.getByRole('region', { name: 'Explorer settings' });
+  await expect(settings).toBeVisible();
+  expect((await toolbar.boundingBox()).height).toBe(before.height);
+  const bounds = await settings.boundingBox();
+  const explorerBounds = await page.getByTestId('web-shader-explorer').boundingBox();
+  expect(bounds.x).toBeGreaterThanOrEqual(explorerBounds.x);
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(explorerBounds.x + explorerBounds.width);
+  await page.screenshot({ path: test.info().outputPath('explorer-settings.png') });
+  await expect(page.getByLabel('Only keep active shader files open')).toBeChecked();
+  await page.getByLabel('Only keep active shader files open').uncheck();
+  await page.reload();
+  await expect(page.getByLabel('Only keep active shader files open')).not.toBeChecked();
+  await page.getByLabel('Only keep active shader files open').check();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('region', { name: 'Explorer settings' })).toHaveCount(0);
+  await page.getByTestId('shader-option-first-glsl').click();
+  await expect(editor('first.buffer.glsl')).toHaveCount(1);
+  await expect(editor('second.glsl')).toHaveCount(0);
+});
+
+test('Viewing follows line rendering and restores the selected buffer when line rendering stops', async ({ page }) => {
+  await page.route('**/__line_cards__', route => route.fulfill({ contentType: 'text/html', body: '<html></html>' }));
+  await page.goto('/__line_cards__');
+  await putWorkspaceFiles(page, [
+    ['/shaders/line-cards.glsl', 'void mainImage(out vec4 color, in vec2 coord) { color = vec4(0.0, 1.0, 0.0, 1.0); }'],
+    ['/shaders/line-buffer.glsl', 'void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n  vec4 tint = vec4(0.0, 0.0, 1.0, 1.0);\n  fragColor = vec4(1.0, 0.0, 0.0, 1.0);\n}'],
+    ['/shaders/line-cards.sha.json', JSON.stringify({ version: '1', passes: { Image: {}, A: { path: 'line-buffer.glsl' } } })],
+  ].map(([path, contents]) => ({ path, contents, createdAt: 1, modifiedAt: 1 })));
+  await page.goto('/');
+  await page.getByTestId('shader-option-line-cards-glsl').click();
+  const preview = page.getByTestId('web-preview');
+  await preview.getByLabel('Toggle config panel').click();
+  await page.getByRole('button', { name: 'Preview A', exact: true }).click();
+  await page.locator('[data-tab-name="A"]').dblclick();
+  await preview.getByLabel('Toggle debug mode').click();
+  await page.getByLabel('Toggle inline rendering', { exact: true }).click();
+  const editor = page.locator('[data-testid="file-editor"][data-path="/shaders/line-buffer.glsl"]');
+  await editor.locator('.view-lines').click();
+  await page.keyboard.press('ControlOrMeta+Home');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('End');
+  await expect(page.getByLabel('Currently previewing A', { exact: true })).toHaveText('Viewing · L2');
+  await expect(preview.locator('.preview-output-label')).toHaveText('line-cards.glsl › A · Line 2');
+  const pixel = async () => {
+    const url = await preview.locator('.canvas-container > canvas:not(.pixel-canvas-marker)').evaluate(canvas => canvas.toDataURL());
+    const { data, width, height } = PNG.sync.read(Buffer.from(url.split(',')[1], 'base64'));
+    const offset = (Math.floor(height / 2) * width + Math.floor(width / 2)) * 4;
+    return [...data.subarray(offset, offset + 3)];
+  };
+  await expect.poll(pixel).toEqual([0, 0, 255]);
+  await page.keyboard.insertText(' ');
+  await expect.poll(pixel).toEqual([0, 0, 255]);
+  await page.getByText('Config', { exact: true }).click();
+  await page.locator('[data-tab-name="Image"]').click();
+  await expect(page.getByLabel('Currently previewing A', { exact: true })).toHaveText('Viewing · L2');
+  await page.getByText('Debug', { exact: true }).click();
+  await expect(page.getByRole('img', { name: 'Line rendering enabled' })).toBeVisible();
+  await page.getByLabel('Toggle inline rendering', { exact: true }).click();
+  await expect(page.getByRole('img', { name: 'Line rendering enabled' })).toBeHidden();
+  await expect(page.getByLabel('Currently previewing A', { exact: true })).toHaveText('Viewing');
+  await expect(preview.locator('.preview-output-label')).toHaveText('line-cards.glsl › A');
+  await expect.poll(pixel).toEqual([255, 0, 0]);
+});
+
+test('clearing the workspace restores the default shaders after reload', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByTestId('shader-option-aurora-glsl')).toBeVisible();
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
+  const reloaded = page.waitForEvent('load');
+  await page.getByRole('button', { name: 'Clear Workspace', exact: true }).click();
+  await reloaded;
+  await expect(page.getByTestId('shader-option-aurora-glsl')).toBeVisible();
+  await expect(page.getByTestId('shader-option-particle-swarm-wgsl')).toBeVisible();
+  await page.reload();
+  await expect(page.getByTestId('shader-option-aurora-glsl')).toBeVisible();
+});
+
+for (const [language, locked] of ['glsl', 'slang', 'wgsl'].flatMap(language => [false, true].map(locked => [language, locked]))) {
+  test(`opening a buffer respects the preview lock (${language}, ${locked})`, async ({ page }) => {
+    await page.route('**/__buffer_lock__', route => route.fulfill({ contentType: 'text/html', body: '<html></html>' }));
+    await page.goto('/__buffer_lock__');
+    const shader = expression => language === 'glsl'
+      ? `void mainImage(out vec4 color, in vec2 coord) { color = ${expression}; }`
+      : language === 'slang' ? `float4 mainImage(float2 coord) { return ${expression}; }`
+        : `fn mainImage(coord: vec2f) -> vec4f { return ${expression}; }`;
+    const vector = language === 'glsl' ? 'vec4' : language === 'slang' ? 'float4' : 'vec4f';
+    const sample = language === 'glsl' ? 'texture(iChannel0, coord / iResolution.xy)'
+      : language === 'slang' ? 'iChannel0.Sample(coord / iResolution.xy)' : 'iChannel0Sample(coord / iResolution.xy)';
+    await putWorkspaceFiles(page, [
+      [`/shaders/main.${language}`, shader(`${vector}(1.0, 0.0, 0.0, 1.0)`)],
+      [`/shaders/green.${language}`, shader(`${vector}(0.0, 1.0, 0.0, 1.0)`)],
+      [`/shaders/blue.${language}`, shader(`${vector}(0.0, 0.0, 1.0, 1.0)`)],
+      [`/shaders/pass/buffer.${language}`, shader(sample)],
+      ['/shaders/main.sha.json', JSON.stringify({ version: '1.0', passes: {
+        Source: { path: `green.${language}` },
+        BufferA: { path: `pass/buffer.${language}`, inputs: { iChannel0: { type: 'buffer', source: 'Source' } } }, Image: {},
+      } })],
+      ['/shaders/pass/buffer.sha.json', JSON.stringify({ version: '1.0', passes: {
+        Source: { path: `../blue.${language}` }, Image: { inputs: { iChannel0: { type: 'buffer', source: 'Source' } } },
+      } })],
+    ].map(([path, contents]) => ({ path, contents, createdAt: 1, modifiedAt: 1 })));
+    await page.goto('/');
+    await page.getByTestId(`shader-option-main-${language}`).click();
+    const preview = page.getByTestId('web-preview');
+    const lock = preview.getByLabel('Toggle lock', { exact: true });
+    const pixel = async () => {
+      const url = await preview.locator('.canvas-container > canvas:not(.pixel-canvas-marker)').evaluate(canvas => canvas.toDataURL());
+      const { data, width, height } = PNG.sync.read(Buffer.from(url.split(',')[1], 'base64'));
+      const offset = (Math.floor(height / 2) * width + Math.floor(width / 2)) * 4;
+      return [...data.subarray(offset, offset + 3)];
+    };
+    await expect.poll(pixel).toEqual([255, 0, 0]);
+    if (locked) {
+      await lock.click();
+    }
+    await preview.getByLabel('Toggle config panel').click();
+    await page.locator('[data-tab-name="BufferA"]').dblclick();
+    await expect(page.locator(`[data-testid="file-editor"][data-path="/shaders/pass/buffer.${language}"] .monaco-editor`)).toBeVisible();
+    await expect(lock).toHaveAttribute('aria-pressed', String(locked));
+    await expect.poll(pixel).toEqual([255, 0, 0]);
+    await page.getByRole('button', { name: 'Preview BufferA', exact: true }).click();
+    await expect.poll(pixel).toEqual([0, 255, 0]);
+    await expect(preview.locator('.preview-output-label')).toHaveText(`main.${language} › BufferA`);
+    await expect(page.getByLabel('Currently previewing BufferA', { exact: true })).toHaveText('Viewing');
+    await page.locator('[data-tab-name="Image"]').click();
+    await expect(page.locator('[data-tab-name="Image"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect.poll(pixel).toEqual([0, 255, 0]);
+    await page.getByRole('button', { name: 'Preview Image', exact: true }).click();
+    await expect.poll(pixel).toEqual([255, 0, 0]);
+    await page.locator('[data-tab-name="BufferA"]').click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Preview file standalone', exact: true }).click();
+    await expect(preview.locator('.preview-output-label')).toHaveText(`buffer.${language} › Image`);
+    await expect.poll(pixel).toEqual([0, 0, 255]);
+    await expect(lock).toHaveAttribute('aria-pressed', String(locked));
+    await page.reload();
+    await expect.poll(pixel).toEqual([0, 0, 255]);
+    await expect(lock).toHaveAttribute('aria-pressed', 'false');
+  });
+}
+
 for (const language of ['glsl', 'slang', 'wgsl']) {
   for (const source of ['common', 'vertex']) {
     test(`double-clicking ${language} ${source} keeps standalone responsive`, async ({ page }) => {
@@ -89,17 +255,12 @@ test('a detached buffer retains its owner Common authoring context after preview
   // Explorer's Open Files mode opens B in another editor rather than navigating
   // the preview. Turn it off so this is the A → B session change under test.
   await page.getByTitle('Options', { exact: true }).click();
-  await page.getByLabel('Open Files', { exact: true }).uncheck();
-  // Opening a configured source intentionally locks its owning preview.
+  await page.getByLabel('Only keep active shader files open', { exact: true }).uncheck();
+  await page.getByLabel('Open file when selecting a shader', { exact: true }).uncheck();
+  await page.keyboard.press('Escape');
+  // Opening a configured source leaves the preview unlocked.
   const preview = page.getByTestId('web-preview');
   const lock = preview.locator('button.collapse-lock');
-  await expect(lock).toHaveClass(/active/);
-  if (await lock.isVisible()) {
-    await lock.click();
-  } else {
-    await preview.getByLabel('Open options menu', { exact: true }).click();
-    await preview.locator('.options-menu-item[aria-label="Toggle lock"]').click();
-  }
   await expect(lock).not.toHaveClass(/active/);
   await page.getByTestId('shader-option-owner-b-glsl').click();
   await expect(page.getByTestId('shader-option-owner-b-glsl')).toHaveAttribute('aria-pressed', 'true');

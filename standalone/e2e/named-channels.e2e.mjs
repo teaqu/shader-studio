@@ -82,7 +82,7 @@ test('WGSL compute reports implicit sampling and recovers after an explicit-LOD 
   ], 'stage-wgsl');
   await expect(page.getByTestId('shader-option-stage-wgsl').locator('.shader-error')).toBeVisible();
   await page.getByTitle('Options', { exact: true }).click();
-  await page.getByLabel('Hide Buffers', { exact: true }).uncheck();
+  await page.getByLabel('Hide buffer files', { exact: true }).uncheck();
   await page.getByTestId('shader-option-update-wgsl').click();
   await replaceSource(page, valid);
   await expect.poll(async () => (await workspace(page))['/shaders/update.wgsl']).toBe(valid);

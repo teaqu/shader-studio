@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 <script lang="ts">
-  import { getCubemapPreview } from "../state/cubemapPreview.svelte";
+  import { getCubemapPreview, clearCubemapPreview } from "../state/cubemapPreview.svelte";
+  import { getPreviewedPass, isLinePreviewActive } from '../passPreview';
   import { sharedSourcePassNames, shaderPathsEqual } from "../editor/sharedSourcePassNames";
   import { clearCurrentEditorSource, setCurrentEditorSource } from "../state/currentEditorSourceState.svelte";
   import { onMount, onDestroy, tick, setContext, untrack } from "svelte";
@@ -240,12 +241,12 @@
     isActive: false,
     functionContext: null,
     isLineLocked: false,
-    isInlineRenderingEnabled: true,
+    isInlineRenderingEnabled: false,
     normalizeMode: 'off' as const,
     isStepEnabled: false,
     stepEdge: 0.5,
     debugError: null,
-    isVariableInspectorEnabled: false,
+    isVariableInspectorEnabled: true,
     isErrorsEnabled: false,
     capturedVariables: [],
     activeBufferName: 'Image',
@@ -457,6 +458,14 @@
       onCursorChange: (line, lineContent, bufferName) => pipeline?.handleOverlayCursor(line, lineContent, bufferName),
       onManualCompile: handleManualCompile,
     });
+  });
+
+  const previewFilesKey = $derived(JSON.stringify([shaderPath, ...new Set(Object.values(bufferPathMap))]));
+  $effect(() => {
+    const [path, ...files] = JSON.parse(previewFilesKey) as string[];
+    if (path && transport) {
+      transport.postMessage({ type: 'previewFilesChanged', payload: { shaderPath: path, files: [path, ...files] } });
+    }
   });
 
   // Initialize layout profiles — must run before DockviewLayout restores from layoutState
@@ -796,12 +805,7 @@
     setOverlayActiveFile(name);
   }
 
-  function handleOpenInNewTab(bufferName: string, mode: "active" | "beside") {
-    // Lock the shader if not already locked
-    if (!shaderLocker.isLocked()) {
-      handleToggleLock();
-    }
-
+  function sourcePathForBuffer(bufferName: string): string | undefined {
     const actualName = bufferName === "Common" ? "common" : bufferName;
     let bufferPath: string | undefined;
     if (actualName === "Image") {
@@ -821,6 +825,26 @@
       bufferPath = bufferPathMap[actualName];
     }
 
+    return bufferPath;
+  }
+
+  function handlePreviewFileStandalone(bufferName: string) {
+    const path = sourcePathForBuffer(bufferName);
+    if (!path) {
+      return;
+    }
+    clearCubemapPreview(path);
+    // Preserve a manual lock, but move it to the explicitly selected shader.
+    if (shaderLocker.isLocked()) {
+      shaderLocker.toggleLock();
+      shaderLocker.toggleLock(path);
+      transport.postMessage({ type: 'shaderLockState', payload: { lockedShaderPath: path } });
+    }
+    pipeline.previewFileStandalone(path);
+  }
+
+  function handleOpenInNewTab(bufferName: string, mode: "active" | "beside") {
+    const bufferPath = sourcePathForBuffer(bufferName);
     if (bufferPath) {
       setCurrentEditorSource(shaderPath, bufferPath);
       transport.postMessage({
@@ -1948,6 +1972,11 @@
 
 <div class="main-container" role="application" onmousemove={handleCanvasMouseMove}>
   <div class="dockview-panel-source" bind:this={previewEl}>
+    {#if hasShader}
+      <div class="preview-output-label" aria-live="polite" title={shaderPath}>
+        {shaderPath.split(/[\\/]/).pop()} › {getPreviewedPass(currentConfig, getCubemapPreview(shaderPath), debugState)}{isLinePreviewActive(debugState) ? ` · Line ${debugState.currentLine! + 1}` : ''}
+      </div>
+    {/if}
     {#key engineLanguage}
       <ShaderCanvas
         {zoomLevel}
@@ -2023,8 +2052,10 @@
         isVisible={$configPanelStore.isVisible}
         onFileSelect={handleOverlayBufferSelect}
         selectedBuffer={configSelectedBuffer}
+        {debugState}
         isLocked={isLocked}
         onOpenInNewTab={handleOpenInNewTab}
+        onPreviewFileStandalone={handlePreviewFileStandalone}
         {audioVideoController}
         globalMuted={audioMuted}
         {scriptInfo}
@@ -2096,6 +2127,17 @@
 </div>
 
 <style>
+  .preview-output-label {
+    flex-shrink: 0;
+    padding: 4px 10px;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    background: var(--vscode-editor-background);
+    border-bottom: 1px solid var(--vscode-panel-border);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .dockview-panel-source {
     position: absolute;
     width: 100%;

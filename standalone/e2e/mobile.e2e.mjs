@@ -38,7 +38,7 @@ test('vertex visibility is default-on and the chosen option survives reload', as
   await expect(dialog).toBeHidden();
   await nav.getByRole('button', { name: 'Explorer' }).click();
   await explorer.getByTitle('Options').click();
-  const hideVertex = explorer.getByLabel('Hide Vertex');
+  const hideVertex = explorer.getByLabel('Hide vertex files');
   await expect(hideVertex).toBeChecked();
   await expect(explorer.getByTestId('shader-option-mesh-vert-glsl')).toHaveCount(0);
   await hideVertex.uncheck();

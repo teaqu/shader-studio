@@ -195,6 +195,9 @@
   const showRecordInOptions = $derived(menuBarWidth <= 370);
   const showLockInOptions = $derived(menuBarWidth <= 340);
   const vrAvailable = $derived(getVrPreviewState().available);
+  const lockDescription = $derived(isLocked
+    ? 'Locked: preview stays on this shader while you edit other files. Click to unlock and follow the active shader file.'
+    : 'Unlocked: linked buffer files keep this shader preview. Opening another shader switches the preview. Click to lock this shader.');
 
   $effect(() => {
     if (!menuBarEl) {
@@ -514,7 +517,7 @@
       isActive={isRecordingPanelVisible}
       onToggle={handleRecordingClick}
     />
-    <button class="collapse-lock toolbar-icon-button" onclick={handleToggleLock} aria-label="Toggle lock" class:active={isLocked} disabled={!hasShader}>
+    <button class="collapse-lock toolbar-icon-button" onclick={handleToggleLock} aria-label="Toggle lock" aria-pressed={isLocked} title={lockDescription} class:active={isLocked} disabled={!hasShader}>
       {#if isLocked}
         <i class="codicon codicon-lock"></i>
       {:else}
@@ -544,7 +547,7 @@
 <MenuOptions
   {optionsMenu} {layoutMenu} {editorMenu}
   {hasShader} {previewVisible} {showLockInOptions} {showRecordInOptions} {showConfigInOptions} {showDebugInOptions}
-  {isLocked} {isRecordingPanelVisible} {isConfigPanelVisible} {isDebugEnabled} {isDebugSupported} {isEditorOverlayVisible} {isVimModeEnabled}
+  {isLocked} {lockDescription} {isRecordingPanelVisible} {isConfigPanelVisible} {isDebugEnabled} {isDebugSupported} {isEditorOverlayVisible} {isVimModeEnabled}
   {showThemeButton} {theme} {showFullscreenButton} {compileMode} {compileModeIcons} {compileModeLabels} {audioVolume} {audioMuted}
   onShowPreview={onShowPreview} onConfig={handleConfig} onToggleLock={handleToggleLock} onToggleRecording={handleRecordingClick}
   {onToggleConfigPanel} {onToggleDebugEnabled} {onToggleEditorOverlay} {onToggleVimMode}

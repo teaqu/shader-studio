@@ -458,6 +458,9 @@ export class ShaderStudio {
 
   private registerEventHandlers(): void {
     vscode.window.onDidChangeActiveTextEditor((editor) => {
+      if (this.panelManager.activeShaderEditors.isManaging) {
+        return;
+      }
       this.compileController.handleActiveEditorChange(editor);
       this.handleConfigEditorActivated(editor);
     });

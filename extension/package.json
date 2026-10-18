@@ -197,6 +197,11 @@
           "default": true,
           "description": "Sync the active buffer between the config panel and VS Code editor (requires shader lock)"
         },
+        "shader-studio.explorer.keepActiveShaderFiles": {
+          "type": "boolean",
+          "default": false,
+          "description": "Only keep active previews' shader and linked source files open. Other shader tabs close using the normal save prompt. Each preview maintains an editor group; non-shader tabs stay open."
+        },
         "shader-studio.lockEditorGroup": {
           "type": "boolean",
           "default": true,

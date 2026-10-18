@@ -1,5 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { createShaderTab } from '../../lib/layout/dockviewTabs';
+import { debugPanelStore } from '../../lib/stores/debugPanelStore';
 import { afterEach, describe, expect, it } from 'vitest';
 import { setupDockviewTabs } from '../../lib/layout/dockviewTabs';
 
@@ -77,5 +79,22 @@ describe('single-tab header styles', () => {
     expect(getComputedStyle(header).opacity).not.toBe('0');
     header.classList.add('dv-single-tab');
     expect(getComputedStyle(header).opacity).toBe('0');
+  });
+});
+
+describe('Debug tab line rendering indicator', () => {
+  it('only customizes Debug and follows the toggle until disposed', () => {
+    expect(createShaderTab({ id: 'config', name: 'config' })).toBeUndefined();
+    debugPanelStore.setInlineRenderingEnabled(false);
+    const tab = createShaderTab({ id: 'debug', name: 'debug' })!;
+    const indicator = tab.element.querySelector<HTMLElement>('[aria-label="Line rendering enabled"]')!;
+    expect(indicator.hidden).toBe(true);
+    debugPanelStore.setInlineRenderingEnabled(true);
+    expect(indicator.hidden).toBe(false);
+    debugPanelStore.setInlineRenderingEnabled(false);
+    expect(indicator.hidden).toBe(true);
+    tab.dispose();
+    debugPanelStore.setInlineRenderingEnabled(true);
+    expect(indicator.hidden).toBe(true);
   });
 });

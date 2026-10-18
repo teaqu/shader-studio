@@ -30,7 +30,11 @@ See the [Quick Start](quick-start.md#step-3-write-your-shader) for example shade
 
 ## Configure Sources and Outputs
 
-Image always uses the main shader file. Buffer and compute tabs show an editable **File** path with **Change…**: choose another file already used by the config, browse the virtual workspace, or create a source. Function rows show the available native entry points. **Add function…** writes to the file belonging to that stage and saves the selected function.
+Shader Explorer's **Explorer settings → Files → Only keep active shader files open** is enabled by default. Selecting a shader opens its main file, linked sources as editor tabs. The `.sha.json` config is not opened automatically. Switching shaders closes the previous set and opens the next; unsaved changes prompt before closing. Turn the option off to manage your tabs yourself. See [Keep Files with Their Preview](features/shader-explorer.md#keep-files-with-their-preview).
+
+Image always uses the main shader file. Buffer and compute cards show an editable **File** path with **Change…**: choose another file already used by the config, browse the virtual workspace, or create a source. Function rows show the available native entry points. **Add function…** writes to the file belonging to that stage and saves the selected function.
+
+Click a render pass card's eye button to preview its output; **Viewing** identifies the current output. Each storage buffer also has its own card, and **+ New → Storage buffer** creates another. While [inline rendering](debugging/inline-rendering.md) is active, the preview follows the debugged pass and selected code line, shown as **Viewing · L24**. Turning inline rendering off restores your chosen pass preview.
 
 Vertex sources use **Built-in**, **Same file**, or **Separate file**. Same file hides the duplicate path; Separate file shows it and reads vertex functions from there. Native render templates start with a fragment and use the generated vertex stage. Compute has native function rows and no Built-in/Native chooser.
 

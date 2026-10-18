@@ -172,11 +172,17 @@ export class StandaloneLayoutController {
   private readonly storage: LayoutStorage | null;
   private desktopVisibility: Map<PanelGroup, boolean> | null = null;
   private mobilePanel: MobileDockviewPanelId | null = null;
+  private managedEditorPaths = new Set<string>();
+  private retainedEditorPaths = new Set<string>();
+  private editorSync = Promise.resolve();
+  private editorSyncVersion = 0;
+  private syncingEditors = false;
 
   constructor(
     private readonly api: StandaloneDockviewApi,
     storage?: LayoutStorage | null,
     private readonly previewEditor?: (path: string) => void,
+    private readonly confirmEditorClose: (path: string) => Promise<boolean> = async () => true,
   ) {
     this.storage = storage === undefined ? getBrowserStorage() : storage;
   }
@@ -191,7 +197,7 @@ export class StandaloneLayoutController {
         this.activeEditorId = panel.id;
       }
       const path = panel?.id.startsWith('editor:') ? panel.id.slice('editor:'.length) : '';
-      if (/\.(glsl|frag|slang|wgsl)$/i.test(path)) {
+      if (!this.syncingEditors && /\.(glsl|frag|slang|wgsl)$/i.test(path)) {
         this.previewEditor?.(path);
       }
     });
@@ -204,10 +210,62 @@ export class StandaloneLayoutController {
   }
 
   dispose(): void {
+    this.editorSyncVersion++;
     this.activePanelDisposable?.dispose();
     this.activePanelDisposable = null;
     this.layoutChangeDisposable?.dispose();
     this.layoutChangeDisposable = null;
+  }
+
+  /** Keep the union of live previews, retiring other shader tabs with a save prompt. */
+  syncShaderEditors(previews: readonly { shaderPath: string; files: string[] }[] | null): Promise<void> {
+    const version = ++this.editorSyncVersion;
+    this.editorSync = this.editorSync.catch(() => {}).then(async () => {
+      if (version !== this.editorSyncVersion || previews === null) {
+        return;
+      }
+      const required = new Set(previews.flatMap(preview => preview.files));
+      for (const path of required) {
+        this.retainedEditorPaths.delete(path);
+      }
+      const primary = previews[0]?.shaderPath;
+      this.syncingEditors = true;
+      try {
+        for (const path of required) {
+          if (!this.api.getPanel(`editor:${path}`)) {
+            this.openEditor(path);
+          }
+        }
+        // The original editor follows the viewer; fixed file tabs now replace it.
+        if (primary) {
+          this.api.getPanel('editor')?.api.close();
+        }
+        const previousPaths = new Set([...this.managedEditorPaths, ...this.api.panels
+          .filter(panel => panel.id.startsWith('editor:') && /\.(glsl|frag|vert|slang|wgsl|sha\.json)$/i.test(panel.id))
+          .map(panel => panel.id.slice('editor:'.length))]);
+        for (const path of previousPaths) {
+          if (!required.has(path) && !this.retainedEditorPaths.has(path) && this.api.getPanel(`editor:${path}`)) {
+            const close = await this.confirmEditorClose(path);
+            if (version !== this.editorSyncVersion) {
+              return;
+            }
+            if (close) {
+              this.api.getPanel(`editor:${path}`)?.api.close();
+            } else {
+              this.retainedEditorPaths.add(path);
+            }
+          }
+        }
+        // Cancelled closes are handed back to the user, without repeated prompts.
+        this.managedEditorPaths = required;
+        if (primary) {
+          this.api.getPanel(`editor:${primary}`)?.api.setActive();
+        }
+      } finally {
+        this.syncingEditors = false;
+      }
+    });
+    return this.editorSync;
   }
 
   showPanel(panelId: StandalonePanelId): void {

@@ -1,5 +1,8 @@
 <script lang="ts">
   import './configPanel.css';
+  import { canPreviewPass, getPreviewedPass, isLinePreviewActive, type PassPreviewDebugState } from '../../passPreview';
+  import { getCubemapPreview, setPassPreview } from '../../state/cubemapPreview.svelte';
+  import { getStorageView, selectStorageBuffer, selectStorageTab } from '../../state/storageViewState.svelte';
   import { discoverRenderOutputs, setRenderOutputMetadata } from "../../state/renderOutputMetadata.svelte";
   import { getDefaultAuthoringMode } from '../../state/authoringModeState.svelte';
   import { onMount, onDestroy, tick, untrack } from "svelte";
@@ -37,6 +40,7 @@
     onFileSelect?: (bufferName: string) => void;
     selectedBuffer?: string;
     isLocked?: boolean;
+    debugState?: PassPreviewDebugState;
     audioVideoController?: AudioVideoController;
     globalMuted?: boolean;
     scriptInfo?: ScriptInfoProp;
@@ -46,6 +50,7 @@
     renderOutputLimits?: { maxColorAttachments: number; maxColorAttachmentBytesPerSample: number } | null;
     onConfigChange?: (config: ShaderConfig) => void;
     onOpenInNewTab?: (bufferName: string, mode: "active" | "beside") => void;
+    onPreviewFileStandalone?: (bufferName: string) => void;
   }
 
   let {
@@ -63,6 +68,7 @@
     onFileSelect = () => {},
     selectedBuffer = "Image",
     isLocked = false,
+    debugState,
     audioVideoController = undefined,
     globalMuted = false,
     scriptInfo = null,
@@ -72,9 +78,28 @@
     renderOutputLimits = null,
     onConfigChange = () => {},
     onOpenInNewTab = () => {},
+    onPreviewFileStandalone,
   }: Props = $props();
 
   const effectiveConfig = $derived(withDefaultRenderEntryPoints(config, shaderSource, language));
+  const viewedPass = $derived(getPreviewedPass(config, getCubemapPreview(shaderPath), debugState));
+  const linePreviewActive = $derived(isLinePreviewActive(debugState));
+
+  function previewTab() {
+    if (!menuTab) {
+      return;
+    }
+    setPassPreview(shaderPath, menuTab);
+    dismissRenameMenu(true);
+  }
+
+  function previewTabStandalone() {
+    if (!menuTab) {
+      return;
+    }
+    onPreviewFileStandalone?.(getActualBufferName(menuTab));
+    dismissRenameMenu(true);
+  }
 
   provideViewerCameraDefault(() => config);
 
@@ -96,6 +121,28 @@
   let renameError = $state<string | null>(null);
   let renameInput = $state<HTMLInputElement | null>(null);
   let tabNavigationElement = $state<HTMLDivElement | null>(null);
+  const storageNames = $derived(SHADER_LANGUAGES[language].engine === 'webgpu' ? Object.keys(config?.storage ?? {}) : []);
+  const selectedStorage = $derived(storageNames.includes(getStorageView(shaderPath).selected)
+    ? getStorageView(shaderPath).selected : storageNames[0]);
+
+  $effect(() => {
+    if (activeTab === 'Storage' && !selectedStorage) {
+      activeTab = 'Image';
+    }
+  });
+
+  function openStorage(name: string) {
+    selectStorageBuffer(shaderPath, name);
+    activeTab = 'Storage';
+  }
+
+  function addStorageCard() {
+    const name = addStorageBuffer();
+    if (name) {
+      openStorage(name);
+      selectStorageTab(shaderPath, 'settings');
+    }
+  }
 
   // Sync activeTab when parent changes selectedBuffer
   // Don't override if user is on the Script tab (it has no corresponding buffer)
@@ -391,6 +438,19 @@
     return !!pass && 'type' in pass && pass.type === "compute";
   }
 
+  function passTypeLabel(tabName: string): string {
+    if (tabName === 'Image') {
+      return 'Final image';
+    }
+    if (tabName === 'Common') {
+      return 'Shared code';
+    }
+    if (tabName === 'Script') {
+      return 'Uniform script';
+    }
+    return isComputeTab(tabName) ? 'Compute pass' : 'Render buffer';
+  }
+
   function sourceForPass(passName: string): string {
     if (passName === 'Image') {
       return shaderSource;
@@ -466,9 +526,6 @@
       tabs.push("Common");
     }
     tabs.push(...bufferTabs);
-    if (SHADER_LANGUAGES[language].engine === "webgpu") {
-      tabs.push("Storage");
-    }
     if (config && config.script !== undefined) {
       tabs.push("Script");
     }
@@ -727,7 +784,7 @@
 
 <div class="config-panel" class:visible={isVisible}>
   <div class="config-content">
-    <!-- Tab Navigation - Always visible -->
+    <!-- Settings selection and preview selection are independent. -->
     <div class="tab-navigation" bind:this={tabNavigationElement}>
       {#each allTabs as tabName (tabName)}
         {#if renamingTab === tabName}
@@ -749,8 +806,11 @@
             {/if}
           </div>
         {:else}
+          <div class="pass-card" class:selected={activeTab === tabName}>
           <button
             class="tab-button {activeTab === tabName ? 'active' : ''}"
+            aria-label={tabName}
+            aria-pressed={activeTab === tabName}
             data-tab-name={tabName}
             onclick={() => switchTab(tabName)}
             ondblclick={() => handleTabDblClick(tabName)}
@@ -762,12 +822,27 @@
             }}
             onkeydown={(event) => handleTabKeyDown(tabName, event)}
           >
-            <span class="tab-label">{tabName}</span>
+            <span class="pass-card-heading"><span class="tab-label">{tabName}</span>
+            {#if tabName === viewedPass}
+              <span class="preview-pass-marker" aria-label="Currently previewing {tabName}">Viewing{linePreviewActive ? ` · L${debugState!.currentLine! + 1}` : ''}</span>
+            {/if}
+            </span>
+            <span class="pass-type">{passTypeLabel(tabName)}</span>
+          </button>
+          <div class="pass-card-actions">
+            {#if canPreviewPass(config, getActualBufferName(tabName))}
+              <button
+                class="pass-preview-button"
+                title={linePreviewActive ? 'Preview follows line rendering. Turn off line rendering to choose a pass.' : `Preview ${tabName}`}
+                aria-label="Preview {tabName}"
+                aria-pressed={viewedPass === tabName}
+                disabled={linePreviewActive}
+                onclick={() => setPassPreview(shaderPath, tabName)}
+              ><span class="codicon codicon-eye" aria-hidden="true"></span></button>
+            {/if}
             {#if tabName !== "Image" && tabName !== "Storage" && config}
-              <span
+              <button
                 class="tab-close"
-                role="button"
-                tabindex="0"
                 onclick={(event) => {
                   event.stopPropagation();
                   removeBuffer(tabName);
@@ -783,10 +858,26 @@
                 aria-label="Remove {tabName}"
               >
                 ×
-              </span>
+              </button>
             {/if}
-          </button>
+          </div>
+          </div>
         {/if}
+      {/each}
+
+      {#each storageNames as name (name)}
+        <div class="pass-card" class:selected={activeTab === 'Storage' && selectedStorage === name}>
+          <button
+            class="tab-button"
+            class:active={activeTab === 'Storage' && selectedStorage === name}
+            aria-label="Storage buffer {name}"
+            aria-pressed={activeTab === 'Storage' && selectedStorage === name}
+            onclick={() => openStorage(name)}
+          >
+            <span class="pass-card-heading"><span class="tab-label">{name}</span></span>
+            <span class="pass-type">Storage buffer · {config?.storage?.[name]?.count.toLocaleString()} elements</span>
+          </button>
+        </div>
       {/each}
 
       <div
@@ -825,6 +916,7 @@
                 aria-label="Add compute pass"
                 onclick={() => runAddMenuAction(addComputePass)}
               >Compute</button>
+              <button class="dropdown-item" role="menuitem" onclick={() => runAddMenuAction(addStorageCard)}>Storage buffer</button>
             {/if}
             {#if !config?.passes?.common}
               <button class="dropdown-item" role="menuitem" onclick={() => runAddMenuAction(addCommonBuffer)}>Common</button>
@@ -839,6 +931,9 @@
 
     <!-- Tab Content -->
     <div class="tab-content">
+      {#if isComputeTab(activeTab)}
+        <p class="pass-preview-note">Direct preview is not available for compute passes.</p>
+      {/if}
       {#if activeTab === "Script"}
         <ScriptInfo
           filename={scriptInfo?.filename || config?.script || ''}
@@ -857,6 +952,7 @@
         />
       {:else if activeTab === "Storage"}
         <StoragePanel
+          showNavigation={false}
           storage={config?.storage ?? {}}
           referencesFor={getStorageReferences}
           onAdd={addStorageBuffer}
@@ -942,6 +1038,12 @@
 {#if menuTab}
   <div use:portal bind:this={menuElement} class="buffer-rename-menu" role="menu" style:left="{menuX}px" style:top="{menuY}px">
     <button bind:this={menuButton} role="menuitem" onclick={handleOpenTab}>Open</button>
+    {#if canPreviewPass(config, getActualBufferName(menuTab))}
+      <button role="menuitem" onclick={previewTab} disabled={linePreviewActive || viewedPass === menuTab}>Preview this pass</button>
+      {#if onPreviewFileStandalone && menuTab !== 'Image'}
+        <button role="menuitem" onclick={previewTabStandalone}>Preview file standalone</button>
+      {/if}
+    {/if}
     {#if isRenameableTab(menuTab)}
       <button role="menuitem" onclick={startRename}>Rename</button>
     {/if}
@@ -949,6 +1051,8 @@
 {/if}
 
 <style>
+  .preview-pass-marker { color: var(--vscode-focusBorder); margin-left: 5px; }
+  .buffer-rename-menu button:disabled { opacity: 0.5; cursor: default; }
   .config-panel {
     display: flex;
     flex-direction: column;
@@ -971,23 +1075,11 @@
   }
 
   .tab-navigation {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
     align-items: stretch;
     height: auto;
     min-height: 28px;
-  }
-
-  .tab-navigation :global(.tab-button),
-  .tab-navigation :global(.add-tab-btn) {
-    padding: var(--shader-studio-tab-padding);
-    min-height: var(--shader-studio-tab-height);
-  }
-
-  .tab-navigation :global(.tab-close) {
-    width: 14px;
-    height: 14px;
-    font-size: 13px;
   }
 
   .tab-content {

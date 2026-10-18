@@ -522,7 +522,7 @@
       aria-label="Toggle inline rendering"
       data-tooltip="Inline Rendering"
     >
-      <i class="codicon codicon-eye"></i>
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3h8M6 8h8M6 13h8" stroke="currentColor" stroke-width="1.5"/><path d="m1 5 3 3-3 3z" fill="currentColor"/></svg>
     </button>
     <button
       class="header-btn has-tooltip"

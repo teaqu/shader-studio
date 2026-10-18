@@ -20,6 +20,7 @@
     showConfigInOptions: boolean;
     showDebugInOptions: boolean;
     isLocked: boolean;
+    lockDescription: string;
     isRecordingPanelVisible: boolean;
     isConfigPanelVisible: boolean;
     isDebugEnabled: boolean;
@@ -56,7 +57,7 @@
   let {
     optionsMenu, layoutMenu, editorMenu, hasShader, previewVisible,
     showLockInOptions, showRecordInOptions, showConfigInOptions, showDebugInOptions,
-    isLocked, isRecordingPanelVisible, isConfigPanelVisible, isDebugEnabled,
+    isLocked, lockDescription, isRecordingPanelVisible, isConfigPanelVisible, isDebugEnabled,
     isDebugSupported, isEditorOverlayVisible, isVimModeEnabled, showThemeButton,
     theme, showFullscreenButton, compileMode, compileModeIcons, compileModeLabels,
     audioVolume, audioMuted, onShowPreview, onConfig, onToggleLock, onToggleRecording,
@@ -120,6 +121,8 @@
           onToggleLock(); optionsMenu.open = false;
         }}
         aria-label="Toggle lock"
+        aria-pressed={isLocked}
+        title={lockDescription}
         class:active={isLocked}
         disabled={!hasShader}
       >

@@ -636,6 +636,7 @@
       }
 
       const editedPath = shaderPath;
+      transport?.markEditorDirty?.(editedPath);
       if (compileMode === "hot") {
         if (recompileTimer) {
           clearTimeout(recompileTimer);

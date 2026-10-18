@@ -573,8 +573,8 @@ export class WebExtensionHost {
       case 'openShader':
       case 'activateShader':
         if (typeof message.path === 'string' && this.workspace.exists(message.path)) {
-          // Focusing a configured source tab keeps the owning preview selected.
-          // Explorer openShader remains an explicit request to view that file.
+          // Only use the current shader's known links; never search other configs
+          // for an owner. Explicit explorer selection still opens the file itself.
           if (message.type === 'activateShader' && this.activeShaderPath
             && Object.values(this.sourcePaths(this.activeShaderPath)).includes(message.path)) {
             return;
@@ -653,6 +653,21 @@ export class WebExtensionHost {
 
   async flush(): Promise<void> {
     await this.workspace.flush();
+  }
+
+  /** Only the selected shader's known config is consulted; never search for owners. */
+  getShaderEditorFiles(shaderPath: string): string[] {
+    const configPath = configPathForShader(shaderPath);
+    const files = [shaderPath, ...Object.values(this.sourcePaths(shaderPath))];
+    if (this.workspace.exists(configPath)) {
+      try {
+        const config = JSON.parse(this.workspace.readText(configPath));
+        if (typeof config.script === 'string') {
+          files.push(resolveConfiguredPath(virtualConfiguredPathHost, configPath, config.script));
+        }
+      } catch { /* A malformed config still leaves the main shader available. */ }
+    }
+    return [...new Set(files)].filter(path => this.workspace.exists(path));
   }
 
   private shaderFiles() {

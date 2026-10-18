@@ -10,18 +10,22 @@ Click the <i class="codicon codicon-gear"></i> **Config** button in the toolbar.
 
 ---
 
-## The Pass Tab Bar
+## Pass Cards
 
-The tab bar at the top shows every pass in your shader. Click **+ New** to add a pass. Remove a pass with the `×` on its tab (Image cannot be removed).
+The cards at the top show the current shader's passes and their types. Select a card to edit its settings. Click **+ New** to add a pass. Remove a pass with the `×` on its card (Image cannot be removed).
 
-**Right-click a tab** to open a context menu:
+Click a render pass's **eye button** to preview its output. The **Viewing** badge identifies the displayed pass, independently of the selected settings card. Click Image's eye to return to the final output. Compute cards are labeled **Compute pass** and their settings explain that direct preview is unavailable; Common, Script, and Storage also have no eye button.
 
-- **Open** — locks the shader and opens the pass's file in the editor
+While the debugger renders a selected code line, **Viewing · L24** follows that line's pass and the label above the canvas also shows the line number. Pass eye buttons are disabled while line rendering controls the output. Turn off line rendering to return to your chosen pass preview.
+
+**Right-click a card's name** to open a context menu:
+
+- **Open** — opens the pass's file in the editor without changing the lock setting
+- **Preview this pass** — displays a render pass with its configured inputs and Common code; choose this on Image to return to the final output
+- **Preview file standalone** — makes a buffer's source file the active shader, using its own matching config if present
 - **Rename** — inline rename for buffer passes (Image, Common, and Script cannot be renamed)
 
-![Config pass tab bar](../assets/images/config-tabs.png)
-
-| Tab | Description |
+| Card | Description |
 |-----|-------------|
 | **Image** | Always present. The final rendered output from the main shader file. Supports `mainImage` or a selected native WGSL/Slang fragment. No file chooser. |
 | **Named buffer pass** | An intermediate fragment render pass backed by a `.glsl`, `.slang`, or `.wgsl` file. Names and pass counts are unrestricted. |
@@ -30,7 +34,7 @@ The tab bar at the top shows every pass in your shader. Click **+ New** to add a
 | **Script** | A TypeScript or JavaScript file that drives custom `uniform` values per frame. |
 
 !!! note
-    Double-click a pass tab to open that pass's file — the shader locks automatically so the preview stays on your Image pass. You can also use the <i class="codicon codicon-lock"></i> **Lock** button manually. See [Locking](locking.md).
+    Double-click a pass card's name to open that pass's file. Files linked to the current shader keep its preview visible without locking it. Selecting settings never changes the viewed pass. See [Locking and buffer previews](locking.md).
 
 ---
 
@@ -46,7 +50,7 @@ Choose **+ Add&hellip;** to insert either a **Native fragment function** or
 when `mainImage` is already present. Adding inserts code; picking a function
 selects existing code. Changes are saved with the shader configuration.
 
-The Image tab has no file path — it always corresponds to your main shader file. You can set a default resolution here:
+The Image card has no file path — it always corresponds to your main shader file. You can set a default resolution here:
 
 | Setting | Options | Description |
 |---------|---------|-------------|
@@ -192,7 +196,7 @@ The **Rendering** section after Geometry sets the pass's **Blend** mode, and for
 
 ## GPU Storage
 
-The **Storage** tab opens a workspace with a buffer list and **Settings** / **Inspect** tabs. Apply pending settings from the header or below the form. See [GPU Storage](storage.md) for layouts, binary initial data, resets and read-only inspection.
+Each storage buffer has its own card, labeled **Storage buffer** with its element count. Select it to open **Settings** / **Inspect** directly. Choose **+ New → Storage buffer** to add one. Apply pending settings from the header or below the form. See [GPU Storage](storage.md) for layouts, binary initial data, resets and read-only inspection.
 
 ## Compute Passes
 

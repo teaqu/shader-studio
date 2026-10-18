@@ -27,12 +27,21 @@ vi.mock('@shader-studio/monaco', async () => ({
 }));
 
 const transport = {
+  markEditorDirty: vi.fn(),
   postMessage: vi.fn(),
   onMessage: vi.fn(),
   dispose: vi.fn(),
   getType: () => 'vscode' as const,
   isConnected: () => true,
 } as Transport;
+
+it('marks an edited file dirty immediately, before the delayed save', async () => {
+  await renderEditor(300);
+  const editor = vi.mocked(monaco.editor.create).mock.results.at(-1)!.value;
+  vi.mocked(editor.getValue).mockReturnValue('unsaved edit');
+  vi.mocked(editor.onDidChangeModelContent).mock.calls[0][0]({});
+  expect(transport.markEditorDirty).toHaveBeenCalledWith('/shader.glsl');
+});
 
 type Selection = { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number };
 

@@ -23,3 +23,10 @@
   opacity: 1;
   pointer-events: auto;
 }
+
+.shader-line-render-indicator:not([hidden]) {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  color: var(--vscode-textLink-foreground, #3794ff);
+}

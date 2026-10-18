@@ -44,21 +44,21 @@ for (const pendingSave of [false, true]) {
         };
       });
     }
-    await explorer.getByLabel('Hide Buffers', { exact: true }).uncheck();
+    await explorer.getByLabel('Hide buffer files', { exact: true }).uncheck();
     await expect(trails).toBeVisible();
     await expect(glow).toBeVisible();
     await page.reload();
     await expect(trails).toBeVisible();
     await expect(glow).toBeVisible();
-    await expect(explorer.getByLabel('Hide Buffers', { exact: true })).not.toBeChecked();
-    await explorer.getByLabel('Hide Buffers', { exact: true }).check();
+    await expect(explorer.getByLabel('Hide buffer files', { exact: true })).not.toBeChecked();
+    await explorer.getByLabel('Hide buffer files', { exact: true }).check();
     await expect(trails).toHaveCount(0);
     await expect(glow).toHaveCount(0);
     await page.reload();
     await expect(explorer.getByTestId('shader-option-glow-trails-glsl')).toBeVisible();
     await expect(trails).toHaveCount(0);
     await expect(glow).toHaveCount(0);
-    await expect(explorer.getByLabel('Hide Buffers', { exact: true })).toBeChecked();
+    await expect(explorer.getByLabel('Hide buffer files', { exact: true })).toBeChecked();
   });
 }
 
@@ -632,7 +632,8 @@ test('selecting shaders leaves their modification times unchanged after reload',
 test('explicitly opens independent file editors and restores them after reload', async ({ page }) => {
   await page.goto('/');
   await page.getByTitle('Options', { exact: true }).click();
-  await page.getByLabel('Open Files', { exact: true }).check();
+  await page.getByLabel('Only keep active shader files open', { exact: true }).uncheck();
+  await page.getByLabel('Open file when selecting a shader', { exact: true }).check();
   const mainTab = () => page.locator('.dv-tab').filter({ hasText: /\.(glsl|frag|slang|wgsl)$/ }).first();
   const fileTab = name => page.locator('.dv-tab').filter({ hasText: name }).last();
   const open = async id => {
@@ -698,8 +699,9 @@ test('keeps a buffer and its image shader open in separate editors', async ({ pa
   ]);
   await page.goto('/');
   await page.getByTitle('Options', { exact: true }).click();
-  await page.getByLabel('Open Files', { exact: true }).check();
-  await page.getByLabel('Hide Buffers', { exact: true }).uncheck();
+  await page.getByLabel('Only keep active shader files open', { exact: true }).uncheck();
+  await page.getByLabel('Open file when selecting a shader', { exact: true }).check();
+  await page.getByLabel('Hide buffer files', { exact: true }).uncheck();
   await page.getByTestId('shader-option-test-buffer-glsl').click();
   await page.getByRole('button', { name: 'Open in separate editor', exact: true }).click();
   const buffer = page.locator('[data-testid="file-editor"][data-path="/shaders/test-buffer.glsl"]');
@@ -753,7 +755,8 @@ for (const separate of [false, true]) {
       await page.goto('/');
       if (separate) {
         await page.getByTitle('Options', { exact: true }).click();
-        await page.getByLabel('Open Files', { exact: true }).check();
+        await page.getByLabel('Only keep active shader files open', { exact: true }).uncheck();
+        await page.getByLabel('Open file when selecting a shader', { exact: true }).check();
       }
       await page.getByTestId(language === 'slang' ? 'shader-option-aurora-slang-slang' : 'shader-option-aurora-glsl').click();
       if (separate) {
@@ -793,7 +796,8 @@ test('a delayed preview selection preserves Slang typing in its separate editor'
   const editor = page.locator('[data-testid="file-editor"][data-path="/shaders/aurora-slang.slang"]');
   await expect(editor.locator('.monaco-editor')).toBeVisible();
   await page.getByTitle('Options', { exact: true }).click();
-  await page.getByLabel('Open Files', { exact: true }).uncheck();
+  await page.getByLabel('Only keep active shader files open', { exact: true }).uncheck();
+  await page.getByLabel('Open file when selecting a shader', { exact: true }).uncheck();
   await page.getByTestId('shader-option-aurora-glsl').click();
   await expect(page.getByTestId('web-editor').locator('.view-lines')).toContainText('void mainImage(out vec4 fragColor');
   // Hold completion of the real workspace transaction that precedes selection
@@ -845,7 +849,8 @@ test('explorer Open Files reuses one editor and only reopens it when checked', a
   const editorTab = page.locator('.dv-tab').filter({ hasText: /\.(glsl|frag|slang)$/ });
   const editor = page.getByTestId('web-editor');
   await page.getByTitle('Options', { exact: true }).click();
-  await page.getByLabel('Open Files', { exact: true }).check();
+  await page.getByLabel('Only keep active shader files open', { exact: true }).uncheck();
+  await page.getByLabel('Open file when selecting a shader', { exact: true }).check();
   for (const [id, text] of [
     ['aurora-glsl', 'uv.xyx + vec3(0, 2, 4)'],
     ['desert-cubemap-glsl', 'Drag in the preview'],
@@ -857,7 +862,8 @@ test('explorer Open Files reuses one editor and only reopens it when checked', a
     await expect(editorTab).toHaveText(id.replace(/-glsl$/, '.glsl'));
     await expect(page.getByTestId('file-editor')).toHaveCount(0);
   }
-  await page.getByLabel('Open Files', { exact: true }).uncheck();
+  await page.getByLabel('Only keep active shader files open', { exact: true }).uncheck();
+  await page.getByLabel('Open file when selecting a shader', { exact: true }).uncheck();
   await revealStandaloneTabs(page);
   await editorTab.locator('.dv-default-tab-action').click();
   await expect(editorTab).toHaveCount(0);
@@ -872,8 +878,9 @@ test('explorer Open Files reuses one editor and only reopens it when checked', a
   await expect(page.getByTestId('shader-option-desert-cubemap-glsl')).toHaveAttribute('aria-pressed', 'true');
   await expect(editorTab).toHaveCount(0);
   await expect(editor).not.toBeVisible();
-  await expect(page.getByLabel('Open Files', { exact: true })).not.toBeChecked();
-  await page.getByLabel('Open Files', { exact: true }).check();
+  await expect(page.getByLabel('Open file when selecting a shader', { exact: true })).not.toBeChecked();
+  await page.getByLabel('Only keep active shader files open', { exact: true }).uncheck();
+  await page.getByLabel('Open file when selecting a shader', { exact: true }).check();
   await page.getByTestId('shader-option-aurora-glsl').click();
   await expect(editorTab).toHaveCount(1);
   await expect(editor.locator('.monaco-editor')).toBeVisible();
@@ -996,7 +1003,8 @@ test('focused standalone file editor selects the preview and persists after relo
   const editor = page.locator('[data-testid="file-editor"][data-path="/shaders/aurora.glsl"]');
   await expect(editor.locator('.monaco-editor')).toBeVisible();
   await page.getByTitle('Options', { exact: true }).click();
-  await page.getByLabel('Open Files', { exact: true }).uncheck();
+  await page.getByLabel('Only keep active shader files open', { exact: true }).uncheck();
+  await page.getByLabel('Open file when selecting a shader', { exact: true }).uncheck();
   await desert.click();
   await expect(desert).toHaveAttribute('aria-pressed', 'true');
   await editor.locator('.view-lines').click();
@@ -1071,7 +1079,8 @@ test('shader selection updates the last active editor and restores it after relo
   await expect(fileEditor.locator('.monaco-editor')).toBeVisible();
   await fileEditor.locator('.view-lines').click();
   await page.getByTitle('Options', { exact: true }).click();
-  await page.getByLabel('Open Files', { exact: true }).check();
+  await page.getByLabel('Only keep active shader files open', { exact: true }).uncheck();
+  await page.getByLabel('Open file when selecting a shader', { exact: true }).check();
   await page.getByTestId('shader-option-desert-cubemap-glsl').click();
   await expect(fileEditor).toHaveCount(1);
   await expect(fileEditor).toHaveAttribute('data-path', '/shaders/desert-cubemap.glsl');
@@ -1183,7 +1192,8 @@ test('replacing the active editor preserves tab order after reload', async ({ pa
   await expect(titles).toHaveText(['glow-trails.glsl', 'trails.buffer.glsl', 'glow.buffer.glsl']);
   await group.locator('.dv-tab').filter({ hasText: /^trails\.buffer\.glsl$/ }).click();
   await page.getByTitle('Options', { exact: true }).click();
-  await page.getByLabel('Open Files', { exact: true }).check();
+  await page.getByLabel('Only keep active shader files open', { exact: true }).uncheck();
+  await page.getByLabel('Open file when selecting a shader', { exact: true }).check();
   await page.getByTestId('shader-option-aurora-glsl').click();
   await expect(titles).toHaveText(['glow-trails.glsl', 'aurora.glsl', 'glow.buffer.glsl']);
   await expect(page.locator('[data-testid="file-editor"][data-path="/shaders/aurora.glsl"] .view-lines')).toContainText('uv.xyx + vec3(0, 2, 4)');
