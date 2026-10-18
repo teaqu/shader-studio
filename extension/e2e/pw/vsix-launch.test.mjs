@@ -97,6 +97,13 @@ test('production VSIX launch uses isolated directories, the bridge, and no sourc
   assertProductionVsixLaunchArgs(args, paths.bridgeExtensionPath);
 });
 
+test('Linux test profiles use a credential backend that does not require a desktop keyring', () => {
+  assert.ok(productionVsixLaunchArgs({ ...paths, platform: 'linux' }).includes('--password-store=basic'));
+  for (const platform of ['win32', 'darwin']) {
+    assert.equal(productionVsixLaunchArgs({ ...paths, platform }).includes('--password-store=basic'), false);
+  }
+});
+
 test('production VSIX launch validation rejects a source development extension and disabled extensions', () => {
   const args = productionVsixLaunchArgs(paths);
   assert.throws(

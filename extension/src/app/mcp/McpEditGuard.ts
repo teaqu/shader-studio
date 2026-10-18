@@ -12,10 +12,14 @@ interface GuardedEdit {
 export class McpEditGuard {
   private edits = new Map<string, GuardedEdit>();
 
-  constructor(private readonly timeoutMs = 1000) {}
+  constructor(private readonly timeoutMs = 1000, private readonly platform = process.platform) {}
+
+  private key(editedPath: string): string {
+    return this.platform === 'win32' ? path.win32.normalize(editedPath).toLowerCase() : path.normalize(editedPath);
+  }
 
   arm(editedPath: string, text: string, previewPath: string): void {
-    const key = path.normalize(editedPath);
+    const key = this.key(editedPath);
     this.clear(editedPath);
     const timeout = setTimeout(() => this.clear(key), this.timeoutMs);
     this.edits.set(key, {
@@ -29,7 +33,7 @@ export class McpEditGuard {
    * metadata events, never arbitrary intervening text.
    */
   armSuppression(editedPath: string, expectedText: string, durationMs = 500): void {
-    const key = path.normalize(editedPath);
+    const key = this.key(editedPath);
     this.clear(key);
     const timeout = setTimeout(() => this.clear(key), durationMs);
     this.edits.set(key, {
@@ -38,7 +42,7 @@ export class McpEditGuard {
   }
 
   take(editedPath: string, text: string): string | undefined {
-    const key = path.normalize(editedPath);
+    const key = this.key(editedPath);
     const edit = this.edits.get(key);
     if (!edit) {
       return undefined;
@@ -55,7 +59,7 @@ export class McpEditGuard {
   }
 
   clear(editedPath: string): void {
-    const key = path.normalize(editedPath);
+    const key = this.key(editedPath);
     const edit = this.edits.get(key);
     if (edit) {
       clearTimeout(edit.timeout);

@@ -13,6 +13,9 @@ const state = vi.hoisted(() => ({
   mount: vi.fn(), update: vi.fn(), error: vi.fn(),
   secret: undefined as string | undefined,
   secretStore: vi.fn(),
+  secretGet: vi.fn(),
+  post: vi.fn(),
+  message: undefined as undefined | ((value: unknown) => Promise<void>),
   commands: new Map<string, () => unknown>(),
   secretChange: undefined as undefined | ((event: { key: string }) => void),
   textChange: undefined as undefined | ((event: { document: unknown }) => void),
@@ -22,7 +25,9 @@ vi.mock('vscode', () => ({
   ExtensionMode: { Development: 2 }, ConfigurationTarget: { Global: 1 }, ViewColumn: { Active: -1 },
   Uri: { joinPath: (base: { fsPath: string }, name: string) => ({ fsPath: `${base.fsPath}/${name}` }) },
   window: {
-    createWebviewPanel: () => ({ webview: { html: '', onDidReceiveMessage: () => ({ dispose() {} }) }, onDidDispose() {}, dispose() {} }),
+    createWebviewPanel: () => ({ webview: { html: '', postMessage: state.post, onDidReceiveMessage: (callback: typeof state.message) => {
+      state.message = callback; return { dispose() {} };
+    } }, onDidDispose() {}, dispose() {} }),
     registerWebviewViewProvider: vi.fn(() => ({ dispose() {} })), visibleTextEditors: [],
     onDidChangeActiveTextEditor: () => ({ dispose() {} }), onDidChangeTextEditorSelection: () => ({ dispose() {} }),
     showInformationMessage: vi.fn(async () => undefined), showWarningMessage: vi.fn(async () => undefined), showErrorMessage: vi.fn(),
@@ -88,7 +93,7 @@ function create() {
   vi.spyOn(prototype, 'startWebSocketTransport').mockImplementation(() => {});
   const output = { info: vi.fn(), error: state.error, debug: vi.fn(), trace: vi.fn() } as unknown as VSCode.LogOutputChannel;
   const studio = new ShaderStudio({ subscriptions: [], extensionPath: '/extension', extensionMode: 2, globalStorageUri: { fsPath: '/storage' },
-    secrets: { get: async () => state.secret, store: state.secretStore, onDidChange: (callback: typeof state.secretChange) => {
+    secrets: { get: state.secretGet, store: state.secretStore, onDidChange: (callback: typeof state.secretChange) => {
       state.secretChange = callback; return { dispose() {} };
     } },
   } as unknown as VSCode.ExtensionContext, output, {} as DiagnosticSink);
@@ -102,6 +107,7 @@ beforeEach(() => {
   vi.restoreAllMocks(); vi.clearAllMocks(); state.config = {}; state.trusted = true; state.endpoints = [];
   state.start.mockResolvedValue(51474);
   state.secret = undefined;
+  state.secretGet.mockImplementation(async () => state.secret);
   state.commands.clear(); state.secretChange = undefined; state.textChange = undefined; state.compileChange.mockReset(); state.compileChange.mockReturnValue(false);
   state.secretStore.mockImplementation(async (_key: string, value: string) => {
     state.secret = value;
@@ -112,6 +118,51 @@ beforeEach(() => {
 });
 
 describe('extension MCP lifecycle', () => {
+  it('publishes disabled, ready and connected endpoint status through setup', async () => {
+    const app = create(); await app.settled();
+    state.commands.get('shader-studio.connectAiAssistant')!();
+    await state.message!({ action: 'ready' });
+    await vi.waitFor(() => expect(state.post).toHaveBeenLastCalledWith(expect.objectContaining({ ready: false, enabled: false })));
+    state.config.mcpEnabled = true; change(); await app.settled();
+    await state.message!({ action: 'ready' });
+    await vi.waitFor(() => expect(state.post).toHaveBeenLastCalledWith(expect.objectContaining({ ready: true, status: 'Waiting for an assistant' })));
+    Object.assign(state.endpoints[0], { connectedAssistants: 2 });
+    await state.message!({ action: 'ready' });
+    await vi.waitFor(() => expect(state.post).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'Assistant connected', detail: '2 active assistant sessions.' })));
+    app.studio.dispose();
+  });
+
+  it.each(['disable', 'dispose'])('does not start an endpoint after %s while loading credentials', async (action) => {
+    state.config.mcpEnabled = true;
+    let resolveToken!: (value: string) => void;
+    state.secretGet.mockReturnValueOnce(new Promise<string>(resolve => {
+      resolveToken = resolve;
+    }));
+    const app = create();
+    await vi.waitFor(() => expect(state.secretGet).toHaveBeenCalled());
+    if (action === 'dispose') {
+      app.studio.dispose();
+    } else {
+      state.config.mcpEnabled = false; change();
+    }
+    resolveToken('existing-token'); await app.settled();
+    expect(state.endpoints).toHaveLength(0);
+    expect(state.setMcpEnabled).not.toHaveBeenCalledWith(true);
+    if (action !== 'dispose') {
+      app.studio.dispose();
+    }
+  });
+
+  it('reports non-Error startup failures and permits a later restart', async () => {
+    state.config.mcpEnabled = true; state.secret = 'existing-token';
+    state.start.mockRejectedValueOnce('port failure');
+    const app = create(); await app.settled();
+    expect(state.error).toHaveBeenCalledWith(expect.stringContaining('port failure'));
+    change(); await app.settled();
+    expect(state.mount).toHaveBeenLastCalledWith(expect.any(Function));
+    app.studio.dispose();
+  });
+
   it('uses MCP command and document callbacks without broadcasting guarded edits', async () => {
     const app = create(); await app.settled();
     await state.commands.get('shader-studio.connectAiAssistant')!();

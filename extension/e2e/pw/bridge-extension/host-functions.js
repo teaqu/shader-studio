@@ -56,15 +56,6 @@ module.exports = Object.freeze({
       await vscode.commands.executeCommand('shader-studio.view');
     },
   "07efdc3dd4b969338dde62ebee92a56390121a252472da3e69b18ffd2c30e141": async vscode => vscode.workspace.name ?? null,
-  "092e4698a70e5fb441b46e5b26c4c22bbd8498a3a99aacdc27185e88f76aca24": async vscode => {
-      const previousClipboard = await vscode.env.clipboard.readText();
-      try {
-        await vscode.commands.executeCommand('shader-studio.copyCodexMcpConfig');
-        return (await vscode.env.clipboard.readText()).match(/Bearer ([a-f0-9]{64})/)[1];
-      } finally {
-        await vscode.env.clipboard.writeText(previousClipboard);
-      }
-    },
   "0990a54ef7c09645491fe4f0da5c23bc1fb754da7d3dae1b18544c5294e355ad": async api => {
       await api.commands.executeCommand('workbench.actions.view.problems');
     },
@@ -739,6 +730,9 @@ module.exports = Object.freeze({
     editor.revealRange(new vscode.Range(position, position));
     await vscode.commands.executeCommand('editor.action.inspectTMScopes');
   },
+  "4877687f12ef4dbadf8e810b4fab881a4f464437a08e7360913e298b0588a545": async vscode => {
+      await vscode.commands.executeCommand('shader-studio.connectAiAssistant');
+    },
   "4a2a7506b143fd604560e77de90b3f6a0182db7880c0984ffee2be5c22436e3e": vscode => vscode.commands.executeCommand('workbench.action.closeActiveEditor'),
   "4a4dfe506e93de06313c09a4b7b2e868f98c596c6300a330888516a680fb2a48": async (vscode, targetPath) => {
         const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));

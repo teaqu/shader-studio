@@ -129,6 +129,7 @@ export const test = base.extend({
     } else {
       args = [
         '--no-sandbox',
+        ...(process.platform === 'linux' ? ['--password-store=basic'] : []),
         '--disable-updates',
         '--skip-welcome',
         '--skip-release-notes',

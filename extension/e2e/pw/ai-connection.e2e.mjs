@@ -2,29 +2,9 @@ import { test, expect } from './fixtures.mjs';
 import { createServer } from 'node:net';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { findConnectionScreen } from './ai-connection-screen.mjs';
 
 test.use({ vscodeKey: 'ai-connection' });
-
-async function findConnectionScreen(vscode) {
-  let screen;
-  await expect.poll(async () => {
-    for (const frame of vscode.window.frames()) {
-      try {
-        if (await frame.getByRole('heading', { name: 'AI connection', exact: true }).isVisible()) {
-          screen = frame;
-          return true;
-        }
-      } catch (error) {
-        // Closing a panel detaches its frame while VS Code is replacing it.
-        if (!frame.isDetached()) {
-          throw error;
-        }
-      }
-    }
-    return false;
-  }).toBe(true);
-  return screen;
-}
 
 test('enables AI access, copies generic setup, tracks a real assistant and disables access', async ({ vscode }, testInfo) => {
   const socket = createServer();

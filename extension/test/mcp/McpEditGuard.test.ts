@@ -2,6 +2,22 @@ import { describe, expect, it, vi } from 'vitest';
 import { McpEditGuard } from '../../src/app/mcp/McpEditGuard';
 
 describe('McpEditGuard', () => {
+  it('matches Windows document paths regardless of drive and filename casing', () => {
+    const guard = new McpEditGuard(1000, 'win32');
+    guard.armSuppression('C:\\Workspace\\New.glsl', 'new shader');
+    expect(guard.take('c:\\workspace\\new.glsl', '')).toBe('');
+    expect(guard.take('c:/workspace/new.glsl', 'new shader')).toBe('');
+    guard.clear('c:\\WORKSPACE\\new.glsl');
+    expect(guard.take('C:\\Workspace\\New.glsl', 'new shader')).toBeUndefined();
+  });
+
+  it('keeps POSIX paths case-sensitive', () => {
+    const guard = new McpEditGuard(1000, 'linux');
+    guard.arm('/workspace/A.glsl', 'text', '/workspace/main.glsl');
+    expect(guard.take('/workspace/a.glsl', 'text')).toBeUndefined();
+    expect(guard.take('/workspace/A.glsl', 'text')).toBe('/workspace/main.glsl');
+    guard.clear('/workspace/A.glsl');
+  });
   it('suppresses duplicate matching events for an update', () => {
     const guard = new McpEditGuard();
     guard.arm('/workspace/pass.glsl', 'new text', '/workspace/main.glsl');
