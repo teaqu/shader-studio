@@ -19,7 +19,6 @@ import { WebExtensionHost } from './WebExtensionHost';
 import { syncSettingsAcrossTabs } from './settings/syncSettingsAcrossTabs';
 import { StandaloneSettings } from './settings/StandaloneSettings';
 import { uploadWorkspaceFiles } from './workspaceUploads';
-import { migrateStandaloneRoot } from './standaloneRoot';
 import { createWorkspaceFile, createWorkspaceFolder, deleteWorkspacePath, deleteWorkspacePaths, moveWorkspacePaths, renameWorkspacePath, userWorkspaceFiles, type WorkspaceFileEntry } from './workspaceFiles';
 
 const EXPLORER_STATE_KEY = 'shader-studio-explorer-state';
@@ -98,10 +97,7 @@ export class WebTransport implements Transport {
   readonly settings = new StandaloneSettings();
   private readonly stopSettingsSync = syncSettingsAcrossTabs(this.settings);
   private readonly session = createWorkspace();
-  private readonly workspace = this.session.then(async ({ workspace }) => {
-    await migrateStandaloneRoot(workspace);
-    return workspace;
-  });
+  private readonly workspace = this.session.then(({ workspace }) => workspace);
   private readonly host = this.workspace.then((workspace) => new WebExtensionHost(workspace, {
     resolveDefaultAsset: resolveDefaultAssetUrl,
     settings: this.settings,

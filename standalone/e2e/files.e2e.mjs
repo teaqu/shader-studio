@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { PNG } from 'pngjs';
 import JSZip from 'jszip';
 import { readFile } from 'node:fs/promises';
-import { addShaderFiles, putWorkspaceFiles, readWorkspaceFiles, removeWorkspacePaths } from './workspace-store.mjs';
+import { addShaderFiles, putWorkspaceFiles, readWorkspaceFiles } from './workspace-store.mjs';
 import { dropDeviceFiles } from './file-drop.mjs';
 import { useSharedShaderEditor } from './explorer-preferences.mjs';
 
@@ -133,25 +133,6 @@ test('renames a shader with its config and deletes folders without resurrecting 
   await page.reload();
   await expect(page.getByText('No files yet. Drop files here or create a new file.')).toBeVisible();
   expect((await readWorkspaceFiles(page)).filter(file => !file.path.startsWith('/.shader-studio/'))).toEqual([]);
-});
-
-test('existing standalone shader folders migrate to root and keep shader references after reload', async ({ page }) => {
-  await page.goto('/');
-  await expect(page.getByTestId('web-files').getByTitle('/aurora.glsl', { exact: true })).toBeVisible();
-  await expect(page.getByTestId('web-files').getByRole('treeitem', { name: 'shaders', exact: true })).toHaveCount(0);
-  const at = Date.now();
-  await putWorkspaceFiles(page, [
-    { path: '/shaders/legacy.glsl', contents: 'void mainImage(out vec4 c, vec2 p) { c = texture(iChannel0, p / iResolution.xy); }', createdAt: at, modifiedAt: at },
-    { path: '/shaders/legacy.sha.json', contents: '{"passes":{"Image":{"inputs":{"iChannel0":{"type":"texture","path":"@/shaders/pixel.png"}}}}}', createdAt: at, modifiedAt: at },
-    { path: '/shaders/pixel.png', contents: 'data:image/png;base64,AA==', createdAt: at, modifiedAt: at },
-  ]);
-  await removeWorkspacePaths(page, ['/.shader-studio/root-layout-v1']);
-  await page.reload();
-  await expect(page.getByTestId('web-files').getByTitle('/legacy.glsl', { exact: true })).toBeVisible();
-  expect((await readWorkspaceFiles(page)).some(file => file.path.startsWith('/shaders/'))).toBe(false);
-  expect((await readWorkspaceFiles(page)).find(file => file.path === '/legacy.sha.json').contents).toContain('@/pixel.png');
-  await page.reload();
-  await expect(page.getByTestId('web-files').getByTitle('/legacy.glsl', { exact: true })).toBeVisible();
 });
 
 test('file tree creates, opens, renames, downloads and deletes files with reload persistence', async ({ page }) => {
