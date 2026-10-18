@@ -181,6 +181,7 @@ export class WebGPUCapture {
       frame: u.frame,
       res: pass ? [pass.width, pass.height, 1] : u.res as number[],
       mouse: u.mouse as number[],
+      pointer: u.pointer,
       date: u.date as number[],
       cameraPos: u.cameraPos as number[],
       cameraDir: u.cameraDir as number[],

@@ -620,6 +620,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
         frameRate: uniforms.frameRate,
         frame: uniforms.frame,
         mouse: uniforms.mouse,
+        pointer: uniforms.pointer,
         channelTime: uniforms.channelTime ?? new Array<number>(channelCount).fill(0),
         channelLoaded: uniforms.channelLoaded ?? new Array<number>(channelCount).fill(0),
         sampleRate: uniforms.sampleRate ?? 44100,

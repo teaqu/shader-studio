@@ -6,6 +6,9 @@
   import type { CompileMode } from "../../stores/compileModeStore";
   import ProfileModal from "../ProfileModal.svelte";
   import { MenuOverlay } from "./MenuOverlay.svelte";
+  import { getVrPreviewState, isVrPanelVisible, toggleVrPanel } from '../../state/vrPreviewState.svelte';
+  const vr = $derived(getVrPreviewState());
+  const vrVisible = $derived(isVrPanelVisible());
 
   interface Props {
     optionsMenu: MenuOverlay;
@@ -17,6 +20,7 @@
     showRecordInOptions: boolean;
     showConfigInOptions: boolean;
     showDebugInOptions: boolean;
+    showVrInOptions?: boolean;
     isLocked: boolean;
     lockDescription: string;
     isRecordingPanelVisible: boolean;
@@ -55,6 +59,7 @@
   let {
     optionsMenu, layoutMenu, editorMenu, hasShader, previewVisible,
     showLockInOptions, showRecordInOptions, showConfigInOptions, showDebugInOptions,
+    showVrInOptions = false,
     isLocked, lockDescription, isRecordingPanelVisible, isConfigPanelVisible, isDebugEnabled,
     isDebugSupported, isEditorOverlayVisible, isVimModeEnabled, showThemeButton,
     theme, showFullscreenButton, compileMode, compileModeIcons, compileModeLabels,
@@ -145,6 +150,12 @@
         <i class="codicon codicon-device-camera"></i>
         <span>Export</span>
       </button>
+    {/if}
+    {#if showVrInOptions && vr.available}
+      <button class="options-menu-item" class:active={vrVisible} aria-label="VR" onclick={() => {
+        toggleVrPanel();
+        optionsMenu.open = false;
+      }}>VR</button>
     {/if}
     {#if showConfigInOptions}
       <button

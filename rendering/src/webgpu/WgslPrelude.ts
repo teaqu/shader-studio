@@ -1,3 +1,4 @@
+import { WGSL_POINTER_DECLARATION } from "@shader-studio/types";
 import { isolateShaderEntryPoints } from "@shader-studio/types";
 import { getShaderSourceFunctions, wgslStorageElementType } from "@shader-studio/types";
 import { buildSlangBindingPlan } from "./SlangBindingPlan";
@@ -152,6 +153,7 @@ function buildUniformPrelude(channelCount: number, customUniforms: SlangCustomUn
       : [])
     .join("\n");
   return `// ---- shader-studio WGSL prelude (generated) ----
+${WGSL_POINTER_DECLARATION}
 struct _ss_ShaderToyUniforms {
   resolution: vec4<f32>,
   mouse: vec4<f32>,
@@ -170,6 +172,7 @@ struct _ss_ShaderToyUniforms {
   viewMatrix: mat4x4<f32>,
   projectionMatrix: mat4x4<f32>,
   viewProjection: mat4x4<f32>,
+  pointer: ShaderStudioPointer,
 ${customFields}
 }
 
@@ -193,6 +196,7 @@ function buildGlobalsPrelude(customUniforms: SlangCustomUniformInfo[] = [], opti
   const declarations = [
     "var<private> iResolution: vec3<f32>;",
     "var<private> iMouse: vec4<f32>;",
+    "var<private> iPointer: ShaderStudioPointer;",
     "var<private> iTime: f32;",
     "var<private> iTimeDelta: f32;",
     "var<private> iFrameRate: f32;",
@@ -224,6 +228,7 @@ function buildGlobalsPrelude(customUniforms: SlangCustomUniformInfo[] = [], opti
   const initialisers = [
     "  iResolution = _ss_u.resolution.xyz;",
     "  iMouse = _ss_u.mouse;",
+    "  iPointer = _ss_u.pointer;",
     "  iTime = _ss_u.time;",
     "  iTimeDelta = _ss_u.timeDelta;",
     "  iFrameRate = _ss_u.frameRate;",

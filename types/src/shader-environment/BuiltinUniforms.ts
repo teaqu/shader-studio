@@ -1,5 +1,22 @@
 import type { ShaderLanguageId } from "./ShaderLanguages";
 
+/** A snapshot of the canvas pointer, shared by every pass in one frame. */
+export interface PointerState {
+  position: [number, number];
+  inside: number;
+  held: number;
+  pressed: number;
+  released: number;
+  modifiers: number;
+  wheel: [number, number];
+  wheelDelta: [number, number];
+}
+
+// Explicit padding keeps Slang's constant-buffer and WGSL's uniform layouts identical.
+export const GLSL_POINTER_DECLARATION = "struct ShaderStudioPointer { vec2 position; int inside; int held; int pressed; int released; int modifiers; int _padding; vec2 wheel; vec2 wheelDelta; };";
+export const SLANG_POINTER_DECLARATION = "struct ShaderStudioPointer { float2 position; int inside; int held; int pressed; int released; int modifiers; int _padding; float2 wheel; float2 wheelDelta; };";
+export const WGSL_POINTER_DECLARATION = "struct ShaderStudioPointer { position: vec2f, inside: i32, held: i32, pressed: i32, released: i32, modifiers: i32, _padding: i32, wheel: vec2f, wheelDelta: vec2f, }";
+
 export type ShaderStudioBuiltinStage = "fragment" | "vertex" | "compute" | "geometry" | "tess-control" | "tess-evaluation";
 
 export interface ShaderStudioBuiltinUniform {
@@ -61,12 +78,22 @@ export const GLSL_STABLE_DECLARATION_LINES = Object.freeze([
   "uniform float iTimeDelta;",
   "uniform float iFrameRate;",
   "uniform vec4 iMouse;",
+  GLSL_POINTER_DECLARATION,
+  "uniform ShaderStudioPointer iPointer;",
   "uniform int iFrame;",
   "uniform vec4 iDate;",
   "uniform float iChannelTime[1024];",
   "uniform float iSampleRate;",
   "uniform vec3 iCameraPos;",
   "uniform vec3 iCameraDir;",
+  "uniform bool iVRActive;",
+  "uniform vec4 iVRControllerPosition[2];",
+  "uniform vec4 iVRControllerDirection[2];",
+  "uniform vec4 iVRControllerButtons[2];",
+  "uniform vec4 iVRControllerAxes[2];",
+  "uniform vec4 iVRControllerFaceButtons[2];",
+  "uniform vec4 iVRControllerTouches[2];",
+  "uniform vec4 iVRControllerFaceTouches[2];",
   "uniform int iVertexCount;",
   "uniform int iInstanceCount;",
   "uniform mat4 iViewMatrix;",
@@ -76,9 +103,11 @@ export const GLSL_STABLE_DECLARATION_LINES = Object.freeze([
 
 export const GLSL_STABLE_NAMES: ReadonlySet<string> = new Set([
   "fragColor", "HW_PERFORMANCE", "iResolution", "iTime", "iTimeDelta",
-  "iFrameRate", "iMouse", "iFrame", "iDate", "iChannelTime",
+  "iFrameRate", "iMouse", "iPointer", "ShaderStudioPointer", "iFrame", "iDate", "iChannelTime",
   "iSampleRate", "iCameraPos", "iCameraDir", "iVertexCount", "iInstanceCount",
   "iViewMatrix", "iProjectionMatrix", "iViewProjection",
+  "iVRActive", "iVRControllerPosition", "iVRControllerDirection", "iVRControllerButtons", "iVRControllerAxes",
+  "iVRControllerFaceButtons", "iVRControllerTouches", "iVRControllerFaceTouches",
 ]);
 
 /** Renderer-compatible baseline channel declarations for editor analysis. */
@@ -193,6 +222,7 @@ export const SHADER_STUDIO_BUILTIN_UNIFORMS: readonly Readonly<ShaderStudioBuilt
   { name: "iTimeDelta", glslType: "float", slangType: "float", wgslType: "f32", slangDeclaration: "float iTimeDelta;", languages: ["glsl", "slang", "wgsl"], description: "Time since the previous frame in seconds." },
   { name: "iFrameRate", glslType: "float", slangType: "float", wgslType: "f32", slangDeclaration: "float iFrameRate;", languages: ["glsl", "slang", "wgsl"], description: "Current frames per second." },
   { name: "iMouse", glslType: "vec4", slangType: "float4", wgslType: "vec4f", slangDeclaration: "float4 iMouse;", languages: ["glsl", "slang", "wgsl"], description: "Mouse position in xy and click position in zw." },
+  { name: "iPointer", glslType: "ShaderStudioPointer", slangType: "ShaderStudioPointer", wgslType: "ShaderStudioPointer", slangDeclaration: `${SLANG_POINTER_DECLARATION}\nShaderStudioPointer iPointer;`, languages: ["glsl", "slang", "wgsl"], description: "Canvas pointer position, inside state, held/pressed/released button masks, modifiers, accumulated wheel and per-frame wheelDelta." },
   { name: "iFrame", glslType: "int", slangType: "int", wgslType: "i32", slangDeclaration: "int iFrame;", languages: ["glsl", "slang", "wgsl"], description: "Frame counter starting at zero." },
   { name: "iDate", glslType: "vec4", slangType: "float4", wgslType: "vec4f", slangDeclaration: "float4 iDate;", languages: ["glsl", "slang", "wgsl"], description: "Year, month, day, and seconds since midnight." },
   { name: "iChannelTime", glslType: "float[1024]", slangType: "float[1024]", languages: ["glsl"], description: "Playback time for each configured input channel." },
@@ -200,6 +230,14 @@ export const SHADER_STUDIO_BUILTIN_UNIFORMS: readonly Readonly<ShaderStudioBuilt
   { name: "iSampleRate", glslType: "float", slangType: "float", wgslType: "f32", slangDeclaration: "float iSampleRate;", languages: ["glsl", "slang", "wgsl"], description: "Audio sample rate in hertz." },
   { name: "iCameraPos", glslType: "vec3", slangType: "float3", wgslType: "vec3f", slangDeclaration: "float3 iCameraPos;", languages: ["glsl", "slang", "wgsl"], description: "Camera position in world space." },
   { name: "iCameraDir", glslType: "vec3", slangType: "float3", wgslType: "vec3f", slangDeclaration: "float3 iCameraDir;", languages: ["glsl", "slang", "wgsl"], description: "Normalised camera look direction." },
+  { name: "iVRActive", glslType: "bool", slangType: "bool", languages: ["glsl"], description: "True during an immersive WebXR session. Shader Studio extension: opt in with #define SHADER_STUDIO_VR_INPUTS." },
+  { name: "iVRControllerPosition", glslType: "vec4[2]", slangType: "float4[2]", languages: ["glsl"], description: "With SHADER_STUDIO_VR_INPUTS enabled: tracked aim-ray origin in shader-world metres; w is 1 when tracked, otherwise 0. Slots are left (0) and right (1)." },
+  { name: "iVRControllerDirection", glslType: "vec4[2]", slangType: "float4[2]", languages: ["glsl"], description: "With SHADER_STUDIO_VR_INPUTS enabled: tracked aim-ray direction; w is 1 when tracked, otherwise 0." },
+  { name: "iVRControllerButtons", glslType: "vec4[2]", slangType: "float4[2]", languages: ["glsl"], description: "With SHADER_STUDIO_VR_INPUTS enabled: xr-standard trigger (x), grip (y), touchpad click (z), thumbstick click (w), from 0 to 1. Left/right slots 0/1." },
+  { name: "iVRControllerAxes", glslType: "vec4[2]", slangType: "float4[2]", languages: ["glsl"], description: "With SHADER_STUDIO_VR_INPUTS enabled: touchpad xy and thumbstick zw, from -1 to 1. Left/right slots 0/1." },
+  { name: "iVRControllerFaceButtons", glslType: "vec4[2]", slangType: "float4[2]", languages: ["glsl"], description: "With SHADER_STUDIO_VR_INPUTS enabled: primary/secondary buttons in xy (Quest X/Y left, A/B right), from 0 to 1. zw are zero." },
+  { name: "iVRControllerTouches", glslType: "vec4[2]", slangType: "float4[2]", languages: ["glsl"], description: "With SHADER_STUDIO_VR_INPUTS enabled: touch states for trigger, grip, touchpad and thumbstick in xyzw; 0 or 1." },
+  { name: "iVRControllerFaceTouches", glslType: "vec4[2]", slangType: "float4[2]", languages: ["glsl"], description: "With SHADER_STUDIO_VR_INPUTS enabled: primary/secondary face-button touch states in xy; zw are zero." },
   { name: "iVertexCount", glslType: "int", slangType: "uint", wgslType: "u32", slangDeclaration: "uint32_t iVertexCount;", languages: ["glsl", "slang", "wgsl"], stages: ["fragment", "vertex"], description: "Vertices drawn by this pass: the configured vertexCount for vertices geometry (default 3), 3 for fullscreen, or the mesh vertex count for plane, cube, sphere, and model geometry. vertexIndex ranges from 0 to iVertexCount - 1." },
   { name: "iInstanceCount", glslType: "int", slangType: "uint", wgslType: "u32", slangDeclaration: "uint32_t iInstanceCount;", languages: ["glsl", "slang", "wgsl"], stages: ["fragment", "vertex"], description: "Instances drawn by this pass: the configured instanceCount (default 1), or 1 for fullscreen geometry. iInstanceIndex ranges from 0 to iInstanceCount - 1." },
   { name: "iViewMatrix", glslType: "mat4", slangType: "float4x4", wgslType: "mat4x4f", slangDeclaration: "float4x4 iViewMatrix;", languages: ["glsl", "slang", "wgsl"], stages: ["fragment", "vertex"], description: "The orbit camera's view matrix: world space to view space, the camera looking down -z. The model matrix is the identity, so world space is the space mainVertex writes for meshes and world-space vertices." },
@@ -264,6 +302,7 @@ export const SLANG_RUNTIME_INTERNAL_NAMES = Object.freeze([
 export const SLANG_RUNTIME_UNIFORM_ALIAS_LINES = Object.freeze([
   `#define iResolution (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.resolution.xyz)`,
   `#define iMouse (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.mouse)`,
+  `#define iPointer (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.pointer)`,
   `#define iTime (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.time)`,
   `#define iTimeDelta (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.timeDelta)`,
   `#define iFrameRate (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.frameRate)`,

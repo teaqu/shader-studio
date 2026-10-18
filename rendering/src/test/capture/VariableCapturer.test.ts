@@ -101,6 +101,7 @@ const createMockGl = () => {
     uniformMatrix4fv: vi.fn(),
     uniform2f: vi.fn(),
     uniform3fv: vi.fn(),
+    uniform2fv: vi.fn(),
     uniform4fv: vi.fn(),
     getAttribLocation: vi.fn(() => 0),
     enableVertexAttribArray: vi.fn(),

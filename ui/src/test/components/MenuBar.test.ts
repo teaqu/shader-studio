@@ -4,6 +4,7 @@ import { tick } from 'svelte';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import MenuBar from '../../lib/components/MenuBar.svelte';
 import { resolutionStore } from '../../lib/stores/resolutionStore';
+import { updateVrPreviewContext, isVrPanelVisible, setVrPanelVisible } from '../../lib/state/vrPreviewState.svelte';
 
 // Mock TransportFactory
 vi.mock('../../lib/transport/TransportFactory', () => ({
@@ -115,6 +116,47 @@ describe('MenuBar', () => {
       context: new Map([['resolution', mockResCtrl]]),
     });
   }
+
+  it('offers VR in the narrow overflow menu and toggles the pane while dismissing the menu', async () => {
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(private readonly callback: ResizeObserverCallback) {}
+      observe() {
+        this.callback([{ contentRect: { width: 240 } } as ResizeObserverEntry], this as unknown as ResizeObserver);
+      }
+      unobserve() {}
+      disconnect() {}
+    });
+    updateVrPreviewContext({
+      isVrPreviewAvailable: () => true,
+      isImmersiveVrSupported: async () => false,
+      setVrPreviewEnabled: vi.fn(), render: vi.fn(),
+      enterVr: vi.fn(), exitVr: vi.fn().mockResolvedValue(undefined),
+      setVrNavigationSettings: vi.fn(),
+    }, '/vr.glsl');
+    setVrPanelVisible(false);
+    try {
+      renderMenuBar();
+      await tick();
+      await fireEvent.click(screen.getByLabelText('Open options menu'));
+      const button = screen.getByRole('button', { name: 'VR' });
+      expect(button.classList.contains('active')).toBe(false);
+      await fireEvent.click(button);
+      expect(isVrPanelVisible()).toBe(true);
+      expect(screen.queryByRole('button', { name: 'VR' })).toBeNull();
+      await fireEvent.click(screen.getByLabelText('Open options menu'));
+      expect(screen.getByRole('button', { name: 'VR' }).classList.contains('active')).toBe(true);
+      await fireEvent.click(screen.getByRole('button', { name: 'VR' }));
+      expect(isVrPanelVisible()).toBe(false);
+      updateVrPreviewContext(null, '');
+      await tick();
+      await fireEvent.click(screen.getByLabelText('Open options menu'));
+      expect(screen.queryByRole('button', { name: 'VR' })).toBeNull();
+    } finally {
+      updateVrPreviewContext(null, '');
+      setVrPanelVisible(false);
+      vi.unstubAllGlobals();
+    }
+  });
 
   beforeEach(() => {
     resetHost();

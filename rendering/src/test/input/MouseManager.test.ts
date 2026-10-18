@@ -103,7 +103,7 @@ describe("MouseManager", () => {
       canvas.dispatchEvent(new PointerEvent("pointerdown", { clientX: 20, clientY: 30, pointerId: 1 }));
 
       expect(Array.from(mouseManager.getMouse())).toEqual([0, 0, 0, 0]);
-      expect(removeSpy).toHaveBeenCalledTimes(5);
+      expect(removeSpy).toHaveBeenCalledTimes(10);
     });
   });
 
@@ -201,7 +201,7 @@ describe("MouseManager", () => {
 
       // Move pointer
       canvas.dispatchEvent(
-        new PointerEvent("pointermove", { clientX: 200, clientY: 150, pointerId: 1 }),
+        new PointerEvent("pointermove", { clientX: 200, clientY: 150, pointerId: 1, buttons: 1 }),
       );
 
       const mouse = mouseManager.getMouse();
@@ -229,7 +229,7 @@ describe("MouseManager", () => {
       );
 
       canvas.dispatchEvent(
-        new PointerEvent("pointermove", { clientX: 400, clientY: 300, pointerId: 1 }),
+        new PointerEvent("pointermove", { clientX: 400, clientY: 300, pointerId: 1, buttons: 1 }),
       );
 
       const mouse = mouseManager.getMouse();
@@ -265,7 +265,7 @@ describe("MouseManager", () => {
         new PointerEvent("pointerdown", { clientX: 100, clientY: 100, pointerId: 1 }),
       );
       canvas.dispatchEvent(
-        new PointerEvent("pointermove", { clientX: 200, clientY: 200, pointerId: 1 }),
+        new PointerEvent("pointermove", { clientX: 200, clientY: 200, pointerId: 1, buttons: 1 }),
       );
       canvas.dispatchEvent(new PointerEvent("pointerup", { pointerId: 1 }));
 
@@ -514,5 +514,81 @@ describe("MouseManager", () => {
 
       expect(mouseManager.getMouse()[0]).toBe(100);
     });
+  });
+});
+
+describe('iPointer', () => {
+  it('keeps reporting input while the global setting allows browser mouse defaults', () => {
+    const manager = new MouseManager();
+    const canvas = createMockCanvas();
+    canvas.dataset.preventMouseDefaults = 'false';
+    manager.setupEventListeners(canvas);
+    try {
+      const wheel = new WheelEvent('wheel', { deltaY: 8, cancelable: true });
+      canvas.dispatchEvent(wheel);
+      expect(wheel.defaultPrevented).toBe(false);
+      expect(manager.getPointer().wheel).toEqual([0, 8]);
+      for (const button of [1, 3, 4]) {
+        for (const type of ['mousedown', 'auxclick']) {
+          const event = new MouseEvent(type, { button, cancelable: true });
+          canvas.dispatchEvent(event);
+          expect(event.defaultPrevented).toBe(false);
+        }
+      }
+    } finally {
+      manager.dispose();
+    }
+  });
+  function setup() {
+    const manager = new MouseManager(); const canvas = createMockCanvas(); manager.setupEventListeners(canvas);
+    const pointer = (type: string, buttons: number, extra: PointerEventInit = {}) => canvas.dispatchEvent(new PointerEvent(type, { clientX: 100, clientY: 100, pointerId: 1, buttons, ...extra }));
+    return { manager, canvas, pointer };
+  }
+  it('tracks hover and inside independently of iMouse, and returns immutable snapshots', () => {
+    const { manager, canvas, pointer } = setup(); pointer('pointerenter', 0);
+    const snapshot = manager.getPointer(); expect(snapshot.position).toEqual([100, 500]); expect(snapshot.inside).toBe(1);
+    pointer('pointermove', 0, { clientX: 200 });
+    expect(manager.getMouse()).toEqual(new Float32Array(4)); expect(snapshot.position).toEqual([100, 500]);
+    canvas.dispatchEvent(new Event('pointerleave')); expect(manager.getPointer().inside).toBe(0); manager.dispose();
+  });
+  it('tracks chorded buttons from pointermove and accumulates both edges between frames', () => {
+    const { manager, pointer } = setup(); pointer('pointerdown', 1); pointer('pointermove', 3, { ctrlKey: true, shiftKey: true });
+    expect(manager.getPointer()).toMatchObject({ held: 3, pressed: 3, modifiers: 3 });
+    pointer('pointermove', 1); expect(manager.getPointer()).toMatchObject({ held: 1, released: 2 });
+    expect(manager.getMouse()[2]).toBeGreaterThan(0);
+    pointer('pointerup', 0); expect(manager.getPointer()).toMatchObject({ held: 0, pressed: 3, released: 3 });
+    manager.endFrame(); expect(manager.getPointer()).toMatchObject({ pressed: 0, released: 0 }); manager.dispose();
+  });
+  it('reports secondary, middle and side buttons and all modifiers', () => {
+    const { manager, pointer } = setup(); pointer('pointerdown', 30, { altKey: true, metaKey: true });
+    expect(manager.getPointer()).toMatchObject({ held: 30, pressed: 30, modifiers: 12 }); manager.dispose();
+  });
+  it('normalizes and accumulates wheel values and clears only frame deltas', () => {
+    const { manager, canvas } = setup();
+    const wheel = (deltaMode: number) => {
+      const e = new WheelEvent('wheel', { deltaX: 1, deltaY: -2, deltaMode, cancelable: true, clientX: 50, clientY: 50, ctrlKey: true }); canvas.dispatchEvent(e); expect(e.defaultPrevented).toBe(true);
+    };
+    wheel(0); wheel(1); wheel(2);
+    const snapshot = manager.getPointer(); expect(snapshot.wheel).toEqual([817, -1234]); expect(snapshot.wheelDelta).toEqual(snapshot.wheel); expect(snapshot.modifiers).toBe(2);
+    manager.endFrame(); expect(manager.getPointer().wheelDelta).toEqual([0, 0]); expect(manager.getPointer().wheel).toEqual(snapshot.wheel); expect(snapshot.wheelDelta).toEqual([817, -1234]); manager.dispose();
+  });
+  it.each(['pointercancel', 'lostpointercapture', 'blur'])('clears held input on %s', type => {
+    const { manager, canvas, pointer } = setup(); pointer('pointerdown', 2);
+    (type === 'blur' ? window : canvas).dispatchEvent(new Event(type));
+    expect(manager.getPointer()).toMatchObject({ held: 0, released: 2, inside: 0, modifiers: 0 }); manager.dispose();
+  });
+  it('keeps inside after normal pointerup loses capture', () => {
+    const { manager, canvas, pointer } = setup(); pointer('pointerdown', 2); pointer('pointerup', 0); canvas.dispatchEvent(new Event('lostpointercapture'));
+    expect(manager.getPointer().inside).toBe(1); manager.dispose();
+  });
+  it('prevents auxiliary defaults and ignores events after disable or disposal', () => {
+    const { manager, canvas, pointer } = setup();
+    for (const type of ['mousedown', 'auxclick']) {
+      const e = new MouseEvent(type, { button: 1, cancelable: true }); canvas.dispatchEvent(e); expect(e.defaultPrevented).toBe(true);
+    }
+    const left = new MouseEvent('mousedown', { button: 0, cancelable: true }); canvas.dispatchEvent(left); expect(left.defaultPrevented).toBe(false);
+    pointer('pointerdown', 1); manager.setEnabled(false); const snapshot = manager.getPointer(); pointer('pointerenter', 1); pointer('pointermove', 1);
+    const wheel = new WheelEvent('wheel', { deltaY: 2, cancelable: true }); canvas.dispatchEvent(wheel); expect(wheel.defaultPrevented).toBe(false); expect(manager.getPointer()).toEqual(snapshot);
+    manager.dispose(); manager.setEnabled(true); pointer('pointerdown', 2); expect(manager.getPointer().held).toBe(0);
   });
 });

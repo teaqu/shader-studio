@@ -1,7 +1,7 @@
 export const STANDALONE_LAYOUT_STORAGE_KEY = 'shader-studio.standalone-layout.v1';
 
 export type StandalonePanelId = 'explorer' | 'editor' | 'preview';
-export type MobileDockviewPanelId = StandalonePanelId | 'debug' | 'config' | 'performance' | 'recording';
+export type MobileDockviewPanelId = StandalonePanelId | 'debug' | 'config' | 'performance' | 'recording' | 'vr';
 
 interface Disposable {
   dispose(): void;
@@ -145,7 +145,7 @@ function isRestorableLayout(value: unknown): boolean {
         && panel.params.path.length > 0 && id === `editor:${panel.params.path}`;
     }
     const known = Object.prototype.hasOwnProperty.call(panelDefinitions, id)
-      || ['debug', 'config', 'performance', 'recording'].includes(id);
+      || ['debug', 'config', 'performance', 'recording', 'vr'].includes(id);
     if (!known || !panel || typeof panel !== 'object') {
       return false;
     }
@@ -379,7 +379,7 @@ export class StandaloneLayoutController {
       );
     }
     const selectedTool = panelId === 'debug' || panelId === 'config'
-      || panelId === 'performance' || panelId === 'recording';
+      || panelId === 'performance' || panelId === 'recording' || panelId === 'vr';
     if (selectedTool || !this.desktopVisibility.has(selected.api.group)) {
       // Opening a tool from the phone shell is a deliberate workspace change,
       // even when a restored copy of that group was hidden on desktop.

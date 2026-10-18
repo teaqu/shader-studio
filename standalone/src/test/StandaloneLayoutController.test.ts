@@ -259,7 +259,7 @@ describe('StandaloneLayoutController', () => {
 
   it('restores tools docked alongside shell panels', () => {
     const saved = { panels: Object.fromEntries(
-      ['preview', 'editor', 'explorer', 'debug', 'config', 'performance', 'recording']
+      ['preview', 'editor', 'explorer', 'debug', 'config', 'performance', 'recording', 'vr']
         .map((id) => [id, { contentComponent: id }]),
     ) };
     storage = createStorage({ [STANDALONE_LAYOUT_STORAGE_KEY]: JSON.stringify(saved) });

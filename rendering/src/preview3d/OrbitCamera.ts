@@ -1,3 +1,4 @@
+import { preventCanvasMouseDefault } from "../input/CanvasInputDefaults";
 import { createPerspectiveMatrix, createViewMatrix, multiplyMatrices, normalizeVector, type ClipSpaceDepth, type Mat4 } from './math';
 import type { Vec3 } from './types';
 
@@ -106,7 +107,7 @@ export class OrbitCamera {
     if (!this.inputEnabled || (event.button !== 0 && event.button !== 1)) {
       return;
     }
-    this.dragMode = event.button === 1 || event.shiftKey ? 'pan' : 'orbit'; this.lastPointer = [event.clientX, event.clientY]; this.attachedCanvas?.setPointerCapture?.(event.pointerId); event.preventDefault();
+    this.dragMode = event.button === 1 || event.shiftKey ? 'pan' : 'orbit'; this.lastPointer = [event.clientX, event.clientY]; this.attachedCanvas?.setPointerCapture?.(event.pointerId); preventCanvasMouseDefault(this.attachedCanvas, event);
   };
   private readonly onPointerMove = (event: PointerEvent): void => {
     if (!this.inputEnabled || !this.dragMode) {
@@ -118,7 +119,7 @@ export class OrbitCamera {
     } else {
       this.pan(deltaX, deltaY);
     }
-    event.preventDefault();
+    preventCanvasMouseDefault(this.attachedCanvas, event);
   };
   private readonly onPointerUp = (event: PointerEvent): void => {
     this.dragMode = null; this.attachedCanvas?.releasePointerCapture?.(event.pointerId); 
@@ -126,7 +127,9 @@ export class OrbitCamera {
   private readonly onWheel = (event: WheelEvent): void => {
     if (!this.inputEnabled) {
       return;
-    } this.dolly(event.deltaY); event.preventDefault(); 
+    }
+    this.dolly(event.deltaY);
+    preventCanvasMouseDefault(this.attachedCanvas, event);
   };
 }
 

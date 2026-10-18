@@ -1,5 +1,6 @@
 import { buildSlangChannels } from './SlangChannels';
 import {
+  SLANG_POINTER_DECLARATION,
   SHADER_STUDIO_BUILTIN_UNIFORMS,
   SHADER_STUDIO_FRAGMENT_CONTEXT,
   SLANG_RUNTIME_UNIFORM_ALIAS_LINES,
@@ -150,6 +151,7 @@ export function buildSlangRuntimePrelude(
   ].map(({ symbol, contextName }) => `static ${symbol.slangType} ${contextName};`).join("\n");
 
   return `// ---- shader-studio Slang prelude (generated) ----
+${SLANG_POINTER_DECLARATION}
 struct ShaderToyUniforms
 {
     float4 resolution;
@@ -169,6 +171,7 @@ struct ShaderToyUniforms
     column_major float4x4 viewMatrix;
     column_major float4x4 projectionMatrix;
     column_major float4x4 viewProjection;
+    ShaderStudioPointer pointer;
 ${fields}
 };
 

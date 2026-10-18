@@ -11,12 +11,12 @@ const SHADERS = {
   wgsl: 'fn mainImage(p: vec2f) -> vec4f { return vec4f(step(0.5, iMouse.x), step(0.5, iMouse.z), step(0.5, iMouse.w), 1.0); }',
 };
 
-async function openShader(page, language) {
+async function openShader(page, language, source = SHADERS[language]) {
   // Seed before boot: background workspace saves must not overwrite fixtures.
   await page.route('**/__mouse_fixture__', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html></html>' }));
   await page.goto('/__mouse_fixture__');
   await workspace(page, [
-    [`mouse.${language}`, SHADERS[language]],
+    [`mouse.${language}`, source],
     ['mouse.sha.json', JSON.stringify({ version: '1.0', passes: { Image: { inputs: {} } } })],
   ]);
   await page.goto('/');
@@ -61,5 +61,47 @@ for (const language of ['glsl', 'wgsl']) {
     await page.mouse.move(box.x + 1, box.y + 1);
     await expect.poll(() => centrePixel(canvas)).toEqual([255, 0, 0]);
     await expect(page.getByTestId(`shader-option-mouse-${language}`).locator('.shader-error')).toHaveCount(0);
+  });
+}
+
+for (const language of ['glsl', 'wgsl']) {
+  test(`${language} pointer receives right-click and wheel and the global mouse setting persists`, async ({ page }) => {
+    const source = language === 'glsl'
+      ? 'void mainImage(out vec4 c, in vec2 p) { c = vec4(iPointer.inside == 1 ? 1.0 : 0.0, (iPointer.held & 2) != 0 ? 1.0 : 0.0, iPointer.wheel.y > 0.0 ? 1.0 : 0.0, 1.0); }'
+      : 'fn mainImage(p: vec2f) -> vec4f { return vec4f(select(0.0, 1.0, iPointer.inside == 1), select(0.0, 1.0, (iPointer.held & 2) != 0), select(0.0, 1.0, iPointer.wheel.y > 0.0), 1.0); }';
+    const canvas = await openShader(page, language, source);
+    await expect(canvas).toBeVisible();
+    await page.evaluate(() => document.addEventListener('contextmenu', event => {
+      window.__canvasMenuPrevented = event.defaultPrevented;
+    }));
+    await page.evaluate(() => document.addEventListener('wheel', event => {
+      window.__canvasWheelPrevented = event.defaultPrevented;
+    }));
+    const box = await canvas.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await expect.poll(() => centrePixel(canvas)).toEqual([255, 0, 0]);
+    await page.mouse.down({ button: 'right' });
+    await expect.poll(() => centrePixel(canvas)).toEqual([255, 255, 0]);
+    await page.mouse.up({ button: 'right' });
+    await expect.poll(() => page.evaluate(() => window.__canvasMenuPrevented)).toBe(true);
+    await page.mouse.wheel(0, 80);
+    await expect.poll(() => page.evaluate(() => window.__canvasWheelPrevented)).toBe(true);
+    await expect.poll(() => centrePixel(canvas)).toEqual([255, 0, 255]);
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
+    await dialog.getByRole('checkbox', { name: 'Prevent default mouse actions' }).uncheck();
+    await page.keyboard.press('Escape');
+    await canvas.click({ button: 'right' });
+    await expect.poll(() => page.evaluate(() => window.__canvasMenuPrevented)).toBe(false);
+    await page.evaluate(() => {
+      window.__canvasWheelPrevented = undefined;
+    });
+    await page.mouse.wheel(0, -80);
+    await expect.poll(() => page.evaluate(() => window.__canvasWheelPrevented)).toBe(false);
+    await expect.poll(() => centrePixel(canvas)).toEqual([255, 0, 0]);
+    await page.reload();
+    await expect(canvas).toHaveAttribute('data-prevent-mouse-defaults', 'false');
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await expect(dialog.getByRole('checkbox', { name: 'Prevent default mouse actions' })).not.toBeChecked();
   });
 }
