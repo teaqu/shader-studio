@@ -276,9 +276,11 @@ export interface StorageBufferConfig {
     elementType: string;
     /** Optional config-owned struct. Omit to use a type declared in shader source. */
     fields?: Array<{ name: string; type: string }>;
-    /** Base64 bytes loaded from a binary file; missing bytes start at zero. */
-    initialData?: string;
-    initialDataName?: string;
+    /** Raw binary file whose bytes initialise the buffer; missing bytes start at zero.
+     *  Resolved like texture paths: relative to the shader, `@/` workspace-relative, or absolute. */
+    initialDataPath?: string;
+    /** Host-injected loadable URL for `initialDataPath`. Never persisted. */
+    resolved_path?: string;
     clearEachFrame?: boolean;
     /** Defaults to true, preserving the existing restart behaviour. */
     resetOnRestart?: boolean;

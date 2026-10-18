@@ -126,6 +126,113 @@ describe("WebGPURenderingEngine storage buffers", () => {
     sharedSlangWgslCache.clear();
   });
 
+  describe("file-backed initial data", () => {
+    function bytesResponse(bytes: number[], status = 200) {
+      return { ok: status >= 200 && status < 300, status, arrayBuffer: async () => new Uint8Array(bytes).buffer } as Response;
+    }
+
+    it("fetches the resolved initial data file and writes its raw bytes into new storage", async () => {
+      const fetchMock = vi.fn(async () => bytesResponse([1, 0, 0, 0, 2, 0]));
+      vi.stubGlobal("fetch", fetchMock);
+      try {
+        const { engine, device } = engineHarness();
+        const result = await engine.compileShaderPipeline(
+          IMAGE_SOURCE,
+          storageConfig({ data: { count: 2, elementType: "uint", initialDataPath: "data.bin", resolved_path: "https://host/data.bin" } }),
+          "/image.slang",
+        );
+        expect(result?.success).toBe(true);
+        expect(fetchMock).toHaveBeenCalledWith("https://host/data.bin");
+        expect(device.queue.writeBuffer).toHaveBeenCalledWith(
+          installedStorageBuffers(engine).get("data"), 0, new Uint8Array([1, 0, 0, 0, 2, 0, 0, 0]),
+        );
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("fails the compile without touching installed storage when the file cannot be loaded", async () => {
+      const { engine, device, compiler } = engineHarness();
+      expect((await engine.compileShaderPipeline(IMAGE_SOURCE, storageConfig({ data: { count: 2, elementType: "uint" } }), "/image.slang"))?.success).toBe(true);
+      const installed = installedStorageBuffers(engine).get("data");
+      const compileCalls = compiler.compile.mock.calls.length;
+      vi.stubGlobal("fetch", vi.fn(async () => bytesResponse([], 404)));
+      try {
+        const result = await engine.compileShaderPipeline(
+          IMAGE_SOURCE,
+          storageConfig({ data: { count: 2, elementType: "uint", initialDataPath: "missing.bin", resolved_path: "https://host/missing.bin" } }),
+          "/image.slang",
+        );
+        expect(result?.success).toBe(false);
+        expect(result?.errors).toEqual(['Storage data: unable to load initial data file "missing.bin" (HTTP 404)']);
+        expect(installedStorageBuffers(engine).get("data")).toBe(installed);
+        expect(compiler.compile.mock.calls.length).toBe(compileCalls);
+        expect(storageCreateCalls(device)).toHaveLength(1);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("rejects a file larger than its buffer before allocating storage", async () => {
+      vi.stubGlobal("fetch", vi.fn(async () => bytesResponse([1, 2, 3, 4, 5])));
+      try {
+        const { engine, device } = engineHarness();
+        const result = await engine.compileShaderPipeline(
+          IMAGE_SOURCE,
+          storageConfig({ data: { count: 1, elementType: "uint", initialDataPath: "big.bin" } }),
+          "/image.slang",
+        );
+        expect(result?.success).toBe(false);
+        expect(result?.errors).toEqual(['Storage data: initial data file "big.bin" is 5 bytes but the buffer holds 4 bytes']);
+        expect(storageCreateCalls(device)).toHaveLength(0);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("supersedes a compile whose file load finishes after a newer compile starts", async () => {
+      let release: (response: Response) => void = () => {};
+      vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => {
+        release = resolve; 
+      })));
+      try {
+        const { engine } = engineHarness();
+        const slow = engine.compileShaderPipeline(
+          IMAGE_SOURCE,
+          storageConfig({ data: { count: 1, elementType: "uint", initialDataPath: "slow.bin" } }),
+          "/image.slang",
+        );
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        const fast = engine.compileShaderPipeline(IMAGE_SOURCE, storageConfig({ data: { count: 1, elementType: "uint" } }), "/image.slang");
+        release(bytesResponse([9, 0, 0, 0]));
+        expect(await slow).toMatchObject({ success: false, superseded: true });
+        expect((await fast)?.success).toBe(true);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("reinitialises storage from the file when its bytes change on recompile", async () => {
+      let bytes = [1, 0, 0, 0];
+      vi.stubGlobal("fetch", vi.fn(async () => bytesResponse(bytes)));
+      try {
+        const { engine, device } = engineHarness();
+        const config = storageConfig({ data: { count: 1, elementType: "uint", initialDataPath: "d.bin" } });
+        await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/image.slang");
+        const first = installedStorageBuffers(engine).get("data");
+        await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/image.slang");
+        expect(installedStorageBuffers(engine).get("data")).toBe(first);
+        bytes = [2, 0, 0, 0];
+        await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/image.slang");
+        const next = installedStorageBuffers(engine).get("data");
+        expect(next).not.toBe(first);
+        expect(device.queue.writeBuffer).toHaveBeenLastCalledWith(next, 0, new Uint8Array([2, 0, 0, 0]));
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+  });
+
   it("allocates declared storage before compiling passes", async () => {
     const { engine, device, compiler } = engineHarness();
 

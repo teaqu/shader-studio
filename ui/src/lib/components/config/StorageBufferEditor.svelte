@@ -5,12 +5,15 @@
   import { setPendingStorageForm } from "../../state/storageViewState.svelte";
   import {
     configuredStorageLayout,
+    REMOVED_EMBEDDED_STORAGE_KEYS,
     storageStructDeclaration,
     validateStorageOptions,
     type StorageBufferConfig,
   } from "@shader-studio/types";
   import type { ConfigFieldErrors } from "../../config/ComputeConfigMutations";
   import { getBuiltinStorageStride } from "../../config/StorageTypeLayout";
+  import PathInput from "./PathInput.svelte";
+  import type { MessageEvent as ShaderMessage } from "@shader-studio/types";
   interface Props {
     name: string;
     scope?: string;
@@ -29,6 +32,9 @@
     onDeleted?: () => void;
     onRenamed?: (name: string) => void;
     onReset?: (name: string) => Promise<void>;
+    shaderPath?: string;
+    postMessage?: (msg: ShaderMessage) => void;
+    onMessage?: (handler: (event: MessageEvent) => void) => void;
   }
   let {
     name,
@@ -44,6 +50,9 @@
     onDeleted = () => {},
     onRenamed = () => {},
     onReset,
+    shaderPath = "",
+    postMessage,
+    onMessage,
   }: Props = $props();
   const id = $props.id();
   let draftName = $state("");
@@ -137,30 +146,25 @@
       draft.elementType = "float4";
     }
   }
-  async function importData(event: Event): Promise<void> {
-    const input = event.currentTarget as HTMLInputElement;
-    const file = input.files?.[0];
-    if (!file) {
-      return;
+  /** Configs saved before initial data moved to file paths may still embed bytes. */
+  const hasRemovedEmbeddedData = $derived(
+    REMOVED_EMBEDDED_STORAGE_KEYS.some((key) => key in draft),
+  );
+  const usesInitialData = $derived(
+    draft.initialDataPath !== undefined || hasRemovedEmbeddedData,
+  );
+  function clearInitialData(): void {
+    delete draft.initialDataPath;
+    delete draft.resolved_path;
+    const record = draft as unknown as Record<string, unknown>;
+    for (const key of REMOVED_EMBEDDED_STORAGE_KEYS) {
+      delete record[key];
     }
-    try {
-      if (file.size > 262144) {
-        throw new Error("Initial data files must be at most 256 KiB");
-      }
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      let text = "";
-      for (const byte of bytes) {
-        text += String.fromCharCode(byte);
-      }
-      draft.initialData = btoa(text);
-      draft.initialDataName = file.name;
-      errors = {};
-    } catch (reason) {
-      errors = {
-        initialData: reason instanceof Error ? reason.message : String(reason),
-      };
-    }
-    input.value = "";
+  }
+  function setInitialDataPath(path: string): void {
+    clearInitialData();
+    draft.initialDataPath = path;
+    errors = {};
   }
   async function reset(): Promise<void> {
     if (!onReset || resetting) {
@@ -316,13 +320,12 @@
       <label
         >Start with<select
           aria-label="Initial data"
-          value={draft.initialData === undefined ? "zero" : "file"}
+          value={usesInitialData ? "file" : "zero"}
           onchange={(event) => {
             if (event.currentTarget.value === "zero") {
-              delete draft.initialData;
-              delete draft.initialDataName;
+              clearInitialData();
             } else {
-              draft.initialData = "";
+              draft.initialDataPath = "";
             }
           }}
           ><option value="zero">Zeros</option><option value="file"
@@ -346,16 +349,29 @@
         ></label
       >
     </div>
-    {#if draft.initialData !== undefined}<label
-        >Initial data file<input
-          type="file"
-          aria-label="Initial data file"
-          onchange={importData}
-        /></label
-      >
+    {#if usesInitialData}
+      <PathInput
+        label="Initial data file"
+        inputId={`${id}-initial-data`}
+        value={draft.initialDataPath ?? ""}
+        placeholder="data.bin"
+        onPathChange={(path) => {
+          if (path) {
+            setInitialDataPath(path);
+          }
+        }}
+        fileType="binary"
+        allowCreate={false}
+        {shaderPath}
+        {postMessage}
+        {onMessage}
+      />
       <p class="meta">
-        {draft.initialDataName ?? "Choose a binary file"} · up to 256 KiB, embedded
-        in config. Unfilled bytes start at zero.
+        {#if hasRemovedEmbeddedData}Embedded data is no longer supported ·
+          choose a raw binary file to replace it.
+        {/if}Raw bytes are read from the file when the shader loads, up to the
+        buffer's {stride ? `${stride * Number(count || 0)} bytes` : "size"}.
+        Unfilled bytes start at zero.
       </p>{/if}
     <label class="check"
       ><input

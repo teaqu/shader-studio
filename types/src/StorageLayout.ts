@@ -108,18 +108,26 @@ function validateFields(config: StorageBufferConfig): string[] {
   return errors;
 }
 
+/** Former config keys that embedded base64 bytes; files are referenced by path now. */
+export const REMOVED_EMBEDDED_STORAGE_KEYS = ['initialData', 'initialDataName'] as const;
+
 function validateInitialData(config: StorageBufferConfig): string[] {
-  const errors: string[] = [];
-  if (config.initialData !== undefined && (typeof config.initialData !== 'string'
-    || config.initialData.length > 4 * Math.ceil(262144 / 3)
-    || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(config.initialData))) {
-    errors.push('Initial data must be base64 binary data up to 256 KiB');
+  if (REMOVED_EMBEDDED_STORAGE_KEYS.some(key => key in config)) {
+    return ['Embedded initialData is no longer supported; reference a raw binary file with initialDataPath'];
   }
-  const layout = errors.length ? null : configuredStorageLayout(config);
-  if (layout && config.initialData && config.initialData.length * 3 / 4 - (config.initialData.endsWith('==') ? 2 : config.initialData.endsWith('=') ? 1 : 0) > layout.stride * config.count) {
-    errors.push('Initial data exceeds the buffer size');
+  if (config.initialDataPath === undefined) {
+    return [];
   }
-  return errors;
+  if (typeof config.initialDataPath !== 'string') {
+    return ['Initial data path must be a string'];
+  }
+  if (!config.initialDataPath.trim()) {
+    return ['Choose an initial data file'];
+  }
+  if (config.resolved_path !== undefined && typeof config.resolved_path !== 'string') {
+    return ['resolved_path must be a string'];
+  }
+  return [];
 }
 
 /** Shared validation for UI mutations and runtime graph construction. */

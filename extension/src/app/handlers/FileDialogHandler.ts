@@ -9,7 +9,7 @@ import { writeWorkspaceTypeDefs } from "../WorkspaceTypeDefs";
 import { Logger } from "../services/Logger";
 import { getConfigPathForShaderPath } from "../ShaderConfigPaths";
 import type { ErrorMessage } from "@shader-studio/types";
-import { VOLUME_EXTENSIONS, GLSL_EXTENSIONS, SCRIPT_EXTENSIONS, TEXTURE_EXTENSIONS, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, CUBEMAP_EXTENSIONS, WGSL_EXTENSIONS, createShaderInsertion, insertionLanguage, createNativeComputeSource, createNativeFragmentSource, shaderLanguageForPath } from "@shader-studio/types";
+import { BINARY_EXTENSIONS, VOLUME_EXTENSIONS, GLSL_EXTENSIONS, SCRIPT_EXTENSIONS, TEXTURE_EXTENSIONS, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, CUBEMAP_EXTENSIONS, WGSL_EXTENSIONS, createShaderInsertion, insertionLanguage, createNativeComputeSource, createNativeFragmentSource, shaderLanguageForPath } from "@shader-studio/types";
 
 type ResponseSender = (message: { type: string; payload: unknown }) => void;
 
@@ -30,6 +30,7 @@ function fileTypeToFilters(fileType: string): { [name: string]: string[] } {
     case 'wgsl-common':
     case 'wgsl-compute': return { 'WGSL files': [...WGSL_EXTENSIONS] };
     case 'model': return { 'GLB models': ['glb'] };
+    case 'binary': return { 'Binary files': BINARY_EXTENSIONS, 'All files': ['*'] };
     default:         return { 'GLSL files': GLSL_EXTENSIONS };
   }
 }

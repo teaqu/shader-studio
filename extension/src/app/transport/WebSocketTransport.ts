@@ -274,6 +274,12 @@ export class WebSocketTransport implements MessageTransport {
     const shaderPath = processedMessage.path || '';
     const configDir = shaderPath ? path.dirname(shaderPath) : '';
 
+    for (const declaration of Object.values(config.storage ?? {})) {
+      if (declaration && typeof declaration.initialDataPath === 'string' && declaration.initialDataPath) {
+        declaration.resolved_path = this.convertUriForClient(this.resolveConfigAssetPath(declaration.initialDataPath, configDir));
+      }
+    }
+
     for (const passName of Object.keys(config.passes)) {
       const pass = config.passes[passName];
       if (!pass?.inputs) {
@@ -289,27 +295,7 @@ export class WebSocketTransport implements MessageTransport {
           continue;
         }
 
-        // Resolve to absolute path
-        let absolutePath: string;
-        const defaultAsset = resolveDefaultAssetPath(input.path, this.extensionPath);
-        if (defaultAsset) {
-          absolutePath = defaultAsset;
-        } else if (/^https?:\/\//i.test(input.path)) {
-          absolutePath = input.path;
-        } else if (input.path.startsWith('@/')) {
-          const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-          absolutePath = workspaceFolder
-            ? path.join(workspaceFolder.uri.fsPath, input.path.substring(2))
-            : input.path;
-        } else if (input.path.startsWith('file://')) {
-          absolutePath = this.normalizeLocalPath(input.path);
-        } else if (path.isAbsolute(input.path)) {
-          absolutePath = input.path;
-        } else {
-          absolutePath = configDir ? path.join(configDir, input.path) : input.path;
-        }
-
-        input.resolved_path = this.convertUriForClient(absolutePath);
+        input.resolved_path = this.convertUriForClient(this.resolveConfigAssetPath(input.path, configDir));
       }
     }
 
@@ -342,6 +328,28 @@ export class WebSocketTransport implements MessageTransport {
     }
 
     return processedMessage;
+  }
+
+  /** Resolve a config asset path (default asset, URL, `@/`, file://, absolute or config-relative). */
+  private resolveConfigAssetPath(assetPath: string, configDir: string): string {
+    const defaultAsset = resolveDefaultAssetPath(assetPath, this.extensionPath);
+    if (defaultAsset) {
+      return defaultAsset;
+    }
+    if (/^https?:\/\//i.test(assetPath)) {
+      return assetPath;
+    }
+    if (assetPath.startsWith('@/')) {
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      return workspaceFolder ? path.join(workspaceFolder.uri.fsPath, assetPath.substring(2)) : assetPath;
+    }
+    if (assetPath.startsWith('file://')) {
+      return this.normalizeLocalPath(assetPath);
+    }
+    if (path.isAbsolute(assetPath)) {
+      return assetPath;
+    }
+    return configDir ? path.join(configDir, assetPath) : assetPath;
   }
 
   // Legacy method for backward compatibility with tests

@@ -11,9 +11,6 @@ describe('Storage layouts', () => {
     expect(validateStorageOptions({ count: 1, elementType: 'u32', clearEachFrame: 1, resetOnRestart: 'yes' } as unknown as StorageBufferConfig)).toHaveLength(2);
     expect(validateStorageOptions({ count: 1, elementType: 'f32', fields: [{ name: 'x', type: 'float' }] })).toContain('Struct type must be a shader identifier');
     expect(validateStorageOptions({ count: 1, elementType: 'Data', fields: [{ type: 'f32' } as never] })).toContain('Field names must be unique shader identifiers');
-    expect(validateStorageOptions({ count: 1, elementType: 'u32', initialData: 'A'.repeat(349529) })).toHaveLength(1);
-    expect(validateStorageOptions({ count: 1, elementType: 'u32', initialData: 'AQI=' })).toEqual([]);
-    expect(validateStorageOptions({ count: 1, elementType: 'f16', initialData: 'AAAA' })).toContain('Initial data exceeds the buffer size');
   });
   it('emits native scalar, vector and atomic fields without changing source types', () => {
     expect(slangStorageFieldType('f16')).toBe('half');
@@ -34,8 +31,17 @@ describe('Storage layouts', () => {
     expect(configuredStorageLayout({ count: 1, elementType: 'External' })).toBeNull();
     expect(validateStorageOptions({ count: 1, elementType: 'External' })).toEqual([]);
     expect(validateStorageOptions({ count: 1, elementType: 'bad type', fields: [{ name: 'x', type: 'float' }, { name: 'x', type: 'texture' }] })).toHaveLength(3);
-    expect(validateStorageOptions({ count: 1, elementType: 'u32', initialData: 'not base64' })).toHaveLength(1);
-    expect(validateStorageOptions({ count: 1, elementType: 'u32', initialData: 'AAAAAAAAAAAA' })).toEqual(['Initial data exceeds the buffer size']);
-    expect(validateStorageOptions({ count: 1, elementType: 'u32', initialData: 'AQIDBA==' })).toEqual([]);
+  });
+  it('validates file-path initial data without a size cap', () => {
+    expect(validateStorageOptions({ count: 1, elementType: 'u32', initialDataPath: 'data/counter.bin' })).toEqual([]);
+    expect(validateStorageOptions({ count: 1, elementType: 'u32', initialDataPath: '@/data/huge.bin', resolved_path: 'https://x/huge.bin' })).toEqual([]);
+    expect(validateStorageOptions({ count: 1, elementType: 'u32', initialDataPath: '' })).toEqual(['Choose an initial data file']);
+    expect(validateStorageOptions({ count: 1, elementType: 'u32', initialDataPath: '   ' })).toEqual(['Choose an initial data file']);
+    expect(validateStorageOptions({ count: 1, elementType: 'u32', initialDataPath: 4 } as unknown as StorageBufferConfig)).toEqual(['Initial data path must be a string']);
+    const removed = ['Embedded initialData is no longer supported; reference a raw binary file with initialDataPath'];
+    expect(validateStorageOptions({ count: 1, elementType: 'u32', initialData: 'AQIDBA==' } as unknown as StorageBufferConfig)).toEqual(removed);
+    expect(validateStorageOptions({ count: 1, elementType: 'u32', initialDataName: 'a.bin' } as unknown as StorageBufferConfig)).toEqual(removed);
+    expect(validateStorageOptions({ count: 1, elementType: 'u32', initialDataPath: 'a.bin', initialData: 'AQIDBA==' } as unknown as StorageBufferConfig)).toEqual(removed);
+    expect(validateStorageOptions({ count: 1, elementType: 'u32', initialDataPath: 'a.bin', resolved_path: 7 } as unknown as StorageBufferConfig)).toEqual(['resolved_path must be a string']);
   });
 });

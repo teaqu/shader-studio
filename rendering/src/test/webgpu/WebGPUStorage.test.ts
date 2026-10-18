@@ -37,8 +37,8 @@ describe("WebGPUStorage boundaries", () => {
   });
   it('initializes new and reset allocations, but retains opted-out buffers on restart', () => {
     const { storage, createBuffer, queue, encoder, loseDevice } = harness();
-    const keep = { ...node('keep'), initialData: 'AQIDBA==', resetOnRestart: false };
-    const reset = { ...node('reset'), initialData: 'BQYHCA==', clearEachFrame: true };
+    const keep = { ...node('keep'), initialBytes: new Uint8Array([1, 2, 3, 4]), resetOnRestart: false };
+    const reset = { ...node('reset'), initialBytes: new Uint8Array([5, 6, 7, 8]), clearEachFrame: true };
     storage.publishPreparedStorage(storage.prepareStorageBuffers([keep, reset], 1));
     expect(queue.writeBuffer).toHaveBeenCalledTimes(2);
     const existing = storage.storageBuffers.get('keep');

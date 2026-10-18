@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "path";
-import type { ShaderConfig } from "@shader-studio/types";
+import type { ShaderConfig, StorageBufferConfig } from "@shader-studio/types";
 import { resolveDefaultAssetPath } from "../DefaultAssets";
 import { PathResolver } from "../PathResolver";
 
@@ -30,6 +30,16 @@ export class ConfigPathConverter {
 
     // Use the shader path's directory to resolve relative paths
     const configDir = processedMessage.path ? path.dirname(processedMessage.path) : '';
+
+    // Storage buffers may reference a raw binary file for their initial bytes
+    for (const declaration of Object.values<StorageBufferConfig>(config.storage ?? {})) {
+      if (declaration && typeof declaration.initialDataPath === 'string' && declaration.initialDataPath) {
+        const absolutePath = processedMessage.path
+          ? PathResolver.resolvePath(processedMessage.path, declaration.initialDataPath)
+          : (path.isAbsolute(declaration.initialDataPath) ? declaration.initialDataPath : path.join(configDir, declaration.initialDataPath));
+        declaration.resolved_path = this.convertUriForClient(absolutePath, webview);
+      }
+    }
 
     // Process all passes in the passes object
     for (const passName of Object.keys(config.passes)) {

@@ -71,7 +71,12 @@ export interface StorageBindingNode {
   stride: number;
   fields?: import('@shader-studio/types').StorageFieldLayout[];
   structDeclarations?: { wgsl: string; slang: string };
-  initialData?: string;
+  /** Configured file path for initial bytes, kept for messages. */
+  initialDataPath?: string;
+  /** Loadable URL for `initialDataPath` (host-resolved when available). */
+  initialDataUrl?: string;
+  /** Raw bytes fetched from `initialDataUrl` before storage allocation. */
+  initialBytes?: Uint8Array;
   clearEachFrame?: boolean;
   resetOnRestart?: boolean;
 }

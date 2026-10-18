@@ -1,3 +1,4 @@
+import { loadStorageInitialData } from "./StorageInitialData";
 import { debugPlanDisplaySource } from "./DebugPlanDisplaySource";
 import { audioLoadWarning } from "../util/LiveInputConfig";
 import type { DebugInstrumentationPlan,ShaderConfig,ShaderLanguageId,SlangSourceModule } from "@shader-studio/types";
@@ -192,6 +193,13 @@ export class WebGPUShaderSession {
     const errors: string[] = [];
     let published = false;
     try {
+      const initialDataErrors = await loadStorageInitialData(graph.storage);
+      if (generation !== this.compileGeneration || this.host.disposed) {
+        return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
+      }
+      if (initialDataErrors.length) {
+        return this.failedCompilation(path, generation, { success: false, errors: initialDataErrors, warnings: graph.warnings });
+      }
       try {
         preparedStorage = this.host.storage.prepareStorageBuffers(
           graph.storage,

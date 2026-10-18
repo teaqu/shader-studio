@@ -1,17 +1,29 @@
 import { fireEvent, render } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import { describe, expect, it, vi } from 'vitest';
 import StorageBufferEditor from '../../../lib/components/config/StorageBufferEditor.svelte';
+import type { StorageBufferConfig } from '@shader-studio/types';
 
-function renderEditor(referencedBy: string[] = []) {
+function renderEditor(referencedBy: string[] = [], declaration: StorageBufferConfig = { count: 1024, elementType: 'float4' }) {
   const onApply = vi.fn(() => ({}));
   const onDelete = vi.fn(() => ({}));
-  return {
-    onApply, onDelete,
-    ...render(StorageBufferEditor, {
-      name: 'particles', declaration: { count: 1024, elementType: 'float4' },
-      existingNames: ['particles'], referencedBy, onApply, onDelete,
-    }),
-  };
+  const postMessage = vi.fn();
+  let handler: ((event: MessageEvent) => void) | undefined;
+  const ui = render(StorageBufferEditor, {
+    name: 'particles', declaration,
+    existingNames: ['particles'], referencedBy, onApply, onDelete,
+    shaderPath: '/shaders/sim.wgsl', postMessage, onMessage: (next: (event: MessageEvent) => void) => {
+      handler = next;
+    },
+  });
+  async function selectFile(path: string) {
+    await fireEvent.click(ui.getByRole('button', { name: 'Select' }));
+    const request = postMessage.mock.calls.at(-1)![0];
+    handler?.({ data: { type: 'fileSelected', payload: { requestId: request.payload.requestId, path } } } as MessageEvent);
+    await tick();
+    return request;
+  }
+  return { onApply, onDelete, postMessage, selectFile, ...ui };
 }
 
 describe('StorageBufferEditor', () => {
@@ -25,11 +37,11 @@ describe('StorageBufferEditor', () => {
     await fireEvent.change(ui.getByLabelText('Between frames'), { target: { value: 'clear' } });
     await fireEvent.click(ui.getByLabelText('Reset on restart'));
     await fireEvent.change(ui.getByLabelText('Initial data'), { target: { value: 'file' } });
-    const file = { name: 'values.bin', size: 4, arrayBuffer: async () => new Uint8Array([1, 2, 3, 4]).buffer };
-    await fireEvent.change(ui.getByLabelText('Initial data file'), { target: { files: [file] } });
+    const request = await ui.selectFile('data/values.bin');
+    expect(request).toMatchObject({ type: 'selectFile', payload: { shaderPath: '/shaders/sim.wgsl', fileType: 'binary' } });
     await fireEvent.click(ui.getByRole('button', { name: 'Apply particles changes' }));
     expect(ui.onApply).toHaveBeenLastCalledWith('particles', 'particles', {
-      count: 1024, elementType: 'particles_Element', fields: [{ name: 'position', type: 'float4' }, { name: 'age', type: 'float' }], clearEachFrame: true, resetOnRestart: false, initialData: 'AQIDBA==', initialDataName: 'values.bin',
+      count: 1024, elementType: 'particles_Element', fields: [{ name: 'position', type: 'float4' }, { name: 'age', type: 'float' }], clearEachFrame: true, resetOnRestart: false, initialDataPath: 'data/values.bin',
     });
     await fireEvent.click(ui.getByRole('button', { name: 'Cancel particles changes' }));
     expect(ui.getByLabelText('Element type')).toHaveValue('float4');
@@ -44,8 +56,9 @@ describe('StorageBufferEditor', () => {
     expect(ui.onApply).not.toHaveBeenCalled();
     await fireEvent.click(ui.getByRole('button', { name: 'Cancel particles changes' }));
     await fireEvent.change(ui.getByLabelText('Initial data'), { target: { value: 'file' } });
-    await fireEvent.change(ui.getByLabelText('Initial data file'), { target: { files: [{ size: 262145 }] } });
-    expect(ui.getByRole('alert')).toHaveTextContent('256 KiB');
+    await fireEvent.click(ui.getByRole('button', { name: 'Apply particles changes' }));
+    expect(ui.getByRole('alert')).toHaveTextContent('Choose an initial data file');
+    expect(ui.onApply).not.toHaveBeenCalled();
     const resetUI = render(StorageBufferEditor, { name: 'other', declaration: { count: 1, elementType: 'float' }, existingNames: [], referencedBy: [], onApply: vi.fn(() => ({})), onDelete: vi.fn(() => ({ name: 'Cannot remove' })), onReset: async () => {
       throw new Error('Device lost');
     } });
@@ -54,6 +67,44 @@ describe('StorageBufferEditor', () => {
     await fireEvent.click(resetUI.getByRole('button', { name: 'Delete other' }));
     expect(resetUI.getByText('Cannot remove')).toBeInTheDocument();
   });
+  it('stores initial data as a file path with no size cap and clears it when switching to zeros', async () => {
+    const ui = renderEditor([], { count: 4, elementType: 'u32', initialDataPath: 'old.bin', resolved_path: 'vscode-webview://old.bin' });
+    expect(ui.getByLabelText('Initial data')).toHaveValue('file');
+    expect(ui.getByText(/16 bytes/)).toBeInTheDocument();
+    expect(ui.queryByText(/256 KiB/)).not.toBeInTheDocument();
+    await ui.selectFile('@/data/new.bin');
+    await fireEvent.click(ui.getByRole('button', { name: 'Apply particles changes' }));
+    expect(ui.onApply).toHaveBeenLastCalledWith('particles', 'particles', { count: 4, elementType: 'u32', initialDataPath: '@/data/new.bin' });
+    await fireEvent.change(ui.getByLabelText('Initial data'), { target: { value: 'zero' } });
+    await fireEvent.click(ui.getByRole('button', { name: 'Apply particles changes' }));
+    expect(ui.onApply).toHaveBeenLastCalledWith('particles', 'particles', { count: 4, elementType: 'u32' });
+  });
+
+  it('flags removed embedded data and replaces it with the chosen file path', async () => {
+    const legacy = { count: 1, elementType: 'u32', initialData: 'AQAAAA==', initialDataName: 'counter.bin' } as unknown as StorageBufferConfig;
+    const ui = renderEditor([], legacy);
+    expect(ui.getByLabelText('Initial data')).toHaveValue('file');
+    expect(ui.getByText(/Embedded data is no longer supported/)).toBeInTheDocument();
+    await ui.selectFile('counter.bin');
+    expect(ui.queryByText(/Embedded data/)).not.toBeInTheDocument();
+    await fireEvent.click(ui.getByRole('button', { name: 'Apply particles changes' }));
+    expect(ui.onApply).toHaveBeenLastCalledWith('particles', 'particles', { count: 1, elementType: 'u32', initialDataPath: 'counter.bin' });
+  });
+
+  it('drops removed embedded data when switching to zeros', async () => {
+    const ui = renderEditor([], { count: 1, elementType: 'u32', initialData: 'AQAAAA==' } as unknown as StorageBufferConfig);
+    await fireEvent.change(ui.getByLabelText('Initial data'), { target: { value: 'zero' } });
+    await fireEvent.click(ui.getByRole('button', { name: 'Apply particles changes' }));
+    expect(ui.onApply).toHaveBeenLastCalledWith('particles', 'particles', { count: 1, elementType: 'u32' });
+  });
+
+  it('ignores a cancelled file selection', async () => {
+    const ui = renderEditor([], { count: 1, elementType: 'u32', initialDataPath: 'keep.bin' });
+    await ui.selectFile('');
+    expect(ui.queryByRole('button', { name: 'Apply particles changes' })).not.toBeInTheDocument();
+    expect(ui.getByDisplayValue('keep.bin')).toBeInTheDocument();
+  });
+
   it('keeps edits local until Apply, then applies them immediately', async () => {
     const { getByLabelText, getByRole, onApply } = renderEditor();
     await fireEvent.input(getByLabelText('Element count'), { target: { value: '2048' } });

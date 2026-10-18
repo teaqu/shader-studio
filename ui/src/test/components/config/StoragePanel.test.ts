@@ -12,6 +12,12 @@ describe('StoragePanel', () => {
     await fireEvent.click(ui.getByRole('button', { name: 'Add storage buffer' }));
     expect(actions.onAdd).toHaveBeenCalledOnce();
   });
+  it('forwards the host file picker to the initial data path input', async () => {
+    const postMessage = vi.fn();
+    const ui = render(StoragePanel, { scope: 'panel-picker', storage: { data: { count: 4, elementType: 'u32', initialDataPath: 'a.bin' } }, ...commands(), shaderPath: '/s/sim.wgsl', postMessage, onMessage: vi.fn() });
+    await fireEvent.click(ui.getByRole('button', { name: 'Select' }));
+    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'selectFile', payload: expect.objectContaining({ shaderPath: '/s/sim.wgsl', fileType: 'binary' }) }));
+  });
   it('shows the inspector with read support alone and returns to settings', async () => {
     const ui = render(StoragePanel, { scope: 'panel-inspect', storage: { counter: { count: 1, elementType: 'u32' } }, ...commands(), onRead: async () => ({ name: 'counter', elementType: 'u32', stride: 4, start: 0, count: 1, data: new Uint32Array([5]).buffer }) });
     await fireEvent.click(ui.getByRole('tab', { name: 'Inspect' }));

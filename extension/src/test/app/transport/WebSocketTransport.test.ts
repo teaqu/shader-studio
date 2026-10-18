@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import * as path from 'path';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import { WebSocket, WebSocketServer } from 'ws';
@@ -459,6 +460,33 @@ suite('WebSocketTransport Test Suite', () => {
       const sentData = JSON.parse(mockWsClient.send.getCall(0).args[0] as string);
       assert.ok(sentData.config.passes.Image.inputs.iChannel0.resolved_path.startsWith('http://localhost:3000/textures/'));
       assert.strictEqual(sentData.config.passes.Image.inputs.iChannel0.path, '/path/to/texture.png');
+    });
+
+    test('converts storage initial data paths to HTTP URLs in resolved_path', () => {
+      const wsClients = (transport as any).wsClients as Set<WebSocket>;
+      wsClients.add(mockWsClient as any);
+
+      transport.send({
+        type: 'shaderSource',
+        path: '/test/shader.slang',
+        config: {
+          storage: {
+            data: { count: 4, elementType: 'uint', initialDataPath: 'values.bin' },
+            remote: { count: 4, elementType: 'uint', initialDataPath: 'https://example.com/values.bin' },
+            zero: { count: 4, elementType: 'uint' },
+          },
+          passes: { Image: {} }
+        }
+      });
+
+      const sentData = JSON.parse(mockWsClient.send.getCall(0).args[0] as string);
+      assert.strictEqual(
+        sentData.config.storage.data.resolved_path,
+        `http://localhost:3000/textures/${encodeURIComponent(path.join('/test', 'values.bin'))}`,
+      );
+      assert.strictEqual(sentData.config.storage.data.initialDataPath, 'values.bin');
+      assert.strictEqual(sentData.config.storage.remote.resolved_path, 'https://example.com/values.bin');
+      assert.strictEqual(sentData.config.storage.zero.resolved_path, undefined);
     });
 
     test('converts cubemap path to HTTP URL in resolved_path', () => {
