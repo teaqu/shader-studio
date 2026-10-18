@@ -1,4 +1,9 @@
 import { ShaderCameraSession } from "../preview3d/ShaderCameraSession";
+import { normalizeVrNavigation, type VrNavigationSettings } from "../webxr/VrNavigationSettings";
+import type { VrEyeView } from "../webxr/WebXrFrameData";
+import { isImmersiveVrSupported } from "../webxr/WebXrSession";
+import { WebGpuXrRenderer } from "../webxr/WebGpuXrRenderer";
+import { WebGPUVrState } from "./WebGPUVrState";
 import { RenderedCaptureState } from "./RenderedCaptureState";
 import { audioPreviewData, livePreviewData, controlSystemAudio, controlAudioInput } from "../resources/MediaPreview";
 import type { LiveInputType, LiveInputPreview } from "../resources/LiveInputTextureManager";
@@ -81,6 +86,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   private running = false;
   private rafId: number | null = null;
+
+  private readonly vr = new WebGPUVrState();
+  private navigationSettings = normalizeVrNavigation(undefined);
+  private immersiveVr: WebGpuXrRenderer | null = null;
+  /** One offscreen WebGPU canvas per headset eye, composited into the XR layer. */
+  private vrEyeTargets: { canvas: HTMLCanvasElement; context: GPUCanvasContext }[] = [];
 
 
   private readonly diagnostics: WebGPUCompileDiagnostics;
@@ -189,6 +200,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       onShaderInstalled: (path) => {
         this.renderedCaptureState.clear();
         this.meshCameraSession.install(path);
+        this.vr.update(path, this.session.passGraph, this.session.commonCode);
       },
       get disposed() {
         return engine.disposed;
@@ -318,6 +330,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       get keyboardManager() {
         return engine.keyboardManager;
       },
+      vr: this.vr,
     });
   }
 
@@ -351,6 +364,16 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.mouseManager.setupEventListeners(glCanvas);
     this.keyboardManager.setupEventListeners();
     this.cameraManager.setupEventListeners(glCanvas);
+    this.immersiveVr?.dispose();
+    this.immersiveVr = new WebGpuXrRenderer({
+      vr: this.vr,
+      isRunning: () => this.running,
+      startRenderLoop: () => this.startRenderLoop(),
+      stopRenderLoop: () => this.stopRenderLoop(),
+      updateFrame: time => this.render(time),
+      renderEye: (view, eye) => this.renderVrEye(view, eye),
+    });
+    this.immersiveVr.setNavigationSettings(this.navigationSettings);
     this.ready = this.initDevice(initStartedAt);
   }
 
@@ -516,7 +539,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
 
   startRenderLoop(): void {
-    if (this.running) {
+    if (this.running || this.immersiveVr?.active) {
       return;
     }
     this.running = true;
@@ -540,6 +563,66 @@ export class WebGPURenderingEngine implements RenderingEngine {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
     }
+  }
+
+  isImmersiveVrSupported(): Promise<boolean> {
+    return isImmersiveVrSupported();
+  }
+
+  async enterVr(onEnded?: (error?: string) => void): Promise<void> {
+    if (!this.immersiveVr) {
+      throw new Error("VR renderer is not initialized");
+    }
+    if (!this.device) {
+      throw new Error("WebGPU device is not ready");
+    }
+    await this.immersiveVr.start(onEnded);
+  }
+
+  async exitVr(): Promise<void> {
+    await this.immersiveVr?.end();
+  }
+
+  setVrNavigationSettings(settings: VrNavigationSettings): void {
+    this.navigationSettings = normalizeVrNavigation(settings);
+    this.immersiveVr?.setNavigationSettings(this.navigationSettings);
+    this.cameraManager.setSpeeds(this.navigationSettings.movementSpeed, this.navigationSettings.turnSpeed);
+  }
+
+  isVrPreviewAvailable(): boolean {
+    return this.vr.available && this.session.passGraph.length > 0;
+  }
+
+  setVrPreviewEnabled(enabled: boolean): void {
+    this.vr.setEnabled(enabled);
+  }
+
+  /** Renders one headset eye into its offscreen canvas, sized to the eye viewport. */
+  private renderVrEye(view: VrEyeView, eye: number): HTMLCanvasElement | null {
+    const device = this.device;
+    if (!device) {
+      return null;
+    }
+    let target = this.vrEyeTargets[eye];
+    if (!target) {
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("webgpu");
+      if (!context) {
+        return null;
+      }
+      // The Image pipeline targets the presentation format, so eyes share it.
+      context.configure({ device, format: this.format, alphaMode: "opaque" });
+      target = { canvas, context };
+      this.vrEyeTargets[eye] = target;
+    }
+    const width = this.constraints.clampDimensionToTextureLimit(view.viewport.width);
+    const height = this.constraints.clampDimensionToTextureLimit(view.viewport.height);
+    if (target.canvas.width !== width || target.canvas.height !== height) {
+      target.canvas.width = width;
+      target.canvas.height = height;
+    }
+    const sized = { ...view, viewport: { ...view.viewport, width, height } };
+    return this.frameRenderer.renderVrEye(sized, target.context.getCurrentTexture()) ? target.canvas : null;
   }
 
   handleCanvasResize(width: number, height: number): void {
@@ -733,6 +816,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
     };
 
     attempt(() => this.compilerLoader.abortLoading());
+    attempt(() => this.immersiveVr?.dispose());
+    this.immersiveVr = null;
+    for (const { context } of this.vrEyeTargets) {
+      attempt(() => context.unconfigure());
+    }
+    this.vrEyeTargets = [];
     attempt(() => this.stopRenderLoop());
     attempt(() => this.mouseManager.dispose());
     attempt(() => this.keyboardManager.dispose());

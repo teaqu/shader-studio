@@ -6,7 +6,7 @@ import {
   type RenderPassNode
 } from "./SlangPassGraph";
 
-const SLANG_WGSL_CACHE_KEY_VERSION = 3;
+const SLANG_WGSL_CACHE_KEY_VERSION = 4;
 
 const SLANG_PIPELINE_CACHE_KEY_VERSION = 1;
 export function wgslCacheKey(

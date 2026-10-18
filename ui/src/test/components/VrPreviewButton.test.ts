@@ -23,7 +23,7 @@ describe('VR preview toggle', () => {
     const button = view.getByRole('button', { name: 'VR' });
     await fireEvent.click(button);
     expect(view.getByRole('region', { name: 'VR settings' })).toBeTruthy();
-    expect(view.getByText(/Open a fullscreen GLSL shader/)).toBeTruthy();
+    expect(view.getByText(/Open a fullscreen shader/)).toBeTruthy();
     expect((view.getByLabelText('Desktop preview') as HTMLInputElement).disabled).toBe(true);
     expect((view.getByRole('button', { name: 'Enter VR' }) as HTMLButtonElement).disabled).toBe(true);
     toggleVrPreview();
@@ -162,7 +162,7 @@ describe('VR pane settings', () => {
     updateVrPreviewContext(engine(false), 'ordinary.glsl');
     setVrPanelVisible(true);
     const view = render(VrPreviewButton);
-    expect(view.getByText(/Open a fullscreen GLSL shader/)).toBeTruthy();
+    expect(view.getByText(/Open a fullscreen shader/)).toBeTruthy();
     expect((view.getByLabelText('Desktop preview') as HTMLInputElement).disabled).toBe(true);
   });
   it('switches camera controls off together while keeping a documentation shortcut', async () => {

@@ -46,7 +46,7 @@ it("keeps the VR pane accessible without mainVR and switches compatible previews
     expect(target.querySelector('[aria-label="VR settings"]')).toBeNull();
     paneButton.click();
     await tick();
-    expect(target.querySelector('[aria-label="VR settings"]')!.textContent).toContain('Open a fullscreen GLSL shader');
+    expect(target.querySelector('[aria-label="VR settings"]')!.textContent).toContain('Open a fullscreen shader');
   } finally {
     updateVrPreviewContext(null, "");
     await unmount(component);

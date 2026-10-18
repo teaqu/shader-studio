@@ -99,6 +99,9 @@ export class WebGPUShaderSession {
 
   passGraph: RenderPassNode[] = [];
 
+  /** Common source of the installed graph, for features detected after install (mainVR). */
+  commonCode = "";
+
   passPipelines = new Map<string, SlangPassPipeline>();
 
   passKeys = new Map<string, string>();
@@ -642,6 +645,7 @@ export class WebGPUShaderSession {
     const previousResourceManager = this.resourceManager;
     const hadInstalledPipeline = previousPipelines.size > 0 || previousComputePipelines.size > 0;
     this.passGraph = graph.passes;
+    this.commonCode = graph.commonCode;
     this.passPipelines = nextPipelines;
     this.passKeys = nextKeys;
     this.computePipelines = nextComputePipelines;
@@ -760,6 +764,7 @@ export class WebGPUShaderSession {
     this.computePipelines.clear();
     this.computeKeys.clear();
     this.passGraph = [];
+    this.commonCode = "";
     this.dispatchOnceRan.clear();
     this.hasSubmittedFrameForInstalledGeneration = false;
     this.installedCompile = null;
@@ -920,6 +925,7 @@ export class WebGPUShaderSession {
     this.dispatchOnceRan.clear();
     this.hasSubmittedFrameForInstalledGeneration = false;
     this.passGraph = [];
+    this.commonCode = "";
     this.installedCompile = null;
     this.installedResourceKey = null;
     return (attempt) => {

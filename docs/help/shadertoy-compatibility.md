@@ -11,7 +11,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
 ## VR shaders
 
-Fullscreen GLSL Image shaders can use `mainVR` for desktop preview and WebXR headsets. See [VR shaders](../features/vr.md) for setup, navigation, controller inputs and a downloadable interactive demo.
+Fullscreen GLSL, Slang and WGSL Image shaders can use `mainVR` for desktop preview and WebXR headsets. See [VR shaders](../features/vr.md) for setup, navigation, controller inputs and a downloadable interactive demo.
 
 ### Optional Shader Studio controller inputs
 

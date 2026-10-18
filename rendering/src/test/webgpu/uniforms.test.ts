@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createSlangCustomUniformLayout, packShaderToyUniforms } from "../../webgpu/uniforms";
 import { createShaderToyUniformLayout, SHADERTOY_UNIFORM_SIZE, UNIFORM_OFFSETS } from "../../webgpu/SlangPrelude";
+import { emptyVrControllers } from "../../webxr/WebXrFrameData";
 
 describe("packShaderToyUniforms", () => {
   const input = {
@@ -107,10 +108,70 @@ describe("packShaderToyUniforms", () => {
     expect(dv.getUint32(UNIFORM_OFFSETS.iVertexCount + 4, true)).toBe(1);
   });
 
-  it("starts custom uniforms after the pointer struct", () => {
+  it("starts custom uniforms after the VR block", () => {
     const layout = createSlangCustomUniformLayout([{ name: "gain", type: "float" }]);
-    expect(layout.entries[0].offset).toBe(UNIFORM_OFFSETS.iPointer + 48);
-    expect(SHADERTOY_UNIFORM_SIZE).toBe(UNIFORM_OFFSETS.iPointer + 48);
+    expect(layout.entries[0].offset).toBe(UNIFORM_OFFSETS.iVrControllers + 7 * 32);
+    expect(SHADERTOY_UNIFORM_SIZE).toBe(UNIFORM_OFFSETS.iVrControllers + 7 * 32);
+  });
+
+  it("lays out the VR block after the 48-byte pointer struct", () => {
+    for (const channels of [4, 9]) {
+      const { offsets, size } = createShaderToyUniformLayout(channels);
+      expect(offsets.iVrState).toBe(offsets.iPointer + 48);
+      expect(offsets.iVrViewport).toBe(offsets.iVrState + 16);
+      expect(offsets.iVrRayTransform).toBe(offsets.iVrViewport + 16);
+      expect(offsets.iVrControllers).toBe(offsets.iVrRayTransform + 64);
+      expect(size).toBe(offsets.iVrControllers + 224);
+      expect(size % 16).toBe(0);
+    }
+  });
+
+  it("leaves the VR block zeroed without VR input", () => {
+    const buf = packShaderToyUniforms(input);
+    const bytes = new Uint8Array(buf, UNIFORM_OFFSETS.iVrState, SHADERTOY_UNIFORM_SIZE - UNIFORM_OFFSETS.iVrState);
+    expect(bytes.every(byte => byte === 0)).toBe(true);
+  });
+
+  it("packs VR flags, eye viewport, ray transform and controllers", () => {
+    const controllers = emptyVrControllers();
+    controllers.positions.set([1, 2, 3, 1, 4, 5, 6, 1]);
+    controllers.directions.set([0, 0, -1, 1]);
+    controllers.buttons.set([0.5], 4);
+    controllers.axes.set([-1, 1], 2);
+    controllers.faceButtons.set([1], 5);
+    controllers.touches.set([1], 3);
+    controllers.faceTouches.set([1], 4);
+    const rayTransform = Float32Array.from({ length: 16 }, (_, index) => index + 0.5);
+    const buf = packShaderToyUniforms({
+      ...input,
+      vr: { preview: true, immersive: true, active: true, viewport: { x: 1, y: 2, width: 300, height: 400 }, rayTransform, controllers },
+    });
+    const dv = new DataView(buf);
+    const f = (off: number) => dv.getFloat32(off, true);
+    expect([0, 1, 2, 3].map(index => dv.getInt32(UNIFORM_OFFSETS.iVrState + index * 4, true))).toEqual([1, 1, 1, 0]);
+    expect([0, 1, 2, 3].map(index => f(UNIFORM_OFFSETS.iVrViewport + index * 4))).toEqual([1, 2, 300, 400]);
+    expect(Array.from({ length: 16 }, (_, index) => f(UNIFORM_OFFSETS.iVrRayTransform + index * 4))).toEqual(Array.from(rayTransform));
+    const field = (index: number) => Array.from({ length: 8 }, (_, component) => f(UNIFORM_OFFSETS.iVrControllers + index * 32 + component * 4));
+    expect(field(0)).toEqual([1, 2, 3, 1, 4, 5, 6, 1]);
+    expect(field(1)).toEqual([0, 0, -1, 1, 0, 0, 0, 0]);
+    expect(field(2)).toEqual([0, 0, 0, 0, 0.5, 0, 0, 0]);
+    expect(field(3)).toEqual([0, 0, -1, 1, 0, 0, 0, 0]);
+    expect(field(4)).toEqual([0, 0, 0, 0, 0, 1, 0, 0]);
+    expect(field(5)).toEqual([0, 0, 0, 1, 0, 0, 0, 0]);
+    expect(field(6)).toEqual([0, 0, 0, 0, 1, 0, 0, 0]);
+  });
+
+  it("packs only the VR flags that are set", () => {
+    const dv = new DataView(packShaderToyUniforms({ ...input, vr: { preview: true } }));
+    expect([0, 1, 2].map(index => dv.getInt32(UNIFORM_OFFSETS.iVrState + index * 4, true))).toEqual([1, 0, 0]);
+    expect(dv.getFloat32(UNIFORM_OFFSETS.iVrViewport + 8, true)).toBe(0);
+    expect(dv.getFloat32(UNIFORM_OFFSETS.iVrRayTransform, true)).toBe(0);
+  });
+
+  it("keeps custom uniforms intact after a VR block", () => {
+    const info = [{ name: "gain", type: "float" }];
+    const buf = packShaderToyUniforms({ ...input, vr: { active: true, controllers: emptyVrControllers() } }, info, [{ name: "gain", type: "float", value: 2.5 }]);
+    expect(new DataView(buf).getFloat32(createSlangCustomUniformLayout(info).entries[0].offset, true)).toBe(2.5);
   });
 
   it("lays out the three camera matrices as consecutive 64-byte slots after iVertexCount", () => {
@@ -120,7 +181,7 @@ describe("packShaderToyUniforms", () => {
       expect(offsets.iProjectionMatrix).toBe(offsets.iViewMatrix + 64);
       expect(offsets.iViewProjection).toBe(offsets.iProjectionMatrix + 64);
       expect(offsets.iPointer).toBe(offsets.iViewProjection + 64);
-      expect(size).toBe(offsets.iPointer + 48);
+      expect(size).toBe(offsets.iVrControllers + 224);
     }
   });
 

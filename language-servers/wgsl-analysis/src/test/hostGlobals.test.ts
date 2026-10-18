@@ -33,6 +33,23 @@ describe("host-global seeding", () => {
     expect(visible.find((symbol) => symbol.name === "iFrame")).toMatchObject({ typeName: "i32" });
   });
 
+  it("resolves WebXR controller inputs and types their elements", () => {
+    const document = parseWgslDocument(URI, [
+      "fn mainImage(coord: vec2f) -> vec4f {",
+      "  let trigger = iVRControllerButtons[1];",
+      "  let tracked = iVRActive;",
+      "  return trigger + iVRControllerPosition[0] + iVRControllerDirection[0] + iVRControllerAxes[0]",
+      "    + iVRControllerFaceButtons[0] + iVRControllerTouches[0] + iVRControllerFaceTouches[0];",
+      "}",
+    ].join("\n"), "fragment");
+
+    const types = Object.fromEntries(document.symbols
+      .filter((symbol) => symbol.kind === "variable")
+      .map((symbol) => [symbol.name, symbol.typeName]));
+    expect(types).toMatchObject({ trigger: "vec4f", tracked: "bool" });
+    expect(document.unresolvedReferences.filter((reference) => reference.name.startsWith("iVR"))).toEqual([]);
+  });
+
   it("limits stage-gated globals to their stage", () => {
     const fragment = parseWgslDocument(URI, "fn mainImage(coord: vec2f) -> vec4f {\n  return vec4f(0.0);\n}", "fragment");
     const compute = parseWgslDocument(URI, "@compute @workgroup_size(8)\nfn main() {\n}", "compute");

@@ -24,7 +24,7 @@
         <button class="enter" disabled={state.busy || (!state.supported && !state.immersive)} aria-busy={state.busy} onclick={toggleImmersiveVr}>{state.immersive ? 'Exit VR' : 'Enter VR'}</button>
       </div>
       {#if !state.available}
-        <p class="hint">Open a fullscreen GLSL shader defining mainVR to use VR.</p>
+        <p class="hint">Open a fullscreen shader defining mainVR to use VR.</p>
       {:else if !state.supported}
         <p class="hint">Use a WebXR browser with a connected headset.</p>
       {/if}

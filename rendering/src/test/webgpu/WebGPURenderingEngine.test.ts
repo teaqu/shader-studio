@@ -768,8 +768,8 @@ describe("WebGPURenderingEngine", () => {
       engine.initialize(canvas);
       await (engine as unknown as { ready: Promise<void> }).ready;
 
-      // The 48-byte pointer struct consumes one more channel-sized slot.
-      expect(ConfigValidator.getChannelLimit()).toBe(1357);
+      // The pointer struct and 320-byte VR block consume seven more channel-sized slots.
+      expect(ConfigValidator.getChannelLimit()).toBe(1351);
 
       expect(adapter.requestDevice).toHaveBeenCalledWith({
         requiredLimits: {
