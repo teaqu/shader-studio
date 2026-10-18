@@ -87,7 +87,7 @@ Three path forms are supported:
 | Absolute | `/Users/me/project/flow.glsl` | Filesystem root |
 | Workspace-root | `@/src/flow.glsl` | VS Code workspace root (`/` of the virtual workspace in the standalone browser host) |
 
-**Create** generates a source template using the shader mode preference. WGSL/Slang function rows appear under **Fragment shader**; choose the function this pass should run. **Add function…** inserts a hook or native entry point into that file, using the adjacent mode chooser. A native fragment can run without `mainImage`, and native templates use the generated vertex stage until you request a custom one. GLSL has no fragment function selector or Built-in/Native chooser because it uses the fixed `mainImage` hook.
+**Create** generates a source template using the shader mode preference. For WGSL/Slang, **Render output → Function** shows the selected fragment function; use the picker when multiple functions are available. **+ Add…** inserts a native fragment function or built-in `mainImage` into that file. A native fragment can run without `mainImage`, and native templates use the generated vertex stage until you request a custom one. GLSL has no fragment function selector or Built-in/Native chooser because it uses the fixed `mainImage` hook.
 
 The pass sections are arranged as Fragment source/functions, Channels, Geometry, Rendering, Resolution, Output, and Vertex shader. Image omits the file chooser. **Output** selects 2D or Cubemap, its cubemap face size, the buffer format, and read-only [inferred output slots and names](multiple-render-targets.md).
 

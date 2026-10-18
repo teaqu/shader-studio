@@ -2,6 +2,10 @@ import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { expect, it, vi } from 'vitest';
 import ShaderExplorer from './ShaderExplorer.svelte';
 
+vi.stubGlobal('ResizeObserver', class {
+  observe() {} unobserve() {} disconnect() {}
+});
+
 vi.mock('./ShaderPreview.svelte', async () => import('../../test/FailingShaderPreviewStub.svelte'));
 
 const shaderEntry = (name: string, thumbnailVersion: number) => ({
