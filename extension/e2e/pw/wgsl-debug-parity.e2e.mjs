@@ -367,4 +367,46 @@ test.describe('WGSL debug parity in the VS Code webview @gpu', () => {
     await expectCanvasColor(frame, rgb => near(rgb, [96, 191, 0]), 'full WGSL shader did not return to its authored colour');
     await setInlineRendering(frame, true);
   });
+  test('keeps a newly opened shader after unlocking the preview from its owner\'s Common file', async ({ vscode }) => {
+    // Unlocking while Common is focused makes the viewer ask the host for
+    // Common's owner again. Opening another shader before that answer lands
+    // must not let the owner's late answer replace it.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      for (const existingFrame of vscode.window.frames()) {
+        if (await existingFrame.locator('.canvas-container').count()) {
+          await setPreviewLocked(existingFrame, false);
+        }
+      }
+      await showFileAtLine(vscode, imagePath, 1);
+      await ensureShaderView(vscode);
+      let frame = await vscode.shaderFrame();
+      await expect(frame.locator('.preview-output-label')).toContainText('image.wgsl', { timeout: 30_000 });
+      await enableVariableInspector(frame);
+      await setPreviewLocked(frame, true);
+
+      await showFileAtLine(vscode, commonPath, 1);
+      frame = await vscode.shaderFrame();
+      await expect.poll(
+        () => frame.evaluate(() => document.querySelector('.header-info')?.textContent?.trim() ?? ''),
+        { message: 'debug panel never followed the Common cursor', timeout: 30_000 },
+      ).toContain('L2');
+
+      await setPreviewLocked(frame, false);
+      await showFileAtLine(vscode, loopParametersPath, 4);
+      frame = await vscode.shaderFrame();
+      const label = frame.locator('.preview-output-label');
+      await expect(label, `attempt ${attempt + 1}: the opened shader never showed`)
+        .toContainText('loop-parameters.wgsl', { timeout: 30_000 });
+      // The owner's answer is one host round trip behind; sample past it.
+      for (let sample = 0; sample < 10; sample++) {
+        await expect(label, `attempt ${attempt + 1}: the owner's late refresh replaced the opened shader`)
+          .toContainText('loop-parameters.wgsl', { timeout: 1 });
+        await frame.page().waitForTimeout(200);
+      }
+      await expect.poll(
+        () => frame.evaluate(() => document.querySelector('.header-info')?.textContent?.trim() ?? ''),
+        { message: `attempt ${attempt + 1}: debug panel never followed the opened shader's cursor` },
+      ).toContain('L5');
+    }
+  });
 });

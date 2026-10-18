@@ -1329,7 +1329,7 @@
     }
 
     if (type === 'shaderSource') {
-      const messageTarget = pipeline.getShaderMessageTarget(event.data);
+      const messageTarget = pipeline.admitShaderMessage(event.data);
       if (!messageTarget) {
         return;
       }

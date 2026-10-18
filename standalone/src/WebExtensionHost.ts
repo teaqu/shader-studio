@@ -475,7 +475,11 @@ export class WebExtensionHost {
         const path = payload.path === undefined ? this.activeShaderPath : payload.path;
         if (typeof path === 'string' && shaderLanguageForPath(path) && this.workspace.exists(path)) {
           this.setActiveShader(path);
-          this.emitViewer(this.shaderSourceMessage(path));
+          // Lets the viewer drop this answer if it opened another shader since asking.
+          const { refreshRequestId } = payload;
+          this.emitViewer(Number.isInteger(refreshRequestId)
+            ? { ...this.shaderSourceMessage(path), refreshRequestId }
+            : this.shaderSourceMessage(path));
         }
         return;
       }

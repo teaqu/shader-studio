@@ -1223,7 +1223,7 @@ describe("MessageHandler", () => {
 
         expect(result).toEqual({ success: true });
         expect(mockTransport.postMessage).toHaveBeenCalledWith(
-          expect.objectContaining({ type: 'refresh', payload: { path: lockedPath } })
+          expect.objectContaining({ type: 'refresh', payload: { path: lockedPath, refreshRequestId: expect.any(Number) } })
         );
       },
     );

@@ -195,6 +195,28 @@ suite('MessageHandler Test Suite', () => {
     );
   });
 
+  test('forwards an owner refresh request id with a path refresh', () => {
+    const execute = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+    messageHandler.handleMessage({ type: 'refresh', payload: { path: '/mock/owner.glsl', refreshRequestId: 3 } });
+    sinon.assert.calledOnceWithExactly(
+      execute, 'shader-studio.refreshSpecificShaderByPath', '/mock/owner.glsl', { refreshRequestId: 3 },
+    );
+  });
+
+  test('forwards an owner refresh request id with a current-shader refresh', () => {
+    const execute = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+    messageHandler.handleMessage({ type: 'refresh', payload: { refreshRequestId: 8 } });
+    sinon.assert.calledOnceWithExactly(execute, 'shader-studio.refreshCurrentShader', { refreshRequestId: 8 });
+  });
+
+  test('forwards a refresh request id alongside an initial refresh', () => {
+    const execute = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+    messageHandler.handleMessage({ type: 'refresh', payload: { path: '/mock/a.glsl', reason: 'initial', refreshRequestId: 2 } });
+    sinon.assert.calledOnceWithExactly(
+      execute, 'shader-studio.refreshSpecificShaderByPath', '/mock/a.glsl', { reload: false, refreshRequestId: 2 },
+    );
+  });
+
   test('keeps explicit current-shader refresh on the default reload path', () => {
     const execute = sandbox.stub(vscode.commands, 'executeCommand').resolves();
     messageHandler.handleMessage({ type: 'refresh', payload: {} });

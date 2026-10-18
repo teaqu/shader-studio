@@ -1099,6 +1099,46 @@ suite('ShaderProvider Test Suite', () => {
       assert.strictEqual(message.reload, undefined);
     });
 
+    test('echoes the viewer refresh request id on the main shader message', async () => {
+      const shaderPath = '/path/to/shader.glsl';
+      const fs = require('fs');
+
+      sandbox.stub(fs, 'existsSync').returns(true);
+      sandbox.stub(fs, 'readFileSync').returns('void mainImage(out vec4 fragColor, in vec2 fragCoord) {}');
+      loadAndProcessConfigStub.returns({ version: '1.0', passes: { Image: {} } });
+
+      await provider.sendShaderFromPath(shaderPath, { reload: true, refreshRequestId: 7 });
+
+      const message = sendSpy.firstCall.args[0];
+      assert.strictEqual(message.refreshRequestId, 7);
+      assert.strictEqual(message.reload, true);
+    });
+
+    test('leaves the refresh request id off a main shader message nobody requested', async () => {
+      const shaderPath = '/path/to/shader.glsl';
+      const fs = require('fs');
+
+      sandbox.stub(fs, 'existsSync').returns(true);
+      sandbox.stub(fs, 'readFileSync').returns('void mainImage(out vec4 fragColor, in vec2 fragCoord) {}');
+      loadAndProcessConfigStub.returns({ version: '1.0', passes: { Image: {} } });
+
+      await provider.sendShaderFromPath(shaderPath, { reload: true });
+
+      assert.ok(!('refreshRequestId' in sendSpy.firstCall.args[0]));
+    });
+
+    test('echoes the viewer refresh request id on a helper file message', async () => {
+      const shaderPath = '/path/to/helper.glsl';
+      const fs = require('fs');
+
+      sandbox.stub(fs, 'existsSync').returns(true);
+      sandbox.stub(fs, 'readFileSync').returns('void someFunction() {}');
+
+      await provider.sendShaderFromPath(shaderPath, { refreshRequestId: 9 });
+
+      assert.strictEqual(sendSpy.firstCall.args[0].refreshRequestId, 9);
+    });
+
     test('should switch to files without mainImage', async () => {
       const shaderPath = '/path/to/shader.glsl';
       const fs = require('fs');

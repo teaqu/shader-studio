@@ -391,7 +391,7 @@ describe('ShaderPipeline — overlay cursor gate', () => {
       expect(mocks.renderEngine.updateBufferAndRecompile).not.toHaveBeenCalled();
       expect(mocks.transport.postMessage).toHaveBeenCalledWith({
         type: 'refresh',
-        payload: { path: lockedPath },
+        payload: { path: lockedPath, refreshRequestId: expect.any(Number) },
       });
     });
 
@@ -1007,6 +1007,193 @@ describe('ShaderPipeline — concurrent shader messages', () => {
   });
 });
 
+describe('ShaderPipeline — owner refresh responses', () => {
+  let pipeline: ShaderPipeline;
+  let mocks: ReturnType<typeof makeConcurrentMocks>;
+
+  const ownerPath = '/project/owner.wgsl';
+  const commonPath = '/project/common.wgsl';
+  const vertexPath = '/project/owner.vert.wgsl';
+  const otherPath = '/project/other.wgsl';
+  const ownerCode = 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(1.0); }';
+  const otherCode = 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(0.0); }';
+  const vertexCode = 'fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>) {}';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks = makeConcurrentMocks();
+    mocks.compileShaderPipeline.mockResolvedValue({ success: true });
+    pipeline = new ShaderPipeline(
+      mocks.transport,
+      mocks.renderEngine,
+      mocks.shaderLocker,
+      mocks.shaderDebugManager,
+    );
+  });
+
+  function sourceEvent(path: string, code: string, extra: Partial<ShaderSourceMessage> = {}): MessageEvent {
+    return {
+      data: {
+        type: 'shaderSource', code, config: null, path, buffers: {},
+        bufferPathMap: path === ownerPath
+          ? { Image: ownerPath, common: commonPath, '__shader_studio_vertex__:Image': vertexPath }
+          : { Image: path },
+        ...extra,
+      },
+    } as unknown as MessageEvent;
+  }
+
+  function lastRefreshRequestId(): number {
+    const refresh = vi.mocked(mocks.transport.postMessage).mock.calls
+      .map(([message]) => message as { type: string; payload?: { refreshRequestId?: number } })
+      .filter(message => message.type === 'refresh')
+      .at(-1);
+    expect(refresh?.payload?.refreshRequestId).toEqual(expect.any(Number));
+    return refresh!.payload!.refreshRequestId!;
+  }
+
+  async function requestOwnerRefreshFrom(source: 'common' | 'vertex'): Promise<number> {
+    await pipeline.handleShaderMessage(sourceEvent(ownerPath, ownerCode));
+    await pipeline.handleShaderMessage(source === 'common'
+      ? sourceEvent(commonPath, 'fn shared() {}', { bufferPathMap: undefined })
+      : sourceEvent(vertexPath, vertexCode, { bufferPathMap: undefined }));
+    expect(mocks.transport.postMessage).toHaveBeenCalledWith({
+      type: 'refresh',
+      payload: { path: ownerPath, refreshRequestId: expect.any(Number) },
+    });
+    return lastRefreshRequestId();
+  }
+
+  it.each(['common', 'vertex'] as const)(
+    'ignores a %s owner refresh answered after a newer shader was opened',
+    async (source) => {
+      const refreshRequestId = await requestOwnerRefreshFrom(source);
+      await pipeline.handleShaderMessage(sourceEvent(otherPath, otherCode));
+      const compiles = mocks.compileShaderPipeline.mock.calls.length;
+
+      const result = await pipeline.handleShaderMessage(
+        sourceEvent(ownerPath, ownerCode, { refreshRequestId }),
+      );
+
+      expect(result).toBeUndefined();
+      expect(mocks.compileShaderPipeline).toHaveBeenCalledTimes(compiles);
+      expect(pipeline.getLastEvent()?.data.path).toBe(otherPath);
+    },
+  );
+
+  it('ignores a superseded owner refresh even while the newer shader is still compiling', async () => {
+    const refreshRequestId = await requestOwnerRefreshFrom('common');
+    const compiles = mocks.compileShaderPipeline.mock.calls.length;
+    let finishOther!: () => void;
+    mocks.compileShaderPipeline.mockImplementationOnce(() => new Promise((resolve) => {
+      finishOther = () => resolve({ success: true });
+    }));
+    const other = pipeline.handleShaderMessage(sourceEvent(otherPath, otherCode));
+
+    const response = pipeline.handleShaderMessage(sourceEvent(ownerPath, ownerCode, { refreshRequestId }));
+    finishOther();
+    await other;
+
+    await expect(response).resolves.toBeUndefined();
+    await Promise.resolve();
+    expect(pipeline.getLastEvent()?.data.path).toBe(otherPath);
+    // Only the newer shader compiled; the owner's answer never did.
+    expect(mocks.compileShaderPipeline).toHaveBeenCalledTimes(compiles + 1);
+  });
+
+  it('applies an owner refresh answered before any newer shader arrived', async () => {
+    const refreshRequestId = await requestOwnerRefreshFrom('common');
+    const compiles = mocks.compileShaderPipeline.mock.calls.length;
+
+    const result = await pipeline.handleShaderMessage(sourceEvent(ownerPath, ownerCode, { refreshRequestId }));
+
+    expect(result).toEqual(expect.objectContaining({ success: true }));
+    expect(mocks.compileShaderPipeline).toHaveBeenCalledTimes(compiles + 1);
+    expect(pipeline.getLastEvent()?.data.path).toBe(ownerPath);
+  });
+
+  it('applies an owner refresh when the newer shader was the owner itself', async () => {
+    const refreshRequestId = await requestOwnerRefreshFrom('common');
+    await pipeline.handleShaderMessage(sourceEvent(ownerPath, ownerCode));
+    const compiles = mocks.compileShaderPipeline.mock.calls.length;
+
+    await pipeline.handleShaderMessage(sourceEvent(ownerPath, ownerCode, { refreshRequestId }));
+
+    expect(mocks.compileShaderPipeline).toHaveBeenCalledTimes(compiles + 1);
+    expect(pipeline.getLastEvent()?.data.path).toBe(ownerPath);
+  });
+
+  it('still opens the owner when the user navigates back after a dropped refresh', async () => {
+    const refreshRequestId = await requestOwnerRefreshFrom('common');
+    await pipeline.handleShaderMessage(sourceEvent(otherPath, otherCode));
+    await pipeline.handleShaderMessage(sourceEvent(ownerPath, ownerCode, { refreshRequestId }));
+    const compiles = mocks.compileShaderPipeline.mock.calls.length;
+
+    await pipeline.handleShaderMessage(sourceEvent(ownerPath, ownerCode));
+    // A repeated echo of an already answered request is not a known refresh.
+    await pipeline.handleShaderMessage(sourceEvent(ownerPath, ownerCode, { refreshRequestId }));
+
+    expect(mocks.compileShaderPipeline).toHaveBeenCalledTimes(compiles + 2);
+    expect(pipeline.getLastEvent()?.data.path).toBe(ownerPath);
+  });
+
+  it('applies a locked owner refresh because rejected unrelated shaders do not supersede it', async () => {
+    await pipeline.handleShaderMessage(sourceEvent(ownerPath, ownerCode));
+    vi.mocked(mocks.shaderLocker.isLocked).mockReturnValue(true);
+    vi.mocked(mocks.shaderLocker.getLockedShaderPath).mockReturnValue(ownerPath as never);
+    await pipeline.handleShaderMessage(sourceEvent(commonPath, 'fn shared() {}', { bufferPathMap: undefined }));
+    const refreshRequestId = lastRefreshRequestId();
+    await pipeline.handleShaderMessage(sourceEvent(otherPath, otherCode));
+    const compiles = mocks.compileShaderPipeline.mock.calls.length;
+
+    await pipeline.handleShaderMessage(sourceEvent(ownerPath, ownerCode, { refreshRequestId }));
+
+    expect(mocks.compileShaderPipeline).toHaveBeenCalledTimes(compiles + 1);
+    expect(pipeline.getLastEvent()?.data.path).toBe(ownerPath);
+  });
+
+  it('refuses a superseded owner refresh at admission, consistently on every ask', async () => {
+    const refreshRequestId = await requestOwnerRefreshFrom('common');
+    await pipeline.handleShaderMessage(sourceEvent(otherPath, otherCode));
+    const response = sourceEvent(ownerPath, ownerCode, { refreshRequestId }).data as ShaderSourceMessage;
+
+    expect(pipeline.admitShaderMessage(response)).toBeNull();
+    expect(pipeline.admitShaderMessage(response)).toBeNull();
+    await expect(pipeline.handleShaderMessage({ data: response } as MessageEvent)).resolves.toBeUndefined();
+    expect(pipeline.getLastEvent()?.data.path).toBe(otherPath);
+  });
+
+  it('compiles an answered owner refresh the viewer already admitted', async () => {
+    const refreshRequestId = await requestOwnerRefreshFrom('common');
+    const response = sourceEvent(ownerPath, ownerCode, { refreshRequestId });
+    const compiles = mocks.compileShaderPipeline.mock.calls.length;
+
+    expect(pipeline.admitShaderMessage(response.data)).toEqual({ kind: 'main' });
+    await pipeline.handleShaderMessage(response);
+
+    expect(mocks.compileShaderPipeline).toHaveBeenCalledTimes(compiles + 1);
+    expect(pipeline.getLastEvent()?.data.path).toBe(ownerPath);
+  });
+
+  it('admits linked sources without recording them as main arrivals', async () => {
+    const refreshRequestId = await requestOwnerRefreshFrom('common');
+    const common = sourceEvent(commonPath, 'fn shared() {}', { bufferPathMap: undefined }).data as ShaderSourceMessage;
+    expect(pipeline.admitShaderMessage(common)).toEqual({ kind: 'buffer', passName: 'common' });
+    const compiles = mocks.compileShaderPipeline.mock.calls.length;
+
+    await pipeline.handleShaderMessage(sourceEvent(ownerPath, ownerCode, { refreshRequestId }));
+
+    expect(mocks.compileShaderPipeline).toHaveBeenCalledTimes(compiles + 1);
+  });
+
+  it('does not tag an explicit standalone preview refresh', () => {
+    pipeline.previewFileStandalone('/project/linked.wgsl');
+    expect(mocks.transport.postMessage).toHaveBeenCalledWith({
+      type: 'refresh', payload: { path: '/project/linked.wgsl' },
+    });
+  });
+});
+
 describe('ShaderPipeline — unlocked vertex-source routing', () => {
   let pipeline: ShaderPipeline;
   let mocks: ReturnType<typeof makeMocks>;
@@ -1136,7 +1323,7 @@ describe('ShaderPipeline — unlocked vertex-source routing', () => {
     expect(result).toBeUndefined();
     expect(mocks.transport.postMessage).toHaveBeenCalledWith({
       type: 'refresh',
-      payload: { path: ownerPath },
+      payload: { path: ownerPath, refreshRequestId: expect.any(Number) },
     });
   });
 

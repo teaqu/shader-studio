@@ -619,6 +619,29 @@ describe('WebExtensionHost', () => {
     }));
   });
 
+  it('echoes an owner refresh request id on the refreshed shader', async () => {
+    const host = await createHost();
+    const receive = vi.fn();
+    host.onViewerMessage(receive);
+
+    await host.handleViewerMessage({ type: 'refresh', payload: { path: '/aurora.glsl', refreshRequestId: 12 } });
+    expect(receive).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      type: 'shaderSource', path: '/aurora.glsl', refreshRequestId: 12,
+    }));
+
+    receive.mockClear();
+    await host.handleViewerMessage({ type: 'refresh', payload: { path: '/aurora.glsl' } });
+    expect(receive.mock.calls[0][0]).not.toHaveProperty('refreshRequestId');
+  });
+
+  it.each(['12', null, 1.5])('drops a malformed refresh request id: %j', async (refreshRequestId) => {
+    const host = await createHost();
+    const receive = vi.fn();
+    host.onViewerMessage(receive);
+    await host.handleViewerMessage({ type: 'refresh', payload: { path: '/aurora.glsl', refreshRequestId } });
+    expect(receive.mock.calls[0][0]).not.toHaveProperty('refreshRequestId');
+  });
+
   it.each([{}, { path: undefined }])('refreshes the active shader when no path is requested: %j', async (payload) => {
     const host = await createHost();
     const receive = vi.fn();

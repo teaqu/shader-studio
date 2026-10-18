@@ -452,6 +452,10 @@ vi.mock('../../lib/slangAssets', () => ({
   getSlangAssetUrls: () => ({ scriptUrl: '/mock/slang-wasm.js', wasmUrl: '/mock/slang-wasm.wasm' }),
 }));
 
+const { mockRejectShaderAdmission } = vi.hoisted(() => ({
+  mockRejectShaderAdmission: vi.fn((_message: { path?: string }) => false),
+}));
+
 // Mock dependencies
 vi.mock('../../lib/ShaderPipeline', () => {
   const MockShaderPipeline = class {
@@ -505,6 +509,10 @@ vi.mock('../../lib/ShaderPipeline', () => {
 
     canHandleShaderMessage(message: { path?: string }): boolean {
       return this.getShaderMessageTarget(message) !== null;
+    }
+
+    admitShaderMessage(message: { path?: string }) {
+      return mockRejectShaderAdmission(message) ? null : this.getShaderMessageTarget(message);
     }
 
     handleCursorPositionMessage(msg: any) {
@@ -874,6 +882,25 @@ describe('ShaderViewer', () => {
     expect(mockEndLiveRecording).not.toHaveBeenCalled();
     await sendMessage({ type: 'shaderSource', path: '/test/other.glsl', code: 'new source' });
     expect(mockEndLiveRecording).toHaveBeenCalledExactlyOnceWith('Live recording stopped because a different shader was opened.');
+  });
+
+  it('ignores a shader source the pipeline refuses to admit, before any viewer side effect', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await loadShader();
+    mockPipelineHandleShaderMessage.mockClear();
+    mockEndLiveRecording.mockClear();
+    mockRejectShaderAdmission.mockImplementation(message => message.path === '/test/stale.glsl');
+    try {
+      await sendMessage({ type: 'shaderSource', path: '/test/stale.glsl', code: 'stale source', refreshRequestId: 1 });
+    } finally {
+      mockRejectShaderAdmission.mockReset();
+      mockRejectShaderAdmission.mockReturnValue(false);
+    }
+
+    expect(mockPipelineHandleShaderMessage).not.toHaveBeenCalled();
+    expect(mockEndLiveRecording).not.toHaveBeenCalled();
+    expect(getViewerSession()).toMatchObject({ shaderPath: '/test/shader.glsl' });
   });
 
   it('publishes the active shader session and releases it when the viewer unmounts', async () => {
@@ -6011,8 +6038,8 @@ describe('ShaderViewer', () => {
       await tick();
       expect(screen.getByLabelText('Toggle pause').classList.contains('error')).toBe(Boolean(result.errors?.length));
       if (result.errors) {
-expect(screen.getByText('VR compile failed')).toBeTruthy();
-}
+        expect(screen.getByText('VR compile failed')).toBeTruthy();
+      }
     });
 
     it('should handle null result from handleShaderMessage', async () => {

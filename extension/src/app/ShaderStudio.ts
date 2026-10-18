@@ -362,7 +362,7 @@ export class ShaderStudio {
     this.context.subscriptions.push(
       vscode.commands.registerCommand(
         "shader-studio.refreshCurrentShader",
-        (options?: { reload?: boolean }) => {
+        (options?: { reload?: boolean; refreshRequestId?: number }) => {
           this.logger.info("shader-studio.refreshCurrentShader command executed");
           return this.refreshCurrentShader(options);
         },
@@ -374,7 +374,7 @@ export class ShaderStudio {
         "shader-studio.refreshSpecificShaderByPath",
         (
           shaderPath: string,
-          options?: { claimActiveAnalysisContext?: boolean; reload?: boolean },
+          options?: { claimActiveAnalysisContext?: boolean; reload?: boolean; refreshRequestId?: number },
         ) => {
           this.logger.info(
             `shader-studio.refreshSpecificShaderByPath command executed for: ${shaderPath}`,
@@ -608,7 +608,8 @@ export class ShaderStudio {
     }
   }
 
-  private async refreshCurrentShader(options?: { reload?: boolean }): Promise<void> {
+  private async refreshCurrentShader(options?: { reload?: boolean; refreshRequestId?: number }): Promise<void> {
+    const sendOptions = refreshSendOptions(options);
     this.logger.info("Refreshing current/active shader");
 
     const activeEditor = vscode.window.activeTextEditor;
@@ -617,7 +618,7 @@ export class ShaderStudio {
         `Refreshing current shader: ${activeEditor.document.fileName}`,
       );
       this.shaderProvider.claimActiveAnalysisContext(activeEditor.document.uri.fsPath);
-      await this.shaderProvider.sendShaderFromEditor(activeEditor, { reload: options?.reload ?? true });
+      await this.shaderProvider.sendShaderFromEditor(activeEditor, sendOptions);
     } else {
       const lastViewedFile = this.glslFileTracker.getLastViewedGlslFile();
       if (lastViewedFile) {
@@ -625,7 +626,7 @@ export class ShaderStudio {
           `No active GLSL editor, reloading last viewed file: ${lastViewedFile}`,
         );
         this.shaderProvider.claimActiveAnalysisContext(lastViewedFile);
-        await this.shaderProvider.sendShaderFromPath(lastViewedFile, { reload: options?.reload ?? true });
+        await this.shaderProvider.sendShaderFromPath(lastViewedFile, sendOptions);
       } else {
         this.logger.info("No active GLSL editor and no last viewed file — nothing to refresh");
       }
@@ -634,7 +635,7 @@ export class ShaderStudio {
 
   private async refreshSpecificShaderByPath(
     shaderPath: string,
-    options?: { claimActiveAnalysisContext?: boolean; reload?: boolean },
+    options?: { claimActiveAnalysisContext?: boolean; reload?: boolean; refreshRequestId?: number },
   ): Promise<void> {
     this.logger.info(`Refreshing shader by path: ${shaderPath}`);
 
@@ -652,7 +653,7 @@ export class ShaderStudio {
         this.glslFileTracker.setLastViewedGlslFile(shaderPath);
         this.shaderProvider.claimActiveAnalysisContext(shaderPath);
       }
-      await this.shaderProvider.sendShaderFromPath(shaderPath, { reload: options?.reload ?? true });
+      await this.shaderProvider.sendShaderFromPath(shaderPath, refreshSendOptions(options));
     } catch (error) {
       this.logger.error(
         `Failed to refresh shader at path '${shaderPath}': ${error}`,
@@ -681,4 +682,14 @@ export class ShaderStudio {
     await this.shaderCreator.create();
   }
 
+}
+
+/** Refreshes reload by default; a viewer request id is echoed only when present. */
+function refreshSendOptions(
+  options?: { reload?: boolean; refreshRequestId?: number },
+): { reload: boolean; refreshRequestId?: number } {
+  return {
+    reload: options?.reload ?? true,
+    ...(options?.refreshRequestId !== undefined ? { refreshRequestId: options.refreshRequestId } : {}),
+  };
 }

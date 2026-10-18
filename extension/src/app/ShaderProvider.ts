@@ -77,7 +77,7 @@ export class ShaderProvider {
 
   public async sendShaderFromEditor(
     editor: vscode.TextEditor,
-    options?: { reload?: boolean; previewId?: string },
+    options?: { reload?: boolean; previewId?: string; refreshRequestId?: number },
   ): Promise<void> {
     if (!this.messenger) {
       return;
@@ -123,7 +123,7 @@ export class ShaderProvider {
 
   public async sendShaderFromPath(
     shaderPath: string,
-    options?: { reload?: boolean },
+    options?: { reload?: boolean; refreshRequestId?: number },
   ): Promise<void> {
     if (!this.messenger) {
       return;
@@ -165,7 +165,7 @@ export class ShaderProvider {
   // Uses the current in-memory TextDocument content, including unsaved edits.
   public async sendShaderFromDocument(
     document: vscode.TextDocument,
-    options?: { reload?: boolean; previewId?: string },
+    options?: { reload?: boolean; previewId?: string; refreshRequestId?: number },
   ): Promise<void> {
     if (!this.messenger || !isShaderDocument(document)) {
       return;
@@ -535,7 +535,7 @@ export class ShaderProvider {
     shaderPath: string,
     code: string,
     sendNonMainShader: () => Promise<void>,
-    options?: { reload?: boolean; previewId?: string },
+    options?: { reload?: boolean; previewId?: string; refreshRequestId?: number },
     cursorPosition?: ShaderSourceMessage["cursorPosition"],
   ): Promise<boolean> {
     const language = (shaderLanguageForPath(shaderPath) ?? "glsl");
@@ -661,7 +661,7 @@ export class ShaderProvider {
   private async sendMainImageShader(
     shaderPath: string,
     code: string,
-    options?: { reload?: boolean; previewId?: string },
+    options?: { reload?: boolean; previewId?: string; refreshRequestId?: number },
     cursorPosition?: ShaderSourceMessage["cursorPosition"],
     trackActiveShader: boolean = false,
     expectedContextGeneration: number | null = this.captureAnalysisContextGeneration(shaderPath),
@@ -692,6 +692,7 @@ export class ShaderProvider {
       bufferPathMap: this.buildBufferPathMap(config, shaderPath),
       cursorPosition,
       ...(configError ? { configError } : {}),
+      ...(options?.refreshRequestId !== undefined ? { refreshRequestId: options.refreshRequestId } : {}),
       // Echoed back on this compile's reports so a newer send's reports win
       // over this one's when clients answer out of order. The counter is
       // claimed up front, so even a send dropped later still supersedes older
@@ -753,7 +754,7 @@ export class ShaderProvider {
     filePath: string,
     code: string,
     editor: vscode.TextEditor,
-    options?: { reload?: boolean },
+    options?: { reload?: boolean; refreshRequestId?: number },
   ): Promise<void> {
     const line = editor.selection?.active.line ?? 0;
     const message = this.buildNonMainImageShaderMessage(
@@ -776,7 +777,7 @@ export class ShaderProvider {
   private async sendNonMainImageShaderFromPath(
     filePath: string,
     code: string,
-    options?: { reload?: boolean },
+    options?: { reload?: boolean; refreshRequestId?: number },
   ): Promise<void> {
     const message = this.buildNonMainImageShaderMessage(
       filePath,
@@ -792,7 +793,7 @@ export class ShaderProvider {
     filePath: string,
     code: string,
     document: vscode.TextDocument,
-    options?: { reload?: boolean },
+    options?: { reload?: boolean; refreshRequestId?: number },
   ): Promise<void> {
     let cursorPosition: ShaderSourceMessage["cursorPosition"];
 
@@ -824,7 +825,7 @@ export class ShaderProvider {
   private buildNonMainImageShaderMessage(
     filePath: string,
     code: string,
-    options?: { reload?: boolean },
+    options?: { reload?: boolean; refreshRequestId?: number },
     cursorPosition?: ShaderSourceMessage["cursorPosition"],
   ): ShaderSourceMessage {
     const message: ShaderSourceMessage = {
@@ -842,6 +843,7 @@ export class ShaderProvider {
       // Same per-path counter the main send uses, so a newer send of any kind
       // supersedes this message's reports. See CompileReportMarker.
       compileSequence: this.beginPreparation(filePath),
+      ...(options?.refreshRequestId !== undefined ? { refreshRequestId: options.refreshRequestId } : {}),
     };
     if (message.language === "slang") {
       message.originalCode = code;
