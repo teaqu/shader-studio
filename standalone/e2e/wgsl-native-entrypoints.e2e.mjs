@@ -566,7 +566,7 @@ for (const language of ['wgsl', 'slang']) {
     await expect(row.getByRole('combobox')).toHaveValue('');
     await page.reload();
     await expect(row.getByRole('combobox')).toHaveValue('');
-    await expect.poll(async () => JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`]).passes.Image.entryPoints?.fragment ?? '').toBe('');
-    await expect.poll(async () => (await workspace(page))[`/shaders/${stem}.${language}`]).toContain('ImageFragment');
+    await expect.poll(async () => JSON.parse((await workspace(page))[`/${stem}.sha.json`]).passes.Image.entryPoints?.fragment ?? '').toBe('');
+    await expect.poll(async () => (await workspace(page))[`/${stem}.${language}`]).toContain('ImageFragment');
   });
 }
