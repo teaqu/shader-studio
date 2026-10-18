@@ -31,9 +31,9 @@
   .overlay { position: fixed; inset: 0; z-index: 10000; background: #0008; display: grid; place-items: center; }
   .picker { width: min(520px, 90vw); padding: 20px; border: 1px solid var(--vscode-panel-border, #444); border-radius: 8px; background: var(--vscode-editor-background, #1e1e1e); color: var(--vscode-foreground, #ccc); }
   h2 { margin-top: 0; font-size: 18px; }
-  input { box-sizing: border-box; width: 100%; margin-bottom: 12px; padding: 8px; }
-  input, button { color: var(--vscode-input-foreground, #ccc); background: var(--vscode-input-background, #333); border: 1px solid var(--vscode-panel-border, #444); border-radius: 4px; }
-  button { padding: 8px 12px; cursor: pointer; }
+  input { box-sizing: border-box; width: 100%; margin-bottom: 12px; padding: var(--shader-studio-control-padding); min-height: var(--shader-studio-control-height); }
+  input, button { color: var(--vscode-input-foreground, #ccc); background: var(--vscode-input-background, #333); border: 1px solid var(--vscode-panel-border, #444); border-radius: var(--shader-studio-control-radius); }
+  button { padding: var(--shader-studio-control-padding); cursor: pointer; min-height: var(--shader-studio-control-height); }
   .files { max-height: 50vh; overflow: auto; display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
   .file { text-align: left; }
   button:hover { border-color: var(--vscode-focusBorder, #007acc); }

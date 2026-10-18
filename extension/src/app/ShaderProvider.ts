@@ -77,7 +77,7 @@ export class ShaderProvider {
 
   public async sendShaderFromEditor(
     editor: vscode.TextEditor,
-    options?: { reload?: boolean },
+    options?: { reload?: boolean; previewId?: string },
   ): Promise<void> {
     if (!this.messenger) {
       return;
@@ -138,7 +138,10 @@ export class ShaderProvider {
       // Clear stale persistent errors before re-evaluating
       this.messenger.getErrorHandler().clearPersistentErrors();
 
-      const code = fs.readFileSync(shaderPath, "utf-8");
+      const code = this.readShaderSource(shaderPath);
+      if (code === null) {
+        return;
+      }
 
       if (await this.trySendNonMainImageShader(shaderPath, code, () => (
         this.sendNonMainImageShaderFromPath(shaderPath, code, options)
@@ -162,7 +165,7 @@ export class ShaderProvider {
   // Uses the current in-memory TextDocument content, including unsaved edits.
   public async sendShaderFromDocument(
     document: vscode.TextDocument,
-    options?: { reload?: boolean },
+    options?: { reload?: boolean; previewId?: string },
   ): Promise<void> {
     if (!this.messenger || !isShaderDocument(document)) {
       return;
@@ -232,7 +235,10 @@ export class ShaderProvider {
         return;
       }
 
-      const code = fs.readFileSync(shaderPath, "utf-8");
+      const code = this.readShaderSource(shaderPath);
+      if (code === null) {
+        return;
+      }
       if (!definesMainImage(code) && (shaderLanguageForPath(shaderPath) ?? "glsl") !== "slang") {
         return;
       }
@@ -360,7 +366,7 @@ export class ShaderProvider {
    * Must be called after messenger.send() so the webview has compiled the shader
    * and created the CustomUniformManager before values arrive.
    */
-  private startScriptPolling(config: ShaderConfig | null): void {
+  private startScriptPolling(config: ShaderConfig | null, previewId?: string): void {
     if (!this.scriptEvaluator.hasUniforms()) {
       return;
     }
@@ -371,7 +377,7 @@ export class ShaderProvider {
         type: "customUniformValues",
         payload: { values },
       };
-      this.messenger.send(valuesMessage);
+      void this.messenger.send(valuesMessage, previewId);
     }, pollingMs);
   }
 
@@ -529,7 +535,7 @@ export class ShaderProvider {
     shaderPath: string,
     code: string,
     sendNonMainShader: () => Promise<void>,
-    options?: { reload?: boolean },
+    options?: { reload?: boolean; previewId?: string },
     cursorPosition?: ShaderSourceMessage["cursorPosition"],
   ): Promise<boolean> {
     const language = (shaderLanguageForPath(shaderPath) ?? "glsl");
@@ -655,7 +661,7 @@ export class ShaderProvider {
   private async sendMainImageShader(
     shaderPath: string,
     code: string,
-    options?: { reload?: boolean },
+    options?: { reload?: boolean; previewId?: string; refreshRequestId?: number },
     cursorPosition?: ShaderSourceMessage["cursorPosition"],
     trackActiveShader: boolean = false,
     expectedContextGeneration: number | null = this.captureAnalysisContextGeneration(shaderPath),
@@ -686,6 +692,7 @@ export class ShaderProvider {
       bufferPathMap: this.buildBufferPathMap(config, shaderPath),
       cursorPosition,
       ...(configError ? { configError } : {}),
+      ...(options?.refreshRequestId !== undefined ? { refreshRequestId: options.refreshRequestId } : {}),
       // Echoed back on this compile's reports so a newer send's reports win
       // over this one's when clients answer out of order. The counter is
       // claimed up front, so even a send dropped later still supersedes older
@@ -734,8 +741,8 @@ export class ShaderProvider {
       return;
     }
     message.cursorPosition = this.refreshPreparedCursorPosition(message.cursorPosition);
-    this.messenger.send(message);
-    this.startScriptPolling(config);
+    await this.messenger.send(message, options?.previewId);
+    this.startScriptPolling(config, options?.previewId);
     this.logger.debug("Shader message sent to webview");
 
     if (trackActiveShader) {
@@ -818,7 +825,7 @@ export class ShaderProvider {
   private buildNonMainImageShaderMessage(
     filePath: string,
     code: string,
-    options?: { reload?: boolean },
+    options?: { reload?: boolean; refreshRequestId?: number },
     cursorPosition?: ShaderSourceMessage["cursorPosition"],
   ): ShaderSourceMessage {
     const message: ShaderSourceMessage = {
@@ -836,6 +843,7 @@ export class ShaderProvider {
       // Same per-path counter the main send uses, so a newer send of any kind
       // supersedes this message's reports. See CompileReportMarker.
       compileSequence: this.beginPreparation(filePath),
+      ...(options?.refreshRequestId !== undefined ? { refreshRequestId: options.refreshRequestId } : {}),
     };
     if (message.language === "slang") {
       message.originalCode = code;

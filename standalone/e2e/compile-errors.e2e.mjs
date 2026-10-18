@@ -1,5 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { workspace } from './language-service-fixtures.mjs';
+import { useSharedShaderEditor } from './explorer-preferences.mjs';
+
+// These tests edit through the shared editor rather than per-file editors.
+test.beforeEach(({ context }) => useSharedShaderEditor(context));
 
 // Headless Chromium needs this flag to expose a WebGPU adapter for Slang.
 test.use({ launchOptions: { args: ['--enable-unsafe-webgpu'] } });
@@ -81,21 +85,23 @@ for (const language of ['slang', 'wgsl']) {
           return pixel;
         })).toEqual(color);
         await expect(preview.getByLabel('Toggle pause')).not.toHaveClass(/error/);
-        expect(Boolean((await workspace(page))[`/shaders/${stem}.sha.json`])).toBe(configExists);
+        expect(Boolean((await workspace(page))[`/${stem}.sha.json`])).toBe(configExists);
       };
       await assertRendered();
       await page.reload();
       await assertRendered();
       await preview.getByLabel('Toggle config panel').click();
       const annotation = stage => language === 'slang' ? `[shader("${stage}")]` : `@${stage}`;
-      await expect(page.getByRole('radio', { name: `${annotation('fragment')} firstFragment`, exact: true })).toBeChecked();
+      // Fragment functions are chosen from a select; vertex functions stay radios.
+      const fragmentChoice = page.getByLabel('Fragment function', { exact: true });
+      await expect(fragmentChoice).toHaveValue('firstFragment');
       if (withVertex) {
         await expect(page.getByRole('radio', { name: `${annotation('vertex')} firstVertex`, exact: true })).toBeChecked();
       }
-      expect((await workspace(page))[`/shaders/${stem}.sha.json`]).toBeUndefined();
-      await page.getByRole('radio', { name: `${annotation('fragment')} secondFragment`, exact: true }).check();
+      expect((await workspace(page))[`/${stem}.sha.json`]).toBeUndefined();
+      await fragmentChoice.selectOption('secondFragment');
       await assertRendered([0, 255, 0, 255], true);
-      expect(JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`]).passes.Image.entryPoints).toEqual({
+      expect(JSON.parse((await workspace(page))[`/${stem}.sha.json`]).passes.Image.entryPoints).toEqual({
         ...(withVertex ? { vertex: 'firstVertex' } : {}), fragment: 'secondFragment',
       });
       await page.reload();

@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 <script lang="ts">
-  import { getCubemapPreview } from "../state/cubemapPreview.svelte";
+  import { getCubemapPreview, clearCubemapPreview } from "../state/cubemapPreview.svelte";
+  import { getPreviewedPass, isLinePreviewActive } from '../passPreview';
   import { sharedSourcePassNames, shaderPathsEqual } from "../editor/sharedSourcePassNames";
   import { clearCurrentEditorSource, setCurrentEditorSource } from "../state/currentEditorSourceState.svelte";
   import { onMount, onDestroy, tick, setContext, untrack } from "svelte";
@@ -10,6 +11,14 @@
   import { logSwitchTiming } from "../diagnostics/switchTiming";
   import { ShaderLocker } from "../ShaderLocker";
   import { createTransport } from "../transport/TransportFactory";
+  import { ViewerControl, validateViewerSettings } from '../ViewerControl';
+  import { ViewerInputs } from '../ViewerInputs';
+  import { ViewerRecording, type ViewerRecordingStart } from '../ViewerRecording';
+  import { ViewerInteraction } from '../ViewerInteraction';
+  import { ViewerFrameCapture, type FrameCaptureRequest } from '../ViewerFrameCapture';
+  import type { ViewerInputEvent } from '@shader-studio/rendering';
+  import { ShaderRecorder } from '../recording/ShaderRecorder';
+  import type { ViewerSnapshot, ViewerCapture, ViewerAutomationOperation } from '@shader-studio/types';
   import type { Transport } from "../transport/MessageTransport";
   import ShaderCanvas from "./ShaderCanvas.svelte";
   import { updateVrPreviewContext, isVrPanelVisible, setVrPanelVisible } from "../state/vrPreviewState.svelte";
@@ -190,6 +199,25 @@
   let pendingSwapMessage: MessageEvent | null = null;
   let pendingSwapStartedAt: number | null = null;
   let transport: Transport = createTransport();
+  let mcpCompileSequence: number | null = null;
+  let mcpRenderedSequence: number | null = null;
+  const viewerInputs = new ViewerInputs();
+  const viewerControl = new ViewerControl({
+    snapshot: viewerSnapshot,
+    capture: captureViewerOutput,
+    readStorage: async payload => {
+      if (typeof payload.name !== 'string' || !Number.isInteger(payload.start) || !Number.isInteger(payload.count)
+        || Number(payload.start) < 0 || Number(payload.count) < 1 || Number(payload.count) > 1024) {
+        throw new Error('Provide a storage name and a valid range of 1 to 1024 elements.');
+      }
+      const { data, ...metadata } = await renderingEngine.readStorageBuffer(payload.name, Number(payload.start), Number(payload.count), undefined, 65536);
+      return { ...metadata, bytes: Array.from(new Uint8Array(data)) };
+    },
+    automation: runViewerAutomation,
+    settings: updateViewerSettings,
+    playback: updateViewerPlayback,
+    respond: message => transport.postMessage($state.snapshot(message)),
+  });
   let layoutSlot = transport.getType() === 'vscode'
     ? (getInjectedLayoutSlot() ?? 'vscode:1')
     : allocateWebLayoutSlot();
@@ -213,12 +241,12 @@
     isActive: false,
     functionContext: null,
     isLineLocked: false,
-    isInlineRenderingEnabled: true,
+    isInlineRenderingEnabled: false,
     normalizeMode: 'off' as const,
     isStepEnabled: false,
     stepEdge: 0.5,
     debugError: null,
-    isVariableInspectorEnabled: false,
+    isVariableInspectorEnabled: true,
     isErrorsEnabled: false,
     capturedVariables: [],
     activeBufferName: 'Image',
@@ -432,6 +460,14 @@
     });
   });
 
+  const previewFilesKey = $derived(JSON.stringify([shaderPath, ...new Set(Object.values(bufferPathMap))]));
+  $effect(() => {
+    const [path, ...files] = JSON.parse(previewFilesKey) as string[];
+    if (path && transport) {
+      transport.postMessage({ type: 'previewFilesChanged', payload: { shaderPath: path, files: [path, ...files] } });
+    }
+  });
+
   // Initialize layout profiles — must run before DockviewLayout restores from layoutState
   onMount(async () => {
     await initProfiles(profileAdapter);
@@ -549,6 +585,9 @@
           totalSinceSwapMs: pendingSwapStartedAt === null ? null : Math.round((performance.now() - pendingSwapStartedAt) * 100) / 100,
         });
         pendingSwapStartedAt = null;
+      } else if (!ok && pendingSwapMessage) {
+        viewerControl.compileCancelled(pendingSwapMessage.data.path, pendingSwapMessage.data.compileSequence);
+        pendingSwapMessage = null;
       }
     }
   }
@@ -766,12 +805,7 @@
     setOverlayActiveFile(name);
   }
 
-  function handleOpenInNewTab(bufferName: string, mode: "active" | "beside") {
-    // Lock the shader if not already locked
-    if (!shaderLocker.isLocked()) {
-      handleToggleLock();
-    }
-
+  function sourcePathForBuffer(bufferName: string): string | undefined {
     const actualName = bufferName === "Common" ? "common" : bufferName;
     let bufferPath: string | undefined;
     if (actualName === "Image") {
@@ -791,6 +825,26 @@
       bufferPath = bufferPathMap[actualName];
     }
 
+    return bufferPath;
+  }
+
+  function handlePreviewFileStandalone(bufferName: string) {
+    const path = sourcePathForBuffer(bufferName);
+    if (!path) {
+      return;
+    }
+    clearCubemapPreview(path);
+    // Preserve a manual lock, but move it to the explicitly selected shader.
+    if (shaderLocker.isLocked()) {
+      shaderLocker.toggleLock();
+      shaderLocker.toggleLock(path);
+      transport.postMessage({ type: 'shaderLockState', payload: { lockedShaderPath: path } });
+    }
+    pipeline.previewFileStandalone(path);
+  }
+
+  function handleOpenInNewTab(bufferName: string, mode: "active" | "beside") {
+    const bufferPath = sourcePathForBuffer(bufferName);
     if (bufferPath) {
       setCurrentEditorSource(shaderPath, bufferPath);
       transport.postMessage({
@@ -1142,6 +1196,7 @@
       const prevShaderPath = shaderPath;
       const nextShaderPath = event.data.path || "";
       if (prevShaderPath && !shaderPathsEqual(nextShaderPath, prevShaderPath)) {
+        viewerInteraction?.dispose();
         clearCurrentEditorSource(prevShaderPath);
       }
       const isSameShader = nextShaderPath !== ""
@@ -1172,6 +1227,7 @@
       // first batch the host sends only values that changed, so every uniform
       // the script holds constant would never be heard from again.
       if (!event.data.scriptContextOmitted) {
+        viewerInputs.reset();
         customUniformValues = {};
         authoringUniformInfo = event.data.customUniformInfo ?? [];
         uniformTimestamps = {};
@@ -1222,6 +1278,10 @@
 
   async function handleMessage(event: MessageEvent): Promise<void> {
     const { type } = event.data;
+    if (type === 'viewerRpcRequest') {
+      viewerControl.handle(event.data);
+      return;
+    }
 
     if (type === 'saveFileResult') {
       captureSaveChannel?.handleResult(event.data.payload);
@@ -1249,6 +1309,7 @@
       const values: { name: string; type: string; value: number | number[] | boolean }[] = event.data.payload.values;
       if (renderingEngine) {
         renderingEngine.updateCustomUniformValues(values);
+        viewerInputs.record(values, 'script');
       }
       const now = performance.now();
       for (const v of values) {
@@ -1268,10 +1329,11 @@
     }
 
     if (type === 'shaderSource') {
-      const messageTarget = pipeline.getShaderMessageTarget(event.data);
+      const messageTarget = pipeline.admitShaderMessage(event.data);
       if (!messageTarget) {
         return;
       }
+      viewerControl.compileStarted(event.data.path, event.data.compileSequence);
       // Hot reloads of the same shader keep recording the same canvas; only a
       // switch to a different main shader ends a Live recording.
       if (shaderMessageEndsLiveRecording(messageTarget.kind, event.data.path, shaderPath, shaderPathsEqual)) {
@@ -1300,6 +1362,9 @@
         && msgLanguage !== engineLanguage
       ) {
         renderingEngine?.stopRenderLoop?.();
+        if (pendingSwapMessage) {
+          viewerControl.compileCancelled(pendingSwapMessage.data.path, pendingSwapMessage.data.compileSequence);
+        }
         pendingSwapMessage = event;
         pendingSwapStartedAt = shaderMessageStartedAt;
         logSwitchTiming('backend swap scheduled', {
@@ -1313,11 +1378,13 @@
 
       if (messageTarget.kind === 'main') {
         if (!configEchoGuard.accepts(event.data.path || '', event.data.config || null, event.data.compileSequence)) {
+          viewerControl.compileCancelled(event.data.path, event.data.compileSequence);
           return;
         }
         handleShaderSource(event);
       }
       publishCommonShaderSource(event.data);
+      mcpCompileSequence = event.data.compileSequence ?? null;
       try {
         const result: CompilationResult | undefined = await pipeline?.handleShaderMessage(event);
         logSwitchTiming('shaderSource pipeline complete', {
@@ -1333,12 +1400,17 @@
         }
         if (result) {
           applyCompilationResult(result);
+          if (result.success) {
+            mcpRenderedSequence = event.data.compileSequence ?? null;
+          }
         }
         requestFullCustomUniformValues();
         isLocked = shaderLocker.isLocked();
       } catch (err) {
         resolutionController.handleShaderLoadFailed();
         addError(`Shader message handling failed: ${err}`);
+      } finally {
+        viewerControl.compileFinished(event.data.path, event.data.compileSequence);
       }
       return;
     }
@@ -1368,6 +1440,200 @@
     if (type === 'manualCompile') {
       void handleManualCompile();
       return;
+    }
+  }
+
+  let viewerInteraction: ViewerInteraction | undefined;
+  let interactionEngine: IRenderingEngine | undefined;
+  function interaction(): ViewerInteraction {
+    if (!viewerInteraction || interactionEngine !== renderingEngine) {
+      viewerInteraction?.dispose();
+      interactionEngine = renderingEngine;
+      viewerInteraction = new ViewerInteraction(renderingEngine, () => ({
+        path: shaderPath, compileSequence: mcpCompileSequence,
+        reset: () => updateViewerPlayback({ reset: true, paused: false }),
+      }));
+    }
+    return viewerInteraction;
+  }
+
+  const viewerRecording = new ViewerRecording({
+    snapshot: viewerSnapshot,
+    getCanvas: () => renderingEngine?.getCanvas() ?? null,
+    captureFrame: () => renderingEngine.captureCurrentFrame(),
+    getInputTimeline: () => viewerInteraction?.get() ?? null,
+    startInputRecording: () => interaction().start(),
+    stopInputRecording: () => viewerInteraction?.stop() ?? null,
+  });
+
+  const viewerFrameCapture = new ViewerFrameCapture({
+    snapshot: viewerSnapshot,
+    captureFrame: () => renderingEngine.captureCurrentFrame(),
+    reset: () => updateViewerPlayback({ reset: true, paused: false }),
+  });
+
+  async function runViewerAutomation(operation: ViewerAutomationOperation, payload: Record<string, unknown>, signal: AbortSignal): Promise<Record<string, unknown>> {
+    signal.throwIfAborted();
+    if (operation === 'select_shader') {
+      if (typeof payload.path !== 'string' || !payload.path) {
+        throw new Error('Provide a shader path.');
+      }
+      if (shaderLocker.isLocked()) {
+        shaderLocker.toggleLock();
+      }
+      shaderLocker.toggleLock(payload.path);
+      isLocked = true;
+      return { selectedPath: payload.path, locked: true };
+    }
+    if (operation === 'start_frame_capture') {
+      return { ...await viewerFrameCapture.start(payload as unknown as FrameCaptureRequest, signal) };
+    }
+    if (operation === 'get_frame_capture' || operation === 'cancel_frame_capture') {
+      if (operation === 'cancel_frame_capture') {
+        viewerFrameCapture.cancel(String(payload.id));
+      }
+      return { ...viewerFrameCapture.status(String(payload.id)) };
+    }
+    if (operation === 'start_recording') {
+      if (get(recordingStore).isRecording) {
+        throw new Error('A recording is already active in the viewer.');
+      }
+      return { ...await viewerRecording.start(payload as unknown as ViewerRecordingStart, signal) };
+    }
+    if (operation === 'stop_recording') {
+      viewerRecording.stop(String(payload.id));
+      return { ...viewerRecording.status(String(payload.id)) };
+    }
+    if (operation === 'get_recording') {
+      return { ...viewerRecording.status(String(payload.id)) };
+    }
+    if (operation === 'read_recording_chunk') {
+      return viewerRecording.readChunk(String(payload.id), Number(payload.offset), Number(payload.maxBytes));
+    }
+    if (operation === 'inject_input') {
+      return { ...interaction().inject(payload.events as ViewerInputEvent[]) };
+    }
+    if (operation === 'start_input_recording') {
+      return { ...interaction().start() };
+    }
+    if (operation === 'stop_input_recording' || operation === 'get_input_recording') {
+      const trace = operation === 'stop_input_recording' ? interaction().stop() : interaction().get();
+      if (!trace) {
+        throw new Error('No input recording exists. Call start_input_recording first.');
+      }
+      return { ...trace };
+    }
+    if (operation === 'replay_inputs') {
+      const trace = interaction().get();
+      if (!trace) {
+        throw new Error('No input recording exists. Call start_input_recording first.');
+      }
+      await interaction().replay(trace, payload.mode as 'from-current' | 'reset-and-play');
+      return { state: interaction().replayStatus(), feedbackRestored: false };
+    }
+    if (operation === 'get_input_replay' || operation === 'cancel_input_replay') {
+      if (operation === 'cancel_input_replay') {
+        interaction().cancel();
+      }
+      return { state: interaction().replayStatus(), feedbackRestored: false };
+    }
+    if (operation === 'read_feedback') {
+      return { ...renderingEngine.readFeedback(String(payload.pass), Number(payload.x), Number(payload.y), Number(payload.width), Number(payload.height)) };
+    }
+    throw new Error('Unsupported viewer automation operation.');
+  }
+
+  function viewerSnapshot(): ViewerSnapshot {
+    const tm = renderingEngine?.getTimeManager();
+    return {
+      path: shaderPath ?? '', language: engineLanguage,
+      compileSequence: mcpCompileSequence, renderedSequence: mcpRenderedSequence,
+      compiling: viewerControl.compiling, errors: [...errors], warnings: [...warnings],
+      time: tm?.getCurrentTime(performance.now()) ?? 0, frame: tm?.getFrame() ?? 0,
+      paused: tm?.isPaused() ?? true, width: glCanvas?.width ?? 0, height: glCanvas?.height ?? 0,
+      fpsLimit, speed: tm?.getSpeed() ?? 1,
+      uniforms: renderingEngine?.getCurrentCustomUniforms() ?? [],
+      inputs: initialized ? viewerInputs.snapshot(renderingEngine, scriptInfo?.filename ?? null) : undefined,
+      resources: viewerResources(),
+    };
+  }
+
+  function viewerResources(): ViewerSnapshot['resources'] {
+    return {
+      passes: Object.entries(currentConfig?.passes ?? { Image: {} }).map(([name, pass]) => ({
+        name,
+        kind: name.toLowerCase() === 'common' ? 'common' : pass && 'type' in pass && pass.type === 'compute' ? 'compute' : 'render',
+        path: name === 'Image' ? shaderPath ?? '' : bufferPathMap[name] ?? (pass && 'path' in pass ? pass.path : '') ?? '',
+      })),
+      storage: currentConfig?.storage ?? {},
+    };
+  }
+
+  async function captureViewerOutput(): Promise<ViewerCapture> {
+    if (!initialized || !hasShader || !glCanvas) {
+      throw new Error('No shader is loaded in this preview.');
+    }
+    const snapshot = viewerSnapshot();
+    const blob = await new ShaderRecorder().captureLiveScreenshot({
+      format: 'png', width: snapshot.width, height: snapshot.height,
+    }, renderingEngine);
+    const data = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(',')[1]);
+      reader.onerror = () => reject(new Error('Could not encode rendered output.'));
+      reader.readAsDataURL(blob);
+    });
+    return { ...snapshot, mimeType: 'image/png', data };
+  }
+
+  function updateViewerSettings(payload: Record<string, unknown>): void {
+    validateViewerSettings(payload);
+    if (!initialized) {
+      throw new Error('Viewer is not initialized.');
+    }
+    // Validate all uniforms before applying any settings.
+    const values = payload.uniforms as Record<string, number | number[] | boolean> | undefined;
+    const declared = renderingEngine.getCurrentCustomUniforms();
+    const changes = Object.entries(values ?? {}).map(([name, value]) => {
+      const uniform = declared.find(item => item.name === name);
+      if (!uniform) {
+        throw new Error(`Unknown custom uniform: ${name}`);
+      }
+      const valid = Array.isArray(uniform.value)
+        ? Array.isArray(value) && value.length === uniform.value.length && value.every(item => typeof item === 'number' && Number.isFinite(item))
+        : typeof value === typeof uniform.value && (typeof value !== 'number' || Number.isFinite(value));
+      if (!valid) {
+        throw new Error(`Invalid value for uniform: ${name}`);
+      }
+      return { name, type: uniform.type, value };
+    });
+    if (typeof payload.fpsLimit === 'number') {
+      handleFpsLimitChange(payload.fpsLimit);
+    }
+    if (typeof payload.speed === 'number') {
+      renderingEngine.getTimeManager().setSpeed(payload.speed);
+    }
+    if (changes.length) {
+      renderingEngine.updateCustomUniformValues(changes);
+      viewerInputs.record(changes, 'mcp');
+    }
+  }
+
+  async function updateViewerPlayback(payload: Record<string, unknown>): Promise<void> {
+    if (!initialized || !hasShader) {
+      throw new Error('No shader is loaded.');
+    }
+    if (payload.reset === true) {
+      await handleReset();
+    }
+    if (typeof payload.paused === 'boolean' && payload.paused !== renderingEngine.getTimeManager().isPaused()) {
+      handleTogglePause();
+    }
+    if (typeof payload.time === 'number') {
+      if (!Number.isFinite(payload.time) || payload.time < 0) {
+        throw new Error('time must be a finite, non-negative number.');
+      }
+      renderingEngine.getTimeManager().setTime(payload.time);
     }
   }
 
@@ -1664,6 +1930,10 @@
   const mountVr = createMountFn(() => vrEl);
 
   onDestroy(() => {
+    viewerControl.dispose();
+    viewerRecording.dispose();
+    viewerFrameCapture.dispose();
+    viewerInteraction?.dispose();
     liveCanvasSizeHold.dispose();
     captureSaveChannel?.dispose();
     captureSaveChannel = null;
@@ -1702,6 +1972,11 @@
 
 <div class="main-container" role="application" onmousemove={handleCanvasMouseMove}>
   <div class="dockview-panel-source" bind:this={previewEl}>
+    {#if hasShader}
+      <div class="preview-output-label" aria-live="polite" title={shaderPath}>
+        {shaderPath.split(/[\\/]/).pop()} › {getPreviewedPass(currentConfig, getCubemapPreview(shaderPath), debugState)}{isLinePreviewActive(debugState) ? ` · Line ${debugState.currentLine! + 1}` : ''}
+      </div>
+    {/if}
     {#key engineLanguage}
       <ShaderCanvas
         {zoomLevel}
@@ -1777,8 +2052,10 @@
         isVisible={$configPanelStore.isVisible}
         onFileSelect={handleOverlayBufferSelect}
         selectedBuffer={configSelectedBuffer}
+        {debugState}
         isLocked={isLocked}
         onOpenInNewTab={handleOpenInNewTab}
+        onPreviewFileStandalone={handlePreviewFileStandalone}
         {audioVideoController}
         globalMuted={audioMuted}
         {scriptInfo}
@@ -1850,6 +2127,17 @@
 </div>
 
 <style>
+  .preview-output-label {
+    flex-shrink: 0;
+    padding: 4px 10px;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    background: var(--vscode-editor-background);
+    border-bottom: 1px solid var(--vscode-panel-border);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .dockview-panel-source {
     position: absolute;
     width: 100%;

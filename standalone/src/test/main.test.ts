@@ -1,12 +1,13 @@
 import type { HostConfig } from '@shader-studio/ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ mount: vi.fn(), configureHost: vi.fn(), createViewerTransport: vi.fn(), start: vi.fn(), metadata: vi.fn(), update: vi.fn(), preferences: vi.fn() }));
+const mocks = vi.hoisted(() => ({ uploadAssets: vi.fn(), mount: vi.fn(), configureHost: vi.fn(), createViewerTransport: vi.fn(), start: vi.fn(), metadata: vi.fn(), update: vi.fn(), preferences: vi.fn() }));
 vi.mock('svelte', async importOriginal => ({ ...await importOriginal<typeof import('svelte')>(), mount: mocks.mount }));
 vi.mock('@shader-studio/ui', () => ({ configureHost: mocks.configureHost }));
 vi.mock('../App.svelte', () => ({ default: 'App' }));
 vi.mock('../WebTransport', () => ({ WebTransport: class {
   createViewerTransport = mocks.createViewerTransport;
   settings = { update: mocks.update };
+  uploadAssets = mocks.uploadAssets;
 } }));
 vi.mock('../settings/settingsState.svelte', () => ({ getEditorPreferences: mocks.preferences }));
 vi.mock('../pwa', () => ({ createPwaController: () => ({ start: mocks.start }) }));
@@ -48,5 +49,14 @@ describe('standalone host bootstrap', () => {
     config.setEditorWordWrap?.('off');
     expect(mocks.update.mock.calls).toEqual([['editor.wordWrap', 'on'], ['editor.wordWrap', 'off']]);
     expect(config.defaultAssets?.every(asset => asset.thumbnailUri?.startsWith(document.baseURI))).toBe(true);
+  });
+  it('uploads picked assets beside the shader through the workspace transport', async () => {
+    await import('../main');
+    const config = mocks.configureHost.mock.calls[0][0] as HostConfig;
+    const files = [new File(['x'], 'a.png')];
+    const uploaded = [{ name: 'a.png', workspacePath: '/a.png', isSameDirectory: true }];
+    mocks.uploadAssets.mockResolvedValue(uploaded);
+    await expect(config.uploadAssets?.(files, '/main.glsl')).resolves.toBe(uploaded);
+    expect(mocks.uploadAssets).toHaveBeenCalledWith(files, '/main.glsl');
   });
 });

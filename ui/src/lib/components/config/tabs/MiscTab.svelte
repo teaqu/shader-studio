@@ -114,7 +114,7 @@ return;
 </script>
 
 <div class="misc-grid">
-  <div class="misc-section-label">Buffer</div>
+  <div class="misc-section-label">Buffer source</div>
   <div class="misc-options">
     {#each bufferList as buf}
       <button
@@ -129,17 +129,24 @@ return;
   </div>
 
   {#if tempInput?.type === "buffer"}
-    <div class="buffer-sampling">
+    <section class="channel-section channel-settings">
+    <h3>Sampling</h3>
+    <div class="buffer-sampling sampling-fields">
+      <div class="sampling-field">
       <label for="buffer-filter">Filter:</label>
       <select class="input-select" id="buffer-filter" value={tempInput.filter ?? "linear"} onchange={updateBufferFilter}>
         <option value="linear">Linear</option>
         <option value="nearest">Nearest</option>
       </select>
+      </div>
+      <div class="sampling-field">
       <label for="buffer-wrap">Wrap:</label>
       <select class="input-select" id="buffer-wrap" value={tempInput.wrap ?? "clamp"} onchange={updateBufferWrap}>
         <option value="clamp">Clamp</option>
         <option value="repeat">Repeat</option>
       </select>
+      </div>
+    </div>
       {#if !selectedIsCompute && (selectedOutputs.outputs.length > 1 || missingOutput)}
         <fieldset class="output-options"><legend>Buffer output</legend>
           {#each selectedOutputs.outputs as output}
@@ -149,17 +156,17 @@ return;
         </fieldset>
       {/if}
       {#if selectedIsCompute && selectedComputeLayerCount > 1}
-        <label for="buffer-layer">Layer:</label>
+        <div class="sampling-field sampling-extra"><label for="buffer-layer">Layer:</label>
         <select class="input-select" id="buffer-layer" aria-label="Compute output layer" value={tempInput.layer ?? 0} onchange={updateBufferLayer}>
           {#each Array(selectedComputeLayerCount) as _, layer}
             <option value={layer}>Layer {layer}</option>
           {/each}
-        </select>
+        </select></div>
       {/if}
-    </div>
+    </section>
   {/if}
 
-  <div class="misc-section-label">Other</div>
+  <div class="misc-section-label">Device inputs</div>
   <div class="misc-options">
     <button
       class="misc-card"
@@ -173,14 +180,14 @@ return;
       aria-disabled={captureUnavailable}
       use:tooltip={captureUnavailable ? 'Webcam is unavailable in VS Code. Open Shader Studio in a browser to use this input.' : ''}
       onclick={() => selectCapture('webcam')}>
-      <ChannelPreview channelInput={{ type: "webcam" }} {getWebviewUri} {audioVideoController} />
+      <ChannelPreview channelInput={{ type: "webcam" }} {getWebviewUri} {audioVideoController} showLiveLabel={false} />
       <div class="misc-card-label">Webcam</div>
     </button>
     <button class="misc-card" class:selected={tempInput?.type === "screen"} aria-label="Screen"
       aria-disabled={captureUnavailable}
       use:tooltip={captureUnavailable ? 'Screen is unavailable in VS Code. Open Shader Studio in a browser to use this input.' : ''}
       onclick={() => selectCapture('screen')}>
-      <ChannelPreview channelInput={{ type: "screen" }} {getWebviewUri} {audioVideoController} />
+      <ChannelPreview channelInput={{ type: "screen" }} {getWebviewUri} {audioVideoController} showLiveLabel={false} />
       <div class="misc-card-label">Screen</div>
     </button>
   </div>
@@ -190,37 +197,52 @@ return;
   {/if}
   {#if !captureUnavailable && tempInput?.type === "screen"}
     <ScreenControls {audioVideoController} />
-    <div class="screen-sampling">
+    <section class="channel-section channel-settings">
+    <h3>Sampling</h3>
+    <div class="screen-sampling sampling-fields">
+      <div class="sampling-field">
       <label for="screen-filter">Filter:</label>
       <select id="screen-filter" value={tempInput.filter ?? "linear"} onchange={updateScreenFilter}>
         <option value="linear">Linear</option>
         <option value="nearest">Nearest</option>
         <option value="mipmap">Mipmap</option>
       </select>
+      </div>
+      <div class="sampling-field">
       <label for="screen-wrap">Wrap:</label>
       <select id="screen-wrap" value={tempInput.wrap ?? "clamp"} onchange={updateScreenWrap}>
         <option value="clamp">Clamp</option>
         <option value="repeat">Repeat</option>
       </select>
+      </div>
+    </div>
+    <div class="sampling-options">
       <label for="screen-vflip"><input id="screen-vflip" type="checkbox" checked={tempInput.vflip ?? true} onchange={updateScreenVFlip} /> Flip vertically</label>
     </div>
+    </section>
   {/if}
 </div>
 
 <style>
   .input-select {
-    padding: 8px 12px;
-    border: 1px solid var(--vscode-input-border, #3c3c3c);
-    border-radius: 4px;
-    background: var(--vscode-input-background, #2d2d2d);
-    color: var(--vscode-input-foreground, #cccccc);
-    font-size: 14px;
+    padding: var(--shader-studio-control-padding);
+    border: 1px solid var(--vscode-dropdown-border, #3c3c3c);
+    border-radius: var(--shader-studio-control-radius);
+    background: var(--vscode-dropdown-background, #2d2d2d);
+    color: var(--vscode-dropdown-foreground, #cccccc);
+    font-size: var(--shader-studio-font-size);
+    min-height: var(--shader-studio-control-height);
   }
 
   .input-select:focus {
     outline: none;
     border-color: var(--vscode-focusBorder, #007acc);
   }
+
+  .input-select:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
 
 
   .output-options { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--vscode-panel-border); padding: 10px; }
@@ -233,45 +255,28 @@ return;
   }
 
   .misc-section-label {
-    font-size: 11px;
+    font-size: var(--shader-studio-font-size);
     font-weight: 600;
-    text-transform: uppercase;
-    color: var(--vscode-descriptionForeground, #888);
-    letter-spacing: 0.5px;
+    color: var(--vscode-foreground);
     margin-top: 4px;
   }
 
   .misc-options {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(72px, 96px));
-    gap: 8px;
-    margin-bottom: 8px;
-  }
-
-  .buffer-sampling {
-    display: grid;
-    grid-template-columns: auto minmax(100px, 1fr);
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
-  }
-
-  .screen-sampling {
-    display: grid;
-    grid-template-columns: auto minmax(100px, 1fr);
-    align-items: center;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 96px), 96px));
     gap: 8px;
     margin-bottom: 8px;
   }
 
   .screen-sampling select,
   .buffer-sampling select {
-    padding: 8px 12px;
-    border: 1px solid var(--vscode-input-border, #3c3c3c);
-    border-radius: 4px;
-    background: var(--vscode-input-background, #2d2d2d);
-    color: var(--vscode-input-foreground, #cccccc);
-    font-size: 14px;
+    padding: var(--shader-studio-control-padding);
+    border: 1px solid var(--vscode-dropdown-border, #3c3c3c);
+    border-radius: var(--shader-studio-control-radius);
+    background: var(--vscode-dropdown-background, #2d2d2d);
+    color: var(--vscode-dropdown-foreground, #cccccc);
+    font-size: var(--shader-studio-font-size);
+    min-height: var(--shader-studio-control-height);
   }
 
   .screen-sampling select:focus,
@@ -280,39 +285,50 @@ return;
     border-color: var(--vscode-focusBorder, #007acc);
   }
 
-  .screen-sampling label:last-child { grid-column: 1 / -1; }
+  .screen-sampling select:focus-visible,
+.buffer-sampling select:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+
 
   .misc-card {
     display: flex;
     flex-direction: column;
+    min-width: 0;
     border: 1px solid var(--vscode-panel-border, #3c3c3c);
-    border-radius: 6px;
+    border-radius: var(--shader-studio-control-radius);
     overflow: hidden;
     cursor: pointer;
     transition: all 0.15s ease;
     background: var(--vscode-editor-background, #1e1e1e);
     padding: 0;
+    min-height: var(--shader-studio-control-height);
   }
 
   .misc-card[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
 
   .misc-card:not([aria-disabled="true"]):hover {
     border-color: var(--vscode-focusBorder, #007acc);
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    background: var(--vscode-list-hoverBackground);
   }
 
   .misc-card.selected {
-    border-color: var(--vscode-focusBorder, #007acc);
-    box-shadow: 0 0 0 1px var(--vscode-focusBorder, #007acc);
+    border-color: var(--shader-studio-selected-border);
+    background: var(--shader-studio-selected-background);
+    color: var(--shader-studio-selected-foreground);
   }
 
   .misc-card-label {
+    box-sizing: border-box;
+    width: 100%;
     padding: 6px 4px;
+    min-width: 0;
+    overflow-wrap: anywhere;
     font-size: 11px;
     text-align: center;
-    color: var(--vscode-foreground, #cccccc);
-    background: var(--vscode-tab-inactiveBackground, #2d2d2d);
-    border-top: 1px solid var(--vscode-panel-border, #3c3c3c);
+    color: var(--vscode-foreground);
+    background: var(--vscode-tab-inactiveBackground, var(--vscode-editor-background));
+    border-top: 1px solid var(--vscode-panel-border);
   }
 </style>

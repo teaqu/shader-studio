@@ -1,17 +1,18 @@
 import { mount } from 'svelte';
 import {
   SHADER_STUDIO_DEFAULT_ASSETS,
-  shaderStudioDefaultAssetRelativePath,
   type WorkspaceFileInfo,
 } from '@shader-studio/types';
 import { configureHost } from '@shader-studio/ui';
 import '@shader-studio/ui/app.css';
+import './themes.css';
 import '@vscode/codicons/dist/codicon.css';
 import { getEditorPreferences } from './settings/settingsState.svelte';
 import App from './App.svelte';
 import { WebTransport } from './WebTransport';
 import { installSlangAssetMetadata } from './slangAssets';
 import { createPwaController } from './pwa';
+import { resolveDefaultAssetUrl } from './defaultWorkspace';
 
 function defaultAssets(): WorkspaceFileInfo[] {
   return [
@@ -22,10 +23,7 @@ function defaultAssets(): WorkspaceFileInfo[] {
   ].map(({ name, path }) => ({
     name,
     workspacePath: path,
-    thumbnailUri: new URL(
-      shaderStudioDefaultAssetRelativePath(path)!,
-      document.baseURI,
-    ).toString(),
+    thumbnailUri: resolveDefaultAssetUrl(path)!,
     isSameDirectory: false,
   }));
 }
@@ -40,6 +38,7 @@ configureHost({
     transport.settings.update('editor.wordWrap', value);
   },
   defaultAssets: defaultAssets(),
+  uploadAssets: (files, shaderPath) => transport.uploadAssets(files, shaderPath),
   capabilities: { compileOnSave: false },
 });
 

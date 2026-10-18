@@ -1,5 +1,6 @@
 import { setCubemapPreview, resetCubemapPreviews } from '../../lib/state/cubemapPreview.svelte';
 import { getViewerSession } from '../../lib/state/viewerSession.svelte';
+import { serialize } from 'node:v8';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import { configureHost, resetHost } from '../../lib/state/hostState.svelte';
 import { tick } from 'svelte';
@@ -30,6 +31,22 @@ import { PANEL_HOST_CONTEXT, type HostedPanelDefinition, type HostedPanelId } fr
 import { isVrPanelVisible, setVrPanelVisible, getVrPreviewState } from '../../lib/state/vrPreviewState.svelte';
 
 const mockConfigPanelStorageReset = vi.hoisted(() => vi.fn());
+// These partial host/engine doubles expose test-only hooks rather than the
+// full runtime interfaces, so their inspection arrays and constructor inputs use any.
+const mockMcpAutomation = vi.hoisted(() => ({
+  recordingHosts: [] as any[],
+  frameHosts: [] as any[],
+  recordingStart: vi.fn(async () => ({ id: 'recording-1', state: 'capturing' })),
+  recordingStop: vi.fn(),
+  recordingStatus: vi.fn(() => ({ id: 'recording-1', state: 'completed' })),
+  recordingChunk: vi.fn(() => ({ id: 'recording-1', data: 'Ynl0ZXM=', totalBytes: 5 })),
+  recordingDispose: vi.fn(),
+  frameStart: vi.fn(async () => ({ id: 'frames-1', state: 'capturing' })),
+  frameCancel: vi.fn(),
+  frameStatus: vi.fn(() => ({ id: 'frames-1', state: 'completed', frames: [] })),
+  frameDispose: vi.fn(),
+  interactionInstances: [] as any[],
+}));
 vi.mock('../../lib/components/config/ConfigPanel.svelte', async importOriginal => {
   const { default: ConfigPanel } = await importOriginal<typeof import('../../lib/components/config/ConfigPanel.svelte')>();
   return {
@@ -54,6 +71,7 @@ global.ResizeObserver = vi.fn().mockImplementation(function () {
 const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop, mockStartRenderLoop, mockHandleCanvasResize, mockScreenshot, mockRecord, mockCancelRecording, mockStopLiveRecording, mockRecordingConstructor, mockEndLiveRecording, mockIsLiveRecording } = vi.hoisted(() => {
   const mockTimeManager = {
     getCurrentTime: () => 0.0,
+    getFrame: () => 0,
     isPaused: () => false,
     getSpeed: () => 1.0,
     setSpeed: () => {},
@@ -107,6 +125,40 @@ vi.mock('../../lib/RecordingManager', () => ({
     dispose = vi.fn();
     get isLiveRecording() {
       return mockIsLiveRecording();
+    }
+  },
+}));
+
+vi.mock('../../lib/ViewerRecording', () => ({
+  ViewerRecording: class {
+    constructor(host: any) {
+      mockMcpAutomation.recordingHosts.push(host);
+    }
+    start = mockMcpAutomation.recordingStart;
+    stop = mockMcpAutomation.recordingStop;
+    status = mockMcpAutomation.recordingStatus;
+    readChunk = mockMcpAutomation.recordingChunk;
+    dispose = mockMcpAutomation.recordingDispose;
+  },
+}));
+
+vi.mock('../../lib/ViewerFrameCapture', () => ({
+  ViewerFrameCapture: class {
+    constructor(host: any) {
+      mockMcpAutomation.frameHosts.push(host);
+    }
+    start = mockMcpAutomation.frameStart;
+    cancel = mockMcpAutomation.frameCancel;
+    status = mockMcpAutomation.frameStatus;
+    dispose = mockMcpAutomation.frameDispose;
+  },
+}));
+
+vi.mock('../../lib/ViewerInteraction', () => ({
+  ViewerInteraction: class {
+    constructor(engine: any, context: any) {
+      mockMcpAutomation.interactionInstances.push({ engine, context, inject: vi.fn(() => ({ heldCodes: [] })), start: vi.fn(() => ({ id: 'trace-1', events: [] })), stop: vi.fn(() => ({ id: 'trace-1', events: [] })), get: vi.fn(() => ({ id: 'trace-1', events: [] })), replay: vi.fn(async () => {}), replayStatus: vi.fn(() => 'idle'), cancel: vi.fn(), dispose: vi.fn() });
+      return mockMcpAutomation.interactionInstances.at(-1);
     }
   },
 }));
@@ -221,6 +273,18 @@ vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
     }
     getCurrentCustomUniforms() {
       return [];
+    }
+    getDisplayedCustomUniforms() {
+      return this.getCurrentCustomUniforms();
+    }
+    getMouse() {
+      return [10, 20, 3, 4];
+    }
+    getChannelTimes() {
+      return [1, 2, 3, 4];
+    }
+    getAudioSampleRate() {
+      return 48000;
     }
     getCustomUniformInfo() {
       return [];
@@ -348,6 +412,18 @@ vi.mock('../../../../rendering/src/webgpu/WebGPURenderingEngine', () => {
     getCurrentCustomUniforms() {
       return [];
     }
+    getDisplayedCustomUniforms() {
+      return this.getCurrentCustomUniforms();
+    }
+    getMouse() {
+      return [10, 20, 3, 4];
+    }
+    getChannelTimes() {
+      return [1, 2, 3, 4];
+    }
+    getAudioSampleRate() {
+      return 48000;
+    }
     getCustomUniformInfo() {
       return [];
     }
@@ -374,6 +450,10 @@ vi.mock('../../../../rendering/src/webgpu/WebGPURenderingEngine', () => {
 
 vi.mock('../../lib/slangAssets', () => ({
   getSlangAssetUrls: () => ({ scriptUrl: '/mock/slang-wasm.js', wasmUrl: '/mock/slang-wasm.wasm' }),
+}));
+
+const { mockRejectShaderAdmission } = vi.hoisted(() => ({
+  mockRejectShaderAdmission: vi.fn((_message: { path?: string }) => false),
 }));
 
 // Mock dependencies
@@ -429,6 +509,10 @@ vi.mock('../../lib/ShaderPipeline', () => {
 
     canHandleShaderMessage(message: { path?: string }): boolean {
       return this.getShaderMessageTarget(message) !== null;
+    }
+
+    admitShaderMessage(message: { path?: string }) {
+      return mockRejectShaderAdmission(message) ? null : this.getShaderMessageTarget(message);
     }
 
     handleCursorPositionMessage(msg: any) {
@@ -621,6 +705,14 @@ describe('ShaderViewer', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockMcpAutomation.recordingHosts.length = 0;
+    mockMcpAutomation.frameHosts.length = 0;
+    mockMcpAutomation.interactionInstances.length = 0;
+    mockTransport.postMessage.mockImplementation(message => {
+      if (message.type === 'viewerRpcResponse') {
+        serialize(message);
+      }
+    });
     setVrPanelVisible(false);
     resetHost();
     mockTransport.getType = () => 'vscode';
@@ -792,6 +884,25 @@ describe('ShaderViewer', () => {
     expect(mockEndLiveRecording).toHaveBeenCalledExactlyOnceWith('Live recording stopped because a different shader was opened.');
   });
 
+  it('ignores a shader source the pipeline refuses to admit, before any viewer side effect', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await loadShader();
+    mockPipelineHandleShaderMessage.mockClear();
+    mockEndLiveRecording.mockClear();
+    mockRejectShaderAdmission.mockImplementation(message => message.path === '/test/stale.glsl');
+    try {
+      await sendMessage({ type: 'shaderSource', path: '/test/stale.glsl', code: 'stale source', refreshRequestId: 1 });
+    } finally {
+      mockRejectShaderAdmission.mockReset();
+      mockRejectShaderAdmission.mockReturnValue(false);
+    }
+
+    expect(mockPipelineHandleShaderMessage).not.toHaveBeenCalled();
+    expect(mockEndLiveRecording).not.toHaveBeenCalled();
+    expect(getViewerSession()).toMatchObject({ shaderPath: '/test/shader.glsl' });
+  });
+
   it('publishes the active shader session and releases it when the viewer unmounts', async () => {
     const { unmount } = render(ShaderViewer, { onInitialized: vi.fn() });
     await tick();
@@ -862,6 +973,202 @@ describe('ShaderViewer', () => {
     await tick();
   }
 
+  async function mcpCall(operation: string, payload: Record<string, unknown> = {}) {
+    const requestId = crypto.randomUUID();
+    await sendMessage({ type: 'viewerRpcRequest', requestId, operation, payload });
+    await vi.waitFor(() => expect(mockTransport.postMessage.mock.calls.some(([m]) => m.requestId === requestId)).toBe(true));
+    return mockTransport.postMessage.mock.calls.find(([m]) => m.requestId === requestId)![0];
+  }
+
+  it('reports the displayed shader and known linked files without duplicates', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await sendMessage({ type: 'shaderSource', path: '/test/main.glsl', code: 'source',
+      bufferPathMap: { A: '/test/buffer.glsl', B: '/test/buffer.glsl', common: '/test/common.glsl' } });
+    expect(mockTransport.postMessage).toHaveBeenCalledWith({ type: 'previewFilesChanged', payload: {
+      shaderPath: '/test/main.glsl', files: ['/test/main.glsl', '/test/buffer.glsl', '/test/common.glsl'],
+    } });
+    mockTransport.postMessage.mockClear();
+    await sendMessage({ type: 'shaderSource', path: '/test/main.glsl', code: 'changed source',
+      bufferPathMap: { A: '/test/buffer.glsl', B: '/test/buffer.glsl', common: '/test/common.glsl' } });
+    expect(mockTransport.postMessage.mock.calls.some(([message]) => message.type === 'previewFilesChanged')).toBe(false);
+  });
+
+  it('keeps MCP responsive after rejecting an obsolete config echo', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await sendMessage({ type: 'shaderSource', path: '/test/shader.glsl', code: 'source', compileSequence: 2 });
+    await sendMessage({ type: 'shaderSource', path: '/test/shader.glsl', code: 'old', compileSequence: 1 });
+    const response = await mcpCall('get_state');
+    expect(response.error).toBeUndefined();
+    expect(response.result).toMatchObject({ compiling: false, compileSequence: 2 });
+  });
+
+  it('routes MCP recording and frame-capture operations through their live viewer hosts', async () => {
+    const view = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await loadShader();
+
+    const startFrames = await mcpCall('start_frame_capture', { times: [0], mode: 'from-current' });
+    expect(startFrames.result.automation).toMatchObject({ id: 'frames-1', state: 'capturing' });
+    expect(mockMcpAutomation.frameStart).toHaveBeenCalledWith({ times: [0], mode: 'from-current' }, expect.any(AbortSignal));
+    expect((await mcpCall('get_frame_capture', { id: 'frames-1' })).result.automation).toMatchObject({ state: 'completed' });
+    expect((await mcpCall('cancel_frame_capture', { id: 'frames-1' })).result.automation).toMatchObject({ state: 'completed' });
+    expect(mockMcpAutomation.frameCancel).toHaveBeenCalledWith('frames-1');
+
+    const startRecording = await mcpCall('start_recording', { format: 'webm', fps: 30 });
+    expect(startRecording.result.automation).toMatchObject({ id: 'recording-1', state: 'capturing' });
+    expect(mockMcpAutomation.recordingStart).toHaveBeenCalledWith({ format: 'webm', fps: 30 }, expect.any(AbortSignal));
+    expect((await mcpCall('stop_recording', { id: 'recording-1' })).result.automation).toMatchObject({ state: 'completed' });
+    expect(mockMcpAutomation.recordingStop).toHaveBeenCalledWith('recording-1');
+    expect((await mcpCall('get_recording', { id: 'recording-1' })).result.automation).toMatchObject({ state: 'completed' });
+    expect((await mcpCall('read_recording_chunk', { id: 'recording-1', offset: 0, maxBytes: 64 })).result.automation).toMatchObject({ data: 'Ynl0ZXM=' });
+    expect(mockMcpAutomation.recordingChunk).toHaveBeenCalledWith('recording-1', 0, 64);
+
+    const frameHost = mockMcpAutomation.frameHosts.at(-1);
+    const recordingHost = mockMcpAutomation.recordingHosts.at(-1);
+    expect(frameHost.snapshot()).toMatchObject({ path: '/test/shader.glsl' });
+    expect(recordingHost.snapshot()).toMatchObject({ path: '/test/shader.glsl' });
+    const engine = mockRecordingConstructor.mock.calls.at(-1)![3]();
+    engine.captureCurrentFrame = vi.fn(async () => new ImageData(1, 1));
+    expect(recordingHost.getCanvas()).toEqual(engine.getCanvas());
+    await expect(recordingHost.captureFrame()).resolves.toBeInstanceOf(ImageData);
+    await expect(frameHost.captureFrame()).resolves.toBeInstanceOf(ImageData);
+    expect(recordingHost.getInputTimeline()).toBeNull();
+    expect(recordingHost.startInputRecording()).toMatchObject({ id: 'trace-1' });
+    expect(recordingHost.getInputTimeline()).toMatchObject({ id: 'trace-1' });
+    expect(recordingHost.stopInputRecording()).toMatchObject({ id: 'trace-1' });
+    await frameHost.reset();
+    expect(mockPipelineHandleShaderMessage).toHaveBeenCalled();
+
+    view.unmount();
+    expect(mockMcpAutomation.recordingDispose).toHaveBeenCalledOnce();
+    expect(mockMcpAutomation.frameDispose).toHaveBeenCalledOnce();
+  });
+
+  it('routes MCP input, replay, feedback, selection, and active-recording failures', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await loadShader();
+
+    expect((await mcpCall('select_shader', {})).error).toContain('Provide a shader path');
+    expect((await mcpCall('select_shader', { path: '/test/other.glsl' })).result.automation).toEqual({ selectedPath: '/test/other.glsl', locked: true });
+    const input = await mcpCall('inject_input', { events: [{ type: 'pointer_move', x: 1, y: 2 }] });
+    expect(input.result.automation).toEqual({ heldCodes: [] });
+    const interaction = mockMcpAutomation.interactionInstances.at(-1);
+    expect(interaction.inject).toHaveBeenCalledWith([{ type: 'pointer_move', x: 1, y: 2 }]);
+    expect((await mcpCall('start_input_recording')).result.automation).toMatchObject({ id: 'trace-1' });
+    expect((await mcpCall('get_input_recording')).result.automation).toMatchObject({ id: 'trace-1' });
+    expect((await mcpCall('stop_input_recording')).result.automation).toMatchObject({ id: 'trace-1' });
+    expect((await mcpCall('replay_inputs', { mode: 'reset-and-play' })).result.automation).toEqual({ state: 'idle', feedbackRestored: false });
+    expect(interaction.replay).toHaveBeenCalledWith(expect.objectContaining({ id: 'trace-1' }), 'reset-and-play');
+    expect((await mcpCall('get_input_replay')).result.automation).toEqual({ state: 'idle', feedbackRestored: false });
+    expect((await mcpCall('cancel_input_replay')).result.automation).toEqual({ state: 'idle', feedbackRestored: false });
+    expect(interaction.cancel).toHaveBeenCalledOnce();
+
+    const engine = mockRecordingConstructor.mock.calls.at(-1)![3]();
+    engine.readFeedback = vi.fn(() => ({ pass: 'BufferA', data: [1, 2, 3, 4] }));
+    expect((await mcpCall('read_feedback', { pass: 'BufferA', x: 0, y: 0, width: 1, height: 1 })).result.automation).toEqual({ pass: 'BufferA', data: [1, 2, 3, 4] });
+    expect(engine.readFeedback).toHaveBeenCalledWith('BufferA', 0, 0, 1, 1);
+
+    recordingStore.startLiveRecording('mp4');
+    expect((await mcpCall('start_recording', { format: 'mp4' })).error).toContain('already active');
+    recordingStore.reset();
+  });
+
+  it.each(['glsl', 'wgsl', 'slang'])('exposes serializable live inputs for %s previews', async language => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await sendMessage({ type: 'shaderSource', language, path: `/test/main.${language}`, code: 'source', config: { passes: { Image: {} } } });
+    const result = await mcpCall('get_state');
+    expect(result.error).toBeUndefined();
+    expect(result.result.inputs).toMatchObject({ scope: 'live-preview', pass: 'Image', script: { path: null },
+      builtins: { iMouse: [10, 20, 3, 4], iChannelTime: [1, 2, 3, 4], iSampleRate: 48000 },
+      customUniforms: [],
+    });
+    expect(() => serialize(result)).not.toThrow();
+  });
+
+  it('captures MCP images and reports missing shaders and encoding failures', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    expect((await mcpCall('capture')).error).toContain('No shader');
+    expect((await mcpCall('playback')).error).toContain('No shader');
+    await loadShader();
+    const engine = mockRecordingConstructor.mock.calls.at(-1)![3]();
+    engine.captureCurrentFrame = vi.fn(async () => new ImageData(new Uint8ClampedArray(4), 1, 1));
+    const blob = vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(callback => callback(new Blob(['pixels'], { type: 'image/png' })));
+    const image = await mcpCall('capture');
+    expect(image.result).toMatchObject({ mimeType: 'image/png', data: btoa('pixels'), path: '/test/shader.glsl' });
+    expect(engine.captureCurrentFrame).toHaveBeenCalledOnce();
+    blob.mockImplementationOnce(callback => callback(null));
+    expect((await mcpCall('capture')).error).toContain('Failed to encode');
+    const reader = vi.spyOn(FileReader.prototype, 'readAsDataURL').mockImplementation(function (this: FileReader) {
+      this.dispatchEvent(new ProgressEvent('error'));
+    });
+    expect((await mcpCall('capture')).error).toContain('Could not encode');
+    reader.mockRestore();
+    blob.mockRestore();
+  });
+
+  it('validates MCP uniform changes atomically and applies playback controls', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await loadShader();
+    const engine = mockRecordingConstructor.mock.calls.at(-1)![3]();
+    engine.setFPSLimit = vi.fn();
+    const uniforms = vi.spyOn(engine, 'getCurrentCustomUniforms').mockReturnValue([
+      { name: 'gain', type: 'float', value: 1 }, { name: 'offset', type: 'vec2', value: [0, 0] },
+      { name: 'enabled', type: 'bool', value: true },
+    ]);
+    const update = vi.spyOn(engine, 'updateCustomUniformValues');
+    expect((await mcpCall('settings', { uniforms: { missing: 1 } })).error).toContain('Unknown custom uniform');
+    for (const values of [{ gain: false }, { gain: Infinity }, { offset: [1] }, { offset: [1, NaN] }]) {
+      expect((await mcpCall('settings', { fpsLimit: 20, uniforms: values })).error).toContain('Invalid value');
+    }
+    expect(update).not.toHaveBeenCalled();
+    expect((await mcpCall('get_state')).result.fpsLimit).not.toBe(20);
+    expect((await mcpCall('settings', { fpsLimit: 30, speed: 2, uniforms: { gain: 0.5, offset: [1, 2], enabled: false } })).error).toBeUndefined();
+    expect(update).toHaveBeenCalledWith(expect.arrayContaining([{ name: 'gain', type: 'float', value: 0.5 }]));
+    expect((await mcpCall('get_state')).result.fpsLimit).toBe(30);
+    expect((await mcpCall('get_state')).result.inputs).toMatchObject({
+      scope: 'live-preview', builtins: { iMouse: [10, 20, 3, 4], iChannelTime: [1, 2, 3, 4] },
+      customUniforms: expect.arrayContaining([expect.objectContaining({ name: 'gain', lastWriter: 'mcp', defaultValue: null, range: null })]),
+    });
+    await sendMessage({ type: 'customUniformValues', payload: { values: [{ name: 'gain', type: 'float', value: 0.9 }] } });
+    expect((await mcpCall('get_state')).result.inputs.customUniforms).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'gain', lastWriter: 'script' }),
+      expect.objectContaining({ name: 'offset', lastWriter: 'mcp' }),
+    ]));
+    await sendMessage({ type: 'shaderSource', path: '/test/other.glsl', code: 'source', config: { script: 'controls.ts', passes: { Image: {} } } });
+    expect((await mcpCall('get_state')).result.inputs.customUniforms[0]).toMatchObject({ lastWriter: 'unknown', scriptMayOverwrite: true });
+    expect((await mcpCall('playback', { time: -1 })).error).toContain('non-negative');
+    expect((await mcpCall('playback', { paused: true, time: 2, reset: true })).error).toBeUndefined();
+    expect((await mcpCall('playback', { paused: false })).error).toBeUndefined();
+    uniforms.mockRestore();
+    update.mockRestore();
+  });
+
+  it('exposes compute and buffer resources and bounded GPU storage through MCP', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await sendMessage({ type: 'shaderSource', path: '/test/main.wgsl', language: 'wgsl', code: 'source',
+      bufferPathMap: { BufferA: '/test/buffer.wgsl' },
+      config: { storage: { counter: { count: 1, elementType: 'u32' } }, passes: {
+        Image: {}, BufferA: { path: 'buffer.wgsl' }, Compute: { type: 'compute', path: 'compute.wgsl' }, common: { path: 'common.wgsl' },
+      } },
+    });
+    const state = await mcpCall('get_state');
+    expect(state.result.resources.passes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'Compute', kind: 'compute', path: 'compute.wgsl' }),
+      expect.objectContaining({ name: 'common', kind: 'common' }),
+    ]));
+    expect((await mcpCall('read_storage', { name: 'counter', start: 0, count: 1 })).result.storageRead.bytes).toEqual([3, 0, 0, 0]);
+    for (const payload of [{}, { name: 'x', start: -1, count: 1 }, { name: 'x', start: 0, count: 0 }, { name: 'x', start: 0, count: 1025 }]) {
+      expect((await mcpCall('read_storage', payload)).error).toContain('valid range');
+    }
+  });
+
   async function enableDebugAndVariableInspector() {
     const debugButton = screen.getByLabelText('Toggle debug mode');
     await fireEvent.click(debugButton);
@@ -899,7 +1206,7 @@ describe('ShaderViewer', () => {
     });
     configPanelStore.setVisible(true);
     await tick();
-    await fireEvent.click(screen.getByRole('button', { name: 'Storage' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Storage buffer counter' }));
     await fireEvent.click(screen.getByRole('tab', { name: 'Inspect' }));
     await vi.waitFor(() => expect(screen.getByLabelText('Element 0 value')).toHaveTextContent('3'));
     await fireEvent.click(screen.getByRole('tab', { name: 'Settings' }));
@@ -917,7 +1224,7 @@ describe('ShaderViewer', () => {
     });
     configPanelStore.setVisible(true);
     await tick();
-    expect(screen.queryByRole('button', { name: 'Storage' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Storage buffer particles' })).not.toBeInTheDocument();
     expect(mockConfigPanelStorageReset).toHaveBeenLastCalledWith(undefined);
   });
 
@@ -2930,6 +3237,57 @@ describe('ShaderViewer', () => {
 
     const varInspectorButtonAfterRemount = screen.getByLabelText('Toggle variable inspector');
     expect(varInspectorButtonAfterRemount.classList.contains('active')).toBe(false);
+  });
+
+  it.each([false, true])('preserves lock state (%s) when opening a buffer in the editor', async initiallyLocked => {
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await sendMessage({
+      type: 'shaderSource', path: '/test/shader.glsl', code: '',
+      config: { passes: { Image: {}, BufferA: { path: '/test/bufferA.glsl' } } },
+      bufferPathMap: { BufferA: '/test/bufferA.glsl' },
+    });
+    const lockButton = screen.getByLabelText('Toggle lock');
+    if (initiallyLocked) {
+      await fireEvent.click(lockButton);
+    }
+    mockTransport.postMessage.mockClear();
+
+    await fireEvent.click(screen.getByLabelText('Toggle config panel'));
+    await fireEvent.doubleClick(container.querySelector('[data-tab-name="BufferA"]')!);
+
+    expect(mockTransport.postMessage).toHaveBeenCalledWith({
+      type: 'navigateToBuffer',
+      payload: { bufferPath: '/test/bufferA.glsl', shaderPath: '/test/shader.glsl', mode: 'active' },
+    });
+    expect(mockTransport.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'shaderLockState' }));
+    expect(lockButton.classList.contains('active')).toBe(initiallyLocked);
+  });
+
+  it.each([false, true])('previews a file standalone while preserving manual lock state (%s)', async initiallyLocked => {
+    const { ShaderPipeline } = await import('../../lib/ShaderPipeline');
+    const previewFileStandalone = vi.fn();
+    ShaderPipeline.prototype.previewFileStandalone = previewFileStandalone;
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+    const handler = mockTransport.onMessage.mock.calls[0][0];
+    await handler({ data: { type: 'shaderSource', path: '/main.glsl', code: 'image',
+      config: { version: '1', passes: { Image: {}, BufferA: { path: 'a.glsl' } } }, bufferPathMap: { BufferA: '/a.glsl' } } });
+    await tick();
+    if (initiallyLocked) {
+      await fireEvent.click(screen.getByLabelText('Toggle lock'));
+    }
+    mockTransport.postMessage.mockClear();
+    await fireEvent.click(screen.getByLabelText('Toggle config panel'));
+    await fireEvent.contextMenu(container.querySelector('[data-tab-name="BufferA"]')!);
+    await fireEvent.click(screen.getByRole('menuitem', { name: 'Preview file standalone' }));
+    expect(previewFileStandalone).toHaveBeenCalledExactlyOnceWith('/a.glsl');
+    if (initiallyLocked) {
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({ type: 'shaderLockState', payload: { lockedShaderPath: '/a.glsl' } });
+    } else {
+      expect(mockTransport.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'shaderLockState' }));
+    }
   });
 
   it('uses host-resolved file paths for script double clicks', async () => {
@@ -5680,8 +6038,8 @@ describe('ShaderViewer', () => {
       await tick();
       expect(screen.getByLabelText('Toggle pause').classList.contains('error')).toBe(Boolean(result.errors?.length));
       if (result.errors) {
-expect(screen.getByText('VR compile failed')).toBeTruthy();
-}
+        expect(screen.getByText('VR compile failed')).toBeTruthy();
+      }
     });
 
     it('should handle null result from handleShaderMessage', async () => {

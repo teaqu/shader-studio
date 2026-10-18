@@ -22,6 +22,7 @@ export interface HostConfig {
   capabilities?: Partial<ViewerCapabilities>;
   getEditorPreferences?: () => HostEditorPreferences;
   setEditorWordWrap?: (value: HostEditorPreferences['wordWrap']) => void;
+  uploadAssets?: (files: readonly File[], shaderPath: string) => Promise<WorkspaceFileInfo[]>;
 }
 
 let host = $state<HostConfig>({});
@@ -40,6 +41,10 @@ export function getHostTransportFactory(): (() => Transport) | undefined {
 
 export function getHostDefaultAssets(): WorkspaceFileInfo[] {
   return host.defaultAssets ?? [];
+}
+
+export function getHostAssetUploader(): HostConfig['uploadAssets'] {
+  return host.uploadAssets;
 }
 
 export function getHostCapabilities(): ViewerCapabilities {

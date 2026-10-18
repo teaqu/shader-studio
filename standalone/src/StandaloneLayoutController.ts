@@ -1,6 +1,6 @@
 export const STANDALONE_LAYOUT_STORAGE_KEY = 'shader-studio.standalone-layout.v1';
 
-export type StandalonePanelId = 'explorer' | 'editor' | 'preview';
+export type StandalonePanelId = 'explorer' | 'files' | 'editor' | 'preview';
 export type MobileDockviewPanelId = StandalonePanelId | 'debug' | 'config' | 'performance' | 'recording' | 'vr';
 
 interface Disposable {
@@ -51,6 +51,7 @@ export interface LayoutStorage {
 const panelDefinitions: Record<StandalonePanelId, { title: string; position?: Record<string, string>; initialWidth?: number }> = {
   preview: { title: 'Preview' },
   explorer: { title: 'Shader Explorer', position: { referencePanel: 'preview', direction: 'left' }, initialWidth: 220 },
+  files: { title: 'Files', position: { referencePanel: 'explorer', direction: 'below' }, initialWidth: 220 },
   editor: { title: 'No file open', position: { referencePanel: 'explorer', direction: 'right' }, initialWidth: 820 },
 };
 
@@ -172,11 +173,17 @@ export class StandaloneLayoutController {
   private readonly storage: LayoutStorage | null;
   private desktopVisibility: Map<PanelGroup, boolean> | null = null;
   private mobilePanel: MobileDockviewPanelId | null = null;
+  private managedEditorPaths = new Set<string>();
+  private retainedEditorPaths = new Set<string>();
+  private editorSync = Promise.resolve();
+  private editorSyncVersion = 0;
+  private syncingEditors = false;
 
   constructor(
     private readonly api: StandaloneDockviewApi,
     storage?: LayoutStorage | null,
     private readonly previewEditor?: (path: string) => void,
+    private readonly confirmEditorClose: (path: string) => Promise<boolean> = async () => true,
   ) {
     this.storage = storage === undefined ? getBrowserStorage() : storage;
   }
@@ -191,7 +198,7 @@ export class StandaloneLayoutController {
         this.activeEditorId = panel.id;
       }
       const path = panel?.id.startsWith('editor:') ? panel.id.slice('editor:'.length) : '';
-      if (/\.(glsl|frag|slang|wgsl)$/i.test(path)) {
+      if (!this.syncingEditors && /\.(glsl|frag|slang|wgsl)$/i.test(path)) {
         this.previewEditor?.(path);
       }
     });
@@ -204,10 +211,62 @@ export class StandaloneLayoutController {
   }
 
   dispose(): void {
+    this.editorSyncVersion++;
     this.activePanelDisposable?.dispose();
     this.activePanelDisposable = null;
     this.layoutChangeDisposable?.dispose();
     this.layoutChangeDisposable = null;
+  }
+
+  /** Keep the union of live previews, retiring other shader tabs with a save prompt. */
+  syncShaderEditors(previews: readonly { shaderPath: string; files: string[] }[] | null): Promise<void> {
+    const version = ++this.editorSyncVersion;
+    this.editorSync = this.editorSync.catch(() => {}).then(async () => {
+      if (version !== this.editorSyncVersion || previews === null) {
+        return;
+      }
+      const required = new Set(previews.flatMap(preview => preview.files));
+      for (const path of required) {
+        this.retainedEditorPaths.delete(path);
+      }
+      const primary = previews[0]?.shaderPath;
+      this.syncingEditors = true;
+      try {
+        for (const path of required) {
+          if (!this.api.getPanel(`editor:${path}`)) {
+            this.openEditor(path);
+          }
+        }
+        // The original editor follows the viewer; fixed file tabs now replace it.
+        if (primary) {
+          this.api.getPanel('editor')?.api.close();
+        }
+        const previousPaths = new Set([...this.managedEditorPaths, ...this.api.panels
+          .filter(panel => panel.id.startsWith('editor:') && /\.(glsl|frag|vert|slang|wgsl|sha\.json)$/i.test(panel.id))
+          .map(panel => panel.id.slice('editor:'.length))]);
+        for (const path of previousPaths) {
+          if (!required.has(path) && !this.retainedEditorPaths.has(path) && this.api.getPanel(`editor:${path}`)) {
+            const close = await this.confirmEditorClose(path);
+            if (version !== this.editorSyncVersion) {
+              return;
+            }
+            if (close) {
+              this.api.getPanel(`editor:${path}`)?.api.close();
+            } else {
+              this.retainedEditorPaths.add(path);
+            }
+          }
+        }
+        // Cancelled closes are handed back to the user, without repeated prompts.
+        this.managedEditorPaths = required;
+        if (primary) {
+          this.api.getPanel(`editor:${primary}`)?.api.setActive();
+        }
+      } finally {
+        this.syncingEditors = false;
+      }
+    });
+    return this.editorSync;
   }
 
   showPanel(panelId: StandalonePanelId): void {
@@ -265,6 +324,12 @@ export class StandaloneLayoutController {
       ...(reference ? { position: { referencePanel: reference.id, direction: 'within' } } : {}),
     });
     this.api.getPanel(id)?.api.setActive();
+  }
+
+  closeEditorPaths(paths: readonly string[]): void {
+    for (const path of paths) {
+      this.api.getPanel(`editor:${path}`)?.api.close();
+    }
   }
 
   isPanelVisible(panelId: StandalonePanelId): boolean {
@@ -354,6 +419,7 @@ export class StandaloneLayoutController {
     this.addPanel('preview');
     this.addPanel('explorer');
     this.addPanel('editor');
+    this.addPanel('files');
     // Adding splits redistributes widths; apply the defaults after all panels exist.
     // Explorer and preview take fixed defaults so the editor keeps the remaining width.
     this.api.getPanel('explorer')?.api.setSize({ width: 260 });
@@ -410,6 +476,10 @@ export class StandaloneLayoutController {
       if (migrated) {
         this.writeLayout(constrainedLayout);
       }
+      if (isRecord(parsedLayout) && parsedLayout.filesPaneVersion !== 1 && !this.api.getPanel('files')) {
+        this.addPanel('files');
+        this.writeLayout(this.api.toJSON());
+      }
       return true;
     } catch {
       this.api.clear();
@@ -427,7 +497,7 @@ export class StandaloneLayoutController {
 
   private writeLayout(layout: unknown): void {
     try {
-      this.storage?.setItem(STANDALONE_LAYOUT_STORAGE_KEY, JSON.stringify(layout));
+      this.storage?.setItem(STANDALONE_LAYOUT_STORAGE_KEY, JSON.stringify(isRecord(layout) ? { ...layout, filesPaneVersion: 1 } : layout));
     } catch {
       // Persistence is an enhancement; quota and privacy failures must not affect the shell.
     }

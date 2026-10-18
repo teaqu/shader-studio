@@ -12,10 +12,11 @@
     type IContentRenderer,
   } from 'dockview-core';
   import 'dockview-core/dist/styles/dockview.css';
-  import { setupDockviewTabs } from '@shader-studio/ui/lib/layout/dockviewTabs';
+  import { setupDockviewTabs, createShaderTab } from '@shader-studio/ui/lib/layout/dockviewTabs';
   import { StandaloneLayoutController, type StandalonePanelId } from './StandaloneLayoutController';
   import { StandalonePanelSizing } from './StandalonePanelSizing';
   import { getViewerSession } from '@shader-studio/ui/lib/state/viewerSession.svelte';
+  import { getActiveShaderEditors } from './state/shellState.svelte';
   import EditorPane from './EditorPane.svelte';
   import type { WebTransport } from './WebTransport';
   import { HostedPanels } from './HostedPanels';
@@ -31,16 +32,18 @@
   interface Props {
     transport?: WebTransport;
     explorer: Snippet;
+    files?: Snippet;
     editor: Snippet;
     preview: Snippet;
     hostedPanels?: HostedPanels;
   }
 
-  let { transport, explorer, editor, preview, hostedPanels = new HostedPanels() }: Props = $props();
+  let { transport, explorer, files, editor, preview, hostedPanels = new HostedPanels() }: Props = $props();
 
   let dockviewElement: HTMLElement;
   let sourceElement: HTMLElement;
   let explorerSource: HTMLElement;
+  let filesSource: HTMLElement;
   let editorSource: HTMLElement;
   let previewSource: HTMLElement;
   let controller = $state<StandaloneLayoutController | null>(null);
@@ -55,6 +58,10 @@
 
   $effect(() => {
     controller?.setEditorPath(getViewerSession()?.shaderPath ?? '');
+  });
+
+  $effect(() => {
+    void controller?.syncShaderEditors(getActiveShaderEditors());
   });
 
   $effect(() => {
@@ -121,10 +128,13 @@
 
   onMount(() => {
     sources.set('explorer', explorerSource);
+    sources.set('files', filesSource);
     sources.set('editor', editorSource);
     sources.set('preview', previewSource);
 
     dockviewApi = createDockview(dockviewElement, {
+      defaultTabComponent: 'shader-tab',
+      createTabComponent: createShaderTab,
       createComponent: (options) => ['debug', 'config', 'performance', 'recording', 'vr'].includes(options.name)
         ? hostedPanels.createRenderer(options.name as HostedPanelId)
         : options.name === 'file-editor' ? new FileEditorRenderer()
@@ -145,7 +155,7 @@
     disposeTabVisibility = setupDockviewTabs(dockviewElement, dockviewApi);
     controller = new StandaloneLayoutController(dockviewApi, undefined, (path) => {
       transport?.getShaderExplorerHostApi().postMessage({ type: 'activateShader', path });
-    });
+    }, path => transport?.confirmEditorClose(path) ?? Promise.resolve(true));
     // Establish the available size before assigning default panel widths.
     dockviewApi.layout(dockviewElement.clientWidth, dockviewElement.clientHeight);
     controller.initialize();
@@ -184,6 +194,10 @@
 
   export function openEditor(path: string): void {
     controller?.openEditor(path);
+  }
+
+  export function closeEditorPaths(paths: readonly string[]): void {
+    controller?.closeEditorPaths(paths);
   }
 
   export function showPanel(panelId: StandalonePanelId): void {
@@ -227,6 +241,7 @@
   <div class="standalone-dockview" bind:this={dockviewElement}></div>
   <div class="standalone-panel-sources" bind:this={sourceElement} aria-hidden="true">
     <div class="standalone-panel-source" bind:this={explorerSource}>{@render explorer()}</div>
+    <div class="standalone-panel-source" bind:this={filesSource}>{@render files?.()}</div>
     <div class="standalone-panel-source" bind:this={editorSource}>{@render editor()}</div>
     <div class="standalone-panel-source" bind:this={previewSource}>{@render preview()}</div>
   </div>
@@ -243,7 +258,7 @@
       </nav>
     {/if}
     <nav class="mobile-panel-navigation" aria-label="Workspace panels">
-      {#each ([['explorer', 'Explorer'], ['editor', 'Editor'], ['preview', 'Preview'], ['tools', 'Tools']] as const) as [panelId, label]}
+      {#each ([['explorer', 'Explorer'], ['files', 'Files'], ['editor', 'Editor'], ['preview', 'Preview'], ['tools', 'Tools']] as const) as [panelId, label]}
         <button
           class:active={mobilePanel === panelId}
           aria-current={mobilePanel === panelId ? 'page' : undefined}
@@ -256,6 +271,8 @@
 
 <style>
   :global(.shader-studio-standalone-theme) {
+    --dv-tabs-and-actions-container-height: var(--shader-studio-tab-height);
+    --dv-tab-font-size: var(--shader-studio-font-size);
     --dv-activegroup-visiblepanel-tab-background-color: var(--vscode-tab-activeBackground, var(--vscode-editor-background));
     --dv-activegroup-visiblepanel-tab-color: var(--vscode-tab-activeForeground, var(--vscode-editor-foreground));
     --dv-activegroup-hiddenpanel-tab-background-color: var(--vscode-tab-inactiveBackground, transparent);
@@ -283,12 +300,12 @@
   .mobile-tools-navigation { display: none; }
 
   @media (max-width: 767px) {
-    .standalone-layout { position: relative; flex-direction: column; padding-bottom: env(safe-area-inset-bottom); }
+    .standalone-layout.mobile-layout { position: relative; flex-direction: column; padding-bottom: env(safe-area-inset-bottom); }
     .standalone-dockview { min-height: 0; }
     .mobile-layout .standalone-dockview :global(.dv-tabs-and-actions-container) { display: none; }
     .mobile-panel-navigation {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(5, minmax(0, 1fr));
       gap: 2px;
       flex: 0 0 auto;
       padding: 6px max(8px, env(safe-area-inset-right)) 6px max(8px, env(safe-area-inset-left));
@@ -308,7 +325,7 @@
       min-height: 44px;
       padding: 6px 12px;
       border: 0;
-      border-radius: 4px;
+      border-radius: var(--shader-studio-control-radius);
       color: var(--vscode-foreground);
       background: transparent;
       font: inherit;
@@ -319,7 +336,7 @@
       min-height: 44px;
       padding: 6px 4px;
       border: 0;
-      border-radius: 4px;
+      border-radius: var(--shader-studio-control-radius);
       color: var(--vscode-foreground);
       background: transparent;
       font: inherit;

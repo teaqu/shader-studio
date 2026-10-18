@@ -1,0 +1,317 @@
+@font-face {
+  font-family: "Shader Studio Pixel";
+  src: url('/fonts/silkscreen/Silkscreen-Regular.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+/* Standalone-only skin. Light/dark still use the shared editor theme switch. */
+:root[data-studio-theme="pixel"][data-theme="dark"] {
+  --pixel-canvas: #171a2b;
+  --pixel-surface: #22263d;
+  --pixel-raised: #2e3450;
+  --pixel-hover: #3b4263;
+  --pixel-ink: #eef0ff;
+  --pixel-muted: #b3bad7;
+  --pixel-line: #3b435f;
+  --pixel-control-line: #697498;
+  --pixel-accent: #c2a6ff;
+  --pixel-on-accent: #23143e;
+  --pixel-selected: #443666;
+  --pixel-shadow: #111527;
+  --pixel-gold: #ffd478;
+  --pixel-link: #8ee5cf;
+}
+
+:root[data-studio-theme="pixel"][data-theme="light"] {
+  --pixel-canvas: #fff9ec;
+  --pixel-surface: #f2ead8;
+  --pixel-raised: #fffdf6;
+  --pixel-hover: #e8dec8;
+  --pixel-ink: #302b42;
+  --pixel-muted: #655b75;
+  --pixel-line: #d7cddc;
+  --pixel-control-line: #8b7c96;
+  --pixel-accent: #6842a6;
+  --pixel-on-accent: #ffffff;
+  --pixel-selected: #e4d8f7;
+  --pixel-shadow: #d7cdbb;
+  --pixel-gold: #885018;
+  --pixel-link: #146756;
+}
+
+:root[data-studio-theme="pixel"] {
+  --vscode-font-family: "Cascadia Mono", "Consolas", monospace;
+  --vscode-foreground: var(--pixel-ink);
+  --vscode-descriptionForeground: var(--pixel-muted);
+  --vscode-editor-background: var(--pixel-canvas);
+  --vscode-editor-foreground: var(--pixel-ink);
+  --vscode-sideBar-background: var(--pixel-surface);
+  --vscode-sideBar-foreground: var(--pixel-ink);
+  --vscode-panel-border: var(--pixel-line);
+  --vscode-editorGroupHeader-tabsBackground: var(--pixel-surface);
+  --vscode-tab-activeBackground: var(--pixel-canvas);
+  --vscode-tab-activeForeground: var(--pixel-ink);
+  --vscode-tab-inactiveBackground: var(--pixel-surface);
+  --vscode-tab-inactiveForeground: var(--pixel-muted);
+  --vscode-tab-hoverBackground: var(--pixel-hover);
+  --vscode-tab-hoverForeground: var(--pixel-ink);
+  --vscode-tab-border: var(--pixel-line);
+  --vscode-input-background: var(--pixel-raised);
+  --vscode-input-foreground: var(--pixel-ink);
+  --vscode-input-border: var(--pixel-control-line);
+  --vscode-dropdown-background: var(--pixel-raised);
+  --vscode-dropdown-foreground: var(--pixel-ink);
+  --vscode-dropdown-border: var(--pixel-control-line);
+  --vscode-button-background: var(--pixel-accent);
+  --vscode-button-foreground: var(--pixel-on-accent);
+  --vscode-button-hoverBackground: var(--pixel-accent);
+  --vscode-button-secondaryBackground: var(--pixel-raised);
+  --vscode-button-secondaryForeground: var(--pixel-ink);
+  --vscode-button-secondaryHoverBackground: var(--pixel-hover);
+  --vscode-focusBorder: var(--pixel-accent);
+  --vscode-inputOption-activeBackground: var(--pixel-selected);
+  --vscode-inputOption-activeForeground: var(--pixel-ink);
+  --vscode-inputOption-activeBorder: var(--pixel-accent);
+  --vscode-list-hoverBackground: var(--pixel-hover);
+  --vscode-toolbar-hoverBackground: var(--pixel-hover);
+  --vscode-menu-background: var(--pixel-surface);
+  --vscode-menu-foreground: var(--pixel-ink);
+  --vscode-menu-border: var(--pixel-line);
+  --vscode-menu-selectionBackground: var(--pixel-selected);
+  --vscode-menu-selectionForeground: var(--pixel-ink);
+  --vscode-textLink-foreground: var(--pixel-link);
+  --vscode-textLink-activeForeground: var(--pixel-link);
+  --vscode-notifications-background: var(--pixel-surface);
+  --vscode-notifications-border: var(--pixel-line);
+  --shader-studio-editor-foreground: var(--pixel-ink);
+  --shader-studio-editor-active-line-number: var(--pixel-ink);
+  --shader-studio-editor-cursor: var(--pixel-ink);
+  --shader-studio-editor-hover-background: var(--pixel-surface);
+  --shader-studio-editor-hover-border: var(--pixel-line);
+  --shader-studio-editor-status-background: var(--pixel-surface);
+  --shader-studio-editor-status-border: var(--pixel-line);
+}
+
+:root[data-studio-theme="pixel"] body {
+  --shader-studio-control-radius: 2px;
+}
+
+:root[data-studio-theme="pixel"] :where(.standalone-toolbar button, dialog button, .config-panel button, .recording-panel button, .new-shader-modal button, .options-menu) {
+  box-shadow: 2px 2px 0 var(--pixel-shadow);
+  border: 1px solid var(--pixel-line);
+  transition: none;
+}
+
+:root[data-studio-theme="pixel"] :where(.standalone-toolbar button, dialog button, .config-panel button, .recording-panel button):active:not(:disabled) {
+  box-shadow: inset 2px 2px 0 var(--pixel-shadow);
+}
+
+:root[data-studio-theme="pixel"] :where(dialog, .dropdown-menu, .options-menu, .insert-menu) {
+  border: 1px solid var(--pixel-line);
+  border-radius: 2px;
+  box-shadow: 3px 3px 0 var(--pixel-shadow);
+}
+
+:root[data-studio-theme="pixel"] :where(.standalone-toolbar > strong, dialog h2, dialog h3, .config-panel .section-title) {
+  font-family: "Shader Studio Pixel", monospace;
+  font-weight: 400;
+  letter-spacing: 0.025em;
+}
+
+:root[data-studio-theme="pixel"] .standalone-toolbar > strong::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 10px;
+  background: var(--pixel-gold);
+  box-shadow: 4px -4px 0 var(--pixel-accent), 4px 4px 0 var(--pixel-link);
+}
+
+:root[data-studio-theme="pixel"] :is(.config-panel, .recording-panel) .tab-button {
+  box-shadow: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+}
+
+:root[data-studio-theme="pixel"] :is(.config-panel, .recording-panel) .tab-button.active {
+  border-bottom-color: var(--pixel-accent);
+  color: var(--pixel-accent);
+}
+
+:root[data-studio-theme="pixel"] :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select) {
+  box-shadow: inset 1px 1px 0 var(--pixel-shadow);
+}
+
+/* Native scroll areas, including dialogs and portalled channel pickers. */
+:root[data-studio-theme="pixel"]::-webkit-scrollbar,
+:root[data-studio-theme="pixel"] *::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+  background: var(--pixel-surface);
+}
+
+:root[data-studio-theme="pixel"]::-webkit-scrollbar-track,
+:root[data-studio-theme="pixel"] *::-webkit-scrollbar-track {
+  background: var(--pixel-surface);
+  border: 1px solid var(--pixel-line);
+}
+
+:root[data-studio-theme="pixel"]::-webkit-scrollbar-thumb,
+:root[data-studio-theme="pixel"] *::-webkit-scrollbar-thumb {
+  min-width: 28px;
+  min-height: 28px;
+  border: 2px solid var(--pixel-surface);
+  border-radius: 0;
+  background: var(--pixel-accent);
+  box-shadow: inset 1px 1px 0 var(--pixel-raised), inset -2px -2px 0 var(--pixel-shadow);
+}
+
+:root[data-studio-theme="pixel"]::-webkit-scrollbar-thumb:hover,
+:root[data-studio-theme="pixel"] *::-webkit-scrollbar-thumb:hover {
+  background: var(--pixel-gold);
+}
+
+:root[data-studio-theme="pixel"]::-webkit-scrollbar-thumb:active,
+:root[data-studio-theme="pixel"] *::-webkit-scrollbar-thumb:active {
+  background: var(--pixel-link);
+}
+
+:root[data-studio-theme="pixel"]::-webkit-scrollbar-corner,
+:root[data-studio-theme="pixel"] *::-webkit-scrollbar-corner {
+  background: var(--pixel-surface);
+}
+
+/* Keep native scrolling in engines that expose only standard scrollbar colors. */
+@supports not selector(::-webkit-scrollbar) {
+  :root[data-studio-theme="pixel"],
+  :root[data-studio-theme="pixel"] * {
+    scrollbar-color: var(--pixel-accent) var(--pixel-surface);
+  }
+}
+
+/* Monaco draws its own scrollbars rather than browser scrollbar pseudo-elements. */
+:root[data-studio-theme="pixel"] .editor-pane .monaco-scrollable-element > .scrollbar {
+  background: var(--pixel-surface);
+  box-shadow: inset 0 0 0 1px var(--pixel-line);
+}
+
+:root[data-studio-theme="pixel"] .editor-pane .monaco-scrollable-element > .scrollbar > .slider {
+  box-sizing: border-box;
+  border: 2px solid var(--pixel-surface);
+  border-radius: 0;
+  background: var(--pixel-accent);
+  box-shadow: inset 1px 1px 0 var(--pixel-raised), inset -2px -2px 0 var(--pixel-shadow);
+}
+
+:root[data-studio-theme="pixel"] .editor-pane .monaco-scrollable-element > .scrollbar > .slider:hover {
+  background: var(--pixel-gold);
+}
+
+:root[data-studio-theme="pixel"] .editor-pane .monaco-scrollable-element > .scrollbar > .slider.active {
+  background: var(--pixel-link);
+}
+
+
+/* Pixel lettering belongs to navigation/actions; code and helper copy stay readable. */
+:root[data-studio-theme="pixel"] .standalone-toolbar :is(button, a),
+:root[data-studio-theme="pixel"] :where(dialog button, .config-panel button, .recording-panel button, .dv-tab .dv-default-tab-content, .shader-card .shader-name) {
+  font-family: "Shader Studio Pixel", monospace;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+:root[data-studio-theme="pixel"] :where(dialog h2, .standalone-toolbar > strong) {
+  font-family: "Shader Studio Pixel", monospace;
+  font-weight: 400;
+}
+
+:root[data-studio-theme="pixel"] :where(dialog h3, .config-panel .section-title) {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+:root[data-studio-theme="pixel"] :where(dialog h3, .config-panel .section-title)::after {
+  content: "";
+  flex: 0 0 4px;
+  width: 4px;
+  height: 4px;
+  background: var(--pixel-accent);
+  box-shadow: 6px 0 0 var(--pixel-link), 12px 0 0 var(--pixel-gold);
+}
+
+/* Stepped corners give panels and library tiles a sprite-like silhouette. */
+:root[data-studio-theme="pixel"] :where(dialog, .shader-card, .insert-menu) {
+  border-radius: 0;
+  clip-path: polygon(0 4px, 4px 4px, 4px 0, calc(100% - 4px) 0, calc(100% - 4px) 4px, 100% 4px, 100% calc(100% - 4px), calc(100% - 4px) calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 4px calc(100% - 4px), 0 calc(100% - 4px));
+}
+
+:root[data-studio-theme="pixel"] .shader-card.selected {
+  background: var(--pixel-selected);
+  border-color: transparent;
+  box-shadow: inset 4px 0 0 var(--pixel-accent);
+}
+
+:root[data-studio-theme="pixel"] :is(.config-panel, .recording-panel) .tab-button.active {
+  background: var(--pixel-selected);
+  box-shadow: inset 0 -3px 0 var(--pixel-accent);
+  border-bottom-color: transparent;
+}
+
+:root[data-studio-theme="pixel"] input[type="checkbox"] {
+  appearance: none;
+  display: inline-grid;
+  place-content: center;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 1px solid var(--pixel-control-line);
+  border-radius: 0;
+  background: var(--pixel-raised);
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+:root[data-studio-theme="pixel"] input[type="checkbox"]::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  background: var(--pixel-on-accent);
+  clip-path: polygon(0 3px, 2px 3px, 2px 5px, 4px 5px, 4px 3px, 6px 3px, 6px 1px, 8px 1px, 8px 5px, 6px 5px, 6px 7px, 2px 7px, 2px 5px, 0 5px);
+  visibility: hidden;
+}
+
+:root[data-studio-theme="pixel"] input[type="checkbox"]:checked {
+  background: var(--pixel-accent);
+  border-color: var(--pixel-accent);
+}
+
+:root[data-studio-theme="pixel"] input[type="checkbox"]:checked::before {
+  visibility: visible;
+}
+
+:root[data-studio-theme="pixel"] :where(dialog button, .standalone-toolbar button):active:not(:disabled) {
+  transform: translate(1px, 1px);
+}
+
+:root[data-studio-theme="pixel"] input[type="checkbox"]:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* Clipped sprite corners must not clip the library's keyboard focus ring. */
+:root[data-studio-theme="pixel"] .shader-card:focus-visible {
+  outline: 2px solid var(--pixel-accent);
+  outline-offset: -3px;
+}
+
+:root[data-studio-theme="pixel"] .insert-menu .insert-option {
+  border: 0;
+  box-shadow: none;
+}

@@ -36,6 +36,7 @@ type TestTransport = WebTransport & {
   flush: ReturnType<typeof vi.fn>;
   exportWorkspaceBackup: ReturnType<typeof vi.fn>;
   importWorkspaceBackup: ReturnType<typeof vi.fn>;
+  uploadFiles: ReturnType<typeof vi.fn>;
   onPersistenceStatus: ReturnType<typeof vi.fn>;
   getStorageStatus: ReturnType<typeof vi.fn>;
   requestPersistentStorage: ReturnType<typeof vi.fn>;
@@ -50,6 +51,10 @@ function createTransport(): TestTransport {
     flush: vi.fn().mockResolvedValue(undefined),
     exportWorkspaceBackup: vi.fn().mockResolvedValue('{"workspace":true}'),
     importWorkspaceBackup: vi.fn().mockResolvedValue(undefined),
+    uploadFiles: vi.fn().mockResolvedValue(undefined),
+    onWorkspaceFiles: vi.fn(listener => {
+      listener([{ path: '/main.glsl', asset: false }]); return vi.fn();
+    }),
     onPersistenceStatus: vi.fn((listener) => {
       listener({ state: 'saved' });
       return vi.fn();
@@ -90,6 +95,71 @@ function createStorage(): Storage {
 }
 
 describe('standalone App', () => {
+  it('applies and clears the standalone Pixel skin through global settings', async () => {
+    const transport = createTransport();
+    const { unmount } = render(App, { props: { transport } });
+    await tick();
+    expect(document.documentElement.dataset.studioTheme).toBe('classic');
+    transport.settings.update('theme.style', 'pixel');
+    await tick();
+    expect(document.documentElement.dataset.studioTheme).toBe('pixel');
+    transport.settings.reset();
+    await tick();
+    expect(document.documentElement.dataset.studioTheme).toBe('classic');
+    unmount();
+    expect(document.documentElement.dataset.studioTheme).toBeUndefined();
+  });
+  it('renders Files and Shader Explorer independently and toggles Files through View', async () => {
+    render(App, { props: { transport: createTransport() } });
+    expect(screen.getByTestId('files-panel').querySelector('[role="tree"]')).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: 'Files' })).toBeNull();
+    await fireEvent.click(screen.getByRole('button', { name: 'View' }));
+    await fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Files/ }));
+    expect(layoutStub.togglePanel).toHaveBeenCalledWith('files');
+  });
+  it('opens shaders through the explorer, other files in the editor, and closes deleted paths', async () => {
+    const transport = createTransport();
+    const explorer = { getShaders: vi.fn(), postMessage: vi.fn() };
+    transport.getShaderExplorerHostApi.mockReturnValue(explorer);
+    Object.assign(transport, { deleteWorkspacePath: vi.fn().mockResolvedValue(undefined) });
+    vi.spyOn(transport, 'onWorkspaceFiles').mockImplementation(listener => {
+      listener([{ path: '/main.glsl', asset: false }, { path: '/notes.txt', asset: false }] as never); return vi.fn();
+    });
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    render(App, { props: { transport } });
+    await fireEvent.click(screen.getByRole('treeitem', { name: /main\.glsl/ }));
+    expect(explorer.postMessage).toHaveBeenCalledWith({ type: 'openShader', path: '/main.glsl' });
+    await fireEvent.click(screen.getByRole('treeitem', { name: /notes\.txt/ }));
+    await waitFor(() => expect(layoutStub.openEditor).toHaveBeenCalledWith('/notes.txt'));
+    await fireEvent.click(screen.getByTitle('Delete selected files or folders'));
+    await waitFor(() => expect(layoutStub.closeEditorPaths).toHaveBeenCalledWith(['/notes.txt']));
+  });
+  it('shows hidden Files unchecked, closes View on a second press, and dismisses workspace and offline warnings', async () => {
+    layoutStub.isPanelVisible.mockImplementation(panel => panel !== 'files');
+    const transport = createTransport();
+    transport.exportWorkspaceBackup.mockRejectedValue(new Error('denied'));
+    render(App, { props: { transport, pwa: createPwa({ offlinePreparation: { state: 'error', message: 'network down' } }) } });
+    await fireEvent.click(screen.getByRole('button', { name: 'View' }));
+    expect(screen.getByRole('menuitemcheckbox', { name: /Files/ }).getAttribute('aria-checked')).toBe('false');
+    await fireEvent.click(screen.getByRole('button', { name: 'View' }));
+    expect(screen.queryByRole('menuitemcheckbox', { name: /Files/ })).toBeNull();
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Export Workspace Backup' }));
+    await waitFor(() => expect(screen.getByText(/Could not export the workspace/)).toBeTruthy());
+    await fireEvent.click(screen.getByRole('button', { name: 'Dismiss workspace warning' }));
+    expect(screen.queryByText(/Could not export the workspace/)).toBeNull();
+    expect(screen.getByText(/Offline preparation failed: network down/)).toBeTruthy();
+    await fireEvent.click(screen.getByRole('button', { name: 'Dismiss offline warning' }));
+    expect(screen.queryByText(/Offline preparation failed/)).toBeNull();
+  });
+  it('shows an empty preview after all shader files are deleted', async () => {
+    const transport = createTransport();
+    vi.spyOn(transport, 'onWorkspaceFiles').mockImplementation(listener => {
+      listener([]); return vi.fn();
+    });
+    render(App, { props: { transport } });
+    await waitFor(() => expect(screen.getByText('Create or upload a shader to start previewing.')).toBeTruthy());
+  });
   it('uses the global Native mode when opening a new shader', async () => {
     const transport = createTransport();
     transport.settings.update('webgpu.defaultRenderAuthoring', 'native');
@@ -162,7 +232,11 @@ describe('standalone App', () => {
   it('dismisses the alpha notice and remembers that preference', async () => {
     const first = render(App, { transport: createTransport() });
 
-    await fireEvent.click(screen.getByRole('button', { name: 'Dismiss alpha notice' }));
+    const close = screen.getByRole('button', { name: 'Dismiss alpha notice' });
+    expect(close.textContent).toBe('×');
+    expect(screen.getByTestId('web-alpha-warning').textContent).not.toContain('Standalone mode is in');
+    expect(screen.getByTestId('web-alpha-warning').textContent).toContain('Changes are saved only in this browser. Clearing browser data will delete them.');
+    await fireEvent.click(close);
     expect(screen.queryByTestId('web-alpha-warning')).toBeNull();
     expect(localStorage.getItem('shader-studio.alpha-notice-dismissed')).toBe('true');
 
@@ -287,6 +361,8 @@ describe('standalone App', () => {
     await fireEvent.click(warning);
     expect(await screen.findByText(/Storage protection has not been granted/)).toBeTruthy();
     expect(transport.requestPersistentStorage).toHaveBeenCalledOnce();
+    await fireEvent.click(screen.getByRole('button', { name: 'Dismiss storage warning' }));
+    expect(screen.queryByRole('button', { name: 'Storage warning' })).toBeNull();
   });
   it('automatically requests storage protection when it has not been granted', async () => {
     const transport = createTransport();
@@ -324,7 +400,7 @@ describe('standalone App', () => {
     expect(screen.queryByRole('button', { name: 'Request storage protection' })).toBeNull();
     if (status.backend === 'session') {
       expect(screen.getByRole('button', { name: 'Storage warning' }).getAttribute('title')).toContain('closing the app');
-      expect(screen.queryByRole('button', { name: 'Dismiss storage warning' })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Dismiss storage warning' })).toBeTruthy();
     } else if (!status.persisted) {
       expect(screen.getByRole('button', { name: 'Storage warning' })).toBeTruthy();
     } else {
@@ -421,9 +497,9 @@ describe('standalone App', () => {
     expect(layoutStub.selectMobilePanel).toHaveBeenCalledWith('explorer');
     expect(layoutStub.showPanel).not.toHaveBeenCalled();
 
-    requestEditor('/shaders/mobile.glsl');
+    requestEditor('/mobile.glsl');
     await tick();
-    expect(layoutStub.openEditor).toHaveBeenCalledWith('/shaders/mobile.glsl');
+    expect(layoutStub.openEditor).toHaveBeenCalledWith('/mobile.glsl');
     expect(layoutStub.selectMobilePanel).toHaveBeenLastCalledWith('editor');
   });
 
@@ -431,10 +507,10 @@ describe('standalone App', () => {
     layoutStub.isMobileLayout.mockReturnValue(true);
     render(App, { props: { transport: createTransport() } });
 
-    selectEditor('/shaders/picked.glsl');
+    selectEditor('/picked.glsl');
     await tick();
 
-    expect(layoutStub.selectEditor).toHaveBeenCalledWith('/shaders/picked.glsl');
+    expect(layoutStub.selectEditor).toHaveBeenCalledWith('/picked.glsl');
     expect(layoutStub.selectMobilePanel).toHaveBeenLastCalledWith('editor');
     expect(getSelectedEditor()).toBeNull();
   });
@@ -442,10 +518,10 @@ describe('standalone App', () => {
   it('keeps the desktop layout when a shader is selected on a wide screen', async () => {
     render(App, { props: { transport: createTransport() } });
 
-    selectEditor('/shaders/picked.glsl');
+    selectEditor('/picked.glsl');
     await tick();
 
-    expect(layoutStub.selectEditor).toHaveBeenCalledWith('/shaders/picked.glsl');
+    expect(layoutStub.selectEditor).toHaveBeenCalledWith('/picked.glsl');
     expect(layoutStub.selectMobilePanel).not.toHaveBeenCalled();
   });
 
@@ -730,19 +806,28 @@ describe('standalone App', () => {
     await fireEvent.click(screen.getByRole('button', { name: 'Clear Workspace' }));
 
     await waitFor(() => {
-      expect(screen.getByRole('alert').textContent).toBe('Could not clear the workspace. Please try again.');
+      expect(screen.getByRole('alert').textContent).toContain('Could not clear the workspace. Please try again.');
     });
+    await fireEvent.click(screen.getByRole('button', { name: 'Dismiss workspace warning' }));
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('allows an offline preparation warning to be dismissed', async () => {
+    render(App, { props: { transport: createTransport(), pwa: createPwa({ offlinePreparation: { state: 'error', message: 'Network failed' } }) } });
+    expect((await screen.findByRole('alert')).textContent).toContain('Network failed');
+    await fireEvent.click(screen.getByRole('button', { name: 'Dismiss offline warning' }));
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('routes explorer selection to the active editor and consumes the request', async () => {
-    selectEditor('/shaders/aurora.glsl');
+    selectEditor('/aurora.glsl');
     render(App, { props: { transport: createTransport() } });
     await tick();
-    expect(layoutStub.selectEditor).toHaveBeenCalledWith('/shaders/aurora.glsl');
+    expect(layoutStub.selectEditor).toHaveBeenCalledWith('/aurora.glsl');
     expect(getSelectedEditor()).toBeNull();
-    selectEditor('/shaders/desert-cubemap.glsl');
+    selectEditor('/desert-cubemap.glsl');
     await tick();
-    expect(layoutStub.selectEditor).toHaveBeenLastCalledWith('/shaders/desert-cubemap.glsl');
+    expect(layoutStub.selectEditor).toHaveBeenLastCalledWith('/desert-cubemap.glsl');
     expect(getSelectedEditor()).toBeNull();
   });
 

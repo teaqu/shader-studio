@@ -9,16 +9,17 @@
   import StandaloneLayout from './StandaloneLayout.svelte';
   import EditorPane from './EditorPane.svelte';
   import SettingsPanel from './settings/SettingsPanel.svelte';
-  import { connectSettings, getDefaultShaderMode } from './settings/settingsState.svelte';
+  import { connectSettings, getDefaultShaderMode, getMobileModeEnabled, getInterfaceTheme } from './settings/settingsState.svelte';
   import WorkspaceFilePicker from './WorkspaceFilePicker.svelte';
   import NewShaderModal from './NewShaderModal.svelte';
+  import { FileExplorer as WorkspaceFiles } from '@shader-studio/file-explorer';
   import type { WebTransport, WorkspaceStorageStatus } from './WebTransport';
   import {
     getSelectedEditor, selectEditor, getRequestedEditor, requestEditor, getNewShaderVisible, getRequestedPanel, requestPanel,
     resetShellState, setNewShaderVisible,
   } from './state/shellState.svelte';
   import { clearStandaloneWorkspace } from './clearWorkspace';
-  import type { ShaderLanguageId, WebGPUAuthoringMode } from '@shader-studio/types';
+  import { shaderLanguageForPath, type ShaderLanguageId, type WebGPUAuthoringMode } from '@shader-studio/types';
   import type { PwaController, PwaStatus } from './pwa';
   import type { WorkspacePersistenceStatus } from './VirtualWorkspace';
 
@@ -53,13 +54,20 @@
   setContext(PANEL_HOST_CONTEXT, hostedPanels);
   let layout = $state<StandaloneLayout>();
   let workspaceError = $state('');
+  let dismissedOfflineError = $state('');
   const disconnectSettings = connectSettings(transport.settings);
   onDestroy(disconnectSettings);
+  $effect(() => {
+    document.documentElement.dataset.studioTheme = getInterfaceTheme();
+    return () => {
+      delete document.documentElement.dataset.studioTheme;
+    };
+  });
   let settingsOpen = $state(false);
   let alphaNoticeVisible = $state(shouldShowAlphaNotice());
   let viewMenuOpen = $state(false);
   let workspaceMenuOpen = $state(false);
-  let panelVisibility = $state({ explorer: true, editor: true, preview: true });
+  let panelVisibility = $state({ explorer: true, files: true, editor: true, preview: true });
   let persistenceStatus = $state<WorkspacePersistenceStatus>({ state: 'saving' });
   let pwaStatus = $state<PwaStatus>({
     supported: false,
@@ -70,12 +78,21 @@
   });
   let storageStatus = $state<WorkspaceStorageStatus | null>(null);
   let storageProtectionPending = $state(false);
+  let dismissedStorageWarning = $state('');
   const storageWarning = $derived(storageStatus && !storageStatus.persisted && !storageProtectionPending
     ? storageStatus.backend === 'session'
       ? 'Session-only: closing the app will lose your work. Export a workspace backup to keep it.'
       : `Work saves automatically. ${storageStatus.persisted === null ? 'Storage protection could not be confirmed.' : 'Storage protection is not enabled.'} The browser may remove local work if space runs low. Export workspace backups to keep a separate copy.`
     : '');
   let workspaceFileInput: HTMLInputElement;
+  let workspaceHasShaders = $state(true);
+  function openWorkspaceFile(path: string) {
+    if (shaderLanguageForPath(path)) {
+      explorerApi.postMessage({ type: 'openShader', path });
+    } else {
+      requestEditor(path);
+    }
+  }
   const session = $derived(getViewerSession());
   const explorerApi = transport.getShaderExplorerHostApi();
   let shellMounted = false;
@@ -85,6 +102,9 @@
 
   onMount(() => {
     shellMounted = true;
+    const stopFiles = transport.onWorkspaceFiles(files => {
+      workspaceHasShaders = files.some(file => !file.directory && shaderLanguageForPath(file.path));
+    });
     void transport.getStorageStatus?.().then(async (status) => {
       storageStatus = status;
       if (status.backend === 'indexeddb' && status.persistSupported && !status.persisted && claimAutomaticStorageRequest()) {
@@ -105,6 +125,7 @@
     }) ?? (() => {});
     return () => {
       shellMounted = false;
+      stopFiles();
       stopPersistence();
       stopPwa();
       pwa?.dispose();
@@ -251,6 +272,7 @@
   }
 
   async function prepareOffline() {
+    dismissedOfflineError = '';
     if (pwaStatus.offlinePreparation.state === 'error' || pwaStatus.offlinePreparation.state === 'cancelled') {
       await pwa?.retryOfflinePreparation();
     } else {
@@ -288,6 +310,7 @@
     if (viewMenuOpen) {
       panelVisibility = {
         explorer: layout?.isPanelVisible('explorer') ?? false,
+        files: layout?.isPanelVisible('files') ?? false,
         editor: layout?.isPanelVisible('editor') ?? false,
         preview: layout?.isPanelVisible('preview') ?? false,
       };
@@ -299,7 +322,7 @@
     viewMenuOpen = false;
   }
 
-  function togglePanel(panel: 'explorer' | 'editor' | 'preview') {
+  function togglePanel(panel: 'explorer' | 'files' | 'editor' | 'preview') {
     layout?.togglePanel(panel);
     panelVisibility[panel] = layout?.isPanelVisible(panel) ?? false;
     viewMenuOpen = false;
@@ -338,7 +361,7 @@
 <WorkspaceFilePicker />
 
 <svelte:window onclick={closeMenusOnOutsideClick} onkeydown={closeMenusOnEscape} />
-<div class="standalone-app" inert={updateLocked} aria-busy={updateLocked}>
+<div class="standalone-app" class:desktop-layout={!getMobileModeEnabled()} inert={updateLocked} aria-busy={updateLocked}>
   <header class="standalone-toolbar" aria-label="Standalone workspace">
     <strong>Shader Studio</strong>
     <div class="toolbar-menu">
@@ -349,6 +372,9 @@
         <div class="dropdown-menu" role="menu" aria-label="View">
           <button role="menuitemcheckbox" aria-checked={panelVisibility.explorer} onclick={() => togglePanel('explorer')}>
             <span aria-hidden="true">{panelVisibility.explorer ? '✓' : ''}</span> Shader Explorer
+          </button>
+          <button role="menuitemcheckbox" aria-checked={panelVisibility.files} onclick={() => togglePanel('files')}>
+            <span aria-hidden="true">{panelVisibility.files ? '✓' : ''}</span> Files
           </button>
           <button role="menuitemcheckbox" aria-checked={panelVisibility.editor} onclick={() => togglePanel('editor')}>
             <span aria-hidden="true">{panelVisibility.editor ? '✓' : ''}</span> Editor
@@ -387,6 +413,12 @@
                 The browser may remove local work if space runs low. Export workspace backups to keep a separate copy.
               {/if}
             </p>
+            {#if storageWarning && dismissedStorageWarning !== storageWarning}
+              <button aria-label="Dismiss storage warning" onclick={() => {
+                dismissedStorageWarning = storageWarning;
+                workspaceMenuOpen = false;
+              }}>Close storage warning ×</button>
+            {/if}
           {/if}
           {#if pwaStatus.supported}
             {#if pwaStatus.offlinePreparation.state === 'preparing'}
@@ -422,7 +454,7 @@
       {#if storageStatus?.backend !== 'session'}
         <i class="codicon {saveStatusIcon()}" class:spinning={persistenceStatus.state === 'saving'} aria-hidden="true"></i>
       {/if}
-      {#if storageWarning}
+      {#if storageWarning && dismissedStorageWarning !== storageWarning}
         <button class="storage-warning-icon" aria-label="Storage warning" aria-haspopup="menu" aria-expanded={workspaceMenuOpen} title={storageWarning} onclick={toggleWorkspaceMenu}>
           <i class="codicon codicon-warning" aria-hidden="true"></i>
         </button>
@@ -436,25 +468,32 @@
   {#if alphaNoticeVisible}
     <aside class="alpha-notice" data-testid="web-alpha-warning" role="note">
       <span>
-        Standalone mode is in <strong>alpha</strong> and is buggy and missing features compared to the VS Code extension.
         Changes are saved only in this browser. Clearing browser data will delete them.
       </span>
-      <button class="dismiss-alpha-notice" aria-label="Dismiss alpha notice" title="Dismiss" onclick={dismissAlphaNotice}>×</button>
+      <button class="dismiss-alpha-notice" aria-label="Dismiss alpha notice" title="Close warning" onclick={dismissAlphaNotice}>×</button>
     </aside>
   {/if}
-  {#if workspaceError}<p role="alert">{workspaceError}</p>{/if}
-  {#if pwaStatus.offlinePreparation.state === 'error'}
-    <p class="shell-status-error" role="alert">Offline preparation failed: {pwaStatus.offlinePreparation.message}</p>
+  {#if workspaceError}<p role="alert">{workspaceError} <button aria-label="Dismiss workspace warning" title="Close warning" onclick={() => workspaceError = ''}>×</button></p>{/if}
+  {#if pwaStatus.offlinePreparation.state === 'error' && dismissedOfflineError !== pwaStatus.offlinePreparation.message}
+    {@const offlineError = pwaStatus.offlinePreparation.message}
+    <p class="shell-status-error" role="alert">Offline preparation failed: {offlineError} <button aria-label="Dismiss offline warning" title="Close warning" onclick={() => dismissedOfflineError = offlineError}>×</button></p>
   {/if}
   <StandaloneLayout bind:this={layout} {hostedPanels} {transport}>
     {#snippet explorer()}
       <ShaderExplorer hostApi={explorerApi} compact={true} selectedShaderPath={session?.selectedShaderPath ?? ''} />
     {/snippet}
+    {#snippet files()}
+      <div class="panel-content" data-testid="web-files">
+        <WorkspaceFiles {transport} onOpen={openWorkspaceFile} onPathsRemoved={paths => layout?.closeEditorPaths(paths)} />
+      </div>
+    {/snippet}
     {#snippet editor()}
       <div class="panel-content" data-testid="web-editor"><EditorPane {transport} /></div>
     {/snippet}
     {#snippet preview()}
-      <div class="panel-content" data-testid="web-preview"><ShaderStudioApp /></div>
+      <div class="panel-content" data-testid="web-preview">
+        {#if workspaceHasShaders}<ShaderStudioApp />{:else}<p class="empty-workspace">Create or upload a shader to start previewing.</p>{/if}
+      </div>
     {/snippet}
   </StandaloneLayout>
   {#if settingsOpen}
@@ -468,9 +507,10 @@
 </div>
 
 <style>
+  .empty-workspace { padding: 24px; color: var(--vscode-descriptionForeground); }
   .standalone-app { display: flex; flex-direction: column; height: 100%; min-height: 0; }
   .standalone-toolbar { position: relative; z-index: 10; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--vscode-panel-border); background: var(--vscode-sideBar-background); }
-  .standalone-toolbar button, .standalone-toolbar a { font: inherit; color: var(--vscode-foreground); background: transparent; border-radius: 4px; padding: 4px 8px; text-decoration: none; cursor: pointer; }
+  .standalone-toolbar button, .standalone-toolbar a { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; font: inherit; line-height: var(--shader-studio-control-line-height); color: var(--vscode-foreground); background: transparent; border-radius: var(--shader-studio-control-radius); padding: var(--shader-studio-control-padding); text-decoration: none; cursor: pointer; min-height: var(--shader-studio-control-height); }
   .standalone-toolbar button:hover, .standalone-toolbar a:hover { background: var(--vscode-list-hoverBackground); }
   .standalone-toolbar a { border: 1px solid var(--vscode-panel-border); }
   .menu-trigger { display: inline-flex; align-items: center; gap: 6px; border: 0; }
@@ -483,9 +523,10 @@
   .dropdown-menu button:not([role="menuitemcheckbox"]) { display: block; }
   .dropdown-menu .danger-action { color: var(--vscode-errorForeground, #f48771); }
   .storage-notice { max-width: 280px; margin: 4px 0; padding: 8px 12px; font-size: 12px; line-height: 1.5; white-space: normal; color: var(--vscode-descriptionForeground); border-top: 1px solid var(--vscode-panel-border); }
-  .build-status .storage-warning-icon { display: flex; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent; color: var(--vscode-editorWarning-foreground, #cca700); cursor: pointer; }
+  .build-status .storage-warning-icon { display: flex; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent; color: var(--vscode-editorWarning-foreground, #cca700); cursor: pointer; min-height: var(--shader-studio-control-height); }
   .alpha-notice { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 3px 10px; font-size: 11px; text-align: center; color: var(--vscode-descriptionForeground); border-bottom: 1px solid var(--vscode-panel-border); }
-  .dismiss-alpha-notice { flex: 0 0 auto; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; color: inherit; background: transparent; font: inherit; font-size: 18px; line-height: 1; cursor: pointer; }
+  .alpha-notice > span { min-width: 0; }
+  .dismiss-alpha-notice { flex: 0 0 auto; width: 24px; height: var(--shader-studio-control-height); padding: 0; border: 0; border-radius: var(--shader-studio-control-radius); color: inherit; background: transparent; font: inherit; font-size: 18px; line-height: var(--shader-studio-control-line-height); cursor: pointer; }
   .dismiss-alpha-notice:hover { background: var(--vscode-list-hoverBackground); }
   .panel-content { height: 100%; width: 100%; min-height: 0; min-width: 0; }
   .build-status { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; color: var(--vscode-descriptionForeground); font-size: 16px; }
@@ -494,14 +535,14 @@
   .visually-hidden { position: fixed; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
   @media (max-width: 767px) {
-    .standalone-app { height: 100dvh; }
-    .standalone-toolbar { min-height: 44px; padding: max(4px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) 4px max(8px, env(safe-area-inset-left)); }
-    .standalone-toolbar > strong { flex: 1; }
-    .standalone-toolbar > a { display: none; }
-    .standalone-toolbar button { min-height: 44px; }
-    .workspace-menu { padding-left: 0; border-left: 0; }
-    .dropdown-menu { position: fixed; top: max(54px, calc(env(safe-area-inset-top) + 50px)); right: 8px; left: 8px; max-height: calc(100dvh - 120px); overflow: auto; }
-    .alpha-notice { padding-inline: max(8px, env(safe-area-inset-left)) max(8px, env(safe-area-inset-right)); }
-    :global(.standalone-app .menu-bar .collapse-config, .standalone-app .menu-bar .collapse-debug, .standalone-app .menu-bar .collapse-record) { display: none; }
+    .standalone-app:not(.desktop-layout) { height: 100dvh; }
+    .standalone-app:not(.desktop-layout) .standalone-toolbar { min-height: 44px; padding: max(4px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) 4px max(8px, env(safe-area-inset-left)); }
+    .standalone-app:not(.desktop-layout) .standalone-toolbar > strong { flex: 1; }
+    .standalone-app:not(.desktop-layout) .standalone-toolbar > a { display: none; }
+    .standalone-app:not(.desktop-layout) .standalone-toolbar button { min-height: 44px; }
+    .standalone-app:not(.desktop-layout) .workspace-menu { padding-left: 0; border-left: 0; }
+    .standalone-app:not(.desktop-layout) .dropdown-menu { position: fixed; top: max(54px, calc(env(safe-area-inset-top) + 50px)); right: 8px; left: 8px; max-height: calc(100dvh - 120px); overflow: auto; }
+    .standalone-app:not(.desktop-layout) .alpha-notice { padding-inline: max(8px, env(safe-area-inset-left)) max(8px, env(safe-area-inset-right)); }
+    :global(.standalone-app:not(.desktop-layout) .menu-bar .collapse-config, .standalone-app:not(.desktop-layout) .menu-bar .collapse-debug, .standalone-app:not(.desktop-layout) .menu-bar .collapse-record) { display: none; }
   }
 </style>

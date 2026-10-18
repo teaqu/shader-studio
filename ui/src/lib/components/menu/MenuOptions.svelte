@@ -6,8 +6,7 @@
   import type { CompileMode } from "../../stores/compileModeStore";
   import ProfileModal from "../ProfileModal.svelte";
   import { MenuOverlay } from "./MenuOverlay.svelte";
-  import { getVrPreviewState, isVrPanelVisible, toggleVrPanel } from '../../state/vrPreviewState.svelte';
-  const vr = $derived(getVrPreviewState());
+  import { isVrPanelVisible, toggleVrPanel } from '../../state/vrPreviewState.svelte';
   const vrVisible = $derived(isVrPanelVisible());
 
   interface Props {
@@ -20,8 +19,8 @@
     showRecordInOptions: boolean;
     showConfigInOptions: boolean;
     showDebugInOptions: boolean;
-    showVrInOptions?: boolean;
     isLocked: boolean;
+    lockDescription: string;
     isRecordingPanelVisible: boolean;
     isConfigPanelVisible: boolean;
     isDebugEnabled: boolean;
@@ -58,8 +57,7 @@
   let {
     optionsMenu, layoutMenu, editorMenu, hasShader, previewVisible,
     showLockInOptions, showRecordInOptions, showConfigInOptions, showDebugInOptions,
-    showVrInOptions = false,
-    isLocked, isRecordingPanelVisible, isConfigPanelVisible, isDebugEnabled,
+    isLocked, lockDescription, isRecordingPanelVisible, isConfigPanelVisible, isDebugEnabled,
     isDebugSupported, isEditorOverlayVisible, isVimModeEnabled, showThemeButton,
     theme, showFullscreenButton, compileMode, compileModeIcons, compileModeLabels,
     audioVolume, audioMuted, onShowPreview, onConfig, onToggleLock, onToggleRecording,
@@ -123,6 +121,8 @@
           onToggleLock(); optionsMenu.open = false;
         }}
         aria-label="Toggle lock"
+        aria-pressed={isLocked}
+        title={lockDescription}
         class:active={isLocked}
         disabled={!hasShader}
       >
@@ -148,12 +148,10 @@
         <span>Export</span>
       </button>
     {/if}
-    {#if showVrInOptions && vr.available}
-      <button class="options-menu-item" class:active={vrVisible} aria-label="VR" onclick={() => {
-        toggleVrPanel();
-        optionsMenu.open = false;
-      }}>VR</button>
-    {/if}
+    <button class="options-menu-item" class:active={vrVisible} aria-label="VR" onclick={() => {
+      toggleVrPanel();
+      optionsMenu.open = false;
+    }}>VR</button>
     {#if showConfigInOptions}
       <button
         class="options-menu-item"
@@ -545,12 +543,13 @@
   .mute-icon-btn {
     background: none;
     border: none;
-    padding: 2px;
+    padding: var(--shader-studio-toolbar-padding);
     cursor: pointer;
     color: inherit;
     display: flex;
     align-items: center;
     flex-shrink: 0;
+    min-height: var(--shader-studio-toolbar-height);
   }
 
   .mute-icon-btn.muted {
@@ -575,14 +574,15 @@
     align-items: center;
     gap: 8px;
     width: 100%;
-    padding: 5px 12px;
+    padding: var(--shader-studio-menu-padding);
     background: none;
     border: none;
     color: var(--vscode-menu-foreground, var(--vscode-editor-foreground));
     cursor: pointer;
-    font-size: 12px;
+    font-size: var(--shader-studio-font-size);
     text-align: left;
     box-sizing: border-box;
+    min-height: var(--shader-studio-control-height);
   }
 
   :global(.layout-submenu-portal .layout-submenu-item:hover),
@@ -630,11 +630,12 @@
 
   :global(.layout-submenu-portal .confirm-btn) {
     flex: 1;
-    font-size: 11px;
-    padding: 3px 8px;
-    border-radius: 2px;
+    font-size: var(--shader-studio-font-size);
+    padding: var(--shader-studio-control-padding);
+    border-radius: var(--shader-studio-control-radius);
     border: none;
     cursor: pointer;
+    min-height: var(--shader-studio-control-height);
   }
 
   :global(.layout-submenu-portal .confirm-yes) {
@@ -673,14 +674,15 @@
     align-items: center;
     gap: 8px;
     width: 100%;
-    padding: 5px 12px;
+    padding: var(--shader-studio-menu-padding);
     background: none;
     border: none;
     color: var(--vscode-menu-foreground, var(--vscode-editor-foreground));
     cursor: pointer;
-    font-size: 12px;
+    font-size: var(--shader-studio-font-size);
     text-align: left;
     box-sizing: border-box;
+    min-height: var(--shader-studio-control-height);
   }
 
   :global(.editor-submenu-portal .editor-submenu-item:hover),

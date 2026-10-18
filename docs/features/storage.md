@@ -4,9 +4,9 @@ Storage buffers keep data, such as particle positions or simulation values, betw
 
 ## Workspace layout
 
-Open the config panel's **Storage** tab. The buffer list selects one buffer at a time; the main area has **Settings** and **Inspect** tabs. Use **+ Add buffer** in the header to create a declaration.
+Open the config panel and select a card labeled **Storage buffer**, such as **particles**. Each storage buffer has its own card alongside the shader passes; selecting it opens its **Settings** and **Inspect** tabs directly. Use **+ New → Storage buffer** to create a declaration. This is also available when the shader has no storage yet.
 
-In **Settings**, edit the name, element count, layout and initialization. Changes stay in the current editor until you click **Apply changes**, either beside **+ Add buffer** or below the settings. Both buttons use the same validation and save action. The header button appears only while changes are pending. **Cancel** restores the saved settings. Apply or cancel before selecting another buffer or switching tabs; leaving the editor discards its pending changes.
+In **Settings**, edit the name, element count, layout and initialization. Changes stay in the current editor until you click **Apply changes**, either above or below the settings. Both buttons use the same validation and save action. The header button appears only while changes are pending. **Cancel** restores the saved settings. Apply or cancel before selecting another card or switching tabs; leaving the editor discards its pending changes. Renaming a buffer updates its card; deleting it removes the card.
 
 ## Element layout
 
@@ -49,3 +49,7 @@ Passes marked **Run once**, such as an initialization pass named `Seed`, are exc
 Numeric scalar and vector fields from config-defined and source-defined structs can be inspected. Matrices, nested structs and array fields remain valid shader types but are not displayed as numeric fields. The inspector reports unsupported layouts explicitly. Field comparison and editing GPU values are not part of this layout.
 
 See [Compute Passes](compute.md) for shader examples and [Config File Format](../help/config-file.md#storage-declarations) for the JSON fields.
+
+## WGSL Storage Types
+
+Use native WGSL types in the storage configuration, such as `f32`, `vec3f`, `atomic<u32>`, or a struct declared in your shader or Common code. Buffer sizes are calculated automatically, including padding, nested arrays and structs, and `@align` / `@size` attributes. Half-precision types require `enable f16;` and GPU support for `shader-f16`. For buffers of `f16` scalars, use an even element count if your shader relies on `arrayLength`; an odd count includes an extra padding element.

@@ -1,5 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { waitForLanguageService, workspace } from './language-service-fixtures.mjs';
+import { useSharedShaderEditor } from './explorer-preferences.mjs';
+
+// These tests edit through the shared editor rather than per-file editors.
+test.beforeEach(({ context }) => useSharedShaderEditor(context));
 
 const wideFixtures = [
   {
@@ -118,7 +122,7 @@ for (const fixture of fixtures) {
     const expected = `${fixture.parameter}.${fixture.selection}`;
     await expect(editor).toContainText(expected);
     await expect(editor).not.toContainText(`${fixture.parameter}.${fixture.selection}${fixture.selection}`);
-    await expect.poll(async () => (await workspace(page))[`/shaders/${basename}.${fixture.extension}`]).toContain(expected);
+    await expect.poll(async () => (await workspace(page))[`/${basename}.${fixture.extension}`]).toContain(expected);
     await expect(editor.locator('[data-marker-count]').first()).toHaveAttribute('data-marker-count', '0');
     await expect(page.getByTestId('web-preview').locator('[aria-label="Toggle pause"]')).not.toHaveClass(/error/);
   });

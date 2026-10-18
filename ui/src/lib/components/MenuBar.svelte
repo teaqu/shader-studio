@@ -33,6 +33,7 @@
   import { MenuOverlay } from './menu/MenuOverlay.svelte';
   import MenuOptions from './menu/MenuOptions.svelte';
   import VrPreviewButton from "./menu/VrPreviewButton.svelte";
+  import { getVrPreviewState } from "../state/vrPreviewState.svelte";
   import DisplayControls from './menu/DisplayControls.svelte';
 
   interface Props {
@@ -193,7 +194,10 @@
   const showConfigInOptions = $derived(menuBarWidth <= 390);
   const showRecordInOptions = $derived(menuBarWidth <= 370);
   const showLockInOptions = $derived(menuBarWidth <= 340);
-  const showVrInOptions = $derived(menuBarWidth <= 280);
+  const vrAvailable = $derived(getVrPreviewState().available);
+  const lockDescription = $derived(isLocked
+    ? 'Locked: preview stays on this shader while you edit other files. Click to unlock and follow the active shader file.'
+    : 'Unlocked: linked buffer files keep this shader preview. Opening another shader switches the preview. Click to lock this shader.');
 
   $effect(() => {
     if (!menuBarEl) {
@@ -485,7 +489,6 @@
     </div>
   </div>
   <div class="right-group">
-    {#if !showVrInOptions}<VrPreviewButton />{/if}
     <button
       class="collapse-config toolbar-icon-button"
       onclick={onToggleConfigPanel}
@@ -514,7 +517,7 @@
       isActive={isRecordingPanelVisible}
       onToggle={handleRecordingClick}
     />
-    <button class="collapse-lock toolbar-icon-button" onclick={handleToggleLock} aria-label="Toggle lock" class:active={isLocked} disabled={!hasShader}>
+    <button class="collapse-lock toolbar-icon-button" onclick={handleToggleLock} aria-label="Toggle lock" aria-pressed={isLocked} title={lockDescription} class:active={isLocked} disabled={!hasShader}>
       {#if isLocked}
         <i class="codicon codicon-lock"></i>
       {:else}
@@ -531,6 +534,7 @@
         <i class="codicon codicon-menu"></i>
       </button>
     </div>
+    {#if vrAvailable}<VrPreviewButton />{/if}
   </div>
 </div>
 
@@ -542,8 +546,8 @@
 
 <MenuOptions
   {optionsMenu} {layoutMenu} {editorMenu}
-  {hasShader} {previewVisible} {showLockInOptions} {showRecordInOptions} {showConfigInOptions} {showDebugInOptions} {showVrInOptions}
-  {isLocked} {isRecordingPanelVisible} {isConfigPanelVisible} {isDebugEnabled} {isDebugSupported} {isEditorOverlayVisible} {isVimModeEnabled}
+  {hasShader} {previewVisible} {showLockInOptions} {showRecordInOptions} {showConfigInOptions} {showDebugInOptions}
+  {isLocked} {lockDescription} {isRecordingPanelVisible} {isConfigPanelVisible} {isDebugEnabled} {isDebugSupported} {isEditorOverlayVisible} {isVimModeEnabled}
   {showThemeButton} {theme} {showFullscreenButton} {compileMode} {compileModeIcons} {compileModeLabels} {audioVolume} {audioMuted}
   onShowPreview={onShowPreview} onConfig={handleConfig} onToggleLock={handleToggleLock} onToggleRecording={handleRecordingClick}
   {onToggleConfigPanel} {onToggleDebugEnabled} {onToggleEditorOverlay} {onToggleVimMode}

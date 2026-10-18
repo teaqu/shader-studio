@@ -1,0 +1,17 @@
+{
+  "name": "@shader-studio/file-explorer",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "typecheck": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": { "@shader-studio/types": "*", "svelte": "^5.56.4", "jszip": "^3.10.1" },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^5.0.3",
+    "@testing-library/svelte": "^5.2.8",
+    "svelte-check": "^4.0.8"
+  }
+}

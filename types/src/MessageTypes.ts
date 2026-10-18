@@ -52,6 +52,13 @@ export interface RefreshMessage extends BaseMessage {
     path?: string;
     /** Initial source delivery must preserve any simulation already installed. */
     reason?: "initial";
+    /**
+     * Set by the viewer when it asks for its owning shader again (a Common or
+     * vertex source changed). The host echoes it on the resulting
+     * `shaderSource` so the viewer can drop the answer if the user opened a
+     * different shader in the meantime.
+     */
+    refreshRequestId?: number;
   };
 }
 
@@ -105,6 +112,8 @@ export interface ShaderSourceMessage extends BaseMessage {
    * CompileReportMarker.
    */
   compileSequence?: number;
+  /** Echo of the `refresh` request this send answers. See RefreshMessage. */
+  refreshRequestId?: number;
   cursorPosition?: {
     line: number;
     character: number;

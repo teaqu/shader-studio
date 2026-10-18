@@ -33,6 +33,15 @@
   let width = $derived(layoutMode === 'row' ? (compact ? 72 : 96) : Math.round(cardSize * 2.286));
   let height = $derived(layoutMode === 'row' ? (compact ? 41 : 54) : Math.round(width * 9 / 16));
 
+  let cardElement = $state<HTMLDivElement | null>(null);
+  // A newly selected card can sit outside the scrolled list, such as a fork
+  // added above it, and its thumbnail only renders once it is visible.
+  $effect(() => {
+    if (selected) {
+      cardElement?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    }
+  });
+
   const openMenu = $derived(getOpenContextMenu());
   let menuElement = $state<HTMLDivElement | null>(null);
 
@@ -97,6 +106,7 @@
   class:compact
   class:selected
   data-testid={testId}
+  bind:this={cardElement}
   role="button"
   tabindex="0"
   aria-pressed={selected}
@@ -260,15 +270,16 @@
   .context-menu-item {
     display: block;
     width: 100%;
-    padding: 6px 12px;
+    padding: var(--shader-studio-menu-padding);
     background: none;
     border: none;
     color: var(--vscode-menu-foreground, var(--vscode-foreground));
-    font-size: 12px;
+    font-size: var(--shader-studio-font-size);
     text-align: left;
     cursor: pointer;
-    border-radius: 3px;
+    border-radius: var(--shader-studio-control-radius);
     white-space: nowrap;
+    min-height: var(--shader-studio-control-height);
   }
 
   .context-menu-item:hover {

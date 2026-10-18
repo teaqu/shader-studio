@@ -46,7 +46,31 @@ See [Channels](channels.md) for the public channel API and compatibility details
 | Inspect values read from storage | No | Yes | Yes |
 
 The languages share the same debugger controls, but they do not have identical
-syntax or capture types. See the language pages for details.
+syntax or capture types. See the [Variable Inspector](../debugging/variable-inspector.md#supported-types) for supported values.
+
+## WGSL Syntax Differences
+
+Slang and WGSL share the WebGPU rendering workflows above, with differences in shader syntax:
+
+- **Channel metadata uses dot access; native handles stay separate.** Use `albedo.size`, `.time`, and `.loaded`, then sample with `sample2D(albedoTexture, albedoSampler, uv)`. Slang uses the same function name with `albedo.texture` and `albedo.sampler`. WGSL cannot put handles in structs or expose Slang's optional methods. Legacy per-channel functions remain available; see [Channels](channels.md).
+- **The vertex hook takes pointers.** WGSL has no `inout` parameters, so `mainVertex` receives `ptr<function, …>` pointers and you modify the pointed-to values:
+  ```wgsl
+  fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {
+      (*position).y += 0.1 * sin(iTime);
+  }
+  ```
+  See [Vertex Shaders](vertex-shaders.md).
+- **Assign single components, not swizzles.** Assigning a swizzle (`position.xy = ...`) requires support for the optional `swizzle_assignment` language feature. For compatibility across browsers and VS Code, write the components separately or replace the whole vector:
+  ```wgsl
+  let nudged = (*position).xy + offset;
+  (*position).x = nudged.x;
+  (*position).y = nudged.y;
+
+  body.velocity = vec4f(body.velocity.xyz + force, body.velocity.w);
+  ```
+- **No imports.** Put shared functions and types in the [Common pass](config-buffers.md), as with GLSL.
+- **No preprocessor.** There is no `#define`, `#if`, or macro expansion. Use `const` / `override` declarations and plain WGSL control flow instead. Snippets that relied on the GLSL preprocessor will not translate line-for-line.
+- **`enable` directives are supported.** Use `enable`, `requires`, and `diagnostic()` directives at the top of your shader or Common file. If an `enable` names an extension the GPU does not support (for example `enable f16;` on hardware without `shader-f16`), compilation fails with an error naming the missing requirement.
 
 ## Hosts and Limitations
 
@@ -54,11 +78,11 @@ The VS Code extension and standalone browser support all three languages.
 Slang and WGSL require WebGPU; GLSL uses WebGL2.
 
 - Matrix capture supports 2x2 matrices; select individual columns or components
-  for larger matrices. See [WGSL capture types](wgsl.md#debugging-and-capture-types).
+  for larger matrices. See [WGSL capture types](../debugging/variable-inspector.md#wgsl-capture-types).
 - Compute debugging cannot reproduce threads working together in a workgroup. See [Slang debugging](slang.md#debugging) and
-  [WGSL compute limits](wgsl.md#compute-debugging-limits).
+  [WGSL compute limits](compute.md#wgsl-debugging-limits).
 - Whole arrays, structs, and arbitrary pointers are not capture rows; inspect
   supported elements or fields instead.
 - Workspace symbol search and vertex-stage debugging are unavailable.
 
-Language details: [GLSL](glsl.md) · [Slang](slang.md) · [WGSL](wgsl.md).
+Language details: [GLSL](glsl.md) · [Slang](slang.md) · [WGSL syntax](#wgsl-syntax-differences).

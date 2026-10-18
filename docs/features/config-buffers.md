@@ -10,18 +10,22 @@ Click the <i class="codicon codicon-gear"></i> **Config** button in the toolbar.
 
 ---
 
-## The Pass Tab Bar
+## Pass Cards
 
-The tab bar at the top shows every pass in your shader. Click **+ New** to add a pass. Remove a pass with the `×` on its tab (Image cannot be removed).
+The cards at the top show the current shader's passes and their types. Select a card to edit its settings. Click **+ New** to add a pass. Remove a pass with the `×` on its card (Image cannot be removed).
 
-**Right-click a tab** to open a context menu:
+Click a render pass's **eye button** to preview its output. The **Viewing** badge identifies the displayed pass, independently of the selected settings card. Click Image's eye to return to the final output. Compute cards are labeled **Compute pass** and their settings explain that direct preview is unavailable; Common, Script, and Storage also have no eye button.
 
-- **Open** — locks the shader and opens the pass's file in the editor
+While the debugger renders a selected code line, **Viewing · L24** follows that line's pass and the label above the canvas also shows the line number. Pass eye buttons are disabled while line rendering controls the output. Turn off line rendering to return to your chosen pass preview.
+
+**Right-click a card's name** to open a context menu:
+
+- **Open** — opens the pass's file in the editor without changing the lock setting
+- **Preview this pass** — displays a render pass with its configured inputs and Common code; choose this on Image to return to the final output
+- **Preview file standalone** — makes a buffer's source file the active shader, using its own matching config if present
 - **Rename** — inline rename for buffer passes (Image, Common, and Script cannot be renamed)
 
-![Config pass tab bar](../assets/images/config-tabs.png)
-
-| Tab | Description |
+| Card | Description |
 |-----|-------------|
 | **Image** | Always present. The final rendered output from the main shader file. Supports `mainImage` or a selected native WGSL/Slang fragment. No file chooser. |
 | **Named buffer pass** | An intermediate fragment render pass backed by a `.glsl`, `.slang`, or `.wgsl` file. Names and pass counts are unrestricted. |
@@ -30,13 +34,23 @@ The tab bar at the top shows every pass in your shader. Click **+ New** to add a
 | **Script** | A TypeScript or JavaScript file that drives custom `uniform` values per frame. |
 
 !!! note
-    Double-click a pass tab to open that pass's file — the shader locks automatically so the preview stays on your Image pass. You can also use the <i class="codicon codicon-lock"></i> **Lock** button manually. See [Locking](locking.md).
+    Double-click a pass card's name to open that pass's file. Files linked to the current shader keep its preview visible without locking it. Selecting settings never changes the viewed pass. See [Locking and buffer previews](locking.md).
 
 ---
 
 ## The Image Pass
 
-The Image tab has no file path — it always corresponds to your main shader file. You can set a default resolution here:
+For WGSL and Slang render passes, **Render output** shows the active **Function**.
+A single selected function appears as text; when more functions are available,
+use the picker to choose which one renders. A missing configured function stays
+visible with **(missing)** so you can correct it.
+
+Choose **+ Add&hellip;** to insert either a **Native fragment function** or
+**Built-in mainImage** into the pass's shader file. The built-in action is disabled
+when `mainImage` is already present. Adding inserts code; picking a function
+selects existing code. Changes are saved with the shader configuration.
+
+The Image card has no file path — it always corresponds to your main shader file. You can set a default resolution here:
 
 | Setting | Options | Description |
 |---------|---------|-------------|
@@ -73,7 +87,7 @@ Three path forms are supported:
 | Absolute | `/Users/me/project/flow.glsl` | Filesystem root |
 | Workspace-root | `@/src/flow.glsl` | VS Code workspace root (`/` of the virtual workspace in the standalone browser host) |
 
-**Create** generates a source template using the shader mode preference. WGSL/Slang function rows appear under **Fragment shader**; choose the function this pass should run. **Add function…** inserts a hook or native entry point into that file, using the adjacent mode chooser. A native fragment can run without `mainImage`, and native templates use the generated vertex stage until you request a custom one. GLSL has no fragment function selector or Built-in/Native chooser because it uses the fixed `mainImage` hook.
+**Create** generates a source template using the shader mode preference. For WGSL/Slang, **Render output → Function** shows the selected fragment function; use the picker when multiple functions are available. **+ Add…** inserts a native fragment function or built-in `mainImage` into that file. A native fragment can run without `mainImage`, and native templates use the generated vertex stage until you request a custom one. GLSL has no fragment function selector or Built-in/Native chooser because it uses the fixed `mainImage` hook.
 
 The pass sections are arranged as Fragment source/functions, Channels, Geometry, Rendering, Resolution, Output, and Vertex shader. Image omits the file chooser. **Output** selects 2D or Cubemap, its cubemap face size, the buffer format, and read-only [inferred output slots and names](multiple-render-targets.md).
 
@@ -83,6 +97,63 @@ The pass sections are arranged as Fragment source/functions, Channels, Geometry,
 |------|---------|-------------|
 | **Fixed** | `512 × 512` | Exact pixel dimensions, independent of the canvas |
 | **Scale** | `0.5×` | Multiplier on the Image resolution — tracks canvas changes |
+
+---
+
+## Native Entry Points and Shared Files
+
+Slang and WGSL both run on WebGPU and support this workflow.
+
+An entry point is the function a shader pass runs. WGSL marks these functions with `@vertex`, `@fragment`, or `@compute`; Slang uses `[shader("vertex")]`, `[shader("fragment")]`, or `[shader("compute")]`.
+
+You can keep these functions in one shader file and choose a different function for each pass. In **Config**, select the function under **Fragment shader**, **Vertex shader**, or the compute pass's function list. Add each pass you need with **+ New**; writing another function does not create a pass.
+
+You can also mix a native stage with a Built-in stage. With no custom vertex selection, Shader Studio uses its built-in vertex shader and any configured `mainVertex` hook. With no native fragment selection, it uses `mainImage`.
+
+Native fragments receive WebGPU coordinates with a top-left origin; `mainImage` receives bottom-left coordinates. Native stages still receive Shader Studio's built-in globals, configured channel helpers, and storage declarations. Group 0 bindings are reserved for these generated resources; do not redeclare their bindings. See [Vertex Shaders](vertex-shaders.md#native-webgpu-stages) for compatible mesh inputs and transforms.
+
+### Example: Share a WGSL File
+
+Create a file named `shared.wgsl` in your shader workspace and paste in this example:
+
+```wgsl
+@vertex fn fullscreen(@builtin(vertex_index) index: u32) -> @builtin(position) vec4f {
+    let p = array(vec2f(-1, -1), vec2f(3, -1), vec2f(-1, 3));
+    return vec4f(p[index], 0, 1);
+}
+
+@fragment fn image(@builtin(position) pixel: vec4f) -> @location(0) vec4f {
+    return vec4f(pixel.xy / iResolution.xy, 0.5, 1);
+}
+
+@compute @workgroup_size(1)
+fn advance(@builtin(global_invocation_id) id: vec3u) {
+    // Update configured storage here.
+}
+```
+
+Save the following configuration as `shared.sha.json` beside it, then open `shared.wgsl` in the preview. You should see a red/green gradient with a constant blue component. The example compute function does no work until you add your own code.
+
+```json
+{
+  "version": "1.0",
+  "webgpu": { "defaultRenderAuthoring": "native" },
+  "passes": {
+    "ComputeAdvance": {
+      "type": "compute", "path": "shared.wgsl",
+      "entryPoints": { "compute": "advance" },
+      "dispatch": { "count": 1 }
+    },
+    "BufferA": {
+      "path": "shared.wgsl",
+      "entryPoints": { "vertex": "fullscreen", "fragment": "image" }
+    },
+    "Image": { "entryPoints": { "vertex": "fullscreen", "fragment": "image" } }
+  }
+}
+```
+
+Image and BufferA both select `fullscreen` and `image` from the same file; ComputeAdvance selects `advance`. Each pass uses its own configured channels, uniforms, and storage, so you can reuse a file with different inputs. Shared helpers can also live in a [Common pass](config-buffers.md#the-common-pass).
 
 ---
 
@@ -182,7 +253,7 @@ The **Rendering** section after Geometry sets the pass's **Blend** mode, and for
 
 ## GPU Storage
 
-The **Storage** tab opens a workspace with a buffer list and **Settings** / **Inspect** tabs. Apply pending settings from the header or below the form. See [GPU Storage](storage.md) for layouts, binary initial data, resets and read-only inspection.
+Each storage buffer has its own card, labeled **Storage buffer** with its element count. Select it to open **Settings** / **Inspect** directly. Choose **+ New → Storage buffer** to add one. Apply pending settings from the header or below the form. See [GPU Storage](storage.md) for layouts, binary initial data, resets and read-only inspection.
 
 ## Compute Passes
 

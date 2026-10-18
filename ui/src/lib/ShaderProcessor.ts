@@ -1,4 +1,5 @@
-import { createCubemapPreview } from "./cubemapPreview";
+import { createPassPreview, isLinePreviewActive } from "./passPreview";
+import { createCubemapPreview } from './cubemapPreview';
 import { getCubemapPreview } from "./state/cubemapPreview.svelte";
 import { getShaderOutputs, shaderLanguageForPath } from "@shader-studio/types";
 import { viewerCameraRuntimeConfig } from "./state/viewerCameraState.svelte";
@@ -85,14 +86,7 @@ export class ShaderProcessor {
     reload: boolean = false,
   ): Promise<CompilationResult> {
     const { code, config, path, buffers } = message;
-    const selectedPreview = getCubemapPreview(path);
-    const cubemapPreview = selectedPreview.passName ? createCubemapPreview({
-      config: config ?? null,
-      passName: selectedPreview.passName,
-      language: message.language ?? shaderLanguageForPath(path) ?? "glsl",
-      mode: selectedPreview.mode,
-      face: selectedPreview.face,
-    }) : null;
+    const selectedPassPreview = this.selectedPassPreview(message);
     const scriptBundleError = message.scriptBundleError;
     const customUniforms = this.resolveCustomUniforms(message);
 
@@ -118,6 +112,9 @@ export class ShaderProcessor {
     }
 
     try {
+      const debugArgs = this.getDebugCompileArgs(code, config ?? null, message.originalCode ?? code);
+      const cubemapPreview = isLinePreviewActive(this.shaderDebugManager.getState()) || debugArgs.debugPlan || debugArgs.code !== code
+        ? null : selectedPassPreview;
       const {
         code: codeToCompile,
         config: configToCompile,
@@ -127,7 +124,7 @@ export class ShaderProcessor {
         debugPlan,
       } = cubemapPreview
         ? { code: cubemapPreview.code, config: cubemapPreview.config, passName: "Image", slangModules: undefined, sourcePath: undefined, debugPlan: undefined }
-        : this.getDebugCompileArgs(code, config ?? null, message.originalCode ?? code);
+        : debugArgs;
       const buffersToCompile = this.getCompileBuffers(buffers, debugPassName, codeToCompile, code);
 
       if (!cubemapPreview && codeToCompile !== code) {
@@ -172,6 +169,9 @@ export class ShaderProcessor {
       }
 
       if (!result?.success) {
+        if (cubemapPreview) {
+          return this.withScriptCause({ success: false, errors: result?.errors || ['Pass preview compilation failed'] }, scriptBundleError);
+        }
         // If debug mode compilation failed, fall back to the original code
         if (debugPlan || codeToCompile !== code) {
           this.shaderDebugManager.setDebugError(
@@ -592,6 +592,10 @@ export class ShaderProcessor {
       config ?? null,
       message.originalCode ?? this.imageShaderCode,
     );
+    if (!isLinePreviewActive(this.shaderDebugManager.getState()) && !debugPlan
+      && codeToCompile === this.imageShaderCode && this.selectedPassPreview(message)) {
+      return this.processMainShaderCompilation({ ...message, code: this.imageShaderCode });
+    }
     const buffersToCompile = this.getCompileBuffers(
       buffers,
       debugPassName,
@@ -662,6 +666,18 @@ export class ShaderProcessor {
     }
 
     return result;
+  }
+
+  private selectedPassPreview(message: ShaderSourceMessage) {
+    const selection = getCubemapPreview(message.path);
+    const createPreview = selection.kind === 'pass' ? createPassPreview : createCubemapPreview;
+    return selection.passName ? createPreview({
+      config: message.config ?? null,
+      passName: selection.passName,
+      language: message.language ?? shaderLanguageForPath(message.path) ?? 'glsl',
+      mode: selection.mode,
+      face: selection.face,
+    }) : null;
   }
 
   private supersededResult(errors?: string[]): CompilationResult {

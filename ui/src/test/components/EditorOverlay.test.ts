@@ -66,7 +66,7 @@ function createMockEditorWithCallbacks() {
     getLineMaxColumn: vi.fn((_line: number) => 80),
     getLineCount: vi.fn(() => 10),
     getLineContent: vi.fn(() => ''),
-    uri: { toString: () => 'file:///test' },
+    uri: { toString: () => 'file:///test.glsl' },
   };
   const mockEditor = {
     dispose: vi.fn(),
@@ -113,8 +113,11 @@ function createMockEditorWithCallbacks() {
 }
 
 describe('EditorOverlay', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    // clearAllMocks keeps queued *Once editors, so a test that never mounted
+    // its custom editor would hand it to the next test.
+    vi.mocked((await import('monaco-editor')).editor.create).mockReset();
     vi.useFakeTimers();
   });
 
@@ -2328,7 +2331,7 @@ describe('EditorOverlay', () => {
       render(EditorOverlay, {
         props: {
           ...defaultProps,
-          shaderCode: 'void main() {}',
+          shaderCode: '\n\n\n\nvoid main() {}',
           activeBufferName: 'Image',
           errors: ['Image: ERROR: 0:5: syntax error'],
         },
@@ -2385,6 +2388,40 @@ describe('EditorOverlay', () => {
 
       expect(lastNonEmpty, 'expected markers to be applied for the new file').toBeDefined();
       expect(lastNonEmpty!.order).toBeGreaterThan(setValueOrder);
+    });
+
+    it('never publishes the next file\'s errors onto the model it is leaving', async () => {
+      const monaco = await import('monaco-editor');
+
+      const { rerender } = render(EditorOverlay, {
+        props: {
+          ...defaultProps,
+          shaderPath: '/owner.buffer.glsl',
+          shaderCode: 'void mainImage(out vec4 c, in vec2 p) { c = ownerColor(p.x); }',
+          activeBufferName: 'Image',
+          errors: [],
+        },
+      });
+      await getLatestMockEditor();
+      vi.mocked(monaco.editor.setModelMarkers).mockClear();
+
+      // Models are shared per file, so another pane may still show the file
+      // this editor leaves. Markers from the next file's compile, arriving in
+      // the same flush as the path change, belong only on the next model.
+      await rerender({
+        ...defaultProps,
+        shaderPath: '/owner.glsl',
+        shaderCode: 'void mainImage(out vec4 c, in vec2 p) { c = vec4(1.0); }',
+        activeBufferName: 'Image',
+        errors: ['Image: ERROR: 0:1: \'ownerColor\' : no matching overloaded function found'],
+      });
+      await tick();
+
+      const published = vi.mocked(monaco.editor.setModelMarkers).mock.calls
+        .filter((call) => call[1] === 'shader-studio-renderer-compiler')
+        .map((call) => ({ uri: call[0].uri.toString(), count: call[2].length }));
+      expect(published.filter((entry) => entry.uri === monaco.Uri.file('/owner.buffer.glsl').toString() && entry.count > 0)).toEqual([]);
+      expect(published.at(-1)).toEqual({ uri: monaco.Uri.file('/owner.glsl').toString(), count: 1 });
     });
 
     it('should not set markers for errors from a different buffer', async () => {
@@ -2467,7 +2504,7 @@ describe('EditorOverlay', () => {
       render(EditorOverlay, {
         props: {
           ...defaultProps,
-          shaderCode: 'void main() {}',
+          shaderCode: '\n\n\nvoid main() {}',
           activeBufferName: 'Image',
           errors: ['ERROR: 0:4: syntax error'],
         },
@@ -2486,7 +2523,7 @@ describe('EditorOverlay', () => {
       render(EditorOverlay, {
         props: {
           ...defaultProps,
-          shaderCode: 'vec3 shared;',
+          shaderCode: '\nvec3 shared;',
           activeBufferName: 'Common',
           errors: ['common: ERROR: 0:2: shared syntax error'],
         },

@@ -1,6 +1,8 @@
 import { createRawSnippet, tick } from 'svelte';
 import { fireEvent, render, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { StandaloneSettings } from '../settings/StandaloneSettings';
+import { connectSettings } from '../settings/settingsState.svelte';
 import StandaloneLayout from '../StandaloneLayout.svelte';
 import { createDockview } from 'dockview-core';
 import { resetMobileShellState } from '../state/mobileShellState.svelte';
@@ -42,6 +44,18 @@ vi.mock('dockview-core', () => ({
 }));
 
 vi.mock('dockview-core/dist/styles/dockview.css', () => ({}));
+
+const controllerArgs = vi.hoisted(() => ({ latest: [] as unknown[] }));
+vi.mock('../StandaloneLayoutController', async importOriginal => {
+  const actual = await importOriginal<typeof import('../StandaloneLayoutController')>();
+  class RecordingController extends actual.StandaloneLayoutController {
+    constructor(...args: ConstructorParameters<typeof actual.StandaloneLayoutController>) {
+      super(...args);
+      controllerArgs.latest = args;
+    }
+  }
+  return { ...actual, StandaloneLayoutController: RecordingController };
+});
 
 function source(name: string) {
   return createRawSnippet(() => ({ render: () => `<div data-source="${name}">${name}</div>` }));
@@ -113,9 +127,9 @@ describe('StandaloneLayout', () => {
     expect(api.layout).toHaveBeenCalledWith(expect.any(Number), expect.any(Number));
     expect(api.layout.mock.invocationCallOrder[0]).toBeLessThan(api.addPanel.mock.invocationCallOrder[0]);
     const preview = renderers[0].element.querySelector('.standalone-panel-source');
-    expect(renderers.filter((renderer) => renderer.element.querySelector('.standalone-panel-source')).length).toBe(3);
+    expect(renderers.filter((renderer) => renderer.element.querySelector('.standalone-panel-source')).length).toBe(4);
     result.component.resetLayout();
-    expect(renderers.filter((renderer) => renderer.element.querySelector('.standalone-panel-source')).length).toBe(3);
+    expect(renderers.filter((renderer) => renderer.element.querySelector('.standalone-panel-source')).length).toBe(4);
     expect(renderers[0].element.querySelector('.standalone-panel-source')).toBe(preview);
     result.unmount();
     expect(renderers).toHaveLength(0);
@@ -277,6 +291,24 @@ describe('StandaloneLayout', () => {
       expect(result.component.isMobileLayout()).toBe(false);
     });
 
+    it('reacts immediately to the global mobile-mode preference at a phone width', async () => {
+      const settings = new StandaloneSettings({ getItem: () => null, setItem: vi.fn() });
+      const disconnect = connectSettings(settings);
+      stubViewport(true);
+      const result = renderLayout();
+      await tick();
+      expect(result.component.isMobileLayout()).toBe(true);
+      settings.update('layout.mobileMode', false);
+      await tick();
+      expect(result.component.isMobileLayout()).toBe(false);
+      expect(result.queryByRole('navigation', { name: 'Workspace panels' })).toBeNull();
+      settings.update('layout.mobileMode', true);
+      await tick();
+      expect(result.component.isMobileLayout()).toBe(true);
+      expect(result.getByRole('navigation', { name: 'Workspace panels' })).toBeTruthy();
+      disconnect();
+    });
+
     it('queries the phone breakpoint and stops listening on unmount', async () => {
       const viewport = stubViewport(true);
       const result = renderLayout();
@@ -297,5 +329,32 @@ describe('StandaloneLayout', () => {
       expect(result.queryByRole('navigation', { name: 'Workspace panels' })).toBeNull();
       expect(result.component.isMobileLayout()).toBe(false);
     });
+  });
+
+  it('activates editor shaders, asks the transport before closing, and closes removed paths', async () => {
+    const postMessage = vi.fn();
+    const confirmEditorClose = vi.fn(async () => false);
+    const transport = { getShaderExplorerHostApi: () => ({ postMessage }), confirmEditorClose };
+    const { component } = render(StandaloneLayout, { props: {
+      explorer: source('explorer'), editor: source('editor'), preview: source('preview'), transport: transport as never,
+    } });
+    await tick();
+    const [, , activate, confirmClose] = controllerArgs.latest as [unknown, unknown, (path: string) => void, (path: string) => Promise<boolean>];
+    activate('/aurora.glsl');
+    expect(postMessage).toHaveBeenCalledWith({ type: 'activateShader', path: '/aurora.glsl' });
+    await expect(confirmClose('/aurora.glsl')).resolves.toBe(false);
+    expect(confirmEditorClose).toHaveBeenCalledWith('/aurora.glsl');
+    const { StandaloneLayoutController } = await import('../StandaloneLayoutController');
+    const close = vi.spyOn(StandaloneLayoutController.prototype, 'closeEditorPaths');
+    (component as unknown as { closeEditorPaths(paths: string[]): void }).closeEditorPaths(['/gone.glsl']);
+    expect(close).toHaveBeenCalledWith(['/gone.glsl']);
+  });
+
+  it('closes editors without a prompt when no transport is attached', async () => {
+    render(StandaloneLayout, { props: { explorer: source('explorer'), editor: source('editor'), preview: source('preview') } });
+    await tick();
+    const [, , activate, confirmClose] = controllerArgs.latest as [unknown, unknown, (path: string) => void, (path: string) => Promise<boolean>];
+    expect(() => activate('/aurora.glsl')).not.toThrow();
+    await expect(confirmClose('/aurora.glsl')).resolves.toBe(true);
   });
 });

@@ -1,5 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { waitForLanguageService, workspace } from './language-service-fixtures.mjs';
+import { useSharedShaderEditor } from './explorer-preferences.mjs';
+
+// These tests edit through the shared editor rather than per-file editors.
+test.beforeEach(({ context }) => useSharedShaderEditor(context));
 
 for (const { language, extension, pass, helper } of [
   { language: 'GLSL', extension: 'glsl', pass: 'void mainImage(out vec4 color, in vec2 coord) { color = vec4(tone(coord.x)); }', helper: 'float tone(float value) { return value * 0.5; }' },

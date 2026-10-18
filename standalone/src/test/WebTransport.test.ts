@@ -1,5 +1,5 @@
 import { getEditorDocument } from '../state/editorDocuments.svelte';
-import { getSelectedEditor, getRequestedEditor, getNewShaderVisible, getRequestedPanel, resetShellState, setNewShaderVisible } from '../state/shellState.svelte';
+import { getActiveShaderEditors, getSelectedEditor, getRequestedEditor, getNewShaderVisible, getRequestedPanel, resetShellState, setNewShaderVisible } from '../state/shellState.svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDefaultWorkspaceFiles } from '../defaultWorkspace';
 import { VirtualWorkspace } from '../VirtualWorkspace';
@@ -11,6 +11,59 @@ async function eventually(assertion: () => void): Promise<void> {
 }
 
 describe('WebTransport', () => {
+  it('defaults active files on, tracks two previews, and persists opting out', async () => {
+    const transport = new WebTransport();
+    const first = transport.createViewerTransport(), second = transport.createViewerTransport();
+    first.postMessage({ type: 'previewFilesChanged', payload: { shaderPath: '/aurora.glsl' } });
+    second.postMessage({ type: 'previewFilesChanged', payload: { shaderPath: '/glow-trails.glsl' } });
+    await transport.flush();
+    expect(getActiveShaderEditors()).toHaveLength(2);
+    expect(getActiveShaderEditors()?.[1].files.length).toBeGreaterThan(1);
+    first.dispose();
+    expect(getActiveShaderEditors()).toHaveLength(1);
+    transport.getShaderExplorerHostApi().postMessage({ type: 'saveState', state: { keepActiveShaderFiles: false } });
+    expect(getActiveShaderEditors()).toBeNull();
+    second.dispose();
+    transport.dispose();
+  });
+
+  it('prompts only for unsaved edits, saving on acceptance and retaining on cancellation', async () => {
+    const transport = new WebTransport();
+    const path = '/aurora.glsl';
+    await transport.readEditorFile(path);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    expect(await transport.confirmEditorClose(path)).toBe(true);
+    expect(confirm).not.toHaveBeenCalled();
+    transport.markEditorDirty(path);
+    expect(await transport.confirmEditorClose(path)).toBe(false);
+    let pending = true;
+    const detach = transport.registerPendingSave(() => {
+      if (pending) {
+        pending = false;
+        transport.postMessage({ type: 'updateShaderSource', payload: { path, code: 'saved changes' } });
+      }
+    });
+    confirm.mockReturnValue(true);
+    expect(await transport.confirmEditorClose(path)).toBe(true);
+    expect(await transport.readEditorFile(path)).toBe('saved changes');
+    confirm.mockClear();
+    expect(await transport.confirmEditorClose(path)).toBe(true);
+    expect(confirm).not.toHaveBeenCalled();
+    detach();
+    transport.dispose();
+  });
+
+  it('keeps the editor open and reports a failed save', async () => {
+    const transport = new WebTransport();
+    await transport.readEditorFile('/aurora.glsl');
+    transport.markEditorDirty('/aurora.glsl');
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    vi.spyOn(transport, 'flush').mockRejectedValue(new Error('disk full'));
+    expect(await transport.confirmEditorClose('/aurora.glsl')).toBe(false);
+    expect(alert).toHaveBeenCalledWith(expect.stringContaining('kept open'));
+    transport.dispose();
+  });
   beforeEach(() => {
     vi.restoreAllMocks();
     resetShellState();
@@ -53,7 +106,7 @@ describe('WebTransport', () => {
     viewer.dispose();
     viewer.onMessage(receive);
     viewer.postMessage({ type: 'refresh' });
-    await transport.readEditorFile('/shaders/aurora.glsl');
+    await transport.readEditorFile('/aurora.glsl');
     expect(receive).not.toHaveBeenCalled();
     expect(transport.isConnected()).toBe(true);
     transport.dispose();
@@ -128,7 +181,7 @@ describe('WebTransport', () => {
 
   it('flushes pending editor text through the host before reporting persistence complete', async () => {
     const transport = new WebTransport();
-    const path = '/shaders/aurora.glsl';
+    const path = '/aurora.glsl';
     let pending = true;
     const detach = transport.registerPendingSave(() => {
       if (pending) {
@@ -145,7 +198,7 @@ describe('WebTransport', () => {
 
   it('waits for an editor save that arrives while workspace persistence is in progress', async () => {
     const transport = new WebTransport();
-    await transport.readEditorFile('/shaders/aurora.glsl');
+    await transport.readEditorFile('/aurora.glsl');
     const originalFlush = VirtualWorkspace.prototype.flush;
     let releaseFirstFlush!: () => void;
     let firstFlushStarted!: () => void;
@@ -167,7 +220,7 @@ describe('WebTransport', () => {
     let saveArrived = false;
     const detach = transport.registerPendingSave(() => {
       if (saveArrived) {
-        transport.postMessage({ type: 'updateShaderSource', payload: { path: '/shaders/aurora.glsl', code: 'saved during IO' } });
+        transport.postMessage({ type: 'updateShaderSource', payload: { path: '/aurora.glsl', code: 'saved during IO' } });
         saveArrived = false;
       }
     });
@@ -178,7 +231,7 @@ describe('WebTransport', () => {
     releaseFirstFlush();
     await saving;
 
-    expect(await transport.readEditorFile('/shaders/aurora.glsl')).toBe('saved during IO');
+    expect(await transport.readEditorFile('/aurora.glsl')).toBe('saved during IO');
     expect(calls).toBeGreaterThanOrEqual(2);
     detach();
     transport.dispose();
@@ -188,7 +241,7 @@ describe('WebTransport', () => {
     const handling = vi.spyOn(WebExtensionHost.prototype, 'handleViewerMessage')
       .mockRejectedValueOnce(new Error('write failed'));
     const transport = new WebTransport();
-    transport.postMessage({ type: 'updateShaderSource', payload: { path: '/shaders/aurora.glsl', code: 'lost' } });
+    transport.postMessage({ type: 'updateShaderSource', payload: { path: '/aurora.glsl', code: 'lost' } });
 
     await eventually(() => expect(handling).toHaveBeenCalledOnce());
     await Promise.resolve();
@@ -377,7 +430,7 @@ describe('WebTransport', () => {
     transport.onMessage(handler);
 
     await eventually(() => expect(handler).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ type: 'shaderSource', path: '/shaders/aurora.glsl' }),
+      data: expect.objectContaining({ type: 'shaderSource', path: '/aurora.glsl' }),
     })));
     transport.dispose();
   });
@@ -394,9 +447,9 @@ describe('WebTransport', () => {
     await eventually(() => expect(explorerReceive).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ type: 'shadersUpdate' }),
     })));
-    explorer.postMessage({ type: 'activateShader', path: '/shaders/aurora-slang.slang' });
+    explorer.postMessage({ type: 'activateShader', path: '/aurora-slang.slang' });
     await eventually(() => expect(viewer).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ type: 'shaderSource', path: '/shaders/aurora-slang.slang' }),
+      data: expect.objectContaining({ type: 'shaderSource', path: '/aurora-slang.slang' }),
     })));
     transport.dispose();
   });
@@ -415,7 +468,7 @@ describe('WebTransport', () => {
 
     transport.postMessage({ type: 'createShader', payload: { name: 'new-slang', language: 'slang' } });
     await eventually(() => expect(viewer).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ type: 'shaderSource', path: '/shaders/new-slang.slang', language: 'slang' }),
+      data: expect.objectContaining({ type: 'shaderSource', path: '/new-slang.slang', language: 'slang' }),
     })));
     expect(viewer.mock.calls.filter(([event]) => event.data.type === 'showNewShaderModal')).toHaveLength(0);
     transport.dispose();
@@ -449,10 +502,11 @@ it('requests active editor reuse for explorer opens and ignores missing paths', 
   resetShellState();
   const transport = new WebTransport();
   const explorer = transport.getShaderExplorerHostApi();
-  explorer.postMessage({ type: 'openShader', path: '/shaders/aurora.glsl' });
-  await vi.waitFor(() => expect(getSelectedEditor()).toBe('/shaders/aurora.glsl'));
+  explorer.postMessage({ type: 'saveState', state: { keepActiveShaderFiles: false } });
+  explorer.postMessage({ type: 'openShader', path: '/aurora.glsl' });
+  await vi.waitFor(() => expect(getSelectedEditor()).toBe('/aurora.glsl'));
   expect(getRequestedEditor()).toBeNull();
-  expect(await transport.readEditorFile('/shaders/aurora.glsl')).toContain('mainImage');
+  expect(await transport.readEditorFile('/aurora.glsl')).toContain('mainImage');
   resetShellState();
   explorer.postMessage({ type: 'openShader', path: '/missing.glsl' });
   expect(await transport.readEditorFile('/missing.glsl')).toBeNull();
@@ -468,9 +522,9 @@ it('activates the preview without requesting any editor when Open Files is unche
   const transport = new WebTransport();
   const viewer = vi.fn();
   transport.onMessage(viewer);
-  transport.getShaderExplorerHostApi().postMessage({ type: 'activateShader', path: '/shaders/aurora.glsl' });
+  transport.getShaderExplorerHostApi().postMessage({ type: 'activateShader', path: '/aurora.glsl' });
   await vi.waitFor(() => expect(viewer).toHaveBeenCalledWith(expect.objectContaining({
-    data: expect.objectContaining({ type: 'shaderSource', path: '/shaders/aurora.glsl' }),
+    data: expect.objectContaining({ type: 'shaderSource', path: '/aurora.glsl' }),
   })));
   expect(getRequestedPanel()).toBeNull();
   expect(getSelectedEditor()).toBeNull();
@@ -483,10 +537,10 @@ it.each(['active', 'beside'] as const)('opens requested buffer in standalone wit
   resetShellState();
   const transport = new WebTransport();
   transport.postMessage({ type: 'navigateToBuffer', payload: {
-    bufferPath: '/shaders/glow-trails/trails.buffer.glsl', shaderPath: '/shaders/glow-trails.glsl', mode,
+    bufferPath: '/glow-trails/trails.buffer.glsl', shaderPath: '/glow-trails.glsl', mode,
   } });
-  await vi.waitFor(() => expect(getRequestedEditor()).toBe('/shaders/glow-trails/trails.buffer.glsl'));
-  expect(getEditorDocument('/shaders/glow-trails/trails.buffer.glsl')).toContain('mainImage');
+  await vi.waitFor(() => expect(getRequestedEditor()).toBe('/glow-trails/trails.buffer.glsl'));
+  expect(getEditorDocument('/glow-trails/trails.buffer.glsl')).toContain('mainImage');
   transport.dispose();
 });
 
@@ -495,9 +549,9 @@ it('does not open buffers when navigation on buffer switch is disabled', async (
   const transport = new WebTransport();
   expect(transport.settings.update('navigateOnBufferSwitch', false)).toBe(true);
   transport.postMessage({ type: 'navigateToBuffer', payload: {
-    bufferPath: '/shaders/glow-trails/trails.buffer.glsl', shaderPath: '/shaders/glow-trails.glsl', mode: 'active',
+    bufferPath: '/glow-trails/trails.buffer.glsl', shaderPath: '/glow-trails.glsl', mode: 'active',
   } });
-  await transport.readEditorFile('/shaders/aurora.glsl');
+  await transport.readEditorFile('/aurora.glsl');
   expect(getRequestedEditor()).toBeNull();
   // Standalone preferences are browser-global. Restore the default so later
   // transport tests do not inherit this deliberate opt-out.
@@ -512,7 +566,7 @@ it('ignores missing navigation targets and navigation after disposal', async () 
   await transport.readEditorFile('/missing.glsl');
   expect(getRequestedEditor()).toBeNull();
   transport.dispose();
-  transport.postMessage({ type: 'navigateToBuffer', payload: { bufferPath: '/shaders/aurora.glsl' } });
+  transport.postMessage({ type: 'navigateToBuffer', payload: { bufferPath: '/aurora.glsl' } });
   await Promise.resolve();
   expect(getRequestedEditor()).toBeNull();
 });
@@ -522,7 +576,7 @@ it.each([undefined, null, {}, { bufferPath: 42 }, { bufferPath: '' }])('ignores 
   resetShellState();
   const transport = new WebTransport();
   transport.postMessage({ type: 'navigateToBuffer', payload });
-  await transport.readEditorFile('/shaders/aurora.glsl');
+  await transport.readEditorFile('/aurora.glsl');
   expect(getRequestedEditor()).toBeNull();
   transport.dispose();
 });
@@ -530,9 +584,9 @@ it.each([undefined, null, {}, { bufferPath: 42 }, { bufferPath: '' }])('ignores 
 it('does not open files when disposed before queued navigation runs', async () => {
   resetShellState();
   const transport = new WebTransport();
-  transport.postMessage({ type: 'navigateToBuffer', payload: { bufferPath: '/shaders/aurora.glsl' } });
+  transport.postMessage({ type: 'navigateToBuffer', payload: { bufferPath: '/aurora.glsl' } });
   transport.dispose();
-  await transport.readEditorFile('/shaders/aurora.glsl');
+  await transport.readEditorFile('/aurora.glsl');
   expect(getRequestedEditor()).toBeNull();
 });
 
@@ -540,10 +594,10 @@ it('does not open files when disposed before queued navigation runs', async () =
 it('opens an empty file', async () => {
   resetShellState();
   const transport = new WebTransport();
-  transport.postMessage({ type: 'updateShaderSource', payload: { path: '/shaders/aurora.glsl', code: '' } });
-  transport.postMessage({ type: 'navigateToBuffer', payload: { bufferPath: '/shaders/aurora.glsl' } });
-  await vi.waitFor(() => expect(getRequestedEditor()).toBe('/shaders/aurora.glsl'));
-  expect(getEditorDocument('/shaders/aurora.glsl')).toBe('');
+  transport.postMessage({ type: 'updateShaderSource', payload: { path: '/aurora.glsl', code: '' } });
+  transport.postMessage({ type: 'navigateToBuffer', payload: { bufferPath: '/aurora.glsl' } });
+  await vi.waitFor(() => expect(getRequestedEditor()).toBe('/aurora.glsl'));
+  expect(getEditorDocument('/aurora.glsl')).toBe('');
   transport.dispose();
 });
 
@@ -554,10 +608,10 @@ it('opens the config file in the editor instead of forwarding it to the viewer',
   transport.onMessage(viewer);
   await vi.waitFor(() => expect(viewer).toHaveBeenCalled());
 
-  transport.postMessage({ type: 'showConfig', payload: { shaderPath: '/shaders/aurora.sha.json', sourcePath: '/shaders/aurora.glsl' } });
+  transport.postMessage({ type: 'showConfig', payload: { shaderPath: '/aurora.sha.json', sourcePath: '/aurora.glsl' } });
 
-  await vi.waitFor(() => expect(getRequestedEditor()).toBe('/shaders/aurora.sha.json'));
-  expect(getEditorDocument('/shaders/aurora.sha.json')).toContain('passes');
+  await vi.waitFor(() => expect(getRequestedEditor()).toBe('/aurora.sha.json'));
+  expect(getEditorDocument('/aurora.sha.json')).toContain('passes');
   expect(viewer.mock.calls.filter(([event]) => event.data.type === 'openEditorFile')).toHaveLength(0);
   transport.dispose();
 });
@@ -573,8 +627,8 @@ it('keeps manual edits out of the preview until a compile is requested', async (
 
   transport.postMessage({ type: 'setCompileMode', payload: { mode: 'manual' } });
   viewer.mockClear();
-  transport.postMessage({ type: 'updateShaderSource', payload: { path: '/shaders/aurora.glsl', code: 'manual edit' } });
-  await vi.waitFor(() => expect(getEditorDocument('/shaders/aurora.glsl')).toBe('manual edit'));
+  transport.postMessage({ type: 'updateShaderSource', payload: { path: '/aurora.glsl', code: 'manual edit' } });
+  await vi.waitFor(() => expect(getEditorDocument('/aurora.glsl')).toBe('manual edit'));
   expect(viewer).not.toHaveBeenCalled();
 
   transport.postMessage({ type: 'extensionCommand', payload: { command: 'manualCompile' } });
@@ -595,8 +649,8 @@ it('delegates viewer document indexing and atomic edits while guarding disposed 
   const commit = vi.fn();
   await viewer.applyWorkspaceEdit!([change], () => true, commit, new Map([[document.uri, document.text]]));
   expect(commit).toHaveBeenCalledOnce();
-  expect(await transport.readEditorFile('/shaders/aurora.glsl')).toBe(change.after);
-  expect(getEditorDocument('/shaders/aurora.glsl')).toBe(change.after);
+  expect(await transport.readEditorFile('/aurora.glsl')).toBe(change.after);
+  expect(getEditorDocument('/aurora.glsl')).toBe(change.after);
   viewer.dispose();
   await expect(viewer.applyWorkspaceEdit!([{ ...change, before: change.after, after: document.text }], () => true, commit)).rejects.toThrow();
   expect(commit).toHaveBeenCalledOnce();
@@ -604,4 +658,83 @@ it('delegates viewer document indexing and atomic edits while guarding disposed 
   transport.dispose();
   transport.onMessage(receive);
   expect(receive).not.toHaveBeenCalled();
+});
+
+describe('WebTransport preview file and save edge cases', () => {
+  beforeEach(() => resetShellState());
+  const tracking = (transport: WebTransport) => {
+    transport.getShaderExplorerHostApi().postMessage({ type: 'saveState', state: { keepActiveShaderFiles: true } });
+    return transport;
+  };
+
+  it('tracks the shell viewer, ignores reports without a shader, and drops reports after disposal', async () => {
+    const transport = tracking(new WebTransport());
+    transport.postMessage({ type: 'previewFilesChanged', payload: { shaderPath: '' } });
+    transport.postMessage({ type: 'previewFilesChanged', payload: {} } as never);
+    transport.postMessage({ type: 'previewFilesChanged' } as never);
+    await transport.flush();
+    expect(getActiveShaderEditors() ?? []).toHaveLength(0);
+    transport.postMessage({ type: 'previewFilesChanged', payload: { shaderPath: '/aurora.glsl' } });
+    await transport.flush();
+    expect(getActiveShaderEditors()).toEqual([expect.objectContaining({ id: 'default', shaderPath: '/aurora.glsl' })]);
+    resetShellState();
+    transport.postMessage({ type: 'previewFilesChanged', payload: { shaderPath: '/glow-trails.glsl' } });
+    transport.dispose();
+    await Promise.resolve(); await Promise.resolve();
+    expect(getActiveShaderEditors() ?? []).toHaveLength(0);
+  });
+
+  it('focuses an explorer-selected pass that the tracked preview already has open', async () => {
+    const transport = tracking(new WebTransport());
+    transport.postMessage({ type: 'previewFilesChanged', payload: { shaderPath: '/glow-trails.glsl' } });
+    await transport.flush();
+    expect(getActiveShaderEditors()?.[0].files).toContain('/glow-trails/trails.buffer.glsl');
+    const explorer = transport.getShaderExplorerHostApi();
+    // The preview stays on its owner, so the selected pass is shown in its tab.
+    explorer.postMessage({ type: 'openShader', path: '/glow-trails/trails.buffer.glsl' });
+    await transport.flush();
+    expect(getSelectedEditor()).toBe('/glow-trails/trails.buffer.glsl');
+    resetShellState();
+    // Another shader is opened by the preview change, not by a direct selection.
+    explorer.postMessage({ type: 'openShader', path: '/aurora.glsl' });
+    await transport.flush();
+    expect(getSelectedEditor()).toBeNull();
+    transport.dispose();
+  });
+
+  it('forgets a viewer that closes while its file report is pending and delegates editor state', async () => {
+    const transport = tracking(new WebTransport());
+    const viewer = transport.createViewerTransport();
+    viewer.postMessage({ type: 'previewFilesChanged', payload: { shaderPath: '/aurora.glsl' } });
+    viewer.dispose();
+    await transport.flush();
+    expect(getActiveShaderEditors()).toEqual([]);
+    const live = transport.createViewerTransport();
+    const dirty = vi.spyOn(transport, 'markEditorDirty');
+    const pending = vi.spyOn(transport, 'registerPendingSave');
+    const save = vi.fn();
+    live.markEditorDirty?.('/aurora.glsl');
+    live.registerPendingSave?.(save)();
+    expect(dirty).toHaveBeenCalledWith('/aurora.glsl');
+    expect(pending).toHaveBeenCalledWith(save);
+    live.dispose(); transport.dispose();
+  });
+
+  it('keeps an editor dirty when it changes again while its save is written', async () => {
+    const transport = new WebTransport();
+    const path = '/aurora.glsl';
+    await transport.readEditorFile(path);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    try {
+      transport.markEditorDirty(path);
+      transport.postMessage({ type: 'updateShaderSource', payload: { path, code: 'first save' } });
+      transport.markEditorDirty(path);
+      transport.postMessage({ type: 'updateShaderSource', payload: { code: 'no target' } } as never);
+      await transport.flush();
+      expect(await transport.confirmEditorClose(path)).toBe(false);
+      expect(confirm).toHaveBeenCalledOnce();
+    } finally {
+      confirm.mockRestore(); transport.dispose();
+    }
+  });
 });

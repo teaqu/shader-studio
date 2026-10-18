@@ -21,7 +21,7 @@ it('shows only the declared native fragment functions when there is no mainImage
     fileType: 'wgsl-buffer', sourcePath: 'a.wgsl', shaderPath: 'image.wgsl', passName: 'BufferA', isImagePass: false,
     outputCount: 1, onCommit: vi.fn() });
   expect(view.queryByRole('radio', { name: 'mainImage' })).toBeNull();
-  expect(view.getByRole('radio', { name: '@fragment shade' })).toBeChecked();
+  expect(view.getByLabelText('Fragment function')).toHaveTextContent('shade');
 });
 
 it('puts a stage-specific Add after each function selector and targets the owning source', async () => {
@@ -32,8 +32,8 @@ it('puts a stage-specific Add after each function selector and targets the ownin
   for (const stage of ['vertex', 'fragment']) {
     const row = view.getByRole('group', { name: `${stage === 'vertex' ? 'Vertex' : 'Fragment'} function controls` });
     const add = row.querySelector('button')!;
-    expect(add.textContent).toBe('Add function…');
-    await fireEvent.click(add);
+    expect(add.textContent).toBe(stage === 'vertex' ? 'Add function\u2026' : '+ Add\u2026');
+    await fireEvent.click(stage === 'vertex' ? add : row.querySelector('.insert-option')!);
     expect(postMessage).toHaveBeenLastCalledWith(expect.objectContaining({ payload: expect.objectContaining({
       fileType: stage === 'vertex' ? 'wgsl-vertex' : 'wgsl-buffer', sourcePath: '/shaders/a.wgsl', authoringMode: 'native',
     }) }));

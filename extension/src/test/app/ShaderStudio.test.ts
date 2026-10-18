@@ -78,7 +78,7 @@ suite('Shader Studio Test Suite', () => {
       storagePath: '/mock/storage',
       globalStoragePath: '/mock/global/storage',
       logPath: '/mock/log',
-      secrets: {} as any,
+      secrets: { onDidChange: sandbox.stub().returns({ dispose: sandbox.stub() }) } as any,
       environmentVariableCollection: {} as any,
       storageUri: vscode.Uri.file('/mock/storage'),
       languageModelAccessInformation: {} as any,
@@ -573,6 +573,34 @@ suite('Shader Studio Test Suite', () => {
     sinon.assert.calledWith(sendShaderFromPathSpy, shaderPath, { reload: true });
   });
 
+  test('specific-path refresh forwards the viewer refresh request id', async () => {
+    const shaderPath = '/mock/path/owner.glsl';
+    const send = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromPath');
+    await shaderStudio['refreshSpecificShaderByPath'](shaderPath, { refreshRequestId: 4 });
+    sinon.assert.calledOnce(send);
+    assert.deepStrictEqual(send.firstCall.args, [shaderPath, { reload: true, refreshRequestId: 4 }]);
+  });
+
+  test('current-shader refresh forwards the viewer refresh request id to the active editor', async () => {
+    const mockEditor = createMockGLSLEditor();
+    sandbox.stub(vscode.window, 'activeTextEditor').value(mockEditor);
+    sendShaderSpy.resetHistory();
+    await shaderStudio['refreshCurrentShader']({ refreshRequestId: 5 });
+    sinon.assert.calledOnce(sendShaderSpy);
+    assert.deepStrictEqual(sendShaderSpy.firstCall.args[1], { reload: true, refreshRequestId: 5 });
+  });
+
+  test('current-shader refresh forwards the viewer refresh request id to the last viewed file', async () => {
+    const lastViewedFile = '/mock/path/last-shader.glsl';
+    shaderStudio['glslFileTracker'].setLastViewedGlslFile(lastViewedFile);
+    sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
+    sandbox.stub(vscode.window, 'visibleTextEditors').value([]);
+    const send = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromPath');
+    await shaderStudio['refreshCurrentShader']({ refreshRequestId: 6 });
+    sinon.assert.calledOnce(send);
+    assert.deepStrictEqual(send.firstCall.args, [lastViewedFile, { reload: true, refreshRequestId: 6 }]);
+  });
+
   test('initial path refresh preserves feedback', async () => {
     const shaderPath = '/mock/path/startup.glsl';
     const send = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromPath');
@@ -780,6 +808,7 @@ suite('Shader Studio Test Suite', () => {
         languageId: 'glsl',
         fileName: '/mock/path/shader.glsl',
         uri: vscode.Uri.file('/mock/path/shader.glsl'),
+        getText: () => '// shader contents',
       },
     } as vscode.TextDocumentChangeEvent;
 

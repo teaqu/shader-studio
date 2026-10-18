@@ -804,7 +804,6 @@ return;
   <div class="buffer-details">
     {#if !isImagePass}
       <div class="config-item">
-        {#if bufferName !== "common" && passType === "render" && language !== 'glsl'}<h3 class="section-title">Fragment shader</h3>{/if}
         <BufferSourceControls value={currentPath} onPathChange={handlePathChange} hasError={!validation.isValid}
           {suggestedPath} {bufferName} {language} {fileType} {shaderPath} {projectConfig} {postMessage} {onMessage}
           outputKind={bufferPassConfig?.outputKind}
@@ -828,12 +827,7 @@ return;
             {/each}
           </div>
         {/if}
-        {#if bufferName !== 'common' && passType === 'render'}{@render functions('fragment')}{/if}
       </div>
-    {/if}
-
-    {#if bufferName !== 'common' && passType === 'render' && bufferPassConfig?.outputKind !== 'cubemap'}
-      {#if isImagePass && language !== 'glsl'}<div class="config-item"><h3 class="section-title">Fragment shader</h3>{@render functions('fragment')}</div>{/if}
     {/if}
 
     {#if bufferName !== "common"}
@@ -868,6 +862,10 @@ return;
           {/if}
         </div>
       </div>
+    {/if}
+
+    {#if bufferName !== 'common' && passType === 'render' && language !== 'glsl' && bufferPassConfig?.outputKind !== 'cubemap'}
+      <div class="config-item"><h3 class="section-title">Render output</h3>{@render functions('fragment')}</div>
     {/if}
 
     {#if passType === 'compute'}
@@ -1155,14 +1153,15 @@ return;
   }
 
   .add-channel-btn {
-    padding: 5px 12px;
-    font-size: 12px;
+    padding: var(--shader-studio-control-padding);
+    font-size: var(--shader-studio-font-size);
     background: none;
     border: 1px dashed var(--vscode-panel-border, #3c3c3c);
-    border-radius: 4px;
+    border-radius: var(--shader-studio-control-radius);
     color: var(--vscode-descriptionForeground, #888);
     cursor: pointer;
     transition: all 0.15s;
+    min-height: var(--shader-studio-control-height);
   }
 
   .add-channel-btn:hover {
@@ -1175,14 +1174,15 @@ return;
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 4px 8px;
-    font-size: 12px;
+    padding: var(--shader-studio-control-padding);
+    font-size: var(--shader-studio-font-size);
     background: none;
     border: 1px solid var(--vscode-panel-border, #3c3c3c);
-    border-radius: 4px;
+    border-radius: var(--shader-studio-control-radius);
     color: var(--vscode-descriptionForeground, #888);
     cursor: pointer;
     transition: all 0.15s;
+    min-height: var(--shader-studio-control-height);
   }
 
   .sort-btn:hover {
@@ -1201,7 +1201,14 @@ return;
     flex-wrap: wrap;
   }
 
+  .resolution-section .resolution-row {
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr) auto;
+    align-items: start;
+  }
+
   .resolution-label {
+    align-self: center;
     font-size: 11px;
     color: var(--vscode-descriptionForeground, #888);
     min-width: 48px;
@@ -1209,20 +1216,22 @@ return;
   }
 
   .preset-buttons {
+    min-width: 0;
     display: flex;
     gap: 4px;
     flex-wrap: wrap;
   }
 
   .preset-btn {
-    padding: 3px 8px;
-    font-size: 11px;
+    padding: var(--shader-studio-control-padding);
+    font-size: var(--shader-studio-font-size);
     background: none;
     border: 1px solid var(--vscode-panel-border, #3c3c3c);
-    border-radius: 4px;
+    border-radius: var(--shader-studio-control-radius);
     color: var(--vscode-descriptionForeground, #888);
     cursor: pointer;
     transition: all 0.15s;
+    min-height: var(--shader-studio-control-height);
   }
 
   .preset-btn:disabled {
@@ -1243,22 +1252,33 @@ return;
   }
 
   .custom-inputs {
-    display: flex;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
     align-items: center;
     gap: 6px;
   }
 
+  .custom-inputs .dim-input { width: 100%; max-width: 80px; min-width: 0; }
+
   .dim-input,
   .vertex-count-input {
     width: 80px;
-    padding: 3px 6px;
-    font-size: 11px;
+    padding: var(--shader-studio-control-padding);
+    font-size: var(--shader-studio-font-size);
     background: var(--vscode-input-background, #3c3c3c);
     border: 1px solid var(--vscode-panel-border, #3c3c3c);
-    border-radius: 4px;
+    border-radius: var(--shader-studio-control-radius);
     color: var(--vscode-input-foreground, #cccccc);
     outline: none;
+    min-height: var(--shader-studio-control-height);
   }
+
+  .dim-input:focus-visible,
+.vertex-count-input:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
 
   /* Wide enough for the 10-digit maximum vertex count. */
   .vertex-count-input {
@@ -1277,15 +1297,16 @@ return;
 
   .reset-btn {
     margin-left: auto;
-    padding: 3px 8px;
-    font-size: 11px;
+    padding: var(--shader-studio-control-padding);
+    font-size: var(--shader-studio-font-size);
     background: none;
     border: 1px solid var(--vscode-panel-border, #3c3c3c);
-    border-radius: 4px;
+    border-radius: var(--shader-studio-control-radius);
     color: var(--vscode-descriptionForeground, #888);
     cursor: pointer;
     transition: all 0.15s;
     flex-shrink: 0;
+    min-height: var(--shader-studio-control-height);
   }
 
   .reset-btn:hover {
@@ -1294,14 +1315,20 @@ return;
   }
 
   select {
-    padding: 3px 6px;
-    color: var(--vscode-input-foreground);
-    background: var(--vscode-input-background);
-    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
-    border-radius: 4px;
-    font-size: 12px;
+    padding: var(--shader-studio-control-padding);
+    color: var(--vscode-dropdown-foreground);
+    background: var(--vscode-dropdown-background);
+    border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border));
+    border-radius: var(--shader-studio-control-radius);
+    font-size: var(--shader-studio-font-size);
     outline: none;
+    min-height: var(--shader-studio-control-height);
   }
+
+  select:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
 
   select:focus {
     border-color: var(--vscode-focusBorder, #007acc);

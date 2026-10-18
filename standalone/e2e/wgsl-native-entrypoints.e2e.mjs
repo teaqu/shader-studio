@@ -1,5 +1,10 @@
 import { expect, test } from '@playwright/test';
+import { setDebugPanelControl } from './debug-panel-controls.mjs';
 import { workspace } from './language-service-fixtures.mjs';
+import { useSharedShaderEditor } from './explorer-preferences.mjs';
+
+// These tests edit through the shared editor rather than per-file editors.
+test.beforeEach(({ context }) => useSharedShaderEditor(context));
 
 async function openFixture(page, stem, source, config = { version: '1.0', passes: { Image: { inputs: {} } } }) {
   await page.route('**/__native_entrypoint_fixture__', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Fixture</title>' }));
@@ -58,30 +63,31 @@ test('WGSL native Insert appends one buffer and one compute entry point, then pe
 
   // The saved project preference governs the single Buffer action.
   await page.getByRole('button', { name: '+ New' }).click();
-  await page.getByRole('menuitem', { name: 'Buffer' }).click();
+  await page.getByRole('menuitem', { name: 'Buffer', exact: true }).click();
   const buffer = page.locator('.tab-content').filter({ has: page.getByLabel('Render entry points') });
   await expect(buffer.getByRole('button', { name: 'Built-in', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await buffer.getByRole('button', { name: 'Choose shader file' }).click();
-  await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: `/shaders/${stem}.wgsl`, exact: true }).click();
-  await buffer.getByRole('group', { name: 'Fragment function controls' }).getByRole('button', { name: 'Add function…' }).click();
+  await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: `/${stem}.wgsl`, exact: true }).click();
+  await buffer.getByRole('group', { name: 'Fragment function controls' }).getByRole('button', { name: 'Add function' }).click();
+  await page.getByRole('button', { name: 'Native fragment function', exact: true }).click();
   await expect(buffer.getByRole('button', { name: 'Built-in', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await expect(buffer.getByRole('radio', { name: '@fragment BufferAFragment' })).toBeChecked();
+  await expect(buffer.getByRole('combobox', { name: 'Fragment function' })).toHaveValue('BufferAFragment');
 
   await page.getByRole('button', { name: '+ New' }).click();
   await page.getByRole('menuitem', { name: 'Compute' }).click();
   await page.getByRole('button', { name: 'Choose shader file' }).click();
-  await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: `/shaders/${stem}.wgsl`, exact: true }).click();
+  await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: `/${stem}.wgsl`, exact: true }).click();
   await expect(page.getByRole('combobox', { name: 'Insert mode' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Add function…', exact: true }).click();
 
   await expect.poll(async () => {
     const files = await workspace(page);
-    const config = JSON.parse(files[`/shaders/${stem}.sha.json`]);
+    const config = JSON.parse(files[`/${stem}.sha.json`]);
     const bufferPass = config.passes.BufferA;
     const computePass = config.passes.ComputeA;
     return {
       config,
-      source: files[`/shaders/${stem}.wgsl`],
+      source: files[`/${stem}.wgsl`],
       bufferPass,
       computePass,
     };
@@ -92,12 +98,12 @@ test('WGSL native Insert appends one buffer and one compute entry point, then pe
   });
 
   const saved = await workspace(page);
-  expect(saved[`/shaders/${stem}.wgsl`]).not.toContain('@vertex\nfn BufferAVertex');
-  expect(saved[`/shaders/${stem}.wgsl`].match(/@compute @workgroup_size/g)).toHaveLength(1);
-  expect(saved[`/shaders/${stem}.wgsl`]).not.toContain('@location(1)');
+  expect(saved[`/${stem}.wgsl`]).not.toContain('@vertex\nfn BufferAVertex');
+  expect(saved[`/${stem}.wgsl`].match(/@compute @workgroup_size/g)).toHaveLength(1);
+  expect(saved[`/${stem}.wgsl`]).not.toContain('@location(1)');
 
   await page.reload();
-  await expect.poll(async () => JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`]).passes).toMatchObject({
+  await expect.poll(async () => JSON.parse((await workspace(page))[`/${stem}.sha.json`]).passes).toMatchObject({
     BufferA: { entryPoints: { fragment: 'BufferAFragment' } },
     ComputeA: { entryPoints: { compute: 'ComputeACompute' } },
   });
@@ -116,15 +122,15 @@ test('WGSL native render selector saves a deliberate fragment choice and hook cr
   await page.getByRole('button', { name: 'Same file' }).click();
   await page.getByRole('radio', { name: '@vertex vertexA' }).check();
   await expect(page.getByRole('radio', { name: '@vertex vertexA' })).toBeChecked();
-  await page.getByRole('radio', { name: '@fragment fragmentB' }).check();
+  await page.getByRole('combobox', { name: 'Fragment function' }).selectOption('fragmentB');
   await page.getByRole('radio', { name: 'Built-in / mainVertex' }).check();
   await page.getByRole('button', { name: '+ New' }).click();
-  await page.getByRole('menuitem', { name: 'Buffer' }).click();
+  await page.getByRole('menuitem', { name: 'Buffer', exact: true }).click();
 
-  await expect.poll(async () => JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`])).toMatchObject({
+  await expect.poll(async () => JSON.parse((await workspace(page))[`/${stem}.sha.json`])).toMatchObject({
     passes: { Image: { inputs: {} }, BufferA: { inputs: {} } },
   });
-  const config = JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`]);
+  const config = JSON.parse((await workspace(page))[`/${stem}.sha.json`]);
   expect(config.passes.Image.entryPoints).toEqual({ fragment: 'fragmentB' });
   expect(config.passes.BufferA.entryPoints).toBeUndefined();
 
@@ -133,9 +139,9 @@ test('WGSL native render selector saves a deliberate fragment choice and hook cr
   await page.locator('[data-tab-name="Image"]').click();
   await page.getByRole('button', { name: 'Same file' }).click();
   await page.getByRole('radio', { name: '@vertex vertexA' }).check();
-  await expect.poll(async () => JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`]).passes.Image.entryPoints).toEqual({ vertex: 'vertexA', fragment: 'fragmentB' });
+  await expect.poll(async () => JSON.parse((await workspace(page))[`/${stem}.sha.json`]).passes.Image.entryPoints).toEqual({ vertex: 'vertexA', fragment: 'fragmentB' });
   await page.reload();
-  await expect.poll(async () => JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`]).passes.Image.entryPoints).toEqual({ vertex: 'vertexA', fragment: 'fragmentB' });
+  await expect.poll(async () => JSON.parse((await workspace(page))[`/${stem}.sha.json`]).passes.Image.entryPoints).toEqual({ vertex: 'vertexA', fragment: 'fragmentB' });
 });
 
 test('a shared Buffer keeps its selected second fragment after rapid source updates', async ({ page }) => {
@@ -160,7 +166,7 @@ test('a shared Buffer keeps its selected second fragment after rapid source upda
   await expect(editor.locator('.monaco-editor')).toBeVisible();
   await page.locator('[data-tab-name="BufferA"]').click();
   const fragment = page.getByRole('group', { name: 'Fragment function controls' });
-  await expect(fragment.getByRole('radio', { name: '@fragment rasterColor2' })).toBeChecked();
+  await expect(fragment.getByRole('combobox', { name: 'Fragment function' })).toHaveValue('rasterColor2');
 
   // These are whole-source Monaco pastes. The final source is complete again;
   // no stale per-pass source snapshot may leave the selected function missing.
@@ -168,12 +174,12 @@ test('a shared Buffer keeps its selected second fragment after rapid source upda
   await pasteSource(page, editor, [vertex, rasterColor, '@fragment fn rasterColor3() -> @location(0) vec4f { return vec4f(0.0, 0.0, 1.0, 1.0); }'].join('\n'));
   await pasteSource(page, editor, source);
 
-  await expect(fragment.getByRole('radio', { name: '@fragment rasterColor2' })).toBeChecked();
-  await expect(fragment.getByRole('radio', { name: 'rasterColor2 (missing)' })).toHaveCount(0);
-  await expect.poll(async () => JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`]).passes.BufferA.entryPoints).toEqual({ vertex: 'rasterVertex', fragment: 'rasterColor2' });
+  await expect(fragment.getByRole('combobox', { name: 'Fragment function' })).toHaveValue('rasterColor2');
+  await expect(fragment.getByRole('option', { name: 'rasterColor2 (missing)' })).toHaveCount(0);
+  await expect.poll(async () => JSON.parse((await workspace(page))[`/${stem}.sha.json`]).passes.BufferA.entryPoints).toEqual({ vertex: 'rasterVertex', fragment: 'rasterColor2' });
   await page.reload();
   await page.locator('[data-tab-name="BufferA"]').click();
-  await expect(page.getByRole('radio', { name: '@fragment rasterColor2' })).toBeChecked();
+  await expect(page.getByRole('combobox', { name: 'Fragment function' })).toHaveValue('rasterColor2');
 });
 
 test('a separate native MRT Buffer routes cursor ownership and previews selected outputs', async ({ page }) => {
@@ -199,7 +205,7 @@ struct Outputs {${fields}}
   await expect.poll(async () => isRedOnly(await centerPixel(canvas))).toBe(true);
   await preview.getByLabel('Toggle config panel').click();
   await page.locator('[data-tab-name="BufferA"]').dblclick();
-  const editor = page.locator(`[data-testid="file-editor"][data-path="/shaders/${stem}/buffer.wgsl"]`);
+  const editor = page.locator(`[data-testid="file-editor"][data-path="/${stem}/buffer.wgsl"]`);
   await expect(editor.locator('.monaco-editor')).toBeVisible();
   await preview.getByLabel('Toggle debug mode').click();
   const panel = page.locator('.debug-panel');
@@ -214,9 +220,9 @@ struct Outputs {${fields}}
   await editorInput.press('ArrowDown');
   const output = panel.getByLabel('Preview output');
   await expect(output).toHaveValue('0');
-  // Turn off local inline rendering to display the selected native attachment
+  // Keep inline rendering off to display the selected native attachment
   // itself; the selected statement would otherwise replace it with `value`.
-  await panel.getByLabel('Toggle inline rendering').click();
+  await setDebugPanelControl(page, 'Toggle inline rendering', false);
   await output.selectOption('1');
   await expect(output).toHaveValue('1');
   // The raw attachment's linear 0.2 green channel reads back around 51.
@@ -225,7 +231,7 @@ struct Outputs {${fields}}
   await output.selectOption('5');
   await expect(output).toHaveValue('5');
   await expect.poll(async () => (await centerPixel(canvas))[1]).toBeGreaterThan(245);
-  await panel.getByLabel('Toggle inline rendering').click();
+  await setDebugPanelControl(page, 'Toggle inline rendering', true);
   await panel.getByLabel('Cycle normalize mode').click();
   await panel.getByLabel('Toggle step threshold').click();
   await expect(panel.getByLabel('Cycle normalize mode')).toHaveAttribute('data-tooltip', /Normalize: SOFT/);
@@ -252,16 +258,16 @@ test('new native WGSL Image compiles and makes native Buffer the default', async
   await expect(shader).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('web-preview').locator('.canvas-container canvas').first()).toBeVisible();
   await expect(shader.locator('.shader-error')).toHaveCount(0);
-  await expect.poll(async () => JSON.parse((await workspace(page))['/shaders/native-image-created.sha.json'])).toMatchObject({
+  await expect.poll(async () => JSON.parse((await workspace(page))['/native-image-created.sha.json'])).toMatchObject({
     webgpu: { defaultRenderAuthoring: 'native' },
     passes: { Image: { entryPoints: { fragment: 'ImageFragment' } } },
   });
 
   await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
   await page.getByRole('button', { name: '+ New' }).click();
-  await page.getByRole('menuitem', { name: 'Buffer' }).click();
+  await page.getByRole('menuitem', { name: 'Buffer', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Built-in', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await expect.poll(async () => JSON.parse((await workspace(page))['/shaders/native-image-created.sha.json']).passes.BufferA).toMatchObject({ entryPoints: {} });
+  await expect.poll(async () => JSON.parse((await workspace(page))['/native-image-created.sha.json']).passes.BufferA).toMatchObject({ entryPoints: {} });
 });
 
 test('new native Slang Image compiles, then inserts Buffer and Compute into the same source with canonical entries', async ({ page }) => {
@@ -278,32 +284,33 @@ test('new native Slang Image compiles, then inserts Buffer and Compute into the 
   await expect(shader).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('web-preview').locator('.canvas-container canvas').first()).toBeVisible();
   await expect(shader.locator('.shader-error')).toHaveCount(0);
-  await expect.poll(async () => JSON.parse((await workspace(page))['/shaders/native-slang-created.sha.json'])).toMatchObject({
+  await expect.poll(async () => JSON.parse((await workspace(page))['/native-slang-created.sha.json'])).toMatchObject({
     webgpu: { defaultRenderAuthoring: 'native' },
     passes: { Image: { entryPoints: { fragment: 'ImageFragment' } } },
   });
 
   await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
   await page.getByRole('button', { name: '+ New' }).click();
-  await page.getByRole('menuitem', { name: 'Buffer' }).click();
+  await page.getByRole('menuitem', { name: 'Buffer', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Built-in', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Choose shader file' }).click();
-  await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: '/shaders/native-slang-created.slang', exact: true }).click();
-  await page.getByRole('group', { name: 'Fragment function controls' }).getByRole('button', { name: 'Add function…' }).click();
+  await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: '/native-slang-created.slang', exact: true }).click();
+  await page.getByRole('group', { name: 'Fragment function controls' }).getByRole('button', { name: 'Add function' }).click();
+  await page.getByRole('button', { name: 'Native fragment function', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Built-in', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByRole('radio', { name: '[shader("fragment")] BufferAFragment' })).toBeChecked();
+  await expect(page.getByRole('combobox', { name: 'Fragment function' })).toHaveValue('BufferAFragment');
 
   await page.getByRole('button', { name: '+ New' }).click();
   await page.getByRole('menuitem', { name: 'Compute' }).click();
   await page.getByRole('button', { name: 'Choose shader file' }).click();
-  await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: '/shaders/native-slang-created.slang', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: '/native-slang-created.slang', exact: true }).click();
   await page.getByRole('button', { name: 'Add function…', exact: true }).click();
 
   await expect.poll(async () => {
     const files = await workspace(page);
     return {
-      source: files['/shaders/native-slang-created.slang'],
-      config: JSON.parse(files['/shaders/native-slang-created.sha.json']),
+      source: files['/native-slang-created.slang'],
+      config: JSON.parse(files['/native-slang-created.sha.json']),
     };
   }).toMatchObject({
     source: expect.stringContaining('[shader("compute")]'),
@@ -318,7 +325,7 @@ test('new native Slang Image compiles, then inserts Buffer and Compute into the 
   });
 
   await page.reload();
-  await expect.poll(async () => JSON.parse((await workspace(page))['/shaders/native-slang-created.sha.json']).passes).toMatchObject({
+  await expect.poll(async () => JSON.parse((await workspace(page))['/native-slang-created.sha.json']).passes).toMatchObject({
     BufferA: { entryPoints: { fragment: 'BufferAFragment' } },
     ComputeA: { entryPoints: { compute: 'ComputeACompute' } },
   });
@@ -348,7 +355,7 @@ test('native Compute Add reuses a Buffer source selected from the config and per
   // Workspace hydration opens the newly supplied root shader directly.
   await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
   await page.locator('[data-tab-name="BufferA"]').dblclick();
-  await expect(page.locator(`[data-testid="file-editor"][data-path="/shaders/${stem}/buffer.wgsl"]`).locator('.monaco-editor')).toBeVisible();
+  await expect(page.locator(`[data-testid="file-editor"][data-path="/${stem}/buffer.wgsl"]`).locator('.monaco-editor')).toBeVisible();
 
   await page.getByRole('button', { name: '+ New' }).click();
   await page.getByRole('menuitem', { name: 'Compute' }).click();
@@ -359,19 +366,19 @@ test('native Compute Add reuses a Buffer source selected from the config and per
   await expect.poll(async () => {
     const files = await workspace(page);
     return {
-      image: files[`/shaders/${stem}.wgsl`],
-      buffer: files[`/shaders/${stem}/buffer.wgsl`],
-      compute: JSON.parse(files[`/shaders/${stem}.sha.json`]).passes.ComputeA,
+      image: files[`/${stem}.wgsl`],
+      buffer: files[`/${stem}/buffer.wgsl`],
+      compute: JSON.parse(files[`/${stem}.sha.json`]).passes.ComputeA,
     };
   }).toMatchObject({
     image,
     buffer: expect.stringContaining('@compute @workgroup_size'),
-    compute: { path: `/shaders/${stem}/buffer.wgsl`, type: 'compute', entryPoints: { compute: 'ComputeACompute' } },
+    compute: { path: `/${stem}/buffer.wgsl`, type: 'compute', entryPoints: { compute: 'ComputeACompute' } },
   });
 
   await page.reload();
-  await expect.poll(async () => JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`]).passes.ComputeA).toMatchObject({
-    path: `/shaders/${stem}/buffer.wgsl`, entryPoints: { compute: 'ComputeACompute' },
+  await expect.poll(async () => JSON.parse((await workspace(page))[`/${stem}.sha.json`]).passes.ComputeA).toMatchObject({
+    path: `/${stem}/buffer.wgsl`, entryPoints: { compute: 'ComputeACompute' },
   });
 });
 
@@ -413,9 +420,9 @@ for (const language of ['wgsl', 'slang']) {
 
     await preview.getByLabel('Toggle debug mode').click();
     const panel = page.locator('.debug-panel');
-    if (await panel.locator('.variables-section').count() === 0) {
-      await panel.getByLabel('Toggle variable inspector').click();
-    }
+    // The grayscale check below reads the inline preview, which starts off.
+    await setDebugPanelControl(page, 'Toggle variable inspector', true);
+    await setDebugPanelControl(page, 'Toggle inline rendering', true);
     if (language === 'wgsl') {
       await editor.locator('.view-line').filter({ hasText: 'let value =' }).click();
     } else {
@@ -451,7 +458,7 @@ fn mainImage(coord: vec2f) -> vec4f { return vec4f(abs(iWorldPosition) * 0.65 + 
   const read = () => canvas.evaluate(element => element.toDataURL());
   const initial = await read();
   await checkbox.uncheck();
-  await expect.poll(async () => JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`]).passes.Image.useViewerCamera).toBe(false);
+  await expect.poll(async () => JSON.parse((await workspace(page))[`/${stem}.sha.json`]).passes.Image.useViewerCamera).toBe(false);
   await expect.poll(read).not.toBe(initial);
   const orbit = async () => {
     const box = await canvas.boundingBox();
@@ -470,7 +477,7 @@ fn mainImage(coord: vec2f) -> vec4f { return vec4f(abs(iWorldPosition) * 0.65 + 
   await orbit();
   await expect.poll(read).toBe(reloaded);
   await checkbox.check();
-  await expect.poll(async () => JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`]).passes.Image.useViewerCamera).toBe(true);
+  await expect.poll(async () => JSON.parse((await workspace(page))[`/${stem}.sha.json`]).passes.Image.useViewerCamera).toBe(true);
   await expect.poll(read).not.toBe(reloaded);
   const enabled = await read();
   await orbit();
@@ -503,7 +510,7 @@ fn mainImage(coord: vec2f) -> vec4f { return vec4f(abs(iWorldPosition) * 0.65 + 
   await changeGlobal(false);
   await expect(pass).not.toBeChecked();
   await expect.poll(read).not.toBe(enabled);
-  const saved = () => workspace(page).then(files => JSON.parse(files[`/shaders/${stem}.sha.json`]));
+  const saved = () => workspace(page).then(files => JSON.parse(files[`/${stem}.sha.json`]));
   expect((await saved()).webgpu).toBeUndefined();
   expect((await saved()).passes.Image.useViewerCamera).toBeUndefined();
   const fixed = await read();
@@ -533,3 +540,33 @@ fn mainImage(coord: vec2f) -> vec4f { return vec4f(abs(iWorldPosition) * 0.65 + 
   await changeGlobal(true);
   await expect(pass).toBeChecked();
 });
+
+for (const language of ['wgsl', 'slang']) {
+  test(`Render output adds and selects functions through a contextual menu (${language})`, async ({ page }) => {
+    const stem = 'compact-output';
+    const source = language === 'wgsl' ? 'fn mainImage(p: vec2f) -> vec4f { return vec4f(1); }'
+      : 'float4 mainImage(float2 p) { return float4(1, 1, 1, 1); }';
+    await page.route('**/__compact_output_fixture__', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Fixture</title>' }));
+    await page.goto('/__compact_output_fixture__');
+    await workspace(page, [[`${stem}.${language}`, source], [`${stem}.sha.json`, JSON.stringify({ version: '1.0', passes: { Image: { inputs: {} } } })]]);
+    await page.goto('/');
+    await page.getByTestId(`shader-option-${stem}-${language}`).click();
+    await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
+    const row = page.getByRole('group', { name: 'Fragment function controls', exact: true });
+    await expect(row.getByLabel('Fragment function', { exact: true })).toHaveText('mainImage');
+    await expect(row.getByRole('combobox')).toHaveCount(0);
+    await row.getByRole('button', { name: 'Add function', exact: true }).click();
+    await expect(page.getByRole('button', { name: /Built-in mainImage/ })).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await expect(row.getByRole('button', { name: 'Add function' })).toBeFocused();
+    await row.getByRole('button', { name: 'Add function' }).click();
+    await page.getByRole('button', { name: 'Native fragment function', exact: true }).click();
+    await expect(row.getByRole('combobox', { name: 'Fragment function' })).toHaveValue('ImageFragment');
+    await row.getByRole('combobox', { name: 'Fragment function' }).selectOption('');
+    await expect(row.getByRole('combobox')).toHaveValue('');
+    await page.reload();
+    await expect(row.getByRole('combobox')).toHaveValue('');
+    await expect.poll(async () => JSON.parse((await workspace(page))[`/${stem}.sha.json`]).passes.Image.entryPoints?.fragment ?? '').toBe('');
+    await expect.poll(async () => (await workspace(page))[`/${stem}.${language}`]).toContain('ImageFragment');
+  });
+}

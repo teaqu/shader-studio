@@ -117,26 +117,21 @@ describe('MenuBar', () => {
     });
   }
 
-  it('offers VR in the narrow overflow menu and toggles the pane while dismissing the menu', async () => {
+  it.each([240, 900])('always offers VR in the hamburger menu at width %s', async width => {
     vi.stubGlobal('ResizeObserver', class {
       constructor(private readonly callback: ResizeObserverCallback) {}
       observe() {
-        this.callback([{ contentRect: { width: 240 } } as ResizeObserverEntry], this as unknown as ResizeObserver);
+        this.callback([{ contentRect: { width } } as ResizeObserverEntry], this as unknown as ResizeObserver);
       }
       unobserve() {}
       disconnect() {}
     });
-    updateVrPreviewContext({
-      isVrPreviewAvailable: () => true,
-      isImmersiveVrSupported: async () => false,
-      setVrPreviewEnabled: vi.fn(), render: vi.fn(),
-      enterVr: vi.fn(), exitVr: vi.fn().mockResolvedValue(undefined),
-      setVrNavigationSettings: vi.fn(),
-    }, '/vr.glsl');
+    updateVrPreviewContext(null, '');
     setVrPanelVisible(false);
     try {
       renderMenuBar();
       await tick();
+      expect(screen.queryByRole('button', { name: 'VR' })).toBeNull();
       await fireEvent.click(screen.getByLabelText('Open options menu'));
       const button = screen.getByRole('button', { name: 'VR' });
       expect(button.classList.contains('active')).toBe(false);
@@ -150,11 +145,38 @@ describe('MenuBar', () => {
       updateVrPreviewContext(null, '');
       await tick();
       await fireEvent.click(screen.getByLabelText('Open options menu'));
-      expect(screen.queryByRole('button', { name: 'VR' })).toBeNull();
+      await fireEvent.click(screen.getByRole('button', { name: 'VR' }));
+      expect(isVrPanelVisible()).toBe(true);
     } finally {
       updateVrPreviewContext(null, '');
       setVrPanelVisible(false);
       vi.unstubAllGlobals();
+    }
+  });
+
+  it('shows the detected VR shortcut at the far right and removes it for ordinary shaders', async () => {
+    const renderer = {
+      isVrPreviewAvailable: () => true,
+      setVrPreviewEnabled: vi.fn(), render: vi.fn(),
+      setVrNavigationSettings: vi.fn(),
+    };
+    updateVrPreviewContext(renderer, '/vr.glsl');
+    try {
+      renderMenuBar();
+      await tick();
+      const button = screen.getByRole('button', { name: 'VR' });
+      expect(button.parentElement?.lastElementChild).toBe(button);
+      await fireEvent.click(button);
+      expect(isVrPanelVisible()).toBe(true);
+      await fireEvent.click(screen.getByLabelText('Open options menu'));
+      expect(screen.getAllByRole('button', { name: 'VR' })).toHaveLength(2);
+      updateVrPreviewContext(null, '');
+      await tick();
+      expect(screen.getAllByRole('button', { name: 'VR' })).toHaveLength(1);
+      expect(isVrPanelVisible()).toBe(true);
+    } finally {
+      updateVrPreviewContext(null, '');
+      setVrPanelVisible(false);
     }
   });
 
@@ -178,6 +200,17 @@ describe('MenuBar', () => {
 
       expect(screen.getByRole('button', { name: 'Toggle debug mode' })).not.toBeDisabled();
     });
+  });
+
+  it('explains the current lock state and click action on hover', async () => {
+    const { rerender } = renderMenuBar();
+    const button = screen.getByLabelText('Toggle lock');
+    expect(button).toHaveAttribute('title', 'Unlocked: linked buffer files keep this shader preview. Opening another shader switches the preview. Click to lock this shader.');
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+
+    await rerender({ ...defaultProps, isLocked: true });
+    expect(button).toHaveAttribute('title', 'Locked: preview stays on this shader while you edit other files. Click to unlock and follow the active shader file.');
+    expect(button).toHaveAttribute('aria-pressed', 'true');
   });
 
   describe('volume slider', () => {
@@ -627,7 +660,7 @@ describe('MenuBar', () => {
     expect(profiles.switchTo).toHaveBeenCalledWith('focused');
   });
 
-  it('keeps the locked command available from the compact options menu', async () => {
+  it.each([false, true])('explains lock state (%s) in the compact options menu', async isLocked => {
     vi.stubGlobal('ResizeObserver', class {
       constructor(private readonly callback: ResizeObserverCallback) {}
       observe() {
@@ -637,12 +670,16 @@ describe('MenuBar', () => {
       disconnect() {}
     });
     try {
-      renderMenuBar({ ...defaultProps, isLocked: true });
+      renderMenuBar({ ...defaultProps, isLocked });
       await tick();
 
       await fireEvent.click(screen.getByLabelText('Open options menu'));
       const command = screen.getAllByLabelText('Toggle lock').at(-1)!;
-      expect(command).toHaveTextContent('Unlock');
+      expect(command).toHaveTextContent(isLocked ? 'Unlock' : 'Lock');
+      expect(command).toHaveAttribute('title', isLocked
+        ? 'Locked: preview stays on this shader while you edit other files. Click to unlock and follow the active shader file.'
+        : 'Unlocked: linked buffer files keep this shader preview. Opening another shader switches the preview. Click to lock this shader.');
+      expect(command).toHaveAttribute('aria-pressed', String(isLocked));
       await fireEvent.click(command);
       expect(defaultProps.onToggleLock).toHaveBeenCalledOnce();
     } finally {

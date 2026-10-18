@@ -2,6 +2,10 @@ import { expect, test } from '@playwright/test';
 import { PNG } from 'pngjs';
 import { startTwoBuildServer } from './two-build-server.mjs';
 import { readWorkspaceFiles } from './workspace-store.mjs';
+import { useSharedShaderEditor } from './explorer-preferences.mjs';
+
+// These tests edit through the shared editor rather than per-file editors.
+test.beforeEach(({ context }) => useSharedShaderEditor(context));
 
 test.use({ serviceWorkers: 'allow' });
 

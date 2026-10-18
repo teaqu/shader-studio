@@ -148,6 +148,58 @@ describe("KeyboardManager", () => {
     });
   });
 
+  describe('injected input', () => {
+    it('maps stable DOM codes without dispatching a window event', () => {
+      keyboardManager.inject('KeyW', true);
+      expect(keyboardManager.getKeyHeld()[87]).toBe(255);
+      expect(keyboardManager.getKeyPressed()[87]).toBe(255);
+      keyboardManager.clearPressed();
+      keyboardManager.inject('KeyW', true);
+      expect(keyboardManager.getKeyPressed()[87]).toBe(0);
+      keyboardManager.inject('KeyW', false);
+      expect(keyboardManager.getKeyHeld()[87]).toBe(0);
+    });
+
+    it('supports Space and rejects layout-dependent names', () => {
+      keyboardManager.inject('Space', true);
+      expect(keyboardManager.getKeyHeld()[32]).toBe(255);
+      expect(() => keyboardManager.inject('w', true)).toThrow('Unsupported keyboard code');
+    });
+
+    it('accepts direct automation while physical input is disabled', () => {
+      keyboardManager.setEnabled(false);
+      keyboardManager.inject('KeyW', true);
+      expect(keyboardManager.getKeyHeld()[87]).toBe(255);
+      keyboardManager.releaseAll();
+      expect(keyboardManager.getKeyHeld()[87]).toBe(0);
+    });
+
+    it('reports injected and physical events, then stops after subscription disposal', () => {
+      keyboardManager.setupEventListeners();
+      const listener = vi.fn();
+      const subscription = keyboardManager.onInput(listener);
+      keyboardManager.inject('Digit4', true);
+      window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyA', keyCode: 65 } as any));
+      subscription.dispose();
+      keyboardManager.inject('Enter', true);
+      expect(listener).toHaveBeenNthCalledWith(1, 'Digit4', true, 'injected');
+      expect(listener).toHaveBeenNthCalledWith(2, 'KeyA', false, 'physical');
+    });
+
+    it('enumerates canonical held codes and emits physical releases on blur', () => {
+      keyboardManager.setupEventListeners();
+      const listener = vi.fn();
+      keyboardManager.onInput(listener);
+      keyboardManager.inject('ArrowLeft', true);
+      keyboardManager.inject('Digit2', true);
+      expect(keyboardManager.getHeldCodes()).toEqual(['ArrowLeft', 'Digit2']);
+      window.dispatchEvent(new Event('blur'));
+      expect(listener).toHaveBeenCalledWith('ArrowLeft', false, 'physical');
+      expect(listener).toHaveBeenCalledWith('Digit2', false, 'physical');
+      expect(keyboardManager.getHeldCodes()).toEqual([]);
+    });
+  });
+
   describe("keyup handling", () => {
     beforeEach(() => {
       keyboardManager.setupEventListeners();

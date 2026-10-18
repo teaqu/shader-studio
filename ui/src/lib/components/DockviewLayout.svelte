@@ -10,7 +10,7 @@
     type SerializedDockview,
   } from "dockview-core";
   import "dockview-core/dist/styles/dockview.css";
-  import { setupDockviewTabs } from "../layout/dockviewTabs";
+  import { setupDockviewTabs, createShaderTab } from "../layout/dockviewTabs";
   import type { Transport } from "../transport/MessageTransport";
   import { setCurrentLayout, getPendingLayout, hasPendingLayout, clearPendingLayout } from "../state/layoutState.svelte";
   import type { SerializedLayout } from "@shader-studio/types";
@@ -573,6 +573,8 @@
       return;
     }
     api = createDockview(containerEl, {
+      defaultTabComponent: 'shader-tab',
+      createTabComponent: createShaderTab,
       createComponent(options) {
         return new SvelteContentRenderer(options.name);
       },
@@ -670,6 +672,8 @@
 
   /* VS Code theme mapping for dockview */
   :global(.shader-studio-dockview-theme) {
+    --dv-tabs-and-actions-container-height: var(--shader-studio-tab-height);
+    --dv-tab-font-size: var(--shader-studio-font-size);
     --dv-activegroup-visiblepanel-tab-background-color: var(--vscode-tab-activeBackground, var(--vscode-editor-background));
     --dv-activegroup-visiblepanel-tab-color: var(--vscode-tab-activeForeground, var(--vscode-editor-foreground));
     --dv-activegroup-hiddenpanel-tab-background-color: var(--vscode-tab-inactiveBackground, transparent);

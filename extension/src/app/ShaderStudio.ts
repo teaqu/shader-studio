@@ -4,6 +4,9 @@ import { Logger } from "./services/Logger";
 import { PanelManager } from "./PanelManager";
 import { ShaderProvider } from "./ShaderProvider";
 import { WebServer } from "./WebServer";
+import { LocalMcpEndpoint } from './mcp/LocalMcpEndpoint';
+import { McpConnection } from './mcp/McpConnection';
+import { VscodeMcpApplication } from './mcp/VscodeMcpApplication';
 import { WebSocketTransport } from "./transport/WebSocketTransport";
 import { ShaderExplorerProvider } from "./ShaderExplorerProvider";
 import { ShaderExplorerViewProvider } from "./ShaderExplorerViewProvider";
@@ -23,6 +26,13 @@ export class ShaderStudio {
   private panelManager: PanelManager;
   private webServer: WebServer;
   private webSocketTransport: WebSocketTransport | null = null;
+  private mcpEndpoint?: LocalMcpEndpoint;
+  private mcpConnection: McpConnection;
+  private mcpUrl?: string;
+  private mcpError?: string;
+  private mcpConfiguration: Promise<void> = Promise.resolve();
+  private mcpConfigurationVersion = 0;
+  private disposed = false;
   private shaderProvider: ShaderProvider;
   private messenger: Messenger;
   private context: vscode.ExtensionContext;
@@ -112,6 +122,64 @@ export class ShaderStudio {
 
     this.registerCommands();
     this.registerEventHandlers();
+    this.mcpConnection = new McpConnection(context, () => this.configureMcp(), () => ({
+      enabled: vscode.workspace.getConfiguration('shader-studio').get<boolean>('mcpEnabled', false),
+      trusted: vscode.workspace.isTrusted,
+      ready: this.mcpUrl !== undefined,
+      url: this.mcpUrl,
+      message: this.mcpError,
+      connectedAssistants: this.mcpUrl ? this.mcpEndpoint?.connectedAssistants ?? 0 : 0,
+    }));
+    this.configureMcp();
+    context.subscriptions.push(vscode.workspace.onDidGrantWorkspaceTrust(() => this.configureMcp()));
+    context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
+      if (['mcpEnabled', 'mcpPort'].some(key => event.affectsConfiguration(`shader-studio.${key}`))) {
+        this.configureMcp();
+      }
+    }));
+  }
+
+  private configureMcp(): void {
+    const version = ++this.mcpConfigurationVersion;
+    this.messenger.setMcpEnabled(false);
+    this.mcpUrl = undefined;
+    this.mcpError = undefined;
+    this.mcpConfiguration = this.mcpConfiguration.then(async () => {
+      this.webServer.setMcpHandler(undefined);
+      await this.mcpEndpoint?.dispose();
+      this.mcpEndpoint = undefined;
+      const config = vscode.workspace.getConfiguration('shader-studio');
+      if (this.disposed || version !== this.mcpConfigurationVersion || !config.get<boolean>('mcpEnabled', false)) {
+        return;
+      }
+      if (!vscode.workspace.isTrusted) {
+        throw new Error('Trust this workspace before enabling MCP.');
+      }
+      const token = await this.mcpConnection.getToken();
+      if (this.disposed || version !== this.mcpConfigurationVersion) {
+        return;
+      }
+      this.messenger.setMcpEnabled(true);
+      const endpoint = new LocalMcpEndpoint(new VscodeMcpApplication(this.messenger, this.shaderProvider, vscode.Uri.joinPath(this.context.globalStorageUri, 'mcp-recordings').fsPath), token);
+      this.mcpEndpoint = endpoint;
+      const port = await endpoint.start(config.get<number>('mcpPort', 51474));
+      if (this.disposed || version !== this.mcpConfigurationVersion) {
+        this.messenger.setMcpEnabled(false);
+        await endpoint.dispose();
+        this.mcpEndpoint = undefined;
+        return;
+      }
+      this.webServer.setMcpHandler((req, res) => endpoint.handle(req, res));
+      this.mcpUrl = `http://127.0.0.1:${port}/mcp`;
+      this.logger.info(`Local MCP ready at http://127.0.0.1:${port}/mcp. See the MCP setup documentation for client authentication.`);
+    }).catch(async error => {
+      this.messenger.setMcpEnabled(false);
+      await this.mcpEndpoint?.dispose();
+      this.mcpEndpoint = undefined;
+      this.mcpUrl = undefined;
+      this.mcpError = `Local MCP could not start: ${error instanceof Error ? error.message : String(error)}`;
+      this.logger.error(`Local MCP could not start: ${error}`);
+    });
   }
 
   public isDevelopmentMode(): boolean {
@@ -133,6 +201,11 @@ export class ShaderStudio {
   }
 
   public dispose(): void {
+    this.disposed = true;
+    this.mcpConnection.dispose();
+    this.mcpUrl = undefined;
+    this.webServer.setMcpHandler(undefined);
+    void this.mcpEndpoint?.dispose();
     this.webServer.stopWebServer();
     this.messenger.close();
     this.sShaderExplorerProvider.dispose();
@@ -385,13 +458,18 @@ export class ShaderStudio {
 
   private registerEventHandlers(): void {
     vscode.window.onDidChangeActiveTextEditor((editor) => {
+      if (this.panelManager.activeShaderEditors.isManaging) {
+        return;
+      }
       this.compileController.handleActiveEditorChange(editor);
       this.handleConfigEditorActivated(editor);
     });
 
     vscode.workspace.onDidChangeTextDocument((event) => {
-      this.compileController.handleTextDocumentChange(event);
-      this.handleConfigDocumentChange(event.document);
+      const handledByMcp = this.compileController.handleTextDocumentChange(event);
+      if (!handledByMcp) {
+        this.handleConfigDocumentChange(event.document);
+      }
     });
 
     vscode.workspace.onDidSaveTextDocument((document) => {
@@ -530,7 +608,8 @@ export class ShaderStudio {
     }
   }
 
-  private async refreshCurrentShader(options?: { reload?: boolean }): Promise<void> {
+  private async refreshCurrentShader(options?: { reload?: boolean; refreshRequestId?: number }): Promise<void> {
+    const sendOptions = refreshSendOptions(options);
     this.logger.info("Refreshing current/active shader");
 
     const activeEditor = vscode.window.activeTextEditor;
@@ -539,7 +618,7 @@ export class ShaderStudio {
         `Refreshing current shader: ${activeEditor.document.fileName}`,
       );
       this.shaderProvider.claimActiveAnalysisContext(activeEditor.document.uri.fsPath);
-      await this.shaderProvider.sendShaderFromEditor(activeEditor, { reload: options?.reload ?? true });
+      await this.shaderProvider.sendShaderFromEditor(activeEditor, sendOptions);
     } else {
       const lastViewedFile = this.glslFileTracker.getLastViewedGlslFile();
       if (lastViewedFile) {
@@ -547,7 +626,7 @@ export class ShaderStudio {
           `No active GLSL editor, reloading last viewed file: ${lastViewedFile}`,
         );
         this.shaderProvider.claimActiveAnalysisContext(lastViewedFile);
-        await this.shaderProvider.sendShaderFromPath(lastViewedFile, { reload: options?.reload ?? true });
+        await this.shaderProvider.sendShaderFromPath(lastViewedFile, sendOptions);
       } else {
         this.logger.info("No active GLSL editor and no last viewed file — nothing to refresh");
       }
@@ -556,7 +635,7 @@ export class ShaderStudio {
 
   private async refreshSpecificShaderByPath(
     shaderPath: string,
-    options?: { claimActiveAnalysisContext?: boolean; reload?: boolean },
+    options?: { claimActiveAnalysisContext?: boolean; reload?: boolean; refreshRequestId?: number },
   ): Promise<void> {
     this.logger.info(`Refreshing shader by path: ${shaderPath}`);
 
@@ -574,7 +653,7 @@ export class ShaderStudio {
         this.glslFileTracker.setLastViewedGlslFile(shaderPath);
         this.shaderProvider.claimActiveAnalysisContext(shaderPath);
       }
-      await this.shaderProvider.sendShaderFromPath(shaderPath, { reload: options?.reload ?? true });
+      await this.shaderProvider.sendShaderFromPath(shaderPath, refreshSendOptions(options));
     } catch (error) {
       this.logger.error(
         `Failed to refresh shader at path '${shaderPath}': ${error}`,
@@ -603,4 +682,14 @@ export class ShaderStudio {
     await this.shaderCreator.create();
   }
 
+}
+
+/** Refreshes reload by default; a viewer request id is echoed only when present. */
+function refreshSendOptions(
+  options?: { reload?: boolean; refreshRequestId?: number },
+): { reload: boolean; refreshRequestId?: number } {
+  return {
+    reload: options?.reload ?? true,
+    ...(options?.refreshRequestId !== undefined ? { refreshRequestId: options.refreshRequestId } : {}),
+  };
 }

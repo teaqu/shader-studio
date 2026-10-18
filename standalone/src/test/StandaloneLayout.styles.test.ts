@@ -14,7 +14,7 @@ describe('standalone drop destination styles', () => {
 
 describe('standalone responsive layout styles', () => {
   it('stacks the dockview above the mobile navigation at the narrow breakpoint', () => {
-    expect(component).toMatch(/@media \(max-width: 767px\)[\s\S]*?\.standalone-layout\s*{[^}]*flex-direction: column/);
+    expect(component).toMatch(/@media \(max-width: 767px\)[\s\S]*?\.standalone-layout\.mobile-layout\s*{[^}]*flex-direction: column/);
   });
 
   it('hides Dockview tab chrome while the one-panel mobile navigation owns panel selection', () => {

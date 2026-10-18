@@ -73,11 +73,11 @@ export function removeWorkspacePaths(page, paths) {
   return workspaceOperation(page, { remove: paths });
 }
 
-/** Add `/shaders/<name>` files from `[name, contents]` pairs. */
+/** Add `/<name>` files from `[name, contents]` pairs. */
 export function addShaderFiles(page, entries) {
   const at = Date.now();
   return putWorkspaceFiles(page, entries.map(([name, contents]) => ({
-    path: `/shaders/${name}`,
+    path: `/${name}`,
     contents,
     createdAt: at,
     modifiedAt: at,

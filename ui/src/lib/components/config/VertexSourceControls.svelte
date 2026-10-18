@@ -39,7 +39,7 @@
 <style>
   .source-options { display: flex; }
   .source-options.has-file { margin-bottom: 12px; }
-  button { padding: 6px 9px; font: inherit; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); cursor: pointer; }
+  button { padding: var(--shader-studio-control-padding); font: inherit; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); cursor: pointer; min-height: var(--shader-studio-control-height); }
   .source-options button { flex: 1; } .source-options button[aria-pressed='true'] { background: var(--vscode-list-activeSelectionBackground); border-color: var(--vscode-focusBorder); }
   .source-options button { display: flex; align-items: center; justify-content: center; gap: 6px; }
 </style>

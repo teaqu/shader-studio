@@ -15,9 +15,9 @@ describe('debugPanelStore', () => {
     const { debugPanelStore } = await importStore();
     const state = get(debugPanelStore);
     expect(state.isVisible).toBe(false);
-    expect(state.isVariableInspectorEnabled).toBe(false);
-    expect(state.isInlineRenderingEnabled).toBe(true);
-    expect(state.isPixelInspectorEnabled).toBe(true);
+    expect(state.isVariableInspectorEnabled).toBe(true);
+    expect(state.isInlineRenderingEnabled).toBe(false);
+    expect(state.isPixelInspectorEnabled).toBe(false);
     expect(state.isPixelMarkerEnabled).toBe(true);
     expect(state.isErrorsEnabled).toBe(false);
     expect(state.normalizeMode).toBe('off');
@@ -119,8 +119,8 @@ describe('debugPanelStore', () => {
 
     expect(snap.isVisible).toBe(true);
     expect(snap.isVariableInspectorEnabled).toBe(true);
-    expect(snap.isInlineRenderingEnabled).toBe(true);
-    expect(snap.isPixelInspectorEnabled).toBe(true);
+    expect(snap.isInlineRenderingEnabled).toBe(false);
+    expect(snap.isPixelInspectorEnabled).toBe(false);
     expect(snap.isPixelMarkerEnabled).toBe(true);
     expect(snap.isErrorsEnabled).toBe(true);
     expect(snap.normalizeMode).toBe('soft');

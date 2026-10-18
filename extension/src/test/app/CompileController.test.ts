@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import { CompileController } from '../../app/CompileController';
+import { mcpEditGuard } from '../../app/mcp/McpEditGuard';
 
 suite('CompileController Test Suite', () => {
   let sandbox: sinon.SinonSandbox;
@@ -328,5 +329,35 @@ suite('CompileController Test Suite', () => {
     sinon.assert.notCalled(mockGlslFileTracker.setLastViewedGlslFile);
     sinon.assert.notCalled(mockShaderProvider.claimActiveAnalysisContext);
     assert.ok(mockShaderProvider.sendShaderFromDocument.calledOnceWith(document));
+  });
+
+  test('suppresses an MCP dependency edit while its selected preview refreshes', () => {
+    const dependency = {
+      fileName: '/mock/path/hello.controls.glsl', languageId: 'glsl',
+      uri: vscode.Uri.file('/mock/path/hello.controls.glsl'), getText: sandbox.stub().returns('// controls'),
+    } as any;
+    mockMessenger.hasActiveClients.returns(true);
+    controller.setMode('hot');
+    mcpEditGuard.arm(dependency.uri.fsPath, '// controls', '/mock/path/hello.glsl');
+
+    controller.handleTextDocumentChange({ document: dependency } as vscode.TextDocumentChangeEvent);
+
+    sinon.assert.notCalled(mockShaderProvider.sendShaderFromDocument);
+    sinon.assert.notCalled(mockShaderProvider.sendShaderFromPath);
+  });
+
+  test('suppresses a newly created MCP shader until it is explicitly selected', () => {
+    const created = {
+      fileName: '/mock/path/new.glsl', languageId: 'glsl',
+      uri: vscode.Uri.file('/mock/path/new.glsl'), getText: sandbox.stub().returns(''),
+    } as any;
+    mockMessenger.hasActiveClients.returns(true);
+    controller.setMode('hot');
+    mcpEditGuard.arm(created.uri.fsPath, '', '');
+
+    controller.handleTextDocumentChange({ document: created } as vscode.TextDocumentChangeEvent);
+
+    sinon.assert.notCalled(mockShaderProvider.sendShaderFromDocument);
+    sinon.assert.notCalled(mockShaderProvider.sendShaderFromPath);
   });
 });

@@ -1,6 +1,11 @@
 import { expect, test } from '@playwright/test';
+import { setDebugPanelControl } from './debug-panel-controls.mjs';
 import { PNG } from 'pngjs';
 import { addShaderFiles, readWorkspaceFiles } from './workspace-store.mjs';
+import { useSharedShaderEditor } from './explorer-preferences.mjs';
+
+// These tests edit through the shared editor rather than per-file editors.
+test.beforeEach(({ context }) => useSharedShaderEditor(context));
 async function waitForStoragePreview(page, expected) {
   const canvas = page.getByTestId('web-preview').locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
   await expect.poll(async () => {
@@ -30,6 +35,45 @@ async function seedWgslAuditFiles(page, entries) {
   await page.goto('/');
 }
 
+test('storage cards add, rename, select and delete individual buffers with persistence', async ({ page }) => {
+  await seedWgslAuditFiles(page, [
+    ['storage-cards.wgsl', 'fn mainImage(p: vec2f) -> vec4f { return vec4f(0.5); }'],
+    ['storage-cards.sha.json', JSON.stringify({ version: '1.0', passes: { Image: {} } })],
+  ]);
+  await page.getByTestId('shader-option-storage-cards-wgsl').click();
+  const preview = page.getByTestId('web-preview');
+  const config = page.locator('.config-panel');
+  await preview.getByLabel('Toggle config panel').click();
+  await expect(config.getByRole('button', { name: 'Storage', exact: true })).toHaveCount(0);
+  await config.getByRole('button', { name: '+ New', exact: true }).click();
+  await config.getByRole('menuitem', { name: 'Storage buffer', exact: true }).click();
+  await expect(config.getByLabel('Storage name', { exact: true })).toBeVisible();
+  await config.getByLabel('Storage name', { exact: true }).fill('particles');
+  await config.getByRole('button', { name: 'Apply pending storage changes' }).click();
+  await expect(config.getByRole('button', { name: 'Storage buffer particles', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(config.getByRole('navigation', { name: 'Storage buffers list' })).toHaveCount(0);
+  await config.getByRole('button', { name: '+ New', exact: true }).click();
+  await config.getByRole('menuitem', { name: 'Storage buffer', exact: true }).click();
+  await config.getByLabel('Storage name', { exact: true }).fill('density');
+  await config.getByRole('button', { name: 'Apply pending storage changes' }).click();
+  await config.getByRole('button', { name: 'Storage buffer particles', exact: true }).click();
+  await expect(config.getByLabel('Storage name', { exact: true })).toHaveValue('particles');
+  await expect(preview.locator('.preview-output-label')).toHaveText('storage-cards.wgsl › Image');
+  await page.reload();
+  if (!await config.isVisible()) {
+    await preview.getByLabel('Toggle config panel').click();
+  }
+  await expect(config.getByRole('button', { name: 'Storage buffer particles', exact: true })).toBeVisible();
+  await config.getByRole('button', { name: 'Storage buffer density', exact: true }).click();
+  await config.getByRole('button', { name: 'Delete density', exact: true }).click();
+  await expect(config.getByRole('button', { name: 'Storage buffer density', exact: true })).toHaveCount(0);
+  await expect(config.getByRole('button', { name: 'Storage buffer particles', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await config.getByRole('button', { name: 'Delete particles', exact: true }).click();
+  await expect(config.getByRole('button', { name: 'Image', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.reload();
+  await expect(config.getByRole('button', { name: /^Storage buffer / })).toHaveCount(0);
+});
+
 test('inspects WGSL vec3 storage read-only through the standalone config UI', async ({ page }) => {
   await seedWgslAuditFiles(page, [
     ['inspector.wgsl', `fn mainImage(coord: vec2f) -> vec4f {
@@ -49,7 +93,7 @@ test('inspects WGSL vec3 storage read-only through the standalone config UI', as
   await preview.getByLabel('Toggle config panel').click();
   const config = page.locator('.config-panel');
   await expect(config).toBeVisible();
-  await config.getByRole('button', { name: 'Storage', exact: true }).click();
+  await config.getByRole('button', { name: 'Storage buffer directions', exact: true }).click();
   await config.getByRole('tab', { name: 'Inspect', exact: true }).click();
   const inspector = page.getByLabel('Inspect directions');
   await expect(inspector.getByLabel('Element 0 component 1')).toHaveText('0.75');
@@ -62,7 +106,7 @@ test('inspects WGSL vec3 storage read-only through the standalone config UI', as
   if (!await config.isVisible()) {
 await preview.getByLabel('Toggle config panel').click();
 }
-  await config.getByRole('button', { name: 'Storage', exact: true }).click();
+  await config.getByRole('button', { name: 'Storage buffer directions', exact: true }).click();
   await config.getByRole('tab', { name: 'Inspect', exact: true }).click();
   await expect(inspector.getByLabel('Element 0 component 1')).toHaveText('0.75');
 });
@@ -78,7 +122,7 @@ test(`storage workspace saves structured layout and lifecycle changes and uses c
   await page.getByTestId('shader-option-storage-design-wgsl').click();
   const preview = page.getByTestId('web-preview'), config = page.locator('.config-panel');
   await preview.getByLabel('Toggle config panel').click();
-  await config.getByRole('button', { name: 'Storage', exact: true }).click();
+  await config.getByRole('button', { name: 'Storage buffer particles', exact: true }).click();
   await config.getByLabel('Data layout').selectOption('struct');
   await config.getByLabel('Element count').fill('64');
   await config.getByLabel('Between frames').selectOption('clear');
@@ -90,7 +134,7 @@ test(`storage workspace saves structured layout and lifecycle changes and uses c
   if (!await config.isVisible()) {
  await preview.getByLabel('Toggle config panel').click();
 }
-  await config.getByRole('button', { name: 'Storage', exact: true }).click();
+  await config.getByRole('button', { name: 'Storage buffer particles', exact: true }).click();
   await expect(config.getByLabel('Element count')).toHaveValue('64');
   await expect(config.getByLabel('Data layout')).toHaveValue('struct');
   await expect(config.getByLabel('Field 1 name')).toHaveValue('position');
@@ -102,22 +146,33 @@ test(`storage workspace saves structured layout and lifecycle changes and uses c
   await expect(config.getByRole('option', { name: 'After Seed', exact: true })).toHaveCount(0);
   await config.getByRole('tab', { name: 'Settings', exact: true }).click();
   const actionHeights = await config.locator('.storage-panel button:not([role="tab"]):not(nav button)').evaluateAll(items => items.map(item => Math.round(item.getBoundingClientRect().height)));
-  expect(new Set(actionHeights)).toEqual(new Set([32]));
+  // Every storage action uses the theme's shared control height.
+  const controlHeight = await page.evaluate(() => {
+    const probe = document.createElement('span');
+    probe.style.cssText = 'display:block;height:var(--shader-studio-control-height)';
+    document.body.append(probe);
+    const height = Math.round(probe.getBoundingClientRect().height);
+    probe.remove();
+    return height;
+  });
+  expect(new Set(actionHeights)).toEqual(new Set([controlHeight]));
   const inputTheme = await config.getByLabel('Element count').evaluate(item => {
     const style = getComputedStyle(item);
     const probe = document.createElement('span');
     probe.style.backgroundColor = 'var(--vscode-input-background)';
+    probe.style.fontSize = 'var(--shader-studio-font-size)';
     item.parentElement.append(probe);
-    const expectedBackground = getComputedStyle(probe).backgroundColor;
+    const { backgroundColor: expectedBackground, fontSize: expectedFontSize } = getComputedStyle(probe);
     probe.remove();
-    return { background: style.backgroundColor, expectedBackground, radius: style.borderRadius, fontSize: style.fontSize };
+    return { background: style.backgroundColor, expectedBackground, radius: style.borderRadius, fontSize: style.fontSize, expectedFontSize };
   });
   expect(inputTheme.background).toBe(inputTheme.expectedBackground);
   expect(inputTheme.radius).toBe('4px');
-  expect(inputTheme.fontSize).toBe('12px');
+  // Storage inputs use the theme's shared control font size.
+  expect(inputTheme.fontSize).toBe(inputTheme.expectedFontSize);
   const tabStyle = await config.getByRole('tab', { name: 'Settings', exact: true }).evaluate(item => ({ radius: getComputedStyle(item).borderRadius, top: getComputedStyle(item).borderTopWidth }));
   expect(tabStyle).toEqual({ radius: '0px', top: '0px' });
-  const navRow = config.getByRole('button', { name: 'Select storage particles' });
+  const navRow = config.getByRole('button', { name: 'Storage buffer particles' });
   expect(await navRow.evaluate(item => item.scrollHeight <= item.clientHeight)).toBe(true);
   await config.screenshot({ path: `test-results/storage-settings-${theme}.png` });
   await page.setViewportSize({ width: 1000, height: 900 });
@@ -139,13 +194,13 @@ test('storage inspector focuses one struct field and captures scalar values befo
   await waitForStoragePreview(page, [64, 128, 191]);
   const config = page.locator('.config-panel');
   await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
-  await config.getByRole('button', { name: 'Storage', exact: true }).click();
+  await config.getByRole('button', { name: 'Storage buffer particles', exact: true }).click();
   await config.getByRole('tab', { name: 'Inspect', exact: true }).click();
   await expect(config.getByLabel('Element 0 component 0')).toHaveText('0.25');
   await config.getByLabel('Inspect field').selectOption('velocity');
   await expect(config.getByLabel('Element 0 component 0')).toHaveText('10');
   await expect(config.getByRole('columnheader')).toHaveCount(5);
-  await config.getByRole('button', { name: 'Select storage counters' }).click();
+  await config.getByRole('button', { name: 'Storage buffer counters' }).click();
   await expect(config.locator('table')).toHaveCount(0);
   await expect(config.getByLabel('Inspect field')).toHaveCount(0);
   await expect(config.getByLabel('Element 0 value')).toHaveText('42');
@@ -159,7 +214,7 @@ test('storage inspector focuses one struct field and captures scalar values befo
   await config.getByRole('button', { name: 'Start live' }).click();
   await expect(config.getByRole('button', { name: 'Pause live' })).toHaveAttribute('aria-pressed', 'true');
   await config.getByRole('button', { name: 'Pause live' }).click();
-  await config.getByRole('button', { name: 'Select storage particles' }).click();
+  await config.getByRole('button', { name: 'Storage buffer particles' }).click();
   await expect(config.getByLabel('Inspect field')).toHaveValue('velocity');
   await expect(config.getByLabel('Element 0 component 0')).toHaveText('10');
   await config.screenshot({ path: 'test-results/storage-inspect.png' });
@@ -181,6 +236,7 @@ for (const language of ['wgsl', 'slang']) {
       if (await panel.locator('.variables-section').count() === 0) {
         await panel.getByLabel('Toggle variable inspector').click();
       }
+      await setDebugPanelControl(page, 'Toggle inline rendering', true);
       await editor.locator('.view-line').filter({ hasText: `formula = ${value};` }).click();
       await expect(panel.locator('.fn-name')).toHaveText('mainImage');
       await expect(panel.locator('.header-info:not(.fn-name):not(.fn-type)')).toContainText('L3');
@@ -218,9 +274,10 @@ test('Slang compute replay refuses subgroup results and recovers after an edit',
   }).toEqual([32, 0, 0]);
   await preview.getByLabel('Toggle debug mode').click();
   const panel = page.locator('.debug-panel');
-  if (await panel.locator('.variables-section').count() === 0) {
-    await panel.getByLabel('Toggle variable inspector').click();
-  }
+  // The line refusal comes from inline replay, which starts off; the variable
+  // inspector reports the capture error and the recovered value.
+  await setDebugPanelControl(page, 'Toggle variable inspector', true);
+  await setDebugPanelControl(page, 'Toggle inline rendering', true);
   await preview.getByLabel('Toggle lock', { exact: true }).click();
   await preview.getByLabel('Toggle config panel').click();
   await page.locator('.config-panel [data-tab-name="Compute"]').dblclick();
@@ -250,6 +307,7 @@ for (const language of ['wgsl', 'slang', 'glsl']) {
     if (await panel.locator('.variables-section').count() === 0) {
       await panel.getByLabel('Toggle variable inspector').click();
     }
+    await setDebugPanelControl(page, 'Toggle inline rendering', true);
     await page.getByRole('button', { name: 'Open in separate editor', exact: true }).click();
     const editor = page.locator('.monaco-editor').filter({ visible: true });
     await editor.locator('.view-line').filter({ hasText: 'shade = 0.375' }).click();
@@ -295,7 +353,7 @@ async function uploadStorageBinary(page) {
   await page.getByTestId('shader-option-binary-upload-wgsl').click();
   const preview = page.getByTestId('web-preview'), config = page.locator('.config-panel');
   await preview.getByLabel('Toggle config panel').click();
-  await config.getByRole('button', { name: 'Storage', exact: true }).click();
+  await config.getByRole('button', { name: 'Storage buffer values', exact: true }).click();
   await expect(config.getByRole('button', { name: 'Apply pending storage changes' })).toHaveCount(0);
   await config.getByLabel('Initial data', { exact: true }).selectOption('file');
   await config.getByLabel('Initial data file', { exact: true }).setInputFiles({
@@ -310,7 +368,7 @@ async function uploadStorageBinary(page) {
   if (!await config.isVisible()) {
  await preview.getByLabel('Toggle config panel').click();
 }
-  await config.getByRole('button', { name: 'Storage', exact: true }).click();
+  await config.getByRole('button', { name: 'Storage buffer values', exact: true }).click();
   await expect(config.getByLabel('Initial data', { exact: true })).toHaveValue('file');
   await expect(config.getByText(/values\.bin/)).toBeVisible();
   return config;
@@ -319,7 +377,7 @@ async function uploadStorageBinary(page) {
 test('binary upload applies from the header and persists its exact bytes after reload', async ({ page }) => {
   await uploadStorageBinary(page);
   const saved = await readWorkspaceFiles(page);
-  const configFile = saved.find(file => file.path === '/shaders/binary-upload.sha.json');
+  const configFile = saved.find(file => file.path === '/binary-upload.sha.json');
   const storage = JSON.parse(configFile.contents).storage.values;
   expect(storage.initialDataName).toBe('values.bin');
   expect(Buffer.from(storage.initialData, 'base64')).toEqual(Buffer.from(new Float32Array([0.25, 0.75, 0.5, 1, 0.125, 0.25, 0.5, 1]).buffer));

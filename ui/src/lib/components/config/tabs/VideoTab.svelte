@@ -90,6 +90,8 @@
   }
 </script>
 
+<section class="channel-section" aria-label="Video source">
+<h3>Video source</h3>
 {#if postMessage}
   <AssetBrowser
     extensions={VIDEO_EXTENSIONS}
@@ -111,10 +113,14 @@
   {onMessage}
   onPathChange={onUpdatePath}
 />
+<p class="channel-hint">Select a video file or paste a video URL into the path field.</p>
+</section>
 
 {#if tempInput?.type === "video"}
-  <div class="input-row">
-    <div class="input-group">
+<section class="channel-section channel-settings" aria-label="Sampling">
+<h3>Sampling</h3>
+  <div class="input-row sampling-fields">
+    <div class="input-group sampling-field">
       <label for="filter-{channelName}">Filter:</label>
       <select
         id="filter-{channelName}"
@@ -128,7 +134,7 @@
       </select>
     </div>
 
-    <div class="input-group">
+    <div class="input-group sampling-field">
       <label for="wrap-{channelName}">Wrap:</label>
       <select
         id="wrap-{channelName}"
@@ -142,7 +148,7 @@
     </div>
   </div>
 
-  <div class="input-row">
+  <div class="input-row sampling-options">
     <div class="input-group checkbox-group">
       <label for="vflip-{channelName}">
         <input
@@ -156,6 +162,8 @@
       </label>
     </div>
   </div>
+
+</section>
 
   {#if tempInput.path && onVideoControl}
     <div class="video-controls">
@@ -197,8 +205,10 @@
 
 <style>
   .input-row {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
     gap: 12px;
+    margin-top: 12px;
   }
 
   .input-row .input-group {
@@ -213,24 +223,32 @@
   }
 
   .input-group label {
-    font-size: 14px;
+    font-size: var(--shader-studio-label-size);
     font-weight: 500;
     color: var(--vscode-foreground, #cccccc);
   }
 
   .input-select {
-    padding: 8px 12px;
-    border: 1px solid var(--vscode-input-border, #3c3c3c);
-    border-radius: 4px;
-    background: var(--vscode-input-background, #2d2d2d);
-    color: var(--vscode-input-foreground, #cccccc);
-    font-size: 14px;
+    min-width: 0;
+    width: 100%;
+    padding: var(--shader-studio-control-padding);
+    border: 1px solid var(--vscode-dropdown-border, #3c3c3c);
+    border-radius: var(--shader-studio-control-radius);
+    background: var(--vscode-dropdown-background, #2d2d2d);
+    color: var(--vscode-dropdown-foreground, #cccccc);
+    font-size: var(--shader-studio-font-size);
+    min-height: var(--shader-studio-control-height);
   }
 
   .input-select:focus {
     outline: none;
     border-color: var(--vscode-focusBorder, #007acc);
   }
+
+  .input-select:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
 
   .checkbox-group {
     flex-direction: row;
@@ -254,7 +272,7 @@
   }
 
   .controls-label {
-    font-size: 14px;
+    font-size: var(--shader-studio-label-size);
     font-weight: 500;
     color: var(--vscode-foreground, #cccccc);
     display: block;
@@ -267,9 +285,9 @@
   }
 
   .btn-control {
-    padding: 6px 12px;
+    padding: var(--shader-studio-control-padding);
     border: 1px solid var(--vscode-input-border, #3c3c3c);
-    border-radius: 4px;
+    border-radius: var(--shader-studio-control-radius);
     background: var(--vscode-input-background, #2d2d2d);
     color: var(--vscode-foreground, #cccccc);
     cursor: pointer;
@@ -277,6 +295,7 @@
     transition: all 0.2s ease;
     min-width: 36px;
     text-align: center;
+    min-height: var(--shader-studio-control-height);
   }
 
   .btn-control:hover {

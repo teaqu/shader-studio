@@ -1,5 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { readFile, writeFile } from 'node:fs/promises';
+import { useSharedShaderEditor } from './explorer-preferences.mjs';
+
+// These tests edit through the shared editor rather than per-file editors.
+test.beforeEach(({ context }) => useSharedShaderEditor(context));
 
 // The dev server serves the language-service worker unbundled, so it only runs
 // when the worker keeps its own origin: a module worker copied into a blob URL

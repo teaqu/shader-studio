@@ -1,4 +1,5 @@
 import { test, expect, workspacePath } from './fixtures.mjs';
+import { setDebugPanelControl } from './debug-panel-controls.mjs';
 import { join } from 'node:path';
 
 // 1-based debug lines in the fixture: L3 shows lineA (dark grey), L4 shows
@@ -120,6 +121,7 @@ export function registerLineJumpFlashTests(language) {
         document.querySelector('button.collapse-debug[aria-label="Toggle debug mode"]')?.click();
       });
       await expect.poll(() => frame.locator('.debug-panel').count(), { timeout: 30_000 }).toBeGreaterThan(0);
+      await setDebugPanelControl(frame, 'Toggle inline rendering', true);
 
       // Every sample the test observes while settling, across all jumps.
       // Collection starts once the first visualization shows: landing on it

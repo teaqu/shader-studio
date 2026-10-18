@@ -55,10 +55,11 @@ return;
   .actions { display: flex; flex-wrap: wrap; gap: 6px; }
   .actions button {
     flex: 0 0 auto;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 12px;
-    line-height: 16px;
+    padding: var(--shader-studio-control-padding);
+    border-radius: var(--shader-studio-control-radius);
+    font-size: var(--shader-studio-font-size);
+    line-height: var(--shader-studio-control-line-height);
+    min-height: var(--shader-studio-control-height);
   }
   .actions button:focus-visible {
     outline: 2px solid var(--vscode-focusBorder, #007acc);

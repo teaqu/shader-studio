@@ -129,3 +129,23 @@ describe('ShaderCard context menu', () => {
     expect(menu.style.top).toBe(`${window.innerHeight - 1}px`);
   });
 });
+
+describe('ShaderCard selection', () => {
+  it('reveals a card when it becomes selected, such as a new fork above the scrolled list', async () => {
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scrollIntoView });
+    const vscodeApi = { postMessage: vi.fn() };
+    const { rerender } = render(ShaderCard, { props: { shader, vscodeApi, selected: false } });
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    await rerender({ shader, vscodeApi, selected: true });
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest' });
+    scrollIntoView.mockClear();
+    await rerender({ shader, vscodeApi, selected: true });
+    await rerender({ shader, vscodeApi, selected: false });
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    // A card created already selected is revealed when it mounts.
+    render(ShaderCard, { props: { shader: { ...shader, path: '/workspace/ocean.1.glsl' }, vscodeApi, selected: true } });
+    expect(scrollIntoView).toHaveBeenCalledOnce();
+    Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView');
+  });
+});

@@ -2,6 +2,10 @@ import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { expect, it, vi } from 'vitest';
 import ShaderExplorer from './ShaderExplorer.svelte';
 
+vi.stubGlobal('ResizeObserver', class {
+  observe() {} unobserve() {} disconnect() {}
+});
+
 vi.mock('./ShaderPreview.svelte', async () => import('../../test/FailingShaderPreviewStub.svelte'));
 
 const shaderEntry = (name: string, thumbnailVersion: number) => ({
@@ -30,7 +34,7 @@ it('gives a hidden failed shader another chance when its files change', async ()
   const view = render(ShaderExplorer, { props: { hostApi } });
   await view.findByTestId('shader-option-ok-glsl');
   await fireEvent.click(view.getByTitle('Options'));
-  await fireEvent.click(view.getByLabelText('Hide Failed'));
+  await fireEvent.click(view.getByLabelText('Hide failed previews'));
   await waitFor(() => expect(view.queryByTestId('shader-option-broken-glsl')).toBeNull());
 
   // Same version resent: still failed, still hidden.

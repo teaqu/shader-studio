@@ -14,7 +14,8 @@ test('canvas click moves keyboard focus out of the editor', async ({ page }) => 
   ]);
   await page.goto('/');
   await page.getByTestId('shader-option-canvas-focus-glsl').click();
-  const editor = page.getByTestId('web-editor');
+  // Active-file tracking (the default) opens the selected shader in its own editor.
+  const editor = page.locator(`[data-testid="file-editor"][data-path="/${shaderName}"]`);
   await expect(editor.locator('.monaco-editor')).toBeVisible();
   const disableVim = editor.getByLabel('Disable Vim mode');
   if (await disableVim.count()) {

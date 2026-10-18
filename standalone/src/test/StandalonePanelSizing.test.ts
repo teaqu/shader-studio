@@ -120,6 +120,23 @@ describe('StandalonePanelSizing', () => {
     expect(app.preview.api.width).toBe(560);
   });
 
+  it('leaves a Files pane stacked under the Explorer out of the space the editor absorbs', () => {
+    const column = (left: number, width: number) => ({ getBoundingClientRect: () => ({ left, right: left + width }) });
+    for (const [stacked, explorer, preview] of [[true, 231, 461], [false, 196, 392]] as const) {
+      const app = setup(JSON.stringify({ explorer: 350, preview: 700 }));
+      Object.assign(app.explorer.api.group, { element: column(0, 350) });
+      Object.assign(app.api.panels[1].api.group, { element: column(354, 500) });
+      // Files shares the Explorer column, or is docked as its own column.
+      const files = { id: 'files', api: { width: 350, group: { panels: [] as { id: string }[], api: { isVisible: true },
+        element: stacked ? column(0, 350) : column(354, 200) }, setSize: vi.fn() } };
+      files.api.group.panels.push(files);
+      app.api.panels.push(files as never);
+      app.resize(800);
+      expect(app.explorer.api.width).toBe(explorer);
+      expect(app.preview.api.width).toBe(preview);
+    }
+  });
+
   it('leaves a layout without any flexible group filling the workspace', () => {
     const app = setup();
     app.api.panels[1].api.group.api.isVisible = false;

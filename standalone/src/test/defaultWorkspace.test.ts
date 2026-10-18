@@ -5,6 +5,10 @@ import { MemoryWorkspaceStore, VirtualWorkspace } from '../VirtualWorkspace';
 import { WebExtensionHost } from '../WebExtensionHost';
 
 describe('default workspace', () => {
+  it('leaves unknown assets unresolved', () => {
+    expect(resolveDefaultAssetUrl('shader-studio://standalone/unknown', 'https://example.test/studio/app/'))
+      .toBeNull();
+  });
   it.each(['noise-grey', 'noise-rgba'])('resolves %s volumes under the deployed base URL', (name) => {
     expect(resolveDefaultAssetUrl(`shader-studio://volumes/${name}`, 'https://example.test/studio/'))
       .toBe(`https://example.test/studio/assets/${name}.ktx2`);
@@ -14,12 +18,12 @@ describe('default workspace', () => {
     const files = createDefaultWorkspaceFiles();
     expect(files.filter(({ path }) => /\.(glsl|slang|wgsl)$/.test(path)).map(({ path }) => path))
       .toEqual([
-        '/shaders/aurora.glsl', '/shaders/aurora-slang.slang', '/shaders/aurora-wgsl.wgsl',
-        '/shaders/particle-swarm.wgsl', '/shaders/particle-swarm/common.buffer.wgsl',
-        '/shaders/particle-swarm/swarm.buffer.wgsl',
-        '/shaders/nebula-texture.glsl', '/shaders/desert-cubemap.glsl',
-        '/shaders/glow-trails.glsl', '/shaders/glow-trails/trails.buffer.glsl',
-        '/shaders/glow-trails/glow.buffer.glsl',
+        '/aurora.glsl', '/aurora-slang.slang', '/aurora-wgsl.wgsl',
+        '/particle-swarm.wgsl', '/particle-swarm/common.buffer.wgsl',
+        '/particle-swarm/swarm.buffer.wgsl',
+        '/nebula-texture.glsl', '/desert-cubemap.glsl',
+        '/glow-trails.glsl', '/glow-trails/trails.buffer.glsl',
+        '/glow-trails/glow.buffer.glsl',
       ]);
     for (const file of files.filter(({ path }) => path.endsWith('.sha.json'))) {
       const config = JSON.parse(file.contents);
@@ -33,7 +37,7 @@ describe('default workspace', () => {
     expect(new Set(files.map(({ path }) => path)).size).toBe(files.length);
     const store = new MemoryWorkspaceStore();
     const workspace = await VirtualWorkspace.open(store, files);
-    const config = JSON.parse(workspace.readText('/shaders/glow-trails.sha.json'));
+    const config = JSON.parse(workspace.readText('/glow-trails.sha.json'));
     expect(config.passes).toEqual({
       Trails: {
         path: 'glow-trails/trails.buffer.glsl',
@@ -52,14 +56,14 @@ describe('default workspace', () => {
       const host = new WebExtensionHost(loaded);
       const receive = vi.fn();
       host.onViewerMessage(receive);
-      await host.handleExplorerMessage({ type: 'activateShader', path: '/shaders/glow-trails.glsl' });
+      await host.handleExplorerMessage({ type: 'activateShader', path: '/glow-trails.glsl' });
       expect(receive).toHaveBeenCalledWith(expect.objectContaining({
         type: 'shaderSource',
-        path: '/shaders/glow-trails.glsl',
-        code: workspace.readText('/shaders/glow-trails.glsl'),
+        path: '/glow-trails.glsl',
+        code: workspace.readText('/glow-trails.glsl'),
         buffers: {
-          Trails: workspace.readText('/shaders/glow-trails/trails.buffer.glsl'),
-          Glow: workspace.readText('/shaders/glow-trails/glow.buffer.glsl'),
+          Trails: workspace.readText('/glow-trails/trails.buffer.glsl'),
+          Glow: workspace.readText('/glow-trails/glow.buffer.glsl'),
         },
       }));
     }
@@ -68,23 +72,23 @@ describe('default workspace', () => {
   it('names the Slang Aurora shader aurora-slang', () => {
     const files = createDefaultWorkspaceFiles();
 
-    expect(files.some(({ path }) => path === '/shaders/aurora-slang.slang')).toBe(true);
-    expect(files.some(({ path }) => path === '/shaders/aurora.slang')).toBe(false);
+    expect(files.some(({ path }) => path === '/aurora-slang.slang')).toBe(true);
+    expect(files.some(({ path }) => path === '/aurora.slang')).toBe(false);
   });
 
   it('seeds a WGSL Aurora sample shader', () => {
     const files = createDefaultWorkspaceFiles();
-    const wgsl = files.find(({ path }) => path === '/shaders/aurora-wgsl.wgsl');
+    const wgsl = files.find(({ path }) => path === '/aurora-wgsl.wgsl');
 
     expect(wgsl).toBeDefined();
     expect(wgsl?.contents).toContain('fn mainImage(coord: vec2f) -> vec4f');
-    expect(files.some(({ path }) => path === '/shaders/aurora-wgsl.sha.json')).toBe(true);
+    expect(files.some(({ path }) => path === '/aurora-wgsl.sha.json')).toBe(true);
   });
 
   it.each([
-    ['/shaders/aurora.glsl', 'vec2 uv = fragCoord / iResolution.xy;', 'vec3 col = 0.5 + 0.5 * cos(iTime + uv.xyx + vec3(0, 2, 4));', 'fragColor = vec4(col, 1.0);'],
-    ['/shaders/aurora-slang.slang', 'float2 uv = fragCoord / iResolution.xy;', 'float3 col = 0.5 + 0.5 * cos(iTime + uv.xyx + float3(0, 2, 4));', 'return float4(col, 1.0);'],
-    ['/shaders/aurora-wgsl.wgsl', 'let uv = coord / iResolution.xy;', 'let col = 0.5 + 0.5 * cos(iTime + uv.xyx + vec3f(0.0, 2.0, 4.0));', 'return vec4f(col, 1.0);'],
+    ['/aurora.glsl', 'vec2 uv = fragCoord / iResolution.xy;', 'vec3 col = 0.5 + 0.5 * cos(iTime + uv.xyx + vec3(0, 2, 4));', 'fragColor = vec4(col, 1.0);'],
+    ['/aurora-slang.slang', 'float2 uv = fragCoord / iResolution.xy;', 'float3 col = 0.5 + 0.5 * cos(iTime + uv.xyx + float3(0, 2, 4));', 'return float4(col, 1.0);'],
+    ['/aurora-wgsl.wgsl', 'let uv = coord / iResolution.xy;', 'let col = 0.5 + 0.5 * cos(iTime + uv.xyx + vec3f(0.0, 2.0, 4.0));', 'return vec4f(col, 1.0);'],
   ])('seeds %s with the Shadertoy default gradient', (path, uv, colour, output) => {
     const contents = createDefaultWorkspaceFiles().find((file) => file.path === path)?.contents ?? '';
 
@@ -97,10 +101,10 @@ describe('default workspace', () => {
   describe('the WGSL Particle Swarm compute sample', () => {
     const files = createDefaultWorkspaceFiles();
     const read = (path: string) => files.find((file) => file.path === path)?.contents ?? '';
-    const config = JSON.parse(read('/shaders/particle-swarm.sha.json'));
-    const kernels = read('/shaders/particle-swarm/swarm.buffer.wgsl');
+    const config = JSON.parse(read('/particle-swarm.sha.json'));
+    const kernels = read('/particle-swarm/swarm.buffer.wgsl');
     const passSources: Record<string, string> = {
-      common: read('/shaders/particle-swarm/common.buffer.wgsl'),
+      common: read('/particle-swarm/common.buffer.wgsl'),
       Seed: kernels,
       Fade: kernels,
       Advect: kernels,
@@ -121,7 +125,7 @@ describe('default workspace', () => {
         if (!pass?.path) {
           continue;
         }
-        expect(read(`/shaders/${pass.path}`), `${name} source is missing`).not.toBe('');
+        expect(read(`/${pass.path}`), `${name} source is missing`).not.toBe('');
       }
       expect(Object.keys(passSources).every((name) => passSources[name] !== '')).toBe(true);
     });
@@ -132,12 +136,12 @@ describe('default workspace', () => {
       expect(config.storage.density.count).toBe(Number(grid![1]) * Number(grid![2]));
       expect(config.storage.density.elementType).toBe('atomic<u32>');
       expect(kernels).toContain('splatParticle(position);');
-      expect(read('/shaders/particle-swarm.wgsl')).toContain('atomicLoad(&density[');
+      expect(read('/particle-swarm.wgsl')).toContain('atomicLoad(&density[');
     });
 
     it('builds a WGSL pass graph with no errors or warnings', () => {
       const graph = buildSlangPassGraph({
-        imageCode: read('/shaders/particle-swarm.wgsl'),
+        imageCode: read('/particle-swarm.wgsl'),
         config,
         buffers: passSources,
         canvasWidth: 320,
@@ -173,11 +177,11 @@ describe('default workspace', () => {
       const receive = vi.fn();
       host.onViewerMessage(receive);
 
-      await host.handleExplorerMessage({ type: 'activateShader', path: '/shaders/particle-swarm.wgsl' });
+      await host.handleExplorerMessage({ type: 'activateShader', path: '/particle-swarm.wgsl' });
 
       expect(receive).toHaveBeenCalledWith(expect.objectContaining({
         type: 'shaderSource',
-        path: '/shaders/particle-swarm.wgsl',
+        path: '/particle-swarm.wgsl',
         buffers: passSources,
       }));
     });
@@ -185,7 +189,7 @@ describe('default workspace', () => {
 
   it('credits the Poly Haven source of the bundled cubemap in the shader', () => {
     const cubemapShader = createDefaultWorkspaceFiles().find(
-      ({ path }) => path === '/shaders/desert-cubemap.glsl',
+      ({ path }) => path === '/desert-cubemap.glsl',
     );
 
     expect(cubemapShader?.contents).toContain(
@@ -199,7 +203,7 @@ describe('default workspace', () => {
 
   it('preserves the display aspect ratio in the cubemap camera direction', () => {
     const cubemapShader = createDefaultWorkspaceFiles().find(
-      ({ path }) => path === '/shaders/desert-cubemap.glsl',
+      ({ path }) => path === '/desert-cubemap.glsl',
     );
 
     expect(cubemapShader?.contents).toContain(

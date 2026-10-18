@@ -1,5 +1,8 @@
+@import '../../styles/controls.css';
+
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: var(--shader-studio-font-family);
+  font-size: var(--shader-studio-font-size);
   line-height: 1.5;
   font-weight: 400;
 
@@ -11,17 +14,6 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-
-/* VS Code supplies these classes independently of the standalone theme. */
-body.vscode-light,
-body.vscode-high-contrast-light {
-  color-scheme: light;
-}
-
-body.vscode-dark,
-body.vscode-high-contrast {
-  color-scheme: dark;
 }
 
 .clear-color-input {
@@ -64,6 +56,8 @@ body.vscode-high-contrast {
   --vscode-tab-hoverForeground: #1f1f1f;
   --vscode-tab-border: #e5e5e5;
   --vscode-list-hoverBackground: #e8e8e8;
+  --vscode-list-activeSelectionBackground: #005fb8;
+  --vscode-list-activeSelectionForeground: #ffffff;
   --vscode-input-background: #ffffff;
   --vscode-input-foreground: #1f1f1f;
   --vscode-input-border: #cecece;
@@ -76,6 +70,13 @@ body.vscode-high-contrast {
   --vscode-button-foreground: #ffffff;
   --vscode-button-hoverBackground: #0258a8;
   --vscode-button-hoverBorder: #005fb8;
+  --vscode-button-secondaryBackground: #e5e5e5;
+  --vscode-button-secondaryForeground: #3b3b3b;
+  --vscode-button-secondaryHoverBackground: #cccccc;
+  --vscode-toolbar-hoverBackground: #e8e8e8;
+  --vscode-inputOption-activeBackground: #dcebf8;
+  --vscode-inputOption-activeForeground: #1f1f1f;
+  --vscode-inputOption-activeBorder: #005fb8;
   --vscode-textLink-foreground: #005fb8;
   --vscode-textLink-activeForeground: #0258a8;
   --vscode-notifications-background: #ffffff;
@@ -124,6 +125,8 @@ body.vscode-high-contrast {
   --vscode-tab-hoverForeground: #ffffff;
   --vscode-tab-border: #2b2b2b;
   --vscode-list-hoverBackground: #2a2d2e;
+  --vscode-list-activeSelectionBackground: #04395e;
+  --vscode-list-activeSelectionForeground: #ffffff;
   --vscode-input-background: #313131;
   --vscode-input-foreground: #cccccc;
   --vscode-input-border: #3c3c3c;
@@ -136,6 +139,13 @@ body.vscode-high-contrast {
   --vscode-button-foreground: #ffffff;
   --vscode-button-hoverBackground: #1177bb;
   --vscode-button-hoverBorder: #0078d4;
+  --vscode-button-secondaryBackground: #3a3d41;
+  --vscode-button-secondaryForeground: #ffffff;
+  --vscode-button-secondaryHoverBackground: #45494e;
+  --vscode-toolbar-hoverBackground: #2a2d2e;
+  --vscode-inputOption-activeBackground: #04395e;
+  --vscode-inputOption-activeForeground: #ffffff;
+  --vscode-inputOption-activeBorder: #007fd4;
   --vscode-textLink-foreground: #0078d4;
   --vscode-textLink-activeForeground: #1177bb;
   --vscode-notifications-background: #2d2d2d;
@@ -200,23 +210,24 @@ h1 {
 }
 
 button {
-  border-radius: 8px;
+  border-radius: var(--shader-studio-control-radius);
   border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
+  padding: var(--shader-studio-control-padding);
+  min-height: var(--shader-studio-control-height);
+  font-size: var(--shader-studio-font-size);
+  font-weight: 400;
+  font-family: var(--shader-studio-font-family);
   background-color: var(--vscode-button-background);
   color: var(--vscode-button-foreground);
   cursor: pointer;
   transition: border-color 0.25s;
 }
 button:hover {
-  border-color: var(--vscode-button-hoverBorder);
+  background-color: var(--vscode-button-hoverBackground);
 }
-button:focus,
 button:focus-visible {
-  outline: none;
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
 }
 
 html, body {
@@ -316,8 +327,8 @@ canvas {
 }
 
 .menu-title {
-  font-size: var(--vscode-font-size, 13px) !important;
-  font-family: var(--vscode-font-family, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif);
+  font-size: var(--shader-studio-font-size) !important;
+  font-family: var(--shader-studio-font-family);
   font-weight: var(--vscode-font-weight, normal);
   color: var(--vscode-editor-foreground);
   user-select: none;
@@ -341,19 +352,21 @@ canvas {
 .menu-bar button {
   all: unset;
   cursor: pointer;
-  padding: 0.4rem 0.6rem;
-  border-radius: 4px;
+  padding: var(--shader-studio-control-padding);
+  border-radius: var(--shader-studio-control-radius);
   color: var(--vscode-editor-foreground);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  line-height: 1;
+  line-height: var(--shader-studio-control-line-height);
+  min-height: var(--shader-studio-control-height);
 }
 
 .menu-bar .toolbar-icon-button {
-  padding: 0.2rem 0.45rem;
+  padding: var(--shader-studio-toolbar-padding);
   min-width: 28px;
+  min-height: var(--shader-studio-toolbar-height);
 }
 
 .menu-bar button,
@@ -361,7 +374,7 @@ canvas {
 .menu-bar .time-button,
 .menu-bar .fps-button,
 .menu-bar .resolution-button {
-  min-height: 24px;
+  min-height: var(--shader-studio-toolbar-height);
 }
 
 .menu-bar button:hover {
@@ -485,15 +498,15 @@ canvas {
   position: absolute;
   top: 4px;
   right: 4px;
-  padding: 1px 3px;
+  padding: var(--shader-studio-control-padding);
   margin-left: 0;
   background: transparent;
   color: var(--vscode-descriptionForeground);
   border: 1px solid transparent;
-  border-radius: 3px;
+  border-radius: var(--shader-studio-control-radius);
   cursor: pointer;
-  font-size: 12px;
-  line-height: 1;
+  font-size: var(--shader-studio-font-size);
+  line-height: var(--shader-studio-control-line-height);
   opacity: 0.6;
 }
 
@@ -565,13 +578,13 @@ canvas {
 
 .error-dismiss {
   margin-top: 1rem;
-  padding: 0.5rem 1rem;
+  padding: var(--shader-studio-control-padding);
   background-color: var(--vscode-button-background);
   color: var(--vscode-button-foreground);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--shader-studio-control-radius);
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: var(--shader-studio-font-size);
 }
 
 .error-dismiss:hover {
@@ -588,8 +601,8 @@ canvas {
   cursor: pointer;
   background: none;
   border: none;
-  padding: 0.2rem 0.6rem;
-  border-radius: 4px;
+  padding: var(--shader-studio-control-padding);
+  border-radius: var(--shader-studio-control-radius);
   white-space: nowrap;
   flex-shrink: 1;
   min-width: 0;
@@ -597,12 +610,13 @@ canvas {
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--vscode-editor-foreground);
-  font-size: var(--vscode-font-size, 13px) !important;
-  font-family: var(--vscode-font-family, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif);
+  font-size: var(--shader-studio-font-size) !important;
+  font-family: var(--shader-studio-font-family);
   font-weight: var(--vscode-font-weight, normal);
   font-feature-settings: "tnum" 1; /* Use tabular numbers for consistent width */
   font-variant-numeric: tabular-nums;
   transition: background-color 0.2s ease;
+  min-height: var(--shader-studio-control-height);
 }
 
 .menu-bar .resolution-button:hover {
@@ -692,17 +706,18 @@ canvas {
 .resolution-option {
   display: block;
   width: 100%;
-  padding: 0.4rem 0.5rem;
+  padding: var(--shader-studio-control-padding);
   margin-bottom: 0.2rem;
   background: none;
   border: none;
   color: var(--vscode-editor-foreground);
-  font-size: var(--vscode-font-size, 12px);
-  font-family: var(--vscode-font-family, sans-serif);
+  font-size: var(--shader-studio-font-size);
+  font-family: var(--shader-studio-font-family);
   text-align: left;
   cursor: pointer;
   transition: background-color 0.2s ease;
-  border-radius: 4px;
+  border-radius: var(--shader-studio-control-radius);
+  min-height: var(--shader-studio-control-height);
 }
 
 .aspect-ratio-option:hover,
@@ -791,16 +806,22 @@ canvas {
 
 .custom-res-input {
   width: 60px;
-  padding: 0.3rem 0.4rem;
+  padding: var(--shader-studio-control-padding);
   border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4));
-  border-radius: 4px;
+  border-radius: var(--shader-studio-control-radius);
   background: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
-  font-size: var(--vscode-font-size, 12px);
-  font-family: var(--vscode-font-family, sans-serif);
+  font-size: var(--shader-studio-font-size);
+  font-family: var(--shader-studio-font-family);
   outline: none;
   /* Hide number spinners for cleaner look */
   -moz-appearance: textfield;
+  min-height: var(--shader-studio-control-height);
+}
+
+.custom-res-input:focus-visible{
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
 }
 
 .custom-res-input::-webkit-outer-spin-button,
@@ -820,15 +841,16 @@ canvas {
 }
 
 .custom-res-btn {
-  padding: 0.3rem 0.6rem;
+  padding: var(--shader-studio-control-padding);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--shader-studio-control-radius);
   background: var(--vscode-button-background);
   color: var(--vscode-button-foreground);
-  font-size: var(--vscode-font-size, 12px);
-  font-family: var(--vscode-font-family, sans-serif);
+  font-size: var(--shader-studio-font-size);
+  font-family: var(--shader-studio-font-family);
   cursor: pointer;
   transition: background-color 0.15s ease;
+  min-height: var(--shader-studio-control-height);
 }
 
 .custom-res-btn:hover {
@@ -859,14 +881,15 @@ canvas {
 }
 
 .reset-resolution-btn {
-  padding: 2px 8px;
-  font-size: var(--vscode-font-size, 12px);
-  font-family: var(--vscode-font-family, sans-serif);
+  padding: var(--shader-studio-control-padding);
+  font-size: var(--shader-studio-font-size);
+  font-family: var(--shader-studio-font-family);
   border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4));
-  border-radius: 4px;
+  border-radius: var(--shader-studio-control-radius);
   background: transparent;
   color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.7));
   cursor: pointer;
+  min-height: var(--shader-studio-control-height);
 }
 
 .reset-resolution-btn:hover {
@@ -945,8 +968,8 @@ canvas {
 .options-menu-button {
   all: unset;
   cursor: pointer;
-  padding: 0.2rem 0.6rem;
-  border-radius: 4px;
+  padding: var(--shader-studio-control-padding);
+  border-radius: var(--shader-studio-control-radius);
   color: var(--vscode-editor-foreground);
   transition: background-color 0.2s ease;
   display: flex;
@@ -954,6 +977,7 @@ canvas {
   justify-content: center;
   flex-shrink: 0;
   min-width: 24px;
+  min-height: var(--shader-studio-control-height);
 }
 
 .options-menu-button:hover {
@@ -982,17 +1006,18 @@ canvas {
   align-items: center;
   gap: 0.6rem;
   width: 100%;
-  padding: 0.5rem 0.6rem;
+  padding: var(--shader-studio-menu-padding);
   box-sizing: border-box;
-  border-radius: 4px;
+  border-radius: var(--shader-studio-control-radius);
   background: none;
   border: none;
   color: var(--vscode-editor-foreground);
-  font-size: var(--vscode-font-size, 13px);
-  font-family: var(--vscode-font-family, sans-serif);
+  font-size: var(--shader-studio-font-size);
+  font-family: var(--shader-studio-font-family);
   text-align: left;
   cursor: pointer;
   transition: background-color 0.2s ease;
+  min-height: var(--shader-studio-control-height);
 }
 
 .menu-bar .options-menu-item:hover:not(:disabled) {
@@ -1031,17 +1056,18 @@ canvas {
   align-items: center;
   gap: 0.6rem;
   width: 100%;
-  padding: 0.5rem 0.6rem;
+  padding: var(--shader-studio-menu-padding);
   box-sizing: border-box;
-  border-radius: 4px;
+  border-radius: var(--shader-studio-control-radius);
   background: none;
   border: none;
   color: var(--vscode-editor-foreground);
-  font-size: var(--vscode-font-size, 13px);
-  font-family: var(--vscode-font-family, sans-serif);
+  font-size: var(--shader-studio-font-size);
+  font-family: var(--shader-studio-font-family);
   text-align: left;
   cursor: pointer;
   transition: background-color 0.2s ease;
+  min-height: var(--shader-studio-control-height);
 }
 
 .options-menu-portal .options-menu-item:hover:not(:disabled) {
@@ -1101,14 +1127,15 @@ canvas {
 .options-menu-portal .compile-mode-button {
   all: unset;
   cursor: pointer;
-  padding: 0.2rem 0.4rem;
-  border-radius: 4px;
+  padding: var(--shader-studio-control-padding);
+  border-radius: var(--shader-studio-control-radius);
   color: var(--vscode-editor-foreground);
   min-width: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: background-color 0.2s ease;
+  min-height: var(--shader-studio-control-height);
 }
 
 .options-menu-portal .compile-mode-button:hover:not(:disabled) {
@@ -1153,12 +1180,13 @@ canvas {
 .options-menu-portal .mute-icon-btn {
   background: none;
   border: none;
-  padding: 2px;
+  padding: var(--shader-studio-toolbar-padding);
   cursor: pointer;
   color: inherit;
   display: flex;
   align-items: center;
   flex-shrink: 0;
+  min-height: var(--shader-studio-toolbar-height);
 }
 
 .options-menu-portal .mute-icon-btn.muted {
@@ -1209,12 +1237,12 @@ canvas {
   .menu-bar .time-button,
   .menu-bar .fps-button,
   .menu-bar .resolution-button {
-    padding: 0.25rem 0.5rem;
-    min-height: 23px;
+    padding: var(--shader-studio-toolbar-padding);
+    min-height: var(--shader-studio-toolbar-height);
   }
 
   .menu-bar .toolbar-icon-button {
-    padding: 0.18rem 0.38rem;
+    padding: var(--shader-studio-toolbar-padding);
     min-width: 26px;
   }
 }
@@ -1234,7 +1262,7 @@ canvas {
   .menu-bar .time-button,
   .menu-bar .fps-button,
   .menu-bar .resolution-button {
-    font-size: 12px !important;
+    font-size: var(--shader-studio-font-size) !important;
   }
 
   .menu-bar .resolution-button {
@@ -1248,13 +1276,13 @@ canvas {
   .menu-bar .time-button,
   .menu-bar .fps-button,
   .menu-bar .resolution-button {
-    padding: 0.15rem 0.35rem;
-    border-radius: 3px;
-    min-height: 21px;
+    padding: var(--shader-studio-toolbar-padding);
+    border-radius: var(--shader-studio-control-radius);
+    min-height: var(--shader-studio-toolbar-height);
   }
 
   .menu-bar .toolbar-icon-button {
-    padding: 0.12rem 0.28rem;
+    padding: var(--shader-studio-toolbar-padding);
     min-width: 24px;
   }
 }
@@ -1304,17 +1332,18 @@ canvas {
   cursor: pointer;
   background: none;
   border: none;
-  padding: 0.2rem 0.6rem;
-  border-radius: 4px;
+  padding: var(--shader-studio-control-padding);
+  border-radius: var(--shader-studio-control-radius);
   color: var(--vscode-editor-foreground);
-  font-size: var(--vscode-font-size, 13px) !important;
-  font-family: var(--vscode-font-family, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif) !important;
+  font-size: var(--shader-studio-font-size) !important;
+  font-family: var(--shader-studio-font-family) !important;
   font-weight: var(--vscode-font-weight, normal);
   font-variant-numeric: tabular-nums !important;
   font-feature-settings: "tnum" 1 !important;
   transition: background-color 0.2s ease;
   text-align: left;
   flex: 0 0 auto;
+  min-height: var(--shader-studio-control-height);
 }
 
 .time-button:hover {
@@ -1334,17 +1363,18 @@ canvas {
   cursor: pointer;
   background: none;
   border: none;
-  padding: 0.2rem 0.6rem;
-  border-radius: 4px;
+  padding: var(--shader-studio-control-padding);
+  border-radius: var(--shader-studio-control-radius);
   white-space: nowrap;
   flex-shrink: 0;
   color: var(--vscode-editor-foreground);
-  font-size: var(--vscode-font-size, 13px) !important;
-  font-family: var(--vscode-font-family, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif);
+  font-size: var(--shader-studio-font-size) !important;
+  font-family: var(--shader-studio-font-family);
   font-weight: var(--vscode-font-weight, normal);
   font-feature-settings: "tnum" 1;
   font-variant-numeric: tabular-nums;
   transition: background-color 0.2s ease;
+  min-height: var(--shader-studio-control-height);
 }
 
 .menu-bar .fps-button:hover {
@@ -1503,16 +1533,17 @@ canvas {
 .speed-preset {
   flex: 1;
   min-width: 0;
-  padding: 0.4rem 0.3rem;
+  padding: var(--shader-studio-control-padding);
   background: none;
   border: none;
   color: var(--vscode-editor-foreground);
-  font-size: var(--vscode-font-size, 11px);
-  font-family: var(--vscode-font-family, sans-serif);
+  font-size: var(--shader-studio-font-size);
+  font-family: var(--shader-studio-font-family);
   text-align: center;
   cursor: pointer;
   transition: background-color 0.2s ease;
-  border-radius: 4px;
+  border-radius: var(--shader-studio-control-radius);
+  min-height: var(--shader-studio-control-height);
 }
 
 .custom-speed-input,
@@ -1594,16 +1625,17 @@ canvas {
 .scrub-duration-option {
   flex: 1;
   min-width: 0;
-  padding: 0.4rem 0.3rem;
+  padding: var(--shader-studio-control-padding);
   background: none;
   border: none;
   color: var(--vscode-editor-foreground);
-  font-size: var(--vscode-font-size, 11px);
-  font-family: var(--vscode-font-family, sans-serif);
+  font-size: var(--shader-studio-font-size);
+  font-family: var(--shader-studio-font-family);
   text-align: center;
   cursor: pointer;
   transition: background-color 0.2s ease;
-  border-radius: 4px;
+  border-radius: var(--shader-studio-control-radius);
+  min-height: var(--shader-studio-control-height);
 }
 
 .scrub-duration-option:hover {
@@ -1633,8 +1665,8 @@ canvas {
 .loop-toggle-button {
   all: unset;
   cursor: pointer;
-  padding: 0.3rem;
-  border-radius: 4px;
+  padding: var(--shader-studio-toolbar-padding);
+  border-radius: var(--shader-studio-control-radius);
   color: var(--vscode-editor-foreground);
   display: flex;
   align-items: center;
@@ -1642,7 +1674,7 @@ canvas {
   transition: background-color 0.2s ease;
   opacity: 0.6;
   width: 24px;
-  height: 24px;
+  height: var(--shader-studio-toolbar-height);
 }
 
 .loop-toggle-button svg {
@@ -1664,6 +1696,15 @@ canvas {
 
 .loop-toggle-button.active:hover {
   background-color: var(--vscode-button-hoverBackground);
+}
+
+/* These controls reset browser styles with all: unset, including the base focus ring. */
+.menu-bar button:focus-visible,
+.options-menu-button:focus-visible,
+.options-menu-portal .compile-mode-button:focus-visible,
+.loop-toggle-button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
 }
 
 /* ===============================================
@@ -1695,14 +1736,14 @@ canvas {
   border-bottom: 1px solid var(--vscode-panel-border);
   flex-shrink: 0;
   background: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-editor-background));
-  height: 35px;
+  height: var(--shader-studio-tab-height);
 }
 
 .tab-button {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 12px;
+  padding: var(--shader-studio-tab-padding);
   background: var(--vscode-tab-inactiveBackground, transparent);
   border: none;
   border-top: none;
@@ -1711,9 +1752,10 @@ canvas {
   border-radius: 0;
   color: var(--vscode-tab-inactiveForeground);
   cursor: pointer;
-  font-size: 13px;
-  font-family: inherit;
+  font-size: var(--shader-studio-font-size);
+  font-family: var(--shader-studio-font-family);
   white-space: nowrap;
+  min-height: var(--shader-studio-tab-height);
 }
 
 .tab-button:hover {
@@ -1731,6 +1773,13 @@ canvas {
   -webkit-tap-highlight-color: transparent;
   border-color: transparent;
   border-right-color: var(--vscode-tab-border, var(--vscode-panel-border));
+}
+
+.tab-button:focus-visible,
+.tab-button:focus-visible,
+.tab-button:focus-visible{
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
 }
 
 .tab-button.active {
@@ -1774,15 +1823,15 @@ canvas {
 }
 
 .add-tab-btn {
-  padding: 0 12px;
+  padding: var(--shader-studio-tab-padding);
   background: var(--vscode-tab-inactiveBackground, transparent);
   border: none;
   border-right: 1px solid var(--vscode-tab-border, var(--vscode-panel-border));
   border-radius: 0;
   color: var(--vscode-tab-inactiveForeground);
   cursor: pointer;
-  font-size: 13px;
-  font-family: inherit;
+  font-size: var(--shader-studio-font-size);
+  font-family: var(--shader-studio-font-family);
   height: 100%;
 }
 
@@ -1796,6 +1845,11 @@ canvas {
 .add-tab-btn:active {
   outline: none;
   box-shadow: none;
+}
+
+.add-tab-btn:focus-visible{
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
 }
 
 .add-tab-btn:focus-visible {
@@ -1818,14 +1872,15 @@ canvas {
 .dropdown-item {
   display: block;
   width: 100%;
-  padding: 6px 12px;
+  padding: var(--shader-studio-menu-padding);
   background: none;
   border: none;
   border-radius: 0;
   color: var(--vscode-dropdown-foreground);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--shader-studio-font-size);
   text-align: left;
+  min-height: var(--shader-studio-control-height);
 }
 
 .dropdown-item:hover {
@@ -1883,4 +1938,36 @@ canvas {
   }
 
   .standalone-app .tab-content { padding: 8px; }
+}
+
+/* Shared Config and Export panel tabs. */
+:is(.config-panel, .recording-panel) .tab-navigation {
+  gap: 16px;
+  padding: 0 16px;
+  background: transparent;
+}
+
+:is(.config-panel, .recording-panel) .tab-navigation .tab-button,
+:is(.config-panel, .recording-panel) .tab-navigation .add-tab-btn {
+  min-height: var(--shader-studio-tab-height);
+  padding: var(--shader-studio-tab-padding);
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: var(--shader-studio-font-size);
+  font-weight: 400;
+}
+
+:is(.config-panel, .recording-panel) .tab-navigation .tab-button.active {
+  background: transparent;
+  border-bottom-color: var(--vscode-focusBorder);
+  color: var(--vscode-foreground);
+}
+
+:is(.config-panel, .recording-panel) .tab-navigation .tab-button:hover,
+:is(.config-panel, .recording-panel) .tab-navigation .add-tab-btn:hover {
+  background: transparent;
+  color: var(--vscode-foreground);
 }

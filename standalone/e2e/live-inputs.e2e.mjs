@@ -1,6 +1,10 @@
 import { expect, test } from '@playwright/test';
 import { PNG } from 'pngjs';
 import { workspace } from './language-service-fixtures.mjs';
+import { useSharedShaderEditor } from './explorer-preferences.mjs';
+
+// These tests edit through the shared editor rather than per-file editors.
+test.beforeEach(({ context }) => useSharedShaderEditor(context));
 
 async function expectGreen(page) {
   const canvas = page.getByTestId('web-preview').locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
@@ -58,7 +62,7 @@ for (const language of ['glsl', 'wgsl', 'slang']) {
       await expectLivePreview(page.locator('.channel-row').filter({ hasText: name }), label);
     }
     await expectGreen(page);
-    await expect.poll(async () => JSON.parse((await workspace(page))['/shaders/live.sha.json']).passes.Image.inputs).toEqual({ camera: { type: 'webcam' }, sound: { type: 'microphone' } });
+    await expect.poll(async () => JSON.parse((await workspace(page))['/live.sha.json']).passes.Image.inputs).toEqual({ camera: { type: 'webcam' }, sound: { type: 'microphone' } });
     await page.reload();
     await expectGreen(page);
     for (const [name, label] of [['camera', 'Webcam'], ['sound', 'Mic']]) {
@@ -75,7 +79,7 @@ for (const language of ['glsl', 'wgsl', 'slang']) {
     await page.getByTestId('web-editor').locator('.view-lines').click();
     await page.keyboard.press('ControlOrMeta+A');
     await page.keyboard.insertText(plain);
-    await expect.poll(async () => (await workspace(page))['/shaders/live.' + language]).toBe(plain);
+    await expect.poll(async () => (await workspace(page))['/live.' + language]).toBe(plain);
     for (const name of ['camera', 'sound']) {
       await page.locator('.channel-row').filter({ hasText: name }).click();
       await page.getByRole('button', { name: 'Remove', exact: true }).click();
@@ -136,10 +140,11 @@ for (const language of ['glsl', 'wgsl', 'slang']) {
       if (source === 'device') {
         await expectGreen(page);
         const deviceSelect = page.getByLabel('Audio device');
+        // Selects are dropdowns, so they follow VS Code's dropdown tokens.
         await deviceSelect.evaluate(e => {
-          e.style.setProperty('--vscode-input-background', 'rgb(45, 45, 45)');
-          e.style.setProperty('--vscode-input-foreground', 'rgb(204, 204, 204)');
-          e.style.setProperty('--vscode-input-border', 'rgb(60, 60, 60)');
+          e.style.setProperty('--vscode-dropdown-background', 'rgb(45, 45, 45)');
+          e.style.setProperty('--vscode-dropdown-foreground', 'rgb(204, 204, 204)');
+          e.style.setProperty('--vscode-dropdown-border', 'rgb(60, 60, 60)');
           e.style.setProperty('--vscode-focusBorder', 'rgb(0, 122, 204)');
         });
         await expect(deviceSelect).toHaveCSS('background-color', 'rgb(45, 45, 45)');

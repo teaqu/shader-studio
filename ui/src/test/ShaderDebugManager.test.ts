@@ -12,6 +12,7 @@ const WGSL_SHADER = `fn mainImage(coord: vec2f) -> vec4f {
 }`;
 
 function activateLine(manager: ShaderDebugManager, lineContent: string, filePath: string): void {
+  manager.setInlineRenderingEnabled(true);
   manager.toggleEnabled();
   manager.updateDebugLine(1, lineContent, filePath);
 }

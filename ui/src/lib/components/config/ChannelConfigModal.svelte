@@ -3,6 +3,7 @@
   import { onMount, tick, untrack } from "svelte";
   import { portal } from "../../actions/portal";
   import type { ConfigInput } from "@shader-studio/types";
+  import "./channelPages.css";
   import MiscTab from "./tabs/MiscTab.svelte";
   import TextureTab from "./tabs/TextureTab.svelte";
   import VolumeTab from "./tabs/VolumeTab.svelte";
@@ -408,7 +409,7 @@
       </div>
 
       <!-- Modal Body -->
-      <div class="modal-body">
+      <div class="modal-body channel-pages">
         {#if activeTab === null}
           <div class="tab-prompt">Select a category above to configure this channel.</div>
         {:else if activeTab === "Misc"}
@@ -530,9 +531,11 @@
     border: 1px solid var(--vscode-panel-border, #3c3c3c);
     border-radius: 8px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-    max-width: 800px;
+    max-width: 720px;
     width: 100%;
+    height: min(600px, calc(100dvh - 40px));
     max-height: 90vh;
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -561,14 +564,15 @@
   .rename-btn {
     display: flex;
     align-items: center;
-    padding: 4px;
+    padding: var(--shader-studio-control-padding);
     background: none;
     border: none;
     color: var(--vscode-descriptionForeground, #888);
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: var(--shader-studio-control-radius);
     opacity: 0.6;
     transition: opacity 0.15s;
+    min-height: var(--shader-studio-control-height);
   }
 
   .rename-btn:hover {
@@ -584,15 +588,21 @@
 
   .name-input {
     font-size: 18px;
-    font-weight: 600;
-    padding: 4px 8px;
+    font-weight: 400;
+    padding: var(--shader-studio-control-padding);
     background: var(--vscode-input-background, #2d2d2d);
     color: var(--vscode-input-foreground, #cccccc);
     border: 1px solid var(--vscode-focusBorder, #007acc);
-    border-radius: 4px;
+    border-radius: var(--shader-studio-control-radius);
     outline: none;
-    font-family: inherit;
+    font-family: var(--shader-studio-font-family);
+    min-height: var(--shader-studio-control-height);
   }
+
+  .name-input:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
 
   .name-input.name-error {
     border-color: var(--vscode-inputValidation-errorBorder, #f44336);
@@ -608,7 +618,7 @@
     align-items: stretch;
     border-bottom: 1px solid var(--vscode-panel-border, #3c3c3c);
     background: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-editor-background, #1e1e1e));
-    height: 35px;
+    height: var(--shader-studio-tab-height);
     flex-shrink: 0;
     overflow-x: auto;
   }
@@ -616,16 +626,17 @@
   .tab-btn {
     display: flex;
     align-items: center;
-    padding: 0 14px;
+    padding: var(--shader-studio-tab-padding);
     background: var(--vscode-tab-inactiveBackground, transparent);
     border: none;
     border-right: 1px solid var(--vscode-tab-border, var(--vscode-panel-border, #3c3c3c));
     border-radius: 0;
     color: var(--vscode-tab-inactiveForeground, #888);
-    font-size: 13px;
-    font-family: inherit;
+    font-size: var(--shader-studio-font-size);
+    font-family: var(--shader-studio-font-family);
     cursor: pointer;
     white-space: nowrap;
+    min-height: var(--shader-studio-tab-height);
   }
 
   .tab-btn:hover {
@@ -639,6 +650,13 @@
     outline: none;
     box-shadow: none;
   }
+
+  .tab-btn:focus-visible,
+.tab-btn:focus-visible,
+.tab-btn:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
 
   .tab-btn.active {
     background: var(--vscode-tab-activeBackground, var(--vscode-editor-background, #1e1e1e));
@@ -676,13 +694,14 @@
 
   .btn-primary,
   .btn-remove {
-    padding: 8px 16px;
+    padding: var(--shader-studio-control-padding);
     border: none;
-    border-radius: 4px;
+    border-radius: var(--shader-studio-control-radius);
     cursor: pointer;
-    font-size: 14px;
-    font-weight: 500;
+    font-size: var(--shader-studio-font-size);
+    font-weight: 400;
     transition: all 0.2s ease;
+    min-height: var(--shader-studio-control-height);
   }
 
   .btn-primary {

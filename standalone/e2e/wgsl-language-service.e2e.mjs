@@ -5,6 +5,10 @@ import {
   readWorkspaceLayout,
   seedLegacyWorkspace,
 } from './workspace-store.mjs';
+import { useSharedShaderEditor } from './explorer-preferences.mjs';
+
+// These tests edit through the shared editor rather than per-file editors.
+test.beforeEach(({ context }) => useSharedShaderEditor(context));
 
 async function seedWorkspace(page, entries) {
   await addShaderFiles(page, entries);
@@ -18,13 +22,13 @@ test('carries a pre-existing single-array workspace over to per-path records', a
   const at = Date.now();
   const legacy = [
     {
-      path: `/shaders/${basename}.wgsl`,
+      path: `/${basename}.wgsl`,
       contents: 'fn mainImage(coord: vec2f) -> vec4f {\n  return vec4f(0.25, 0.5, 0.75, 1.0);\n}',
       createdAt: at,
       modifiedAt: at,
     },
     {
-      path: `/shaders/${basename}.sha.json`,
+      path: `/${basename}.sha.json`,
       contents: JSON.stringify({ version: '1.0', passes: { Image: { inputs: {} } } }),
       createdAt: at,
       modifiedAt: at,

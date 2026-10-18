@@ -217,6 +217,7 @@ test.describe('Slang parity in the VS Code webview @gpu', () => {
       });
     }
     await expect.poll(() => h.hasVisibleControl('.debug-panel')).toBe(true);
+    await h.ensureButtonState('[aria-label="Toggle inline rendering"]', true);
     await h.ensureButtonState('[aria-label="Toggle lock"]', true);
   });
 

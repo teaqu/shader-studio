@@ -99,13 +99,19 @@ test.describe('WGSL inference through the native VS Code editor @gpu', () => {
       }), { message: 'native completion provider never inferred normalize(uv) as a vector', timeout: 30_000 }).toBe(true);
       await vscode.window.keyboard.press('Escape');
       // The `.` above left the shader invalid, and the preview recompiling it can
-      // hold keyboard focus; the `y` below would then close the widget instead
-      // of filtering it. Take focus back before opening the suggestions.
+      // hold keyboard focus. Take focus back before typing the member prefix.
       await focusNativeEditor(vscode, shaderPath, source.indexOf('normalize(uv)') + 'normalize(uv).'.length);
+      // Member completions are incomplete lists, so a key typed while the
+      // widget is open asks the provider again and redraws the rows; a click
+      // landing on a row being replaced is dropped. Type the prefix first and
+      // open the widget once, on results that are not re-requested.
+      await vscode.window.keyboard.type('y');
+      await expect.poll(() => vscode.evaluateInHost(async (vscode) =>
+        vscode.window.activeTextEditor?.document.getText() ?? '',
+      ), { message: 'the member prefix never reached the native editor' }).toContain('normalize(uv).y;');
       await vscode.evaluateInHost(async (vscode) => vscode.commands.executeCommand('editor.action.triggerSuggest'));
       const widget = vscode.window.locator('.suggest-widget');
-      await expect(widget, 'member suggestions must be open before typing the filter').toBeVisible({ timeout: 30_000 });
-      await vscode.window.keyboard.type('y', { delay: 80 });
+      await expect(widget, 'member suggestions never opened for the typed prefix').toBeVisible({ timeout: 30_000 });
       const yx = widget.locator('.label-name').filter({ hasText: /^yx$/ }).first();
       await expect(yx, 'normalize(uv). never produced inferred vector members').toBeVisible({ timeout: 30_000 });
       await yx.click();

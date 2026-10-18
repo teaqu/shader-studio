@@ -522,7 +522,7 @@
       aria-label="Toggle inline rendering"
       data-tooltip="Inline Rendering"
     >
-      <i class="codicon codicon-eye"></i>
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3h8M6 8h8M6 13h8" stroke="currentColor" stroke-width="1.5"/><path d="m1 5 3 3-3 3z" fill="currentColor"/></svg>
     </button>
     <button
       class="header-btn has-tooltip"
@@ -776,13 +776,13 @@
     justify-content: center;
     position: relative;
     width: 24px;
-    height: 24px;
+    height: var(--shader-studio-control-height);
     background: none;
     border: 1px solid transparent;
-    border-radius: 3px;
+    border-radius: var(--shader-studio-control-radius);
     color: var(--vscode-descriptionForeground);
     cursor: pointer;
-    padding: 2px;
+    padding: var(--shader-studio-control-padding);
   }
 
   .header-btn:hover {
@@ -897,11 +897,11 @@
     background: var(--vscode-input-background);
     color: var(--vscode-input-foreground);
     border: 1px solid var(--vscode-input-border);
-    border-radius: 2px;
-    padding: 2px 4px;
-    font-size: 12px;
-    width: 45px;
-    height: 20px;
+    border-radius: var(--shader-studio-control-radius);
+    padding: var(--shader-studio-control-padding);
+    font-size: var(--shader-studio-font-size);
+    width: 55px;
+    height: var(--shader-studio-control-height);
   }
 
   .normalize-badge {
@@ -967,12 +967,13 @@
   .section-reset {
     background: var(--vscode-button-secondaryBackground, var(--vscode-toolbar-hoverBackground));
     border: 1px solid var(--vscode-button-border, transparent);
-    border-radius: 4px;
+    border-radius: var(--shader-studio-control-radius);
     color: var(--vscode-button-secondaryForeground, var(--vscode-editor-foreground));
     cursor: pointer;
-    font-size: 11px;
-    line-height: 1;
-    padding: 3px 8px;
+    font-size: var(--shader-studio-font-size);
+    line-height: var(--shader-studio-control-line-height);
+    padding: var(--shader-studio-control-padding);
+    min-height: var(--shader-studio-control-height);
   }
 
   .section-reset:hover {
@@ -1024,9 +1025,9 @@
     background: var(--vscode-input-background);
     color: var(--vscode-input-foreground);
     border: 1px solid var(--vscode-input-border);
-    border-radius: 2px;
-    padding: 2px 6px;
-    font-size: 13px;
+    border-radius: var(--shader-studio-control-radius);
+    padding: var(--shader-studio-control-padding);
+    font-size: var(--shader-studio-font-size);
     width: 55px;
   }
 

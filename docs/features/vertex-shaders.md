@@ -24,9 +24,27 @@ Built-in clears the custom vertex source and selection. It does not create a ver
 
 **Double-click the "Vertex shader" title** to open the file in the [editor overlay](editor-overlay.md).
 
+## Native WebGPU Stages
+
+Slang and WGSL can select native vertex and fragment entry points independently. For mesh geometry, native vertex inputs must match the supplied mesh layout: location 0 is a three-component position, location 1 is a three-component normal, and location 2 is a two-component UV. Use `float3`/`float2` in Slang or `vec3f`/`vec2f` in WGSL.
+
+Native shaders own their transforms and vertex-to-fragment interface. The built-in mesh vertex shader outputs UV at location 0, world position at location 1, and normal at location 2. A native fragment paired with that vertex shader must use compatible input locations and types. A native vertex paired with `mainImage` must produce that interface. A separate `mainVertex` hook file can also be paired with a native fragment.
+
+With **Use viewer camera** enabled, the built-in mesh vertex shader applies the viewer camera after `mainVertex`, so an empty hook still responds to drag rotation. Native mesh vertices can use `iModelMatrix`, `iViewProjectionMatrix`, and `iNormalMatrix` to follow that same camera. For Slang, use `mul(matrix, vector)`; in WGSL:
+
+```wgsl
+let world = iModelMatrix * vec4f(position, 1.0);
+let clip = iViewProjectionMatrix * world;
+let worldNormal = (iNormalMatrix * vec4f(normal, 0.0)).xyz;
+```
+
+A fullscreen WGSL vertex uses `@builtin(vertex_index)` instead of the mesh attributes; Slang uses `SV_VertexID`. Changing geometry keeps your explicit stage selections; choose a compatible vertex when switching between mesh and fullscreen geometry.
+
+Debugging a native fragment uses the vertex positions, interpolated inputs, and depth from your shader. Color outputs must be four-component floating-point vectors. Inputs passed directly to a native fragment are marked **GPU-provided** and cannot be replaced with parameter controls; parameters of helper functions remain editable. Native buffers can write [multiple render targets](multiple-render-targets.md); choose an output in the debug panel to inspect its color.
+
 ## The `mainVertex` Function
 
-A Built-in vertex hook defines `mainVertex`. WGSL and Slang can instead select a native annotated vertex entry point; see [Native entry points](wgsl-authoring.md#native-entry-points-and-shared-files). The hook receives the index of the vertex being processed, followed by the vertex data as `inout` parameters — modify them in-place to change the rendered geometry.
+A Built-in vertex hook defines `mainVertex`. WGSL and Slang can instead select a native annotated vertex entry point; see [Native entry points](config-buffers.md#native-entry-points-and-shared-files). The hook receives the index of the vertex being processed, followed by the vertex data as `inout` parameters — modify them in-place to change the rendered geometry.
 
 === "GLSL"
     ```glsl

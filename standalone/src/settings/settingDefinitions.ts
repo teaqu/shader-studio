@@ -1,16 +1,21 @@
 import type { StandaloneSettingKey } from './StandaloneSettings';
 
-interface SettingDefinition {
+interface SettingDefinitionBase {
   key: StandaloneSettingKey;
   label: string;
   description: string;
-  group: 'Preview' | 'Language services' | 'Editor';
   kind: 'boolean' | 'number' | 'choice';
   choices?: readonly { value: string; label: string }[];
   min?: number;
   max?: number;
 }
+type SettingDefinition = SettingDefinitionBase & (
+  | { group: 'Theme'; kind: 'choice'; choices: readonly { value: string; label: string }[] }
+  | { group: 'Preview' | 'Language services' | 'Editor' }
+);
 export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
+  { key: 'theme.style', label: 'Style', description: 'VS Code keeps the familiar studio controls. Pixel adds an arcade palette, crisp edges and raised buttons in both light and dark mode.', group: 'Theme', kind: 'choice', choices: [{ value: 'classic', label: 'VS Code' }, { value: 'pixel', label: 'Pixel' }] },
+  { key: 'layout.mobileMode', label: 'Mobile mode', description: 'Use the mobile layout on narrow screens. Turn off to keep desktop docking and controls at every window size.', group: 'Preview', kind: 'boolean' },
   { key: 'webgpu.defaultRenderAuthoring', label: 'Default shader mode', description: 'Default for new WGSL/Slang shaders, buffers, and source insertion. Choose Built-in hooks or Native entry points.', group: 'Preview', kind: 'choice', choices: [{ value: 'hooks', label: 'Built-in' }, { value: 'native', label: 'Native' }] },
   { key: 'preview.preventMouseDefaults', label: 'Prevent default mouse actions', description: 'Prevent context menus, middle-click actions, back/forward navigation and page scrolling over the canvas. Shaders still receive mouse input when off.', group: 'Preview', kind: 'boolean' },
   { key: 'webgpu.useViewerCamera', label: 'Use viewer camera', description: 'Apply the viewer camera to mesh shaders by default. Individual shaders and passes can override this.', group: 'Preview', kind: 'boolean' },

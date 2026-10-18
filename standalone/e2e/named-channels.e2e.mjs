@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { PNG } from 'pngjs';
 import { workspace } from './language-service-fixtures.mjs';
 import { standaloneE2eEndpoints } from './ports.mjs';
+import { closeExplorerSettings, useSharedShaderEditor } from './explorer-preferences.mjs';
 
 const { productionOrigin } = standaloneE2eEndpoints();
 
@@ -25,8 +26,10 @@ async function expectGreen(page) {
     return [...data.subarray(offset, offset + 3)];
   }).toEqual([0, 255, 0]);
 }
-async function replaceSource(page, code) {
-  const editor = page.getByTestId('web-editor');
+async function replaceSource(page, path, code) {
+  // Active-file tracking (the default) opens each selected shader in its own
+  // editor; tests that opt out edit through the shared editor (path null).
+  const editor = path === null ? page.getByTestId('web-editor') : page.locator(`[data-testid="file-editor"][data-path="${path}"]`);
   await editor.locator('.view-lines').click();
   await page.keyboard.press('ControlOrMeta+A');
   await page.keyboard.insertText(code);
@@ -46,9 +49,9 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
       [`named.${language}`, initial],
       ['named.sha.json', JSON.stringify({ version: '1', passes: { Image: { inputs: { albedo: { type: 'keyboard' } } } } })],
     ], `named-${language}`);
-    await replaceSource(page, good);
+    await replaceSource(page, `/named.${language}`, good);
     await expectGreen(page);
-    await expect.poll(async () => (await workspace(page))['/shaders/named.' + language]).toBe(good);
+    await expect.poll(async () => (await workspace(page))['/named.' + language]).toBe(good);
     await page.reload();
     await expectGreen(page);
   });
@@ -62,9 +65,9 @@ test('WGSL named channel Load renders after editing and persists across reload',
     ['load.sha.json', JSON.stringify({ version: '1', passes: { Image: { inputs: { albedo: { type: 'keyboard' } } } } })],
   ], 'load-wgsl');
 
-  await replaceSource(page, good);
+  await replaceSource(page, '/load.wgsl', good);
   await expectGreen(page);
-  await expect.poll(async () => (await workspace(page))['/shaders/load.wgsl']).toBe(good);
+  await expect.poll(async () => (await workspace(page))['/load.wgsl']).toBe(good);
   await page.reload();
   await expectGreen(page);
 });
@@ -82,10 +85,14 @@ test('WGSL compute reports implicit sampling and recovers after an explicit-LOD 
   ], 'stage-wgsl');
   await expect(page.getByTestId('shader-option-stage-wgsl').locator('.shader-error')).toBeVisible();
   await page.getByTitle('Options', { exact: true }).click();
-  await page.getByLabel('Hide Buffers', { exact: true }).uncheck();
+  await page.getByLabel('Hide buffer files', { exact: true }).uncheck();
+  await closeExplorerSettings(page);
+  // Selecting a configured pass keeps the preview on its owner and opens the
+  // pass beside it, so the edit goes to the pass file's own editor.
   await page.getByTestId('shader-option-update-wgsl').click();
-  await replaceSource(page, valid);
-  await expect.poll(async () => (await workspace(page))['/shaders/update.wgsl']).toBe(valid);
+  await expect(page.getByTestId('shader-option-stage-wgsl')).toHaveAttribute('aria-pressed', 'true');
+  await replaceSource(page, '/update.wgsl', valid);
+  await expect.poll(async () => (await workspace(page))['/update.wgsl']).toBe(valid);
   await page.getByTestId('shader-option-stage-wgsl').click();
   await expectGreen(page);
   await expect(page.getByTestId('shader-option-stage-wgsl').locator('.shader-error')).toHaveCount(0);

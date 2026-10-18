@@ -7,13 +7,13 @@ import {
   WORKSPACE_BACKUP_VERSION,
 } from '../workspaceBackup';
 
-const files = [{ path: '/shaders/main.glsl', contents: 'void main() {}', createdAt: 1, modifiedAt: 2 }];
+const files = [{ path: '/main.glsl', contents: 'void main() {}', createdAt: 1, modifiedAt: 2 }];
 
 describe('workspace backups', () => {
   it('serializes a versioned portable archive without sharing file objects', () => {
     const backup = createWorkspaceBackup(files);
     files[0].contents = 'changed';
-    expect(backup).toEqual({ format: WORKSPACE_BACKUP_FORMAT, version: WORKSPACE_BACKUP_VERSION, files: [{ path: '/shaders/main.glsl', contents: 'void main() {}', createdAt: 1, modifiedAt: 2 }] });
+    expect(backup).toEqual({ format: WORKSPACE_BACKUP_FORMAT, version: WORKSPACE_BACKUP_VERSION, files: [{ path: '/main.glsl', contents: 'void main() {}', createdAt: 1, modifiedAt: 2 }] });
     expect(parseWorkspaceBackup(serializeWorkspaceBackup(backup.files))).toEqual(backup);
   });
 
@@ -49,8 +49,8 @@ describe('workspace backups', () => {
 
   it.each([
     ['null', null],
-    ['an array', ['/shaders/main.glsl', 'void main() {}', 1, 2]],
-    ['a string', '/shaders/main.glsl'],
+    ['an array', ['/main.glsl', 'void main() {}', 1, 2]],
+    ['a string', '/main.glsl'],
   ])('rejects %s in place of a file record', (_label, entry) => {
     expect(() => parseWorkspaceBackup({ format: WORKSPACE_BACKUP_FORMAT, version: WORKSPACE_BACKUP_VERSION, files: [entry] }))
       .toThrow('invalid workspace file');
@@ -60,8 +60,8 @@ describe('workspace backups', () => {
     ['a relative path', 'shaders/main.glsl'],
     ['the workspace root', '/'],
     ['a Windows separator', '/shaders\\main.glsl'],
-    ['a current-directory segment', '/shaders/./main.glsl'],
-    ['a parent segment inside the path', '/shaders/../main.glsl'],
+    ['a current-directory segment', '/./main.glsl'],
+    ['a parent segment inside the path', '/../main.glsl'],
   ])('rejects %s so imports cannot smuggle non-canonical paths', (_label, path) => {
     expect(() => parseWorkspaceBackup({ format: WORKSPACE_BACKUP_FORMAT, version: WORKSPACE_BACKUP_VERSION, files: [{ ...files[0], path }] }))
       .toThrow('invalid workspace file');

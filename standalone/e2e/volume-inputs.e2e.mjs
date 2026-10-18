@@ -40,7 +40,7 @@ for (const [language, source] of Object.entries(shaders)) {
     await page.getByRole('combobox', { name: 'Slice axis', exact: true }).selectOption('x');
     await page.getByRole('combobox', { name: 'Filter', exact: true }).selectOption('nearest');
     await page.getByRole('combobox', { name: 'Wrap X / Y / Z', exact: true }).selectOption('clamp');
-    await expect.poll(async () => JSON.parse((await workspace(page))['/shaders/volume.sha.json']).passes.Image.inputs.iChannel0)
+    await expect.poll(async () => JSON.parse((await workspace(page))['/volume.sha.json']).passes.Image.inputs.iChannel0)
       .toMatchObject({ type: 'volume', path, filter: 'nearest', wrap: 'clamp' });
     await page.reload();
     await green();
@@ -70,13 +70,22 @@ for (const [name, uri, format] of [
     await expect(dialog.getByText(`32 × 32 × 32 · ${format}`, { exact: true })).toBeVisible();
     const filter = dialog.getByRole('combobox', { name: 'Filter', exact: true });
     const wrap = dialog.getByRole('combobox', { name: 'Wrap X / Y / Z', exact: true });
+    // Channel controls use the theme's shared control padding.
+    const controlPaddingLeft = await page.evaluate(() => {
+      const probe = document.createElement('span');
+      probe.style.padding = 'var(--shader-studio-control-padding)';
+      document.body.append(probe);
+      const value = getComputedStyle(probe).paddingLeft;
+      probe.remove();
+      return value;
+    });
     for (const control of [filter, wrap]) {
       await expect(control).toHaveCSS('border-radius', '4px');
-      await expect(control).toHaveCSS('padding-left', '12px');
+      await expect(control).toHaveCSS('padding-left', controlPaddingLeft);
     }
     await filter.selectOption('nearest');
     await wrap.selectOption('clamp');
-    await expect.poll(async () => JSON.parse((await workspace(page))['/shaders/noise.sha.json']).passes.Image.inputs.iChannel0)
+    await expect.poll(async () => JSON.parse((await workspace(page))['/noise.sha.json']).passes.Image.inputs.iChannel0)
       .toMatchObject({ type: 'volume', path: uri, filter: 'nearest', wrap: 'clamp' });
     await page.reload();
     await page.getByRole('button', { name: 'Configure iChannel0', exact: true }).click();

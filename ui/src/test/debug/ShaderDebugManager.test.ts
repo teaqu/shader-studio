@@ -6,20 +6,21 @@ describe('ShaderDebugManager - UI State', () => {
 
   beforeEach(() => {
     manager = new ShaderDebugManager();
+    manager.setInlineRenderingEnabled(true);
   });
 
   describe('Toggle and State Management', () => {
     it('should start with correct initial state', () => {
-      const state = manager.getState();
+      const state = new ShaderDebugManager().getState();
       expect(state.isEnabled).toBe(false);
       expect(state.isActive).toBe(false);
       expect(state.functionContext).toBeNull();
       expect(state.isLineLocked).toBe(false);
-      expect(state.isInlineRenderingEnabled).toBe(true);
+      expect(state.isInlineRenderingEnabled).toBe(false);
       expect(state.normalizeMode).toBe('off');
       expect(state.isStepEnabled).toBe(false);
       expect(state.stepEdge).toBe(0.5);
-      expect(state.isVariableInspectorEnabled).toBe(false);
+      expect(state.isVariableInspectorEnabled).toBe(true);
       expect(state.isErrorsEnabled).toBe(false);
     });
 
@@ -50,6 +51,7 @@ describe('ShaderDebugManager - UI State', () => {
     });
 
     it('should preserve isInlineRenderingEnabled when toggling debug', () => {
+      manager.setInlineRenderingEnabled(true);
       manager.toggleEnabled(); // enable
       expect(manager.getState().isInlineRenderingEnabled).toBe(true);
 
@@ -273,7 +275,7 @@ describe('ShaderDebugManager - UI State', () => {
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   // just a comment
 }`;
-      manager.toggleEnabled(); // inline rendering on by default
+      manager.toggleEnabled(); // inline rendering enabled by the test setup
       manager.updateDebugLine(2, '  // just a comment', 'test.glsl');
 
       const result = manager.modifyShaderForDebugging(shader, 2);
@@ -320,7 +322,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   fragColor = vec4(uv, 0.0, 1.0);
 }`;
       manager.toggleEnabled();
-      manager.toggleInlineRendering(); // turn off (default is on)
+      manager.toggleInlineRendering(); // turn off
       manager.updateDebugLine(1, '  vec2 uv = fragCoord / iResolution.xy;', 'test.glsl');
 
       const result = manager.modifyShaderForDebugging(shader, 1);

@@ -737,7 +737,8 @@ suite('ShaderExplorerProvider Test Suite', () => {
       await messageHandler({ type: 'requestShaders', skipCache: false });
 
       const message = postMessageSpy.firstCall.args[0];
-      assert.deepStrictEqual(message.savedState, savedState);
+      // The live active-files setting (off by default) travels with the saved view state.
+      assert.deepStrictEqual(message.savedState, { ...savedState, keepActiveShaderFiles: false });
     });
 
     test('should handle findFiles error gracefully', async () => {

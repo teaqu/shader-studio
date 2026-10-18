@@ -86,4 +86,46 @@ describe('PathInput', () => {
     await fireEvent.click(getByText('Create'));
     expect(() => getByRole('alert')).toThrow();
   });
+  it('offers fragment insertion as separate actions without a permanent mode chooser', async () => {
+    const postMessage = vi.fn();
+    const view = render(PathInput, { value: '', hidePath: true, allowCreate: false, allowSelect: false, allowInsert: true, fragmentInsertMenu: true,
+      fileType: 'wgsl-buffer', sourcePath: '/image.wgsl', builtInSourcePath: '/hooks.wgsl', postMessage, existingModes: ['hooks'] });
+    expect(view.queryByRole('combobox')).toBeNull();
+    expect(view.getByRole('button', { name: 'Add function' })).toBeVisible();
+    expect(view.getByRole('button', { name: /Built-in mainImage/ })).toBeDisabled();
+    await fireEvent.click(view.getByRole('button', { name: 'Native fragment function' }));
+    expect(postMessage).toHaveBeenLastCalledWith(expect.objectContaining({ payload: expect.objectContaining({ sourcePath: '/image.wgsl', authoringMode: 'native' }) }));
+    await view.rerender({ value: '', hidePath: true, allowCreate: false, allowSelect: false, allowInsert: true, fragmentInsertMenu: true,
+      fileType: 'wgsl-buffer', sourcePath: '/image.wgsl', builtInSourcePath: '/hooks.wgsl', postMessage, existingModes: [] });
+    await fireEvent.click(view.getByRole('button', { name: 'Built-in mainImage' }));
+    expect(postMessage).toHaveBeenLastCalledWith(expect.objectContaining({ payload: expect.objectContaining({ sourcePath: '/hooks.wgsl', authoringMode: 'hooks' }) }));
+  });
+
+
+  it('places the Add menu under its trigger, flips it above when it would overflow, and focuses the first choice', async () => {
+    const view = render(PathInput, { value: '', hidePath: true, allowCreate: false, allowSelect: false, allowInsert: true, fragmentInsertMenu: true,
+      fileType: 'wgsl-buffer', sourcePath: '/image.wgsl', postMessage: vi.fn(), existingModes: [] });
+    const trigger = view.getByRole('button', { name: 'Add function' });
+    const menu = view.getByRole('group', { name: 'Add function' }) as HTMLDivElement;
+    vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue({ top: 700, bottom: 720, right: 500, left: 400, width: 100, height: 20 } as DOMRect);
+    const height = { value: Math.max(0, window.innerHeight - 8 - 726) };
+    vi.spyOn(menu, 'getBoundingClientRect').mockImplementation(() => ({ top: 726, bottom: 726 + height.value, height: height.value } as DOMRect));
+    await fireEvent.click(trigger);
+    expect(menu.style.left).toBe(`${Math.max(8, Math.min(500 - 272, window.innerWidth - 272 - 8))}px`);
+    expect(menu.style.top).toBe('726px');
+
+    const toggle = (newState: string) => menu.dispatchEvent(Object.assign(new Event('toggle'), { newState }));
+    toggle('open');
+    await tick();
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    expect(menu.style.top).toBe('726px');
+    expect(document.activeElement).toBe(view.getByRole('button', { name: 'Native fragment function' }));
+
+    height.value = window.innerHeight;
+    toggle('open');
+    expect(menu.style.top).toBe(`${Math.max(8, 700 - window.innerHeight - 6)}px`);
+    toggle('closed');
+    await tick();
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+  });
 });

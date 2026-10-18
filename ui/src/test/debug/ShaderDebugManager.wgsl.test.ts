@@ -15,6 +15,7 @@ describe('ShaderDebugManager - WGSL language mode', () => {
 
   beforeEach(() => {
     manager = new ShaderDebugManager();
+    manager.setInlineRenderingEnabled(true);
     manager.setLanguage('wgsl');
     manager.setImageShaderCode(wgslShader);
   });

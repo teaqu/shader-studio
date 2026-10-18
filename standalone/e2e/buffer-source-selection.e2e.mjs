@@ -26,8 +26,8 @@ test('compute file and function rows add native code to their source and expose 
   await functions.getByRole('radio', { name: '@compute step' }).check();
   await functions.getByRole('button', { name: 'Add function…' }).click();
   await expect(functions.getByRole('radio', { name: '@compute ComputeACompute' })).toBeChecked();
-  await expect.poll(async () => (await workspace(page))['/shaders/kernels.wgsl']).toContain('ComputeACompute');
-  expect((await workspace(page))['/shaders/compute-ui.wgsl']).toBe(main);
+  await expect.poll(async () => (await workspace(page))['/kernels.wgsl']).toContain('ComputeACompute');
+  expect((await workspace(page))['/compute-ui.wgsl']).toBe(main);
   await page.locator('[data-tab-name="Image"]').click();
   await page.getByRole('button', { name: 'Configure iChannel0', exact: true }).click();
   await page.getByRole('tab', { name: 'Misc', exact: true }).click();
@@ -38,20 +38,23 @@ test('compute file and function rows add native code to their source and expose 
       const probe = document.createElement('span');
       probe.style.backgroundColor = 'var(--vscode-input-background)';
       probe.style.color = 'var(--vscode-input-foreground)';
+      probe.style.padding = 'var(--shader-studio-control-padding)';
       element.parentElement.append(probe);
       const expected = getComputedStyle(probe);
       const result = { background: actual.backgroundColor, color: actual.color,
-        expectedBackground: expected.backgroundColor, expectedColor: expected.color, padding: actual.padding };
+        expectedBackground: expected.backgroundColor, expectedColor: expected.color, padding: actual.padding,
+        expectedPadding: expected.padding };
       probe.remove();
       return result;
     });
     expect(styles.background).toBe(styles.expectedBackground);
     expect(styles.color).toBe(styles.expectedColor);
-    expect(styles.padding).toBe('8px 12px');
+    // Config controls share the theme's control padding.
+    expect(styles.padding).toBe(styles.expectedPadding);
   }
   await page.getByLabel('Compute output layer').selectOption('2');
   await page.reload();
-  const config = JSON.parse((await workspace(page))['/shaders/compute-ui.sha.json']);
+  const config = JSON.parse((await workspace(page))['/compute-ui.sha.json']);
   expect(config.passes.Image.inputs.iChannel0.layer).toBe(2);
   expect(config.passes.ComputeA.entryPoints.compute).toBe('ComputeACompute');
   await page.locator('[data-tab-name="ComputeA"]').click();
@@ -75,13 +78,13 @@ test('standalone source controls select config and workspace files, add to the c
  await expect(main.getByRole('button', { name: 'Choose shader file' })).toHaveText('existing.wgsl');
  await expect(main.getByRole('button', { name: 'Open editor' })).toBeEnabled();
  await main.getByRole('button', { name: 'Open editor' }).click();
- await expect(page.locator('[data-testid="file-editor"][data-path="/shaders/existing.wgsl"] .monaco-editor')).toBeVisible();
+ await expect(page.locator('[data-testid="file-editor"][data-path="/existing.wgsl"] .monaco-editor')).toBeVisible();
  await main.getByRole('button',{name:'Choose shader file'}).click();
  await page.getByRole('dialog',{name:'Choose shader file'}).getByRole('button',{name:'Browse workspace…'}).click();
  const dialog=page.getByRole('dialog',{name:'Select workspace file'});
  await dialog.getByLabel('Filter files').fill('reuse');
- await dialog.getByRole('button',{name:'/shaders/reuse.wgsl',exact:true}).click();
- await expect(main.getByRole('button', { name: 'Choose shader file' })).toHaveAttribute('title', '/shaders/reuse.wgsl');
+ await dialog.getByRole('button',{name:'/reuse.wgsl',exact:true}).click();
+ await expect(main.getByRole('button', { name: 'Choose shader file' })).toHaveAttribute('title', '/reuse.wgsl');
  const vertex=page.locator('.config-item').filter({has:page.getByRole('heading',{name:'Vertex shader',exact:true})});
  await vertex.getByRole('button',{name:'Same file'}).click();
  await expect(vertex.getByLabel('File', {exact:true})).toHaveCount(0);
@@ -95,18 +98,18 @@ test('standalone source controls select config and workspace files, add to the c
  const functions=vertex.getByRole('group',{name:'Vertex function controls'});
  await functions.getByLabel('Insert mode').selectOption('native');
  await functions.getByRole('button',{name:'Add function…'}).click();
- await expect.poll(async()=>(await workspace(page))['/shaders/existing.wgsl']).toContain('BufferAVertex');
- expect((await workspace(page))['/shaders/reuse.wgsl']).toBe(source);
+ await expect.poll(async()=>(await workspace(page))['/existing.wgsl']).toContain('BufferAVertex');
+ expect((await workspace(page))['/reuse.wgsl']).toBe(source);
  await vertex.getByRole('button',{name:'Built-in'}).click();
  await expect(vertex.getByRole('button',{name:'Built-in',exact:true})).toHaveAttribute('aria-pressed','true');
  await vertex.getByRole('button',{name:'Same file'}).click();
  await page.getByLabel('Output format',{exact:true}).selectOption('rgba16float');
  await expect(page.getByRole('region',{name:'Output'}).getByLabel('Output format')).toHaveValue('rgba16float');
- await expect.poll(async()=>JSON.parse((await workspace(page))['/shaders/reuse.sha.json']).passes.BufferA).toMatchObject({path:'/shaders/reuse.wgsl',outputFormat:'rgba16float',vertex:'/shaders/reuse.wgsl'});
+ await expect.poll(async()=>JSON.parse((await workspace(page))['/reuse.sha.json']).passes.BufferA).toMatchObject({path:'/reuse.wgsl',outputFormat:'rgba16float',vertex:'/reuse.wgsl'});
  await page.reload();
  await page.locator('[data-tab-name="BufferA"]').click();
- await expect(page.getByRole('button', { name: 'Choose shader file' }).first()).toHaveAttribute('title', '/shaders/reuse.wgsl');
- expect(JSON.parse((await workspace(page))['/shaders/reuse.sha.json']).passes.BufferA).toMatchObject({path:'/shaders/reuse.wgsl',outputFormat:'rgba16float',vertex:'/shaders/reuse.wgsl'});
+ await expect(page.getByRole('button', { name: 'Choose shader file' }).first()).toHaveAttribute('title', '/reuse.wgsl');
+ expect(JSON.parse((await workspace(page))['/reuse.sha.json']).passes.BufferA).toMatchObject({path:'/reuse.wgsl',outputFormat:'rgba16float',vertex:'/reuse.wgsl'});
 });
 
 test('named native buffer outputs are inferred, selectable in Misc, and persist without an output list', async ({ page }) => {
@@ -125,10 +128,10 @@ test('named native buffer outputs are inferred, selectable in Misc, and persist 
  await page.getByRole('button',{name:'Configure iChannel0',exact:true}).click();
  await page.getByRole('tab',{name:'Misc',exact:true}).click();
  await page.getByRole('radio',{name:'Output 1 · normals'}).check();
- await expect.poll(async()=>JSON.parse((await workspace(page))['/shaders/mrt.sha.json']).passes.Image.inputs.iChannel0.output).toBe(1);
- expect(JSON.parse((await workspace(page))['/shaders/mrt.sha.json']).passes.BufferA.outputs).toBeUndefined();
+ await expect.poll(async()=>JSON.parse((await workspace(page))['/mrt.sha.json']).passes.Image.inputs.iChannel0.output).toBe(1);
+ expect(JSON.parse((await workspace(page))['/mrt.sha.json']).passes.BufferA.outputs).toBeUndefined();
  await page.reload();
- expect(JSON.parse((await workspace(page))['/shaders/mrt.sha.json']).passes.Image.inputs.iChannel0.output).toBe(1);
+ expect(JSON.parse((await workspace(page))['/mrt.sha.json']).passes.Image.inputs.iChannel0.output).toBe(1);
 });
 
 

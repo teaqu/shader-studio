@@ -16,7 +16,7 @@ Open an existing `.glsl`, `.slang`, or `.wgsl` file, or create a new one and wri
 
 ## Step 3: Write Your Shader
 
-Start with a Shadertoy-style shader that defines `mainImage`, the function that computes each pixel's color. For Slang or WGSL, choose **Built-in** when creating the shader to follow these examples. [Native entry points](features/wgsl-authoring.md#native-entry-points-and-shared-files) are an alternative for more advanced shaders.
+Start with a Shadertoy-style shader that defines `mainImage`, the function that computes each pixel's color. For Slang or WGSL, choose **Built-in** when creating the shader to follow these examples. [Native entry points](features/config-buffers.md#native-entry-points-and-shared-files) are an alternative for more advanced shaders.
 
 === "GLSL"
     ```glsl

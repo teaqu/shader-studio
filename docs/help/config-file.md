@@ -83,7 +83,7 @@ Image uses the main shader file. For vertex sources, omitted `vertex` and `entry
 
 Compute uses `entryPoints.compute`; legacy `entryPoint` still loads. Native render output slots and default names are inferred from the selected fragment return declaration in the pass source and Common code. Do not add an `outputs` array to allocate attachments: edit the shader declaration instead. Legacy `outputs` entries can override labels by slot. A channel's `output` selects a render attachment, and `layer` selects a compute output layer; both default to zero.
 
-The config UI writes these paths and selections when you choose a file or function. **Add function…** also inserts source code in that stage's file. Output selection in **Misc** only changes the channel connection. See [Native entry points](../features/wgsl-authoring.md#native-entry-points-and-shared-files) and [Multiple render targets](../features/multiple-render-targets.md).
+The config UI writes these paths and selections when you choose a file or function. **Add function…** also inserts source code in that stage's file. Output selection in **Misc** only changes the channel connection. See [Native entry points](../features/config-buffers.md#native-entry-points-and-shared-files) and [Multiple render targets](../features/multiple-render-targets.md).
 
 For mesh passes, `useViewerCamera: false` disables the viewer transform in GLSL, WGSL, and Slang. Omitting it inherits the shader-wide `webgpu.useViewerCamera` setting, then the global preference. **Use default** removes the pass override.
 
@@ -179,7 +179,7 @@ vec4 col = texture(iChannel0, normalize(dir));
 
 ## Script-Driven Uniforms
 
-Add a `script` field to run a TypeScript or JavaScript file that computes custom uniform values each frame. The script exports named values; their types are inferred automatically:
+Add a `script` field to run a TypeScript or JavaScript file that computes custom uniform values. Export a `uniforms(ctx)` function returning named values; their types are inferred automatically:
 
 ```json
 {
@@ -195,11 +195,15 @@ Add a `script` field to run a TypeScript or JavaScript file that computes custom
 Example `uniforms.ts`:
 
 ```typescript
-export const uSpeed: float = iTime * 0.5;
-export const uColor: vec3 = [Math.sin(iTime), 0.5, 1.0];
+export function uniforms(ctx) {
+  return {
+    uSpeed: ctx.iTime * 0.5,
+    uColor: [Math.sin(ctx.iTime), 0.5, 1.0],
+  };
+}
 ```
 
-Available context variables: `iTime`, `iFrame`, `iResolution`, `iMouse`, `iDate`, `iChannelTime`, `iSampleRate`.
+Available context fields: `iTime`, `iFrame`, `iResolution`, `iMouse`, `iDate`, `iChannelTime`, `iSampleRate`. Read them from `ctx`; they are not globals. The script is polled at `scriptMaxPollingFps` (30 by default).
 
 Supported uniform types: `float`, `vec2`, `vec3`, `vec4`, `bool`.
 

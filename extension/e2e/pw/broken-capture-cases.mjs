@@ -1,4 +1,5 @@
 import { test, expect, workspacePath } from './fixtures.mjs';
+import { setDebugPanelControl } from './debug-panel-controls.mjs';
 import { join } from 'node:path';
 
 /**
@@ -44,7 +45,7 @@ export function registerBrokenCaptureTests(language) {
         }
       });
       await expect.poll(() => frame.locator('.debug-panel').count(), { timeout: 30_000 }).toBeGreaterThan(0);
-      await frame.getByLabel('Toggle variable inspector').click();
+      await setDebugPanelControl(frame, 'Toggle variable inspector', true);
 
       // Cursor below the break, where nothing used to capture at all.
       await vscode.evaluateInHost(async (vscode, targetPath, line) => {

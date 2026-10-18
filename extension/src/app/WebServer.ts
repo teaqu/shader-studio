@@ -249,6 +249,11 @@ export class WebServer {
   private messenger: Messenger | null = null;
   private webSocketPort: number = 0;
   private listeningPort: number | undefined;
+  private mcpHandler?: (req: http.IncomingMessage, res: http.ServerResponse) => Promise<void>;
+
+  public setMcpHandler(handler?: (req: http.IncomingMessage, res: http.ServerResponse) => Promise<void>): void {
+    this.mcpHandler = handler;
+  }
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -316,6 +321,10 @@ export class WebServer {
       : vscode.Uri.joinPath(this.context.extensionUri, "ui-dist").fsPath;
 
     this.httpServer = http.createServer((req, res) => {
+      if (this.getRequestPath(req.url) === '/mcp' && this.mcpHandler) {
+        void this.mcpHandler(req, res);
+        return;
+      }
       if (req.method === "OPTIONS") {
         const requestPath = this.getRequestPath(req.url);
         const corsHeaders = requestPath.startsWith("/textures/")

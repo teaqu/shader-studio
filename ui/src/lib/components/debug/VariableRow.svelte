@@ -362,9 +362,10 @@
     border: none;
     color: var(--vscode-descriptionForeground);
     cursor: pointer;
-    padding: 0 2px;
-    font-size: 10px;
+    padding: var(--shader-studio-control-padding);
+    font-size: var(--shader-studio-font-size);
     transition: transform 0.15s;
+    min-height: var(--shader-studio-control-height);
   }
 
   .expand-btn.expanded {

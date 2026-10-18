@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { addShaderFiles } from './workspace-store.mjs';
+import { sashAtLeftEdge } from './dock-sashes.mjs';
 
 const shader = `
 void mainImage(out vec4 c, in vec2 p) { c = vec4(1, 0, 0, 1); }
@@ -17,7 +18,7 @@ test.beforeEach(async ({ page }) => {
 test('VR uses a docked tool pane and preserves navigation settings after reload', async ({ page }) => {
   const button = page.getByRole('button', { name: 'VR', exact: true });
   await expect(button).toBeVisible();
-  await expect(page.locator('.right-group > button').first()).toHaveAttribute('aria-label', 'VR');
+  await expect(page.locator('.right-group > button').last()).toHaveAttribute('aria-label', 'VR');
   await expect(page.getByRole('region', { name: 'VR settings' })).toHaveCount(0);
   await button.click();
   const panel = page.getByRole('region', { name: 'VR settings' });
@@ -67,12 +68,13 @@ test('VR uses a docked tool pane and preserves navigation settings after reload'
   await expect(panel).toBeVisible();
 });
 
-test('VR is the last tool to collapse and remains accessible through the menu', async ({ page }) => {
+test('detected VR stays at the far right of a narrow preview and remains accessible through the menu', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'VR', exact: true })).toBeVisible();
   const preview = page.getByTestId('web-preview');
-  const sash = page.locator('.standalone-dockview .dv-sash.dv-enabled:not(.standalone-panel-source *)').last();
-  // Resize the real editor/preview split, keeping the desktop workspace active.
+  // Resize the real split on the preview's left edge, keeping the desktop workspace
+  // active. Other panes (Explorer, Files) add their own dividers to the layout.
   const bounds = await preview.boundingBox();
+  const sash = await sashAtLeftEdge(page, bounds.x);
   const split = await sash.boundingBox();
   expect(bounds).not.toBeNull();
   expect(split).not.toBeNull();
@@ -88,8 +90,25 @@ test('VR is the last tool to collapse and remains accessible through the menu', 
   await page.mouse.down();
   await page.mouse.move(narrowed.x + narrowed.width - 240, narrowed.y + narrowed.height / 2, { steps: 12 });
   await page.mouse.up();
+  await expect(page.locator('.right-group button[aria-label="VR"]')).toBeVisible();
+  await page.getByRole('button', { name: 'Open options menu' }).click();
+  await page.locator('.options-menu-portal').getByRole('button', { name: 'VR', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'VR settings' })).toBeVisible();
+});
+
+test('ordinary shaders can open VR settings from the menu without a detected VR shortcut', async ({ page }) => {
+  await addShaderFiles(page, [['ordinary.glsl', 'void mainImage(out vec4 c, in vec2 p) { c = vec4(1); }']]);
+  await page.reload();
+  await page.getByTestId('shader-option-ordinary-glsl').click();
   await expect(page.locator('.right-group button[aria-label="VR"]')).toHaveCount(0);
   await page.getByRole('button', { name: 'Open options menu' }).click();
-  await page.getByRole('button', { name: 'VR', exact: true }).click();
-  await expect(page.getByRole('region', { name: 'VR settings' })).toBeVisible();
+  await page.locator('.options-menu-portal').getByRole('button', { name: 'VR', exact: true }).click();
+  const panel = page.getByRole('region', { name: 'VR settings' });
+  await expect(panel).toBeVisible();
+  await expect(page.locator('.options-menu-portal')).toHaveCount(0);
+  await panel.getByLabel('Enable headset navigation').check();
+  await page.reload();
+  await expect(panel).toBeVisible();
+  await expect(panel.getByLabel('Enable headset navigation')).toBeChecked();
+  await expect(page.locator('.right-group button[aria-label="VR"]')).toHaveCount(0);
 });

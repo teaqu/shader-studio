@@ -16,12 +16,20 @@ afterEach(() => {
 });
 
 describe('VR preview toggle', () => {
-  it('is hidden when the engine has no mainVR preview', () => {
-    updateVrPreviewContext(engine(false), 'image.glsl');
+  it.each([false, null])('opens and closes without a VR shader (engine: %s)', async available => {
+    const renderer = available === null ? null : engine(available);
+    updateVrPreviewContext(renderer, 'image.glsl');
     const view = render(VrPreviewButton);
-    expect(view.queryByRole('button', { name: 'VR' })).toBeNull();
+    const button = view.getByRole('button', { name: 'VR' });
+    await fireEvent.click(button);
+    expect(view.getByRole('region', { name: 'VR settings' })).toBeTruthy();
+    expect(view.getByText(/Open a fullscreen GLSL shader/)).toBeTruthy();
+    expect((view.getByLabelText('Desktop preview') as HTMLInputElement).disabled).toBe(true);
+    expect((view.getByRole('button', { name: 'Enter VR' }) as HTMLButtonElement).disabled).toBe(true);
     toggleVrPreview();
     expect(getVrPreviewState().enabled).toBe(false);
+    await fireEvent.click(button);
+    expect(view.queryByRole('region')).toBeNull();
   });
   it('starts off and explicitly switches on and off', async () => {
     const renderer = engine();

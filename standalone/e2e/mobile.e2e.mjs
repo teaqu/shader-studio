@@ -1,5 +1,10 @@
 import { expect, test } from '@playwright/test';
 import { readWorkspaceFiles } from './workspace-store.mjs';
+import { openExplorerSettings, useSharedShaderEditor } from './explorer-preferences.mjs';
+import { setDebugPanelControl } from './debug-panel-controls.mjs';
+
+// These tests edit through the shared editor rather than per-file editors.
+test.beforeEach(({ context }) => useSharedShaderEditor(context));
 
 test('new shader opens blank and focused, validates its name, and saves the named shader', async ({ page }) => {
   await page.goto('/');
@@ -20,7 +25,7 @@ test('new shader opens blank and focused, validates its name, and saves the name
   await expect(dialog.getByRole('alert')).toHaveCount(0);
   await name.press('Enter');
   await expect(dialog).toBeHidden();
-  await expect.poll(async () => (await readWorkspaceFiles(page)).some(file => file.path === '/shaders/mobile-named.glsl')).toBe(true);
+  await expect.poll(async () => (await readWorkspaceFiles(page)).some(file => file.path === '/mobile-named.glsl')).toBe(true);
   await page.reload();
   await nav.getByRole('button', { name: 'Explorer' }).click();
   await expect(page.getByTestId('web-shader-explorer').getByTestId('shader-option-mobile-named-glsl')).toBeVisible();
@@ -38,7 +43,7 @@ test('vertex visibility is default-on and the chosen option survives reload', as
   await expect(dialog).toBeHidden();
   await nav.getByRole('button', { name: 'Explorer' }).click();
   await explorer.getByTitle('Options').click();
-  const hideVertex = explorer.getByLabel('Hide Vertex');
+  const hideVertex = explorer.getByLabel('Hide vertex files');
   await expect(hideVertex).toBeChecked();
   await expect(explorer.getByTestId('shader-option-mesh-vert-glsl')).toHaveCount(0);
   await hideVertex.uncheck();
@@ -51,6 +56,8 @@ test('vertex visibility is default-on and the chosen option survives reload', as
   await page.reload();
   await nav.getByRole('button', { name: 'Explorer' }).click();
   await expect(explorer.getByTestId('shader-option-mesh-vert-glsl')).toBeVisible();
+  // Tapping outside the settings closes them, so reopen them if needed.
+  await openExplorerSettings(page);
   await expect(hideVertex).not.toBeChecked();
   await hideVertex.check();
   await expect(explorer.getByTestId('shader-option-mesh-vert-glsl')).toHaveCount(0);
@@ -309,6 +316,12 @@ test('a finger tap pins the pixel inspector, a second tap moves it, and tapping 
   // Narrow menu bars move the debug toggle into the options menu.
   await preview.getByLabel('Open options menu', { exact: true }).click();
   await page.getByLabel('Toggle debug mode', { exact: true }).locator('visible=true').click();
+  // The pixel inspector starts off; turn it on in the Debug tool before tapping.
+  await nav.getByRole('button', { name: 'Tools' }).click();
+  await page.getByRole('navigation', { name: 'Tools' }).getByRole('button', { name: 'Debug' }).click();
+  await setDebugPanelControl(page, 'Toggle inspector', true);
+  await nav.getByRole('button', { name: 'Preview' }).click();
+  await expect(canvas).toBeVisible();
 
   // Touch points are whole CSS pixels, so derive the expected canvas pixel
   // from the rounded point with the inspector's own mapping.
@@ -452,4 +465,24 @@ test('a workspace backup exported on a phone restores the work after the workspa
   await page.getByRole('navigation', { name: 'Workspace panels' }).getByRole('button', { name: 'Explorer' }).click();
   await page.getByTestId('shader-option-aurora-glsl').dispatchEvent('click');
   await expect(editor.locator('.view-lines')).toContainText('backed up');
+});
+
+test('global Mobile mode override keeps desktop layout across reload and can be re-enabled', async ({ page }) => {
+  await page.goto('/');
+  const nav = page.getByRole('navigation', { name: 'Workspace panels' });
+  await expect(nav).toBeVisible();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const settings = page.getByRole('dialog', { name: 'Settings', exact: true });
+  await settings.getByRole('checkbox', { name: 'Mobile mode', exact: true }).uncheck();
+  await settings.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(nav).toHaveCount(0);
+  await expect(page.locator('.standalone-app')).toHaveClass(/desktop-layout/);
+  await page.reload();
+  await expect(nav).toHaveCount(0);
+  await expect(page.locator('.standalone-app')).toHaveClass(/desktop-layout/);
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(settings.getByRole('checkbox', { name: 'Mobile mode', exact: true })).not.toBeChecked();
+  await settings.getByRole('checkbox', { name: 'Mobile mode', exact: true }).check();
+  await settings.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(nav).toBeVisible();
 });

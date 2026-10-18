@@ -284,7 +284,7 @@
   label.missing { color: var(--vscode-errorForeground); }
   h3 { margin: 8px 0 0; padding-bottom: 6px; font-size: 13px; border-bottom: 1px solid var(--vscode-panel-border, #3c3c3c); }
   label { display: flex; align-items: center; gap: 8px; font-size: 12px; }
-  input, select { min-width: 72px; padding: 3px 6px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); }
+  input, select { min-width: 72px; padding: var(--shader-studio-control-padding); color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); min-height: var(--shader-studio-control-height); }
   .checkbox-row input { min-width: 0; padding: 0; }
   .themed-checkbox {
     appearance: none;

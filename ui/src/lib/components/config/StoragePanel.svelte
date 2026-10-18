@@ -36,6 +36,7 @@
     scope?: string;
     language?: "wgsl" | "slang" | "glsl";
     passes?: Array<{ name: string; compute: boolean; dispatchOnce?: boolean }>;
+    showNavigation?: boolean;
   }
   let {
     storage,
@@ -48,6 +49,7 @@
     scope = "",
     language = "wgsl",
     passes = [],
+    showNavigation = true,
   }: Props = $props();
   let panel = $state<HTMLElement>();
   const id = $props.id();
@@ -71,10 +73,13 @@
 </script>
 
 <section class="storage-panel" bind:this={panel} aria-label="Storage buffers">
+  {#if showNavigation || (tab === 'settings' && pendingForm)}
   <header>
+    {#if showNavigation}
     <div>
       <h2>GPU storage</h2>
     </div>
+    {/if}
     <div class="header-actions">
       {#if tab === "settings" && pendingForm}<button
           class="primary"
@@ -82,15 +87,17 @@
           form={pendingForm}
           aria-label="Apply pending storage changes">Apply changes</button
         >{/if}
-      <button
+      {#if showNavigation}<button
         class="primary"
         onclick={addStorage}
         aria-label="Add storage buffer">+ Add buffer</button
-      >
+      >{/if}
     </div>
   </header>
+  {/if}
   {#if !names.length}<p>No storage buffers are configured.</p>
-  {:else}<div class="workspace">
+  {:else}<div class="workspace" class:detail-only={!showNavigation}>
+      {#if showNavigation}
       <nav aria-label="Storage buffers list">
         {#each names as name}<button
             aria-label="Select storage {name}"
@@ -101,6 +108,7 @@
             ></button
           >{/each}
       </nav>
+      {/if}
       <main>
         <div class="tabs" role="tablist" aria-label="Buffer view">
           <button
@@ -202,13 +210,13 @@
   .storage-panel :global(input),
   .storage-panel :global(select) {
     font: inherit;
-    font-size: 12px;
+    font-size: var(--shader-studio-font-size);
     color: var(--storage-text);
     background: var(--storage-bg);
     border: 1px solid var(--storage-line);
-    border-radius: 4px;
-    padding: 5px 10px;
-    min-height: 32px;
+    border-radius: var(--shader-studio-control-radius);
+    padding: var(--shader-studio-control-padding);
+    min-height: var(--shader-studio-control-height);
     min-width: 0;
     max-width: 100%;
     box-sizing: border-box;
@@ -221,9 +229,14 @@
   }
   .storage-panel :global(button) {
     cursor: pointer;
-    height: 32px;
-    line-height: 18px;
+    height: var(--shader-studio-control-height);
+    line-height: var(--shader-studio-control-line-height);
     flex: 0 0 auto;
+  }
+  .storage-panel :global(select) {
+    color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground));
+    background: var(--vscode-dropdown-background, var(--vscode-input-background));
+    border-color: var(--vscode-dropdown-border, var(--storage-line));
   }
   .storage-panel :global(input[type="checkbox"]) {
     min-height: 0;
@@ -277,6 +290,8 @@
     grid-template-columns: 175px minmax(0, 1fr);
     flex: 1;
   }
+  .workspace.detail-only { grid-template-columns: minmax(0, 1fr); }
+  .workspace.detail-only main { padding: 12px 0; }
   nav {
     background: var(--storage-soft);
     padding: 10px;
@@ -289,7 +304,7 @@
     width: 100%;
     text-align: left;
     margin: 3px 0;
-    padding: 10px;
+    padding: var(--shader-studio-control-padding);
     background: transparent;
     border: 0;
     overflow-wrap: anywhere;
@@ -317,12 +332,12 @@
     margin-bottom: 16px;
   }
   .storage-panel .tabs button {
-    height: 36px;
+    height: var(--shader-studio-tab-height);
     border: 0;
     border-bottom: 2px solid transparent;
     border-radius: 0;
     background: transparent;
-    padding: 0 2px 10px;
+    padding: var(--shader-studio-tab-padding);
     color: var(--storage-muted);
   }
   .storage-panel .tabs button[aria-selected="true"] {
