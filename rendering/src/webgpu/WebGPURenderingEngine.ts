@@ -445,7 +445,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
     slangSourcePath?: string,
     slangSourcePaths?: Record<string, string>,
   ): Promise<CompilationResult | undefined> {
-    return this.session.compileShaderPipeline(code, config, path, buffers, customUniformDeclarations, customUniformInfo, slangModules, slangSourcePath, slangSourcePaths);
+    const zzResult = await this.session.compileShaderPipeline(code, config, path, buffers, customUniformDeclarations, customUniformInfo, slangModules, slangSourcePath, slangSourcePaths);
+    console.log('ZZTRACE compile end', path, this.session.compileGeneration, JSON.stringify(zzResult)?.slice(0, 200));
+    return zzResult;
   }
 
 
@@ -634,6 +636,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const previousReset = this.storage.pendingReset;
     this.storage.pendingReset = pendingReset;
     this.session.compileGeneration++;
+    console.log('ZZTRACE resetTime', this.session.compileGeneration, new Error().stack?.split('\n').slice(2, 6).join(' | '));
     for (const prepared of [...this.storage.pendingStoragePreparations]) {
       this.storage.discardPreparedStorage(prepared);
     }

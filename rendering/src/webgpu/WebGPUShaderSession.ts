@@ -146,6 +146,7 @@ export class WebGPUShaderSession {
     // Captured synchronously (before any await) so concurrent calls made in
     // the same tick still get distinct, call-order-correct generations.
     const generation = ++this.compileGeneration;
+    console.log('ZZTRACE compile start', generation, path);
     const resetGeneration = this.host.storage.pendingReset?.generation ?? null;
     const appliesReset = resetGeneration !== null;
     for (const prepared of [...this.host.storage.pendingStoragePreparations]) {
