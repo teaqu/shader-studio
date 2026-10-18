@@ -84,9 +84,10 @@ export class VscodeMcpApplication implements McpApplication {
       return { previewId: id, path: state.path, ...state.resources };
     }
     if (operation === 'read_storage') {
-      return { previewId: id, ...await this.messenger.previews.request(id, 'read_storage', {
+      const result = await this.messenger.previews.request(id, 'read_storage', {
         expectedPath: state.path, name: args.name, start: args.start ?? 0, count: args.count ?? 16,
-      }, signal) };
+      }, signal);
+      return { previewId: id, ...previewSummary(result), storageRead: result.storageRead };
     }
     if (operation === 'get_shader') {
       if (!state.path) {
@@ -98,10 +99,10 @@ export class VscodeMcpApplication implements McpApplication {
       const configPath = getConfigPathForShaderPath(state.path);
       const configFile = state.path && configPath !== state.path && fs.existsSync(configPath)
         ? await this.readFile(configPath) : null;
-      return { previewId: id, viewer: state, configFile };
+      return { previewId: id, viewer: { ...previewSummary(state), ...viewerSettings(state) }, configFile };
     }
     if (operation === 'get_diagnostics') {
-      return { previewId: id, ...state };
+      return { previewId: id, ...compileStatus(state) };
     }
     return this.controlOutput(id, operation, args, state.path, signal);
   }
@@ -109,7 +110,7 @@ export class VscodeMcpApplication implements McpApplication {
   private async listPreviews(signal: AbortSignal): Promise<Record<string, unknown>> {
     const previews = await Promise.all(this.messenger.previews.list().map(async preview => {
       try {
-        return { ...preview, ...await this.messenger.previews.request(preview.id, 'get_state', {}, signal) };
+        return { ...preview, ...previewSummary(await this.messenger.previews.request(preview.id, 'get_state', {}, signal)) };
       } catch (error) {
         return { ...preview, error: String(error) };
       }
@@ -147,7 +148,7 @@ export class VscodeMcpApplication implements McpApplication {
     } else if (operation !== 'capture_output') {
       throw new Error('Unknown MCP operation.');
     }
-    return this.output(id, operation === 'capture_output' || args.includePreview === true, payload, signal);
+    return this.output(id, operation === 'capture_output' || args.includePreview === true, payload, signal, operation === 'update_settings');
   }
 
   private async readFile(filePath: string): Promise<Record<string, unknown>> {
@@ -265,9 +266,26 @@ export class VscodeMcpApplication implements McpApplication {
     return this.messenger.previews.list().length === 1 ? this.messenger.previews.select() : undefined;
   }
 
-  private async output(id: string, capture: boolean, payload: Record<string, unknown>, signal: AbortSignal): Promise<Record<string, unknown>> {
+  private async output(id: string, capture: boolean, payload: Record<string, unknown>, signal: AbortSignal, settings = false): Promise<Record<string, unknown>> {
     const state = await this.messenger.previews.request(id, capture ? 'capture' : 'get_state', payload, signal);
-    const { data, mimeType, ...metadata } = state as ViewerSnapshot & Partial<ViewerCapture>;
-    return { previewId: id, ...metadata, ...(capture ? { image: { data, mimeType } } : {}) };
+    const { data, mimeType } = state as ViewerSnapshot & Partial<ViewerCapture>;
+    return { previewId: id, ...previewSummary(state), ...(settings ? viewerSettings(state) : {}), ...(capture ? { image: { data, mimeType } } : {}) };
   }
+}
+
+/** Always retain compile/render provenance, including last-good output after errors. */
+function compileStatus(state: ViewerSnapshot) {
+  const { path, language, compileSequence, renderedSequence, compiling, errors, warnings } = state;
+  return { path, language, compileSequence, renderedSequence, compiling, errors, warnings };
+}
+
+/** Common preview identity and output context without repeating inputs or resources. */
+function previewSummary(state: ViewerSnapshot) {
+  const { time, frame, paused, width, height } = state;
+  return { ...compileStatus(state), time, frame, paused, width, height };
+}
+
+function viewerSettings(state: ViewerSnapshot) {
+  const { fpsLimit, speed, uniforms } = state;
+  return { fpsLimit, speed, uniforms };
 }

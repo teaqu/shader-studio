@@ -53,6 +53,82 @@ afterEach(() => {
 });
 
 describe('VS Code MCP file and viewer application', () => {
+  it('sends compact text and structured results over MCP without dropping captured PNGs', async () => {
+    const { createMcpServer } = await import('../../src/app/mcp/McpTools');
+    const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+    const { InMemoryTransport } = await import('@modelcontextprotocol/sdk/inMemory.js');
+    const server = await createMcpServer(app);
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    const client = new Client({ name: 'compact-response-regression', version: '1' });
+    try {
+      await client.connect(clientTransport);
+      const diagnostics = await client.callTool({ name: 'get_diagnostics', arguments: {} });
+      expect(diagnostics.isError).not.toBe(true);
+      expect(diagnostics.structuredContent).toMatchObject({ previewId: 'preview', compileSequence: 1, errors: [] });
+      expect(diagnostics.structuredContent).not.toHaveProperty('resources');
+      const content = diagnostics.content as { type: string; text?: string }[];
+      expect(JSON.parse(content[0].text!)).toEqual(diagnostics.structuredContent);
+      const capture = await client.callTool({ name: 'capture_output', arguments: {} });
+      expect(capture.content).toContainEqual({ type: 'image', mimeType: 'image/png', data: 'pixels' });
+      expect(capture.structuredContent).not.toHaveProperty('image');
+      expect(capture.structuredContent).not.toHaveProperty('resources');
+      const resources = await client.callTool({ name: 'get_resources', arguments: {} });
+      expect(resources.structuredContent).toMatchObject({ passes: [{ kind: 'compute' }], storage: { data: { count: 1 } } });
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it('keeps routine replies compact while preserving diagnostics and output provenance', async () => {
+    const snapshot = {
+      path: source.uri.fsPath, language: 'wgsl', compileSequence: 7, renderedSequence: 6,
+      compiling: false, errors: ['Compilation failed'], warnings: ['Warning'],
+      time: 2, frame: 42, paused: true, width: 800, height: 450, fpsLimit: 30, speed: 2,
+      uniforms: [{ name: 'amount', type: 'float', value: 3 }],
+      inputs: { customUniforms: Array(20).fill({ name: 'amount', value: 3 }) },
+      resources: { passes: [{ name: 'Image', path: source.uri.fsPath }], storage: { values: { count: 1024 } } },
+      storageRead: { name: 'values', bytes: [42, 0, 0, 0], frame: 42 }, data: 'pixels', mimeType: 'image/png',
+    };
+    vi.spyOn(previews, 'request').mockResolvedValue(snapshot as never);
+    for (const operation of ['get_diagnostics', 'capture_output', 'set_playback', 'read_storage']) {
+      const result = await app.call(operation, { name: 'values', paused: true }, signal());
+      expect(result).toMatchObject({ previewId: 'preview', path: source.uri.fsPath, compileSequence: 7, renderedSequence: 6, errors: ['Compilation failed'], warnings: ['Warning'] });
+      for (const field of ['inputs', 'resources', 'uniforms', 'data', 'mimeType', 'fpsLimit', 'speed']) {
+        expect(result).not.toHaveProperty(field);
+      }
+      if (operation === 'capture_output') {
+        expect(result).toMatchObject({ image: { data: 'pixels', mimeType: 'image/png' }, width: 800, height: 450 });
+      }
+      if (operation === 'read_storage') {
+        expect(result).toMatchObject({ storageRead: snapshot.storageRead, frame: 42 });
+      }
+      if (operation === 'get_diagnostics') {
+        expect(result).not.toHaveProperty('storageRead');
+        expect(result).not.toHaveProperty('time');
+      }
+      expect(JSON.stringify(result).length).toBeLessThan(JSON.stringify(snapshot).length / 2);
+    }
+    const list = await app.call('list_previews', {}, signal());
+    const listed = (list.previews as Record<string, unknown>[])[0];
+    expect(listed).toMatchObject({ id: 'preview', kind: 'webview', path: source.uri.fsPath, compileSequence: 7, renderedSequence: 6 });
+    expect(listed).not.toHaveProperty('inputs');
+    expect(listed).not.toHaveProperty('resources');
+    expect(listed).not.toHaveProperty('uniforms');
+    const settings = await app.call('get_settings', {}, signal());
+    expect(settings).toMatchObject({ viewer: { fpsLimit: 30, speed: 2, uniforms: snapshot.uniforms }, configFile: { revision: expect.any(String), text: '{}' } });
+    expect(settings.viewer).not.toHaveProperty('inputs');
+    expect(settings.viewer).not.toHaveProperty('resources');
+    const updated = await app.call('update_settings', { speed: 2, uniforms: { amount: 3 } }, signal());
+    expect(updated).toMatchObject({ speed: 2, uniforms: snapshot.uniforms });
+    expect(updated).not.toHaveProperty('resources');
+    const edited = await app.call('update_file', { path: source.uri.fsPath, expectedRevision: (await app.call('read_file', { path: source.uri.fsPath }, signal())).revision, text: 'edited', includePreview: true }, signal());
+    expect(edited).toMatchObject({ applied: true, editedRevision: expect.any(String), compileSequence: 7, renderedSequence: 6, errors: snapshot.errors, image: { data: 'pixels' } });
+    expect(edited).not.toHaveProperty('inputs');
+    expect(edited).not.toHaveProperty('resources');
+  });
+
   it('only collects logs after the explicit start tool and stops without clearing the result', async () => {
     mcpLogs.setEnabled(true);
     expect(await app.call('get_logs', {}, signal())).toMatchObject({ collecting: false, entries: [] });

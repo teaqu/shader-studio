@@ -4,7 +4,12 @@ import type { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/se
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js' with { 'resolution-mode': 'import' };
 import { createMcpServer, type McpApplication } from './McpTools';
 
-interface Session { server: McpServer; transport: StreamableHTTPServerTransport }
+interface Activity { initialized: boolean; lastActive: number; requests: number; calls: number }
+interface Session { server: McpServer; transport: StreamableHTTPServerTransport; activity: Activity }
+
+const MAX_SESSIONS = 32;
+const IDLE_TIMEOUT_MS = 30 * 60_000;
+const INITIALIZATION_TIMEOUT_MS = 60_000;
 
 /** Standard local MCP endpoint. Can also be mounted on an existing HTTP server. */
 export class LocalMcpEndpoint {
@@ -12,11 +17,19 @@ export class LocalMcpEndpoint {
   private sessions = new Map<string, Session>();
   private disposed = false;
   private generation = 0;
+  private pendingSessions = 0;
+  private cleanupTimer?: ReturnType<typeof setInterval>;
 
   constructor(private readonly application: McpApplication, private readonly token: string) {
     if (token.length < 16) {
       throw new Error('MCP requires a private token of at least 16 characters. Run Shader Studio: Regenerate MCP Token.');
     }
+  }
+
+  /** Initialized protocol sessions, excluding our own endpoint verification. */
+  get connectedAssistants(): number {
+    return [...this.sessions.values()].filter(session => session.activity.initialized
+      && session.server.server.getClientVersion()?.name !== 'shader-studio-connection-check').length;
   }
 
   async start(port: number): Promise<number> {
@@ -43,6 +56,8 @@ export class LocalMcpEndpoint {
         listener.once('listening', ready);
         listener.listen(port, '127.0.0.1');
       });
+      this.cleanupTimer = setInterval(() => this.expireSessions(), 60_000);
+      this.cleanupTimer.unref();
       return (listener.address() as { port: number }).port;
     } catch (error) {
       this.listener = undefined; listener.close(); throw error;
@@ -66,13 +81,16 @@ export class LocalMcpEndpoint {
     if (!this.authorize(request, fail)) {
       return;
     }
+    this.expireSessions();
     const sessionId = request.headers['mcp-session-id'];
     const session = typeof sessionId === 'string' ? this.sessions.get(sessionId) : undefined;
     if (sessionId && !session) {
       fail(404, 'MCP session expired; reconnect.'); return;
     }
+    if (session) {
+      this.trackResponse(session, response);
+    }
     try {
-      const { StreamableHTTPServerTransport } = await import('@modelcontextprotocol/sdk/server/streamableHttp.js');
       const { isInitializeRequest } = await import('@modelcontextprotocol/sdk/types.js');
       const parsed = await this.readBody(request, fail);
       if (!parsed.ok) {
@@ -85,35 +103,127 @@ export class LocalMcpEndpoint {
       if (request.method !== 'POST' || !isInitializeRequest(body)) {
         fail(400, 'Initialize an MCP session first.'); return;
       }
-      if (this.sessions.size >= 32) {
-        fail(429, 'Too many local MCP sessions. Close unused clients.'); return;
+      if (!this.reserveCapacity()) {
+        fail(429, 'All local MCP session slots are busy. Retry after active requests finish or close an unused client.'); return;
       }
-      const server = await createMcpServer(this.application);
+      await this.initializeSession(request, response, body, generation);
+    } catch {
+      fail(500, 'MCP request failed. Reconnect and retry.');
+    }
+  }
+
+  private async initializeSession(request: IncomingMessage, response: ServerResponse, body: unknown, generation: number): Promise<void> {
+    let reserved = true;
+    const releaseReservation = () => {
+      if (reserved) {
+        reserved = false;
+        this.pendingSessions--;
+      }
+    };
+    let session: Session | undefined;
+    const activity: Activity = { initialized: false, lastActive: Date.now(), requests: 0, calls: 0 };
+    try {
+      const { StreamableHTTPServerTransport } = await import('@modelcontextprotocol/sdk/server/streamableHttp.js');
+      const server = await createMcpServer({ call: async (...args) => {
+        activity.calls++;
+        try {
+          return await this.application.call(...args);
+        } finally {
+          activity.calls--;
+          activity.lastActive = Date.now();
+        }
+      } });
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: randomUUID, enableJsonResponse: true,
         onsessioninitialized: id => {
-          this.sessions.set(id, { server, transport });
+          if (!this.disposed && generation === this.generation) {
+            releaseReservation();
+            this.sessions.set(id, session!);
+          }
         },
       });
+      session = { server, transport, activity };
+      server.server.oninitialized = () => {
+        activity.initialized = true;
+      };
       transport.onclose = () => {
         if (transport.sessionId) {
           this.sessions.delete(transport.sessionId);
         }
       };
-      await server.connect(transport);
-      if (this.disposed || generation !== this.generation) {
-        await server.close();
-        fail(503, 'MCP is disabled.');
-        return;
-      }
       try {
+        await server.connect(transport);
+        if (this.disposed || generation !== this.generation) {
+          response.writeHead(503, { 'Content-Type': 'application/json' });
+          response.end(JSON.stringify({ error: 'MCP is disabled.' }));
+          await server.close();
+          return;
+        }
+        this.trackResponse(session, response);
         await transport.handleRequest(request, response, body);
+        // Invalid initialization can return an HTTP error without throwing.
+        if (!transport.sessionId || !this.sessions.has(transport.sessionId)) {
+          await server.close();
+        }
       } catch (error) {
         await server.close(); throw error;
       }
-    } catch {
-      fail(500, 'MCP request failed. Reconnect and retry.');
+    } finally {
+      releaseReservation();
     }
+  }
+
+  /** Count the whole HTTP response lifetime, including open SSE streams. */
+  private trackResponse(session: Session, response: ServerResponse): void {
+    if (response.destroyed || response.writableFinished) {
+      return;
+    }
+    session.activity.requests++;
+    session.activity.lastActive = Date.now();
+    const finished = () => {
+      response.removeListener('finish', finished);
+      response.removeListener('close', finished);
+      session.activity.requests--;
+      session.activity.lastActive = Date.now();
+    };
+    response.once('finish', finished);
+    response.once('close', finished);
+  }
+
+  private isIdle(session: Session): boolean {
+    return session.activity.requests === 0 && session.activity.calls === 0;
+  }
+
+  private removeSession(id: string, session: Session): void {
+    this.sessions.delete(id);
+    void session.server.close().catch(() => undefined);
+  }
+
+  private expireSessions(): void {
+    const now = Date.now();
+    for (const [id, session] of this.sessions) {
+      const timeout = session.activity.initialized ? IDLE_TIMEOUT_MS : INITIALIZATION_TIMEOUT_MS;
+      if (this.isIdle(session) && now - session.activity.lastActive >= timeout) {
+        this.removeSession(id, session);
+      }
+    }
+  }
+
+  private reserveCapacity(): boolean {
+    if (this.sessions.size + this.pendingSessions < MAX_SESSIONS) {
+      this.pendingSessions++;
+      return true;
+    }
+    // HTTP clients may disappear without DELETE. Reclaim the least recently
+    // used idle session, never a stream or tool call that is still in flight.
+    const idle = [...this.sessions].filter(([, session]) => this.isIdle(session))
+      .sort(([, left], [, right]) => left.activity.lastActive - right.activity.lastActive)[0];
+    if (!idle) {
+      return false;
+    }
+    this.removeSession(...idle);
+    this.pendingSessions++;
+    return true;
   }
 
   private authorize(request: IncomingMessage, fail: (status: number, message: string) => void): boolean {
@@ -157,8 +267,11 @@ export class LocalMcpEndpoint {
   async dispose(): Promise<void> {
     this.disposed = true;
     this.generation++;
-    await Promise.all([...this.sessions.values()].map(session => session.server.close()));
+    clearInterval(this.cleanupTimer);
+    this.cleanupTimer = undefined;
+    const sessions = [...this.sessions.values()];
     this.sessions.clear();
+    await Promise.all(sessions.map(session => session.server.close()));
     const listener = this.listener;
     this.listener = undefined;
     if (listener) {

@@ -467,11 +467,11 @@ export class RenderingEngine implements RenderingEngineInterface {
   }
 
   public async readStorageBuffer(_name: string, _start: number, _count: number): Promise<StorageBufferSnapshot> {
-    throw new Error("Storage inspection requires the Slang/WebGPU renderer");
+    throw new Error("Storage inspection requires WebGPU (Slang or WGSL); it is unavailable in GLSL previews.");
   }
 
   public async writeStorageBuffer(_name: string, _start: number, _data: ArrayBuffer): Promise<void> {
-    throw new Error("Storage inspection requires the Slang/WebGPU renderer");
+    throw new Error("Storage inspection requires WebGPU (Slang or WGSL); it is unavailable in GLSL previews.");
   }
 
   public async resetStorageBuffer(_name: string): Promise<void> {

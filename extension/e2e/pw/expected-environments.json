@@ -1,5 +1,15 @@
 [
   {
+    "id": "425e8251962ba7aca944-1ff3515fd8fc30a9ba70:",
+    "title": "ai-connection.e2e.mjs › enables AI access, copies generic setup, tracks a real assistant and disables access",
+    "environment": "non-gpu"
+  },
+  {
+    "id": "425e8251962ba7aca944-b298eff50763b50ef93b:",
+    "title": "ai-connection.e2e.mjs › survives repeated client disconnects without resetting the AI connection",
+    "environment": "non-gpu"
+  },
+  {
     "id": "4fdf373967410ece119e-ca89ceb84925b911fe20:",
     "title": "common-storage-debug.e2e.mjs › glsl Common selection captures the authored value and follows an edit",
     "environment": "non-gpu"

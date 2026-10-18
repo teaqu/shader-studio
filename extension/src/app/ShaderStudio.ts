@@ -128,6 +128,7 @@ export class ShaderStudio {
       ready: this.mcpUrl !== undefined,
       url: this.mcpUrl,
       message: this.mcpError,
+      connectedAssistants: this.mcpUrl ? this.mcpEndpoint?.connectedAssistants ?? 0 : 0,
     }));
     this.configureMcp();
     context.subscriptions.push(vscode.workspace.onDidGrantWorkspaceTrust(() => this.configureMcp()));

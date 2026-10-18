@@ -27,7 +27,7 @@ export async function createMcpServer(application: McpApplication): Promise<McpS
   const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
   const { ResourceTemplate } = await import('@modelcontextprotocol/sdk/server/mcp.js');
   const server = new McpServer({ name: 'shader-studio', version: '1.0.0' }, {
-    instructions: 'Use read_documentation for the installed configuration, uniform, pass and compute reference. get_inputs reports live built-ins and custom uniform writers. Use list_previews to select a viewer. Read source/settings before editing; pass the returned revision. capture_output returns actual rendered pixels. Inspect diagnostics and fresh output after edits. A failed compile can leave last-good output visible; compare compileSequence and renderedSequence. File updates edit local workspace text documents and remain unsaved until the user saves them. No remote service is involved.',
+    instructions: 'Use read_documentation for the installed configuration, uniform, pass and compute reference. Routine replies contain compact preview status; use get_settings for runtime controls/configuration, get_inputs for live built-ins/custom uniform writers, and get_resources for passes/storage declarations. Use list_previews to select a viewer. Read source/settings before editing; pass the returned revision. capture_output returns actual rendered pixels. Inspect diagnostics and fresh output after edits. A failed compile can leave last-good output visible; compare compileSequence and renderedSequence. File updates edit local workspace text documents and remain unsaved until the user saves them. No remote service is involved.',
     maxToolInputElements: 10000,
   });
   const register = (name: string, description: string, shape: z.ZodRawShape, readOnly: boolean) => {
@@ -76,7 +76,7 @@ export async function createMcpServer(application: McpApplication): Promise<McpS
     }
     return { contents: [{ uri: uri.href, mimeType: result.mimeType, blob: result.data }] };
   });
-  register('list_previews', 'List connected Shader Studio viewers and their current state.', {}, true);
+  register('list_previews', 'List connected Shader Studio viewers with compact render/playback status. Use get_settings, get_inputs and get_resources for details.', {}, true);
   register('get_resources', 'List render, buffer, common and compute passes with source paths, and named GPU storage declarations. Edit their files with update_file.', { previewId }, true);
   register('read_storage', 'Read actual GPU storage bytes with element type, stride and frame metadata. WebGPU only. Pause first for a stable simulation snapshot. Maximum 64 KiB per read.', {
     previewId, name: z.string(), start: z.number().int().min(0).default(0), count: z.number().int().min(1).max(1024).default(16),

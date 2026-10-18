@@ -19,9 +19,10 @@ const state = vi.hoisted(() => ({
   compileChange: vi.fn(() => false),
 }));
 vi.mock('vscode', () => ({
-  ExtensionMode: { Development: 2 }, ConfigurationTarget: { Global: 1 },
+  ExtensionMode: { Development: 2 }, ConfigurationTarget: { Global: 1 }, ViewColumn: { Active: -1 },
   Uri: { joinPath: (base: { fsPath: string }, name: string) => ({ fsPath: `${base.fsPath}/${name}` }) },
   window: {
+    createWebviewPanel: () => ({ webview: { html: '', onDidReceiveMessage: () => ({ dispose() {} }) }, onDidDispose() {}, dispose() {} }),
     registerWebviewViewProvider: vi.fn(() => ({ dispose() {} })), visibleTextEditors: [],
     onDidChangeActiveTextEditor: () => ({ dispose() {} }), onDidChangeTextEditorSelection: () => ({ dispose() {} }),
     showInformationMessage: vi.fn(async () => undefined), showWarningMessage: vi.fn(async () => undefined), showErrorMessage: vi.fn(),

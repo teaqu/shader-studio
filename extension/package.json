@@ -119,14 +119,6 @@
         "title": "Shader Studio: Connect AI Assistant"
       },
       {
-        "command": "shader-studio.copyCodexMcpConfig",
-        "title": "Shader Studio: Copy Codex MCP Configuration"
-      },
-      {
-        "command": "shader-studio.copyClaudeCodeMcpConfig",
-        "title": "Shader Studio: Copy Claude Code MCP Configuration"
-      },
-      {
         "command": "shader-studio.regenerateMcpToken",
         "title": "Shader Studio: Regenerate MCP Token"
       },

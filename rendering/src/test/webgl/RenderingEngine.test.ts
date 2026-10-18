@@ -13,6 +13,12 @@ vi.mock("../../util/ConfigValidator", () => ({
 }));
 
 describe("RenderingEngine", () => {
+  it('explains that storage inspection needs a Slang or WGSL WebGPU shader', async () => {
+    const engine = new RenderingEngine();
+    await expect(engine.readStorageBuffer('values', 0, 1)).rejects.toThrow('WebGPU (Slang or WGSL)');
+    await expect(engine.writeStorageBuffer('values', 0, new ArrayBuffer(4))).rejects.toThrow('WebGPU (Slang or WGSL)');
+  });
+
   let renderingEngine: RenderingEngine;
   let mockFrameRenderer: any;
 

@@ -6,53 +6,42 @@ This feature requires the **VS Code extension**, a trusted workspace, and an AI 
 
 ## Enable the Connection
 
-MCP is disabled by default.
-
 1. Run **Shader Studio: Connect AI Assistant** from the Command Palette.
-2. Enable MCP if prompted. The command shows whether the local endpoint is ready and offers client-specific configuration commands.
-3. Copy a client configuration with **Shader Studio: Copy Codex MCP Configuration** or **Shader Studio: Copy Claude Code MCP Configuration**. Keep the copied token private: an assistant connected with it can read and edit files available to your VS Code session.
-4. Open the shader you want help with and launch its Shader Studio preview.
+2. Turn on **Enable AI connection**. The connection is off by default and requires a trusted workspace.
+3. When the server is ready, the screen shows your **Server URL** and **Token** with copy buttons. Use **Show token** if you need to read it.
+4. Add the connection to your assistant, or use **Copy setup prompt** to ask a local assistant to help configure it.
+5. Open a Shader Studio preview. The connection screen changes from **Waiting for an assistant** to **Assistant connected** after an assistant completes its MCP handshake.
 
-Once enabled, the connection starts automatically when you launch VS Code. You do not need to run a separate helper program. Turn off **Mcp Enabled** to disconnect assistants and stop access. If you change the token or port, reconnect your assistant using the new settings.
+The setup prompt includes your private token and instructions to configure the connection, check it with a tool call, and read Shader Studio's bundled documentation. Paste it only into the local assistant you want to connect. An assistant that cannot change its own MCP settings will need you to complete its setup steps; it may also need a restart.
 
-## Set Up Your Assistant
+Once enabled, the connection starts automatically when you launch VS Code. Turn off **Enable AI connection** to disconnect assistants and stop access. You do not need to run a separate helper program.
 
-In your AI tool's MCP settings, add a server with these values:
+## Set Up Any Compatible Assistant
+
+In your assistant's MCP settings, add a server with these values:
 
 | Setting | Value |
 | --- | --- |
 | Name | `shader-studio` |
 | Connection type | Streamable HTTP |
-| Server URL | `http://127.0.0.1:51474/mcp` |
-| Authorization header | `Authorization: Bearer YOUR_PRIVATE_TOKEN` |
+| Server URL | Copy **Server URL** from the connection screen (default: `http://127.0.0.1:51474/mcp`) |
+| Bearer token | Copy **Token** from the connection screen |
 
-Replace `YOUR_PRIVATE_TOKEN` with the token copied by **Shader Studio: Copy Claude Code MCP Configuration**. Claude Code's local HTTP configuration is:
+If the assistant asks for HTTP headers instead of a Bearer token, add an `Authorization` header with the value `Bearer YOUR_PRIVATE_TOKEN`, replacing `YOUR_PRIVATE_TOKEN` with the copied token. Keep the token in private local client settings, outside shared shader projects.
 
-```json
-{
-  "mcpServers": {
-    "shader-studio": {
-      "type": "http",
-      "url": "http://127.0.0.1:51474/mcp",
-      "headers": { "Authorization": "Bearer YOUR_PRIVATE_TOKEN" }
-    }
-  }
-}
-```
+Restart or reload the assistant if it needs this to load new MCP servers. Ask it to list Shader Studio previews to confirm it can use the tools.
 
-For Codex, save the copied block in `~/.codex/config.toml`. Update an existing `shader-studio` block if one is present, then restart its MCP server from Codex settings:
+**Assistant connected** counts initialized MCP sessions, rather than checking whether an assistant process is running. Unused sessions are cleaned up automatically: idle sessions expire after 30 minutes, and unfinished connections expire after one minute. When capacity is reached, the oldest idle session can be reclaimed sooner. Open streams and requests in progress are kept. If an assistant reports an expired session, reconnect it. The **Check server** action tests the local endpoint separately and does not count as an assistant connection.
 
-```toml
-[mcp_servers.shader-studio]
-url = "http://127.0.0.1:51474/mcp"
-http_headers = { Authorization = "Bearer YOUR_PRIVATE_TOKEN" }
-```
+## Advanced Settings
 
-For Claude Code, merge the copied `mcpServers` entry into `~/.claude.json` for user scope, preserving any existing settings and servers. Restart Claude Code and use `/mcp` to check the connection. Keep the token outside shared shader projects. See [Claude Code's MCP scopes](https://code.claude.com/docs/en/mcp#user-scope).
+Expand **Advanced settings** on the connection screen to:
 
-Restart or reload the assistant after adding the server. Run **Shader Studio: Verify MCP Connection** to confirm the local endpoint accepts the current token, then ask the assistant to list Shader Studio previews; opening a preview first gives it a result to inspect. If another VS Code window is already using port `51474`, set **Shader Studio: Mcp Port** to an unused port in this workspace, then copy the configuration again. A client running on another computer cannot use this local address.
+- **Change port** when another VS Code window or application is using the default port. Update your assistant's URL after changing it.
+- **Check server** to confirm the endpoint accepts the current token and exposes its tools. This does not prove your assistant has been configured.
+- **Regenerate token** if the token was exposed. Copy the new token into your assistant's private configuration and reconnect.
 
-The token is stored in VS Code Secret Storage. Use **Shader Studio: Regenerate MCP Token** if it was exposed, then copy fresh local client configuration and reconnect. Do not put a token in a shared workspace setting or repository.
+The token is stored in VS Code Secret Storage. A client running on another computer cannot use this local connection.
 
 ## Ask for Help with a Shader
 
@@ -72,7 +61,7 @@ If several previews are open, tell the assistant which shader you want to work o
 
 ## Review and Save Edits
 
-The assistant edits your existing shader files and `.sha.json` configuration in VS Code. Changes remain **unsaved**, and you can review or undo them in the editor. Save the files when you want to keep the changes on disk. These tools do not create or delete files.
+The assistant can edit your existing shader files and `.sha.json` configuration in VS Code, or create a new workspace text file with `create_file`. New files must not already exist. Text changes remain **unsaved**, and you can review or undo them in the editor. Save the files when you want to keep the changes on disk. The tools do not delete files.
 
 File editing supports local text files up to 1 MB in your workspace or already open in VS Code. Binary assets cannot be edited with these tools. If a file has changed since the assistant read it, it must read the latest version before editing again.
 
@@ -145,9 +134,9 @@ See [Open in Browser](web-server.md) for the preview setup.
 
 | Problem | What to do |
 | --- | --- |
-| Cannot connect | Check that MCP is enabled, your workspace is trusted, and the URL uses the configured port. Open VS Code's **Output** panel and choose **Shader Studio** for startup errors. |
+| Cannot connect | Open **Shader Studio: Connect AI Assistant**, check that the connection is enabled and ready, and confirm your workspace is trusted and the URL matches your assistant settings. Open VS Code's **Output** panel and choose **Shader Studio** for startup errors. |
 | Port already in use | Choose another **Mcp Port** for this workspace and update your assistant's URL. |
-| Unauthorized / 401 | Run **Shader Studio: Copy Codex MCP Configuration** or **Copy Claude Code MCP Configuration**, replace the local client block, then restart or reload the client. |
+| Unauthorized / 401 | Copy the current **Token** from **Shader Studio: Connect AI Assistant**, update your assistant's Bearer token or Authorization header, then restart or reload the client. |
 | No preview found | Open a Shader Studio panel or a browser preview launched from VS Code. |
 | Wrong preview | Ask the assistant to list previews and select the shader you mean. |
 | File changed | Ask the assistant to read the file again before making the edit. |
