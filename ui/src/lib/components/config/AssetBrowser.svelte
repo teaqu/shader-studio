@@ -276,7 +276,7 @@
     {#if loading}
       <div class="browser-state">Loading files...</div>
     {:else if filteredFiles.length === 0}
-      <div class="browser-state">No files found</div>
+      <div class="browser-state"><span>No files found</span><small>Use Select or enter a path below.</small></div>
     {:else}
       {#if sameDirFiles.length > 0}
         <div class="group-header">Same Folder</div>
@@ -457,7 +457,7 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    margin-bottom: 16px;
+    margin-bottom: 12px;
   }
 
   .browser-toolbar {
@@ -466,13 +466,15 @@
   }
 
   .search-input {
+    min-width: 0;
     flex: 1;
-    padding: 6px 10px;
+    padding: var(--shader-studio-control-padding);
     border: 1px solid var(--vscode-input-border, #3c3c3c);
-    border-radius: 4px;
+    border-radius: var(--shader-studio-control-radius);
     background: var(--vscode-input-background, #2d2d2d);
     color: var(--vscode-input-foreground, #cccccc);
-    font-size: 13px;
+    font-size: var(--shader-studio-font-size);
+    min-height: var(--shader-studio-control-height);
   }
 
   .search-input:focus {
@@ -480,15 +482,21 @@
     border-color: var(--vscode-focusBorder, #007acc);
   }
 
+  .search-input:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+
   .refresh-btn {
-    padding: 6px 10px;
+    padding: var(--shader-studio-control-padding);
     border: 1px solid var(--vscode-input-border, #3c3c3c);
-    border-radius: 4px;
+    border-radius: var(--shader-studio-control-radius);
     background: var(--vscode-input-background, #2d2d2d);
     color: var(--vscode-foreground, #cccccc);
     cursor: pointer;
     font-size: 16px;
-    line-height: 1;
+    line-height: var(--shader-studio-control-line-height);
+    min-height: var(--shader-studio-control-height);
   }
 
   .refresh-btn:hover {
@@ -496,6 +504,7 @@
   }
 
   .browser-content {
+    max-height: 190px;
     overflow-y: auto;
     border: 1px solid var(--vscode-panel-border, #3c3c3c);
     border-radius: 4px;
@@ -505,10 +514,12 @@
 
   .browser-state {
     text-align: center;
-    padding: 24px;
+    padding: 14px 8px;
     color: var(--vscode-descriptionForeground, #888);
     font-size: 13px;
   }
+
+  .browser-state small { display: block; margin-top: 4px; font-size: 12px; }
 
   .group-header {
     font-size: 11px;
@@ -525,28 +536,29 @@
 
   .file-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 112px), 1fr));
     gap: 8px;
-    margin-bottom: 8px;
+    margin-bottom: 0;
   }
 
   .file-card {
+    min-width: 0;
     display: flex;
     flex-direction: column;
     border: 1px solid var(--vscode-panel-border, #3c3c3c);
-    border-radius: 4px;
+    border-radius: var(--shader-studio-control-radius);
     overflow: hidden;
     cursor: pointer;
     transition: all 0.15s ease;
     background: var(--vscode-editor-background, #1e1e1e);
     padding: 0;
     text-align: center;
+    min-height: var(--shader-studio-control-height);
   }
 
   .file-card:hover {
     border-color: var(--vscode-focusBorder, #007acc);
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    background: var(--vscode-list-hoverBackground);
   }
 
   .file-card.selected {
@@ -556,7 +568,7 @@
 
   .file-thumbnail {
     width: 100%;
-    aspect-ratio: 1;
+    aspect-ratio: 4 / 3;
     overflow: hidden;
     background: rgba(127, 127, 127, 0.1);
     display: flex;
@@ -568,12 +580,12 @@
   .file-thumbnail video {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;
   }
 
 
   .audio-card {
-    grid-column: span 2;
+    grid-column: 1 / -1;
   }
 
   .audio-thumbnail {
@@ -584,7 +596,7 @@
   .audio-waveform-thumbnail {
     width: 100%;
     height: 100%;
-    background: linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%);
+    background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
     display: flex;
     align-items: center;
     justify-content: center;
@@ -597,11 +609,19 @@
 
   .file-name {
     padding: 4px 6px;
-    font-size: 11px;
+    box-sizing: border-box;
+    min-height: 38px;
+    width: 100%;
+    font-size: 12px;
+    line-height: 15px;
     color: var(--vscode-foreground, #cccccc);
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
     overflow: hidden;
-    text-overflow: ellipsis;
   }
 
   /* Pagination */
@@ -616,14 +636,14 @@
 
   .page-button {
     min-width: 28px;
-    height: 28px;
-    padding: 0 6px;
+    height: var(--shader-studio-control-height);
+    padding: var(--shader-studio-control-padding);
     background: var(--vscode-button-secondaryBackground);
     color: var(--vscode-button-secondaryForeground);
     border: 1px solid var(--vscode-button-border, transparent);
-    border-radius: 4px;
+    border-radius: var(--shader-studio-control-radius);
     cursor: pointer;
-    font-size: 12px;
+    font-size: var(--shader-studio-font-size);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -642,7 +662,7 @@
   .page-button.active {
     background: var(--vscode-button-background);
     color: var(--vscode-button-foreground);
-    font-weight: 600;
+    font-weight: 400;
   }
 
   .page-ellipsis {

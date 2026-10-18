@@ -27,7 +27,7 @@
       aria-disabled={captureUnavailable}
       use:tooltip={captureUnavailable ? `${option.label} is unavailable in VS Code. Open Shader Studio in a browser to use this input.` : ''}
       onclick={() => selectLiveAudio(option.type as 'microphone' | 'system-audio')}>
-      <ChannelPreview channelInput={{ type: option.type as 'microphone' | 'system-audio' }} {getWebviewUri} {audioVideoController} />
+      <ChannelPreview channelInput={{ type: option.type as 'microphone' | 'system-audio' }} {getWebviewUri} {audioVideoController} showLiveLabel={false} />
       <span>{option.label}</span>
     </button>
   {/each}
@@ -37,9 +37,11 @@
 {/if}
 
 <style>
-  .live-audio-options { display: flex; gap: 8px; margin-bottom: 12px; }
-  .live-audio-options button { display: flex; flex-direction: column; width: 96px; padding: 0; overflow: hidden; border: 1px solid var(--vscode-panel-border, #3c3c3c); border-radius: 6px; background: var(--vscode-editor-background, #1e1e1e); cursor: pointer; }
-  .live-audio-options button.selected { border-color: var(--vscode-focusBorder, #007acc); }
-  .live-audio-options span { padding: 6px 4px; font-size: 11px; width: 100%; text-align: center; color: var(--vscode-foreground, #ccc); }
+  .live-audio-options { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .live-audio-options button { display: flex; align-items: center; gap: 8px; padding: 8px 12px; overflow: hidden; border: 1px solid var(--vscode-panel-border, #3c3c3c); border-radius: var(--shader-studio-control-radius); background: var(--vscode-editor-background, #1e1e1e); cursor: pointer; min-height: 44px; color: var(--vscode-foreground); }
+  .live-audio-options button:hover { background: var(--vscode-list-hoverBackground); }
+  .live-audio-options button.selected { border-color: var(--shader-studio-selected-border); background: var(--shader-studio-selected-background); color: var(--shader-studio-selected-foreground); }
+  .live-audio-options span { font-size: var(--shader-studio-font-size); }
+  .live-audio-options :global(.channel-preview-container) { width: 24px; height: 24px; flex: 0 0 24px; aspect-ratio: auto; border-radius: 3px; background: transparent; }
   .live-audio-options button[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
 </style>

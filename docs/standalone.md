@@ -60,6 +60,10 @@ Global preferences are kept when clearing the workspace. Use **Settings → Rese
 
 Open **Settings** in the top toolbar to search and change browser-wide preferences. Changes apply immediately, synchronize between open tabs, and survive reloads. The panel includes **Default shader mode** (Built-in hooks or Native WGSL/Slang entry points), viewer camera defaults for GLSL/WGSL/Slang meshes, opening the editor on buffer switches, GLSL/Slang/WGSL language services, color swatches, font size, indentation, word wrap, minimap, and line numbers. Shader and pass camera settings override the global camera preference.
 
+**Theme** contains **Style** (VS Code or Pixel) followed by **Appearance** (Light or Dark). VS Code is the default style. Pixel gives the workspace an arcade palette, pixel lettering on headings and actions, stepped panel corners, raised buttons and matching scrollbars in either appearance. Shader code and helper text keep their usual readable fonts. Both choices apply immediately and survive reloads. Switch Style back to VS Code to restore the familiar studio controls. The preview theme switch and Appearance use the same light/dark preference.
+
+**Mobile mode** is enabled by default and switches narrow windows to the mobile panel navigation. Turn it off in Settings to keep desktop docking and desktop-sized controls at every window size. Turn it back on to restore automatic mobile layout. The choice applies immediately and survives reloads.
+
 These preferences are stored in this browser, separately from shader files. VS Code user settings and standalone preferences are independent. Settings specific to VS Code, such as its web server port and editor group locking, stay in VS Code.
 
 Screenshots and recordings are saved as browser downloads.

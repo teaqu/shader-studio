@@ -14,7 +14,7 @@ describe('RenderEntryPointControls', () => {
     });
 
     expect((getByLabelText('Built-in / mainVertex') as HTMLInputElement).checked).toBe(true);
-    expect((getByLabelText('mainImage') as HTMLInputElement).checked).toBe(true);
+    expect((getByLabelText('Fragment function') as HTMLSelectElement).value).toBe('');
   });
 
   it('selects only the chosen native vertex stage', async () => {
@@ -34,7 +34,7 @@ describe('RenderEntryPointControls', () => {
       pass: { inputs: {}, vertex: './camera.wgsl' }, entryPoints: entries, onCommit,
     });
 
-    await fireEvent.click(getByLabelText('@fragment renderImage'));
+    await fireEvent.change(getByLabelText('Fragment function'), { target: { value: 'renderImage' } });
 
     expect(onCommit).toHaveBeenCalledWith({
       inputs: {}, vertex: './camera.wgsl', entryPoints: { fragment: 'renderImage' },
@@ -57,6 +57,35 @@ describe('RenderEntryPointControls', () => {
       pass: { inputs: {}, entryPoints: { fragment: 'gone' } }, entryPoints: entries, onCommit: vi.fn(),
     });
 
-    expect((getByLabelText('gone (missing)') as HTMLInputElement).checked).toBe(true);
+    expect((getByLabelText('Fragment function') as HTMLSelectElement).value).toBe('gone');
   });
+  it('shows a sole selected fragment as text, but requires an explicit choice when its hook is missing', async () => {
+    const onCommit = vi.fn();
+    const props = { pass: { entryPoints: { fragment: 'shade' } }, entryPoints: [{ name: 'shade', stage: 'fragment' as const }], showFragmentHook: false, stage: 'fragment' as const, onCommit };
+    const view = render(RenderEntryPointControls, props);
+    expect(view.getByLabelText('Fragment function')).toHaveTextContent('shade');
+    expect(view.queryByRole('combobox')).toBeNull();
+    expect(view.queryByText('Fragment functions')).toBeNull();
+    await view.rerender({ ...props, pass: {} });
+    expect(view.getByRole('combobox', { name: 'Fragment function' })).toHaveValue('');
+    expect(onCommit).not.toHaveBeenCalled();
+    await fireEvent.change(view.getByRole('combobox'), { target: { value: 'shade' } });
+    expect(onCommit).toHaveBeenCalledWith({ entryPoints: { fragment: 'shade' } });
+  });
+
+  it('keeps missing selections visible and handles an empty fragment source', async () => {
+    const props = { pass: { entryPoints: { fragment: 'gone' } }, showFragmentHook: false, stage: 'fragment' as const, onCommit: vi.fn() };
+    const view = render(RenderEntryPointControls, props);
+    expect(view.getByLabelText('Fragment function')).toHaveTextContent('gone (missing)');
+    await view.rerender({ ...props, pass: {} });
+    expect(view.getByText('No function found')).toBeVisible();
+  });
+
+  it('returns to the built-in fragment without clearing the vertex selection', async () => {
+    const onCommit = vi.fn();
+    const view = render(RenderEntryPointControls, { pass: { entryPoints: { vertex: 'vert', fragment: 'shade' } }, entryPoints: [{ name: 'shade', stage: 'fragment' }], stage: 'fragment', onCommit });
+    await fireEvent.change(view.getByRole('combobox'), { target: { value: '' } });
+    expect(onCommit).toHaveBeenCalledWith({ entryPoints: { vertex: 'vert' } });
+  });
+
 });

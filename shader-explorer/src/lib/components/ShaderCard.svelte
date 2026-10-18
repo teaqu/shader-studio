@@ -260,15 +260,16 @@
   .context-menu-item {
     display: block;
     width: 100%;
-    padding: 6px 12px;
+    padding: var(--shader-studio-menu-padding);
     background: none;
     border: none;
     color: var(--vscode-menu-foreground, var(--vscode-foreground));
-    font-size: 12px;
+    font-size: var(--shader-studio-font-size);
     text-align: left;
     cursor: pointer;
-    border-radius: 3px;
+    border-radius: var(--shader-studio-control-radius);
     white-space: nowrap;
+    min-height: var(--shader-studio-control-height);
   }
 
   .context-menu-item:hover {

@@ -86,4 +86,19 @@ describe('PathInput', () => {
     await fireEvent.click(getByText('Create'));
     expect(() => getByRole('alert')).toThrow();
   });
+  it('offers fragment insertion as separate actions without a permanent mode chooser', async () => {
+    const postMessage = vi.fn();
+    const view = render(PathInput, { value: '', hidePath: true, allowCreate: false, allowSelect: false, allowInsert: true, fragmentInsertMenu: true,
+      fileType: 'wgsl-buffer', sourcePath: '/image.wgsl', builtInSourcePath: '/hooks.wgsl', postMessage, existingModes: ['hooks'] });
+    expect(view.queryByRole('combobox')).toBeNull();
+    expect(view.getByRole('button', { name: 'Add function' })).toBeVisible();
+    expect(view.getByRole('button', { name: /Built-in mainImage/ })).toBeDisabled();
+    await fireEvent.click(view.getByRole('button', { name: 'Native fragment function' }));
+    expect(postMessage).toHaveBeenLastCalledWith(expect.objectContaining({ payload: expect.objectContaining({ sourcePath: '/image.wgsl', authoringMode: 'native' }) }));
+    await view.rerender({ value: '', hidePath: true, allowCreate: false, allowSelect: false, allowInsert: true, fragmentInsertMenu: true,
+      fileType: 'wgsl-buffer', sourcePath: '/image.wgsl', builtInSourcePath: '/hooks.wgsl', postMessage, existingModes: [] });
+    await fireEvent.click(view.getByRole('button', { name: 'Built-in mainImage' }));
+    expect(postMessage).toHaveBeenLastCalledWith(expect.objectContaining({ payload: expect.objectContaining({ sourcePath: '/hooks.wgsl', authoringMode: 'hooks' }) }));
+  });
+
 });

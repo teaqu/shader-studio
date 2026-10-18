@@ -98,11 +98,12 @@
   .modal-header, .actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   h2 { margin: 0; font-size: 18px; }
   label { display: grid; gap: 6px; margin-top: 16px; }
-  input, select { box-sizing: border-box; width: 100%; padding: 7px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); border-radius: 3px; }
+  input, select { box-sizing: border-box; width: 100%; padding: var(--shader-studio-control-padding); color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); border-radius: var(--shader-studio-control-radius); min-height: var(--shader-studio-control-height); }
   input:focus, select:focus { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+  select { background: var(--vscode-dropdown-background, var(--vscode-input-background)); color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground)); border-color: var(--vscode-dropdown-border, var(--vscode-input-border)); }
   .validation-error { margin: 6px 0 0; color: var(--vscode-errorForeground); font-size: 12px; }
   .actions { justify-content: flex-end; margin-top: 20px; }
-  button { padding: 6px 12px; }
+  button { padding: var(--shader-studio-control-padding); min-height: var(--shader-studio-control-height); }
   .actions button[type="button"] { color: var(--vscode-editor-foreground); background: var(--vscode-list-hoverBackground); }
-  .close-button { padding: 0 4px; border: 0; color: inherit; background: transparent; font-size: 22px; }
+  .close-button { padding: var(--shader-studio-toolbar-padding); border: 0; color: inherit; background: transparent; font-size: 22px; min-height: var(--shader-studio-toolbar-height); }
 </style>

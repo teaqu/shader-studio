@@ -61,6 +61,7 @@ export default defineConfig({
   ],
   resolve: {
     alias: [
+      { find: '@shader-studio/ui', replacement: path.resolve(directory, 'src') },
       // Browser tests must compile the workspace source, like the UI build does;
       // core's CommonJS distribution leaves named exports unavailable to ESM.
       { find: "@shader-studio/language-server-core", replacement: path.resolve(directory, "../language-servers/core/src") },

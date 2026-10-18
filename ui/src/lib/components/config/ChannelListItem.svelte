@@ -297,16 +297,16 @@
   .ctrl-btn {
     background: none;
     border: 1px solid var(--vscode-panel-border, #3c3c3c);
-    border-radius: 4px;
+    border-radius: var(--shader-studio-control-radius);
     color: var(--vscode-foreground, #cccccc);
     cursor: pointer;
-    font-size: 12px;
-    padding: 3px 5px;
+    font-size: var(--shader-studio-font-size);
+    padding: var(--shader-studio-toolbar-padding);
     display: flex;
     align-items: center;
     justify-content: center;
     min-width: 24px;
-    height: 24px;
+    height: var(--shader-studio-toolbar-height);
     transition: background 0.15s;
   }
 
@@ -337,12 +337,13 @@
     border: none;
     color: var(--vscode-descriptionForeground, #888);
     cursor: pointer;
-    font-size: 13px;
-    padding: 3px 5px;
-    border-radius: 4px;
+    font-size: var(--shader-studio-font-size);
+    padding: var(--shader-studio-toolbar-padding);
+    border-radius: var(--shader-studio-control-radius);
     display: flex;
     align-items: center;
     transition: color 0.15s, background 0.15s;
+    min-height: var(--shader-studio-toolbar-height);
   }
 
   .edit-btn:hover {

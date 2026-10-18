@@ -8,6 +8,7 @@
     "vitest.config.ts",
     "vite.aliases.mjs",
     "vite.aliases.d.mts",
+    "styles/**",
     "standalone/public/assets/nebula-texture.png",
     "standalone/public/assets/desert-cubemap-cross.png",
     "standalone/public/assets/noise-grey.ktx2",

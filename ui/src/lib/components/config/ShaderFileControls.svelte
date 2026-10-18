@@ -142,9 +142,9 @@
 <style>
   .file-picker { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   .picker-label { font-size: 13px; font-weight: 500; color: var(--vscode-foreground); }
-  .picker-row { display: flex; align-items: stretch; flex-wrap: wrap; gap: 8px; }
-  .file-picker .picker-button { flex: 1; min-width: min(170px, 100%); text-align: left; background: var(--vscode-input-background); }
-  .picker-button > span { flex: 1; overflow-wrap: anywhere; }
+  .picker-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; gap: 8px; }
+  .file-picker .picker-button { min-width: 0; width: 100%; text-align: left; background: var(--vscode-input-background); }
+  .picker-button > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
   .file-picker .picker-button.error { border-color: var(--vscode-inputValidation-errorBorder, #f48771); }
   .file-location { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--vscode-descriptionForeground); overflow-wrap: anywhere; }
   .file-picker .open-editor-btn { white-space: nowrap; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border-color: var(--vscode-button-background); }
@@ -152,7 +152,7 @@
   .file-picker .open-editor-btn:disabled { background: var(--vscode-button-secondaryBackground); color: var(--vscode-descriptionForeground); border-color: var(--vscode-input-border, var(--vscode-panel-border)); }
   button:disabled { opacity: 0.5; cursor: default; }
   .file-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
-  button { display: inline-flex; align-items: center; gap: 8px; box-sizing: border-box; min-height: 33px; padding: 7px 10px; font: 400 13px/1.4 var(--vscode-font-family, "Segoe UI", sans-serif); background: transparent; color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 4px; cursor: pointer; }
+  button { display: inline-flex; align-items: center; gap: 8px; box-sizing: border-box; min-height: var(--shader-studio-control-height); padding: var(--shader-studio-control-padding); font: 400 13px/1.4 var(--vscode-font-family, "Segoe UI", sans-serif); background: transparent; color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: var(--shader-studio-control-radius); cursor: pointer; }
   button:hover:not(:disabled) { background: var(--vscode-list-hoverBackground); }
   button:focus-visible, summary:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
   i { flex-shrink: 0; }
@@ -165,7 +165,7 @@
   .picker-chooser .files button { border: 0; }
   .picker-actions { border-top: 1px solid var(--vscode-panel-border); padding-top: 4px; }
   .picker-actions :global(.input-actions) { flex-direction: column; align-items: stretch; gap: 2px; margin: 0; }
-  .file-picker .picker-actions :global(button) { text-align: left; border: 0; padding: 8px; }
+  .file-picker .picker-actions :global(button) { text-align: left; border: 0; padding: var(--shader-studio-control-padding); min-height: var(--shader-studio-control-height); }
   .empty-actions :global(.input-actions) { margin: 0; }
   header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   h3 { font-size: 13px; margin: 0; }

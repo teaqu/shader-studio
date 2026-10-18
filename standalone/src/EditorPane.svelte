@@ -153,14 +153,15 @@
   }
 
   .vim-toggle {
-    padding: 3px 7px;
+    padding: var(--shader-studio-control-padding);
     border: 1px solid transparent;
-    border-radius: 4px;
+    border-radius: var(--shader-studio-control-radius);
     background: transparent;
     color: inherit;
     cursor: pointer;
-    font-size: 11px;
-    line-height: 1.2;
+    font-size: var(--shader-studio-font-size);
+    line-height: var(--shader-studio-control-line-height);
+    min-height: var(--shader-studio-control-height);
   }
   .vim-toggle:hover:not(:disabled) {
     background: var(--vscode-statusBarItem-hoverBackground, var(--vscode-toolbar-hoverBackground));

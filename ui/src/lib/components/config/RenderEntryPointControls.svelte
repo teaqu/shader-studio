@@ -51,7 +51,27 @@
     {@const stageName = stage as Stage}
     {@const candidates = entriesFor(stageName)}
     {@const current = selected(stageName)}
-    <div class="function-row" role="group" aria-label={`${stage === 'vertex' ? 'Vertex' : 'Fragment'} function controls`}>
+    <div class="function-row" class:compact={stage === 'fragment'} role="group" aria-label={`${stage === 'vertex' ? 'Vertex' : 'Fragment'} function controls`}>
+    {#if stage === 'fragment'}
+      {@const hasCurrent = !!current && candidates.some(entry => entry.name === current)}
+      {@const missing = !!current && !hasCurrent}
+      {@const count = candidates.length + (showFragmentHook ? 1 : 0) + (missing ? 1 : 0)}
+      <span class="function-label">Function</span>
+      <div class="fragment-choice">
+        {#if count > 1 || (!current && !showFragmentHook && count > 0)}
+          <select aria-label="Fragment function" class:missing onchange={(event) => setEntryPoint('fragment', event.currentTarget.value)} value={current}>
+            {#if !current && !showFragmentHook}<option value="" disabled>Choose function</option>{/if}
+            {#if showFragmentHook}<option value="">mainImage</option>{/if}
+            {#if missing}<option value={current}>{current} (missing)</option>{/if}
+            {#each candidates as entry}<option value={entry.name}>{entry.name === 'mainImage' ? 'mainImage (native)' : entry.name}</option>{/each}
+          </select>
+        {:else if count === 1}
+          <code aria-label="Fragment function" class:missing>{current || 'mainImage'}{missing ? ' (missing)' : ''}</code>
+        {:else}
+          <span class="empty-function">No function found</span>
+        {/if}
+      </div>
+    {:else}
     <fieldset>
       <legend>{stage === 'vertex' ? 'Vertex functions' : 'Fragment functions'}</legend>
       {#if stage === 'vertex' || showFragmentHook}
@@ -64,6 +84,7 @@
         <label class:active={current === entry.name}><input type="radio" name={`${stage}-function`} checked={current === entry.name} onchange={() => setEntryPoint(stageName, entry.name)} />{nativeFunctionLabel(stageName)} {entry.name}</label>
       {/each}
     </fieldset>
+    {/if}
     {#if authoringControls}{@render authoringControls(stageName)}{/if}
     </div>
   {/each}
@@ -78,5 +99,11 @@
   fieldset { display: flex; flex-direction: column; gap: 5px; border: 0; padding: 0; margin: 0; min-width: 0; width: 100%; }
   legend { font-size: 12px; color: var(--vscode-descriptionForeground); margin-bottom: 6px; }
   .function-row { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+  .function-row.compact { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+  .function-label, .empty-function { color: var(--vscode-descriptionForeground); font-size: var(--shader-studio-label-size); }
+  .fragment-choice { min-width: 0; }
+  .fragment-choice select { width: 100%; min-width: 0; }
+  .fragment-choice code { display: block; overflow-wrap: anywhere; font: var(--shader-studio-font-size) var(--vscode-editor-font-family, monospace); }
+  .fragment-choice .missing { color: var(--vscode-errorForeground); }
   input { margin: 0; flex-shrink: 0; accent-color: var(--vscode-focusBorder); }
 </style>

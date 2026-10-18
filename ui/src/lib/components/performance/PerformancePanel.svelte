@@ -1274,12 +1274,13 @@
     background: var(--vscode-button-secondaryBackground, #3a3d41);
     color: var(--vscode-button-secondaryForeground, #ccc);
     border: none;
-    padding: 1px 6px;
-    height: 18px;
-    font-size: 10px;
+    padding: var(--shader-studio-toolbar-padding);
+    height: var(--shader-studio-toolbar-height);
+    min-height: var(--shader-studio-toolbar-height);
+    font-size: var(--shader-studio-font-size);
     font-family: monospace;
     cursor: pointer;
-    border-radius: 2px;
+    border-radius: var(--shader-studio-control-radius);
     opacity: 0.6;
     box-sizing: border-box;
     display: flex;
@@ -1303,9 +1304,9 @@
   }
 
   .pause-btn {
-    min-width: 18px;
-    width: 18px;
-    height: 18px;
+    min-width: var(--shader-studio-toolbar-height);
+    width: var(--shader-studio-toolbar-height);
+    height: var(--shader-studio-toolbar-height);
     justify-content: center;
     padding: 0;
     box-sizing: border-box;

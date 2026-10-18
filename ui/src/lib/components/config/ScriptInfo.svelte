@@ -311,14 +311,15 @@
 
   .preset-btn {
     flex: 1;
-    padding: 3px 6px;
-    font-size: 10px;
+    padding: var(--shader-studio-control-padding);
+    font-size: var(--shader-studio-font-size);
     border: 1px solid var(--vscode-panel-border, rgba(255, 255, 255, 0.1));
-    border-radius: 3px;
+    border-radius: var(--shader-studio-control-radius);
     background: transparent;
     color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.6));
     cursor: pointer;
     font-family: var(--vscode-editor-font-family, monospace);
+    min-height: var(--shader-studio-control-height);
   }
 
   .preset-btn:hover {

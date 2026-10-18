@@ -451,7 +451,7 @@
     box-sizing: border-box;
     width: 100%;
     min-width: 0;
-    font-size: 13px;
+    font-size: var(--shader-studio-font-size);
   }
   .heading select {
     width: auto;
@@ -487,7 +487,8 @@
   .schema button {
     border: 0;
     background: transparent;
-    padding: 6px;
+    padding: var(--shader-studio-control-padding);
+    min-height: var(--shader-studio-control-height);
   }
   .pass {
     padding: 10px 0;

@@ -63,9 +63,10 @@ test('WGSL native Insert appends one buffer and one compute entry point, then pe
   await expect(buffer.getByRole('button', { name: 'Built-in', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await buffer.getByRole('button', { name: 'Choose shader file' }).click();
   await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: `/shaders/${stem}.wgsl`, exact: true }).click();
-  await buffer.getByRole('group', { name: 'Fragment function controls' }).getByRole('button', { name: 'Add function…' }).click();
+  await buffer.getByRole('group', { name: 'Fragment function controls' }).getByRole('button', { name: 'Add function' }).click();
+  await page.getByRole('button', { name: 'Native fragment function', exact: true }).click();
   await expect(buffer.getByRole('button', { name: 'Built-in', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await expect(buffer.getByRole('radio', { name: '@fragment BufferAFragment' })).toBeChecked();
+  await expect(buffer.getByRole('combobox', { name: 'Fragment function' })).toHaveValue('BufferAFragment');
 
   await page.getByRole('button', { name: '+ New' }).click();
   await page.getByRole('menuitem', { name: 'Compute' }).click();
@@ -116,7 +117,7 @@ test('WGSL native render selector saves a deliberate fragment choice and hook cr
   await page.getByRole('button', { name: 'Same file' }).click();
   await page.getByRole('radio', { name: '@vertex vertexA' }).check();
   await expect(page.getByRole('radio', { name: '@vertex vertexA' })).toBeChecked();
-  await page.getByRole('radio', { name: '@fragment fragmentB' }).check();
+  await page.getByRole('combobox', { name: 'Fragment function' }).selectOption('fragmentB');
   await page.getByRole('radio', { name: 'Built-in / mainVertex' }).check();
   await page.getByRole('button', { name: '+ New' }).click();
   await page.getByRole('menuitem', { name: 'Buffer' }).click();
@@ -160,7 +161,7 @@ test('a shared Buffer keeps its selected second fragment after rapid source upda
   await expect(editor.locator('.monaco-editor')).toBeVisible();
   await page.locator('[data-tab-name="BufferA"]').click();
   const fragment = page.getByRole('group', { name: 'Fragment function controls' });
-  await expect(fragment.getByRole('radio', { name: '@fragment rasterColor2' })).toBeChecked();
+  await expect(fragment.getByRole('combobox', { name: 'Fragment function' })).toHaveValue('rasterColor2');
 
   // These are whole-source Monaco pastes. The final source is complete again;
   // no stale per-pass source snapshot may leave the selected function missing.
@@ -168,12 +169,12 @@ test('a shared Buffer keeps its selected second fragment after rapid source upda
   await pasteSource(page, editor, [vertex, rasterColor, '@fragment fn rasterColor3() -> @location(0) vec4f { return vec4f(0.0, 0.0, 1.0, 1.0); }'].join('\n'));
   await pasteSource(page, editor, source);
 
-  await expect(fragment.getByRole('radio', { name: '@fragment rasterColor2' })).toBeChecked();
-  await expect(fragment.getByRole('radio', { name: 'rasterColor2 (missing)' })).toHaveCount(0);
+  await expect(fragment.getByRole('combobox', { name: 'Fragment function' })).toHaveValue('rasterColor2');
+  await expect(fragment.getByRole('option', { name: 'rasterColor2 (missing)' })).toHaveCount(0);
   await expect.poll(async () => JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`]).passes.BufferA.entryPoints).toEqual({ vertex: 'rasterVertex', fragment: 'rasterColor2' });
   await page.reload();
   await page.locator('[data-tab-name="BufferA"]').click();
-  await expect(page.getByRole('radio', { name: '@fragment rasterColor2' })).toBeChecked();
+  await expect(page.getByRole('combobox', { name: 'Fragment function' })).toHaveValue('rasterColor2');
 });
 
 test('a separate native MRT Buffer routes cursor ownership and previews selected outputs', async ({ page }) => {
@@ -289,9 +290,10 @@ test('new native Slang Image compiles, then inserts Buffer and Compute into the 
   await expect(page.getByRole('button', { name: 'Built-in', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Choose shader file' }).click();
   await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: '/shaders/native-slang-created.slang', exact: true }).click();
-  await page.getByRole('group', { name: 'Fragment function controls' }).getByRole('button', { name: 'Add function…' }).click();
+  await page.getByRole('group', { name: 'Fragment function controls' }).getByRole('button', { name: 'Add function' }).click();
+  await page.getByRole('button', { name: 'Native fragment function', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Built-in', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByRole('radio', { name: '[shader("fragment")] BufferAFragment' })).toBeChecked();
+  await expect(page.getByRole('combobox', { name: 'Fragment function' })).toHaveValue('BufferAFragment');
 
   await page.getByRole('button', { name: '+ New' }).click();
   await page.getByRole('menuitem', { name: 'Compute' }).click();
@@ -533,3 +535,33 @@ fn mainImage(coord: vec2f) -> vec4f { return vec4f(abs(iWorldPosition) * 0.65 + 
   await changeGlobal(true);
   await expect(pass).toBeChecked();
 });
+
+for (const language of ['wgsl', 'slang']) {
+  test(`Render output adds and selects functions through a contextual menu (${language})`, async ({ page }) => {
+    const stem = 'compact-output';
+    const source = language === 'wgsl' ? 'fn mainImage(p: vec2f) -> vec4f { return vec4f(1); }'
+      : 'float4 mainImage(float2 p) { return float4(1, 1, 1, 1); }';
+    await page.route('**/__compact_output_fixture__', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Fixture</title>' }));
+    await page.goto('/__compact_output_fixture__');
+    await workspace(page, [[`${stem}.${language}`, source], [`${stem}.sha.json`, JSON.stringify({ version: '1.0', passes: { Image: { inputs: {} } } })]]);
+    await page.goto('/');
+    await page.getByTestId(`shader-option-${stem}-${language}`).click();
+    await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
+    const row = page.getByRole('group', { name: 'Fragment function controls', exact: true });
+    await expect(row.getByLabel('Fragment function', { exact: true })).toHaveText('mainImage');
+    await expect(row.getByRole('combobox')).toHaveCount(0);
+    await row.getByRole('button', { name: 'Add function', exact: true }).click();
+    await expect(page.getByRole('button', { name: /Built-in mainImage/ })).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await expect(row.getByRole('button', { name: 'Add function' })).toBeFocused();
+    await row.getByRole('button', { name: 'Add function' }).click();
+    await page.getByRole('button', { name: 'Native fragment function', exact: true }).click();
+    await expect(row.getByRole('combobox', { name: 'Fragment function' })).toHaveValue('ImageFragment');
+    await row.getByRole('combobox', { name: 'Fragment function' }).selectOption('');
+    await expect(row.getByRole('combobox')).toHaveValue('');
+    await page.reload();
+    await expect(row.getByRole('combobox')).toHaveValue('');
+    await expect.poll(async () => JSON.parse((await workspace(page))[`/shaders/${stem}.sha.json`]).passes.Image.entryPoints?.fragment ?? '').toBe('');
+    await expect.poll(async () => (await workspace(page))[`/shaders/${stem}.${language}`]).toContain('ImageFragment');
+  });
+}

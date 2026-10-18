@@ -79,13 +79,13 @@
   .session-state { display: inline-flex; align-items: center; gap: 7px; color: var(--vscode-descriptionForeground, #aaa); }
   .dot { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: var(--vscode-descriptionForeground, #aaa); }
   .dot.ready { background: var(--vscode-testing-iconPassed, #73c991); }
-  button, select { font: inherit; color: inherit; background: var(--vscode-input-background, #333); border: 1px solid var(--vscode-input-border, #555); border-radius: 5px; padding: 6px 12px; }
+  button, select { font: inherit; color: inherit; background: var(--vscode-input-background, #333); border: 1px solid var(--vscode-input-border, #555); border-radius: var(--shader-studio-control-radius); padding: var(--shader-studio-control-padding); min-height: var(--shader-studio-control-height); }
   button { cursor: pointer; }
   .enter { color: var(--vscode-button-foreground, #fff); background: var(--vscode-button-background, #007acc); border-color: transparent; }
   .enter:hover:enabled { background: var(--vscode-button-hoverBackground, #0062a3); }
   .setting { display: grid; gap: 7px; }
   .toggle { cursor: pointer; }
-  input[role='switch'] { appearance: none; position: relative; flex: 0 0 auto; width: 34px; height: 20px; margin: 0; border: 1px solid var(--vscode-checkbox-border, #777); border-radius: 12px; background: var(--vscode-descriptionForeground, #777); cursor: pointer; }
+  input[role='switch'] { appearance: none; position: relative; flex: 0 0 auto; width: 34px; height: var(--shader-studio-control-height); margin: 0; border: 1px solid var(--vscode-checkbox-border, #777); border-radius: 12px; background: var(--vscode-descriptionForeground, #777); cursor: pointer; }
   input[role='switch']::after { content: ''; position: absolute; width: 14px; height: 14px; top: 2px; left: 2px; border-radius: 50%; background: var(--vscode-editor-background, #202020); }
   input[role='switch']:checked { background: var(--vscode-button-background, #007acc); border-color: transparent; }
   input[role='switch']:checked::after { left: 16px; background: var(--vscode-button-foreground, #fff); }
@@ -101,11 +101,11 @@
   .shared-speeds { display: grid; gap: 12px; }
   .turn-setting { display: grid; gap: 8px; }
   .segments { display: flex; gap: 3px; padding: 3px; border: 1px solid var(--vscode-panel-border, #444); border-radius: 6px; background: var(--vscode-sideBar-background, #252526); }
-  .segments button { flex: 1; border: 0; border-radius: 4px; padding: 5px 8px; color: var(--vscode-descriptionForeground, #aaa); background: transparent; }
+  .segments button { flex: 1; border: 0; border-radius: var(--shader-studio-control-radius); padding: var(--shader-studio-control-padding); color: var(--vscode-descriptionForeground, #aaa); background: transparent; min-height: var(--shader-studio-control-height); }
   .segments button[aria-pressed='true'] { color: var(--vscode-foreground, #ddd); background: var(--vscode-editor-background, #202020); box-shadow: 0 1px 3px #0002; }
   .field select { width: 88px; min-width: 0; }
   footer { margin-top: auto; display: flex; align-items: center; justify-content: flex-end; padding: 12px 18px; border-top: 1px solid var(--vscode-panel-border, #444); color: var(--vscode-descriptionForeground, #aaa); font-size: 11px; }
-  .reset { border: 0; background: transparent; padding: 3px 0 3px 8px; color: inherit; }
+  .reset { border: 0; background: transparent; padding: var(--shader-studio-control-padding); color: inherit; min-height: var(--shader-studio-control-height); }
   .error { margin: 0; color: var(--vscode-errorForeground, #f48771); }
   button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible { outline: 1px solid var(--vscode-focusBorder, #007acc); outline-offset: 3px; }
 </style>

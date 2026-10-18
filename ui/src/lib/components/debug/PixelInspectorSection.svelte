@@ -365,10 +365,10 @@
     align-items: center;
     justify-content: center;
     width: 22px;
-    height: 22px;
+    height: var(--shader-studio-control-height);
     padding: 0;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--shader-studio-control-radius);
     background: transparent;
     color: var(--vscode-icon-foreground, var(--vscode-foreground));
     opacity: 0.7;

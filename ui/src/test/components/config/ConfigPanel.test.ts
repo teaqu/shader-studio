@@ -124,12 +124,12 @@ describe('ConfigPanel', () => {
       await tick();
       const label = (stage: string, name: string) => `${language === 'slang' ? `[shader("${stage}")]` : `@${stage}`} ${name}`;
       expect(getByLabelText(label('vertex', 'firstVertex'))).toBeChecked();
-      expect(getByLabelText(label('fragment', 'firstFragment'))).toBeChecked();
+      expect(getByLabelText('Fragment function')).toHaveValue('firstFragment');
       const manager = getLatestConfigManagerInstance();
       expect(manager.setConfig).toHaveBeenCalledWith({ version: '1.0', passes: { Image: { inputs: {}, entryPoints: { vertex: 'firstVertex', fragment: 'firstFragment' } } } });
       expect(mockTransport.postMessage).not.toHaveBeenCalled();
       expect(onConfigChange).not.toHaveBeenCalled();
-      await fireEvent.click(getByLabelText(label('fragment', 'secondFragment')));
+      await fireEvent.change(getByLabelText('Fragment function'), { target: { value: 'secondFragment' } });
       expect(manager.updateImagePass).toHaveBeenCalledWith(expect.objectContaining({ entryPoints: { vertex: 'firstVertex', fragment: 'secondFragment' } }));
     });
 
@@ -154,7 +154,7 @@ describe('ConfigPanel', () => {
 
       await tick();
       expect(getByLabelText('[shader("vertex")] bufferVertex')).toBeChecked();
-      expect(getByLabelText('[shader("fragment")] bufferFragment')).toBeChecked();
+      expect(getByLabelText('Fragment function')).toHaveTextContent('bufferFragment');
     });
 
     it('uses the current shared source while a stale Buffer snapshot is pending', async () => {
@@ -173,7 +173,7 @@ describe('ConfigPanel', () => {
       });
 
       await tick();
-      expect(getByLabelText('@fragment rasterColor2')).toBeChecked();
+      expect(getByLabelText('Fragment function')).toHaveValue('rasterColor2');
     });
 
     it('should render the Image tab by default', async () => {

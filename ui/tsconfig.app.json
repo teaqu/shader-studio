@@ -17,7 +17,10 @@
     "isolatedModules": true,
     "moduleDetection": "force",
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "@shader-studio/ui/*": ["./src/*"]
+    }
   },
   "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.d.ts", "src/**/*.svelte", "../rendering/src/test/webgl/FrameRenderer.test.ts", "../rendering/src/test/webgl/ShaderPipeline.test.ts", "../rendering/src/test/webgl/BufferManager.test.ts"],
   "exclude": ["vendor/**", "node_modules/**", "src/slang/**"]

@@ -36,6 +36,16 @@ The tab bar at the top shows every pass in your shader. Click **+ New** to add a
 
 ## The Image Pass
 
+For WGSL and Slang render passes, **Render output** shows the active **Function**.
+A single selected function appears as text; when more functions are available,
+use the picker to choose which one renders. A missing configured function stays
+visible with **(missing)** so you can correct it.
+
+Choose **+ Add&hellip;** to insert either a **Native fragment function** or
+**Built-in mainImage** into the pass's shader file. The built-in action is disabled
+when `mainImage` is already present. Adding inserts code; picking a function
+selects existing code. Changes are saved with the shader configuration.
+
 The Image tab has no file path — it always corresponds to your main shader file. You can set a default resolution here:
 
 | Setting | Options | Description |

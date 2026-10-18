@@ -336,6 +336,7 @@
   });
 </script>
 
+<section class="channel-section" aria-label="Audio file">
 <h3>Audio file</h3>
 {#if postMessage}
   <AssetBrowser
@@ -368,9 +369,8 @@
     onUpdatePath(path);
   }}
 />
-<div class="input-note">
-  Audio provides a 512x2 texture: row 0 = FFT frequency data, row 1 = time-domain waveform.
-</div>
+<p class="channel-hint">Audio provides a 512&times;2 texture: row 0 = FFT frequency data, row 1 = time-domain waveform.</p>
+</section>
 
 {#if tempInput?.type === "audio" && tempInput.path && hasAudioState}
   <div
@@ -463,6 +463,8 @@
   </div>
 {/if}
 
+<section class="channel-section live-input-section" aria-label="Live audio">
+<h3>Live audio</h3>
 <LiveAudioInputs
   input={tempInput}
   {audioVideoController}
@@ -472,20 +474,9 @@
     onAutoSave();
   }}
 />
+</section>
 
 <style>
-  h3 {
-    font-size: 14px;
-    font-weight: 500;
-    margin: 16px 0 8px;
-  }
-
-  .input-note {
-    font-size: 12px;
-    color: var(--vscode-descriptionForeground, #888);
-    margin-bottom: 12px;
-  }
-
   .video-controls {
     margin-bottom: 16px;
   }
@@ -504,9 +495,9 @@
   }
 
   .btn-control {
-    padding: 6px 12px;
+    padding: var(--shader-studio-control-padding);
     border: 1px solid var(--vscode-input-border, #3c3c3c);
-    border-radius: 4px;
+    border-radius: var(--shader-studio-control-radius);
     background: var(--vscode-input-background, #2d2d2d);
     color: var(--vscode-foreground, #cccccc);
     cursor: pointer;
@@ -514,6 +505,7 @@
     transition: all 0.2s ease;
     min-width: 36px;
     text-align: center;
+    min-height: var(--shader-studio-control-height);
   }
 
   .btn-control:hover {

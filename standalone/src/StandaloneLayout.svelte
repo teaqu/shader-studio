@@ -256,6 +256,8 @@
 
 <style>
   :global(.shader-studio-standalone-theme) {
+    --dv-tabs-and-actions-container-height: var(--shader-studio-tab-height);
+    --dv-tab-font-size: var(--shader-studio-font-size);
     --dv-activegroup-visiblepanel-tab-background-color: var(--vscode-tab-activeBackground, var(--vscode-editor-background));
     --dv-activegroup-visiblepanel-tab-color: var(--vscode-tab-activeForeground, var(--vscode-editor-foreground));
     --dv-activegroup-hiddenpanel-tab-background-color: var(--vscode-tab-inactiveBackground, transparent);
@@ -283,7 +285,7 @@
   .mobile-tools-navigation { display: none; }
 
   @media (max-width: 767px) {
-    .standalone-layout { position: relative; flex-direction: column; padding-bottom: env(safe-area-inset-bottom); }
+    .standalone-layout.mobile-layout { position: relative; flex-direction: column; padding-bottom: env(safe-area-inset-bottom); }
     .standalone-dockview { min-height: 0; }
     .mobile-layout .standalone-dockview :global(.dv-tabs-and-actions-container) { display: none; }
     .mobile-panel-navigation {
@@ -308,7 +310,7 @@
       min-height: 44px;
       padding: 6px 12px;
       border: 0;
-      border-radius: 4px;
+      border-radius: var(--shader-studio-control-radius);
       color: var(--vscode-foreground);
       background: transparent;
       font: inherit;
@@ -319,7 +321,7 @@
       min-height: 44px;
       padding: 6px 4px;
       border: 0;
-      border-radius: 4px;
+      border-radius: var(--shader-studio-control-radius);
       color: var(--vscode-foreground);
       background: transparent;
       font: inherit;

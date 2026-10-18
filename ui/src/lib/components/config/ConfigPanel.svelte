@@ -980,8 +980,8 @@
 
   .tab-navigation :global(.tab-button),
   .tab-navigation :global(.add-tab-btn) {
-    padding: 2px 12px;
-    min-height: 28px;
+    padding: var(--shader-studio-tab-padding);
+    min-height: var(--shader-studio-tab-height);
   }
 
   .tab-navigation :global(.tab-close) {
@@ -1009,11 +1009,12 @@
 
   .buffer-rename-menu button {
     width: 100%;
-    padding: 5px 20px;
+    padding: var(--shader-studio-control-padding);
     color: var(--vscode-menu-foreground);
     background: transparent;
     border: 0;
     text-align: left;
+    min-height: var(--shader-studio-control-height);
   }
 
   .buffer-rename-menu button:hover,
@@ -1022,6 +1023,12 @@
     background: var(--vscode-menu-selectionBackground);
     outline: none;
   }
+
+  .buffer-rename-menu button:hover:focus-visible,
+.buffer-rename-menu button:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
 
   .tab-rename {
     display: flex;

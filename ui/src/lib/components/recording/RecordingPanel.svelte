@@ -219,7 +219,7 @@
 
   .tab-navigation {
     height: auto;
-    min-height: 35px;
+    min-height: var(--shader-studio-tab-height);
     overflow-x: auto;
   }
 
@@ -274,14 +274,15 @@
   :global(.recording-tab-content .scale-buttons .resolution-option) {
     flex: 0 0 auto;
     width: auto;
-    padding: 3px 8px;
-    font-size: 11px;
+    padding: var(--shader-studio-control-padding);
+    font-size: var(--shader-studio-font-size);
     background: none;
     border: 1px solid var(--vscode-panel-border, #3c3c3c);
-    border-radius: 4px;
+    border-radius: var(--shader-studio-control-radius);
     color: var(--vscode-descriptionForeground, #888);
     margin-bottom: 0;
     transition: all 0.15s;
+    min-height: var(--shader-studio-control-height);
   }
 
   :global(.recording-tab-content .scale-buttons .resolution-option:hover) {
@@ -303,14 +304,15 @@
 
   :global(.export-action-btn) {
     flex: 0 0 auto;
-    padding: 3px 12px;
-    font-size: 11px;
+    padding: var(--shader-studio-control-padding);
+    font-size: var(--shader-studio-font-size);
     background: var(--vscode-button-background);
     color: var(--vscode-button-foreground);
     border: 1px solid var(--vscode-button-background);
-    border-radius: 4px;
+    border-radius: var(--shader-studio-control-radius);
     cursor: pointer;
     transition: all 0.15s;
+    min-height: var(--shader-studio-control-height);
   }
 
   :global(.export-action-btn:hover) {
@@ -334,7 +336,7 @@
     align-items: center;
     gap: 4px;
     padding: 3px 6px;
-    border-radius: 4px;
+    border-radius: var(--shader-studio-control-radius);
     border: 1px solid var(--vscode-panel-border, #3c3c3c);
     background: var(--vscode-input-background);
     cursor: default;
@@ -350,7 +352,9 @@
     background: transparent;
     border: none;
     color: var(--vscode-input-foreground);
-    font-size: 11px;
+    font-size: var(--shader-studio-font-size);
+    height: var(--shader-studio-control-line-height);
+    min-height: 0;
     width: 36px;
     text-align: center;
     padding: 0;
@@ -378,7 +382,7 @@
     display: flex;
     align-items: center;
     padding: 3px 6px;
-    border-radius: 4px;
+    border-radius: var(--shader-studio-control-radius);
     border: 1px solid var(--vscode-panel-border, #3c3c3c);
     background: var(--vscode-input-background);
     cursor: default;
@@ -394,7 +398,9 @@
     background: transparent;
     border: none;
     color: var(--vscode-input-foreground);
-    font-size: 11px;
+    font-size: var(--shader-studio-font-size);
+    height: var(--shader-studio-control-line-height);
+    min-height: 0;
     width: 40px;
     text-align: center;
     padding: 0;
@@ -493,6 +499,8 @@
   /* Touch: comfortable targets, and 16px inputs so phones don't zoom on focus. */
   @media (pointer: coarse) {
     .recording-panel :global(button),
+    .recording-panel :global(.tab-navigation button),
+    .recording-panel :global(.scale-buttons button),
     .recording-panel :global(.recording-custom-res) {
       min-height: 44px;
     }
@@ -504,13 +512,14 @@
 
   .recording-cancel-btn {
     margin-top: 8px;
-    padding: 4px 16px;
+    padding: var(--shader-studio-control-padding);
     border: 1px solid var(--vscode-notifications-border);
-    border-radius: 4px;
+    border-radius: var(--shader-studio-control-radius);
     background: transparent;
     color: var(--vscode-editor-foreground);
     cursor: pointer;
-    font-size: 11px;
+    font-size: var(--shader-studio-font-size);
+    min-height: var(--shader-studio-control-height);
   }
 
   .recording-cancel-btn:hover {

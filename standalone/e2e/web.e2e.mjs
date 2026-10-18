@@ -2025,3 +2025,85 @@ test('standalone global settings disable and restore language service diagnostic
   await dialog.getByLabel('GLSL language service', { exact: true }).check();
   await expect(editor.locator('.squiggly-error').first()).toBeVisible();
 });
+
+for (const appearance of ['light', 'dark']) {
+  test(`Pixel theme applies in ${appearance} mode and persists across reload`, async ({ page }) => {
+    await page.goto('/');
+    await page.getByTestId('shader-option-aurora-glsl').click();
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    const settings = page.getByRole('dialog', { name: 'Settings', exact: true });
+    await settings.getByRole('combobox', { name: 'Appearance', exact: true }).selectOption(appearance);
+    await settings.getByRole('combobox', { name: 'Style', exact: true }).selectOption('pixel');
+    await expect(page.locator('html')).toHaveAttribute('data-studio-theme', 'pixel');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', appearance);
+    await expect(settings).toHaveCSS('background-color', appearance === 'dark' ? 'rgb(34, 38, 61)' : 'rgb(242, 234, 216)');
+    await expect(settings.getByRole('button', { name: 'Done', exact: true })).toHaveCSS('box-shadow', appearance === 'dark' ? 'rgb(17, 21, 39) 2px 2px 0px 0px' : 'rgb(215, 205, 187) 2px 2px 0px 0px');
+    const pixelFontLoaded = await page.evaluate(async () => {
+      await document.fonts.load('12px "Shader Studio Pixel"');
+      return [...document.fonts].some(font => font.family.replaceAll('"', '') === 'Shader Studio Pixel' && font.status === 'loaded');
+    });
+    expect(pixelFontLoaded).toBe(true);
+    await expect(page.getByRole('button', { name: 'Settings', exact: true })).toHaveCSS('font-family', '"Shader Studio Pixel", monospace');
+    await expect(settings.getByRole('heading', { name: 'Settings', exact: true })).toHaveCSS('font-family', '"Shader Studio Pixel", monospace');
+    await expect(settings.getByRole('button', { name: 'Done', exact: true })).toHaveCSS('font-family', '"Shader Studio Pixel", monospace');
+    await expect(page.getByTestId('web-editor').locator('.view-lines')).not.toHaveCSS('font-family', '"Shader Studio Pixel", monospace');
+    const mobileMode = settings.getByRole('checkbox', { name: 'Mobile mode', exact: true });
+    await expect(mobileMode).toHaveCSS('border-radius', '0px');
+    await mobileMode.press('Space');
+    await expect(mobileMode).not.toBeChecked();
+    await mobileMode.press('Space');
+    await expect(mobileMode).toBeChecked();
+    const list = settings.locator('.settings-list');
+    const accent = appearance === 'dark' ? 'rgb(194, 166, 255)' : 'rgb(104, 66, 166)';
+    await expect.poll(() => list.evaluate(el => getComputedStyle(el, '::-webkit-scrollbar-thumb').backgroundColor)).toBe(accent);
+    expect(await list.evaluate(el => getComputedStyle(el, '::-webkit-scrollbar-thumb').borderRadius)).toBe('0px');
+    expect(await list.evaluate(el => getComputedStyle(el, '::-webkit-scrollbar').width)).toBe('12px');
+    await list.hover({ position: { x: 4, y: 20 } });
+    await page.mouse.wheel(0, 220);
+    await expect.poll(() => list.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+    const editorSlider = page.getByTestId('web-editor').locator('.monaco-scrollable-element > .scrollbar.vertical > .slider').first();
+    await expect(editorSlider).toHaveCSS('background-color', accent);
+    await expect(editorSlider).toHaveCSS('border-radius', '0px');
+    await settings.getByRole('button', { name: 'Done', exact: true }).click();
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-studio-theme', 'pixel');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', appearance);
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await expect(settings.getByRole('combobox', { name: 'Style', exact: true })).toHaveValue('pixel');
+    await settings.getByRole('combobox', { name: 'Style', exact: true }).selectOption('classic');
+    await expect(page.locator('html')).toHaveAttribute('data-studio-theme', 'classic');
+    expect(await list.evaluate(el => getComputedStyle(el, '::-webkit-scrollbar-thumb').backgroundColor)).not.toBe(accent);
+    await expect(editorSlider).not.toHaveCSS('background-color', accent);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', appearance);
+  });
+}
+
+for (const style of ['classic', 'pixel']) {
+  for (const appearance of ['light', 'dark']) {
+    test(`toolbar and search alignment: ${style} ${appearance}`, async ({ page }) => {
+      await page.goto('/');
+      await page.getByRole('button', { name: 'Settings', exact: true }).click();
+      const settings = page.getByRole('dialog', { name: 'Settings', exact: true });
+      const choices = settings.getByRole('region', { name: 'Theme', exact: true }).getByRole('combobox');
+      await expect(choices.nth(0)).toHaveAccessibleName('Style');
+      await expect(choices.nth(0)).toHaveValue('classic');
+      await expect(choices.nth(0).locator('option:checked')).toHaveText('VS Code');
+      await expect(choices.nth(1)).toHaveAccessibleName('Appearance');
+      await choices.nth(0).selectOption(style);
+      await choices.nth(1).selectOption(appearance);
+      await expect.soft(settings.getByRole('searchbox', { name: 'Search settings' })).toHaveCSS('line-height', '18px');
+      await settings.getByRole('button', { name: 'Done', exact: true }).click();
+      const toolbar = page.getByRole('banner', { name: 'Standalone workspace' });
+      const buttonBounds = await toolbar.getByRole('button', { name: 'Settings', exact: true }).boundingBox();
+      for (const name of ['Documentation', 'GitHub']) {
+        const link = toolbar.getByRole('link', { name, exact: true });
+        const bounds = await link.boundingBox();
+        expect(bounds.height).toBeCloseTo(buttonBounds.height, 0);
+        expect(bounds.y + bounds.height / 2).toBeCloseTo(buttonBounds.y + buttonBounds.height / 2, 0);
+        await expect(link).toHaveCSS('align-items', 'center');
+        await expect(link).toHaveCSS('justify-content', 'center');
+      }
+      await expect(page.getByPlaceholder('Search shaders...')).toHaveCSS('line-height', '18px');
+    });
+  }
+}
