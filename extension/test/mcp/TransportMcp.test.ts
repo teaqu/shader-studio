@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import * as vscode from 'vscode';
 import { WebSocket } from 'ws';
+import { join, resolve } from 'node:path';
 import { WebviewTransport } from '../../src/app/transport/WebviewTransport';
 import { WebSocketTransport } from '../../src/app/transport/WebSocketTransport';
 import { Messenger } from '../../src/app/transport/Messenger';
@@ -152,8 +153,9 @@ describe('MCP transport routing', () => {
   it('maps packaged browser assets through the UI route', () => {
     (vscode.workspace as unknown as { getConfiguration: () => { get: () => number } }).getConfiguration = () => ({ get: () => 4567 });
     const transport = Object.create(WebSocketTransport.prototype) as WebSocketTransport;
-    (transport as unknown as { extensionPath: string }).extensionPath = '/extension';
-    expect(transport.convertUriForClient('/extension/ui-dist/assets/nebula-texture.png')).toBe('http://localhost:4567/assets/nebula-texture.png');
+    const extensionPath = resolve('/extension');
+    (transport as unknown as { extensionPath: string }).extensionPath = extensionPath;
+    expect(transport.convertUriForClient(join(extensionPath, 'ui-dist', 'assets', 'nebula-texture.png'))).toBe('http://localhost:4567/assets/nebula-texture.png');
     expect(transport.convertUriForClient('/workspace/image.png')).toBe('http://localhost:4567/textures/%2Fworkspace%2Fimage.png');
   });
 

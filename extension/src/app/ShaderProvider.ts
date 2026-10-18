@@ -138,7 +138,10 @@ export class ShaderProvider {
       // Clear stale persistent errors before re-evaluating
       this.messenger.getErrorHandler().clearPersistentErrors();
 
-      const code = fs.readFileSync(shaderPath, "utf-8");
+      const code = this.readShaderSource(shaderPath);
+      if (code === null) {
+        return;
+      }
 
       if (await this.trySendNonMainImageShader(shaderPath, code, () => (
         this.sendNonMainImageShaderFromPath(shaderPath, code, options)
@@ -232,7 +235,10 @@ export class ShaderProvider {
         return;
       }
 
-      const code = fs.readFileSync(shaderPath, "utf-8");
+      const code = this.readShaderSource(shaderPath);
+      if (code === null) {
+        return;
+      }
       if (!definesMainImage(code) && (shaderLanguageForPath(shaderPath) ?? "glsl") !== "slang") {
         return;
       }

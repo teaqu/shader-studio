@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as vscode from 'vscode';
 import type { ShaderConfig } from '@shader-studio/types';
 import { fileURLToPath } from 'node:url';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { CompileController } from '../../src/app/CompileController';
 import type { GlslFileTracker } from '../../src/app/GlslFileTracker';
 import { ShaderProvider } from '../../src/app/ShaderProvider';
@@ -13,12 +16,15 @@ const state = vi.hoisted(() => ({
   config: null as ShaderConfig | null,
   hasUniforms: true,
   poll: vi.fn(),
+  documents: [] as vscode.TextDocument[],
 }));
 vi.mock('vscode', () => ({
   window: { get activeTextEditor() {
     return state.activeTextEditor;
   }, visibleTextEditors: [] },
-  workspace: { textDocuments: [], getWorkspaceFolder: () => undefined },
+  workspace: { get textDocuments() {
+    return state.documents;
+  }, getWorkspaceFolder: () => undefined },
   Uri: { file: (fsPath: string) => ({ fsPath }) },
 }));
 vi.mock('../../src/app/services/Logger', () => ({ Logger: { getInstance: () => ({ debug() {}, warn() {} }) } }));
@@ -70,6 +76,7 @@ function change(doc: vscode.TextDocument): vscode.TextDocumentChangeEvent {
 
 beforeEach(() => {
   vi.clearAllMocks(); state.activeTextEditor = undefined; state.config = null; state.hasUniforms = true;
+  state.documents = [];
 });
 afterEach(() => mcpEditGuard.clear(dependencyPath));
 
@@ -116,6 +123,39 @@ describe('MCP edit compile suppression', () => {
 });
 
 describe('MCP shader delivery', () => {
+  it.each(['path', 'script'])('does not deliver an unreadable %s source', async (source) => {
+    const send = vi.fn(async () => {});
+    const provider = new ShaderProvider({ send, getErrorHandler: () => ({ clearPersistentErrors() {} }) } as unknown as Messenger);
+    vi.spyOn(provider as unknown as { readShaderSource(path: string): string | null }, 'readShaderSource').mockReturnValue(null);
+    if (source === 'path') {
+      await provider.sendShaderFromPath(scriptPath);
+    } else {
+      await provider.sendShaderWithScriptContent(scriptPath, 'export const value = 2;');
+    }
+    expect(send).not.toHaveBeenCalled();
+  });
+  it.each(['path', 'script'])('retains unsaved shader edits when recompiling from %s', async (source) => {
+    const directory = mkdtempSync(join(tmpdir(), 'mcp-unsaved-'));
+    const path = join(directory, 'main.glsl');
+    const saved = 'void mainImage(out vec4 c, vec2 p) { c = vec4(1, 0, 0, 1); }';
+    const edited = 'void mainImage(out vec4 c, vec2 p) { c = vec4(0, 1, 0, 1); }';
+    writeFileSync(path, saved);
+    state.documents = [document(path, edited)];
+    const send = vi.fn(async () => {});
+    const messenger = { send, getErrorHandler: () => ({ clearPersistentErrors() {} }), getWebview: () => undefined };
+    const provider = new ShaderProvider(messenger as unknown as Messenger);
+    try {
+      if (source === 'path') {
+        await provider.sendShaderFromPath(path);
+        expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: 'shaderSource', code: edited }), undefined);
+      } else {
+        await provider.sendShaderWithScriptContent(path, 'export const value = 2;');
+        expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: 'shaderSource', code: edited }));
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
   it.each([undefined, 'selected-preview'])('routes both source and subsequent uniform values to %s', async previewId => {
     const send = vi.fn(async () => {});
     const messenger = { send, getErrorHandler: () => ({ clearPersistentErrors() {} }), getWebview: () => undefined };

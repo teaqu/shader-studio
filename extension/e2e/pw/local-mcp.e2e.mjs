@@ -7,6 +7,7 @@ import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { PNG } from 'pngjs';
 import { revertFixtureEditors } from './editor-actions.mjs';
+import { findConnectionScreen } from './ai-connection-screen.mjs';
 
 test.use({ vscodeKey: 'local-mcp' });
 // The fixture launches VS Code before entering the test; the folder must exist
@@ -68,15 +69,12 @@ test('generic MCP edits files and captures both webview and server preview @gpu'
         return 0;
       }
     }).toBe(401);
-    token = await vscode.evaluateInHost(async vscode => {
-      const previousClipboard = await vscode.env.clipboard.readText();
-      try {
-        await vscode.commands.executeCommand('shader-studio.copyCodexMcpConfig');
-        return (await vscode.env.clipboard.readText()).match(/Bearer ([a-f0-9]{64})/)[1];
-      } finally {
-        await vscode.env.clipboard.writeText(previousClipboard);
-      }
+    await vscode.evaluateInHost(async vscode => {
+      await vscode.commands.executeCommand('shader-studio.connectAiAssistant');
     });
+    const connection = await findConnectionScreen(vscode);
+    await expect(connection.locator('#status')).toHaveText('Waiting for an assistant');
+    token = await connection.getByLabel('Token', { exact: true }).inputValue();
     expect(await vscode.evaluateInHost(vscode => vscode.workspace.getConfiguration('shader-studio').get('mcpToken') === undefined)).toBe(true);
     expect(token.length).toBeGreaterThanOrEqual(16);
     await client.connect(new StreamableHTTPClientTransport(new URL(url), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }));
@@ -149,8 +147,8 @@ test('generic MCP edits files and captures both webview and server preview @gpu'
       expect.objectContaining({ name: 'uGain', type: 'float', value: 0.25, pausedValue: null, lastWriter: 'script', scriptMayOverwrite: true, defaultValue: null, range: null }),
     ]);
     await call('set_playback', { previewId, paused: true });
-    const overridden = await call('update_settings', { previewId, uniforms: { uGain: 0.75 } });
-    expect(overridden.structuredContent.inputs.customUniforms).toEqual([
+    await call('update_settings', { previewId, uniforms: { uGain: 0.75 } });
+    expect((await call('get_inputs', { previewId })).structuredContent.inputs.customUniforms).toEqual([
       expect.objectContaining({ name: 'uGain', value: 0.75, lastWriter: 'mcp', scriptMayOverwrite: true }),
     ]);
 
@@ -198,13 +196,15 @@ test('generic MCP edits files and captures both webview and server preview @gpu'
     await expect.poll(async () => (await feedback())[0]).toBe(2);
     await call('inject_input', { previewId, events: [{ type: 'key_up', code: 'Space' }] });
     expect(pixel(await call('capture_output', { previewId }))).toEqual([0, 0, 255, 255]);
+    await expect.poll(async () => (await call('get_recording', { previewId, id: video.id })).structuredContent.frameTimestamps.length).toBeGreaterThan(1);
     await call('stop_recording', { previewId, id: video.id });
     let completed;
     await expect.poll(async () => {
       completed = (await call('get_recording', { previewId, id: video.id })).structuredContent;
       return completed.state;
     }).toBe('completed');
-    expect(completed).toMatchObject({ previewSwitched: false, recompiled: false, source: { path: gamePath, revision: expect.any(String) }, artifact: { path: expect.any(String), bytes: expect.any(Number) } });
+    expect(completed).toMatchObject({ previewSwitched: false, recompiled: false, source: { revision: expect.any(String) }, artifact: { path: expect.any(String), bytes: expect.any(Number) } });
+    expect(normalizedPath(completed.source.path)).toBe(normalizedPath(gamePath));
     expect(completed.inputTimeline.events.filter(item => item.event.type === 'key_down' && item.event.code === 'Space')).toHaveLength(2);
     expect(completed.frameTimestamps.length).toBeGreaterThan(1);
     const artifact = await client.readResource({ uri: completed.artifact.uri });
@@ -237,7 +237,8 @@ test('generic MCP edits files and captures both webview and server preview @gpu'
       frameResult = await call('get_frame_capture', { previewId, id: frameJob.id });
       return frameResult.structuredContent.state;
     }).toBe('completed');
-    expect(frameResult.structuredContent).toMatchObject({ previewSwitched: false, recompiled: false, source: { path: gamePath, revision: expect.any(String) } });
+    expect(frameResult.structuredContent).toMatchObject({ previewSwitched: false, recompiled: false, source: { revision: expect.any(String) } });
+    expect(normalizedPath(frameResult.structuredContent.source.path)).toBe(normalizedPath(gamePath));
     expect(frameResult.structuredContent.frames.map(frame => frame.requestedTime)).toEqual([0, 0.1, 0.2]);
     const frameImages = frameResult.content.filter(item => item.type === 'image');
     expect(frameImages).toHaveLength(3);
