@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { PNG } from 'pngjs';
 import { workspace } from './language-service-fixtures.mjs';
 import { standaloneE2eEndpoints } from './ports.mjs';
+import { closeExplorerSettings, useSharedShaderEditor } from './explorer-preferences.mjs';
 
 const { productionOrigin } = standaloneE2eEndpoints();
 
@@ -26,8 +27,9 @@ async function expectGreen(page) {
   }).toEqual([0, 255, 0]);
 }
 async function replaceSource(page, path, code) {
-  // Active-file tracking (the default) opens each selected shader in its own editor.
-  const editor = page.locator(`[data-testid="file-editor"][data-path="${path}"]`);
+  // Active-file tracking (the default) opens each selected shader in its own
+  // editor; tests that opt out edit through the shared editor (path null).
+  const editor = path === null ? page.getByTestId('web-editor') : page.locator(`[data-testid="file-editor"][data-path="${path}"]`);
   await editor.locator('.view-lines').click();
   await page.keyboard.press('ControlOrMeta+A');
   await page.keyboard.insertText(code);
@@ -71,6 +73,8 @@ test('WGSL named channel Load renders after editing and persists across reload',
 });
 
 test('WGSL compute reports implicit sampling and recovers after an explicit-LOD edit', async ({ page }) => {
+  // A compute pass file has no preview of its own, so edit it in the shared editor.
+  await useSharedShaderEditor(page);
   const invalid = '@compute @workgroup_size(1) fn update(@builtin(global_invocation_id) id: vec3u) { writeOutput(id.xy, vec4f(0,1,0,1) + keysSample(vec2f(0))); }';
   const valid = invalid.replace('keysSample(vec2f(0))', 'sample2DLevel(keysTexture, keysSampler, vec2f(0), 0)');
   await openProject(page, [
@@ -84,11 +88,9 @@ test('WGSL compute reports implicit sampling and recovers after an explicit-LOD 
   await expect(page.getByTestId('shader-option-stage-wgsl').locator('.shader-error')).toBeVisible();
   await page.getByTitle('Options', { exact: true }).click();
   await page.getByLabel('Hide buffer files', { exact: true }).uncheck();
-  // The settings popover covers the list until it is closed.
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('region', { name: 'Explorer settings' })).toHaveCount(0);
+  await closeExplorerSettings(page);
   await page.getByTestId('shader-option-update-wgsl').click();
-  await replaceSource(page, '/update.wgsl', valid);
+  await replaceSource(page, null, valid);
   await expect.poll(async () => (await workspace(page))['/update.wgsl']).toBe(valid);
   await page.getByTestId('shader-option-stage-wgsl').click();
   await expectGreen(page);

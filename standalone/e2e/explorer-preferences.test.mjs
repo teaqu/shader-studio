@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { EXPLORER_STATE_KEY, seedExplorerState, useSharedShaderEditor } from './explorer-preferences.mjs';
+import { closeExplorerSettings, EXPLORER_STATE_KEY, seedExplorerState, useSharedShaderEditor } from './explorer-preferences.mjs';
 
 function memoryStorage(initial = {}) {
   const values = new Map(Object.entries(initial));
@@ -24,4 +24,14 @@ test('registers the seed as a page init script', async () => {
   const calls = [];
   await useSharedShaderEditor({ addInitScript: async (script, arg) => calls.push([script, arg]) });
   assert.deepEqual(calls, [[seedExplorerState, { key: EXPLORER_STATE_KEY, state: { keepActiveShaderFiles: false } }]]);
+});
+
+test('closes Explorer settings with Escape and waits for it to hide', async () => {
+  const calls = [];
+  const page = {
+    keyboard: { press: async key => calls.push(['press', key]) },
+    getByRole: (role, options) => ({ waitFor: async state => calls.push(['waitFor', role, options.name, state.state]) }),
+  };
+  await closeExplorerSettings(page);
+  assert.deepEqual(calls, [['press', 'Escape'], ['waitFor', 'region', 'Explorer settings', 'hidden']]);
 });

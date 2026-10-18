@@ -15,3 +15,9 @@ export function seedExplorerState({ key, state, storage = globalThis.localStorag
 export async function useSharedShaderEditor(pageOrContext) {
   await pageOrContext.addInitScript(seedExplorerState, { key: EXPLORER_STATE_KEY, state: { keepActiveShaderFiles: false } });
 }
+
+/** Closes Explorer settings, which can cover the shader list in a short Explorer pane. */
+export async function closeExplorerSettings(page) {
+  await page.keyboard.press('Escape');
+  await page.getByRole('region', { name: 'Explorer settings' }).waitFor({ state: 'hidden' });
+}

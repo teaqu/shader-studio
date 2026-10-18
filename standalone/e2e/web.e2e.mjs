@@ -9,9 +9,11 @@ import {
 } from './workspace-store.mjs';
 import { expectStableFor } from './observable-state.mjs';
 import { waitForLanguageService } from './language-service-fixtures.mjs';
-import { useSharedShaderEditor } from './explorer-preferences.mjs';
+import { closeExplorerSettings, useSharedShaderEditor } from './explorer-preferences.mjs';
 
 test('drops shader files and assets at workspace root and keeps them after reload', async ({ page }) => {
+  // Edits through the shared editor, which active-file tracking replaces.
+  await useSharedShaderEditor(page);
   const image = new PNG({ width: 1, height: 1 });
   image.data.set([0, 255, 0, 255]);
   await page.goto('/');
@@ -429,6 +431,8 @@ test('runs a persistent virtual shader workspace in web mode', async ({ page }) 
 });
 
 test('keeps one top-level Preview alive through docking, close/reopen, reset and reload', async ({ page }) => {
+  // Edits through the shared editor, which active-file tracking replaces.
+  await useSharedShaderEditor(page);
   await page.goto('/');
   await page.getByTestId('shader-option-aurora-glsl').click();
   const editor = page.getByTestId('web-editor');
@@ -509,6 +513,8 @@ test('keeps one top-level Preview alive through docking, close/reopen, reset and
 
 
 test('tool panels dock with the editor, restore their group, and close and reopen independently', async ({ page }) => {
+  // Edits through the shared editor, which active-file tracking replaces.
+  await useSharedShaderEditor(page);
   await page.goto('/');
   await page.getByTestId('shader-option-aurora-glsl').click();
   const tab = (name) => page.locator('.dv-tab').filter({ hasText: new RegExp(`^${name}$`) });
@@ -610,6 +616,8 @@ test('shader explorer context menu extends beyond the dock and remains clickable
 });
 
 test('forks a shader from the preview menu and persists the independent copy', async ({ page }) => {
+  // Edits through the shared editor, which active-file tracking replaces.
+  await useSharedShaderEditor(page);
   await page.goto('/');
   const original = page.getByTestId('shader-option-nebula-texture-glsl');
   const fork = page.getByTestId('shader-option-nebula-texture-1-glsl');
@@ -653,6 +661,8 @@ test('forks a shader from the preview menu and persists the independent copy', a
 
 
 test('creates a WGSL shader when selected, edits it, renders it, and persists it across reload', async ({ page }) => {
+  // Edits through the shared editor, which active-file tracking replaces.
+  await useSharedShaderEditor(page);
   const languageWorkerRequests = new Set();
   page.on('request', (request) => {
     const url = request.url();
@@ -698,6 +708,8 @@ test('creates a WGSL shader when selected, edits it, renders it, and persists it
 });
 
 test('selecting shaders leaves their modification times unchanged after reload', async ({ page }) => {
+  // Edits through the shared editor, which active-file tracking replaces.
+  await useSharedShaderEditor(page);
   await page.goto('/');
   const editor = page.getByTestId('web-editor');
   await expect(editor.locator('.monaco-editor')).toBeVisible();
@@ -727,6 +739,7 @@ test('explicitly opens independent file editors and restores them after reload',
   await page.getByTitle('Options', { exact: true }).click();
   await page.getByLabel('Only keep active shader files open', { exact: true }).uncheck();
   await page.getByLabel('Open file when selecting a shader', { exact: true }).check();
+  await closeExplorerSettings(page);
   const mainTab = () => page.locator('.dv-tab').filter({ hasText: /\.(glsl|frag|slang|wgsl)$/ }).first();
   const fileTab = name => page.locator('.dv-tab').filter({ hasText: name }).last();
   const open = async id => {
@@ -795,6 +808,7 @@ test('keeps a buffer and its image shader open in separate editors', async ({ pa
   await page.getByLabel('Only keep active shader files open', { exact: true }).uncheck();
   await page.getByLabel('Open file when selecting a shader', { exact: true }).check();
   await page.getByLabel('Hide buffer files', { exact: true }).uncheck();
+  await closeExplorerSettings(page);
   await page.getByTestId('shader-option-test-buffer-glsl').click();
   await page.getByRole('button', { name: 'Open in separate editor', exact: true }).click();
   const buffer = page.locator('[data-testid="file-editor"][data-path="/test-buffer.glsl"]');
@@ -823,6 +837,8 @@ test('keeps a buffer and its image shader open in separate editors', async ({ pa
 
 for (const theme of ['light', 'dark']) {
   test(`editor cursor and diagnostic hover are readable in ${theme} mode`, async ({ page }) => {
+    // Edits through the shared editor, which active-file tracking replaces.
+    await useSharedShaderEditor(page);
     await page.addInitScript((value) => localStorage.setItem('shader-studio-theme', value), theme);
     await page.goto('/');
     const editor = page.getByTestId('web-editor');
@@ -850,6 +866,7 @@ for (const separate of [false, true]) {
         await page.getByTitle('Options', { exact: true }).click();
         await page.getByLabel('Only keep active shader files open', { exact: true }).uncheck();
         await page.getByLabel('Open file when selecting a shader', { exact: true }).check();
+        await closeExplorerSettings(page);
       }
       await page.getByTestId(language === 'slang' ? 'shader-option-aurora-slang-slang' : 'shader-option-aurora-glsl').click();
       if (separate) {
@@ -891,6 +908,7 @@ test('a delayed preview selection preserves Slang typing in its separate editor'
   await page.getByTitle('Options', { exact: true }).click();
   await page.getByLabel('Only keep active shader files open', { exact: true }).uncheck();
   await page.getByLabel('Open file when selecting a shader', { exact: true }).uncheck();
+  await closeExplorerSettings(page);
   await page.getByTestId('shader-option-aurora-glsl').click();
   await expect(page.getByTestId('web-editor').locator('.view-lines')).toContainText('void mainImage(out vec4 fragColor');
   // Hold completion of the real workspace transaction that precedes selection
@@ -944,6 +962,7 @@ test('explorer Open Files reuses one editor and only reopens it when checked', a
   await page.getByTitle('Options', { exact: true }).click();
   await page.getByLabel('Only keep active shader files open', { exact: true }).uncheck();
   await page.getByLabel('Open file when selecting a shader', { exact: true }).check();
+  await closeExplorerSettings(page);
   for (const [id, text] of [
     ['aurora-glsl', 'uv.xyx + vec3(0, 2, 4)'],
     ['desert-cubemap-glsl', 'Drag in the preview'],
@@ -1030,6 +1049,8 @@ test('config double clicks open and focus standalone file editors', async ({ pag
 
 for (const language of ['glsl', 'slang', 'wgsl']) {
   test(`${language} edits survive a reload that abandons the queued workspace write`, async ({ page }) => {
+    // Edits through the shared editor, which active-file tracking replaces.
+    await useSharedShaderEditor(page);
     await page.goto('/');
     await page.getByTestId(language === 'glsl'
       ? 'shader-option-aurora-glsl'
@@ -1098,6 +1119,7 @@ test('focused standalone file editor selects the preview and persists after relo
   await page.getByTitle('Options', { exact: true }).click();
   await page.getByLabel('Only keep active shader files open', { exact: true }).uncheck();
   await page.getByLabel('Open file when selecting a shader', { exact: true }).uncheck();
+  await closeExplorerSettings(page);
   await desert.click();
   await expect(desert).toHaveAttribute('aria-pressed', 'true');
   await editor.locator('.view-lines').click();
@@ -1174,6 +1196,7 @@ test('shader selection updates the last active editor and restores it after relo
   await page.getByTitle('Options', { exact: true }).click();
   await page.getByLabel('Only keep active shader files open', { exact: true }).uncheck();
   await page.getByLabel('Open file when selecting a shader', { exact: true }).check();
+  await closeExplorerSettings(page);
   await page.getByTestId('shader-option-desert-cubemap-glsl').click();
   await expect(fileEditor).toHaveCount(1);
   await expect(fileEditor).toHaveAttribute('data-path', '/desert-cubemap.glsl');
@@ -1207,6 +1230,8 @@ test('explorer can resize beyond 260 pixels and retains its width after reload',
 
 
 test('desktop pane sizes recover after the window is compressed and expanded', async ({ page }) => {
+  // Edits through the shared editor, which active-file tracking replaces.
+  await useSharedShaderEditor(page);
   await page.setViewportSize({ width: 1400, height: 900 });
   await page.goto('/');
   const explorer = page.getByTestId('web-shader-explorer');
@@ -1287,6 +1312,7 @@ test('replacing the active editor preserves tab order after reload', async ({ pa
   await page.getByTitle('Options', { exact: true }).click();
   await page.getByLabel('Only keep active shader files open', { exact: true }).uncheck();
   await page.getByLabel('Open file when selecting a shader', { exact: true }).check();
+  await closeExplorerSettings(page);
   await page.getByTestId('shader-option-aurora-glsl').click();
   await expect(titles).toHaveText(['glow-trails.glsl', 'aurora.glsl', 'glow.buffer.glsl']);
   await expect(page.locator('[data-testid="file-editor"][data-path="/aurora.glsl"] .view-lines')).toContainText('uv.xyx + vec3(0, 2, 4)');
@@ -1600,6 +1626,8 @@ test('keeps a Live recording at a fixed size through a preview resize and saves 
 });
 
 test('standalone defaults to Aurora GLSL and preserves a later selection on reload', async ({ page }) => {
+  // Edits through the shared editor, which active-file tracking replaces.
+  await useSharedShaderEditor(page);
   await page.goto('/');
   const aurora = page.getByTestId('shader-option-aurora-glsl');
   await expect(aurora).toHaveAttribute('aria-pressed', 'true');
@@ -1615,6 +1643,8 @@ test('standalone defaults to Aurora GLSL and preserves a later selection on relo
 });
 
 test('pressing Enter after an open brace indents the new line like VS Code', async ({ page }) => {
+  // Edits through the shared editor, which active-file tracking replaces.
+  await useSharedShaderEditor(page);
   await page.goto('/');
   const explorer = page.getByTestId('web-shader-explorer');
   const editor = page.getByTestId('web-editor');
@@ -1645,6 +1675,8 @@ test('pressing Enter after an open brace indents the new line like VS Code', asy
 });
 
 test('the overlay keeps its dark tokens across workspace theme switches', async ({ page }) => {
+  // Edits through the shared editor, which active-file tracking replaces.
+  await useSharedShaderEditor(page);
   const LIGHT_TYPE_TOKEN = 'rgb(99, 54, 168)';
   const DARK_TYPE_TOKEN = 'rgb(204, 153, 255)';
   await page.addInitScript(() => localStorage.setItem('shader-studio-theme', 'light'));
@@ -1699,6 +1731,8 @@ test('the overlay keeps its dark tokens across workspace theme switches', async 
 });
 
 test('the shader-preview overlay keeps its dark tokens without darkening the light editor pane', async ({ page }) => {
+  // Edits through the shared editor, which active-file tracking replaces.
+  await useSharedShaderEditor(page);
   await page.addInitScript(() => localStorage.setItem('shader-studio-theme', 'light'));
   await page.goto('/');
   const editor = page.getByTestId('web-editor');
@@ -1813,6 +1847,8 @@ test('switches layout profiles in the standalone shell and keeps the active one 
 });
 
 test('manual compile mode holds edits back until the compile button is pressed', async ({ page }) => {
+  // Edits through the shared editor, which active-file tracking replaces.
+  await useSharedShaderEditor(page);
   await page.goto('/');
   await page.getByTestId('shader-option-aurora-glsl').click();
   const preview = page.getByTestId('web-preview');
@@ -1835,6 +1871,8 @@ test('manual compile mode holds edits back until the compile button is pressed',
 });
 
 test('switching from manual back to hot keeps held-back editor changes', async ({ page }) => {
+  // Edits through the shared editor, which active-file tracking replaces.
+  await useSharedShaderEditor(page);
   await page.goto('/');
   await page.getByTestId('shader-option-aurora-glsl').click();
   const preview = page.getByTestId('web-preview');
@@ -1906,6 +1944,8 @@ for (const { label, option, extension, sourceText } of [
 ]) {
   for (const action of ['forks', 'renames']) {
     test(`${action} a ${label} shader through the menu and persists it across reload`, async ({ page }) => {
+      // Edits through the shared editor, which active-file tracking replaces.
+      await useSharedShaderEditor(page);
       await page.goto('/');
       const original = page.getByTestId(`shader-option-${option}`);
       await original.click();
@@ -2036,6 +2076,8 @@ test('creates a valid WGSL vertex hook from the config panel', async ({ page }) 
 });
 
 test('standalone global settings apply live, persist, search, and reset without changing shader files', async ({ page }) => {
+  // Edits through the shared editor, which active-file tracking replaces.
+  await useSharedShaderEditor(page);
   await page.goto('/');
   const editor = page.getByTestId('web-editor');
   await expect(editor.locator('.monaco-editor')).toBeVisible();
@@ -2089,6 +2131,8 @@ test('standalone global settings apply live, persist, search, and reset without 
 });
 
 test('standalone global settings synchronize between open tabs', async ({ page, context }) => {
+  // Edits through the shared editor, which active-file tracking replaces.
+  await useSharedShaderEditor(page);
   await page.goto('/');
   const other = await context.newPage();
   await other.goto('/');
@@ -2111,6 +2155,8 @@ test('standalone global settings synchronize between open tabs', async ({ page, 
 });
 
 test('standalone global settings disable and restore language service diagnostics live', async ({ page }) => {
+  // Edits through the shared editor, which active-file tracking replaces.
+  await useSharedShaderEditor(page);
   await page.goto('/');
   // Keep compiler diagnostics out of this language-service toggle check.
   await page.getByTestId('web-preview').getByLabel('Open options menu').click();
@@ -2131,6 +2177,8 @@ test('standalone global settings disable and restore language service diagnostic
 
 for (const appearance of ['light', 'dark']) {
   test(`Pixel theme applies in ${appearance} mode and persists across reload`, async ({ page }) => {
+    // Edits through the shared editor, which active-file tracking replaces.
+    await useSharedShaderEditor(page);
     await page.goto('/');
     await page.getByTestId('shader-option-aurora-glsl').click();
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
