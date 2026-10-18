@@ -1,6 +1,6 @@
 # Shader Studio
 
-A GLSL, Slang, and WGSL shader viewer for VS Code with hot reloading. Edit Shadertoy-style GLSL fragment shaders or write Slang and WGSL shaders for the WebGPU pipeline — all with live preview, multi-pass pipelines, and visual debugging.
+A GLSL, Slang, and WGSL shader IDE with hot reloading, debugging and much more.
 
 Try Shader Studio in [Standalone web mode](https://teaqu.github.io/shader-studio/app/) in your browser.
 
