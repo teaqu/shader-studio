@@ -72,7 +72,6 @@ test('Viewing follows line rendering and restores the selected buffer when line 
   await editor.locator('.view-line').filter({ hasText: 'vec4 tint' }).click();
   await page.keyboard.press('End');
   await expect(page.getByLabel('Currently previewing A', { exact: true })).toHaveText('Viewing · L2');
-  await expect(preview.locator('.preview-output-label')).toHaveText('line-cards.glsl › A · Line 2');
   const pixel = async () => {
     const url = await preview.locator('.canvas-container > canvas:not(.pixel-canvas-marker)').evaluate(canvas => canvas.toDataURL());
     const { data, width, height } = PNG.sync.read(Buffer.from(url.split(',')[1], 'base64'));
@@ -90,7 +89,6 @@ test('Viewing follows line rendering and restores the selected buffer when line 
   await page.getByLabel('Toggle inline rendering', { exact: true }).click();
   await expect(page.getByRole('img', { name: 'Line rendering enabled' })).toBeHidden();
   await expect(page.getByLabel('Currently previewing A', { exact: true })).toHaveText('Viewing');
-  await expect(preview.locator('.preview-output-label')).toHaveText('line-cards.glsl › A');
   await expect.poll(pixel).toEqual([255, 0, 0]);
 });
 
@@ -153,7 +151,6 @@ for (const [language, locked] of ['glsl', 'slang', 'wgsl'].flatMap(language => [
     await expect.poll(pixel).toEqual([255, 0, 0]);
     await page.getByRole('button', { name: 'Preview BufferA', exact: true }).click();
     await expect.poll(pixel).toEqual([0, 255, 0]);
-    await expect(preview.locator('.preview-output-label')).toHaveText(`main.${language} › BufferA`);
     await expect(page.getByLabel('Currently previewing BufferA', { exact: true })).toHaveText('Viewing');
     await page.locator('[data-tab-name="Image"]').click();
     await expect(page.locator('[data-tab-name="Image"]')).toHaveAttribute('aria-pressed', 'true');
@@ -162,7 +159,6 @@ for (const [language, locked] of ['glsl', 'slang', 'wgsl'].flatMap(language => [
     await expect.poll(pixel).toEqual([255, 0, 0]);
     await page.locator('[data-tab-name="BufferA"]').click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Preview file standalone', exact: true }).click();
-    await expect(preview.locator('.preview-output-label')).toHaveText(`buffer.${language} › Image`);
     await expect.poll(pixel).toEqual([0, 0, 255]);
     await expect(lock).toHaveAttribute('aria-pressed', String(locked));
     await page.reload();

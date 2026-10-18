@@ -524,6 +524,7 @@
         <i class="codicon codicon-unlock"></i>
       {/if}
     </button>
+    {#if vrAvailable}<VrPreviewButton />{/if}
     <div class="options-menu-container">
       <button
         bind:this={optionsMenu.trigger}
@@ -534,7 +535,6 @@
         <i class="codicon codicon-menu"></i>
       </button>
     </div>
-    {#if vrAvailable}<VrPreviewButton />{/if}
   </div>
 </div>
 

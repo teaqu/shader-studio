@@ -11,7 +11,10 @@ interface PanelGroup {
   panels: Panel[];
   api: {
     isVisible: boolean;
+    width: number;
+    height: number;
     setVisible(visible: boolean): void;
+    setSize(size: { width?: number; height?: number }): void;
   };
 }
 
@@ -172,6 +175,8 @@ export class StandaloneLayoutController {
   private readonly panelRestorations = new Map<StandalonePanelId, PanelRestoration>();
   private readonly storage: LayoutStorage | null;
   private desktopVisibility: Map<PanelGroup, boolean> | null = null;
+  /** Desktop group sizes from before the phone shell hid them. */
+  private desktopSizes = new Map<PanelGroup, { width: number; height: number }>();
   private mobilePanel: MobileDockviewPanelId | null = null;
   private managedEditorPaths = new Set<string>();
   private retainedEditorPaths = new Set<string>();
@@ -376,7 +381,7 @@ export class StandaloneLayoutController {
 
   /** Shows exactly one existing Dockview group for the phone shell. */
   showMobileDockviewPanel(panelId: MobileDockviewPanelId): void {
-    const selected = this.api.getPanel(panelId);
+    const selected = panelId === 'editor' ? this.findEditorPanel() : this.api.getPanel(panelId);
     if (!selected) {
       return;
     }
@@ -384,6 +389,9 @@ export class StandaloneLayoutController {
       this.desktopVisibility = new Map(
         this.api.panels.map((panel) => [panel.api.group, panel.api.group.api.isVisible]),
       );
+      this.desktopSizes = new Map([...this.desktopVisibility.keys()]
+        .filter((group) => group.api.isVisible)
+        .map((group) => [group, { width: group.api.width, height: group.api.height }]));
     }
     const selectedTool = panelId === 'debug' || panelId === 'config'
       || panelId === 'performance' || panelId === 'recording' || panelId === 'vr';
@@ -400,13 +408,36 @@ export class StandaloneLayoutController {
     selected.api.setActive();
   }
 
-  restoreDesktopPanels(): void {
+  /**
+   * Opening a shader replaces the main editor with per-file editors, so the
+   * phone shell's Editor tab follows the last active file editor instead.
+   */
+  private findEditorPanel() {
+    return this.api.getPanel(this.activeEditorId)
+      ?? this.api.getPanel('editor')
+      ?? this.api.panels.find((panel) => panel.id.startsWith('editor:'));
+  }
+
+  /**
+   * @param layout lays Dockview out at the desktop size once the groups are
+   * visible; sizes applied while it still has the phone dimensions are clamped.
+   */
+  restoreDesktopPanels(layout?: () => void): void {
     if (!this.desktopVisibility) {
       return;
     }
     for (const [group, visible] of this.desktopVisibility) {
       group.api.setVisible(visible);
     }
+    layout?.();
+    // Re-showing a group lets Dockview squeeze the groups stacked beside it
+    // (the Explorer under Files), so put back the sizes the user had.
+    for (const [group, size] of this.desktopSizes) {
+      if (group.api.isVisible) {
+        group.api.setSize(size);
+      }
+    }
+    this.desktopSizes.clear();
     this.desktopVisibility = null;
     this.mobilePanel = null;
   }

@@ -154,7 +154,7 @@ describe('MenuBar', () => {
     }
   });
 
-  it('shows the detected VR shortcut at the far right and removes it for ordinary shaders', async () => {
+  it('shows the detected VR shortcut just left of the options menu and removes it for ordinary shaders', async () => {
     const renderer = {
       isVrPreviewAvailable: () => true,
       setVrPreviewEnabled: vi.fn(), render: vi.fn(),
@@ -165,7 +165,7 @@ describe('MenuBar', () => {
       renderMenuBar();
       await tick();
       const button = screen.getByRole('button', { name: 'VR' });
-      expect(button.parentElement?.lastElementChild).toBe(button);
+      expect(button.nextElementSibling?.contains(screen.getByLabelText('Open options menu'))).toBe(true);
       await fireEvent.click(button);
       expect(isVrPanelVisible()).toBe(true);
       await fireEvent.click(screen.getByLabelText('Open options menu'));

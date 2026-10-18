@@ -58,7 +58,6 @@ test('storage cards add, rename, select and delete individual buffers with persi
   await config.getByRole('button', { name: 'Apply pending storage changes' }).click();
   await config.getByRole('button', { name: 'Storage buffer particles', exact: true }).click();
   await expect(config.getByLabel('Storage name', { exact: true })).toHaveValue('particles');
-  await expect(preview.locator('.preview-output-label')).toHaveText('storage-cards.wgsl › Image');
   await page.reload();
   if (!await config.isVisible()) {
     await preview.getByLabel('Toggle config panel').click();

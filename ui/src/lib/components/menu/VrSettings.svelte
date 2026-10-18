@@ -4,6 +4,12 @@
   import { getVrNavigationSettings, updateVrNavigationSettings, getVrPreviewState, toggleVrPreview, toggleImmersiveVr, setVrPanelVisible } from '../../state/vrPreviewState.svelte';
   const settings = $derived(getVrNavigationSettings());
   const state = $derived(getVrPreviewState());
+  const desktopPreviewUnavailableReason = $derived(
+    !state.available ? 'Needs a fullscreen GLSL shader that defines mainVR'
+      : state.immersive ? 'Exit VR to use the desktop preview'
+        : state.busy ? 'Connecting to the headset…'
+          : undefined,
+  );
   function handleKey(event: KeyboardEvent): void {
     if (event.key === 'Escape') {
       setVrPanelVisible(false);
@@ -31,7 +37,7 @@
     </div>
     {#if state.error}<p class="error" role="alert">{state.error}</p>{/if}
     <div class="setting">
-      <label class="toggle"><span>Desktop preview</span><input type="checkbox" role="switch" checked={state.enabled} disabled={!state.available || state.immersive || state.busy} aria-describedby="vr-desktop-help" onchange={toggleVrPreview} /></label>
+      <label class="toggle" title={desktopPreviewUnavailableReason}><span>Desktop preview</span><input type="checkbox" role="switch" checked={state.enabled} disabled={!state.available || state.immersive || state.busy} aria-describedby="vr-desktop-help" onchange={toggleVrPreview} /></label>
       <p id="vr-desktop-help" class="hint">Drag to look · WASD / QE · Hold Shift to move faster</p>
     </div>
     <div class="shared-speeds" role="group" aria-label="Desktop and headset speeds">
@@ -85,7 +91,7 @@
   .enter:hover:enabled { background: var(--vscode-button-hoverBackground, #0062a3); }
   .setting { display: grid; gap: 7px; }
   .toggle { cursor: pointer; }
-  input[role='switch'] { appearance: none; position: relative; flex: 0 0 auto; width: 34px; height: var(--shader-studio-control-height); margin: 0; border: 1px solid var(--vscode-checkbox-border, #777); border-radius: 12px; background: var(--vscode-descriptionForeground, #777); cursor: pointer; }
+  input[role='switch'] { appearance: none; position: relative; flex: 0 0 auto; width: 34px; height: 20px; margin: 0; border: 1px solid var(--vscode-checkbox-border, #777); border-radius: 12px; background: var(--vscode-descriptionForeground, #777); cursor: pointer; }
   input[role='switch']::after { content: ''; position: absolute; width: 14px; height: 14px; top: 2px; left: 2px; border-radius: 50%; background: var(--vscode-editor-background, #202020); }
   input[role='switch']:checked { background: var(--vscode-button-background, #007acc); border-color: transparent; }
   input[role='switch']:checked::after { left: 16px; background: var(--vscode-button-foreground, #fff); }

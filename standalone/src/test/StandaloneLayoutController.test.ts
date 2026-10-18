@@ -62,7 +62,7 @@ function createApi(): StandaloneDockviewApi & { emitLayoutChange(): void; activa
   };
   type TestGroup = {
     panels: TestPanel[];
-    api: { isVisible: boolean; setVisible(visible: boolean): void };
+    api: { isVisible: boolean; width: number; height: number; setVisible(visible: boolean): void; setSize(size: { width?: number; height?: number }): void };
   };
   const panels = new Map<string, TestPanel>();
   const createGroup = (): TestGroup => {
@@ -70,8 +70,14 @@ function createApi(): StandaloneDockviewApi & { emitLayoutChange(): void; activa
       panels: [],
       api: {
         isVisible: true,
+        width: 300,
+        height: 400,
         setVisible: vi.fn((visible: boolean) => {
           group.api.isVisible = visible;
+        }),
+        setSize: vi.fn((size: { width?: number; height?: number }) => {
+          group.api.width = size.width ?? group.api.width;
+          group.api.height = size.height ?? group.api.height;
         }),
       },
     };
@@ -703,4 +709,97 @@ it.each([0, 1, 2])('keeps a replaced editor at tab index %i', (index) => {
   const expected = [...ids];
   expected[index] = 'editor:/replacement.glsl';
   expect(api.getPanel('editor:/replacement.glsl')?.api.group.panels.map((panel) => panel.id)).toEqual(expected);
+});
+
+describe('phone shell editor panel', () => {
+  it('shows the active file editor once the shader selection has replaced the main editor', () => {
+    const api = createApi();
+    const controller = new StandaloneLayoutController(api, null);
+    controller.initialize();
+    controller.openEditor('/first.glsl');
+    api.activate('editor:/first.glsl');
+    controller.selectEditor('/next.glsl');
+    api.remove('editor');
+    api.activate('explorer');
+
+    controller.showMobilePanel('editor');
+
+    const editor = api.getPanel('editor:/next.glsl')!;
+    expect(editor.api.group.api.isVisible).toBe(true);
+    expect(editor.api.setActive).toHaveBeenCalled();
+    expect(api.getPanel('explorer')?.api.group.api.isVisible).toBe(false);
+    expect(controller.getMobilePanel()).toBe('editor');
+  });
+
+  it('falls back to any open file editor when the remembered one was closed', () => {
+    const api = createApi();
+    const controller = new StandaloneLayoutController(api, null);
+    controller.initialize();
+    controller.openEditor('/first.glsl');
+    controller.openEditor('/second.glsl');
+    api.activate('editor:/second.glsl');
+    api.remove('editor:/second.glsl');
+    api.remove('editor');
+
+    controller.showMobilePanel('editor');
+
+    expect(api.getPanel('editor:/first.glsl')?.api.group.api.isVisible).toBe(true);
+    expect(controller.getMobilePanel()).toBe('editor');
+  });
+
+  it('leaves the phone shell alone when no editor is open at all', () => {
+    const api = createApi();
+    const controller = new StandaloneLayoutController(api, null);
+    controller.initialize();
+    api.remove('editor');
+
+    controller.showMobilePanel('editor');
+
+    expect(controller.getMobilePanel()).toBeNull();
+    expect(api.getPanel('preview')?.api.group.api.isVisible).toBe(true);
+  });
+});
+
+describe('leaving the phone shell', () => {
+  it('puts every desktop group back at the size it had before phone mode', () => {
+    const api = createApi();
+    const controller = new StandaloneLayoutController(api, null);
+    controller.initialize();
+    const explorer = api.getPanel('explorer')!.api.group;
+    const files = api.getPanel('files')!.api.group;
+    explorer.api.height = 520;
+    files.api.height = 240;
+
+    controller.showMobilePanel('files');
+    // Re-showing a group lets Dockview squeeze its stacked neighbour.
+    explorer.api.height = 60;
+    files.api.height = 700;
+    const layout = vi.fn(() => {
+      // Sizes only stick once Dockview is laid out with every group visible.
+      expect(explorer.api.isVisible).toBe(true);
+      expect(explorer.api.setSize).not.toHaveBeenCalled();
+    });
+    controller.restoreDesktopPanels(layout);
+
+    expect(layout).toHaveBeenCalledOnce();
+    expect(explorer.api.isVisible).toBe(true);
+    expect(explorer.api.height).toBe(520);
+    expect(files.api.height).toBe(240);
+    expect(explorer.api.width).toBe(300);
+  });
+
+  it('leaves a group first opened on the phone at Dockview\'s own size', () => {
+    const api = createApi();
+    const controller = new StandaloneLayoutController(api, null);
+    controller.initialize();
+    controller.showMobilePanel('preview');
+    api.addPanel({ id: 'config' });
+    const config = api.getPanel('config')!.api.group;
+
+    controller.showMobileDockviewPanel('config');
+    controller.restoreDesktopPanels();
+
+    expect(config.api.isVisible).toBe(true);
+    expect(config.api.setSize).not.toHaveBeenCalled();
+  });
 });

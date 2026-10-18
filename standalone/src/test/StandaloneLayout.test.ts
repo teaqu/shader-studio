@@ -6,6 +6,7 @@ import { connectSettings } from '../settings/settingsState.svelte';
 import StandaloneLayout from '../StandaloneLayout.svelte';
 import { createDockview } from 'dockview-core';
 import { resetMobileShellState } from '../state/mobileShellState.svelte';
+import { HostedPanels } from '../HostedPanels';
 
 let renderers: { element: HTMLElement; dispose(): void; init(parameters: { api: { id: string } }): void }[] = [];
 let willDrop: ((event: { getData(): { viewId: string } | undefined; preventDefault(): void }) => void) | null = null;
@@ -30,6 +31,7 @@ vi.mock('dockview-core', () => ({
       }),
       fromJSON: vi.fn(),
       getPanel: vi.fn(() => undefined),
+      panels: [] as unknown[],
       onDidActivePanelChange: vi.fn(() => ({ dispose: vi.fn() })),
       onDidLayoutChange: vi.fn(() => ({ dispose: vi.fn() })),
       onDidRemovePanel: vi.fn(() => ({ dispose: vi.fn() })),
@@ -192,6 +194,77 @@ describe('StandaloneLayout', () => {
 
     afterEach(() => {
       vi.unstubAllGlobals();
+    });
+
+    function renderLayoutWithFiles(hostedPanels?: HostedPanels) {
+      return render(StandaloneLayout, { props: {
+        explorer: source('explorer'), files: source('files'), editor: source('editor'), preview: source('preview'),
+        ...(hostedPanels ? { hostedPanels } : {}),
+      } });
+    }
+
+    it('groups Explorer and Files under one phone destination', async () => {
+      stubViewport(true);
+      const result = renderLayoutWithFiles();
+      await tick();
+      const nav = result.getByRole('navigation', { name: 'Workspace panels' });
+      expect(within(nav).getAllByRole('button').map((button) => button.textContent)).toEqual(['Explorer', 'Editor', 'Preview', 'Tools']);
+      expect(result.queryByRole('navigation', { name: 'Explorer sections' })).toBeNull();
+
+      await fireEvent.click(within(nav).getByRole('button', { name: 'Explorer' }));
+      const sections = result.getByRole('navigation', { name: 'Explorer sections' });
+      expect(within(sections).getByRole('button', { name: 'Shaders' }).getAttribute('aria-current')).toBe('page');
+      expect(result.component.getSelectedMobilePanel()).toBe('explorer');
+
+      await fireEvent.click(within(sections).getByRole('button', { name: 'Files' }));
+      expect(result.component.getSelectedMobilePanel()).toBe('files');
+      expect(within(sections).getByRole('button', { name: 'Files' }).getAttribute('aria-current')).toBe('page');
+      expect(within(nav).getByRole('button', { name: 'Explorer' }).getAttribute('aria-current')).toBe('page');
+
+      // Explorer reopens on the section that was last used.
+      await fireEvent.click(within(nav).getByRole('button', { name: 'Preview' }));
+      expect(result.queryByRole('navigation', { name: 'Explorer sections' })).toBeNull();
+      await fireEvent.click(within(nav).getByRole('button', { name: 'Explorer' }));
+      expect(result.component.getSelectedMobilePanel()).toBe('files');
+    });
+
+    it('follows a Files selection made through the component API', async () => {
+      stubViewport(true);
+      const result = renderLayoutWithFiles();
+      await tick();
+      result.component.selectMobilePanel('files');
+      await tick();
+      const sections = result.getByRole('navigation', { name: 'Explorer sections' });
+      expect(within(sections).getByRole('button', { name: 'Files' }).getAttribute('aria-current')).toBe('page');
+      expect(within(result.getByRole('navigation', { name: 'Workspace panels' })).getByRole('button', { name: 'Explorer' })
+        .getAttribute('aria-current')).toBe('page');
+    });
+
+    it('offers no Explorer sections when the host has no Files panel', async () => {
+      stubViewport(true);
+      const result = renderLayout();
+      await tick();
+      await fireEvent.click(result.getByRole('button', { name: 'Explorer' }));
+      expect(result.queryByRole('navigation', { name: 'Explorer sections' })).toBeNull();
+      expect(result.component.getSelectedMobilePanel()).toBe('explorer');
+    });
+
+    it('offers VR in the phone tools and reopens it as the last tool', async () => {
+      stubViewport(true);
+      const hostedPanels = new HostedPanels();
+      const result = renderLayoutWithFiles(hostedPanels);
+      await tick();
+      hostedPanels.showTool('vr');
+      const api = vi.mocked(createDockview).mock.results.at(-1)!.value;
+      vi.mocked(api.addPanel).mockClear();
+
+      result.component.selectMobilePanel('tools');
+      await tick();
+
+      const tools = result.getByRole('navigation', { name: 'Tools' });
+      expect(within(tools).getAllByRole('button').map((button) => button.textContent)).toEqual(['Config', 'Debug', 'Frame Times', 'Export', 'VR']);
+      expect(within(tools).getByRole('button', { name: 'VR' }).getAttribute('aria-current')).toBe('page');
+      expect(api.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'vr' }));
     });
 
     it('opens the tapped tool and marks it current', async () => {
