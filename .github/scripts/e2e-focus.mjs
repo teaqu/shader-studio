@@ -79,7 +79,8 @@ export function focusCommand(inputs, environment = {}) {
     return {
       cwd: 'standalone',
       command: 'npx',
-      args: ['playwright', 'test', '--config', 'e2e/playwright.config.mjs', '--project', project, ...playwrightFilters],
+      // --project accepts several values, so bind it with = to keep specs positional.
+      args: ['playwright', 'test', '--config', 'e2e/playwright.config.mjs', `--project=${project}`, ...playwrightFilters],
       env: {},
     };
   }

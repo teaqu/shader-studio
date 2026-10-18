@@ -8,11 +8,11 @@ test('standalone runs the selected specs, title filter and repeats in one Playwr
   assert.deepEqual(focusCommand({ suite: 'standalone', specs: 'web.e2e.mjs, files.e2e.mjs', grep: 'Open Files|tab order', repeat: '3' }), {
     cwd: 'standalone',
     command: 'npx',
-    args: ['playwright', 'test', '--config', 'e2e/playwright.config.mjs', '--project', 'chromium',
+    args: ['playwright', 'test', '--config', 'e2e/playwright.config.mjs', '--project=chromium',
       'web.e2e.mjs', 'files.e2e.mjs', '--grep', 'Open Files|tab order', '--repeat-each', '3'],
     env: {},
   });
-  assert.deepEqual(focusCommand({ suite: 'standalone', project: 'mobile-chromium' }).args.slice(-2), ['--project', 'mobile-chromium']);
+  assert.deepEqual(focusCommand({ suite: 'standalone', project: 'mobile-chromium' }).args.at(-1), '--project=mobile-chromium');
 });
 
 test('VS Code without a GPU skips @gpu specs; the GPU runner keeps every selected spec', () => {
@@ -69,5 +69,12 @@ test('rejects unknown suites and inputs that could escape the selected suite', (
 
 test('blank optional inputs run the whole selected suite once', () => {
   assert.deepEqual(focusCommand({ suite: 'standalone', specs: '', grep: '', repeat: '' }).args,
-    ['playwright', 'test', '--config', 'e2e/playwright.config.mjs', '--project', 'chromium']);
+    ['playwright', 'test', '--config', 'e2e/playwright.config.mjs', '--project=chromium']);
+});
+
+test('standalone specs stay positional after the project option, as the Playwright CLI parses them', () => {
+  const { args } = focusCommand({ suite: 'standalone', specs: 'files.e2e.mjs vr.e2e.mjs' });
+  const project = args.findIndex(arg => arg.startsWith('--project'));
+  assert.equal(args[project], '--project=chromium');
+  assert.deepEqual(args.slice(project + 1), ['files.e2e.mjs', 'vr.e2e.mjs']);
 });
