@@ -160,14 +160,16 @@ test(`storage workspace saves structured layout and lifecycle changes and uses c
     const style = getComputedStyle(item);
     const probe = document.createElement('span');
     probe.style.backgroundColor = 'var(--vscode-input-background)';
+    probe.style.fontSize = 'var(--shader-studio-font-size)';
     item.parentElement.append(probe);
-    const expectedBackground = getComputedStyle(probe).backgroundColor;
+    const { backgroundColor: expectedBackground, fontSize: expectedFontSize } = getComputedStyle(probe);
     probe.remove();
-    return { background: style.backgroundColor, expectedBackground, radius: style.borderRadius, fontSize: style.fontSize };
+    return { background: style.backgroundColor, expectedBackground, radius: style.borderRadius, fontSize: style.fontSize, expectedFontSize };
   });
   expect(inputTheme.background).toBe(inputTheme.expectedBackground);
   expect(inputTheme.radius).toBe('4px');
-  expect(inputTheme.fontSize).toBe('12px');
+  // Storage inputs use the theme's shared control font size.
+  expect(inputTheme.fontSize).toBe(inputTheme.expectedFontSize);
   const tabStyle = await config.getByRole('tab', { name: 'Settings', exact: true }).evaluate(item => ({ radius: getComputedStyle(item).borderRadius, top: getComputedStyle(item).borderTopWidth }));
   expect(tabStyle).toEqual({ radius: '0px', top: '0px' });
   const navRow = config.getByRole('button', { name: 'Storage buffer particles' });

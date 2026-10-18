@@ -2,6 +2,19 @@ import { test, expect } from '@playwright/test';
 import { readWorkspaceFiles } from './workspace-store.mjs';
 import { workspace } from './language-service-fixtures.mjs';
 
+/** Fragment controls offer native and Built-in functions from one Add menu. */
+async function addNativeFragmentFunction(scope) {
+  const controls = scope.getByRole('group', { name: 'Fragment function controls' });
+  await controls.getByRole('button', { name: 'Add function', exact: true }).click();
+  await controls.getByRole('button', { name: 'Native fragment function', exact: true }).click();
+}
+
+/** The chosen fragment function is a select with several choices, or plain text with one. */
+async function expectFragmentFunction(page, name) {
+  const chosen = page.getByLabel('Fragment function', { exact: true });
+  await expect.poll(() => chosen.evaluate(element => element instanceof HTMLSelectElement ? element.value : element.textContent?.trim())).toBe(name);
+}
+
 for (const language of ['wgsl', 'slang']) {
   test(`Native buffer Insert creates its configured ${language} file and persists code`, async ({ page }) => {
     const stem = `native-new-file-${language}`;
@@ -15,10 +28,10 @@ for (const language of ['wgsl', 'slang']) {
     await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
     await page.getByRole('button', { name: 'BufferA', exact: true }).click();
     const main = page.locator('.tab-content .buffer-details > .config-item').first();
-    await page.getByRole('group', { name: 'Fragment function controls' }).getByRole('button', { name: 'Add function…', exact: true }).click();
+    await addNativeFragmentFunction(page);
     const path = `/owned-new.${language}`;
     await expect.poll(async () => (await workspace(page))[path]).toContain('BufferAFragment');
-    await expect(page.getByRole('radio', { name: language === 'wgsl' ? '@fragment BufferAFragment' : '[shader(\"fragment\")] BufferAFragment' })).toBeChecked();
+    await expectFragmentFunction(page, 'BufferAFragment');
     expect((await workspace(page))[`/${stem}.${language}`]).toBe(source);
     await page.reload();
     await expect.poll(async () => (await workspace(page))[path]).toContain('BufferAFragment');
@@ -49,15 +62,15 @@ for (const language of ['wgsl', 'slang']) {
     const main = page.locator('.tab-content .buffer-details > .config-item').first();
     await main.getByRole('button', { name: 'Choose shader file' }).click();
     await page.getByRole('dialog', { name: 'Choose shader file' }).getByRole('button', { name: sourcePath, exact: true }).click();
-    await page.getByRole('group', { name: 'Fragment function controls' }).getByRole('button', { name: 'Add function…', exact: true }).click();
-    await expect(page.getByRole('radio', { name: language === 'wgsl' ? '@fragment BufferAFragment' : '[shader(\"fragment\")] BufferAFragment' })).toBeChecked();
+    await addNativeFragmentFunction(page);
+    await expectFragmentFunction(page, 'BufferAFragment');
     await expect(page.getByRole('button', { name: 'Built-in', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await expect.poll(async () => (await workspace(page))[sourcePath]).toContain('BufferAFragment');
     await expect(main.getByRole('button', { name: 'Insert', exact: true })).toHaveCount(0);
     expect((await workspace(page))[sourcePath]).not.toContain('BufferAVertex');
     const functions = page.locator('.buffer-details');
-    await functions.getByRole('group', { name: 'Fragment function controls' }).getByRole('button', { name: 'Add function…', exact: true }).click();
-    await expect(page.getByRole('radio', { name: language === 'wgsl' ? '@fragment BufferAFragment2' : '[shader(\"fragment\")] BufferAFragment2' })).toBeChecked();
+    await addNativeFragmentFunction(functions);
+    await expectFragmentFunction(page, 'BufferAFragment2');
     await expect.poll(async () => (await workspace(page))[sourcePath]).toContain('BufferAFragment2');
     const vertex = page.locator('.config-item').filter({ has: page.getByRole('heading', { name: 'Vertex shader', exact: true }) });
     await vertex.getByRole('button', { name: 'Same file' }).click();
