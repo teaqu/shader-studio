@@ -4,6 +4,26 @@ import { OrbitCamera } from '../../preview3d/OrbitCamera';
 import { multiplyMatrices } from '../../preview3d/math';
 
 describe('OrbitCamera', () => {
+  it.each([true, false])('honors the global mouse default setting for zoom and pan (%s)', prevent => {
+    const canvas = document.createElement('canvas');
+    canvas.dataset.preventMouseDefaults = String(prevent);
+    const camera = new OrbitCamera();
+    camera.attach(canvas);
+    try {
+      const before = [...camera.getPosition()];
+      const wheel = new WheelEvent('wheel', { deltaY: 20, cancelable: true });
+      canvas.dispatchEvent(wheel);
+      expect(wheel.defaultPrevented).toBe(prevent);
+      expect(camera.getPosition()).not.toEqual(before);
+      for (const type of ['pointerdown', 'pointermove']) {
+        const event = new MouseEvent(type, { button: 1, clientX: 4, clientY: 5, cancelable: true });
+        canvas.dispatchEvent(event);
+        expect(event.defaultPrevented).toBe(prevent);
+      }
+    } finally {
+      camera.detach();
+    }
+  });
   it('cancels an active drag when resetting for a new shader', () => {
     const canvas = document.createElement('canvas');
     const camera = new OrbitCamera();

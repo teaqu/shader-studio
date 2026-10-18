@@ -1,3 +1,6 @@
+import { vrInputDeclarations } from "../webxr/WebXrPassState";
+import { buildFragmentEntry } from "./VrShaderEntry";
+import { GLSL_POINTER_DECLARATION } from "@shader-studio/types";
 import { buildGlslNamedChannelDeclarations, type GeometryType, type MeshTopology, type VertexSpace, type VertexTopology } from "@shader-studio/types";
 import {
   INSTANCE_INDEX,
@@ -12,6 +15,8 @@ export type ChannelSamplerType = '2D' | 'Cube' | '3D';
 
 export interface ShaderWrapOptions {
   geometry?: GeometryType;
+  /** Generate the optional desktop VR branch for the Image pass. */
+  vrPreview?: boolean;
   outputKind?: "2d" | "cubemap";
   commonCode?: string;
   slotAssignments?: SlotAssignment[];
@@ -156,12 +161,15 @@ uniform float iTimeDelta;
 uniform float iFrameRate;
 ${channelDeclarations}
 uniform vec4 iMouse;
+${GLSL_POINTER_DECLARATION}
+uniform ShaderStudioPointer iPointer;
 uniform int iFrame;
 uniform vec4 iDate;
 uniform float iChannelTime[${channelCount}];
 uniform float iSampleRate;
 uniform vec3 iCameraPos;
 uniform vec3 iCameraDir;
+${vrInputDeclarations(`${options.commonCode ?? ""}\n${code}`)}
 uniform int iVertexCount;
 uniform int iInstanceCount;
 ${CAMERA_MATRIX_UNIFORMS}
@@ -197,10 +205,11 @@ vec3 cubemapDirection(vec2 pixel, int face) {
     const coordinate = mesh || worldVertices
       ? `${MESH_FRAGMENT_CONTEXT.uv} * iResolution.xy`
       : "gl_FragCoord.xy";
+    const fullscreen = options.geometry === undefined || options.geometry === "fullscreen";
     const entry = options.outputKind === "cubemap"
-      ? `mainCubemap(fragColor, gl_FragCoord.xy, vec3(0.0), cubemapDirection(gl_FragCoord.xy, iCubemapFace))`
-      : `mainImage(fragColor, ${coordinate})`;
-    const shaderCode = header + code + `\nvoid main() {\n ${entry};\n}`;
+      ? "\nvoid main() {\n mainCubemap(fragColor, gl_FragCoord.xy, vec3(0.0), cubemapDirection(gl_FragCoord.xy, iCubemapFace));\n}"
+      : buildFragmentEntry(`${options.commonCode ?? ""}\n${code}`, coordinate, fullscreen && options.vrPreview === true);
+    const shaderCode = header + code + entry;
     const headerLineCount = (header.match(/\n/g) || []).length;
     const vertexBuilt = this.buildVertexSource(mesh, options);
     return {
@@ -645,12 +654,15 @@ uniform float iTime;
 uniform float iTimeDelta;
 uniform float iFrameRate;
 ${channelDeclarations}uniform vec4 iMouse;
+${GLSL_POINTER_DECLARATION}
+uniform ShaderStudioPointer iPointer;
 uniform int iFrame;
 uniform vec4 iDate;
 uniform float iChannelTime[${channelCount}];
 uniform float iSampleRate;
 uniform vec3 iCameraPos;
 uniform vec3 iCameraDir;
+${vrInputDeclarations(`${options.commonCode ?? ""}\n${options.vertexCode ?? ""}`)}
 uniform int iVertexCount;
 uniform int iInstanceCount;
 ${CAMERA_MATRIX_UNIFORMS}

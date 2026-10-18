@@ -5,6 +5,7 @@ import type { TimeManager } from "../util/TimeManager";
 import type { IVariableCapturer, CaptureUniforms, CaptureCustomUniform, CaptureCompileContext } from "../capture/VariableCapturer";
 import type { PixelRegionResult } from "./PixelRegion";
 import type { FeedbackReadback, ViewerInputEvent, ViewerInputListener, ViewerInputState } from './ViewerInteraction';
+import type { VrNavigationSettings } from "../webxr/VrNavigationSettings";
 
 export interface RenderingEngine {
   initialize(glCanvas: HTMLCanvasElement, preserveDrawingBuffer?: boolean): void;
@@ -30,6 +31,12 @@ export interface RenderingEngine {
   injectInput(events: readonly ViewerInputEvent[]): ViewerInputState;
   subscribeInput(listener: ViewerInputListener): { dispose(): void };
   readFeedback(pass: string, x: number, y: number, width: number, height: number): FeedbackReadback;
+  isVrPreviewAvailable?(): boolean;
+  setVrPreviewEnabled?(enabled: boolean): void;
+  isImmersiveVrSupported?(): Promise<boolean>;
+  enterVr?(onEnded?: (error?: string) => void): Promise<void>;
+  exitVr?(): Promise<void>;
+  setVrNavigationSettings?(settings: VrNavigationSettings): void;
   updateBufferAndRecompile(bufferName: string, bufferContent: string): Promise<CompilationResult | undefined>;
   getPasses(): (Pass | RenderPassNode)[];
   /** Effective colour-attachment limits of the installed WebGPU device. */

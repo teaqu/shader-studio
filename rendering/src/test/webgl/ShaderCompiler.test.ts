@@ -214,8 +214,8 @@ describe("ShaderCompiler", () => {
 
       it("declares iVertexCount as an int uniform in fragment and hook vertex sources", () => {
         const { wrappedCode, vertexSource } = shaderCompiler.wrapShaderToyCode(image, { vertexCode: hook });
-        expect(wrappedCode).toContain("uniform vec3 iCameraDir;\nuniform int iVertexCount;\n");
-        expect(vertexSource).toContain("uniform vec3 iCameraDir;\nuniform int iVertexCount;\n");
+        expect(wrappedCode).toContain("uniform int iVertexCount;\n");
+        expect(vertexSource).toContain("uniform int iVertexCount;\n");
         expect(shaderCompiler.wrapShaderToyCode(image, { geometry: "cube", vertexCode: hook }).vertexSource)
           .toContain("uniform int iVertexCount;");
       });
@@ -1710,4 +1710,15 @@ describe("cubemap output wrapping", () => {
     }
     expect(source.headerLineCount).toBe(source.wrappedCode.slice(0, source.wrappedCode.indexOf("void mainCubemap")).split("\n").length - 1);
   });
+});
+
+
+it("preserves cubemap entry points when VR preview wrapping is requested", () => {
+  const source = new ShaderCompiler(createMockRenderer()).wrapShaderToyCode(
+    "void mainCubemap(out vec4 c, in vec2 p, in vec3 o, in vec3 d) { c = vec4(d, 1.0); }",
+    { outputKind: "cubemap", vrPreview: true },
+  );
+  expect(source.wrappedCode).toContain("mainCubemap(fragColor");
+  expect(source.wrappedCode).not.toContain("mainImage(fragColor");
+  expect(source.wrappedCode).not.toContain("_ssVrPreview");
 });

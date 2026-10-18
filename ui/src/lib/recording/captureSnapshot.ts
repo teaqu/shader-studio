@@ -72,7 +72,7 @@ export function renderInputLimitations(
 ): LiveInputKind[] {
   const kinds = new Set<LiveInputKind>();
   const sources = [snapshot.code, ...Object.values(snapshot.buffers ?? {})];
-  if (sources.some((source) => /\biMouse\b/.test(source))) {
+  if (sources.some((source) => /\b(?:iMouse|iPointer)\b/.test(source))) {
     kinds.add("mouse");
   }
   for (const pass of Object.values(snapshot.config?.passes ?? {})) {
@@ -93,7 +93,7 @@ export function describeRenderInputLimitations(kinds: LiveInputKind[]): string |
   }
   const parts: string[] = [];
   if (kinds.includes("mouse")) {
-    parts.push("iMouse stays at its idle value");
+    parts.push("Mouse input stays at its idle value");
   }
   const media = kinds.filter((kind) => kind !== "mouse");
   if (media.length > 0) {

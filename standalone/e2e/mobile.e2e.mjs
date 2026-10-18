@@ -142,6 +142,10 @@ test(`preview and explorer keep user widths ${explorerWidth}/${previewWidth} whi
   await expect.poll(async () => Math.abs((await preview.boundingBox()).width - previewWidth)).toBeLessThan(4);
   const wanted = { explorer: (await explorer.boundingBox()).width, preview: (await preview.boundingBox()).width };
   const expectWidths = async () => {
+    // The media query hides phone navigation before Svelte restores Dockview groups.
+    // Wait for restoration before reading a bounding box that can still be null.
+    await expect(explorer).toBeVisible();
+    await expect(preview).toBeVisible();
     await expect.poll(async () => Math.abs((await explorer.boundingBox()).width - wanted.explorer)).toBeLessThan(4);
     await expect.poll(async () => Math.abs((await preview.boundingBox()).width - wanted.preview)).toBeLessThan(4);
   };

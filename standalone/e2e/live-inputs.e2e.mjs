@@ -223,11 +223,16 @@ for (const language of ['glsl', 'wgsl', 'slang']) {
     await page.goto('/__fft_fixture__');
     await workspace(page, [
       [`tone.${language}`, code],
-      ['tone.sha.json', JSON.stringify({ version: '1', passes: { Image: { inputs: { sound: { type: 'microphone' } } } } })],
+      // Every fragment scans all 512 bins, while the assertion reads one pixel.
+      // Keep that complete FFT check without repeating it across a full-size preview.
+      ['tone.sha.json', JSON.stringify({ version: '1', passes: { Image: { resolution: { width: 8, height: 8 }, inputs: { sound: { type: 'microphone' } } } } })],
     ]);
     await page.goto('/');
     await page.getByTestId(`shader-option-tone-${language}`).click();
     await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
+    const canvas = page.getByTestId('web-preview').locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
+    await expect(canvas).toHaveAttribute('width', '8');
+    await expect(canvas).toHaveAttribute('height', '8');
     await expectGreen(page);
   });
 }

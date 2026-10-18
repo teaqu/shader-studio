@@ -27,6 +27,8 @@ import { clearCommonShaderSource, getCommonShaderSource } from '../../lib/state/
 import { setInspectorState } from '../../lib/state/pixelInspectorState.svelte';
 import type { PixelInspectorState } from '../../lib/types/PixelInspectorState';
 import { get } from 'svelte/store';
+import { PANEL_HOST_CONTEXT, type HostedPanelDefinition, type HostedPanelId } from '../../lib/layout/PanelHost';
+import { isVrPanelVisible, setVrPanelVisible, getVrPreviewState } from '../../lib/state/vrPreviewState.svelte';
 
 const mockConfigPanelStorageReset = vi.hoisted(() => vi.fn());
 // These partial host/engine doubles expose test-only hooks rather than the
@@ -703,6 +705,7 @@ describe('ShaderViewer', () => {
         serialize(message);
       }
     });
+    setVrPanelVisible(false);
     resetHost();
     mockTransport.getType = () => 'vscode';
     mockVCMFactory.reset();
@@ -744,6 +747,45 @@ describe('ShaderViewer', () => {
 
     expect(mockCreateTransport).toHaveBeenCalledTimes(1);
     expect(mockTransport.onMessage).toHaveBeenCalled();
+  });
+
+  it('synchronizes hosted VR tabs with the settings pane and clears them on viewer disposal', async () => {
+    const definitions = new Map<HostedPanelId, HostedPanelDefinition>();
+    const host = {
+      register: vi.fn((id: HostedPanelId, definition: HostedPanelDefinition) => {
+        definitions.set(id, definition);
+        return vi.fn();
+      }),
+      setVisible: vi.fn(),
+    };
+    const result = render(ShaderViewer, {
+      props: { onInitialized: vi.fn() },
+      context: new Map([[PANEL_HOST_CONTEXT, host]]),
+    });
+    await tick();
+    const vr = definitions.get('vr')!;
+    const target = document.createElement('div');
+    const cleanup = vr.mount(target);
+    vr.onShow?.();
+    await tick();
+    expect(isVrPanelVisible()).toBe(true);
+    expect(target.querySelector('[aria-label="Movement speed (m/s)"]')).toBeTruthy();
+    expect(host.setVisible).toHaveBeenLastCalledWith('vr', true);
+
+    vr.onClose();
+    await tick();
+    expect(isVrPanelVisible()).toBe(false);
+    expect(target.querySelector('[aria-label="Movement speed (m/s)"]')).toBeNull();
+
+    definitions.get('config')!.onShow?.();
+    await tick();
+    expect(get(configPanelStore).isVisible).toBe(true);
+    vr.onShow?.();
+    await tick();
+    cleanup?.();
+    result.unmount();
+    expect(isVrPanelVisible()).toBe(false);
+    expect(getVrPreviewState().available).toBe(false);
   });
 
   it('wires recording-panel capture actions to the initialized recording manager', async () => {
@@ -2676,7 +2718,7 @@ describe('ShaderViewer', () => {
     // scriptRuntimeState is one of them: the host needs the viewer's opening
     // state before a script's first poll, not after it.
     const allowedTypes = new Set([
-      'requestLayout', 'debug', 'refresh', 'setCompileMode', 'languageServiceReady', 'scriptRuntimeState', 'requestViewerCameraSettings', 'requestShaderAuthoringSettings',
+      'requestLayout', 'debug', 'refresh', 'setCompileMode', 'languageServiceReady', 'scriptRuntimeState', 'requestViewerCameraSettings', 'requestShaderAuthoringSettings', 'requestCanvasInputSettings',
     ]);
     const calls = (mockTransport.postMessage as ReturnType<typeof vi.fn>).mock.calls;
     expect(calls.filter((call: unknown[]) => (call[0] as { type: string }).type === 'requestShaderAuthoringSettings')).toHaveLength(1);
@@ -5887,6 +5929,27 @@ describe('ShaderViewer', () => {
       ShaderPipeline.prototype.handleShaderMessage = origHandleShaderMessage;
     });
 
+    it.each([
+      { success: false, errors: ['VR compile failed'], warnings: ['VR warning'] },
+      { success: false },
+    ])('publishes failed compilation diagnostics %j', async result => {
+      const { ShaderPipeline } = await import('../../lib/ShaderPipeline');
+      vi.spyOn(ShaderPipeline.prototype, 'handleShaderMessage').mockResolvedValue(result);
+      render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      await tick();
+      const messageHandler = vi.mocked(mockTransport.onMessage).mock.calls[0][0];
+      await messageHandler({ data: {
+        type: 'shaderSource', path: '/test/shader.glsl',
+        code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }', config: null, pathMap: {},
+      } });
+      await tick();
+      expect(screen.getByLabelText('Toggle pause').classList.contains('error')).toBe(Boolean(result.errors?.length));
+      if (result.errors) {
+expect(screen.getByText('VR compile failed')).toBeTruthy();
+}
+    });
+
     it('should handle null result from handleShaderMessage', async () => {
       const { ShaderPipeline } = await import('../../lib/ShaderPipeline');
       const origHandleShaderMessage = ShaderPipeline.prototype.handleShaderMessage;
@@ -6807,12 +6870,12 @@ describe('ShaderViewer', () => {
       await tick();
     });
 
-    it('should have exactly 5 dockview-panel-source elements (preview, debug, config, performance, recording)', async () => {
+    it('mounts the six tool sources including the VR pane', async () => {
       const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
       await tick();
 
       const panelSources = container.querySelectorAll('.dockview-panel-source');
-      expect(panelSources.length).toBe(5);
+      expect(panelSources.length).toBe(6);
     });
 
     it('should subscribe to performancePanelStore on mount', async () => {

@@ -40,7 +40,7 @@ describe('hosted tool panels', () => {
 
   it('mounts Preview directly and registers tools without creating a nested dock', async () => {
     const definitions = new Map<HostedPanelId, HostedPanelDefinition>();
-    const cleanups = Array.from({ length: 4 }, () => vi.fn());
+    const cleanups = Array.from({ length: 5 }, () => vi.fn());
     const host = {
       register: vi.fn((id: HostedPanelId, definition: HostedPanelDefinition) => {
         definitions.set(id, definition);
@@ -61,7 +61,7 @@ describe('hosted tool panels', () => {
       events: { debugClosed: closed, ready },
     });
     await tick();
-    expect([...definitions.keys()]).toEqual(['debug', 'config', 'performance', 'recording']);
+    expect([...definitions.keys()]).toEqual(['debug', 'config', 'performance', 'recording', 'vr']);
     expect(createDockview).not.toHaveBeenCalled();
     expect(mountPreview).toHaveBeenCalledWith(result.container.querySelector('.dockview-container'));
     ready.mock.calls[0][0].detail.resetLayout();
@@ -101,11 +101,11 @@ describe('hosted tool panels', () => {
     });
     await tick();
 
-    for (const id of ['debug', 'config', 'performance', 'recording'] as const) {
+    for (const id of ['debug', 'config', 'performance', 'recording', 'vr'] as const) {
       definitions.get(id)?.onShow?.();
     }
 
-    expect(restored.mock.calls.map(([event]) => event.detail)).toEqual(['debug', 'config', 'performance', 'recording']);
+    expect(restored.mock.calls.map(([event]) => event.detail)).toEqual(['debug', 'config', 'performance', 'recording', 'vr']);
   });
 });
 
@@ -247,6 +247,103 @@ describe('DockviewLayout', () => {
     vi.clearAllMocks();
     vi.mocked(layoutState.getPendingLayout).mockReturnValue(null);
     vi.mocked(layoutState.hasPendingLayout).mockReturnValue(false);
+  });
+
+  it('docks VR beside Preview and synchronizes user closing and reopening it', async () => {
+    const closed = vi.fn();
+    const result = render(DockviewLayout, { props: { showVrPanel: true }, events: { vrClosed: closed } });
+    await tick();
+    expect(mockApi.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'vr', title: 'VR', position: { referencePanel: 'preview', direction: 'right' } }));
+    const panel = panels.get('vr');
+    removePanelListeners.forEach(fn => fn(panel));
+    expect(closed).toHaveBeenCalledOnce();
+    await result.rerender({ showVrPanel: false });
+    await result.rerender({ showVrPanel: true });
+    expect(panels.has('vr')).toBe(true);
+  });
+
+  it('shares the Config tab group when opening VR', async () => {
+    render(DockviewLayout, { props: { showConfigPanel: true, showVrPanel: true } });
+    await tick();
+    expect(mockApi.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'vr', position: { referencePanel: 'config', direction: 'within' } }));
+  });
+
+  it('mounts the local VR renderer and disposes its content', async () => {
+    const cleanup = vi.fn();
+    const mountVr = vi.fn(() => cleanup);
+    render(DockviewLayout, { props: { mountVr, showVrPanel: true } });
+    await tick();
+    const options = vi.mocked(createDockview).mock.calls[0][1];
+    const renderer = options.createComponent!({ name: 'vr', id: 'vr' });
+    renderer.init!({ api: { id: 'vr' } } as Parameters<NonNullable<typeof renderer.init>>[0]);
+    expect(mountVr).toHaveBeenCalledWith(renderer.element);
+    renderer.dispose?.();
+    expect(cleanup).toHaveBeenCalledOnce();
+  });
+
+  it('restores VR from its snapshot without reporting a user close', async () => {
+    const closed = vi.fn();
+    const restored = vi.fn();
+    const result = render(DockviewLayout, { props: { showVrPanel: false }, events: { vrClosed: closed, toolRestored: restored } });
+    await result.rerender({ showVrPanel: true });
+    expect(restored).toHaveBeenCalledWith(expect.objectContaining({ detail: 'vr' }));
+    await result.rerender({ showVrPanel: false });
+    expect(panels.has('vr')).toBe(false);
+    expect(closed).not.toHaveBeenCalled();
+    await result.rerender({ showVrPanel: true });
+    expect(mockApi.fromJSON).toHaveBeenCalledWith(expect.objectContaining({ panels: expect.objectContaining({ vr: expect.anything() }) }));
+    expect(panels.has('vr')).toBe(true);
+    result.unmount();
+    expect(closed).not.toHaveBeenCalled();
+  });
+
+  it('forwards hosted VR visibility and close events', async () => {
+    const definitions = new Map<HostedPanelId, HostedPanelDefinition>();
+    const host = {
+      register: vi.fn((id: HostedPanelId, definition: HostedPanelDefinition) => {
+        definitions.set(id, definition);
+        return vi.fn();
+      }), setVisible: vi.fn(),
+    };
+    const closed = vi.fn();
+    const result = render(DockviewLayout, {
+      props: { showVrPanel: true }, context: new Map([[PANEL_HOST_CONTEXT, host]]), events: { vrClosed: closed },
+    });
+    await tick();
+    expect(host.setVisible).toHaveBeenCalledWith('vr', true);
+    definitions.get('vr')!.onClose();
+    expect(closed).toHaveBeenCalledOnce();
+    await result.rerender({ showVrPanel: false });
+    expect(host.setVisible).toHaveBeenLastCalledWith('vr', false);
+  });
+
+  it('keeps the VR title when Config becomes the first tab of its group', async () => {
+    const result = render(DockviewLayout, { props: { showVrPanel: true } });
+    await tick();
+    mockApi.addPanel.mockClear();
+    await result.rerender({ showVrPanel: true, showConfigPanel: true });
+    expect(mockApi.addPanel).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'vr', title: 'VR', inactive: true,
+      position: { referencePanel: 'config', direction: 'within' },
+    }));
+    expect(panels.get('config').api.setActive).toHaveBeenCalled();
+  });
+
+  it.each([
+    ['debug', 'showDebugPanel'], ['performance', 'showPerformancePanel'], ['recording', 'showRecordingPanel'],
+  ])('opens %s in the existing VR tab group', async (id, prop) => {
+    const result = render(DockviewLayout, { props: { showVrPanel: true } });
+    await tick();
+    await result.rerender({ showVrPanel: true, [prop]: true });
+    expect(mockApi.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id, position: { referencePanel: 'vr', direction: 'within' } }));
+  });
+
+  it.each([
+    ['debug', 'showDebugPanel'], ['performance', 'showPerformancePanel'], ['recording', 'showRecordingPanel'],
+  ])('opens VR within the existing %s tab group', async (id, prop) => {
+    render(DockviewLayout, { props: { [prop]: true, showVrPanel: true } });
+    await tick();
+    expect(mockApi.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'vr', position: { referencePanel: id, direction: 'within' } }));
   });
 
   function renderLayout(props: Record<string, any> = {}) {

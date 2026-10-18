@@ -86,6 +86,7 @@ nav:
       - AI Agents (MCP): features/mcp.md
       - Shader Explorer: features/shader-explorer.md
       - 3D Camera: features/camera.md
+      - VR Shaders: features/vr.md
       - Vertex Shaders: features/vertex-shaders.md
       - WGSL Shaders: features/wgsl-authoring.md
       - Language Support: features/language-support.md

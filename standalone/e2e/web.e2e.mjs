@@ -1202,6 +1202,8 @@ test('video mode clicks survive a Live capability update', async ({ page }) => {
   await page.getByLabel('Toggle export panel').click();
   await page.getByRole('button', { name: 'Video', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'this will record WebM' })).toBeVisible();
+  // Start at a known rate: the host's measured Screen rate may already be 30.
+  await page.getByRole('button', { name: '30', exact: true }).click();
   const render = page.getByRole('button', { name: 'Render', exact: true });
   const bounds = await render.boundingBox();
   await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
@@ -1210,7 +1212,7 @@ test('video mode clicks survive a Live capability update', async ({ page }) => {
     globalThis.exportSupportsMp4 = true;
     // Refresh capabilities at another frame rate while the pointer remains down.
     const fps = document.querySelector('input[placeholder="fps"]');
-    fps.value = '30';
+    fps.value = '60';
     fps.dispatchEvent(new Event('input', { bubbles: true }));
   });
   await expect(page.getByRole('button', { name: 'MP4', exact: true })).toBeEnabled();

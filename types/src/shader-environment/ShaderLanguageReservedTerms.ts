@@ -104,8 +104,8 @@ const WGSL_PREDECLARED_TYPE_ALIASES = [
  * prelude, so config parsing rejects them with a config error instead.
  */
 const WGSL_GENERATED_API_NAMES = [
-  "iResolution", "iMouse", "iTime", "iTimeDelta", "iFrameRate", "iFrame",
-  "iSampleRate", "iDate", "iCameraPos", "iCameraDir", "iVertexCount", "iInstanceCount", "iInstanceIndex", "iViewMatrix", "iProjectionMatrix", "iViewProjection", "iVertexUv", "iFrontFacing", "iDispatch",
+  "iResolution", "iMouse", "iPointer", "ShaderStudioPointer", "iTime", "iTimeDelta", "iFrameRate", "iFrame",
+  "iSampleRate", "iDate", "iCameraPos", "iCameraDir", "iVRActive", "iVRControllerPosition", "iVRControllerDirection", "iVRControllerButtons", "iVRControllerAxes", "iVRControllerFaceButtons", "iVRControllerTouches", "iVRControllerFaceTouches", "iVertexCount", "iInstanceCount", "iInstanceIndex", "iViewMatrix", "iProjectionMatrix", "iViewProjection", "iVertexUv", "iFrontFacing", "iDispatch",
   "iModelMatrix", "iViewProjectionMatrix", "iNormalMatrix",
   "mainImage", "mainVertex", "vertexMain", "fragmentMain", "writeOutput",
 ] as const;

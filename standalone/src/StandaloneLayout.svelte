@@ -125,7 +125,7 @@
     sources.set('preview', previewSource);
 
     dockviewApi = createDockview(dockviewElement, {
-      createComponent: (options) => ['debug', 'config', 'performance', 'recording'].includes(options.name)
+      createComponent: (options) => ['debug', 'config', 'performance', 'recording', 'vr'].includes(options.name)
         ? hostedPanels.createRenderer(options.name as HostedPanelId)
         : options.name === 'file-editor' ? new FileEditorRenderer()
         : new StableSourceRenderer(options.name as StandalonePanelId),
@@ -233,7 +233,7 @@
   {#if mobileViewport}
     {#if mobilePanel === 'tools'}
       <nav class="mobile-tools-navigation" aria-label="Tools">
-        {#each ([['config', 'Config'], ['debug', 'Debug'], ['performance', 'Frame Times'], ['recording', 'Export']] as const) as [panelId, label]}
+        {#each ([['config', 'Config'], ['debug', 'Debug'], ['performance', 'Frame Times'], ['recording', 'Export'], ['vr', 'VR']] as const) as [panelId, label]}
           <button
             class:active={activeMobileTool === panelId}
             aria-current={activeMobileTool === panelId ? 'page' : undefined}

@@ -3,6 +3,8 @@ export { dedupeCompilerErrors, splitCompilerErrorBlocks, firstReportedErrorLine 
 export { firstUnterminatedStatementLine, truncateFunctionBodyAt, enclosingFunctionRange } from './util/StatementBreak';
 export type { CompilerErrorBlock } from './util/CompilerErrorDedupe';
 export { RenderingEngine } from './webgl/RenderingEngine';
+export { DEFAULT_VR_NAVIGATION, normalizeVrNavigation } from './webxr/VrNavigationSettings';
+export type { VrNavigationSettings } from './webxr/VrNavigationSettings';
 export { ShaderCompiler } from './webgl/ShaderCompiler';
 export type { ChannelSamplerType } from './webgl/ShaderCompiler';
 export { ResourceManager } from './resources/ResourceManager';

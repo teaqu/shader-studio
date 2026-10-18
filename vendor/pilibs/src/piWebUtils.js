@@ -67,8 +67,8 @@ function piExitFullScreen() {
     else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
 }
 
-function piCreateGlContext(cv, useAlpha, useDepth, usePreserveBuffer, useSupersampling) {
-    var opts = { alpha: useAlpha, depth: useDepth, stencil: false, premultipliedAlpha: false, antialias: useSupersampling, preserveDrawingBuffer: usePreserveBuffer, powerPreference: "high-performance" };
+function piCreateGlContext(cv, useAlpha, useDepth, usePreserveBuffer, useSupersampling, useXrCompatible = false) {
+    var opts = { alpha: useAlpha, depth: useDepth, stencil: false, premultipliedAlpha: false, antialias: useSupersampling, preserveDrawingBuffer: usePreserveBuffer, powerPreference: "high-performance", xrCompatible: useXrCompatible };
     var gl = null;
     if (gl === null) gl = cv.getContext("webgl2", opts);
     if (gl === null) gl = cv.getContext("experimental-webgl2", opts);

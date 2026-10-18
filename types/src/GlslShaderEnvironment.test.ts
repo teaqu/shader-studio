@@ -1,3 +1,4 @@
+import { GLSL_POINTER_DECLARATION } from "./shader-environment/BuiltinUniforms";
 import { describe, expect, it } from "vitest";
 import {
   buildGlslCompatibilityUniformDeclarationLines,
@@ -21,12 +22,22 @@ describe("GLSL shader environment", () => {
       "uniform float iTimeDelta;",
       "uniform float iFrameRate;",
       "uniform vec4 iMouse;",
+      GLSL_POINTER_DECLARATION,
+      "uniform ShaderStudioPointer iPointer;",
       "uniform int iFrame;",
       "uniform vec4 iDate;",
       "uniform float iChannelTime[1024];",
       "uniform float iSampleRate;",
       "uniform vec3 iCameraPos;",
       "uniform vec3 iCameraDir;",
+      "uniform bool iVRActive;",
+      "uniform vec4 iVRControllerPosition[2];",
+      "uniform vec4 iVRControllerDirection[2];",
+      "uniform vec4 iVRControllerButtons[2];",
+      "uniform vec4 iVRControllerAxes[2];",
+      "uniform vec4 iVRControllerFaceButtons[2];",
+      "uniform vec4 iVRControllerTouches[2];",
+      "uniform vec4 iVRControllerFaceTouches[2];",
       "uniform int iVertexCount;",
       "uniform int iInstanceCount;",
       "uniform mat4 iViewMatrix;",
@@ -35,9 +46,11 @@ describe("GLSL shader environment", () => {
     ]);
     expect(GLSL_STABLE_NAMES).toEqual(new Set([
       "fragColor", "HW_PERFORMANCE", "iResolution", "iTime", "iTimeDelta",
-      "iFrameRate", "iMouse", "iFrame", "iDate", "iChannelTime",
+      "iFrameRate", "iMouse", "iPointer", "ShaderStudioPointer", "iFrame", "iDate", "iChannelTime",
       "iSampleRate", "iCameraPos", "iCameraDir", "iVertexCount", "iInstanceCount",
       "iViewMatrix", "iProjectionMatrix", "iViewProjection",
+      "iVRActive", "iVRControllerPosition", "iVRControllerDirection", "iVRControllerButtons", "iVRControllerAxes",
+      "iVRControllerFaceButtons", "iVRControllerTouches", "iVRControllerFaceTouches",
     ]));
   });
 

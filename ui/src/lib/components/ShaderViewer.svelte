@@ -20,6 +20,9 @@
   import type { ViewerSnapshot, ViewerCapture, ViewerAutomationOperation } from '@shader-studio/types';
   import type { Transport } from "../transport/MessageTransport";
   import ShaderCanvas from "./ShaderCanvas.svelte";
+  import { updateVrPreviewContext, isVrPanelVisible, setVrPanelVisible } from "../state/vrPreviewState.svelte";
+  import VrSettings from './menu/VrSettings.svelte';
+  const vrPanelVisible = $derived(isVrPanelVisible());
   import MenuBar from "./MenuBar.svelte";
   import EditorOverlay from "./EditorOverlay.svelte";
   import ConfigPanel from "./config/ConfigPanel.svelte";
@@ -597,6 +600,7 @@
     variableCaptureManager = undefined;
     try {
       renderingEngine?.stopRenderLoop?.();
+      updateVrPreviewContext(null, "");
       renderingEngine?.dispose?.();
     } catch { /* prior engine already gone */ }
 
@@ -1241,6 +1245,9 @@
   }
 
   function applyCompilationResult(result: CompilationResult) {
+    const vrEngine = renderingEngine;
+    const vrPath = shaderPath;
+    untrack(() => updateVrPreviewContext(vrEngine, vrPath, result.success));
     errors = result.success ? [] : (result.errors && result.errors.length > 0 ? result.errors : []);
     warnings = result.warnings ?? [];
   }
@@ -1875,6 +1882,7 @@
   let configEl: HTMLElement;
   let performanceEl: HTMLElement;
   let recordingEl: HTMLElement;
+  let vrEl: HTMLElement;
 
   function createMountFn(getEl: () => HTMLElement): (container: HTMLElement) => () => void {
     return (container) => {
@@ -1895,6 +1903,7 @@
   const mountConfig = createMountFn(() => configEl);
   const mountPerformance = createMountFn(() => performanceEl);
   const mountRecording = createMountFn(() => recordingEl);
+  const mountVr = createMountFn(() => vrEl);
 
   onDestroy(() => {
     viewerControl.dispose();
@@ -1926,7 +1935,9 @@
     if (pixelInspectorManager) {
       pixelInspectorManager.dispose();
     }
+    updateVrPreviewContext(null, "");
     if (renderingEngine) {
+      setVrPanelVisible(false);
       renderingEngine.dispose();
     }
     if (transport) {
@@ -2044,16 +2055,22 @@
     {/if}
   </div>
 
+  <div class="dockview-panel-source" bind:this={vrEl}>
+    {#if vrPanelVisible}<VrSettings />{/if}
+  </div>
+
   <DockviewLayout
     {mountPreview}
     {mountDebug}
     {mountConfig}
     {mountPerformance}
     {mountRecording}
+    {mountVr}
     showDebugPanel={$debugPanelStore.isVisible}
     showConfigPanel={$configPanelStore.isVisible}
     showPerformancePanel={$performancePanelStore.isVisible}
     showRecordingPanel={$recordingPanelStore.isVisible}
+    showVrPanel={vrPanelVisible}
     {transport}
     on:ready={handleDockviewReady}
     on:previewVisibleChange={handlePreviewVisibleChange}
@@ -2062,9 +2079,14 @@
     on:configClosed={handleConfigClosed}
     on:performanceClosed={handlePerformanceClosed}
     on:recordingClosed={handleRecordingClosed}
+    on:vrClosed={() => setVrPanelVisible(false)}
     on:toolRestored={(event) => {
       const stores = { debug: debugPanelStore, config: configPanelStore, performance: performancePanelStore, recording: recordingPanelStore };
-      stores[event.detail].setVisible(true);
+      if (event.detail === 'vr') {
+        setVrPanelVisible(true);
+      } else {
+        stores[event.detail].setVisible(true);
+      }
     }}
   />
   {#if initialized && !(previewAlone && previewVisible)}
