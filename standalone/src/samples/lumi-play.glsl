@@ -6,6 +6,10 @@ float inTriangle(vec2 p, vec2 a, vec2 b, vec2 c) {
     return float((x>=0.&&y>=0.&&z>=0.)||(x<=0.&&y<=0.&&z<=0.));
 }
 float hash(float x) { return fract(sin(x*127.1)*43758.5453); }
+float segmentDistance(vec2 p, vec2 a, vec2 b) {
+    vec2 d=b-a;
+    return length(p-a-d*clamp(dot(p-a,d)/dot(d,d),0.,1.));
+}
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 uv=fragCoord/iResolution.xy;
     vec2 imageSize=max(iChannelResolution[0].xy,vec2(1.));
@@ -17,12 +21,20 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     if(any(lessThan(sceneUV,vec2(0.)))||any(greaterThan(sceneUV,vec2(1.)))) {
         fragColor=vec4(.025,.023,.045,1.); return;
     }
-    // Local, very subtle hair drift and breathing.
+    // Soft, coherent head sway and breathing, anchored at her seated hips.
     vec2 head=(sceneUV-vec2(.35,.76))/vec2(.16,.25);
-    float softness=exp(-dot(head,head)*2.);
+    float headMask=1.-smoothstep(.72,1.3,length(head));
+    vec2 torso=(sceneUV-vec2(.36,.49))/vec2(.19,.28);
+    float torsoMask=exp(-dot(torso,torso)*1.8)*smoothstep(.27,.60,sceneUV.y);
+    float sway=.0038*sin(t*.82)+.0008*sin(t*1.37);
+    float breath=.0016*sin(t*1.45);
+    vec2 handShift=vec2(.0018*sin(t*.82),.0012*sin(t*1.45));
+    float handMask=1.-smoothstep(.65,1.2,length((sceneUV-vec2(.555,.62))/vec2(.105,.15)));
     vec2 sampleUV=sceneUV;
-    sampleUV.x-=.0012*sin(t*1.05)*softness;
-    sampleUV.y-=.0006*sin(t*1.5)*softness;
+    sampleUV.x-=sway*headMask+sway*.35*torsoMask+handShift.x*handMask;
+    sampleUV.y-=breath*(headMask*.55+torsoMask)+handShift.y*handMask;
+    vec2 neck=sceneUV-vec2(.35,.67);
+    sampleUV+=vec2(-neck.y,neck.x)*(.007*sin(t*.68))*headMask;
     vec3 col=texture(iChannel0,sampleUV).rgb;
     vec3 cyan=vec3(.15,.85,1.), violet=vec3(.44,.24,1.), rose=vec3(1.,.25,.72);
     // Sliding water beads refract the room texture, with wet trails above them.
@@ -51,13 +63,13 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     float hue=.5+.5*sin(t*.8+sampleUV.x*160.-sampleUV.y*90.);
     col=mix(col,mix(violet,cyan,hue)*(.65+.2*sin(t*1.4)),clip*.6);
     // A real shader sphere floats just above the illustrated palm.
-    vec2 center=vec2(.581,.742)+vec2(.0015*sin(t*.65),.003*sin(t*1.05));
+    vec2 center=vec2(.581,.742)+handShift+vec2(.0015*sin(t*.65),.003*sin(t*1.05));
     vec2 q=(sceneUV-center)*vec2(imageAspect,1.)/.077;
     float angle=atan(q.y,q.x);
     float surface=1.+.014*sin(angle*5.+t*1.1)+.008*sin(angle*8.-t*.8);
     q/=surface;
     float r=length(q);
-    vec3 glowColor=vec3(.22,.72,1.);
+    vec3 glowColor=mix(cyan,violet,.28+.12*sin(t*.45));
     col+=glowColor*.065*exp(-r*r*.7);
     col+=mix(glowColor,violet,.4)*.20*exp(-pow((r-1.)*10.,2.));
     if(r<1.) {
@@ -77,8 +89,23 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         float magicFlow=angle*3.+z*9.+sin(q.y*5.-t*.7)*1.4-t*1.1;
         float caustic=pow(.5+.5*sin(magicFlow),20.);
         float fine=pow(.5+.5*sin(magicFlow*1.6+q.x*5.+t*.5),36.);
-        color+=mix(vec3(.10,.95,1.),vec3(.55,.32,1.),.5+.5*sin(angle+z*2.))*caustic*.65;
+        float currentHue=.5+.5*sin(angle+z*2.+t*.25);
+        vec3 currentColor=currentHue<.5
+            ? mix(cyan,violet,currentHue*2.)
+            : mix(violet,rose,(currentHue-.5)*2.);
+        color+=currentColor*caustic*.65;
         color+=vec3(.5,.94,1.)*fine*.25;
+        // A little prism emblem drifts inside the water, using the app palette.
+        float prismAngle=.12*sin(t*.45);
+        vec2 prism=mat2(cos(prismAngle),-sin(prismAngle),sin(prismAngle),cos(prismAngle))*q;
+        prism.x/=1.+.1*sin(t*.55);
+        vec2 top=vec2(0.,.48), left=vec2(-.40,-.25), right=vec2(.40,-.25);
+        float triangleEdge=min(segmentDistance(prism,top,left),min(segmentDistance(prism,left,right),segmentDistance(prism,right,top)));
+        float prismCut=segmentDistance(prism,vec2(-.20,.10),vec2(.05,-.25));
+        float emblem=exp(-triangleEdge*110.)+exp(-prismCut*110.)*.55;
+        vec3 prismColor=mix(cyan,rose,clamp(prism.x+.5,0.,1.));
+        color+=prismColor*emblem*.43;
+        color+=prismColor*exp(-triangleEdge*24.)*.055;
         float shine=pow(max(0.,dot(n,normalize(vec3(-.45,.6,1.2)))),95.);
         color+=vec3(.85,.96,1.)*shine*.85;
         color+=mix(cyan,violet,.5+.5*sin(angle+t*.5))*pow(1.-z,5.)*.7;

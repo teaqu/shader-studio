@@ -9,7 +9,7 @@ import {
 import { expectStableFor } from './observable-state.mjs';
 import { waitForLanguageService } from './language-service-fixtures.mjs';
 
-test('Lumi Play loads its standalone artwork and animates the orb and rain after reload', async ({ page }) => {
+test('Lumi Play loads its standalone artwork and animates Lumi, the orb and rain after reload', async ({ page }) => {
   await page.goto('/');
   const shader = page.getByTestId('shader-option-lumi-play-glsl');
   await shader.click();
@@ -48,6 +48,8 @@ test('Lumi Play loads its standalone artwork and animates the orb and rain after
       .toBeGreaterThan(10);
     await expect.poll(async () => regionDifference(first, PNG.sync.read(await canvas.screenshot()), [.68, .05, .90, .60]))
       .toBeGreaterThan(10);
+    await expect.poll(async () => regionDifference(first, PNG.sync.read(await canvas.screenshot()), [.25, .05, .47, .43]))
+      .toBeGreaterThan(100);
     await expect(page.getByRole('button', { name: 'Copy error to clipboard', exact: true })).toHaveCount(0);
   }
 });
