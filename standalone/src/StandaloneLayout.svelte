@@ -32,16 +32,18 @@
   interface Props {
     transport?: WebTransport;
     explorer: Snippet;
+    files?: Snippet;
     editor: Snippet;
     preview: Snippet;
     hostedPanels?: HostedPanels;
   }
 
-  let { transport, explorer, editor, preview, hostedPanels = new HostedPanels() }: Props = $props();
+  let { transport, explorer, files, editor, preview, hostedPanels = new HostedPanels() }: Props = $props();
 
   let dockviewElement: HTMLElement;
   let sourceElement: HTMLElement;
   let explorerSource: HTMLElement;
+  let filesSource: HTMLElement;
   let editorSource: HTMLElement;
   let previewSource: HTMLElement;
   let controller = $state<StandaloneLayoutController | null>(null);
@@ -126,6 +128,7 @@
 
   onMount(() => {
     sources.set('explorer', explorerSource);
+    sources.set('files', filesSource);
     sources.set('editor', editorSource);
     sources.set('preview', previewSource);
 
@@ -193,6 +196,10 @@
     controller?.openEditor(path);
   }
 
+  export function closeEditorPaths(paths: readonly string[]): void {
+    controller?.closeEditorPaths(paths);
+  }
+
   export function showPanel(panelId: StandalonePanelId): void {
     controller?.showPanel(panelId);
   }
@@ -234,6 +241,7 @@
   <div class="standalone-dockview" bind:this={dockviewElement}></div>
   <div class="standalone-panel-sources" bind:this={sourceElement} aria-hidden="true">
     <div class="standalone-panel-source" bind:this={explorerSource}>{@render explorer()}</div>
+    <div class="standalone-panel-source" bind:this={filesSource}>{@render files?.()}</div>
     <div class="standalone-panel-source" bind:this={editorSource}>{@render editor()}</div>
     <div class="standalone-panel-source" bind:this={previewSource}>{@render preview()}</div>
   </div>
@@ -250,7 +258,7 @@
       </nav>
     {/if}
     <nav class="mobile-panel-navigation" aria-label="Workspace panels">
-      {#each ([['explorer', 'Explorer'], ['editor', 'Editor'], ['preview', 'Preview'], ['tools', 'Tools']] as const) as [panelId, label]}
+      {#each ([['explorer', 'Explorer'], ['files', 'Files'], ['editor', 'Editor'], ['preview', 'Preview'], ['tools', 'Tools']] as const) as [panelId, label]}
         <button
           class:active={mobilePanel === panelId}
           aria-current={mobilePanel === panelId ? 'page' : undefined}
@@ -297,7 +305,7 @@
     .mobile-layout .standalone-dockview :global(.dv-tabs-and-actions-container) { display: none; }
     .mobile-panel-navigation {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(5, minmax(0, 1fr));
       gap: 2px;
       flex: 0 0 auto;
       padding: 6px max(8px, env(safe-area-inset-right)) 6px max(8px, env(safe-area-inset-left));

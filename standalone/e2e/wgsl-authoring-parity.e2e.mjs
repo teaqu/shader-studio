@@ -103,7 +103,7 @@ for (const pendingSave of [false, true]) {
         }
         window.pendingSignatureSaves.clear();
       });
-      await expect.poll(async () => (await workspace(page))['/shaders/wgsl-signature.wgsl']).toContain('let c = shade(');
+      await expect.poll(async () => (await workspace(page))['/wgsl-signature.wgsl']).toContain('let c = shade(');
       // Hover asks the manager to refresh the saved workspace while help is pending.
       await editor.locator('.view-line').getByText('shade', { exact: true }).first().hover();
       await expect(page.locator('.monaco-hover').filter({ visible: true })).toContainText('shade');
@@ -142,7 +142,7 @@ test('WGSL colour picker keeps vec3f and vec3<f32> spellings and persists after 
     await page.keyboard.press('Escape');
   }
   await expect.poll(async () => {
-    const saved = (await workspace(page))['/shaders/wgsl-colors.wgsl'] ?? '';
+    const saved = (await workspace(page))['/wgsl-colors.wgsl'] ?? '';
     return patterns.every(pattern => pattern.test(saved)) && saved !== source;
   }, { message: 'colour edits were not saved' }).toBe(true);
   await page.reload();
@@ -220,7 +220,7 @@ test('WGSL inferred builtins and operator shapes complete, persist, and capture 
   await expect(suggestion).toBeVisible();
   await suggestion.click();
   await expect.poll(() => lineText(editor, 1)).toContain('normalize(vec2f(1.0, 2.0)).yx;');
-  await expect.poll(async () => (await workspace(page))['/shaders/wgsl-inference.wgsl']).toContain('normalize(vec2f(1.0, 2.0)).yx;');
+  await expect.poll(async () => (await workspace(page))['/wgsl-inference.wgsl']).toContain('normalize(vec2f(1.0, 2.0)).yx;');
 
   await editor.locator('.view-line').getByText('bits', { exact: true }).first().hover();
   await expect(page.locator('.monaco-hover').filter({ visible: true })).toContainText('vec2u');

@@ -23,9 +23,11 @@
     "monaco-editor": "^0.57.0",
     "shader-explorer-ui": "*",
     "shader-studio-ui": "*",
-    "svelte": "^5.56.4"
+    "svelte": "^5.56.4",
+    "@shader-studio/file-explorer": "*"
   },
   "devDependencies": {
+    "jszip": "^3.10.1",
     "@sveltejs/vite-plugin-svelte": "^5.0.3",
     "@testing-library/svelte": "^5.2.8",
     "pngjs": "^7.0.0",

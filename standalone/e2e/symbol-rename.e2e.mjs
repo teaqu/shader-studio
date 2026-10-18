@@ -36,7 +36,7 @@ for (const { name, extension, pass, helper } of [
       if (declaration) {
         await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
         await page.locator('[data-tab-name="Common"]').dblclick();
-        editor = page.locator(`[data-testid="file-editor"][data-path="/shaders/${commonName}"]`);
+        editor = page.locator(`[data-testid="file-editor"][data-path="/${commonName}"]`);
         await expect(editor.locator('.monaco-editor')).toBeVisible();
       }
       await editor.locator('.view-line').getByText('tone', { exact: true }).last().dblclick();
@@ -58,13 +58,13 @@ for (const { name, extension, pass, helper } of [
       await input.press('Enter');
       const expected = source.replaceAll('tone', 'curve');
       await expect(editor.locator('.view-lines')).toContainText(declaration ? 'curve' : 'curve(coord.x)');
-      await expect.poll(async () => (await workspace(page))[`/shaders/${shaderName}`]).toBe(expected);
+      await expect.poll(async () => (await workspace(page))[`/${shaderName}`]).toBe(expected);
       await page.reload();
       await expect(page.getByTestId('web-editor').locator('.view-lines')).toContainText('curve');
       const saved = await workspace(page);
-      expect(saved[`/shaders/${shaderName}`]).toBe(expected);
+      expect(saved[`/${shaderName}`]).toBe(expected);
       if (common) {
-        expect(saved[`/shaders/${commonName}`]).toBe(helper.replaceAll('tone', 'curve'));
+        expect(saved[`/${commonName}`]).toBe(helper.replaceAll('tone', 'curve'));
       }
     });
   }

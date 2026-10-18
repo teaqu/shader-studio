@@ -17,13 +17,14 @@ export default defineConfig({
       include: [
         'debug/src/**/*.ts', 'rendering/src/**/*.ts', 'ui/src/**/*.{ts,svelte}', 'extension/src/**/*.ts',
         'language-servers/*/src/**/*.ts', 'types/src/**/*.ts', 'utils/src/**/*.ts',
-        'monaco/src/**/*.ts', 'standalone/src/**/*.{ts,svelte}', 'shader-explorer/src/**/*.{ts,svelte}',
+        'file-explorer/src/**/*.{ts,svelte}', 'monaco/src/**/*.ts', 'standalone/src/**/*.{ts,svelte}', 'shader-explorer/src/**/*.{ts,svelte}',
       ],
       exclude: ['**/*.d.ts', '**/test/**', '**/tests/**', '**/*.test.*', '**/*.spec.*', '**/generated/**', 'ui/src/slang/**'],
       reporter: ['text', 'json-summary', 'json', 'html'],
       reportOnFailure: true,
       // Package ratchets measured with the full unit suite (Istanbul).
       thresholds: {
+        'file-explorer/src/**': { statements: 90, branches: 80, functions: 85, lines: 90 },
         'debug/src/**': { statements: 90, branches: 82.5, functions: 96, lines: 89.5 },
         'rendering/src/**': { statements: 92, branches: 85.5, functions: 93, lines: 92 },
         'ui/src/**': { statements: 90, branches: 79.5, functions: 85.5, lines: 90.5 },
@@ -40,6 +41,7 @@ export default defineConfig({
       'types/vitest.config.ts',
       'extension/vitest.config.ts',
       'standalone/vitest.config.ts',
+      'file-explorer/vitest.config.ts',
       'ui/vitest.config.ts',
       'debug/vitest.config.ts',
       'language-servers/core/vitest.config.ts',

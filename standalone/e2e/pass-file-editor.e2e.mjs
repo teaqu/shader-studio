@@ -36,7 +36,7 @@ for (const fixture of fixtures) {
     await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
     await page.locator('[data-tab-name="Sim"]').dblclick();
 
-    const editor = page.locator(`[data-testid="file-editor"][data-path="/shaders/${stem}/sim.buffer.${fixture.extension}"]`);
+    const editor = page.locator(`[data-testid="file-editor"][data-path="/${stem}/sim.buffer.${fixture.extension}"]`);
     await expect(editor.locator('.monaco-editor')).toBeVisible();
 
     // The file carries one deliberate undefined identifier, so waiting for a

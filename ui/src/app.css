@@ -56,6 +56,8 @@
   --vscode-tab-hoverForeground: #1f1f1f;
   --vscode-tab-border: #e5e5e5;
   --vscode-list-hoverBackground: #e8e8e8;
+  --vscode-list-activeSelectionBackground: #005fb8;
+  --vscode-list-activeSelectionForeground: #ffffff;
   --vscode-input-background: #ffffff;
   --vscode-input-foreground: #1f1f1f;
   --vscode-input-border: #cecece;
@@ -123,6 +125,8 @@
   --vscode-tab-hoverForeground: #ffffff;
   --vscode-tab-border: #2b2b2b;
   --vscode-list-hoverBackground: #2a2d2e;
+  --vscode-list-activeSelectionBackground: #04395e;
+  --vscode-list-activeSelectionForeground: #ffffff;
   --vscode-input-background: #313131;
   --vscode-input-foreground: #cccccc;
   --vscode-input-border: #3c3c3c;

@@ -115,9 +115,9 @@ describe('StandaloneLayout', () => {
     expect(api.layout).toHaveBeenCalledWith(expect.any(Number), expect.any(Number));
     expect(api.layout.mock.invocationCallOrder[0]).toBeLessThan(api.addPanel.mock.invocationCallOrder[0]);
     const preview = renderers[0].element.querySelector('.standalone-panel-source');
-    expect(renderers.filter((renderer) => renderer.element.querySelector('.standalone-panel-source')).length).toBe(3);
+    expect(renderers.filter((renderer) => renderer.element.querySelector('.standalone-panel-source')).length).toBe(4);
     result.component.resetLayout();
-    expect(renderers.filter((renderer) => renderer.element.querySelector('.standalone-panel-source')).length).toBe(3);
+    expect(renderers.filter((renderer) => renderer.element.querySelector('.standalone-panel-source')).length).toBe(4);
     expect(renderers[0].element.querySelector('.standalone-panel-source')).toBe(preview);
     result.unmount();
     expect(renderers).toHaveLength(0);

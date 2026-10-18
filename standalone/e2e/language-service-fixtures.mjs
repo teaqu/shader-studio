@@ -1,7 +1,7 @@
 import { addShaderFiles, readWorkspaceFiles } from './workspace-store.mjs';
 import { expect } from '@playwright/test';
 
-/** Add `/shaders/<name>` files when `entries` is given, and return the whole
+/** Add `/<name>` files when `entries` is given, and return the whole
  * workspace as a path → contents map either way. */
 export async function workspace(page, entries) {
   const files = entries ? await addShaderFiles(page, entries) : await readWorkspaceFiles(page);

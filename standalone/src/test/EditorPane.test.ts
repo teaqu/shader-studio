@@ -20,8 +20,8 @@ function createSession(overrides: Partial<ViewerSession> = {}): ViewerSession {
   return {
     ready: true,
     shaderCode: 'initial source',
-    shaderPath: '/shaders/image.glsl',
-    selectedShaderPath: '/shaders/image.glsl',
+    shaderPath: '/image.glsl',
+    selectedShaderPath: '/image.glsl',
     transport: {
       postMessage: vi.fn(),
       onMessage: vi.fn(),
@@ -84,16 +84,16 @@ describe('EditorPane', () => {
   });
 
   it('passes the current editing state to the shared editor and delegates its commands', async () => {
-    const session = createSession({ commonPath: '/shaders/common.wgsl', commonSource: 'fn shared() {}', config: { version: '1.0', passes: { Image: {} } } });
+    const session = createSession({ commonPath: '/common.wgsl', commonSource: 'fn shared() {}', config: { version: '1.0', passes: { Image: {} } } });
     setViewerSession(session);
     const { getByTestId, getByRole } = render(EditorPane);
 
     const editor = getByTestId('shader-editor');
     expect(editor.getAttribute('data-code')).toBe('initial source');
-    expect(editor.getAttribute('data-path')).toBe('/shaders/image.glsl');
+    expect(editor.getAttribute('data-path')).toBe('/image.glsl');
     expect(editor.getAttribute('data-errors')).toBe('first error');
     expect(editor.getAttribute('data-buffer')).toBe('Image');
-    expect(editor.getAttribute('data-common-path')).toBe('/shaders/common.wgsl');
+    expect(editor.getAttribute('data-common-path')).toBe('/common.wgsl');
     expect(editor.getAttribute('data-common-source')).toBe('fn shared() {}');
     expect(editor.getAttribute('data-buffers')).toBe('Image|Buffer B');
     expect(editor.getAttribute('data-compile-mode')).toBe('hot');
@@ -155,13 +155,13 @@ describe('EditorPane', () => {
     document.addEventListener('editor-disposed', disposed, { once: true });
     setViewerSession(createSession());
     const { getByTestId, queryByTestId } = render(EditorPane);
-    expect(getByTestId('shader-editor').getAttribute('data-path')).toBe('/shaders/image.glsl');
+    expect(getByTestId('shader-editor').getAttribute('data-path')).toBe('/image.glsl');
 
     setViewerSession(null);
     await tick();
     expect(queryByTestId('shader-editor')).toBeNull();
     expect(disposed).toHaveBeenCalledWith(expect.objectContaining({
-      detail: expect.objectContaining({ shaderPath: '/shaders/image.glsl', shaderCode: 'initial source' }),
+      detail: expect.objectContaining({ shaderPath: '/image.glsl', shaderCode: 'initial source' }),
     }));
 
     setViewerSession(createSession({ shaderPath: '/replacement.glsl' }));

@@ -358,7 +358,7 @@ async function uploadStorageBinary(page) {
 test('binary upload applies from the header and persists its exact bytes after reload', async ({ page }) => {
   await uploadStorageBinary(page);
   const saved = await readWorkspaceFiles(page);
-  const configFile = saved.find(file => file.path === '/shaders/binary-upload.sha.json');
+  const configFile = saved.find(file => file.path === '/binary-upload.sha.json');
   const storage = JSON.parse(configFile.contents).storage.values;
   expect(storage.initialDataName).toBe('values.bin');
   expect(Buffer.from(storage.initialData, 'base64')).toEqual(Buffer.from(new Float32Array([0.25, 0.75, 0.5, 1, 0.125, 0.25, 0.5, 1]).buffer));

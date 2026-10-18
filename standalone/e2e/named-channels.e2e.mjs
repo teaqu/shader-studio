@@ -48,7 +48,7 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
     ], `named-${language}`);
     await replaceSource(page, good);
     await expectGreen(page);
-    await expect.poll(async () => (await workspace(page))['/shaders/named.' + language]).toBe(good);
+    await expect.poll(async () => (await workspace(page))['/named.' + language]).toBe(good);
     await page.reload();
     await expectGreen(page);
   });
@@ -64,7 +64,7 @@ test('WGSL named channel Load renders after editing and persists across reload',
 
   await replaceSource(page, good);
   await expectGreen(page);
-  await expect.poll(async () => (await workspace(page))['/shaders/load.wgsl']).toBe(good);
+  await expect.poll(async () => (await workspace(page))['/load.wgsl']).toBe(good);
   await page.reload();
   await expectGreen(page);
 });
@@ -85,7 +85,7 @@ test('WGSL compute reports implicit sampling and recovers after an explicit-LOD 
   await page.getByLabel('Hide buffer files', { exact: true }).uncheck();
   await page.getByTestId('shader-option-update-wgsl').click();
   await replaceSource(page, valid);
-  await expect.poll(async () => (await workspace(page))['/shaders/update.wgsl']).toBe(valid);
+  await expect.poll(async () => (await workspace(page))['/update.wgsl']).toBe(valid);
   await page.getByTestId('shader-option-stage-wgsl').click();
   await expectGreen(page);
   await expect(page.getByTestId('shader-option-stage-wgsl').locator('.shader-error')).toHaveCount(0);

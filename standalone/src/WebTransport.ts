@@ -18,6 +18,9 @@ import {
 import { WebExtensionHost } from './WebExtensionHost';
 import { syncSettingsAcrossTabs } from './settings/syncSettingsAcrossTabs';
 import { StandaloneSettings } from './settings/StandaloneSettings';
+import { uploadWorkspaceFiles } from './workspaceUploads';
+import { migrateStandaloneRoot } from './standaloneRoot';
+import { createWorkspaceFile, createWorkspaceFolder, deleteWorkspacePath, deleteWorkspacePaths, moveWorkspacePaths, renameWorkspacePath, userWorkspaceFiles, type WorkspaceFileEntry } from './workspaceFiles';
 
 const EXPLORER_STATE_KEY = 'shader-studio-explorer-state';
 
@@ -95,13 +98,17 @@ export class WebTransport implements Transport {
   readonly settings = new StandaloneSettings();
   private readonly stopSettingsSync = syncSettingsAcrossTabs(this.settings);
   private readonly session = createWorkspace();
-  private readonly workspace = this.session.then(({ workspace }) => workspace);
+  private readonly workspace = this.session.then(async ({ workspace }) => {
+    await migrateStandaloneRoot(workspace);
+    return workspace;
+  });
   private readonly host = this.workspace.then((workspace) => new WebExtensionHost(workspace, {
     resolveDefaultAsset: resolveDefaultAssetUrl,
     settings: this.settings,
   }));
   private readonly viewerCleanups = new Set<() => void>();
   private readonly persistenceCleanups = new Set<() => void>();
+  private readonly workspaceCleanups = new Set<() => void>();
   private readonly pendingEditorSaves = new Set<() => void>();
   private readonly pendingMessages = new Set<Promise<void>>();
   private messageFailure: unknown;
@@ -379,6 +386,10 @@ export class WebTransport implements Transport {
   }
 
   dispose(): void {
+    for (const cleanup of this.workspaceCleanups) {
+      cleanup();
+    }
+    this.workspaceCleanups.clear();
     this.stopSettingsSync();
     this.connected = false;
     for (const cleanup of this.viewerCleanups) {
@@ -425,6 +436,104 @@ export class WebTransport implements Transport {
   /** A portable snapshot for user-initiated download; it includes pending edits. */
   async exportWorkspaceBackup(): Promise<string> {
     return (await this.workspace).exportBackup();
+  }
+
+  async uploadFiles(files: readonly File[], directory = '/'): Promise<string[]> {
+    let paths: string[] = [];
+    await this.trackMessage(this.workspace.then(async workspace => {
+      paths = await uploadWorkspaceFiles(workspace, files, directory);
+    }), false);
+    return paths;
+  }
+
+  async uploadAssets(files: readonly File[], shaderPath: string) {
+    const directory = shaderPath.slice(0, shaderPath.lastIndexOf('/')) || '/';
+    const paths = await this.uploadFiles(files, directory);
+    const workspace = await this.workspace;
+    return paths.map(path => ({ name: path.slice(path.lastIndexOf('/') + 1), workspacePath: path,
+      thumbnailUri: workspace.readText(path), isSameDirectory: true }));
+  }
+
+  onWorkspaceFiles(listener: (files: WorkspaceFileEntry[]) => void): () => void {
+    let disposed = false;
+    let stop: (() => void) | undefined;
+    const cleanup = () => {
+      disposed = true; stop?.(); this.workspaceCleanups.delete(cleanup);
+    };
+    this.workspaceCleanups.add(cleanup);
+    void this.workspace.then(workspace => {
+      if (!disposed && this.connected) {
+        const publish = () => listener(userWorkspaceFiles(workspace));
+        stop = workspace.onDidChange(publish);
+        publish();
+      }
+    });
+    return cleanup;
+  }
+
+  async createWorkspaceFile(path: string): Promise<void> {
+    await this.flush();
+    await this.trackMessage(this.workspace.then(async workspace => {
+      createWorkspaceFile(workspace, path);
+      await workspace.flush();
+    }), false);
+  }
+
+  async createWorkspaceFolder(path: string): Promise<void> {
+    await this.trackMessage(this.workspace.then(async workspace => {
+      createWorkspaceFolder(workspace, path);
+      await workspace.flush();
+    }), false);
+  }
+
+  async renameWorkspacePath(from: string, to: string): Promise<void> {
+    await this.flush();
+    await this.trackMessage(this.workspace.then(async workspace => {
+      const moves = renameWorkspacePath(workspace, from, to);
+      for (const move of moves) {
+        setEditorDocument(move.from, null);
+        setEditorDocument(move.to, workspace.readText(move.to));
+      }
+      (await this.host).refreshWorkspaceSelection(moves);
+      await workspace.flush();
+    }), false);
+  }
+
+  async deleteWorkspacePath(path: string): Promise<void> {
+    await this.flush();
+    await this.trackMessage(this.workspace.then(async workspace => {
+      const deleted = deleteWorkspacePath(workspace, path);
+      for (const file of deleted) {
+        setEditorDocument(file, null);
+      }
+      (await this.host).refreshWorkspaceSelection();
+      await workspace.flush();
+    }), false);
+  }
+
+  async moveWorkspacePaths(paths: readonly string[], directory: string): Promise<void> {
+    await this.flush();
+    await this.trackMessage(this.workspace.then(async workspace => {
+      const moves = moveWorkspacePaths(workspace, paths, directory);
+      for (const move of moves) {
+        setEditorDocument(move.from, null);
+        setEditorDocument(move.to, workspace.readText(move.to));
+      }
+      (await this.host).refreshWorkspaceSelection(moves);
+      await workspace.flush();
+    }), false);
+  }
+
+  async deleteWorkspacePaths(paths: readonly string[]): Promise<void> {
+    await this.flush();
+    await this.trackMessage(this.workspace.then(async workspace => {
+      const deleted = deleteWorkspacePaths(workspace, paths);
+      for (const path of deleted) {
+        setEditorDocument(path, null);
+      }
+      (await this.host).refreshWorkspaceSelection();
+      await workspace.flush();
+    }), false);
   }
 
   /** Import requires `{ replace: true }` whenever there are existing files. */

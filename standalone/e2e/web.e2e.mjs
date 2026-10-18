@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { PNG } from 'pngjs';
+import { dropDeviceFiles } from './file-drop.mjs';
 import {
   addShaderFiles,
   putWorkspaceFiles,
@@ -8,6 +9,41 @@ import {
 } from './workspace-store.mjs';
 import { expectStableFor } from './observable-state.mjs';
 import { waitForLanguageService } from './language-service-fixtures.mjs';
+
+test('drops shader files and assets at workspace root and keeps them after reload', async ({ page }) => {
+  const image = new PNG({ width: 1, height: 1 });
+  image.data.set([0, 255, 0, 255]);
+  await page.goto('/');
+  await dropDeviceFiles(page, page.getByRole('tree', { name: 'Workspace file tree' }), [
+    { name: 'uploaded.glsl', mimeType: 'text/plain', buffer: Buffer.from('void mainImage(out vec4 c, vec2 p) { c = texture(iChannel0, p / iResolution.xy); }') },
+    { name: 'uploaded.sha.json', mimeType: 'application/json', buffer: Buffer.from('{"version":"1.0","passes":{"Image":{"inputs":{"iChannel0":{"type":"texture","path":"photo.png"}}}}}') },
+    { name: 'photo.png', mimeType: 'image/png', buffer: PNG.sync.write(image) },
+  ]);
+  await expect(page.getByText('Added 3 files to /.')).toBeVisible();
+  await page.getByTestId('shader-option-uploaded-glsl').click();
+  await expect(page.getByTestId('web-editor')).toContainText('mainImage');
+  const expectGreen = async () => {
+    const canvas = page.getByTestId('web-preview').locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
+    await expect.poll(async () => {
+      const pixels = PNG.sync.read(await canvas.screenshot());
+      const offset = (Math.floor(pixels.height / 2) * pixels.width + Math.floor(pixels.width / 2)) * 4;
+      return [...pixels.data.subarray(offset, offset + 3)];
+    }).toEqual([0, 255, 0]);
+  };
+  await expectGreen();
+  await page.reload();
+  await expect(page.getByTestId('shader-option-uploaded-glsl')).toBeVisible();
+  await expectGreen();
+  const files = await readWorkspaceFiles(page);
+  expect(files.find(file => file.path === '/photo.png').contents).toMatch(/^data:image\/png;base64,/);
+  expect(files.find(file => file.path === '/uploaded.sha.json').contents).toContain('photo.png');
+  // A collision must leave the saved shader intact.
+  await dropDeviceFiles(page, page.getByRole('tree', { name: 'Workspace file tree' }), [{ name: 'uploaded.glsl', mimeType: 'text/plain', buffer: Buffer.from('overwrite') }]);
+  await expect(page.getByTestId('web-files').getByRole('alert')).toContainText('File already exists');
+  await page.getByRole('button', { name: 'Dismiss file warning' }).click();
+  await expect(page.getByTestId('web-files').getByRole('alert')).toHaveCount(0);
+  expect((await readWorkspaceFiles(page)).find(file => file.path === '/uploaded.glsl').contents).toContain('mainImage');
+});
 
 // Single-tab headers are revealed by the user's top-edge hover, not by locator
 // visibility: opacity-zero headers still have boxes but cannot receive input.
@@ -645,10 +681,10 @@ test('explicitly opens independent file editors and restores them after reload',
   };
   await page.getByTestId('shader-option-aurora-glsl').click();
   await page.getByRole('button', { name: 'Open in separate editor', exact: true }).click();
-  const aurora = page.locator('[data-testid="file-editor"][data-path="/shaders/aurora.glsl"]');
+  const aurora = page.locator('[data-testid="file-editor"][data-path="/aurora.glsl"]');
   await expect(aurora.locator('.monaco-editor')).toBeVisible();
   await open('desert-cubemap-glsl');
-  const desert = page.locator('[data-testid="file-editor"][data-path="/shaders/desert-cubemap.glsl"]');
+  const desert = page.locator('[data-testid="file-editor"][data-path="/desert-cubemap.glsl"]');
   await expect(desert.locator('.monaco-editor')).toBeVisible();
   await fileTab(/^aurora\.glsl$/).click();
   await expect(aurora.locator('.monaco-editor')).toBeVisible();
@@ -704,12 +740,12 @@ test('keeps a buffer and its image shader open in separate editors', async ({ pa
   await page.getByLabel('Hide buffer files', { exact: true }).uncheck();
   await page.getByTestId('shader-option-test-buffer-glsl').click();
   await page.getByRole('button', { name: 'Open in separate editor', exact: true }).click();
-  const buffer = page.locator('[data-testid="file-editor"][data-path="/shaders/test-buffer.glsl"]');
+  const buffer = page.locator('[data-testid="file-editor"][data-path="/test-buffer.glsl"]');
   await expect(buffer.locator('.monaco-editor')).toBeVisible();
   await page.locator('.dv-tab').filter({ hasText: /^test-buffer\.glsl$/ }).first().click();
   await page.getByTestId('shader-option-test-image-glsl').click();
   await page.getByRole('button', { name: 'Open in separate editor', exact: true }).click();
-  const image = page.locator('[data-testid="file-editor"][data-path="/shaders/test-image.glsl"]');
+  const image = page.locator('[data-testid="file-editor"][data-path="/test-image.glsl"]');
   await expect(image).toContainText('image source');
   await page.locator('.dv-tab').filter({ hasText: /^test-buffer\.glsl$/ }).last().click();
   await expect(buffer).toContainText('buffer source');
@@ -793,7 +829,7 @@ test('a delayed preview selection preserves Slang typing in its separate editor'
   const slang = page.getByTestId('shader-option-aurora-slang-slang');
   await slang.click();
   await page.getByRole('button', { name: 'Open in separate editor', exact: true }).click();
-  const editor = page.locator('[data-testid="file-editor"][data-path="/shaders/aurora-slang.slang"]');
+  const editor = page.locator('[data-testid="file-editor"][data-path="/aurora-slang.slang"]');
   await expect(editor.locator('.monaco-editor')).toBeVisible();
   await page.getByTitle('Options', { exact: true }).click();
   await page.getByLabel('Only keep active shader files open', { exact: true }).uncheck();
@@ -839,7 +875,7 @@ test('a delayed preview selection preserves Slang typing in its separate editor'
   await expect(suggestions).toContainText('normalize');
   await suggestions.getByRole('option').filter({ hasText: /^normalize/ }).first().click();
   await expect(editor.locator('.view-lines')).toContainText('return normalize');
-  await expect.poll(async () => (await workspace(page))['/shaders/aurora-slang.slang']).toContain('return normalize');
+  await expect.poll(async () => (await workspace(page))['/aurora-slang.slang']).toContain('return normalize');
   await page.reload();
   await expect(editor.locator('.view-lines')).toContainText('return normalize');
 });
@@ -894,7 +930,7 @@ test('config double clicks open and focus standalone file editors', async ({ pag
   await expect(page.getByTestId('web-editor').locator('.monaco-editor')).toBeVisible();
   await unloadForFixtureWrite(page);
   const existing = await readWorkspaceFiles(page);
-  const glowTrails = existing.find((file) => file.path === '/shaders/glow-trails.sha.json');
+  const glowTrails = existing.find((file) => file.path === '/glow-trails.sha.json');
   const glowConfig = JSON.parse(glowTrails.contents);
   glowConfig.script = '../navigation-script.ts';
   glowConfig.passes.Image.vertex = 'navigation-vertex.glsl';
@@ -903,8 +939,8 @@ test('config double clicks open and focus standalone file editors', async ({ pag
     { ...glowTrails, contents: JSON.stringify(glowConfig) },
     ...[
       ['/navigation-script.ts', '// navigation script'],
-      ['/shaders/navigation-vertex.glsl', '// navigation vertex'],
-      ['/shaders/navigation-common.glsl', '// navigation common'],
+      ['/navigation-vertex.glsl', '// navigation vertex'],
+      ['/navigation-common.glsl', '// navigation common'],
     ].map(([path, contents]) => ({ path, contents, createdAt: Date.now(), modifiedAt: Date.now() })),
   ]);
   await page.goto('/');
@@ -912,23 +948,23 @@ test('config double clicks open and focus standalone file editors', async ({ pag
   await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
   const trails = page.locator('[data-tab-name="Trails"]');
   await trails.dblclick();
-  const editor = page.locator('[data-testid="file-editor"][data-path="/shaders/glow-trails/trails.buffer.glsl"]');
+  const editor = page.locator('[data-testid="file-editor"][data-path="/glow-trails/trails.buffer.glsl"]');
   await expect(editor.locator('.monaco-editor')).toBeVisible();
   await page.locator('[data-tab-name="Glow"]').dblclick();
-  await expect(page.locator('[data-testid="file-editor"][data-path="/shaders/glow-trails/glow.buffer.glsl"] .monaco-editor')).toBeVisible();
+  await expect(page.locator('[data-testid="file-editor"][data-path="/glow-trails/glow.buffer.glsl"] .monaco-editor')).toBeVisible();
   await trails.dblclick();
   await expect(editor.locator('.monaco-editor')).toBeVisible();
   await expect(editor).toHaveCount(1);
   for (const [tab, path] of [
-    ['Common', '/shaders/navigation-common.glsl'],
+    ['Common', '/navigation-common.glsl'],
     ['Script', '/navigation-script.ts'],
-    ['Image', '/shaders/glow-trails.glsl'],
+    ['Image', '/glow-trails.glsl'],
   ]) {
     await page.locator(`[data-tab-name="${tab}"]`).dblclick();
     await expect(page.locator(`[data-testid="file-editor"][data-path="${path}"] .monaco-editor`)).toBeVisible();
   }
   await page.getByRole('heading', { name: 'Vertex shader', exact: true }).dblclick();
-  await expect(page.locator('[data-testid="file-editor"][data-path="/shaders/navigation-vertex.glsl"] .monaco-editor')).toBeVisible();
+  await expect(page.locator('[data-testid="file-editor"][data-path="/navigation-vertex.glsl"] .monaco-editor')).toBeVisible();
   await page.reload();
   await page.locator('.dv-tab').filter({ hasText: /^trails\.buffer\.glsl$/ }).click();
   await expect(editor.locator('.monaco-editor')).toBeVisible();
@@ -943,7 +979,7 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
       : `shader-option-aurora-${language}-${language}`).click();
     const editor = page.getByTestId('web-editor');
     await expect(editor.locator('.view-lines')).toContainText('mainImage');
-    const selectedPath = `/shaders/${language === 'glsl' ? 'aurora.glsl' : `aurora-${language}.${language}`}`;
+    const selectedPath = `/${language === 'glsl' ? 'aurora.glsl' : `aurora-${language}.${language}`}`;
     const selected = (await readWorkspaceFiles(page)).find(file => file.path === selectedPath);
     expect(selected).toBeTruthy();
     const storedText = selected.contents;
@@ -1000,7 +1036,7 @@ test('focused standalone file editor selects the preview and persists after relo
   const desert = page.getByTestId('shader-option-desert-cubemap-glsl');
   await aurora.click();
   await page.getByRole('button', { name: 'Open in separate editor', exact: true }).click();
-  const editor = page.locator('[data-testid="file-editor"][data-path="/shaders/aurora.glsl"]');
+  const editor = page.locator('[data-testid="file-editor"][data-path="/aurora.glsl"]');
   await expect(editor.locator('.monaco-editor')).toBeVisible();
   await page.getByTitle('Options', { exact: true }).click();
   await page.getByLabel('Only keep active shader files open', { exact: true }).uncheck();
@@ -1027,7 +1063,7 @@ test('double-clicking buffers reuses the editor tab group and focuses the reques
   await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
   const editorGroup = page.locator('.dv-groupview').filter({ has: page.locator('.dv-tab').filter({ hasText: /^glow-trails\.glsl$/ }) });
   const tabs = editorGroup.locator('.dv-tab');
-  const fileEditor = (name) => page.locator(`[data-testid="file-editor"][data-path="/shaders/glow-trails/${name}.buffer.glsl"]`);
+  const fileEditor = (name) => page.locator(`[data-testid="file-editor"][data-path="/glow-trails/${name}.buffer.glsl"]`);
   for (const name of ['Trails', 'Glow', 'Trails']) {
     await page.locator(`[data-tab-name="${name}"]`).dblclick();
     await expect(tabs.filter({ hasText: new RegExp(`^${name.toLowerCase()}\\.buffer\\.glsl$`) })).toHaveClass(/dv-active-tab/);
@@ -1083,10 +1119,10 @@ test('shader selection updates the last active editor and restores it after relo
   await page.getByLabel('Open file when selecting a shader', { exact: true }).check();
   await page.getByTestId('shader-option-desert-cubemap-glsl').click();
   await expect(fileEditor).toHaveCount(1);
-  await expect(fileEditor).toHaveAttribute('data-path', '/shaders/desert-cubemap.glsl');
+  await expect(fileEditor).toHaveAttribute('data-path', '/desert-cubemap.glsl');
   await expect(fileEditor.locator('.view-lines')).toContainText('Drag in the preview');
   await page.reload();
-  await expect(fileEditor).toHaveAttribute('data-path', '/shaders/desert-cubemap.glsl');
+  await expect(fileEditor).toHaveAttribute('data-path', '/desert-cubemap.glsl');
   await expect(fileEditor.locator('.monaco-editor')).toBeVisible();
 });
 
@@ -1183,7 +1219,7 @@ test('replacing the active editor preserves tab order after reload', async ({ pa
   await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
   for (const name of ['Trails', 'Glow']) {
     await page.locator(`[data-tab-name="${name}"]`).dblclick();
-    await expect(page.locator(`[data-testid="file-editor"][data-path="/shaders/glow-trails/${name.toLowerCase()}.buffer.glsl"] .monaco-editor`)).toBeVisible();
+    await expect(page.locator(`[data-testid="file-editor"][data-path="/glow-trails/${name.toLowerCase()}.buffer.glsl"] .monaco-editor`)).toBeVisible();
   }
   const group = page.locator('.dv-groupview').filter({
     has: page.locator('.dv-tab').filter({ hasText: /^glow\.buffer\.glsl$/ }),
@@ -1196,7 +1232,7 @@ test('replacing the active editor preserves tab order after reload', async ({ pa
   await page.getByLabel('Open file when selecting a shader', { exact: true }).check();
   await page.getByTestId('shader-option-aurora-glsl').click();
   await expect(titles).toHaveText(['glow-trails.glsl', 'aurora.glsl', 'glow.buffer.glsl']);
-  await expect(page.locator('[data-testid="file-editor"][data-path="/shaders/aurora.glsl"] .view-lines')).toContainText('uv.xyx + vec3(0, 2, 4)');
+  await expect(page.locator('[data-testid="file-editor"][data-path="/aurora.glsl"] .view-lines')).toContainText('uv.xyx + vec3(0, 2, 4)');
   await page.reload();
   // The main editor follows the restored preview; the file editors retain their slots.
   await expect(titles).toHaveText(['aurora.glsl', 'aurora.glsl', 'glow.buffer.glsl']);
@@ -1650,7 +1686,7 @@ test('opens the config file of the selected shader from the preview menu', async
   await page.getByLabel('Open options menu').click();
   await page.getByLabel('Open config', { exact: true }).click();
 
-  const configEditor = page.locator('[data-testid="file-editor"][data-path="/shaders/aurora.sha.json"]');
+  const configEditor = page.locator('[data-testid="file-editor"][data-path="/aurora.sha.json"]');
   await expect(configEditor.locator('.monaco-editor')).toBeVisible();
   await expect(configEditor.locator('.view-lines')).toContainText('passes');
   // JSON is not shader source: it must stay clear across the language-service
@@ -1664,13 +1700,13 @@ test('opens the config file of the selected shader from the preview menu', async
 test('generates a missing config file and opens it', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByTestId('web-editor').locator('.monaco-editor')).toBeVisible();
-  await removeWorkspacePaths(page, ['/shaders/aurora.sha.json']);
+  await removeWorkspacePaths(page, ['/aurora.sha.json']);
   await page.reload();
   await page.getByTestId('shader-option-aurora-glsl').click();
   await page.getByLabel('Open options menu').click();
   await page.getByLabel('Open config', { exact: true }).click();
 
-  const configEditor = page.locator('[data-testid="file-editor"][data-path="/shaders/aurora.sha.json"]');
+  const configEditor = page.locator('[data-testid="file-editor"][data-path="/aurora.sha.json"]');
   await expect(configEditor.locator('.view-lines')).toContainText('"version": "1.0"');
 });
 
@@ -1780,7 +1816,7 @@ test('an unreadable shader config reports an error instead of a silent black pre
 
   await preview.getByLabel('Open options menu').click();
   await page.getByLabel('Open config', { exact: true }).click();
-  const configEditor = page.locator('[data-testid="file-editor"][data-path="/shaders/aurora.sha.json"]');
+  const configEditor = page.locator('[data-testid="file-editor"][data-path="/aurora.sha.json"]');
   await expect(configEditor.locator('.monaco-editor')).toBeVisible();
 
   // Monaco auto-closes brackets and quotes as text is inserted; drop whatever

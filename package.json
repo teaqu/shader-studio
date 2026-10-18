@@ -15,7 +15,8 @@
     "ui",
     "shader-explorer",
     "monaco",
-    "language-servers/*"
+    "language-servers/*",
+    "file-explorer"
   ],
   "scripts": {
     "lint": "eslint . --quiet",

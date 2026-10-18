@@ -12,6 +12,7 @@ const root = path.dirname(fileURLToPath(import.meta.url));
  * `@shader-studio/shader-explorer`) are added by the shell that needs them.
  */
 export const shaderStudioAliases = {
+  '@shader-studio/file-explorer': path.resolve(root, 'file-explorer/src'),
   '@shader-studio/debug': path.resolve(root, 'debug/src'),
   '@shader-studio/glsl-analysis': path.resolve(root, 'language-servers/glsl-analysis/src'),
   '@shader-studio/glsl-language-server': path.resolve(root, 'language-servers/glsl/src'),

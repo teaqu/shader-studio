@@ -36,9 +36,9 @@ await page.getByLabel('Cubemap execution').selectOption('compute');
     // Slang startup can exceed the default 5s poll: CI traces render the expected
     // bytes at about 6s. Use the existing shader-compilation budget for first output.
     await expect.poll(() => centerPixel(canvas), { timeout: 30_000 }).toEqual([255, 128, 128, 255]);
-    const saved = JSON.parse((await workspace(page))['/shaders/direction.sha.json']);
+    const saved = JSON.parse((await workspace(page))['/direction.sha.json']);
     expect(saved.passes.Cubemap).toMatchObject({ outputKind: 'cubemap', faceSize: 32 });
-    expect((await workspace(page))[`/shaders/direction-cube.${language}`]).toContain(execution === 'compute' ? 'mainCompute' : 'mainCubemap');
+    expect((await workspace(page))[`/direction-cube.${language}`]).toContain(execution === 'compute' ? 'mainCompute' : 'mainCubemap');
     await page.getByLabel('Cubemap preview mode').selectOption('face');
     await page.getByLabel('Cubemap face', { exact: true }).selectOption('positive-y');
     await expect.poll(async () => (await centerPixel(canvas))[1]).toBe(255);

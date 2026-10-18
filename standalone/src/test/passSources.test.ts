@@ -15,12 +15,12 @@ const config: ShaderConfig = {
 
 describe('passNameForFile', () => {
   it('names the pass whose source is the file, relative to the config', () => {
-    expect(passNameForFile(config, '/shaders/swarm.wgsl', '/shaders/swarm/common.buffer.wgsl')).toBe('common');
-    expect(passNameForFile(config, '/shaders/swarm.wgsl', '/shaders/swarm/swarm.buffer.wgsl')).toBe('Advect');
+    expect(passNameForFile(config, '/swarm.wgsl', '/swarm/common.buffer.wgsl')).toBe('common');
+    expect(passNameForFile(config, '/swarm.wgsl', '/swarm/swarm.buffer.wgsl')).toBe('Advect');
   });
 
   it('names the vertex source separately from the pass body', () => {
-    expect(passNameForFile(config, '/shaders/swarm.wgsl', '/shaders/swarm.vert.wgsl')).toBe(vertexPassKey('Image'));
+    expect(passNameForFile(config, '/swarm.wgsl', '/swarm.vert.wgsl')).toBe(vertexPassKey('Image'));
   });
 
   it('resolves workspace-root and parent references the way the host does', () => {
@@ -28,17 +28,17 @@ describe('passNameForFile', () => {
       version: '1.0',
       passes: { Image: { inputs: {} }, Sim: { type: 'compute', path: '@/shared/sim.wgsl' } },
     };
-    expect(passNameForFile(rooted, '/shaders/deep/swarm.wgsl', '/shared/sim.wgsl')).toBe('Sim');
+    expect(passNameForFile(rooted, '/deep/swarm.wgsl', '/shared/sim.wgsl')).toBe('Sim');
     const relative: ShaderConfig = {
       version: '1.0',
       passes: { Image: { inputs: {} }, Sim: { type: 'compute', path: '../shared/sim.wgsl' } },
     };
-    expect(passNameForFile(relative, '/shaders/deep/swarm.wgsl', '/shaders/shared/sim.wgsl')).toBe('Sim');
+    expect(passNameForFile(relative, '/deep/swarm.wgsl', '/shared/sim.wgsl')).toBe('Sim');
   });
 
   it('reports nothing for the shader itself, an unrelated file, or no config', () => {
-    expect(passNameForFile(config, '/shaders/swarm.wgsl', '/shaders/swarm.wgsl')).toBeUndefined();
-    expect(passNameForFile(config, '/shaders/swarm.wgsl', '/shaders/other/thing.wgsl')).toBeUndefined();
-    expect(passNameForFile(null, '/shaders/swarm.wgsl', '/shaders/swarm/common.buffer.wgsl')).toBeUndefined();
+    expect(passNameForFile(config, '/swarm.wgsl', '/swarm.wgsl')).toBeUndefined();
+    expect(passNameForFile(config, '/swarm.wgsl', '/other/thing.wgsl')).toBeUndefined();
+    expect(passNameForFile(null, '/swarm.wgsl', '/swarm/common.buffer.wgsl')).toBeUndefined();
   });
 });

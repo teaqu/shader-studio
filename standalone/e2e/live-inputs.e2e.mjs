@@ -58,7 +58,7 @@ for (const language of ['glsl', 'wgsl', 'slang']) {
       await expectLivePreview(page.locator('.channel-row').filter({ hasText: name }), label);
     }
     await expectGreen(page);
-    await expect.poll(async () => JSON.parse((await workspace(page))['/shaders/live.sha.json']).passes.Image.inputs).toEqual({ camera: { type: 'webcam' }, sound: { type: 'microphone' } });
+    await expect.poll(async () => JSON.parse((await workspace(page))['/live.sha.json']).passes.Image.inputs).toEqual({ camera: { type: 'webcam' }, sound: { type: 'microphone' } });
     await page.reload();
     await expectGreen(page);
     for (const [name, label] of [['camera', 'Webcam'], ['sound', 'Mic']]) {
@@ -75,7 +75,7 @@ for (const language of ['glsl', 'wgsl', 'slang']) {
     await page.getByTestId('web-editor').locator('.view-lines').click();
     await page.keyboard.press('ControlOrMeta+A');
     await page.keyboard.insertText(plain);
-    await expect.poll(async () => (await workspace(page))['/shaders/live.' + language]).toBe(plain);
+    await expect.poll(async () => (await workspace(page))['/live.' + language]).toBe(plain);
     for (const name of ['camera', 'sound']) {
       await page.locator('.channel-row').filter({ hasText: name }).click();
       await page.getByRole('button', { name: 'Remove', exact: true }).click();
