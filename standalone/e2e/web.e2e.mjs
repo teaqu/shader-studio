@@ -1143,6 +1143,9 @@ test('desktop pane sizes recover after the window is compressed and expanded', a
   );
   await expect(toolSashLocator).toHaveCount(1);
   await toolSashLocator.hover();
+  // Revealed tab headers must not take over the divider's drag gesture.
+  await expect(page.locator('.standalone-dockview')).toHaveClass(/dv-sash-hover/);
+  await toolSashLocator.hover();
   const toolSash = await toolSashLocator.boundingBox();
   expect(toolSash).not.toBeNull();
   expect(toolSash.width).toBeGreaterThan(toolSash.height);
