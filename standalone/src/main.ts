@@ -12,7 +12,7 @@ import App from './App.svelte';
 import { WebTransport } from './WebTransport';
 import { installSlangAssetMetadata } from './slangAssets';
 import { createPwaController } from './pwa';
-import { resolveDefaultAssetUrl, STANDALONE_LUMI_PLAY_TEXTURE } from './defaultWorkspace';
+import { resolveDefaultAssetUrl } from './defaultWorkspace';
 
 function defaultAssets(): WorkspaceFileInfo[] {
   return [
@@ -20,7 +20,6 @@ function defaultAssets(): WorkspaceFileInfo[] {
     { name: 'Random Greyscale.ktx2', path: SHADER_STUDIO_DEFAULT_ASSETS.noiseGreyVolume },
     { name: 'Random RGBA.ktx2', path: SHADER_STUDIO_DEFAULT_ASSETS.noiseRgbaVolume },
     { name: 'Desert Cubemap.png', path: SHADER_STUDIO_DEFAULT_ASSETS.desertCubemap },
-    { name: 'Lumi Play.webp', path: STANDALONE_LUMI_PLAY_TEXTURE },
   ].map(({ name, path }) => ({
     name,
     workspacePath: path,

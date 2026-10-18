@@ -48,56 +48,6 @@ test('drops shader files and assets at workspace root and keeps them after reloa
   expect((await readWorkspaceFiles(page)).find(file => file.path === '/uploaded.glsl').contents).toContain('mainImage');
 });
 
-test('Lumi keeps the character still and animates the orb and rain after reload', async ({ page }) => {
-  await page.goto('/');
-  const shader = page.getByTestId('shader-option-lumi-glsl');
-  await shader.click();
-  const canvas = page.getByTestId('web-preview').locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
-  const asset = await page.request.get('/assets/lumi-play.webp');
-  expect(asset.ok()).toBe(true);
-  expect(asset.headers()['content-type']).toContain('image/webp');
-
-  const regionDifference = (first, second, region) => {
-    let changed = 0;
-    for (let y = Math.floor(first.height * region[1]); y < first.height * region[3]; y++) {
-      for (let x = Math.floor(first.width * region[0]); x < first.width * region[2]; x++) {
-        const index = (y * first.width + x) * 4;
-        if ([0, 1, 2].some(channel => Math.abs(first.data[index + channel] - second.data[index + channel]) > 3)) {
-          changed++;
-        }
-      }
-    }
-    return changed;
-  };
-
-  for (const reload of [false, true]) {
-    if (reload) {
-      await page.reload();
-    }
-    await expect(shader).toHaveAttribute('aria-pressed', 'true');
-    await expect(canvas).toBeVisible();
-    // An image that failed to load would leave only the procedural orb.
-    await expect.poll(async () => {
-      const image = PNG.sync.read(await canvas.screenshot());
-      const pixel = (Math.floor(image.height * .50) * image.width + Math.floor(image.width * .12)) * 4;
-      return image.data[pixel] + image.data[pixel + 1] + image.data[pixel + 2];
-    }).toBeGreaterThan(80);
-    const first = PNG.sync.read(await canvas.screenshot());
-    await expect.poll(async () => regionDifference(first, PNG.sync.read(await canvas.screenshot()), [.53, .17, .64, .35]))
-      .toBeGreaterThan(10);
-    await expect.poll(async () => regionDifference(first, PNG.sync.read(await canvas.screenshot()), [.68, .05, .90, .60]))
-      .toBeGreaterThan(10);
-    // Her hoodie, face and room remain steady while the water animates.
-    expect(regionDifference(first, PNG.sync.read(await canvas.screenshot()), [.25, .40, .43, .62]))
-      .toBe(0);
-    expect(regionDifference(first, PNG.sync.read(await canvas.screenshot()), [.38, .20, .43, .30]))
-      .toBe(0);
-    expect(regionDifference(first, PNG.sync.read(await canvas.screenshot()), [.12, .18, .19, .50]))
-      .toBe(0);
-    await expect(page.getByRole('button', { name: 'Copy error to clipboard', exact: true })).toHaveCount(0);
-  }
-});
-
 // Single-tab headers are revealed by the user's top-edge hover, not by locator
 // visibility: opacity-zero headers still have boxes but cannot receive input.
 async function revealStandaloneTabs(page) {

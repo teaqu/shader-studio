@@ -31,11 +31,10 @@ describe('standalone host bootstrap', () => {
     expect(config.createTransport?.()).toBe(first);
     expect(config.createTransport?.()).toBe(second);
     expect(config.capabilities).toEqual({ compileOnSave: false });
-    expect(config.defaultAssets).toHaveLength(5);
+    expect(config.defaultAssets).toHaveLength(4);
     expect(config.defaultAssets).toEqual(expect.arrayContaining([
       { name: 'Random Greyscale.ktx2', workspacePath: 'shader-studio://volumes/noise-grey', thumbnailUri: new URL('assets/noise-grey.ktx2', document.baseURI).toString(), isSameDirectory: false },
       { name: 'Random RGBA.ktx2', workspacePath: 'shader-studio://volumes/noise-rgba', thumbnailUri: new URL('assets/noise-rgba.ktx2', document.baseURI).toString(), isSameDirectory: false },
-      { name: 'Lumi Play.webp', workspacePath: 'shader-studio://standalone/lumi-play', thumbnailUri: new URL('assets/lumi-play.webp', document.baseURI).toString(), isSameDirectory: false },
     ]));
     expect(config.defaultAssets).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'Nebula Texture.png', isSameDirectory: false, thumbnailUri: expect.stringMatching(/^http/) })]));
     expect(mocks.mount).toHaveBeenCalledWith('App', { target: document.getElementById('app'), props: { transport: expect.any(Object), pwa: { start: mocks.start } } });
