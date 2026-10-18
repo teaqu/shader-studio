@@ -103,7 +103,15 @@ test('generic MCP edits files and captures both webview and server preview @gpu'
     expect(inputs).toMatchObject({ scope: 'live-preview', pass: 'Image', customUniforms: [],
       builtins: { iMouse: [0, 0, 0, 0], iTime: expect.any(Number), iResolution: expect.any(Array) },
     });
-    expect(pixel(await call('capture_output', { previewId }))).toEqual([255, 0, 0, 255]);
+    // A preview is listed as soon as it selects the shader; its first compile may
+    // still be in flight, so read pixels only once that compile has rendered.
+    let initial;
+    await expect.poll(async () => {
+      initial = await call('capture_output', { previewId });
+      const { compileSequence, renderedSequence, compiling } = initial.structuredContent;
+      return !compiling && typeof renderedSequence === 'number' && renderedSequence === compileSequence;
+    }, { message: 'the first compile never rendered' }).toBe(true);
+    expect(pixel(initial)).toEqual([255, 0, 0, 255]);
     const read = (await call('read_file', { path: shaderPath })).structuredContent;
     const edited = await call('update_file', { path: shaderPath, text: green, expectedRevision: read.revision, previewId, includePreview: true });
     expect(edited.structuredContent).toMatchObject({ applied: true, dirty: true, errors: [] });
