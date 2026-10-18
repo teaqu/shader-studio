@@ -362,21 +362,22 @@ describe('shared control sizing across viewer and standalone dialogs', () => {
     expect(mode.getBoundingClientRect().right).toBeLessThanOrEqual(panel.getBoundingClientRect().right);
   });
 
-  it('gives Export the same tabs as Config, including its active underline', async () => {
-    const config = target('config-panel');
-    config.innerHTML = '<div class="tab-navigation"><button class="tab-button active">Image</button></div>';
+  // Config now lists passes as cards, so the shared panel tab rule is the reference.
+  it('gives Export the shared panel tabs, including the active underline', async () => {
+    const reference = target('recording-panel');
+    reference.innerHTML = '<div class="tab-navigation"><button class="tab-button active">Image</button></div>';
     const recording = target();
     mounted.push(mount(RecordingPanel, { target: recording, props: {
       canvasWidth: 1280, canvasHeight: 720, displayFrameRate: 60,
       onScreenshot: vi.fn(), onRecord: vi.fn(), onCancel: vi.fn(), onStopLive: vi.fn(),
     } }));
     await tick();
-    const expected = getComputedStyle(config.querySelector('.tab-button')!);
+    const expected = getComputedStyle(reference.querySelector('.tab-button')!);
     const actual = getComputedStyle(recording.querySelector('.tab-button.active')!);
     for (const property of ['height', 'padding', 'background-color', 'border-bottom-width', 'border-bottom-color', 'color']) {
       expect(actual.getPropertyValue(property), property).toBe(expected.getPropertyValue(property));
     }
-    expect(getComputedStyle(recording.querySelector('.tab-navigation')!).gap).toBe(getComputedStyle(config.querySelector('.tab-navigation')!).gap);
+    expect(getComputedStyle(recording.querySelector('.tab-navigation')!).gap).toBe(getComputedStyle(reference.querySelector('.tab-navigation')!).gap);
   });
 
 });
