@@ -1,10 +1,36 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildSlangPassGraph } from '@shader-studio/rendering/webgpu/SlangPassGraph';
 import { createDefaultWorkspaceFiles, resolveDefaultAssetUrl } from '../defaultWorkspace';
+import { SHADER_STUDIO_DEFAULT_ASSETS, shaderStudioDefaultAssetRelativePath } from '@shader-studio/types';
 import { MemoryWorkspaceStore, VirtualWorkspace } from '../VirtualWorkspace';
 import { WebExtensionHost } from '../WebExtensionHost';
 
 describe('default workspace', () => {
+  it('seeds Lumi Play with a standalone-only, correctly oriented artwork texture', async () => {
+    const files = createDefaultWorkspaceFiles();
+    const shader = files.find(({ path }) => path === '/lumi.glsl');
+    expect(shader?.contents).toContain('void mainImage');
+    const config = JSON.parse(files.find(({ path }) => path === '/lumi.sha.json')!.contents);
+    expect(config.passes.Image.inputs.iChannel0).toEqual({
+      type: 'texture', path: 'shader-studio://standalone/lumi-play',
+      filter: 'linear', wrap: 'clamp', vflip: true,
+    });
+    const store = new MemoryWorkspaceStore();
+    const workspace = await VirtualWorkspace.open(store, files);
+    const reloaded = await VirtualWorkspace.open(store, []);
+    expect(reloaded.readText('/lumi.glsl')).toBe(workspace.readText('/lumi.glsl'));
+    expect(reloaded.readText('/lumi.sha.json')).toBe(workspace.readText('/lumi.sha.json'));
+    // Extension and Electron still use the shared manifest, which excludes Lumi.
+    expect(Object.values(SHADER_STUDIO_DEFAULT_ASSETS)).not.toContain('shader-studio://standalone/lumi-play');
+    expect(shaderStudioDefaultAssetRelativePath('shader-studio://standalone/lumi-play')).toBeNull();
+  });
+
+  it('resolves Lumi relative to the deployed standalone base, leaving unknown assets unresolved', () => {
+    expect(resolveDefaultAssetUrl('shader-studio://standalone/lumi-play', 'https://example.test/studio/app/'))
+      .toBe('https://example.test/studio/app/assets/lumi-play.webp');
+    expect(resolveDefaultAssetUrl('shader-studio://standalone/unknown', 'https://example.test/studio/app/'))
+      .toBeNull();
+  });
   it.each(['noise-grey', 'noise-rgba'])('resolves %s volumes under the deployed base URL', (name) => {
     expect(resolveDefaultAssetUrl(`shader-studio://volumes/${name}`, 'https://example.test/studio/'))
       .toBe(`https://example.test/studio/assets/${name}.ktx2`);
@@ -20,6 +46,7 @@ describe('default workspace', () => {
         '/nebula-texture.glsl', '/desert-cubemap.glsl',
         '/glow-trails.glsl', '/glow-trails/trails.buffer.glsl',
         '/glow-trails/glow.buffer.glsl',
+        '/lumi.glsl',
       ]);
     for (const file of files.filter(({ path }) => path.endsWith('.sha.json'))) {
       const config = JSON.parse(file.contents);
