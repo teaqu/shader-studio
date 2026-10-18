@@ -1,4 +1,5 @@
 import { test, expect, workspacePath } from './fixtures.mjs';
+import { setDebugPanelControl } from './debug-panel-controls.mjs';
 import { join } from 'node:path';
 import { replaceSource, expectCanvasPixels, setPreviewLocked, revertFixtureEditors, setParameterExpression, unlockPreviewForCleanup } from './editor-actions.mjs';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
@@ -38,6 +39,7 @@ async function enableVariableInspector(vscode, frame) {
     await frame.getByLabel('Toggle variable inspector').click();
   }
   await expect(frame.locator('.variables-section')).toBeVisible();
+  await setDebugPanelControl(frame, 'Toggle inline rendering', true);
 }
 
 function row(frame, name) {

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { setDebugPanelControl } from './debug-panel-controls.mjs';
 import { workspace } from './language-service-fixtures.mjs';
 
 async function openFixture(page, stem, source, config = { version: '1.0', passes: { Image: { inputs: {} } } }) {
@@ -215,9 +216,9 @@ struct Outputs {${fields}}
   await editorInput.press('ArrowDown');
   const output = panel.getByLabel('Preview output');
   await expect(output).toHaveValue('0');
-  // Turn off local inline rendering to display the selected native attachment
+  // Keep inline rendering off to display the selected native attachment
   // itself; the selected statement would otherwise replace it with `value`.
-  await panel.getByLabel('Toggle inline rendering').click();
+  await setDebugPanelControl(page, 'Toggle inline rendering', false);
   await output.selectOption('1');
   await expect(output).toHaveValue('1');
   // The raw attachment's linear 0.2 green channel reads back around 51.
@@ -226,7 +227,7 @@ struct Outputs {${fields}}
   await output.selectOption('5');
   await expect(output).toHaveValue('5');
   await expect.poll(async () => (await centerPixel(canvas))[1]).toBeGreaterThan(245);
-  await panel.getByLabel('Toggle inline rendering').click();
+  await setDebugPanelControl(page, 'Toggle inline rendering', true);
   await panel.getByLabel('Cycle normalize mode').click();
   await panel.getByLabel('Toggle step threshold').click();
   await expect(panel.getByLabel('Cycle normalize mode')).toHaveAttribute('data-tooltip', /Normalize: SOFT/);

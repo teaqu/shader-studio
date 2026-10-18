@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { setDebugPanelControl } from './debug-panel-controls.mjs';
 import { addShaderFiles } from './workspace-store.mjs';
 
 async function seedWorkspaceFiles(page, entries) {
@@ -50,6 +51,7 @@ test('WGSL sampled channel locals stay inspectable and module globals stay hidde
     if (await panel.locator('.variables-section').count() === 0) {
       await panel.getByLabel('Toggle variable inspector').click();
     }
+    await setDebugPanelControl(page, 'Toggle inline rendering', true);
     await editor.locator('.view-line').filter({ hasText: 'return vec4f(col * depth' }).click();
     await expect(panel.locator('.fn-name')).toHaveText('mainImage');
     await expect(panel.locator('.header-info:not(.fn-name):not(.fn-type)')).toContainText('L6');

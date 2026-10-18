@@ -50,6 +50,7 @@ async function enableVariableInspector(frame) {
     await frame.getByLabel('Toggle variable inspector').click();
   }
   await expect(frame.locator('.variables-section')).toBeVisible();
+  await setInlineRendering(frame, true);
 }
 
 async function setPreviewLocked(frame, locked) {

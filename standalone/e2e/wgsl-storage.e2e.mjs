@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { setDebugPanelControl } from './debug-panel-controls.mjs';
 import { PNG } from 'pngjs';
 import { addShaderFiles, readWorkspaceFiles } from './workspace-store.mjs';
 async function waitForStoragePreview(page, expected) {
@@ -220,6 +221,7 @@ for (const language of ['wgsl', 'slang']) {
       if (await panel.locator('.variables-section').count() === 0) {
         await panel.getByLabel('Toggle variable inspector').click();
       }
+      await setDebugPanelControl(page, 'Toggle inline rendering', true);
       await editor.locator('.view-line').filter({ hasText: `formula = ${value};` }).click();
       await expect(panel.locator('.fn-name')).toHaveText('mainImage');
       await expect(panel.locator('.header-info:not(.fn-name):not(.fn-type)')).toContainText('L3');
@@ -289,6 +291,7 @@ for (const language of ['wgsl', 'slang', 'glsl']) {
     if (await panel.locator('.variables-section').count() === 0) {
       await panel.getByLabel('Toggle variable inspector').click();
     }
+    await setDebugPanelControl(page, 'Toggle inline rendering', true);
     await page.getByRole('button', { name: 'Open in separate editor', exact: true }).click();
     const editor = page.locator('.monaco-editor').filter({ visible: true });
     await editor.locator('.view-line').filter({ hasText: 'shade = 0.375' }).click();

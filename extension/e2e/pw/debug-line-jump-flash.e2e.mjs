@@ -1,4 +1,5 @@
 import { test, expect, workspacePath } from './fixtures.mjs';
+import { setDebugPanelControl } from './debug-panel-controls.mjs';
 import { join } from 'node:path';
 
 const shaderPath = join(workspacePath, 'line-jump-flash.glsl');
@@ -160,6 +161,7 @@ test.describe('inline rendering across a line jump', () => {
       document.querySelector('button.collapse-debug[aria-label="Toggle debug mode"]')?.click();
     });
     await expect.poll(() => frame.locator('.debug-panel').count(), { timeout: 30_000 }).toBeGreaterThan(0);
+    await setDebugPanelControl(frame, 'Toggle inline rendering', true);
 
     // Land on the first line and wait for its visualization: dark grey, not
     // the untouched green.
