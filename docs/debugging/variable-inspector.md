@@ -100,6 +100,32 @@ The **color frequency bar** shows the most common colors. Hover over a segment
 for its color values and percentage. **Per-channel histograms** show how each
 component varies, using matching scales so you can compare them.
 
+## WGSL Capture Types
+
+Scalar and vector locals, parameters, and return values can be captured, including
+values read from arrays, struct fields, and configured storage. Types are inferred
+for many unannotated `let` and `var` declarations, including expressions using
+`iTime`, `sin`, `select`, pointer dereferences, `bitcast`, integer bit operations,
+`transpose`, vector comparisons, and scalar-matrix multiplication.
+If a local initialized from an unsupported expression is missing from capture, add
+an explicit type.
+Whole arrays, whole structs, and arbitrary pointer values cannot be displayed as
+capture rows; select an element or field instead.
+
+Both `mat2x2f` and `mat2x2<f32>` can be captured, including inferred locals,
+return values, and storage elements. The four values appear in column-major order:
+
+```wgsl
+let basis = mat2x2f(0.125, 0.25, 0.5, 0.75);
+// Capture: 0.125, 0.25, 0.5, 0.75
+//          column 0     column 1
+```
+
+Larger matrices and `f16` matrices are not capturable as a whole. Select a supported
+column or scalar component instead. Boolean vectors are also inferred for vector
+comparisons but are not capturable as a whole; select a scalar component. Matrix capture in the Variable Inspector is
+separate from the [Storage inspector](../features/storage.md#inspecting-values), which reads scalar and vector buffer elements and numeric struct fields without editing them.
+
 ## Tips
 
 - Use **manual** refresh mode when you don't need continuous updates

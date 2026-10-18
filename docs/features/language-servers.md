@@ -36,8 +36,28 @@ Completion and hover include:
 Hover shows local and parameter types, struct fields, and vector components.
 Slang and WGSL also describe channel access and configured storage. Signature help
 follows nested calls; Slang supports generic calls such as `bit_cast<uint>(`.
-See [WGSL diagnostics](wgsl.md#editor-support-and-diagnostics) for its checks before
-compilation and the distinction between Common and pass diagnostics.
+
+### WGSL Diagnostics
+
+WGSL has no user-defined generics, function overloads, or import/include mechanism; put shared code in Common.
+
+As you type, the editor reports syntax errors, undefined names,
+reserved words, and uses of built-ins or `discard` in an incompatible shader stage.
+It reports the first syntax error; fix that error to see name and stage diagnostics.
+To check expression types, function arguments, and return values,
+[compile](compile-modes.md) your shader. Errors point to the relevant shader,
+Common, or vertex file where possible.
+
+When editing Common, syntax errors appear as you type. Compile a pass that uses
+Common to check its helpers fully. If a helper uses an operation unavailable in
+that pass, such as `dpdx` in compute code, the error identifies the helper and line.
+
+Signature help shows named parameters and documentation for authored, Common,
+channel, and built-in functions. Add leading `//` comments to document your own
+functions. Signature help also works inside nested calls and template arguments.
+
+Vector component completion includes all valid one-to-four-component read selections,
+including reordered and repeated forms such as `yx`, `xxxx`, and `bgra`.
 
 ## References and Rename
 

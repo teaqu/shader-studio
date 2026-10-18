@@ -49,3 +49,7 @@ Passes marked **Run once**, such as an initialization pass named `Seed`, are exc
 Numeric scalar and vector fields from config-defined and source-defined structs can be inspected. Matrices, nested structs and array fields remain valid shader types but are not displayed as numeric fields. The inspector reports unsupported layouts explicitly. Field comparison and editing GPU values are not part of this layout.
 
 See [Compute Passes](compute.md) for shader examples and [Config File Format](../help/config-file.md#storage-declarations) for the JSON fields.
+
+## WGSL Storage Types
+
+Use native WGSL types in the storage configuration, such as `f32`, `vec3f`, `atomic<u32>`, or a struct declared in your shader or Common code. Buffer sizes are calculated automatically, including padding, nested arrays and structs, and `@align` / `@size` attributes. Half-precision types require `enable f16;` and GPU support for `shader-f16`. For buffers of `f16` scalars, use an even element count if your shader relies on `arrayLength`; an odd count includes an extra padding element.

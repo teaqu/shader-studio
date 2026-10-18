@@ -42,7 +42,7 @@ scalar and vector previews; see their language guides for capture limits.
 | `mat2/3/4` | First column visualized | Extracted and displayed as vector |
 
 This table describes canvas previews, not whole-matrix capture in the Variable
-Inspector. See [WGSL capture types](../features/wgsl.md#debugging-and-capture-types)
+Inspector. See [WGSL capture types](variable-inspector.md#wgsl-capture-types)
 for supported matrices and component ordering.
 
 Negative values appear black and values above 1 appear white. Use [normalization modes](normalization.md) to see out-of-range values.

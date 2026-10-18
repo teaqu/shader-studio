@@ -120,10 +120,24 @@ Storage writes are visible to every later pass in the frame. Use two named buffe
 !!! warning
     GLSL cannot run compute passes or bind storage buffers. They are silently skipped when a `.glsl` shader is loaded. Switch to a `.slang` or `.wgsl` shader to use compute features.
 
+## WGSL Debugging Limits
+
+Compute debugging previews one invocation at a time; it cannot reproduce threads
+working together in a workgroup. `global_invocation_id` comes from the canvas
+coordinate, with `z = 0` and `iDispatch = 0`. Direct `global_invocation_id`,
+`local_invocation_id`, `workgroup_id`, and `local_invocation_index` parameters are
+supported with literal workgroup dimensions. Other entry parameter forms report
+an unsupported diagnostic.
+
+Read-only storage access is supported. Workgroup memory, barriers, atomics,
+subgroup operations, and writes to configured storage are not supported during
+compute debugging. Use normal compute rendering for code that needs
+cooperative workgroups or storage writes. Vertex-stage debugging is unavailable.
+
 ## Limitations
 
 - Compute shaders require Slang or WGSL; there is no GLSL fallback.
-- Compute debugging inspects one invocation at a time and cannot reproduce cooperative workgroups. See the limits for [Slang](slang.md#debugging) and [WGSL](wgsl.md#compute-debugging-limits).
+- Compute debugging inspects one invocation at a time and cannot reproduce cooperative workgroups. See the limits for [Slang](slang.md#debugging) and [WGSL](compute.md#wgsl-debugging-limits).
 - Indirect dispatch is not supported.
 - Storage buffers are shared across passes.
 - Custom-typed buffers cannot be accessed from `common`; define the struct there and access from pass files.
