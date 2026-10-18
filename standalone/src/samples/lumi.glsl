@@ -21,8 +21,11 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     if(any(lessThan(sceneUV,vec2(0.)))||any(greaterThan(sceneUV,vec2(1.)))) {
         fragColor=vec4(.025,.023,.045,1.); return;
     }
-    // Keep the character and room still; animate only water and prism light.
+    // Subpixel breathing stays inside the hoodie, fading before its silhouette.
     vec2 sampleUV=sceneUV;
+    vec2 chest=(sceneUV-vec2(.345,.48))/vec2(.105,.16);
+    float breathMask=pow(max(0.,1.-dot(chest,chest)),2.);
+    sampleUV.y-=sin(t*.85)*.00065*breathMask;
     vec3 col=texture(iChannel0,sampleUV).rgb;
     vec3 cyan=vec3(.15,.85,1.), violet=vec3(.44,.24,1.), rose=vec3(1.,.25,.72);
     // Sliding water beads refract the room texture, with wet trails above them.
@@ -57,48 +60,42 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     float surface=1.+.014*sin(angle*5.+t*1.1)+.008*sin(angle*8.-t*.8);
     q/=surface;
     float r=length(q);
-    vec3 glowColor=mix(cyan,violet,.18);
-    col+=glowColor*.065*exp(-r*r*.7);
-    col+=mix(glowColor,violet,.4)*.20*exp(-pow((r-1.)*10.,2.));
+    // Pearl-lilac water picks up the blue and orchid ends of Lumi's hair.
+    vec3 ice=vec3(.32,.64,1.);
+    vec3 orchid=vec3(.94,.25,.80);
+    vec3 pearl=vec3(.87,.80,1.);
+    col+=mix(ice,orchid,.35)*.035*exp(-r*r*1.2);
     if(r<1.) {
         float z=sqrt(max(0.,1.-r*r));
-        vec2 waves=vec2(sin(q.y*11.+q.x*4.-t*1.3),cos(q.x*10.-q.y*5.+t*1.1));
-        vec3 n=normalize(vec3(q+waves*.045,z));
-        // Transmit the real room through a moving water lens.
-        vec2 bend=(-q*.023*z+waves*.0025*z)/vec2(imageAspect,1.);
+        vec2 flow=vec2(sin(q.y*5.+q.x*2.-t*.65),cos(q.x*6.-q.y*2.+t*.55));
+        vec3 n=normalize(vec3(q+flow*.025,z));
+        vec2 bend=(-q*.035*z+flow*.0018*z)/vec2(imageAspect,1.);
         vec3 transmitted=texture(iChannel0,clamp(sampleUV+bend,vec2(.001),vec2(.999))).rgb;
-        vec3 color=mix(transmitted,col,.18)*vec3(.80,.96,1.12);
-        float fresnel=.035+.70*pow(1.-z,3.);
-        vec3 reflection=mix(vec3(.10,.30,.55),vec3(.58,.86,1.),.5+.5*n.y);
-        color=mix(color,reflection,fresnel);
-        float ripple=pow(.5+.5*sin(q.y*17.+q.x*5.+sin(q.x*9.-t)*1.3-t*1.5),18.);
-        color+=vec3(.22,.67,1.)*ripple*.11*z;
-        // Luminous liquid ribbons curl through the transparent water.
-        float magicFlow=angle*3.+z*9.+sin(q.y*5.-t*.7)*1.4-t*1.1;
-        float caustic=pow(.5+.5*sin(magicFlow),20.);
-        float fine=pow(.5+.5*sin(magicFlow*1.6+q.x*5.+t*.5),36.);
-        float currentHue=.5+.5*sin(angle+z*2.+t*.25);
-        vec3 currentColor=mix(cyan,vec3(.28,.40,1.),currentHue*.65);
-        color+=currentColor*caustic*.65;
-        float pinkRibbon=pow(.5+.5*sin(magicFlow+2.4),40.);
-        vec3 hotPink=vec3(1.,.08,.52);
-        color+=hotPink*pinkRibbon*.95;
-        color+=vec3(1.,.25,.72)*fine*.32;
-        // A little prism emblem drifts inside the water, using the app palette.
-        float prismAngle=.12*sin(t*.45);
-        vec2 prism=mat2(cos(prismAngle),-sin(prismAngle),sin(prismAngle),cos(prismAngle))*q;
-        prism.x/=1.+.1*sin(t*.55);
-        vec2 top=vec2(0.,.48), left=vec2(-.40,-.25), right=vec2(.40,-.25);
-        float triangleEdge=min(segmentDistance(prism,top,left),min(segmentDistance(prism,left,right),segmentDistance(prism,right,top)));
-        float prismCut=segmentDistance(prism,vec2(-.20,.10),vec2(.05,-.25));
-        float emblem=exp(-triangleEdge*110.)+exp(-prismCut*110.)*.55;
-        vec3 prismColor=mix(cyan,rose,clamp(prism.x+.5,0.,1.)*.6);
-        color+=prismColor*emblem*.43;
-        color+=prismColor*exp(-triangleEdge*24.)*.055;
-        float shine=pow(max(0.,dot(n,normalize(vec3(-.45,.6,1.2)))),95.);
-        color+=vec3(.78,.94,1.)*shine*.85;
-        float pinkEdge=pow(.5+.5*sin(angle+t*.35),6.);
-        color+=mix(cyan,hotPink,pinkEdge)*pow(1.-z,5.)*.7;
+        float fresnel=.06+.78*pow(1.-z,3.);
+        float hue=smoothstep(-.55,.65,n.x-n.y*.4);
+        vec3 tint=mix(ice,orchid,hue);
+        vec3 color=transmitted*vec3(.83,.89,1.03);
+        color=mix(color,mix(ice,pearl,.45),.15*z);
+        color=mix(color,tint*.72+pearl*.16,fresnel);
+        // Broad curved reflections and fine caustics, like light on liquid.
+        float current=q.y+.23*sin(q.x*3.5+t*.55)+.10*sin(q.x*7.-t*.8);
+        float ribbon=exp(-pow((current+.22)*15.,2.));
+        float lower=exp(-pow((current+.48)*25.,2.));
+        color+=mix(ice,orchid,smoothstep(-.6,.4,q.x))*ribbon*.32*z;
+        color+=orchid*lower*.36*z;
+        float caustic=sin(q.x*12.+flow.y*2.+t*.4)*sin(q.y*14.+flow.x*2.-t*.5);
+        color+=mix(ice,pearl,.55)*pow(max(0.,caustic),8.)*.15*z;
+        // Soft window reflection breaks into bright wet glints at the edge.
+        float reflection=exp(-pow((q.x+.37+.12*q.y)*12.,2.))*smoothstep(-.25,.15,q.y)*(1.-smoothstep(.65,.90,q.y));
+        color+=pearl*reflection*.55;
+        float shine=pow(max(0.,dot(n,normalize(vec3(-.5,.65,1.)))),110.);
+        color+=vec3(.96,.92,1.)*shine*.85;
+        float rim=pow(1.-z,4.);
+        color+=mix(ice,orchid,hue)*rim*.45;
+        // Small submerged studio prism, softened by the water.
+        vec2 top=vec2(0.,.34), left=vec2(-.28,-.18), right=vec2(.28,-.18);
+        float edge=min(segmentDistance(q,top,left),min(segmentDistance(q,left,right),segmentDistance(q,right,top)));
+        color+=mix(ice,pearl,.6)*exp(-edge*100.)*.13;
         col=mix(col,color,1.-smoothstep(.98,1.,r));
     }
     for(int i=0;i<5;i++) {
@@ -115,4 +112,3 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     }
     fragColor=vec4(col,1.);
 }
-

@@ -9,7 +9,7 @@ import {
 import { expectStableFor } from './observable-state.mjs';
 import { waitForLanguageService } from './language-service-fixtures.mjs';
 
-test('Lumi keeps the character still and animates the orb and rain after reload', async ({ page }) => {
+test('Lumi breathes subtly and animates the orb and rain after reload', async ({ page }) => {
   await page.goto('/');
   const shader = page.getByTestId('shader-option-lumi-glsl');
   await shader.click();
@@ -48,9 +48,9 @@ test('Lumi keeps the character still and animates the orb and rain after reload'
       .toBeGreaterThan(10);
     await expect.poll(async () => regionDifference(first, PNG.sync.read(await canvas.screenshot()), [.68, .05, .90, .60]))
       .toBeGreaterThan(10);
-    // Only water and prism light animate; her face, hoodie and room stay still.
-    expect(regionDifference(first, PNG.sync.read(await canvas.screenshot()), [.25, .40, .43, .62]))
-      .toBe(0);
+    // Breathing is confined to the hoodie; her face and room remain steady.
+    await expect.poll(async () => regionDifference(first, PNG.sync.read(await canvas.screenshot()), [.25, .40, .43, .62]))
+      .toBeGreaterThan(0);
     expect(regionDifference(first, PNG.sync.read(await canvas.screenshot()), [.38, .20, .43, .30]))
       .toBe(0);
     expect(regionDifference(first, PNG.sync.read(await canvas.screenshot()), [.12, .18, .19, .50]))
