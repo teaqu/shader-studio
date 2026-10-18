@@ -3,7 +3,7 @@ import { VR_CONTROLLER_FIELDS } from "@shader-studio/types";
 import { stripComments } from "../util/ShaderText";
 
 /** Generated helper the fullscreen Image fragment calls instead of mainImage. */
-export const WEBGPU_VR_IMAGE_FUNCTION = "_ss_vrImage";
+const WEBGPU_VR_IMAGE_FUNCTION = "_ss_vrImage";
 
 /**
  * Slang and WGSL `mainVR` returns the colour, like their `mainImage`:

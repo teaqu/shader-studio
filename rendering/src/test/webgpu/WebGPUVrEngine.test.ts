@@ -194,7 +194,7 @@ describe("WebGPU VR engine", () => {
 
     expect(left).not.toBe(right);
     expect([left.width, left.height, right.width, right.height]).toEqual([300, 200, 320, 240]);
-    expect(eyeContexts[0]!.configure).toHaveBeenCalledWith(expect.objectContaining({ format: "rgba8unorm", alphaMode: "opaque", device: (engine as any).device }));
+    expect(eyeContexts[0]!.configure).toHaveBeenCalledWith(expect.objectContaining({ format: "rgba8unorm", alphaMode: "opaque", usage: 0x10 | 0x01, device: (engine as any).device }));
     expect(writeBuffer).toHaveBeenCalledTimes(2);
     expect(writeBuffer.mock.calls[0][0]).toBe(pipelines.get("Image")!.uniform);
     const data = writeBuffer.mock.calls[0][2] as ArrayBuffer;

@@ -108,13 +108,32 @@ interface EyeRenderer {
   renderVrEye(view: VrEyeView, eye: number): HTMLCanvasElement | null;
 }
 
-function readCanvas(source: HTMLCanvasElement): Uint8ClampedArray {
-  const copy = document.createElement("canvas");
-  copy.width = source.width;
-  copy.height = source.height;
-  const context = copy.getContext("2d")!;
-  context.drawImage(source, 0, 0);
-  return context.getImageData(0, 0, copy.width, copy.height).data;
+/**
+ * Reads the eye texture through WebGPU. Headless Chromium returns blank
+ * snapshots of WebGPU canvases to 2D and WebGL (even for a bare clear),
+ * while headed browsers, where headsets run, copy them correctly.
+ */
+async function readEye(canvas: HTMLCanvasElement, device: GPUDevice): Promise<Uint8Array> {
+  const texture = (canvas.getContext("webgpu") as GPUCanvasContext).getCurrentTexture();
+  const bytesPerRow = 256;
+  const buffer = device.createBuffer({ size: bytesPerRow * texture.height, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+  const encoder = device.createCommandEncoder();
+  encoder.copyTextureToBuffer({ texture }, { buffer, bytesPerRow }, { width: texture.width, height: texture.height });
+  device.queue.submit([encoder.finish()]);
+  await buffer.mapAsync(GPUMapMode.READ);
+  const rows = new Uint8Array(buffer.getMappedRange());
+  const rgba = new Uint8Array(texture.width * texture.height * 4);
+  for (let y = 0; y < texture.height; y++) {
+    for (let x = 0; x < texture.width; x++) {
+      const from = y * bytesPerRow + x * 4;
+      const [r, g, b, a] = rows.slice(from, from + 4);
+      // Normalise BGRA presentation formats to RGBA.
+      rgba.set(texture.format.startsWith("bgra") ? [b, g, r, a] : [r, g, b, a], (y * texture.width + x) * 4);
+    }
+  }
+  buffer.unmap();
+  buffer.destroy();
+  return rgba;
 }
 
 describe.each(["wgsl", "slang"] as const)("%s desktop and headset mainVR rendering", (language) => {
@@ -178,7 +197,7 @@ describe.each(["wgsl", "slang"] as const)("%s desktop and headset mainVR renderi
       const rayTransform = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1, 0, 0.2, 0.4, 0.6, 1]);
       const eye = (harness.engine as unknown as EyeRenderer).renderVrEye({ viewport: { x: 0, y: 0, width: 8, height: 8 }, rayTransform }, 0);
       expect(eye).not.toBeNull();
-      const rgba = readCanvas(eye!);
+      const rgba = await readEye(eye!, (harness.engine as unknown as { device: GPUDevice }).device);
       const pixel = (x: number, y: number) => Array.from(rgba.slice((y * 8 + x) * 4, (y * 8 + x) * 4 + 4));
       expect(pixel(1, 4)).toEqual([51, 102, 153, 255]);
       const ray = pixel(6, 4);

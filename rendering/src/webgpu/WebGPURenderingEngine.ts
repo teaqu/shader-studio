@@ -611,7 +611,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
         return null;
       }
       // The Image pipeline targets the presentation format, so eyes share it.
-      context.configure({ device, format: this.format, alphaMode: "opaque" });
+      // COPY_SRC matches the main canvas, letting eye frames be read back.
+      const RENDER_ATTACHMENT = globalThis.GPUTextureUsage?.RENDER_ATTACHMENT ?? 0x10;
+      const COPY_SRC = globalThis.GPUTextureUsage?.COPY_SRC ?? 0x01;
+      context.configure({ device, format: this.format, alphaMode: "opaque", usage: RENDER_ATTACHMENT | COPY_SRC });
       target = { canvas, context };
       this.vrEyeTargets[eye] = target;
     }
