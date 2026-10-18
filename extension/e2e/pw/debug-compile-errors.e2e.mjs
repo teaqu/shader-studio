@@ -59,6 +59,8 @@ test.describe('compile errors while debug mode is on', () => {
     });
     await expect.poll(() => frame.locator('.debug-panel').count(), { timeout: 30_000 }).toBeGreaterThan(0);
     await setDebugPanelControl(frame, 'Toggle variable inspector', true);
+    // The function header reported below shows only while inline rendering is on.
+    await setDebugPanelControl(frame, 'Toggle inline rendering', true);
 
     // Park the cursor *below* the broken statement: the capture has to fall
     // back to the last line above the break rather than fail wholesale.
