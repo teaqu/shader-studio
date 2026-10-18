@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { closeExplorerSettings, EXPLORER_STATE_KEY, seedExplorerState, useSharedShaderEditor } from './explorer-preferences.mjs';
+import { closeExplorerSettings, EXPLORER_STATE_KEY, openExplorerSettings, seedExplorerState, useSharedShaderEditor } from './explorer-preferences.mjs';
 
 function memoryStorage(initial = {}) {
   const values = new Map(Object.entries(initial));
@@ -35,3 +35,15 @@ test('closes Explorer settings with Escape and waits for it to hide', async () =
   await closeExplorerSettings(page);
   assert.deepEqual(calls, [['press', 'Escape'], ['waitFor', 'region', 'Explorer settings', 'hidden']]);
 });
+
+for (const open of [false, true]) {
+  test(`opens Explorer settings only when they are ${open ? 'already open' : 'closed'}`, async () => {
+    const calls = [];
+    const page = {
+      getByRole: () => ({ isVisible: async () => open, waitFor: async state => calls.push(['waitFor', state.state]) }),
+      getByTitle: (title, options) => ({ click: async () => calls.push(['click', title, options.exact]) }),
+    };
+    await openExplorerSettings(page);
+    assert.deepEqual(calls, open ? [['waitFor', 'visible']] : [['click', 'Options', true], ['waitFor', 'visible']]);
+  });
+}

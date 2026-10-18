@@ -9,7 +9,7 @@ import {
 } from './workspace-store.mjs';
 import { expectStableFor } from './observable-state.mjs';
 import { waitForLanguageService } from './language-service-fixtures.mjs';
-import { closeExplorerSettings, useSharedShaderEditor } from './explorer-preferences.mjs';
+import { closeExplorerSettings, openExplorerSettings, useSharedShaderEditor } from './explorer-preferences.mjs';
 
 test('drops shader files and assets at workspace root and keeps them after reload', async ({ page }) => {
   // Edits through the shared editor, which active-file tracking replaces.
@@ -984,8 +984,10 @@ test('explorer Open Files reuses one editor and only reopens it when checked', a
     await expect(editorTab).toHaveText(id.replace(/-glsl$/, '.glsl'));
     await expect(page.getByTestId('file-editor')).toHaveCount(0);
   }
+  await openExplorerSettings(page);
   await page.getByLabel('Only keep active shader files open', { exact: true }).uncheck();
   await page.getByLabel('Open file when selecting a shader', { exact: true }).uncheck();
+  await closeExplorerSettings(page);
   await revealStandaloneTabs(page);
   await editorTab.locator('.dv-default-tab-action').click();
   await expect(editorTab).toHaveCount(0);
@@ -1000,9 +1002,11 @@ test('explorer Open Files reuses one editor and only reopens it when checked', a
   await expect(page.getByTestId('shader-option-desert-cubemap-glsl')).toHaveAttribute('aria-pressed', 'true');
   await expect(editorTab).toHaveCount(0);
   await expect(editor).not.toBeVisible();
+  await openExplorerSettings(page);
   await expect(page.getByLabel('Open file when selecting a shader', { exact: true })).not.toBeChecked();
   await page.getByLabel('Only keep active shader files open', { exact: true }).uncheck();
   await page.getByLabel('Open file when selecting a shader', { exact: true }).check();
+  await closeExplorerSettings(page);
   await page.getByTestId('shader-option-aurora-glsl').click();
   await expect(editorTab).toHaveCount(1);
   await expect(editor.locator('.monaco-editor')).toBeVisible();
@@ -1151,6 +1155,8 @@ test('focused standalone file editor selects the preview and persists after relo
 
 
 test('double-clicking buffers reuses the editor tab group and focuses the requested buffer', async ({ page }) => {
+  // Checks tab restoration without active-file tracking, which re-syncs tabs on reload.
+  await useSharedShaderEditor(page);
   await page.goto('/');
   await page.getByTestId('shader-option-glow-trails-glsl').click();
   await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
@@ -1272,10 +1278,17 @@ test('desktop pane sizes recover after the window is compressed and expanded', a
   const config = page.locator('.config-panel');
   await expect(config).toBeVisible();
   const initialConfig = await config.boundingBox();
-  const toolSashLocator = page.locator(
+  // The Files pane adds its own vertical split; use the divider above the config pane.
+  const verticalSashes = page.locator(
     '.standalone-dockview .dv-split-view-container.dv-vertical > .dv-sash-container > .dv-sash',
   );
-  await expect(toolSashLocator).toHaveCount(1);
+  const toolSashIndex = await verticalSashes.evaluateAll((elements, { left, right }) => elements.findIndex(element => {
+    const box = element.getBoundingClientRect();
+    const centre = box.x + box.width / 2;
+    return centre > left && centre < right;
+  }), { left: initialConfig.x, right: initialConfig.x + initialConfig.width });
+  expect(toolSashIndex).toBeGreaterThanOrEqual(0);
+  const toolSashLocator = verticalSashes.nth(toolSashIndex);
   await toolSashLocator.hover();
   // Revealed tab headers must not take over the divider's drag gesture.
   await expect(page.locator('.standalone-dockview')).toHaveClass(/dv-sash-hover/);
@@ -1333,8 +1346,9 @@ test('replacing the active editor preserves tab order after reload', async ({ pa
   await expect(titles).toHaveText(['glow-trails.glsl', 'aurora.glsl', 'glow.buffer.glsl']);
   await expect(page.locator('[data-testid="file-editor"][data-path="/aurora.glsl"] .view-lines')).toContainText('uv.xyx + vec3(0, 2, 4)');
   await page.reload();
-  // The main editor follows the restored preview; the file editors retain their slots.
-  await expect(titles).toHaveText(['aurora.glsl', 'aurora.glsl', 'glow.buffer.glsl']);
+  // Active-file tracking opened these tabs at boot; once it is off they are
+  // ordinary file tabs, so every tab keeps its file and slot after reload.
+  await expect(titles).toHaveText(['glow-trails.glsl', 'aurora.glsl', 'glow.buffer.glsl']);
 });
 
 
@@ -1788,6 +1802,8 @@ test('the shader-preview overlay keeps its dark tokens without darkening the lig
 });
 
 test('opens the config file of the selected shader from the preview menu', async ({ page }) => {
+  // Checks tab restoration without active-file tracking, which re-syncs tabs on reload.
+  await useSharedShaderEditor(page);
   await page.goto('/');
   await page.getByTestId('shader-option-aurora-glsl').click();
   await page.getByLabel('Open options menu').click();

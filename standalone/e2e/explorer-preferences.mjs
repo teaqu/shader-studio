@@ -21,3 +21,12 @@ export async function closeExplorerSettings(page) {
   await page.keyboard.press('Escape');
   await page.getByRole('region', { name: 'Explorer settings' }).waitFor({ state: 'hidden' });
 }
+
+/** Opens Explorer settings unless they are already open (their open state survives reloads). */
+export async function openExplorerSettings(page) {
+  const settings = page.getByRole('region', { name: 'Explorer settings' });
+  if (!await settings.isVisible()) {
+    await page.getByTitle('Options', { exact: true }).click();
+  }
+  await settings.waitFor({ state: 'visible' });
+}
