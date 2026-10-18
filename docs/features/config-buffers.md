@@ -86,6 +86,63 @@ The pass sections are arranged as Fragment source/functions, Channels, Geometry,
 
 ---
 
+## Native Entry Points and Shared Files
+
+Slang and WGSL both run on WebGPU and support this workflow.
+
+An entry point is the function a shader pass runs. WGSL marks these functions with `@vertex`, `@fragment`, or `@compute`; Slang uses `[shader("vertex")]`, `[shader("fragment")]`, or `[shader("compute")]`.
+
+You can keep these functions in one shader file and choose a different function for each pass. In **Config**, select the function under **Fragment shader**, **Vertex shader**, or the compute pass's function list. Add each pass you need with **+ New**; writing another function does not create a pass.
+
+You can also mix a native stage with a Built-in stage. With no custom vertex selection, Shader Studio uses its built-in vertex shader and any configured `mainVertex` hook. With no native fragment selection, it uses `mainImage`.
+
+Native fragments receive WebGPU coordinates with a top-left origin; `mainImage` receives bottom-left coordinates. Native stages still receive Shader Studio's built-in globals, configured channel helpers, and storage declarations. Group 0 bindings are reserved for these generated resources; do not redeclare their bindings. See [Vertex Shaders](vertex-shaders.md#native-webgpu-stages) for compatible mesh inputs and transforms.
+
+### Example: Share a WGSL File
+
+Create a file named `shared.wgsl` in your shader workspace and paste in this example:
+
+```wgsl
+@vertex fn fullscreen(@builtin(vertex_index) index: u32) -> @builtin(position) vec4f {
+    let p = array(vec2f(-1, -1), vec2f(3, -1), vec2f(-1, 3));
+    return vec4f(p[index], 0, 1);
+}
+
+@fragment fn image(@builtin(position) pixel: vec4f) -> @location(0) vec4f {
+    return vec4f(pixel.xy / iResolution.xy, 0.5, 1);
+}
+
+@compute @workgroup_size(1)
+fn advance(@builtin(global_invocation_id) id: vec3u) {
+    // Update configured storage here.
+}
+```
+
+Save the following configuration as `shared.sha.json` beside it, then open `shared.wgsl` in the preview. You should see a red/green gradient with a constant blue component. The example compute function does no work until you add your own code.
+
+```json
+{
+  "version": "1.0",
+  "webgpu": { "defaultRenderAuthoring": "native" },
+  "passes": {
+    "ComputeAdvance": {
+      "type": "compute", "path": "shared.wgsl",
+      "entryPoints": { "compute": "advance" },
+      "dispatch": { "count": 1 }
+    },
+    "BufferA": {
+      "path": "shared.wgsl",
+      "entryPoints": { "vertex": "fullscreen", "fragment": "image" }
+    },
+    "Image": { "entryPoints": { "vertex": "fullscreen", "fragment": "image" } }
+  }
+}
+```
+
+Image and BufferA both select `fullscreen` and `image` from the same file; ComputeAdvance selects `advance`. Each pass uses its own configured channels, uniforms, and storage, so you can reuse a file with different inputs. Shared helpers can also live in a [Common pass](config-buffers.md#the-common-pass).
+
+---
+
 ## Cubemap Buffers
 
 A cubemap stores the view in six directions as six square faces. Use a cubemap buffer to generate an environment or reflection texture that other passes can sample. Its face size is independent of the preview canvas size.
