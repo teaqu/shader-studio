@@ -470,6 +470,7 @@ export class WebExtensionHost {
         }
         return;
       case 'refresh': {
+        console.log('ZZTRACE refresh', JSON.stringify(payload), this.activeShaderPath);
         // Common/vertex updates request their locked owning shader. Re-sending
         // the focused source file would make the viewer request refresh forever.
         const path = payload.path === undefined ? this.activeShaderPath : payload.path;
@@ -604,6 +605,7 @@ export class WebExtensionHost {
       case 'openShader':
       case 'activateShader':
         if (typeof message.path === 'string' && this.workspace.exists(message.path)) {
+          console.log('ZZTRACE nav', message.type, message.path, this.activeShaderPath, new Error().stack?.split('\n').slice(2, 9).join(' | '));
           // Only use the current shader's known links; never search other configs
           // for an owner. Explicit explorer selection still opens the file itself.
           if (message.type === 'activateShader' && this.activeShaderPath
@@ -775,6 +777,7 @@ export class WebExtensionHost {
   }
 
   private setActiveShader(path: string): void {
+    console.log('ZZTRACE setActive', this.activeShaderPath, '->', path, new Error().stack?.split('\n').slice(2, 6).join(' | '));
     this.activeShaderPath = path;
     this.workspace.writeText(ACTIVE_SHADER_PATH, path);
   }

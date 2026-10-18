@@ -110,6 +110,7 @@ test('clearing the workspace restores the default shaders after reload', async (
 
 for (const [language, locked] of ['glsl', 'slang', 'wgsl'].flatMap(language => [false, true].map(locked => [language, locked]))) {
   test(`opening a buffer respects the preview lock (${language}, ${locked})`, async ({ page }) => {
+    page.on('console', m => { if (m.text().includes('ZZTRACE')) console.log(language, locked, m.text()); });
     await page.route('**/__buffer_lock__', route => route.fulfill({ contentType: 'text/html', body: '<html></html>' }));
     await page.goto('/__buffer_lock__');
     const shader = expression => language === 'glsl'
