@@ -446,7 +446,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     slangSourcePaths?: Record<string, string>,
   ): Promise<CompilationResult | undefined> {
     const zzResult = await this.session.compileShaderPipeline(code, config, path, buffers, customUniformDeclarations, customUniformInfo, slangModules, slangSourcePath, slangSourcePaths);
-    console.log('ZZTRACE compile end', path, this.session.compileGeneration, JSON.stringify(zzResult)?.slice(0, 200));
+    console.log('ZZTRACE compile end', Math.round(performance.now()), this.canvas?.parentElement?.className ?? 'nocanvas', path, this.session.compileGeneration, JSON.stringify(zzResult)?.slice(0, 200));
     return zzResult;
   }
 
