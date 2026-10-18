@@ -1,4 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+it('closes editors whose files were renamed or deleted while keeping unrelated tabs', () => {
+  const api = createApi();
+  const controller = new StandaloneLayoutController(api, null);
+  controller.initialize();
+  controller.openEditor('/first.glsl');
+  controller.openEditor('/second.glsl');
+  controller.closeEditorPaths(['/first.glsl', '/missing.glsl']);
+  expect(api.getPanel('editor:/first.glsl')).toBeUndefined();
+  expect(api.getPanel('editor:/second.glsl')).toBeDefined();
+  expect(api.getPanel('editor')).toBeDefined();
+  controller.dispose();
+});
 import {
   STANDALONE_LAYOUT_STORAGE_KEY,
   StandaloneLayoutController,

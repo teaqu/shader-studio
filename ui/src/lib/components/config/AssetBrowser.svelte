@@ -9,7 +9,7 @@
     VIDEO_EXTENSIONS,
   } from "@shader-studio/types";
   import { getWaveformPeaks } from "../../util/waveformCache";
-  import { getHostDefaultAssets } from "../../state/hostState.svelte";
+  import { getHostDefaultAssets, getHostAssetUploader } from "../../state/hostState.svelte";
 
   interface Props {
     extensions: string[];
@@ -42,6 +42,39 @@
   let searchQuery = $state("");
   let currentPage = $state(1);
   let loadingTimeout: ReturnType<typeof setTimeout> | undefined;
+  let uploadInput = $state<HTMLInputElement>();
+  let uploading = $state(false);
+  let uploadError = $state('');
+  const uploader = $derived(getHostAssetUploader());
+
+  async function uploadFiles(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const selection = Array.from(input.files ?? []);
+    input.value = '';
+    if (!selection.length || !uploader) {
+      return;
+    }
+    uploadError = '';
+    if (selection.some(file => !extensions.includes(file.name.split('.').pop()?.toLowerCase() ?? ''))) {
+      uploadError = `Choose a supported asset: ${extensions.map(extension => `.${extension}`).join(', ')}.`;
+      return;
+    }
+    uploading = true;
+    try {
+      const uploaded = await uploader(selection, shaderPath);
+      files = [...files, ...uploaded];
+      loading = false;
+      clearLoadingTimeout();
+      searchQuery = '';
+      if (uploaded[0]) {
+        handleSelect(uploaded[0]);
+      }
+    } catch (error) {
+      uploadError = error instanceof Error ? error.message : 'Could not upload assets.';
+    } finally {
+      uploading = false;
+    }
+  }
 
   let filteredFiles = $derived(files.filter((file) => {
     if (!searchQuery) {
@@ -58,7 +91,7 @@
   $effect(() => {
     searchQuery; // track searchQuery
     untrack(() => {
-      currentPage = 1; 
+      currentPage = 1;
     });
   });
 
@@ -270,7 +303,14 @@
     <button class="refresh-btn" onclick={requestFiles} title="Refresh" aria-label="Refresh files">
       <i class="codicon codicon-refresh"></i>
     </button>
+    {#if uploader}
+      <button class="refresh-btn" title="Upload from device" disabled={uploading} onclick={() => uploadInput?.click()}>
+        <i class="codicon codicon-cloud-upload" aria-hidden="true"></i> {uploading ? 'Uploading…' : 'Upload…'}
+      </button>
+      <input class="upload-input" aria-label="Upload assets" bind:this={uploadInput} type="file" multiple accept={extensions.map(extension => `.${extension}`).join(',')} onchange={uploadFiles} />
+    {/if}
   </div>
+  {#if uploadError}<p role="alert">{uploadError}</p>{/if}
 
   <div class="browser-content">
     {#if loading}
@@ -299,7 +339,7 @@
                     loop
                     onmouseenter={(e) => e.currentTarget.play()}
                     onmouseleave={(e) => {
-                      e.currentTarget.pause(); e.currentTarget.currentTime = 0; 
+                      e.currentTarget.pause(); e.currentTarget.currentTime = 0;
                     }}
                   ></video>
                 {:else if getFileType(file.name) === 'volume'}
@@ -350,7 +390,7 @@
                     loop
                     onmouseenter={(e) => e.currentTarget.play()}
                     onmouseleave={(e) => {
-                      e.currentTarget.pause(); e.currentTarget.currentTime = 0; 
+                      e.currentTarget.pause(); e.currentTarget.currentTime = 0;
                     }}
                   ></video>
                 {:else if getFileType(file.name) === 'volume'}
@@ -453,6 +493,7 @@
 </div>
 
 <style>
+  .upload-input { display: none; }
   .asset-browser {
     display: flex;
     flex-direction: column;

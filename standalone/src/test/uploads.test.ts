@@ -5,6 +5,15 @@ import { MemoryWorkspaceStore, VirtualWorkspace } from '../VirtualWorkspace';
 import { uploadWorkspaceFiles } from '../workspaceUploads';
 afterEach(() => vi.restoreAllMocks());
 
+it('rejects uploads that would occupy folder or internal metadata paths', async () => {
+  const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), []);
+  workspace.writeText('/shaders/folder/child.glsl', 'source');
+  await expect(uploadWorkspaceFiles(workspace, [new File(['x'], 'folder')])).rejects.toThrow('already exists');
+  await expect(uploadWorkspaceFiles(workspace, [new File(['x'], '.shader-studio')], '/')).rejects.toThrow('inside the workspace');
+  workspace.writeText('/not-a-folder', 'source');
+  await expect(uploadWorkspaceFiles(workspace, [new File(['x'], 'file.png')], '/not-a-folder/child')).rejects.toThrow('parent folder');
+});
+
 it('persists source text and exact binary bytes across workspace reopen and backup restore', async () => {
   const store = new MemoryWorkspaceStore();
   const workspace = await VirtualWorkspace.open(store, []);

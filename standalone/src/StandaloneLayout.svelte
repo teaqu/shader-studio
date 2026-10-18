@@ -186,6 +186,10 @@
     controller?.openEditor(path);
   }
 
+  export function closeEditorPaths(paths: readonly string[]): void {
+    controller?.closeEditorPaths(paths);
+  }
+
   export function showPanel(panelId: StandalonePanelId): void {
     controller?.showPanel(panelId);
   }

@@ -559,6 +559,24 @@ export class WebExtensionHost {
     return this.workspace.exists(path) ? this.workspace.readText(path) : null;
   }
 
+  refreshWorkspaceSelection(moves: readonly { from: string; to: string }[] = []): void {
+    const moved = moves.find(move => move.from === this.activeShaderPath);
+    if (moved) {
+      this.setActiveShader(moved.to);
+    }
+    if (!this.activeShaderPath || !this.workspace.exists(this.activeShaderPath)) {
+      this.activeShaderPath = this.shaderFiles()[0]?.path ?? null;
+      if (this.activeShaderPath) {
+        this.setActiveShader(this.activeShaderPath);
+      } else if (this.workspace.exists(ACTIVE_SHADER_PATH)) {
+        this.workspace.delete(ACTIVE_SHADER_PATH);
+      }
+    }
+    if (this.activeShaderPath) {
+      this.emitViewer(this.shaderSourceMessage(this.activeShaderPath));
+    }
+  }
+
   async handleExplorerMessage(message: HostMessage): Promise<void> {
     switch (message.type) {
       case 'requestShaders':
@@ -875,6 +893,8 @@ export class WebExtensionHost {
           const resolved = contents?.startsWith('data:') ? contents : this.resolveDefaultAsset(input.path);
           if (resolved) {
             input.resolved_path = resolved;
+          } else if (!/^[a-z][a-z\d+.-]*:/i.test(input.path)) {
+            delete input.resolved_path;
           }
         }
       }

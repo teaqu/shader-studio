@@ -52,6 +52,9 @@ function createTransport(): TestTransport {
     exportWorkspaceBackup: vi.fn().mockResolvedValue('{"workspace":true}'),
     importWorkspaceBackup: vi.fn().mockResolvedValue(undefined),
     uploadFiles: vi.fn().mockResolvedValue(undefined),
+    onWorkspaceFiles: vi.fn(listener => {
+      listener([{ path: '/shaders/main.glsl', asset: false }]); return vi.fn();
+    }),
     onPersistenceStatus: vi.fn((listener) => {
       listener({ state: 'saved' });
       return vi.fn();
@@ -92,6 +95,39 @@ function createStorage(): Storage {
 }
 
 describe('standalone App', () => {
+  it('switches between the file tree and shader gallery and remembers the selected view', async () => {
+    const transport = createTransport();
+    const app = render(App, { props: { transport } });
+    await fireEvent.click(screen.getByRole('tab', { name: 'Files' }));
+    expect(localStorage.getItem('shader-studio.explorer-mode')).toBe('files');
+    expect(screen.getByRole('tree', { name: 'Workspace file tree' })).toBeTruthy();
+    await fireEvent.click(screen.getByRole('tab', { name: 'Shaders' }));
+    expect(localStorage.getItem('shader-studio.explorer-mode')).toBe('shaders');
+    await fireEvent.click(screen.getByRole('tab', { name: 'Files' }));
+    app.unmount();
+    render(App, { props: { transport: createTransport() } });
+    expect(screen.getByRole('tab', { name: 'Files' }).getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('keeps the file explorer usable when preference storage is denied', async () => {
+    vi.stubGlobal('localStorage', { getItem: () => {
+      throw new Error('Denied');
+    }, setItem: () => {
+      throw new Error('Denied');
+    } });
+    render(App, { props: { transport: createTransport() } });
+    await fireEvent.click(screen.getByRole('tab', { name: 'Files' }));
+    expect(screen.getByRole('tab', { name: 'Files' }).getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('shows an empty preview after all shader files are deleted', async () => {
+    const transport = createTransport();
+    vi.spyOn(transport, 'onWorkspaceFiles').mockImplementation(listener => {
+      listener([]); return vi.fn();
+    });
+    render(App, { props: { transport } });
+    await waitFor(() => expect(screen.getByText('Create or upload a shader to start previewing.')).toBeTruthy());
+  });
   it('opens the multi-file upload picker from Workspace and reports completion', async () => {
     const transport = createTransport();
     render(App, { props: { transport } });

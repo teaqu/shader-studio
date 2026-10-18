@@ -4,6 +4,7 @@
   export const layoutStub = {
     selectEditor: vi.fn(),
     openEditor: vi.fn(),
+    closeEditorPaths: vi.fn(),
     showPanel: vi.fn(),
     togglePanel: vi.fn(),
     isPanelVisible: vi.fn((_panel: 'explorer' | 'editor' | 'preview') => true),
@@ -30,6 +31,10 @@
 
   export function openEditor(path: string) {
     layoutStub.openEditor(path);
+  }
+
+  export function closeEditorPaths(paths: readonly string[]) {
+    layoutStub.closeEditorPaths(paths);
   }
 
   export function showPanel(panel: 'explorer' | 'editor' | 'preview') {

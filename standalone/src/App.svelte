@@ -12,13 +12,14 @@
   import { connectSettings, getDefaultShaderMode } from './settings/settingsState.svelte';
   import WorkspaceFilePicker from './WorkspaceFilePicker.svelte';
   import NewShaderModal from './NewShaderModal.svelte';
+  import WorkspaceFiles from './WorkspaceFiles.svelte';
   import type { WebTransport, WorkspaceStorageStatus } from './WebTransport';
   import {
     getSelectedEditor, selectEditor, getRequestedEditor, requestEditor, getNewShaderVisible, getRequestedPanel, requestPanel,
     resetShellState, setNewShaderVisible,
   } from './state/shellState.svelte';
   import { clearStandaloneWorkspace } from './clearWorkspace';
-  import type { ShaderLanguageId, WebGPUAuthoringMode } from '@shader-studio/types';
+  import { shaderLanguageForPath, type ShaderLanguageId, type WebGPUAuthoringMode } from '@shader-studio/types';
   import type { PwaController, PwaStatus } from './pwa';
   import type { WorkspacePersistenceStatus } from './VirtualWorkspace';
 
@@ -79,6 +80,28 @@
   let uploadFileInput: HTMLInputElement;
   let uploadPending = $state(false);
   let uploadStatus = $state('');
+  let workspaceHasShaders = $state(true);
+  function initialExplorerMode(): 'files' | 'shaders' {
+    try {
+      return localStorage.getItem('shader-studio.explorer-mode') === 'files' ? 'files' : 'shaders';
+    } catch {
+      return 'shaders';
+    }
+  }
+  let explorerMode = $state(initialExplorerMode());
+  function selectExplorerMode(mode: 'files' | 'shaders') {
+    explorerMode = mode;
+    try {
+      localStorage.setItem('shader-studio.explorer-mode', mode);
+    } catch { /* Keep the selection for this session. */ }
+  }
+  function openWorkspaceFile(path: string) {
+    if (shaderLanguageForPath(path)) {
+      explorerApi.postMessage({ type: 'openShader', path });
+    } else {
+      requestEditor(path);
+    }
+  }
   const session = $derived(getViewerSession());
   const explorerApi = transport.getShaderExplorerHostApi();
   let shellMounted = false;
@@ -88,6 +111,9 @@
 
   onMount(() => {
     shellMounted = true;
+    const stopFiles = transport.onWorkspaceFiles(files => {
+      workspaceHasShaders = files.some(file => shaderLanguageForPath(file.path));
+    });
     void transport.getStorageStatus?.().then(async (status) => {
       storageStatus = status;
       if (status.backend === 'indexeddb' && status.persistSupported && !status.persisted && claimAutomaticStorageRequest()) {
@@ -108,6 +134,7 @@
     }) ?? (() => {});
     return () => {
       shellMounted = false;
+      stopFiles();
       stopPersistence();
       stopPwa();
       pwa?.dispose();
@@ -475,13 +502,26 @@
   {/if}
   <StandaloneLayout bind:this={layout} {hostedPanels} {transport}>
     {#snippet explorer()}
-      <ShaderExplorer hostApi={explorerApi} compact={true} selectedShaderPath={session?.selectedShaderPath ?? ''} />
+      <div class="explorer-pane">
+        <div class="explorer-tabs" role="tablist" aria-label="Explorer view">
+          <button role="tab" aria-selected={explorerMode === 'files'} onclick={() => selectExplorerMode('files')}>Files</button>
+          <button role="tab" aria-selected={explorerMode === 'shaders'} onclick={() => selectExplorerMode('shaders')}>Shaders</button>
+        </div>
+        <div class="explorer-content" class:inactive={explorerMode !== 'files'}>
+          <WorkspaceFiles {transport} onOpen={openWorkspaceFile} onPathsRemoved={paths => layout?.closeEditorPaths(paths)} />
+        </div>
+        <div class="explorer-content" class:inactive={explorerMode !== 'shaders'}>
+          <ShaderExplorer hostApi={explorerApi} compact={true} selectedShaderPath={session?.selectedShaderPath ?? ''} />
+        </div>
+      </div>
     {/snippet}
     {#snippet editor()}
       <div class="panel-content" data-testid="web-editor"><EditorPane {transport} /></div>
     {/snippet}
     {#snippet preview()}
-      <div class="panel-content" data-testid="web-preview"><ShaderStudioApp /></div>
+      <div class="panel-content" data-testid="web-preview">
+        {#if workspaceHasShaders}<ShaderStudioApp />{:else}<p class="empty-workspace">Create or upload a shader to start previewing.</p>{/if}
+      </div>
     {/snippet}
   </StandaloneLayout>
   {#if settingsOpen}
@@ -495,6 +535,13 @@
 </div>
 
 <style>
+  .explorer-pane { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+  .explorer-tabs { display: flex; border-bottom: 1px solid var(--vscode-panel-border); background: var(--vscode-sideBar-background); }
+  .explorer-tabs button { flex: 1; padding: 8px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--vscode-descriptionForeground); cursor: pointer; font: inherit; font-size: 12px; }
+  .explorer-tabs button[aria-selected="true"] { border-bottom-color: var(--vscode-focusBorder); color: var(--vscode-foreground); }
+  .explorer-content { flex: 1; min-height: 0; overflow: hidden; }
+  .explorer-content.inactive { display: none; }
+  .empty-workspace { padding: 24px; color: var(--vscode-descriptionForeground); }
   .standalone-app { display: flex; flex-direction: column; height: 100%; min-height: 0; }
   .standalone-toolbar { position: relative; z-index: 10; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--vscode-panel-border); background: var(--vscode-sideBar-background); }
   .standalone-toolbar button, .standalone-toolbar a { font: inherit; color: var(--vscode-foreground); background: transparent; border-radius: 4px; padding: 4px 8px; text-decoration: none; cursor: pointer; }

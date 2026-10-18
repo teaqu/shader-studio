@@ -267,6 +267,12 @@ export class StandaloneLayoutController {
     this.api.getPanel(id)?.api.setActive();
   }
 
+  closeEditorPaths(paths: readonly string[]): void {
+    for (const path of paths) {
+      this.api.getPanel(`editor:${path}`)?.api.close();
+    }
+  }
+
   isPanelVisible(panelId: StandalonePanelId): boolean {
     const panel = this.api.getPanel(panelId);
     return Boolean(panel?.api.group.api.isVisible);

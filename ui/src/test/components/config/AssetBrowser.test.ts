@@ -7,6 +7,53 @@ import { tick } from 'svelte';
 import AssetBrowser from '../../../lib/components/config/AssetBrowser.svelte';
 
 describe('AssetBrowser', () => {
+  it('uploads directly into the standalone asset picker and selects the new asset', async () => {
+    const asset = { name: 'photo.png', workspacePath: '/test/photo.png', thumbnailUri: 'data:image/png;base64,AA==', isSameDirectory: true };
+    const uploadAssets = vi.fn().mockResolvedValue([asset]);
+    configureHost({ uploadAssets });
+    const onSelect = vi.fn();
+    render(AssetBrowser, { extensions: ['png'], shaderPath: '/test/main.glsl', onSelect });
+    const input = screen.getByLabelText('Upload assets') as HTMLInputElement;
+    expect(input.accept).toBe('.png');
+    const file = new File(['image'], 'photo.png', { type: 'image/png' });
+    await fireEvent.change(input, { target: { files: [file] } });
+    await waitFor(() => expect(uploadAssets).toHaveBeenCalledWith([file], '/test/main.glsl'));
+    expect(onSelect).toHaveBeenCalledWith('photo.png', asset.thumbnailUri);
+  });
+
+  it('opens the device picker and ignores cancellation or unsupported extensions', async () => {
+    const uploadAssets = vi.fn();
+    configureHost({ uploadAssets });
+    render(AssetBrowser, { extensions: ['png'], shaderPath: '/test/main.glsl', onSelect: vi.fn(), postMessage: vi.fn() });
+    const input = screen.getByLabelText('Upload assets') as HTMLInputElement;
+    const click = vi.spyOn(input, 'click');
+    await fireEvent.click(screen.getByTitle('Upload from device'));
+    expect(click).toHaveBeenCalledOnce();
+    await fireEvent.change(input, { target: { files: [] } });
+    expect(uploadAssets).not.toHaveBeenCalled();
+    await fireEvent.change(input, { target: { files: [new File(['source'], 'a.glsl')] } });
+    expect(screen.getByRole('alert')).toHaveTextContent('Choose a supported asset: .png');
+    expect(uploadAssets).not.toHaveBeenCalled();
+  });
+
+  it.each([new Error('Storage is full'), 'failure'])('shows upload errors and allows another attempt', async error => {
+    const uploadAssets = vi.fn().mockRejectedValue(error);
+    configureHost({ uploadAssets });
+    render(AssetBrowser, { extensions: ['png'], shaderPath: '/test/main.glsl', onSelect: vi.fn(), postMessage: vi.fn() });
+    await fireEvent.change(screen.getByLabelText('Upload assets'), { target: { files: [new File(['image'], 'a.png')] } });
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(error instanceof Error ? error.message : 'Could not upload assets.'));
+    expect(screen.getByTitle('Upload from device')).not.toBeDisabled();
+  });
+
+  it('does not select anything if the upload service returns no assets', async () => {
+    configureHost({ uploadAssets: vi.fn().mockResolvedValue([]) });
+    const onSelect = vi.fn();
+    render(AssetBrowser, { extensions: ['png'], shaderPath: '/test/main.glsl', onSelect, postMessage: vi.fn() });
+    await fireEvent.change(screen.getByLabelText('Upload assets'), { target: { files: [new File(['image'], 'a.png')] } });
+    await tick();
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(screen.getByTitle('Upload from device')).not.toBeDisabled();
+  });
   let mockPostMessage: FunctionMock;
   let mockOnSelect: FunctionMock;
   let messageHandler: ((event: MessageEvent) => void) | null = null;

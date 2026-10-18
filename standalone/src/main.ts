@@ -40,6 +40,7 @@ configureHost({
     transport.settings.update('editor.wordWrap', value);
   },
   defaultAssets: defaultAssets(),
+  uploadAssets: (files, shaderPath) => transport.uploadAssets(files, shaderPath),
   capabilities: { compileOnSave: false },
 });
 
