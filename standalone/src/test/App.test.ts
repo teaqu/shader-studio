@@ -253,15 +253,21 @@ describe('standalone App', () => {
 
       await fireEvent.click(within(bar).getByRole('button', { name: 'Workspace' }));
       expect(within(bar).getByRole('menu', { name: 'Workspace' })).toBeTruthy();
-      // jsdom has no modal dialogs.
-      const original = HTMLDialogElement.prototype.showModal;
-      const showModal = vi.fn();
-      HTMLDialogElement.prototype.showModal = showModal;
+      // jsdom has no modal dialogs. Close the panel before restoring them, so
+      // it unmounts while its dialog methods still exist.
+      const { showModal, close } = HTMLDialogElement.prototype;
+      HTMLDialogElement.prototype.showModal = vi.fn(function (this: HTMLDialogElement) {
+        this.setAttribute('open', '');
+      });
+      HTMLDialogElement.prototype.close = vi.fn();
       try {
         await fireEvent.click(within(bar).getByRole('button', { name: 'Settings' }));
-        expect(showModal).toHaveBeenCalled();
+        expect(HTMLDialogElement.prototype.showModal).toHaveBeenCalled();
+        await fireEvent.click(screen.getByRole('button', { name: 'Close settings' }));
+        expect(HTMLDialogElement.prototype.close).toHaveBeenCalled();
       } finally {
-        HTMLDialogElement.prototype.showModal = original;
+        HTMLDialogElement.prototype.showModal = showModal;
+        HTMLDialogElement.prototype.close = close;
       }
     });
 

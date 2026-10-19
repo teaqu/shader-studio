@@ -84,7 +84,24 @@ test.describe('phone editor on iOS', () => {
   // with an iPhone user agent: Monaco picks its iOS touch handling from it.
   test.use({
     userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-    permissions: ['clipboard-read', 'clipboard-write'],
+  });
+
+  // On macOS the browser clipboard is the system pasteboard, shared with every
+  // parallel worker, so another spec can replace its text mid-test. Give each
+  // page its own clipboard behind the same API the editor reads.
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      let text = '';
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          readText: async () => text,
+          writeText: async (value) => {
+            text = String(value);
+          },
+        },
+      });
+    });
   });
 
   async function openPhoneEditor(page) {
@@ -119,6 +136,8 @@ test.describe('phone editor on iOS', () => {
   test('a long press opens Cut, Copy and Paste, and Paste inserts the clipboard text', async ({ page }) => {
     const editor = await openPhoneEditor(page);
     await page.evaluate(() => navigator.clipboard.writeText('pasted_from_menu'));
+    // A long press is often the first touch on the editor, so start unfocused.
+    await page.evaluate(() => (document.activeElement instanceof HTMLElement) && document.activeElement.blur());
 
     await longPress(page, editor.locator('.view-line').first());
 

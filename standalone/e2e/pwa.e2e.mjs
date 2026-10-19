@@ -242,6 +242,10 @@ test(`automatically installing a newer build keeps pending edits (${mobile ? 'mo
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await reloaded;
 
+    if (mobile) {
+      // Phones show the save and build status in Studio instead of a header.
+      await page.getByRole('navigation', { name: 'Workspace panels' }).getByRole('button', { name: 'Studio' }).click();
+    }
     await expect(page.getByRole('status')).toHaveAttribute('title', /Build next-build/);
     await expect(page.getByRole('button', { name: 'Update ready' })).toHaveCount(0);
     await expect(page.getByTestId('shader-option-aurora-glsl')).toHaveAttribute('aria-pressed', 'true');
