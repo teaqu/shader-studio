@@ -29,7 +29,7 @@ Double-click a pass card's name in the config panel to open that pass's file. Op
 
 ## Preview a Buffer
 
-Click a render pass card's **eye button** to see its output with the current shader's inputs and Common code. The **Viewing** badge marks the previewed pass; selecting a different settings card does not change the output. The label above the canvas shows the shader file and previewed pass. Click Image's eye to return to the final output. The same action is available as **Preview this pass** in the card's right-click menu.
+Click a render pass card's **eye button** to see its output with the current shader's inputs and Common code. The **Viewing** badge marks the previewed pass; selecting a different settings card does not change the output. Click Image's eye to return to the final output. The same action is available as **Preview this pass** in the card's right-click menu.
 
 Choose **Preview file standalone** in a buffer card's right-click menu to make its source file the active shader. This uses that file's own matching `.sha.json`, if present, rather than the parent's inputs. A buffer that requires the parent's Common code or inputs may fail to compile standalone. This explicit choice preserves the lock setting; a manual lock moves to the chosen file.
 

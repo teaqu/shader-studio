@@ -77,7 +77,7 @@ Each buffer pass uses a `.glsl`, `.slang`, or `.wgsl` file to produce an image t
 
 Choose **+ New → Cubemap** to create a cubemap buffer. Its Output section sets the square face size (512 pixels by default). To use the result, add a Buffer channel to a later pass and select the cubemap pass in **Misc**. Sample it with a three-component direction vector rather than a two-component UV coordinate. See [Cubemap Buffers](#cubemap-buffers) for a complete walkthrough.
 
-The **File** row shows an editable path. **Change…** opens a chooser with files already used by the config, **Browse workspace…**, and **Create**. Several passes can use the same source file, each selecting a different function. Standalone’s Browse action selects files from its virtual workspace.
+The **Shader file** picker shows the pass's file. Click it to choose from the files already used by the config, or use **Browse workspace…**, **Create file…**, or **Enter a path…** to type one. **Open editor** opens the pass's file. Several passes can use the same source file, each selecting a different function. Standalone’s Browse action selects files from its virtual workspace.
 
 Three path forms are supported:
 
@@ -87,7 +87,7 @@ Three path forms are supported:
 | Absolute | `/Users/me/project/flow.glsl` | Filesystem root |
 | Workspace-root | `@/src/flow.glsl` | VS Code workspace root (`/` of the virtual workspace in the standalone browser host) |
 
-**Create** generates a source template using the shader mode preference. For WGSL/Slang, **Render output → Function** shows the selected fragment function; use the picker when multiple functions are available. **+ Add…** inserts a native fragment function or built-in `mainImage` into that file. A native fragment can run without `mainImage`, and native templates use the generated vertex stage until you request a custom one. GLSL has no fragment function selector or Built-in/Native chooser because it uses the fixed `mainImage` hook.
+**Create file…** generates a source template using the shader mode preference. For WGSL/Slang, **Render output → Function** shows the selected fragment function; use the picker when multiple functions are available. **+ Add…** inserts a native fragment function or built-in `mainImage` into that file. A native fragment can run without `mainImage`, and native templates use the generated vertex stage until you request a custom one. GLSL has no fragment function selector or Built-in/Native chooser because it uses the fixed `mainImage` hook.
 
 The pass sections are arranged as Fragment source/functions, Channels, Geometry, Rendering, Resolution, Output, and Vertex shader. Image omits the file chooser. **Output** selects 2D or Cubemap, its cubemap face size, the buffer format, and read-only [inferred output slots and names](multiple-render-targets.md).
 
@@ -166,7 +166,7 @@ GLSL fragment shaders and Slang fragment or compute shaders can generate cubemap
 ### Create and Preview a Cubemap
 
 1. Open a GLSL or Slang shader and choose **Config → + New → Cubemap**.
-2. In the new pass, choose **File → Change… → Create** to create a starter shader, or choose an existing file containing `mainCubemap`.
+2. In the new pass, click the **Shader file** picker and choose **Create file…** to create a starter shader, or choose an existing file containing `mainCubemap`.
 3. In **Output**, set **Face size** (512 pixels by default).
 4. In **Preview**, choose **Face**, **Cross layout**, or **Environment** to inspect the result. The starter colors each direction differently.
 5. Choose **Image output** to return to your final shader image.
@@ -257,7 +257,7 @@ Each storage buffer has its own card, labeled **Storage buffer** with its elemen
 
 ## Compute Passes
 
-Use **+ New → Compute** to add a compute pass, then use **File → Change…** to select, reuse, or create its `.slang` or `.wgsl` source. Choose a compute function row or use **Add function…**. Compute has Channels, Dispatch, Execution, and Output settings, with no Built-in mode, vertex stage, or geometry section.
+Use **+ New → Compute** to add a compute pass, then use the **Shader file** picker to select, reuse, or create its `.slang` or `.wgsl` source. Choose a compute function row or use **Add function…**. Compute has Channels, Dispatch, Execution, and Output settings, with no Built-in mode, vertex stage, or geometry section.
 See [Compute Passes](compute.md) for shader examples, storage buffers, and dispatch settings.
 
 ---

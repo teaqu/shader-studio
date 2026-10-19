@@ -49,7 +49,7 @@ An upload never replaces an existing file. If a filename is already present, ren
 
 **Files** is a separate dockable pane alongside **Shader Explorer**, available only in standalone. Use **View → Files** to show or hide it. Drag its header to move the pane; the layout is remembered after reload. No `/shaders` wrapper is required.
 
-Starter files and newly created shaders live at the workspace root. Existing standalone workspaces move files out of the old `/shaders` wrapper once and update their references. If a destination conflicts with an existing root file, the old folder is kept intact so nothing is overwritten.
+Starter files and newly created shaders live at the workspace root. A workspace created by an earlier version keeps its `/shaders` folder as it is; its shaders still open and run from there.
 
 - Click a folder to expand or collapse it. Use the filter field to find a filename or path.
 - Ctrl/Cmd-click to toggle files in a selection or Shift-click to select a range. Ctrl/Cmd+A selects all visible rows. Every selected row stays highlighted.

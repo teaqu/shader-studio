@@ -63,7 +63,7 @@ In multi-pass shaders, the active debug target is automatically determined by wh
 
 ## Toggling Inline Rendering
 
-When a selected line is being rendered, the config card for its pass shows **Viewing · L24** (using the current line number), and the canvas label identifies the shader, pass and line. Selecting another settings card does not change the debug target. The pass eye buttons are unavailable while line rendering controls the output; turn **Inline Rendering** off to return to the pass preview you chose before debugging.
+When a selected line is being rendered, the config card for its pass shows **Viewing · L24** (using the current line number). Selecting another settings card does not change the debug target. The pass eye buttons are unavailable while line rendering controls the output; turn **Inline Rendering** off to return to the pass preview you chose before debugging.
 
 Inline rendering can be toggled independently from debug mode itself. When inline rendering is off but debug mode is still on:
 
