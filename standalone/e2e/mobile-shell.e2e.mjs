@@ -196,6 +196,10 @@ test.describe('phone editor on iOS', () => {
     const bar = editor.getByRole('toolbar', { name: 'Touch editing' });
     await expect(bar).toBeInViewport();
     await expect(bar.getByRole('button', { name: 'Copy' })).toBeDisabled();
+    // One row: the pane's own options live at the end of the touch bar.
+    await expect(page.getByRole('toolbar', { name: 'Editor options' })).toHaveCount(0);
+    await expect(bar.getByRole('button', { name: 'Wrap text' })).toHaveCount(1);
+    await expect(bar.getByRole('button', { name: 'Enable Vim mode' })).toHaveCount(1);
 
     const select = bar.getByRole('button', { name: 'Select' });
     await select.tap();

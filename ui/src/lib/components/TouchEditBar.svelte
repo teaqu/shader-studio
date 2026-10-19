@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import type { Snippet } from "svelte";
   import {
     canRedo, canUndo, copySelection, cutSelection, hasSelectedText, openEditorMenu, pasteClipboard, redoEdit,
     selectAll, TouchDragSelection, undoEdit,
@@ -10,9 +11,11 @@
   interface Props {
     editor: TouchEditor;
     clipboard?: TouchClipboard;
+    /** Host options such as Wrap and Vim, kept in the same row. */
+    extras?: Snippet;
   }
 
-  let { editor, clipboard = globalThis.navigator?.clipboard }: Props = $props();
+  let { editor, clipboard = globalThis.navigator?.clipboard, extras }: Props = $props();
 
   let selecting = $state(false);
   let hasSelection = $state(false);
@@ -125,6 +128,10 @@
       openEditorMenu(editor);
     }}
   >Menu</button>
+  {#if extras}
+    <span class="touch-edit-separator" aria-hidden="true"></span>
+    {@render extras()}
+  {/if}
   {#if message}<span class="touch-edit-message" role="status">{message}</span>{/if}
 </div>
 
@@ -156,6 +163,13 @@
     border-color: var(--vscode-focusBorder, #007fd4);
     background: var(--vscode-button-background, #0e639c);
     color: var(--vscode-button-foreground, #fff);
+  }
+
+  .touch-edit-separator {
+    flex: 0 0 1px;
+    align-self: stretch;
+    margin: 6px 2px;
+    background: var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
   }
 
   .touch-edit-bar button:disabled {

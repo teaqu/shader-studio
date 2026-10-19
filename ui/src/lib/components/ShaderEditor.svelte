@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy, untrack } from "svelte";
+  import { onMount, onDestroy, untrack, type Snippet } from "svelte";
   import type { Transport } from "../transport/MessageTransport";
   import * as monaco from "monaco-editor/editor/editor.api.js";
   // Monaco's `editor.api` entrypoint ships the API only: every editor
@@ -73,6 +73,8 @@
     displayMode?: "overlay" | "pane";
     /** Portal for Monaco completion/hover widgets when an ancestor clips or transforms them. */
     overflowWidgetsDomNode?: HTMLElement;
+    /** Host editor options shown at the end of the touch editing bar, so touch screens get one row. */
+    touchBarExtras?: Snippet;
   }
 
   interface OverlayKeyEvent {
@@ -111,6 +113,7 @@
     onCursorChange = (_line: number, _lineContent: string, _bufferName: string) => {},
     displayMode = "overlay",
     overflowWidgetsDomNode = undefined,
+    touchBarExtras = undefined,
   }: Props = $props();
 
   const activePassName = $derived(
@@ -1132,7 +1135,7 @@
       bind:this={containerEl}
     ></div>
     {#if touchEditor}
-      <TouchEditBar editor={touchEditor} />
+      <TouchEditBar editor={touchEditor} extras={touchBarExtras} />
     {/if}
     {#if vimMode}
       <div class="vim-status-bar" bind:this={statusBarEl}></div>

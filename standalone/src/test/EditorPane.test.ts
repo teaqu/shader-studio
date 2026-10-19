@@ -3,10 +3,15 @@ import { fireEvent, render } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import ShaderEditorStub from './ShaderEditorStub.svelte';
 
+const pointer = vi.hoisted(() => ({ coarse: false }));
+
 vi.mock('@shader-studio/ui', async () => {
   const { getViewerSession } = await import('@shader-studio/ui/lib/state/viewerSession.svelte');
   const { getHostEditorWordWrap, toggleHostEditorWordWrap } = await import('@shader-studio/ui/lib/state/hostState.svelte');
-  return { getViewerSession, getHostEditorWordWrap, toggleHostEditorWordWrap, ShaderEditor: ShaderEditorStub };
+  return {
+    getViewerSession, getHostEditorWordWrap, toggleHostEditorWordWrap, ShaderEditor: ShaderEditorStub,
+    prefersTouchEditing: () => pointer.coarse,
+  };
 });
 
 import { clearEditorDocuments } from '../state/editorDocuments.svelte';
@@ -247,6 +252,54 @@ describe('file-specific editors', () => {
     await getByRole('button', { name: 'Open in separate editor' }).click();
     expect(getRequestedEditor()).toBe('/buffer.glsl');
     resetShellState();
+  });
+
+  describe('on touch screens', () => {
+    beforeEach(() => {
+      pointer.coarse = true;
+      return () => {
+        pointer.coarse = false;
+        resetShellState();
+      };
+    });
+
+    it('moves Wrap, Open in separate editor and Vim into the touch editing bar', async () => {
+      const settings = new StandaloneSettings({ getItem: () => null, setItem: () => {} });
+      const disconnect = connectSettings(settings);
+      configureHost({ getEditorPreferences, setEditorWordWrap: value => settings.update('editor.wordWrap', value) });
+      try {
+        setViewerSession(createSession({ shaderPath: '/buffer.glsl' }));
+        const { getByRole, queryByRole } = render(EditorPane);
+        await tick();
+
+        expect(queryByRole('toolbar', { name: 'Editor options' })).toBeNull();
+        const bar = getByRole('toolbar', { name: 'Touch editing' });
+        for (const name of ['Wrap text', 'Open in separate editor', 'Enable Vim mode']) {
+          const button = getByRole('button', { name });
+          expect(bar.contains(button)).toBe(true);
+          expect(button.classList.contains('touch')).toBe(true);
+        }
+
+        await fireEvent.click(getByRole('button', { name: 'Enable Vim mode' }));
+        expect(getByRole('button', { name: 'Disable Vim mode' })).toHaveAttribute('aria-pressed', 'true');
+        await fireEvent.click(getByRole('button', { name: 'Open in separate editor' }));
+        expect(getRequestedEditor()).toBe('/buffer.glsl');
+      } finally {
+        disconnect();
+        resetHost();
+      }
+    });
+
+    it('gives a separately opened file the same single row', async () => {
+      clearEditorDocuments();
+      const transport = { readEditorFile: vi.fn().mockResolvedValue('file source') } as unknown as WebTransport;
+      const { findByRole, queryByRole, queryByText } = render(EditorPane, { path: '/touch.glsl', transport });
+
+      const bar = await findByRole('toolbar', { name: 'Touch editing' });
+      expect(bar.contains(await findByRole('button', { name: 'Enable Vim mode' }))).toBe(true);
+      expect(queryByText('Open in separate editor')).toBeNull();
+      expect(queryByRole('toolbar', { name: 'Editor options' })).toBeNull();
+    });
   });
 });
 

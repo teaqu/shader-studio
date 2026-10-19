@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
-import { tick } from 'svelte';
+import { createRawSnippet, tick } from 'svelte';
 import { describe, expect, it, vi } from 'vitest';
 import TouchEditBar from '../../lib/components/TouchEditBar.svelte';
 import type { TouchClipboard, TouchEditor } from '../../lib/editor/touchSelection';
@@ -243,6 +243,20 @@ describe('TouchEditBar', () => {
       screen.getByRole('button', { name }).dispatchEvent(event);
       expect(event.defaultPrevented).toBe(true);
     }
+  });
+
+  it('ends the row with host options after a separator, and has none by default', () => {
+    const fake = createEditor([collapsed]);
+    const plain = render(TouchEditBar, { props: { editor: fake.typed, clipboard: createClipboard() } });
+    expect(plain.container.querySelector('.touch-edit-separator')).toBeNull();
+    plain.unmount();
+
+    const extras = createRawSnippet(() => ({ render: () => '<button type="button">Wrap</button>' }));
+    render(TouchEditBar, { props: { editor: fake.typed, clipboard: createClipboard(), extras } });
+    const bar = screen.getByRole('toolbar', { name: 'Touch editing' });
+    const buttons = [...bar.querySelectorAll('button')].map((button) => button.textContent);
+    expect(buttons.at(-1)).toBe('Wrap');
+    expect(bar.querySelector('.touch-edit-separator')).not.toBeNull();
   });
 
   it('stops listening to the editor when removed', () => {

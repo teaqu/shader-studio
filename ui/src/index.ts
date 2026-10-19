@@ -17,4 +17,5 @@ export type {
 export { getViewerSession } from './lib/state/viewerSession.svelte';
 export type { ViewerSession } from './lib/state/viewerSession.svelte';
 export { default as ShaderEditor } from './lib/components/ShaderEditor.svelte';
+export { prefersTouchEditing } from './lib/editor/createShaderEditor.svelte';
 export { getSlangAssetUrls } from './lib/slangAssets';
