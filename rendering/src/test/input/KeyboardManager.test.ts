@@ -174,6 +174,25 @@ describe("KeyboardManager", () => {
       expect(keyboardManager.getKeyHeld()[87]).toBe(0);
     });
 
+    it('keeps a press for the next frame when everything is released before it renders', () => {
+      // Input replay releases everything just after its last event; a short tap
+      // that no frame has seen yet must still reach the keyboard press row.
+      keyboardManager.inject('Space', true);
+      keyboardManager.inject('Space', false);
+      keyboardManager.releaseAll();
+      expect(keyboardManager.getKeyHeld()[32]).toBe(0);
+      expect(keyboardManager.getKeyPressed()[32]).toBe(255);
+      keyboardManager.clearPressed();
+      expect(keyboardManager.getKeyPressed()[32]).toBe(0);
+    });
+
+    it('drops pending presses when the window loses focus', () => {
+      keyboardManager.setupEventListeners();
+      keyboardManager.inject('Space', true);
+      window.dispatchEvent(new Event('blur'));
+      expect(keyboardManager.getKeyPressed()[32]).toBe(0);
+    });
+
     it('reports injected and physical events, then stops after subscription disposal', () => {
       keyboardManager.setupEventListeners();
       const listener = vi.fn();

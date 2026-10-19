@@ -95,13 +95,15 @@ export class KeyboardManager {
     this.listeners.add(listener); return { dispose: () => this.listeners.delete(listener) };
   }
 
-  /** Releases all held keys while retaining toggle state, matching key-up events. */
+  /**
+   * Releases all held keys, matching key-up events: toggles and presses no frame
+   * has rendered yet are kept, so a tap just before the release still counts.
+   */
   public releaseAll(): void {
     for (const code of this.getHeldCodes()) {
       this.emit(code, false, 'injected');
     }
     this.keyHeld.fill(0);
-    this.keyPressed.fill(0);
   }
 
   public getHeldCodes(): string[] {
