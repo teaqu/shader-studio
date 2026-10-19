@@ -158,10 +158,9 @@
   $effect(() => {
     const path = getSelectedEditor();
     if (path && layout) {
+      // Opening a shader keeps the phone shell where it is; the Editor tab
+      // already shows the selected file.
       layout.selectEditor(path);
-      if (layout.isMobileLayout()) {
-        layout.selectMobilePanel('editor');
-      }
       selectEditor(null);
     }
   });

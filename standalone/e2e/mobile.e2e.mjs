@@ -188,9 +188,8 @@ test('phone shell preserves the selected shader across Explorer, Preview, Editor
   await workspaceNav.getByRole('button', { name: 'Explorer' }).click();
   const explorer = page.getByTestId('web-shader-explorer');
   await expect(explorer).toBeInViewport();
-  // Selecting a shader immediately changes the active phone panel, so dispatch
-  // the complete click without waiting for the selected card to remain mounted.
-  await explorer.getByTestId('shader-option-aurora-glsl').dispatchEvent('click');
+  await explorer.getByTestId('shader-option-aurora-glsl').click();
+  await expect(workspaceNav.getByRole('button', { name: 'Explorer' })).toHaveAttribute('aria-current', 'page');
 
   await workspaceNav.getByRole('button', { name: 'Preview' }).click();
   await expect(page.getByTestId('web-preview')).toBeInViewport();
@@ -228,9 +227,7 @@ test('touch input survives cancellation and remains usable after orientation cha
   await page.goto('/');
   const nav = page.getByRole('navigation', { name: 'Workspace panels' });
   await nav.getByRole('button', { name: 'Explorer' }).click();
-  // Selection navigates away from Explorer immediately, detaching the card
-  // before Playwright's multi-step pointer action can finish.
-  await page.getByTestId('shader-option-aurora-glsl').dispatchEvent('click');
+  await page.getByTestId('shader-option-aurora-glsl').click();
   await nav.getByRole('button', { name: 'Preview' }).click();
   const canvas = page.getByTestId('web-preview').locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
   await expect(canvas).toBeVisible();
@@ -376,9 +373,11 @@ async function openAuroraOnPhone(page) {
   await page.goto('/');
   const nav = page.getByRole('navigation', { name: 'Workspace panels' });
   await nav.getByRole('button', { name: 'Explorer' }).click();
-  // Selection moves the phone to the Editor at once, detaching the card.
-  await page.getByTestId('shader-option-aurora-glsl').dispatchEvent('click');
-  await expect(nav.getByRole('button', { name: 'Editor' })).toHaveAttribute('aria-current', 'page');
+  await page.getByTestId('shader-option-aurora-glsl').click();
+  await expect(page.getByTestId('shader-option-aurora-glsl')).toHaveAttribute('aria-pressed', 'true');
+  // Selection leaves the phone on Explorer; the Editor tab shows the shader.
+  await expect(nav.getByRole('button', { name: 'Explorer' })).toHaveAttribute('aria-current', 'page');
+  await nav.getByRole('button', { name: 'Editor' }).click();
   return nav;
 }
 

@@ -58,3 +58,23 @@ test('the phone tools include VR', async ({ page }) => {
   await expect(page.getByRole('navigation', { name: 'Tools' }).getByRole('button'))
     .toHaveText(['Config', 'Debug', 'Frame Times', 'Export', 'VR']);
 });
+
+test('opening a shader from the phone Explorer stays on Explorer without revealing the editor', async ({ page }) => {
+  await page.goto('/');
+  const nav = page.getByRole('navigation', { name: 'Workspace panels' });
+  await nav.getByRole('button', { name: 'Explorer' }).click();
+  await page.getByTestId('shader-option-aurora-glsl').click();
+  await page.getByTestId('shader-option-nebula-texture-glsl').click();
+
+  await expect(page.getByTestId('shader-option-nebula-texture-glsl')).toHaveAttribute('aria-pressed', 'true');
+  await expect(nav.getByRole('button', { name: 'Explorer' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByTestId('shader-option-nebula-texture-glsl')).toBeInViewport();
+  // Dockview hides groups without emptying their boxes, so check what is on screen.
+  const editor = page.locator('[data-testid="file-editor"][data-path="/nebula-texture.glsl"]');
+  await expect(editor.locator('.view-lines')).toContainText('mainImage');
+  await expect(editor.locator('.view-lines')).not.toBeInViewport();
+
+  await nav.getByRole('button', { name: 'Editor' }).click();
+  await expect(editor.locator('.view-lines')).toBeInViewport();
+  await expect(editor.locator('.view-lines')).toContainText('mainImage');
+});

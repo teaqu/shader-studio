@@ -290,16 +290,22 @@ export class StandaloneLayoutController {
     }
     const existing = this.api.getPanel(`editor:${path}`);
     if (existing) {
-      existing.api.group.api.setVisible(true);
+      this.revealEditorGroup(existing.api.group);
       existing.api.setActive();
       return;
     }
     const active = this.api.getPanel(this.activeEditorId);
     if (!active || active.id === 'editor') {
-      this.showPanel('editor');
+      const editor = this.api.getPanel('editor');
+      if (editor) {
+        this.revealEditorGroup(editor.api.group);
+        editor.api.setActive();
+      } else {
+        this.addPanel('editor');
+      }
       return;
     }
-    active.api.group.api.setVisible(true);
+    this.revealEditorGroup(active.api.group);
     this.api.addPanel({
       id: `editor:${path}`, component: 'file-editor', title: path.split('/').pop() || path,
       params: { path }, renderer: 'always',
@@ -316,19 +322,34 @@ export class StandaloneLayoutController {
     const id = `editor:${path}`;
     const existing = this.api.getPanel(id);
     if (existing) {
-      existing.api.group.api.setVisible(true);
+      this.revealEditorGroup(existing.api.group);
       existing.api.setActive();
       return;
     }
     const reference = this.api.getPanel('editor')
       ?? this.api.panels.find((panel) => panel.id.startsWith('editor:'));
-    reference?.api.group.api.setVisible(true);
+    if (reference) {
+      this.revealEditorGroup(reference.api.group);
+    }
     this.api.addPanel({
       id, component: 'file-editor', title: path.split('/').pop() || path,
       params: { path }, renderer: 'always',
       ...(reference ? { position: { referencePanel: reference.id, direction: 'within' } } : {}),
     });
     this.api.getPanel(id)?.api.setActive();
+  }
+
+  /**
+   * The phone shell shows one group at a time, so opening a file there must
+   * not reveal the editor beside the current destination. The group is shown
+   * again when the user picks Editor or returns to the desktop layout.
+   */
+  private revealEditorGroup(group: PanelGroup): void {
+    if (!this.desktopVisibility) {
+      group.api.setVisible(true);
+      return;
+    }
+    this.desktopVisibility.set(group, true);
   }
 
   closeEditorPaths(paths: readonly string[]): void {

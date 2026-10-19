@@ -760,6 +760,84 @@ describe('phone shell editor panel', () => {
   });
 });
 
+describe('opening editors from the phone shell', () => {
+  function onPhoneExplorer() {
+    const api = createApi();
+    const controller = new StandaloneLayoutController(api, null);
+    controller.initialize();
+    controller.showMobilePanel('explorer');
+    const editorGroup = api.getPanel('editor')!.api.group;
+    return { api, controller, editorGroup };
+  }
+
+  it('selects the main editor without showing it beside the Explorer', () => {
+    const { api, controller, editorGroup } = onPhoneExplorer();
+
+    controller.selectEditor('/picked.glsl');
+
+    expect(api.getPanel('editor')?.api.setActive).toHaveBeenCalled();
+    expect(editorGroup.api.isVisible).toBe(false);
+    expect(api.getPanel('explorer')?.api.group.api.isVisible).toBe(true);
+    controller.restoreDesktopPanels();
+    expect(editorGroup.api.isVisible).toBe(true);
+  });
+
+  it('replaces the active file editor without showing it beside the Explorer', () => {
+    const api = createApi();
+    const controller = new StandaloneLayoutController(api, null);
+    controller.initialize();
+    controller.openEditor('/first.glsl');
+    api.activate('editor:/first.glsl');
+    controller.showMobilePanel('explorer');
+    const editorGroup = api.getPanel('editor:/first.glsl')!.api.group;
+
+    controller.selectEditor('/next.glsl');
+
+    expect(api.getPanel('editor:/next.glsl')?.api.setActive).toHaveBeenCalled();
+    expect(editorGroup.api.isVisible).toBe(false);
+    controller.showMobilePanel('editor');
+    expect(api.getPanel('editor:/next.glsl')?.api.group.api.isVisible).toBe(true);
+    expect(api.getPanel('explorer')?.api.group.api.isVisible).toBe(false);
+  });
+
+  it('activates an already open file editor without showing it beside the Explorer', () => {
+    const { api, controller, editorGroup } = onPhoneExplorer();
+    controller.openEditor('/open.glsl');
+    vi.mocked(api.getPanel('editor:/open.glsl')!.api.setActive).mockClear();
+
+    controller.selectEditor('/open.glsl');
+    controller.openEditor('/open.glsl');
+
+    expect(api.getPanel('editor:/open.glsl')?.api.setActive).toHaveBeenCalledTimes(2);
+    expect(editorGroup.api.isVisible).toBe(false);
+  });
+
+  it('opens a new file editor in the hidden editor group', () => {
+    const { api, controller, editorGroup } = onPhoneExplorer();
+
+    controller.openEditor('/notes.txt');
+
+    expect(api.getPanel('editor:/notes.txt')?.api.group).toBe(editorGroup);
+    expect(editorGroup.api.isVisible).toBe(false);
+    controller.restoreDesktopPanels();
+    expect(editorGroup.api.isVisible).toBe(true);
+  });
+
+  it('keeps a desktop editor that was hidden before the phone shell visible after one is opened', () => {
+    const api = createApi();
+    const controller = new StandaloneLayoutController(api, null);
+    controller.initialize();
+    const editorGroup = api.getPanel('editor')!.api.group;
+    editorGroup.api.setVisible(false);
+    controller.showMobilePanel('explorer');
+
+    controller.openEditor('/notes.txt');
+    controller.restoreDesktopPanels();
+
+    expect(editorGroup.api.isVisible).toBe(true);
+  });
+});
+
 describe('leaving the phone shell', () => {
   it('puts every desktop group back at the size it had before phone mode', () => {
     const api = createApi();
