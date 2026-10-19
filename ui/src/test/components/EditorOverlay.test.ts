@@ -1005,6 +1005,14 @@ describe('EditorOverlay', () => {
       },
     );
 
+    it('should load the Monaco menu and its Cut, Copy and Paste entries for touch long presses', () => {
+      render(EditorOverlay, { props: defaultProps });
+      const contributionLoadState = (globalThis as any).__monacoContributionLoadState;
+
+      expect(contributionLoadState.contextMenu).toBeGreaterThan(0);
+      expect(contributionLoadState.clipboard).toBeGreaterThan(0);
+    });
+
     it('should replace the editor contents when the shader file changes while the editor is focused', async () => {
       const monaco = await import('monaco-editor');
       const { mockEditor } = createMockEditorWithCallbacks();

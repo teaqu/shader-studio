@@ -78,3 +78,55 @@ test('opening a shader from the phone Explorer stays on Explorer without reveali
   await expect(editor.locator('.view-lines')).toBeInViewport();
   await expect(editor.locator('.view-lines')).toContainText('mainImage');
 });
+
+test.describe('phone editor on iOS', () => {
+  // WebKit is not available everywhere this suite runs, so Chromium stands in
+  // with an iPhone user agent: Monaco picks its iOS touch handling from it.
+  test.use({
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+    permissions: ['clipboard-read', 'clipboard-write'],
+  });
+
+  async function openPhoneEditor(page) {
+    await page.goto('/');
+    const nav = page.getByRole('navigation', { name: 'Workspace panels' });
+    await nav.getByRole('button', { name: 'Explorer' }).click();
+    await page.getByTestId('shader-option-aurora-glsl').click();
+    await nav.getByRole('button', { name: 'Editor' }).click();
+    const editor = page.locator('[data-testid="file-editor"][data-path="/aurora.glsl"]');
+    await expect(editor.locator('.view-lines')).toBeInViewport();
+    return editor;
+  }
+
+  async function longPress(page, locator) {
+    const box = await locator.boundingBox();
+    const point = { x: box.x + 40, y: box.y + 10 };
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
+    await page.waitForTimeout(900);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  }
+
+  test('focusing the editor uses a text field large enough that Safari does not zoom', async ({ page }) => {
+    const editor = await openPhoneEditor(page);
+    await editor.locator('.view-lines').tap();
+    const input = editor.locator('textarea.inputarea');
+    await expect(input).toBeFocused();
+    // Safari zooms into any focused text field under 16px.
+    expect(await input.evaluate((node) => parseFloat(getComputedStyle(node).fontSize))).toBeGreaterThanOrEqual(16);
+  });
+
+  test('a long press opens Cut, Copy and Paste, and Paste inserts the clipboard text', async ({ page }) => {
+    const editor = await openPhoneEditor(page);
+    await page.evaluate(() => navigator.clipboard.writeText('pasted_from_menu'));
+
+    await longPress(page, editor.locator('.view-line').first());
+
+    const menu = page.locator('.monaco-menu');
+    for (const name of ['Cut', 'Copy', 'Paste']) {
+      await expect(menu.getByRole('menuitem', { name })).toBeVisible();
+    }
+    await menu.getByRole('menuitem', { name: 'Paste' }).click();
+    await expect(editor.locator('.view-lines')).toContainText('pasted_from_menu');
+  });
+});

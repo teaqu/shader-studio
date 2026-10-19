@@ -18,6 +18,9 @@
   import "monaco-editor/editor/contrib/documentSymbols/browser/documentSymbols";
   import "monaco-editor/editor/standalone/browser/quickAccess/standaloneGotoSymbolQuickAccess";
   import "monaco-editor/editor/contrib/wordHighlighter/browser/wordHighlighter";
+  // The touch long-press menu and its Cut, Copy and Paste entries.
+  import "monaco-editor/editor/contrib/contextmenu/browser/contextmenu";
+  import "monaco-editor/editor/contrib/clipboard/browser/clipboard";
   import { initVimMode, VimMode } from "monaco-vim";
   import { setCompilerMarkers } from "@shader-studio/monaco";
   import type { AuthoringResource, ShaderConfig, ShaderLanguageId, ShaderStage, SlangSourceModule } from "@shader-studio/types";
@@ -1130,6 +1133,15 @@
 {/if}
 
 <style>
+  /* Safari zooms into any focused text field under 16px, and Monaco moves its
+     hidden input to the cursor, so the page re-zoomed on every tap. The input
+     is invisible, so its size does not change how the code looks. */
+  @media (pointer: coarse) {
+    .editor-wrapper :global(.monaco-editor textarea.inputarea) {
+      font-size: 16px !important;
+    }
+  }
+
   .editor-wrapper {
     position: absolute;
     top: 0;

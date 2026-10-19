@@ -142,6 +142,8 @@ const monacoContributionLoadState = vi.hoisted(() => ({
   documentSymbols: 0,
   gotoSymbolQuickAccess: 0,
   wordHighlighter: 0,
+  contextMenu: 0,
+  clipboard: 0,
 }));
 
 (globalThis as any).__monacoContributionLoadState = monacoContributionLoadState;
@@ -288,6 +290,14 @@ vi.mock('monaco-editor/editor/standalone/browser/quickAccess/standaloneGotoSymbo
 });
 vi.mock('monaco-editor/editor/contrib/wordHighlighter/browser/wordHighlighter', () => {
   monacoContributionLoadState.wordHighlighter += 1;
+  return {};
+});
+vi.mock('monaco-editor/editor/contrib/contextmenu/browser/contextmenu', () => {
+  monacoContributionLoadState.contextMenu += 1;
+  return {};
+});
+vi.mock('monaco-editor/editor/contrib/clipboard/browser/clipboard', () => {
+  monacoContributionLoadState.clipboard += 1;
   return {};
 });
 
