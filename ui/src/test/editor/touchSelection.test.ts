@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  copySelection, cutSelection, hasSelectedText, openEditorMenu, pasteClipboard, selectAll, selectedText, TouchDragSelection,
+  canRedo, canUndo, copySelection, cutSelection, hasSelectedText, openEditorMenu, pasteClipboard, redoEdit, selectAll,
+  selectedText, TouchDragSelection, undoEdit,
   type TouchClipboard, type TouchEditor,
 } from '../../lib/editor/touchSelection';
 
@@ -26,6 +27,8 @@ function createEditor(lines: string[], selections: FakeRange[] | null = [range(1
     }),
     getEOL: vi.fn(() => '\n'),
     getFullModelRange: vi.fn(() => range(1, 1, lines.length, lines[lines.length - 1].length + 1)),
+    canUndo: vi.fn(() => false),
+    canRedo: vi.fn(() => false),
   };
   // Positions come from a simple grid: 10px per column, 20px per line.
   const positionAt = (x: number, y: number) => (y < 0 ? null : { lineNumber: Math.floor(y / 20) + 1, column: Math.floor(x / 10) + 1 });
@@ -133,6 +136,28 @@ describe('touch selection clipboard commands', () => {
     const noCursor = createEditor(['abc'], null);
     await expect(pasteClipboard(noCursor.typed, createClipboard('text'))).resolves.toBe(false);
     expect(noCursor.editor.executeEdits).not.toHaveBeenCalled();
+  });
+
+  it('undoes and redoes through the editor, like the keyboard shortcuts', () => {
+    const { editor, typed } = createEditor(['abc']);
+    undoEdit(typed);
+    expect(editor.trigger).toHaveBeenLastCalledWith('touch', 'undo', null);
+    redoEdit(typed);
+    expect(editor.trigger).toHaveBeenLastCalledWith('touch', 'redo', null);
+  });
+
+  it('reports whether there is anything to undo or redo', () => {
+    const { model, typed } = createEditor(['abc']);
+    expect(canUndo(typed)).toBe(false);
+    expect(canRedo(typed)).toBe(false);
+    model.canUndo.mockReturnValue(true);
+    model.canRedo.mockReturnValue(true);
+    expect(canUndo(typed)).toBe(true);
+    expect(canRedo(typed)).toBe(true);
+
+    const noModel = createEditor(['abc'], [range(1, 1, 1, 1)], { model: false }).typed;
+    expect(canUndo(noModel)).toBe(false);
+    expect(canRedo(noModel)).toBe(false);
   });
 
   it('opens the editor menu through Monaco\'s own context menu action', () => {

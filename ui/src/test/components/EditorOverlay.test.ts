@@ -1017,10 +1017,12 @@ describe('EditorOverlay', () => {
       async function renderWithPointer(coarse: boolean) {
         vi.stubGlobal('matchMedia', vi.fn((query: string) => ({ matches: coarse && query === '(pointer: coarse)' })));
         const monaco = await import('monaco-editor');
-        const { mockEditor } = createMockEditorWithCallbacks();
+        const { mockEditor, model } = createMockEditorWithCallbacks();
+        Object.assign(model, { canUndo: vi.fn(() => false), canRedo: vi.fn(() => false) });
         const selectionSubscription = { dispose: vi.fn() };
         const touchEditor = {
           ...mockEditor,
+          onDidChangeModelContent: vi.fn(() => ({ dispose: vi.fn() })),
           getSelections: vi.fn(() => [{ startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 }]),
           setSelection: vi.fn(),
           pushUndoStop: vi.fn(),
@@ -1042,7 +1044,7 @@ describe('EditorOverlay', () => {
       it('shows Select, Copy, Cut and Paste under the editor on touch screens', async () => {
         await renderWithPointer(true);
         const bar = screen.getByRole('toolbar', { name: 'Touch editing' });
-        for (const name of ['Select', 'All', 'Copy', 'Cut', 'Paste', 'More editor actions']) {
+        for (const name of ['Undo', 'Redo', 'Select', 'All', 'Copy', 'Cut', 'Paste', 'More editor actions']) {
           expect(within(bar).getByRole('button', { name })).toBeInTheDocument();
         }
       });

@@ -11,7 +11,7 @@ Standalone mode is in alpha. Save regular [workspace backups](standalone.md#savi
 3. Tap **Preview** to see the result with more screen space.
 4. Tap **Tools** to open **Config**, **Debug**, **Frame Times**, or **Export**. Tools remembers your last selection.
 
-On a phone or tablet, a bar under the code holds **Select**, **All**, **Copy**, **Cut**, **Paste**, and **Menu**. Phone browsers cannot show their own selection handles in the code editor, so use the bar instead:
+On a phone or tablet, a bar under the code holds **Undo** (↶), **Redo** (↷), **Select**, **All**, **Copy**, **Cut**, **Paste**, and **Menu**. **Undo** and **Redo** step back and forward through your edits, and are dimmed when there is nothing to undo or redo. Phone browsers cannot show their own selection handles in the code editor, so use the bar instead:
 
 1. Tap **Select**, then drag your finger over the code you want. While **Select** is on, dragging selects text instead of scrolling. Tap **Select** again to turn it off.
 2. Tap **Copy** or **Cut**. **Select** turns off afterward, so dragging scrolls again.

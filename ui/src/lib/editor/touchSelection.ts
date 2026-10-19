@@ -10,6 +10,7 @@ export type TouchEditor = Pick<
   monaco.editor.ICodeEditor,
   'getModel' | 'getSelections' | 'setSelection' | 'executeEdits' | 'pushUndoStop'
   | 'getTargetAtClientPoint' | 'getDomNode' | 'revealPosition' | 'onDidChangeCursorSelection' | 'trigger'
+  | 'onDidChangeModelContent'
 >;
 
 export interface TouchClipboard {
@@ -88,6 +89,23 @@ export function selectAll(editor: TouchEditor): void {
  */
 export function openEditorMenu(editor: TouchEditor): void {
   editor.trigger('touch', 'editor.action.showContextMenu', null);
+}
+
+export function canUndo(editor: TouchEditor): boolean {
+  return editor.getModel()?.canUndo() ?? false;
+}
+
+export function canRedo(editor: TouchEditor): boolean {
+  return editor.getModel()?.canRedo() ?? false;
+}
+
+/** Runs through the editor, like Ctrl+Z, so the cursor follows the change. */
+export function undoEdit(editor: TouchEditor): void {
+  editor.trigger('touch', 'undo', null);
+}
+
+export function redoEdit(editor: TouchEditor): void {
+  editor.trigger('touch', 'redo', null);
 }
 
 function selectionBetween(anchor: Position, active: Position): monaco.ISelection {

@@ -225,6 +225,13 @@ test.describe('phone editor on iOS', () => {
     await bar.getByRole('button', { name: 'Paste' }).tap();
     await expect(editor.locator('.view-line')).toHaveCount(1);
     await expect(editor.locator('.view-lines')).toContainText(copied.trim());
+
+    const lineCount = (page) => editor.locator('.view-line').count();
+    await bar.getByRole('button', { name: 'Undo' }).tap();
+    await expect.poll(() => lineCount(page)).toBeGreaterThan(1);
+    await expect(bar.getByRole('button', { name: 'Redo' })).toBeEnabled();
+    await bar.getByRole('button', { name: 'Redo' }).tap();
+    await expect(editor.locator('.view-line')).toHaveCount(1);
   });
 });
 

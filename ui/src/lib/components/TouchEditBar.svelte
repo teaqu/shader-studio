@@ -2,7 +2,8 @@
 
 <script lang="ts">
   import {
-    copySelection, cutSelection, hasSelectedText, openEditorMenu, pasteClipboard, selectAll, TouchDragSelection,
+    canRedo, canUndo, copySelection, cutSelection, hasSelectedText, openEditorMenu, pasteClipboard, redoEdit,
+    selectAll, TouchDragSelection, undoEdit,
     type TouchClipboard, type TouchEditor,
   } from "../editor/touchSelection";
 
@@ -15,18 +16,30 @@
 
   let selecting = $state(false);
   let hasSelection = $state(false);
+  let undoAvailable = $state(false);
+  let redoAvailable = $state(false);
   let message = $state("");
   let drag = $state.raw<TouchDragSelection | null>(null);
 
+  function refresh(target: TouchEditor) {
+    hasSelection = hasSelectedText(target);
+    undoAvailable = canUndo(target);
+    redoAvailable = canRedo(target);
+  }
+
   $effect(() => {
-    const current = new TouchDragSelection(editor);
+    const target = editor;
+    const current = new TouchDragSelection(target);
     drag = current;
-    hasSelection = hasSelectedText(editor);
-    const subscription = editor.onDidChangeCursorSelection(() => {
-      hasSelection = hasSelectedText(editor);
-    });
+    refresh(target);
+    const subscriptions = [
+      target.onDidChangeCursorSelection(() => refresh(target)),
+      target.onDidChangeModelContent(() => refresh(target)),
+    ];
     return () => {
-      subscription.dispose();
+      for (const subscription of subscriptions) {
+        subscription.dispose();
+      }
       current.dispose();
       drag = null;
     };
@@ -58,6 +71,22 @@
 </script>
 
 <div class="touch-edit-bar" role="toolbar" aria-label="Touch editing">
+  <button
+    type="button"
+    aria-label="Undo"
+    title="Undo"
+    disabled={!undoAvailable}
+    onpointerdown={keepEditorFocus}
+    onclick={() => undoEdit(editor)}
+  >↶</button>
+  <button
+    type="button"
+    aria-label="Redo"
+    title="Redo"
+    disabled={!redoAvailable}
+    onpointerdown={keepEditorFocus}
+    onclick={() => redoEdit(editor)}
+  >↷</button>
   <button
     type="button"
     aria-pressed={selecting}

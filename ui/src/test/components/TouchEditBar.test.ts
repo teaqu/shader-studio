@@ -9,14 +9,24 @@ interface FakeRange { startLineNumber: number; startColumn: number; endLineNumbe
 function createEditor(initial: FakeRange[]) {
   let selections = initial;
   let selectionListener: (() => void) | null = null;
+  let contentListener: (() => void) | null = null;
   const subscription = { dispose: vi.fn() };
+  const contentSubscription = { dispose: vi.fn() };
+  const history = { undo: false, redo: false };
   const node = document.createElement('div');
+  const model = {
+    getValueInRange: () => 'selected',
+    getEOL: () => '\n',
+    getFullModelRange: () => ({ startLineNumber: 1, startColumn: 1, endLineNumber: 3, endColumn: 2 }),
+    canUndo: () => history.undo,
+    canRedo: () => history.redo,
+  };
   const editor = {
-    getModel: vi.fn(() => ({
-      getValueInRange: () => 'selected',
-      getEOL: () => '\n',
-      getFullModelRange: () => ({ startLineNumber: 1, startColumn: 1, endLineNumber: 3, endColumn: 2 }),
-    })),
+    getModel: vi.fn(() => model),
+    onDidChangeModelContent: vi.fn((listener: () => void) => {
+      contentListener = listener;
+      return contentSubscription;
+    }),
     getSelections: vi.fn(() => selections),
     setSelection: vi.fn(),
     executeEdits: vi.fn(() => true),
@@ -34,10 +44,15 @@ function createEditor(initial: FakeRange[]) {
     editor,
     node,
     subscription,
+    contentSubscription,
     typed: editor as unknown as TouchEditor,
     select(next: FakeRange[]) {
       selections = next;
       selectionListener?.();
+    },
+    edit(next: { undo: boolean; redo: boolean }) {
+      Object.assign(history, next);
+      contentListener?.();
     },
   };
 }
@@ -62,7 +77,7 @@ describe('TouchEditBar', () => {
     render(TouchEditBar, { props: { editor: fake.typed, clipboard: createClipboard() } });
 
     const bar = screen.getByRole('toolbar', { name: 'Touch editing' });
-    expect([...bar.querySelectorAll('button')].map((button) => button.textContent)).toEqual(['Select', 'All', 'Copy', 'Cut', 'Paste', 'Menu']);
+    expect([...bar.querySelectorAll('button')].map((button) => button.textContent)).toEqual(['↶', '↷', 'Select', 'All', 'Copy', 'Cut', 'Paste', 'Menu']);
     expect(screen.getByRole('button', { name: 'Copy' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Cut' })).toBeDisabled();
 
@@ -70,6 +85,30 @@ describe('TouchEditBar', () => {
     await tick();
     expect(screen.getByRole('button', { name: 'Copy' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Cut' })).toBeEnabled();
+  });
+
+  it('enables Undo and Redo only when the edit history has something to step through', async () => {
+    const fake = createEditor([collapsed]);
+    render(TouchEditBar, { props: { editor: fake.typed, clipboard: createClipboard() } });
+    const undo = screen.getByRole('button', { name: 'Undo' });
+    const redo = screen.getByRole('button', { name: 'Redo' });
+    expect(undo).toBeDisabled();
+    expect(redo).toBeDisabled();
+
+    fake.edit({ undo: true, redo: false });
+    await tick();
+    expect(undo).toBeEnabled();
+    expect(redo).toBeDisabled();
+
+    await fireEvent.click(undo);
+    expect(fake.editor.trigger).toHaveBeenLastCalledWith('touch', 'undo', null);
+    fake.edit({ undo: false, redo: true });
+    await tick();
+    expect(undo).toBeDisabled();
+    expect(redo).toBeEnabled();
+
+    await fireEvent.click(redo);
+    expect(fake.editor.trigger).toHaveBeenLastCalledWith('touch', 'redo', null);
   });
 
   it('turns drag-to-select on and off with the Select button', async () => {
@@ -197,7 +236,9 @@ describe('TouchEditBar', () => {
   it('keeps focus in the editor when a button is pressed', async () => {
     const fake = createEditor([word]);
     render(TouchEditBar, { props: { editor: fake.typed, clipboard: createClipboard() } });
-    for (const name of ['Select', 'All', 'Copy', 'Cut', 'Paste', 'More editor actions']) {
+    fake.edit({ undo: true, redo: true });
+    await tick();
+    for (const name of ['Undo', 'Redo', 'Select', 'All', 'Copy', 'Cut', 'Paste', 'More editor actions']) {
       const event = new Event('pointerdown', { bubbles: true, cancelable: true });
       screen.getByRole('button', { name }).dispatchEvent(event);
       expect(event.defaultPrevented).toBe(true);
@@ -209,5 +250,6 @@ describe('TouchEditBar', () => {
     const { unmount } = render(TouchEditBar, { props: { editor: fake.typed, clipboard: createClipboard() } });
     unmount();
     expect(fake.subscription.dispose).toHaveBeenCalled();
+    expect(fake.contentSubscription.dispose).toHaveBeenCalled();
   });
 });
