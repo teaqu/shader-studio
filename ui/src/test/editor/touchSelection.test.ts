@@ -47,11 +47,11 @@ function createEditor(lines: string[], selections: FakeRange[] | null = [range(1
   return { editor, model, node, typed: editor as unknown as TouchEditor };
 }
 
-function createClipboard(initial = ''): TouchClipboard & { text: string } {
+function createClipboard(initial = '') {
   const board = {
     text: initial,
-    readText: vi.fn(async () => board.text),
-    writeText: vi.fn(async (value: string) => {
+    readText: vi.fn<TouchClipboard['readText']>(async () => board.text),
+    writeText: vi.fn<TouchClipboard['writeText']>(async (value: string) => {
       board.text = value;
     }),
   };
@@ -115,9 +115,7 @@ describe('touch selection clipboard commands', () => {
   it('leaves the code alone when the clipboard refuses a cut', async () => {
     const { editor, typed } = createEditor(['abc'], [range(1, 1, 1, 4)]);
     const clipboard = createClipboard();
-    clipboard.writeText = vi.fn(async () => {
-      throw new Error('denied');
-    });
+    clipboard.writeText.mockRejectedValue(new Error('denied'));
     await expect(cutSelection(typed, clipboard)).rejects.toThrow('denied');
     expect(editor.executeEdits).not.toHaveBeenCalled();
   });
