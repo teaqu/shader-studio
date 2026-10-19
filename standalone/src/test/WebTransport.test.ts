@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDefaultWorkspaceFiles } from '../defaultWorkspace';
 import { VirtualWorkspace } from '../VirtualWorkspace';
 import { WebExtensionHost } from '../WebExtensionHost';
-import { inspectWorkspaceStorage, WebTransport } from '../WebTransport';
+import { createWorkspace, inspectWorkspaceStorage, WebTransport } from '../WebTransport';
 
 async function eventually(assertion: () => void): Promise<void> {
   await vi.waitFor(assertion);
@@ -353,6 +353,55 @@ describe('WebTransport', () => {
         Reflect.deleteProperty(globalThis, 'indexedDB');
       }
     }
+  });
+
+  describe('pull request previews', () => {
+    function stubIndexedDb(open: (name: string) => never) {
+      const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'indexedDB');
+      Object.defineProperty(globalThis, 'indexedDB', { configurable: true, value: { open } });
+      return () => {
+        if (descriptor) {
+          Object.defineProperty(globalThis, 'indexedDB', descriptor);
+        } else {
+          Reflect.deleteProperty(globalThis, 'indexedDB');
+        }
+      };
+    }
+
+    it('keep their workspace and edit journal apart from the live app', async () => {
+      const opened: string[] = [];
+      const restore = stubIndexedDb((name) => {
+        opened.push(name);
+        throw new Error('IndexedDB blocked');
+      });
+      const read = vi.spyOn(localStorage, 'getItem');
+      try {
+        await createWorkspace('pr-166', true);
+        expect(opened).toEqual(['shader-studio-web-pr-166']);
+        expect(read).toHaveBeenCalledWith('shader-studio-workspace-journal-pr-166');
+        expect(read).not.toHaveBeenCalledWith('shader-studio-workspace-journal');
+
+        opened.length = 0;
+        await createWorkspace(null, false);
+        expect(opened).toEqual(['shader-studio-web']);
+      } finally {
+        read.mockRestore();
+        restore();
+      }
+    });
+
+    it('stay in memory when their storage could not be isolated', async () => {
+      const open = vi.fn(() => {
+        throw new Error('must not open');
+      });
+      const restore = stubIndexedDb(open);
+      try {
+        await expect(createWorkspace('pr-166', false)).resolves.toMatchObject({ backend: 'session' });
+        expect(open).not.toHaveBeenCalled();
+      } finally {
+        restore();
+      }
+    });
   });
 
   it('queries and requests browser eviction protection best-effort', async () => {

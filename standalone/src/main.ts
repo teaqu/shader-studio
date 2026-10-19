@@ -1,3 +1,5 @@
+// Must stay first: previews have to isolate storage before anything reads it.
+import './installPreviewIsolation';
 import { mount } from 'svelte';
 import {
   SHADER_STUDIO_DEFAULT_ASSETS,
