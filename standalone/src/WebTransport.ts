@@ -16,6 +16,8 @@ import {
   type WorkspacePersistenceStatus,
 } from './VirtualWorkspace';
 import { WebExtensionHost } from './WebExtensionHost';
+import { previewChannel, workspaceDatabaseName, workspaceJournalKey } from './previewIsolation';
+import { previewStorageIsolated } from './installPreviewIsolation';
 import { syncSettingsAcrossTabs } from './settings/syncSettingsAcrossTabs';
 import { StandaloneSettings } from './settings/StandaloneSettings';
 import { uploadWorkspaceFiles } from './workspaceUploads';
@@ -75,16 +77,21 @@ function savedExplorerState(fallback: unknown): unknown {
   }
 }
 
-function createWorkspace(): Promise<WorkspaceSession> {
+export function createWorkspace(
+  channel = previewChannel(),
+  storageIsolated = previewStorageIsolated,
+): Promise<WorkspaceSession> {
   const seeds = createDefaultWorkspaceFiles();
-  if (typeof indexedDB === 'undefined') {
+  // A preview that could not isolate its storage keeps its work in memory
+  // rather than risk the live workspace on the same origin.
+  if (typeof indexedDB === 'undefined' || (channel && !storageIsolated)) {
     return VirtualWorkspace.open(new MemoryWorkspaceStore(), seeds)
       .then(workspace => ({ workspace, backend: 'session' as const }));
   }
   // Edits are journalled synchronously: a reload during a queued database
   // write must not take the text back to the last committed snapshot.
-  const journal = new LocalStorageWorkspaceJournal();
-  return VirtualWorkspace.open(new IndexedDbWorkspaceStore(), seeds, undefined, journal)
+  const journal = new LocalStorageWorkspaceJournal(workspaceJournalKey(channel));
+  return VirtualWorkspace.open(new IndexedDbWorkspaceStore(workspaceDatabaseName(channel)), seeds, undefined, journal)
     .then(workspace => ({ workspace, backend: 'indexeddb' as const }))
     .catch(() => VirtualWorkspace.open(new MemoryWorkspaceStore(), seeds, undefined, journal)
       .then(workspace => ({ workspace, backend: 'session' as const })));

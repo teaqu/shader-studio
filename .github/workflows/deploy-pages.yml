@@ -17,15 +17,17 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/deploy-pages.yml'
+      - '.github/scripts/assemble-pages.sh'
+      - '.github/scripts/publish-pages.mjs'
   workflow_dispatch:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+# The site is served from the gh-pages branch so pull request previews
+# (pr-preview.yml) can live beside it under pr-preview/.
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
@@ -64,31 +66,8 @@ jobs:
         run: npm run build:standalone
 
       - name: Assemble combined Pages output
-        run: |
-          mkdir -p public/docs public/app
-          cp -r site/. public/docs/
-          cp -r standalone/dist/. public/app/
-          cat > public/index.html <<'HTML'
-          <!doctype html>
-          <meta charset="utf-8">
-          <title>Shader Studio</title>
-          <meta http-equiv="refresh" content="0; url=./app/">
-          <link rel="canonical" href="https://teaqu.github.io/shader-studio/app/">
-          <p>Redirecting to <a href="./app/">Shader Studio Web</a>…</p>
-          HTML
+        run: bash .github/scripts/assemble-pages.sh
 
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v4
-        with:
-          path: public
-
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Publish to the gh-pages branch
+        # Replaces the live site and keeps every pull request preview.
+        run: node .github/scripts/publish-pages.mjs --source public --keep pr-preview
