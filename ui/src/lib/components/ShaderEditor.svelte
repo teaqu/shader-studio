@@ -27,7 +27,8 @@
   import { isAuthoringValueType, isShaderLanguageId, parseVertexPassKey, resourcesForSharedSource, shaderLanguageForPath, SHADER_LANGUAGES, stageForPass } from "@shader-studio/types";
   import { bindRenamePopupKeys } from "../editor/renamePopupKeys";
   import { createLanguageServiceController } from "../editor/createLanguageServiceController";
-  import { createShaderEditor, type HostEditorPreferencesController } from "../editor/createShaderEditor.svelte";
+  import { createShaderEditor, prefersTouchEditing, type HostEditorPreferencesController } from "../editor/createShaderEditor.svelte";
+  import TouchEditBar from "./TouchEditBar.svelte";
   import type { LanguageServiceController } from "../editor/LanguageServiceController.svelte";
   import { commonAuthoringFile, slangAuthoringVirtualFiles } from "../editor/authoringVirtualFiles";
   import { nativeAuthoringMetadata } from "../editor/nativeAuthoringMetadata";
@@ -138,6 +139,8 @@
   let hostEditorPreferences: HostEditorPreferencesController | null = null;
   let renamePopupKeyCleanup: (() => void) | null = null;
   let editorReady = $state(false);
+  // Raw: a Monaco instance must not be wrapped in a reactive proxy.
+  let touchEditor = $state.raw<monaco.editor.IStandaloneCodeEditor | null>(null);
   let languageServiceStatus = $state<"pending" | "ready" | "error">("pending");
   let editorModelUri = $state("");
   const renameFeedback = $derived(getRenameFeedback(editorModelUri));
@@ -697,6 +700,7 @@
     updateUniformDecorations(dynamicUniformNames);
     updateErrorMarkers(errors);
     editorReady = true;
+    touchEditor = prefersTouchEditing() ? editor : null;
   }
 
   function flushPendingSource() {
@@ -761,6 +765,7 @@
       releaseOverlayTokenColors();
     }
     editorReady = false;
+    touchEditor = null;
     languageServiceStatus = "pending";
     lastSentCode = null;
   }
@@ -1126,6 +1131,9 @@
       data-active-buffer={activeBufferName}
       bind:this={containerEl}
     ></div>
+    {#if touchEditor}
+      <TouchEditBar editor={touchEditor} />
+    {/if}
     {#if vimMode}
       <div class="vim-status-bar" bind:this={statusBarEl}></div>
     {/if}
@@ -1293,11 +1301,6 @@
 
   .editor-overlay :global(.monaco-editor .shader-uniform-token) {
     color: var(--shader-studio-editor-uniform-token) !important;
-  }
-
-  /* Hide scrollbars */
-  .editor-overlay :global(.monaco-editor .monaco-scrollable-element > .scrollbar) {
-    opacity: 0;
   }
 
   /* Active line number in gutter */

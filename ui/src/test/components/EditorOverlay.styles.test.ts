@@ -14,6 +14,12 @@ function rule(selector: string): string {
   return match![0];
 }
 
+describe('EditorOverlay scrollbar styles', () => {
+  it('does not hide the editor scrollbars, so long lines can be scrolled to', () => {
+    expect(component).not.toMatch(/\.scrollbar\)\s*{[^}]*opacity:\s*0/s);
+  });
+});
+
 describe('EditorOverlay text backdrop styles', () => {
   it('keeps the shader-preview overlay text legible without styling the web editor pane', () => {
     const text = rule('.editor-wrapper:not(.pane) .editor-overlay :global(.monaco-editor .view-lines .view-line > span)');

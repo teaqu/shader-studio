@@ -350,7 +350,8 @@
   @media (max-width: 767px) {
     .standalone-layout.mobile-layout { position: relative; flex-direction: column; padding-bottom: env(safe-area-inset-bottom); }
     .standalone-dockview { min-height: 0; }
-    .mobile-layout .standalone-dockview :global(.dv-tabs-and-actions-container) { display: none; }
+    /* The bottom navigation replaces panel tabs, except the Editor's open-file tabs. */
+    .mobile-layout:not([data-mobile-panel='editor']) .standalone-dockview :global(.dv-tabs-and-actions-container) { display: none; }
     .mobile-panel-navigation {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));

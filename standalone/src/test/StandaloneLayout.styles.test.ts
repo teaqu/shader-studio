@@ -17,7 +17,11 @@ describe('standalone responsive layout styles', () => {
     expect(component).toMatch(/@media \(max-width: 767px\)[\s\S]*?\.standalone-layout\.mobile-layout\s*{[^}]*flex-direction: column/);
   });
 
-  it('hides Dockview tab chrome while the one-panel mobile navigation owns panel selection', () => {
-    expect(component).toMatch(/\.mobile-layout \.standalone-dockview :global\(\.dv-tabs-and-actions-container\)\s*{\s*display: none/);
+  it('hides Dockview tab chrome outside the Editor while the one-panel mobile navigation owns panel selection', () => {
+    expect(component).toMatch(/\.mobile-layout:not\(\[data-mobile-panel='editor'\]\) \.standalone-dockview :global\(\.dv-tabs-and-actions-container\)\s*{\s*display: none/);
+  });
+
+  it('keeps the Editor open-file tabs on phones', () => {
+    expect(component).not.toMatch(/(^|[\s,])\.mobile-layout \.standalone-dockview :global\(\.dv-tabs-and-actions-container\)\s*{\s*display: none/m);
   });
 });

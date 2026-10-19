@@ -95,7 +95,8 @@ export function createShaderEditor(
     : monaco.editor.createModel(options.shaderCode, options.language);
   const editor = monaco.editor.create(container, {
     model, theme: options.theme, minimap: { enabled: false },
-    scrollbar: { vertical: 'hidden', horizontal: 'hidden', useShadows: false },
+    // Long lines need a way across; Monaco shows the bar only when a line overflows.
+    scrollbar: { vertical: 'hidden', horizontal: 'auto', useShadows: false },
     overviewRulerLanes: 0, overviewRulerBorder: false, hideCursorInOverviewRuler: true,
     renderLineHighlight: 'line', selectionHighlight: false, occurrencesHighlight: 'singleFile',
     automaticLayout: true, fontSize: 14, lineHeight: 20, padding: { top: 0 }, stickyScroll: { enabled: false },

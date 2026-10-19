@@ -92,4 +92,15 @@ describe('touch editing', () => {
     expect(vi.mocked(monaco.editor.create).mock.calls.at(-1)?.[1]).toMatchObject({ contextmenu: coarse });
     created.preferences.dispose();
   });
+
+  it.each([[true], [false]])('shows a horizontal scrollbar for long lines (coarse: %s)', (coarse) => {
+    stubPointer(coarse);
+    const created = createShaderEditor(document.createElement('div'), {
+      shaderCode: '', shaderPath: '/wide.glsl', language: 'glsl', theme: 'vs',
+    });
+    expect(vi.mocked(monaco.editor.create).mock.calls.at(-1)?.[1]).toMatchObject({
+      scrollbar: { vertical: 'hidden', horizontal: 'auto' },
+    });
+    created.preferences.dispose();
+  });
 });

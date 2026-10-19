@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render } from '@testing-library/svelte';
+import { render, screen, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import EditorOverlay from '../../lib/components/ShaderEditor.svelte';
 import type { Transport } from '../../lib/transport/MessageTransport';
@@ -1011,6 +1011,53 @@ describe('EditorOverlay', () => {
 
       expect(contributionLoadState.contextMenu).toBeGreaterThan(0);
       expect(contributionLoadState.clipboard).toBeGreaterThan(0);
+    });
+
+    describe('touch editing bar', () => {
+      async function renderWithPointer(coarse: boolean) {
+        vi.stubGlobal('matchMedia', vi.fn((query: string) => ({ matches: coarse && query === '(pointer: coarse)' })));
+        const monaco = await import('monaco-editor');
+        const { mockEditor } = createMockEditorWithCallbacks();
+        const selectionSubscription = { dispose: vi.fn() };
+        const touchEditor = {
+          ...mockEditor,
+          getSelections: vi.fn(() => [{ startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 }]),
+          setSelection: vi.fn(),
+          pushUndoStop: vi.fn(),
+          getTargetAtClientPoint: vi.fn(() => null),
+          getDomNode: vi.fn(() => document.createElement('div')),
+          revealPosition: vi.fn(),
+          onDidChangeCursorSelection: vi.fn(() => selectionSubscription),
+        };
+        vi.mocked(monaco.editor.create).mockReturnValueOnce(touchEditor as any);
+        const result = render(EditorOverlay, { props: defaultProps });
+        await tick();
+        return { ...result, selectionSubscription };
+      }
+
+      afterEach(() => {
+        vi.unstubAllGlobals();
+      });
+
+      it('shows Select, Copy, Cut and Paste under the editor on touch screens', async () => {
+        await renderWithPointer(true);
+        const bar = screen.getByRole('toolbar', { name: 'Touch editing' });
+        for (const name of ['Select', 'All', 'Copy', 'Cut', 'Paste', 'More editor actions']) {
+          expect(within(bar).getByRole('button', { name })).toBeInTheDocument();
+        }
+      });
+
+      it('keeps the desktop editor free of the touch bar', async () => {
+        await renderWithPointer(false);
+        expect(screen.queryByRole('toolbar', { name: 'Touch editing' })).toBeNull();
+      });
+
+      it('removes the touch bar with the editor', async () => {
+        const { rerender, selectionSubscription } = await renderWithPointer(true);
+        await rerender({ ...defaultProps, isVisible: false });
+        expect(screen.queryByRole('toolbar', { name: 'Touch editing' })).toBeNull();
+        expect(selectionSubscription.dispose).toHaveBeenCalled();
+      });
     });
 
     it('should replace the editor contents when the shader file changes while the editor is focused', async () => {

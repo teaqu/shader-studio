@@ -7,11 +7,19 @@ Standalone mode is in alpha. Save regular [workspace backups](standalone.md#savi
 ## Open and Edit a Shader
 
 1. In **Studio**, select an example or choose **New Shader**. **Studio** has two sections at the bottom: **Shaders** lists your shaders and **Files** lists every file in the workspace. Start with **GLSL** if your device does not support WebGPU.
-2. Tap **Editor** to change the shader. In the default **Hot** compile mode, the preview updates as you type.
+2. Selecting a shader switches to **Editor**, where you can change it. Each open file has a tab at the top of **Editor**; tap a tab to switch files. To return to **Editor** later, tap it in the bottom navigation. In the default **Hot** compile mode, the preview updates as you type.
 3. Tap **Preview** to see the result with more screen space.
 4. Tap **Tools** to open **Config**, **Debug**, **Frame Times**, or **Export**. Tools remembers your last selection.
 
-To cut, copy, or paste in the editor, touch and hold the code, then lift your finger. A menu opens with **Cut**, **Copy**, and **Paste** next to the editor's code actions. Your browser may show its own **Paste** button before it lets Shader Studio read the clipboard; tap it to finish pasting.
+On a phone or tablet, a bar under the code holds **Select**, **All**, **Copy**, **Cut**, **Paste**, and **Menu**. Phone browsers cannot show their own selection handles in the code editor, so use the bar instead:
+
+1. Tap **Select**, then drag your finger over the code you want. While **Select** is on, dragging selects text instead of scrolling. Tap **Select** again to turn it off.
+2. Tap **Copy** or **Cut**. **Select** turns off afterward, so dragging scrolls again.
+3. Tap where you want the text to go, then tap **Paste**. To replace the whole file, tap **All** first.
+
+Your browser may show its own **Paste** button before it lets Shader Studio read the clipboard; tap it to finish pasting. Tap **Menu** to open the editor menu at the cursor, with **Cut**, **Copy**, **Paste**, and the editor's code actions. Touching and holding the code without moving your finger also opens it.
+
+When a line is wider than the screen, a scrollbar appears along the bottom of the editor. Swipe sideways or drag the scrollbar to see the rest of the line.
 
 Rotate your device when you need more room. You can also enable **Editor Overlay** from the preview menu to edit with the shader visible behind your code. Returning to a desktop-sized window restores your desktop panel arrangement.
 

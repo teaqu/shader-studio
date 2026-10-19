@@ -59,24 +59,52 @@ test('the phone tools include VR', async ({ page }) => {
     .toHaveText(['Config', 'Debug', 'Frame Times', 'Export', 'VR']);
 });
 
-test('opening a shader from the phone Studio stays on Studio without revealing the editor', async ({ page }) => {
+test('opening a shader from the phone Studio switches to its editor', async ({ page }) => {
   await page.goto('/');
   const nav = page.getByRole('navigation', { name: 'Workspace panels' });
   await nav.getByRole('button', { name: 'Studio' }).click();
-  await page.getByTestId('shader-option-aurora-glsl').click();
   await page.getByTestId('shader-option-nebula-texture-glsl').click();
 
-  await expect(page.getByTestId('shader-option-nebula-texture-glsl')).toHaveAttribute('aria-pressed', 'true');
-  await expect(nav.getByRole('button', { name: 'Studio' })).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByTestId('shader-option-nebula-texture-glsl')).toBeInViewport();
-  // Dockview hides groups without emptying their boxes, so check what is on screen.
+  await expect(nav.getByRole('button', { name: 'Editor' })).toHaveAttribute('aria-current', 'page');
   const editor = page.locator('[data-testid="file-editor"][data-path="/nebula-texture.glsl"]');
-  await expect(editor.locator('.view-lines')).toContainText('mainImage');
-  await expect(editor.locator('.view-lines')).not.toBeInViewport();
-
-  await nav.getByRole('button', { name: 'Editor' }).click();
   await expect(editor.locator('.view-lines')).toBeInViewport();
   await expect(editor.locator('.view-lines')).toContainText('mainImage');
+  // One panel at a time: the explorer is off screen, not beside the editor.
+  await expect(page.getByTestId('shader-option-nebula-texture-glsl')).not.toBeInViewport();
+
+  await nav.getByRole('button', { name: 'Studio' }).click();
+  await expect(page.getByTestId('shader-option-nebula-texture-glsl')).toHaveAttribute('aria-pressed', 'true');
+  await page.getByTestId('shader-option-aurora-glsl').click();
+  await expect(nav.getByRole('button', { name: 'Editor' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.locator('[data-testid="file-editor"][data-path="/aurora.glsl"] .view-lines')).toBeInViewport();
+});
+
+test('the phone Editor keeps its open-file tabs while other destinations hide panel tabs', async ({ page }) => {
+  await page.goto('/');
+  const nav = page.getByRole('navigation', { name: 'Workspace panels' });
+  const tab = (name) => page.locator('.dv-tab').filter({ hasText: new RegExp(`^${name.replace('.', '\\.')}$`) });
+  await nav.getByRole('button', { name: 'Studio' }).click();
+  // The bottom navigation stands in for panel tabs outside the Editor.
+  await expect(tab('nebula-texture.glsl')).not.toBeVisible();
+  await page.getByTestId('shader-option-nebula-texture-glsl').click();
+
+  await expect(nav.getByRole('button', { name: 'Editor' })).toHaveAttribute('aria-current', 'page');
+  await expect(tab('nebula-texture.glsl')).toBeInViewport();
+
+  await nav.getByRole('button', { name: 'Studio' }).click();
+  await page.getByRole('navigation', { name: 'Studio sections' }).getByRole('button', { name: 'Files' }).click();
+  await page.getByRole('treeitem', { name: 'aurora.sha.json', exact: true }).click();
+  await expect(nav.getByRole('button', { name: 'Editor' })).toHaveAttribute('aria-current', 'page');
+  await expect(tab('nebula-texture.glsl')).toBeInViewport();
+  await expect(tab('aurora.sha.json')).toBeInViewport();
+  await expect(page.locator('[data-testid="file-editor"][data-path="/aurora.sha.json"] .view-lines')).toBeInViewport();
+
+  await tab('nebula-texture.glsl').click();
+  await expect(page.locator('[data-testid="file-editor"][data-path="/nebula-texture.glsl"] .view-lines')).toBeInViewport();
+  await expect(page.locator('[data-testid="file-editor"][data-path="/aurora.sha.json"] .view-lines')).not.toBeInViewport();
+
+  await nav.getByRole('button', { name: 'Preview' }).click();
+  await expect(tab('Preview')).not.toBeVisible();
 });
 
 test.describe('phone editor on iOS', () => {
@@ -147,6 +175,56 @@ test.describe('phone editor on iOS', () => {
     }
     await menu.getByRole('menuitem', { name: 'Paste' }).click();
     await expect(editor.locator('.view-lines')).toContainText('pasted_from_menu');
+  });
+
+  test('the Menu button opens Cut, Copy and Paste without a long press', async ({ page }) => {
+    const editor = await openPhoneEditor(page);
+    await page.evaluate(() => navigator.clipboard.writeText('pasted_from_menu_button'));
+    await editor.locator('.view-lines').tap();
+
+    await editor.getByRole('toolbar', { name: 'Touch editing' }).getByRole('button', { name: 'More editor actions' }).tap();
+    const menu = page.locator('.monaco-menu');
+    for (const name of ['Cut', 'Copy', 'Paste']) {
+      await expect(menu.getByRole('menuitem', { name })).toBeVisible();
+    }
+    await menu.getByRole('menuitem', { name: 'Paste' }).click();
+    await expect(editor.locator('.view-lines')).toContainText('pasted_from_menu_button');
+  });
+
+  test('Select mode turns a drag into a selection that Copy, All and Paste act on', async ({ page }) => {
+    const editor = await openPhoneEditor(page);
+    const bar = editor.getByRole('toolbar', { name: 'Touch editing' });
+    await expect(bar).toBeInViewport();
+    await expect(bar.getByRole('button', { name: 'Copy' })).toBeDisabled();
+
+    const select = bar.getByRole('button', { name: 'Select' });
+    await select.tap();
+    await expect(select).toHaveAttribute('aria-pressed', 'true');
+
+    const firstLine = editor.locator('.view-line').first();
+    const box = await firstLine.boundingBox();
+    const y = box.y + box.height / 2;
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: box.x + 2, y }] });
+    for (const step of [60, 120, 180]) {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: box.x + step, y }] });
+    }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+
+    const copy = bar.getByRole('button', { name: 'Copy' });
+    await expect(copy).toBeEnabled();
+    await copy.tap();
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).not.toBe('');
+    const copied = await page.evaluate(() => navigator.clipboard.readText());
+    // Monaco renders spaces as non-breaking spaces.
+    expect((await firstLine.textContent()).replace(/ /g, ' ')).toContain(copied.trim());
+    // Copying ends Select mode, so the next drag scrolls again.
+    await expect(select).toHaveAttribute('aria-pressed', 'false');
+
+    await bar.getByRole('button', { name: 'All' }).tap();
+    await bar.getByRole('button', { name: 'Paste' }).tap();
+    await expect(editor.locator('.view-line')).toHaveCount(1);
+    await expect(editor.locator('.view-lines')).toContainText(copied.trim());
   });
 });
 

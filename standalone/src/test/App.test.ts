@@ -569,7 +569,7 @@ describe('standalone App', () => {
     expect(layoutStub.selectMobilePanel).toHaveBeenLastCalledWith('editor');
   });
 
-  it('stays on the current phone panel when a shader is selected on a phone', async () => {
+  it('switches the phone shell to Editor when a shader is selected on a phone', async () => {
     layoutStub.isMobileLayout.mockReturnValue(true);
     render(App, { props: { transport: createTransport() } });
 
@@ -577,7 +577,9 @@ describe('standalone App', () => {
     await tick();
 
     expect(layoutStub.selectEditor).toHaveBeenCalledWith('/picked.glsl');
-    expect(layoutStub.selectMobilePanel).not.toHaveBeenCalled();
+    expect(layoutStub.selectMobilePanel).toHaveBeenCalledExactlyOnceWith('editor');
+    expect(layoutStub.selectEditor.mock.invocationCallOrder[0])
+      .toBeLessThan(layoutStub.selectMobilePanel.mock.invocationCallOrder[0]);
     expect(getSelectedEditor()).toBeNull();
   });
 
