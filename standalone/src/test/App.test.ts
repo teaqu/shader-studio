@@ -235,7 +235,7 @@ describe('standalone App', () => {
       resetMobileShellState();
     });
 
-    it('hides the header and shows Workspace, Settings, status and notices in Studio', async () => {
+    it('hides the header and puts Workspace, Settings, status and notices in Studio', async () => {
       setMobileViewport(true);
       render(App, { props: { transport: createTransport() } });
       await tick();
@@ -248,7 +248,7 @@ describe('standalone App', () => {
       expect(within(bar).getByRole('button', { name: 'Workspace' })).toBeTruthy();
       expect(within(bar).getByRole('button', { name: 'Settings' })).toBeTruthy();
       expect(await within(bar).findByRole('status', { name: 'Online · Saved' })).toBeTruthy();
-      expect(within(studio).getByTestId('web-alpha-warning')).toBeTruthy();
+      expect(within(screen.getByTestId('studio-notices')).getByTestId('web-alpha-warning')).toBeTruthy();
       expect(screen.getAllByTestId('web-alpha-warning')).toHaveLength(1);
 
       await fireEvent.click(within(bar).getByRole('button', { name: 'Workspace' }));

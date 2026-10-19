@@ -35,12 +35,14 @@
     files?: Snippet;
     editor: Snippet;
     preview: Snippet;
-    /** Workspace controls and status shown above Shaders and Files on phones. */
+    /** Workspace controls and status shown beside the Shaders and Files tabs on phones. */
     studio?: Snippet;
+    /** Banners shown above Shaders and Files on phones. */
+    studioNotices?: Snippet;
     hostedPanels?: HostedPanels;
   }
 
-  let { transport, explorer, files, editor, preview, studio, hostedPanels = new HostedPanels() }: Props = $props();
+  let { transport, explorer, files, editor, preview, studio, studioNotices, hostedPanels = new HostedPanels() }: Props = $props();
 
   let dockviewElement: HTMLElement;
   let sourceElement: HTMLElement;
@@ -264,8 +266,8 @@
 </script>
 
 <div class:mobile-layout={mobileViewport} class="standalone-layout" data-mobile-panel={mobilePanel}>
-  {#if mobileViewport && studio && isExplorerSection(mobilePanel)}
-    <div class="mobile-studio-bar">{@render studio()}</div>
+  {#if mobileViewport && studioNotices && isExplorerSection(mobilePanel)}
+    <div class="mobile-studio-notices">{@render studioNotices()}</div>
   {/if}
   <div class="standalone-dockview" bind:this={dockviewElement}></div>
   <div class="standalone-panel-sources" bind:this={sourceElement} aria-hidden="true">
@@ -286,16 +288,21 @@
         {/each}
       </nav>
     {/if}
-    {#if files && isExplorerSection(mobilePanel)}
-      <nav class="mobile-tools-navigation" aria-label="Studio sections">
-        {#each EXPLORER_SECTIONS as [panelId, label]}
-          <button
-            class:active={mobilePanel === panelId}
-            aria-current={mobilePanel === panelId ? 'page' : undefined}
-            onclick={() => setMobilePanel(panelId)}
-          >{label}</button>
-        {/each}
-      </nav>
+    {#if (files || studio) && isExplorerSection(mobilePanel)}
+      <div class="mobile-studio-row">
+        {#if files}
+          <nav class="mobile-tools-navigation" aria-label="Studio sections">
+            {#each EXPLORER_SECTIONS as [panelId, label]}
+              <button
+                class:active={mobilePanel === panelId}
+                aria-current={mobilePanel === panelId ? 'page' : undefined}
+                onclick={() => setMobilePanel(panelId)}
+              >{label}</button>
+            {/each}
+          </nav>
+        {/if}
+        {#if studio}<div class="mobile-studio-actions">{@render studio()}</div>{/if}
+      </div>
     {/if}
     <nav class="mobile-panel-navigation" aria-label="Workspace panels">
       {#each MOBILE_DESTINATIONS as [panelId, label]}
@@ -338,7 +345,7 @@
   .standalone-panel-source, :global(.standalone-panel-content) { width: 100%; height: 100%; min-width: 0; min-height: 0; }
   .mobile-panel-navigation { display: none; }
   .mobile-tools-navigation { display: none; }
-  .mobile-studio-bar { flex: 0 0 auto; min-width: 0; }
+  .mobile-studio-notices { flex: 0 0 auto; min-width: 0; }
 
   @media (max-width: 767px) {
     .standalone-layout.mobile-layout { position: relative; flex-direction: column; padding-bottom: env(safe-area-inset-bottom); }
@@ -373,6 +380,21 @@
       white-space: nowrap;
     }
     .mobile-tools-navigation button.active { background: var(--vscode-list-hoverBackground); }
+    /* The Studio sections share their row with the workspace controls; the
+       row anchors the Workspace menu, which opens upwards over the panel. */
+    .mobile-studio-row {
+      position: relative;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex: 0 0 auto;
+      padding: 6px max(8px, env(safe-area-inset-right)) 2px max(8px, env(safe-area-inset-left));
+      border-top: 1px solid var(--vscode-panel-border);
+      background: var(--vscode-sideBar-background);
+    }
+    .mobile-studio-row .mobile-tools-navigation { flex: 0 0 auto; padding: 0; border-top: 0; background: transparent; }
+    .mobile-studio-actions { display: flex; flex: 1 1 auto; justify-content: flex-end; min-width: 0; }
     .mobile-panel-navigation button {
       min-height: 44px;
       padding: 6px 4px;

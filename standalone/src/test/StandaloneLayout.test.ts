@@ -240,34 +240,52 @@ describe('StandaloneLayout', () => {
         .getAttribute('aria-current')).toBe('page');
     });
 
-    it('shows the Studio workspace bar on Shaders and Files only', async () => {
+    it('puts the Studio controls beside Shaders and Files and the notices above them', async () => {
       stubViewport(true);
       const result = render(StandaloneLayout, { props: {
         explorer: source('explorer'), files: source('files'), editor: source('editor'), preview: source('preview'),
-        studio: source('studio-bar'),
+        studio: source('studio-controls'), studioNotices: source('studio-notices'),
       } });
       await tick();
       const nav = result.getByRole('navigation', { name: 'Workspace panels' });
-      const studioBar = () => result.container.querySelector('.mobile-studio-bar [data-source="studio-bar"]');
-      expect(studioBar()).toBeNull();
+      const controls = () => result.container.querySelector('.mobile-studio-row .mobile-studio-actions [data-source="studio-controls"]');
+      const notices = () => result.container.querySelector('.mobile-studio-notices [data-source="studio-notices"]');
+      expect(controls()).toBeNull();
+      expect(notices()).toBeNull();
 
       await fireEvent.click(within(nav).getByRole('button', { name: 'Studio' }));
-      expect(studioBar()).not.toBeNull();
+      expect(controls()).not.toBeNull();
+      expect(notices()).not.toBeNull();
+      expect(controls()!.closest('.mobile-studio-row')!.querySelector('nav[aria-label="Studio sections"]')).not.toBeNull();
       await fireEvent.click(within(result.getByRole('navigation', { name: 'Studio sections' })).getByRole('button', { name: 'Files' }));
-      expect(studioBar()).not.toBeNull();
+      expect(controls()).not.toBeNull();
       await fireEvent.click(within(nav).getByRole('button', { name: 'Editor' }));
-      expect(studioBar()).toBeNull();
+      expect(controls()).toBeNull();
+      expect(notices()).toBeNull();
     });
 
-    it('keeps the Studio workspace bar out of the desktop layout', async () => {
+    it('keeps the Studio controls without a Files panel', async () => {
+      stubViewport(true);
+      const result = render(StandaloneLayout, { props: {
+        explorer: source('explorer'), editor: source('editor'), preview: source('preview'), studio: source('studio-controls'),
+      } });
+      await tick();
+      await fireEvent.click(result.getByRole('button', { name: 'Studio' }));
+      expect(result.queryByRole('navigation', { name: 'Studio sections' })).toBeNull();
+      expect(result.container.querySelector('.mobile-studio-row [data-source="studio-controls"]')).not.toBeNull();
+    });
+
+    it('keeps the Studio controls out of the desktop layout', async () => {
       stubViewport(false);
       const result = render(StandaloneLayout, { props: {
-        explorer: source('explorer'), editor: source('editor'), preview: source('preview'), studio: source('studio-bar'),
+        explorer: source('explorer'), editor: source('editor'), preview: source('preview'),
+        studio: source('studio-controls'), studioNotices: source('studio-notices'),
       } });
       await tick();
       result.component.selectMobilePanel('explorer');
       await tick();
-      expect(result.container.querySelector('.mobile-studio-bar')).toBeNull();
+      expect(result.container.querySelector('.mobile-studio-row')).toBeNull();
+      expect(result.container.querySelector('.mobile-studio-notices')).toBeNull();
     });
 
     it('offers no Studio sections when the host has no Files panel', async () => {

@@ -365,9 +365,16 @@
 <div class="standalone-app" class:desktop-layout={!getMobileModeEnabled()} inert={updateLocked} aria-busy={updateLocked}>
   {#snippet workspaceActions()}
     <div class="toolbar-menu workspace-menu">
-      <button class="menu-trigger" aria-expanded={workspaceMenuOpen} aria-haspopup="menu" onclick={toggleWorkspaceMenu}>
-        Workspace <span class="dropdown-indicator" data-testid="dropdown-indicator" aria-hidden="true"></span>
-      </button>
+      <!-- The phone Studio row has room for icons only; the name stays for assistive tech. -->
+      {#if mobileLayout}
+        <button class="menu-trigger icon-trigger" aria-label="Workspace" title="Workspace" aria-expanded={workspaceMenuOpen} aria-haspopup="menu" onclick={toggleWorkspaceMenu}>
+          <i class="codicon codicon-kebab-vertical" aria-hidden="true"></i>
+        </button>
+      {:else}
+        <button class="menu-trigger" aria-expanded={workspaceMenuOpen} aria-haspopup="menu" onclick={toggleWorkspaceMenu}>
+          Workspace <span class="dropdown-indicator" data-testid="dropdown-indicator" aria-hidden="true"></span>
+        </button>
+      {/if}
       {#if workspaceMenuOpen}
         <div class="dropdown-menu" role="menu" aria-label="Workspace">
           <button onclick={resetLayout}>Reset workspace layout</button>
@@ -416,11 +423,11 @@
         </div>
       {/if}
     </div>
-    <button class="menu-trigger" onclick={() => {
+    <button class="menu-trigger" class:icon-trigger={mobileLayout} aria-label={mobileLayout ? 'Settings' : undefined} title={mobileLayout ? 'Settings' : undefined} onclick={() => {
       settingsOpen = true;
       viewMenuOpen = false;
       workspaceMenuOpen = false;
-    }}>Settings</button>
+    }}>{#if mobileLayout}<i class="codicon codicon-settings-gear" aria-hidden="true"></i>{:else}Settings{/if}</button>
   {/snippet}
   {#snippet workspaceStatus()}
     <span
@@ -497,8 +504,8 @@
         {@render workspaceActions()}
         {@render workspaceStatus()}
       </div>
-      {@render shellNotices()}
     {/snippet}
+    {#snippet studioNotices()}{@render shellNotices()}{/snippet}
     {#snippet explorer()}
       <ShaderExplorer hostApi={explorerApi} compact={true} selectedShaderPath={session?.selectedShaderPath ?? ''} />
     {/snippet}
@@ -537,7 +544,6 @@
   .dropdown-indicator { width: 0; height: 0; border-right: 4px solid transparent; border-left: 4px solid transparent; border-top: 5px solid currentColor; opacity: 0.8; }
   .toolbar-menu { position: relative; }
   .toolbar-right { margin-left: auto; }
-  .studio-toolbar .build-status { margin-left: auto; }
   .workspace-menu { padding-left: 8px; border-left: 1px solid var(--vscode-panel-border); }
   .dropdown-menu { position: absolute; top: calc(100% + 4px); left: 0; display: grid; min-width: 190px; padding: 4px; border: 1px solid var(--vscode-panel-border); border-radius: 4px; background: var(--vscode-menu-background, var(--vscode-sideBar-background)); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25); }
   .dropdown-menu button { display: grid; grid-template-columns: 16px 1fr; gap: 4px; width: 100%; border: 0; text-align: left; white-space: nowrap; }
@@ -562,7 +568,13 @@
     .standalone-app:not(.desktop-layout) .standalone-toolbar > a { display: none; }
     .standalone-app:not(.desktop-layout) .standalone-toolbar button { min-height: 44px; }
     .standalone-app:not(.desktop-layout) .workspace-menu { padding-left: 0; border-left: 0; }
-    .standalone-app:not(.desktop-layout) .dropdown-menu { position: fixed; top: max(54px, calc(env(safe-area-inset-top) + 50px)); right: 8px; left: 8px; max-height: calc(100dvh - 120px); overflow: auto; }
+    /* On phones the controls sit in the Studio row at the bottom, so the
+       Workspace menu spans that row and opens upwards. */
+    .standalone-app:not(.desktop-layout) .studio-toolbar { position: static; gap: 0; min-height: 44px; padding: 0; border: 0; background: transparent; }
+    .standalone-app:not(.desktop-layout) .studio-toolbar .toolbar-menu { position: static; }
+    .standalone-app:not(.desktop-layout) .studio-toolbar .icon-trigger { width: 44px; padding: 0; font-size: 18px; }
+    .standalone-app:not(.desktop-layout) .studio-toolbar .build-status { padding-left: 4px; }
+    .standalone-app:not(.desktop-layout) .dropdown-menu { top: auto; bottom: calc(100% + 4px); right: 8px; left: 8px; max-height: calc(100dvh - 180px); overflow: auto; }
     .standalone-app:not(.desktop-layout) .alpha-notice { padding-inline: max(8px, env(safe-area-inset-left)) max(8px, env(safe-area-inset-right)); }
     :global(.standalone-app:not(.desktop-layout) .menu-bar .collapse-config, .standalone-app:not(.desktop-layout) .menu-bar .collapse-debug, .standalone-app:not(.desktop-layout) .menu-bar .collapse-record) { display: none; }
   }

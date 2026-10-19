@@ -23,9 +23,10 @@
     editor: Snippet;
     preview: Snippet;
     studio?: Snippet;
+    studioNotices?: Snippet;
   }
 
-  let { explorer, files, editor, preview, studio }: Props = $props();
+  let { explorer, files, editor, preview, studio, studioNotices }: Props = $props();
 
   export function selectEditor(path: string) {
     layoutStub.selectEditor(path);
@@ -69,5 +70,8 @@
   <section data-testid="files-panel">{@render files?.()}</section>
   <section data-testid="editor-panel">{@render editor()}</section>
   <section data-testid="preview-panel">{@render preview()}</section>
-  {#if isMobileViewport()}<section data-testid="studio-bar">{@render studio?.()}</section>{/if}
+  {#if isMobileViewport()}
+    <section data-testid="studio-bar">{@render studio?.()}</section>
+    <section data-testid="studio-notices">{@render studioNotices?.()}</section>
+  {/if}
 </div>
