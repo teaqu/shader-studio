@@ -112,3 +112,59 @@ test('cleanup unlocks the preview without clicking controls that move during edi
   await unlockPreviewForCleanup(vscode, frame);
   assert.deepEqual(commands, ['shader-studio.toggleLock']);
 });
+
+function nativeEditorVscode(statusTexts) {
+  const typed = [];
+  let selection;
+  const texts = [...statusTexts];
+  const document = {
+    uri: Uri.file('/fixtures/inference.wgsl'),
+    positionAt: offset => ({ line: 2, character: offset - 40 }),
+  };
+  return {
+    typed,
+    selection: () => selection,
+    evaluateInHost: async (callback, ...args) => callback({
+      Uri,
+      Selection: class {
+        constructor(anchor, active) {
+          this.anchor = anchor;
+          this.active = active;
+        }
+      },
+      workspace: { textDocuments: [document] },
+      window: {
+        showTextDocument: async () => ({
+          set selection(value) {
+            selection = value;
+          },
+        }),
+      },
+    }, ...args),
+    window: {
+      evaluate: async () => true,
+      locator: selector => {
+        assert.equal(selector, '[id="status.editor.selection"]');
+        return { first: () => ({ textContent: async () => (texts.length > 1 ? texts.shift() : texts[0]) }) };
+      },
+    },
+  };
+}
+
+test('focusNativeEditor returns only once the workbench caret reaches the requested position', async () => {
+  const { focusNativeEditor } = await import('./editor-actions.mjs');
+  // The status bar lags the host selection: first the old caret, then the new one.
+  const vscode = nativeEditorVscode(['Ln 3, Col 28', ' Ln 3, Col 29 ']);
+
+  await focusNativeEditor(vscode, '/fixtures/inference.wgsl', 68);
+
+  assert.deepEqual(vscode.selection().active, { line: 2, character: 28 });
+});
+
+test('focusNativeEditor fails when the workbench caret never moves', async () => {
+  const { focusNativeEditor } = await import('./editor-actions.mjs');
+  // Col 290 must not count as Col 29.
+  const vscode = nativeEditorVscode(['Ln 3, Col 290']);
+
+  await assert.rejects(() => focusNativeEditor(vscode, '/fixtures/inference.wgsl', 68), /never moved the caret/);
+});

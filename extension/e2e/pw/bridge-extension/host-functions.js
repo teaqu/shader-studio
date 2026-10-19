@@ -316,6 +316,19 @@ module.exports = Object.freeze({
       });
       return true;
     },
+  "1ad548c7a6264aa74c054fabc9fcc74b5b9a3a086694f1bf41df313052b28836": async (vscode, target, at) => {
+    const document = vscode.workspace.textDocuments.find(candidate => candidate.uri.fsPath === target) ?? (await vscode.workspace.openTextDocument(vscode.Uri.file(target)));
+    const editor = await vscode.window.showTextDocument(document, {
+      preserveFocus: false,
+      preview: false
+    });
+    const position = document.positionAt(at);
+    editor.selection = new vscode.Selection(position, position);
+    return {
+      line: position.line,
+      character: position.character
+    };
+  },
   "1b5e875a113099bca026f279f8c6e78a166f7337249611b62664b4cd5c1e8900": async (vscode, path) =>
         (await vscode.workspace.openTextDocument(vscode.Uri.file(path))).uri.toString(),
   "1c10665a3f7beb8d35f6738fabfe738d7d513a8957e6fb08f6d277e6e640d780": async (vscode, settings) => {
@@ -1120,13 +1133,6 @@ module.exports = Object.freeze({
     await api.window.showTextDocument(await api.workspace.openTextDocument(common), {
       preview: false
     });
-  },
-  "7ac230dccefb6d08c0dbc933f65259c349013cfed4cde5d77c90859f7a6c4f71": async (vscode, target, at) => {
-    const document = vscode.workspace.textDocuments.find((candidate) => candidate.uri.fsPath === target)
-      ?? await vscode.workspace.openTextDocument(vscode.Uri.file(target));
-    const editor = await vscode.window.showTextDocument(document, { preserveFocus: false, preview: false });
-    const caret = document.positionAt(at);
-    editor.selection = new vscode.Selection(caret, caret);
   },
   "7b1774b2fd5d5558a9fc106457ad2ce949f2ee7f850de5260c83e0180bdb07f4": async (vscode, path, lineNumber) => {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
@@ -1938,15 +1944,6 @@ module.exports = Object.freeze({
       });
       await vscode.commands.executeCommand('shader-studio.view');
     },
-  "eb0e52607cb6770e373de6e0259cb9104325fc5d92b92c4481f9692e3efae802": async (vscode, target, at) => {
-    const document = vscode.workspace.textDocuments.find(candidate => candidate.uri.fsPath === target) ?? (await vscode.workspace.openTextDocument(vscode.Uri.file(target)));
-    const editor = await vscode.window.showTextDocument(document, {
-      preserveFocus: false,
-      preview: false
-    });
-    const caret = document.positionAt(at);
-    editor.selection = new vscode.Selection(caret, caret);
-  },
   "eb390b6469bef1b39caf004ae3cace9e36712738115121016e3d97dfda034370": vscode => vscode.window.tabGroups.all
       .filter(group => group.tabs.some(tab => tab.label === 'Shader Studio'))
       .map(group => group.tabs.map(tab => tab.label)),
@@ -1956,6 +1953,14 @@ module.exports = Object.freeze({
       );
       await vscode.commands.executeCommand('shader-studio.startWebServer');
     },
+  "eceb49fdafae543ce928a31a9a73c1e83cfdbcbe89901400d543fcb5e0a1b269": async (vscode, target, at) => {
+    const document = vscode.workspace.textDocuments.find((candidate) => candidate.uri.fsPath === target)
+      ?? await vscode.workspace.openTextDocument(vscode.Uri.file(target));
+    const editor = await vscode.window.showTextDocument(document, { preserveFocus: false, preview: false });
+    const position = document.positionAt(at);
+    editor.selection = new vscode.Selection(position, position);
+    return { line: position.line, character: position.character };
+  },
   "ed659546f27ad4dbf919dde963b996633997152a0e51845e67a76cad5ab13372": async (vscode, paths) => {
           for (const path of paths) {
             const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));

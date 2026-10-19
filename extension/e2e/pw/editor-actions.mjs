@@ -101,16 +101,24 @@ export async function setParameterExpression(frame, name, value) {
  * could hit another editor showing similar text.
  */
 export async function focusNativeEditor(vscode, path, offset) {
-  await vscode.evaluateInHost(async (vscode, target, at) => {
+  const caret = await vscode.evaluateInHost(async (vscode, target, at) => {
     const document = vscode.workspace.textDocuments.find((candidate) => candidate.uri.fsPath === target)
       ?? await vscode.workspace.openTextDocument(vscode.Uri.file(target));
     const editor = await vscode.window.showTextDocument(document, { preserveFocus: false, preview: false });
-    const caret = document.positionAt(at);
-    editor.selection = new vscode.Selection(caret, caret);
+    const position = document.positionAt(at);
+    editor.selection = new vscode.Selection(position, position);
+    return { line: position.line, character: position.character };
   }, path, offset);
   await expect.poll(() => vscode.window.evaluate(() =>
     Boolean(document.activeElement?.closest('.part.editor .monaco-editor'))),
   { message: 'the editor never took keyboard focus' }).toBe(true);
+  // The extension host sets the selection asynchronously. A key typed before
+  // the workbench applies it lands at the old caret, and a selection applied
+  // after the key moves the caret back behind it. The status bar reports the
+  // workbench's own caret, so wait for it before typing.
+  const status = vscode.window.locator('[id="status.editor.selection"]').first();
+  await expect.poll(async () => (await status.textContent())?.trim(), { message: 'the workbench never moved the caret' })
+    .toMatch(new RegExp(`^Ln ${caret.line + 1}, Col ${caret.character + 1}\\b`));
 }
 
 /**
