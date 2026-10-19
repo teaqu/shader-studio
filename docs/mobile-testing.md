@@ -11,6 +11,8 @@ Standalone mode is in alpha. Save regular [workspace backups](standalone.md#savi
 3. Tap **Preview** to see the result with more screen space.
 4. Tap **Tools** to open **Config**, **Debug**, **Frame Times**, or **Export**. Tools remembers your last selection.
 
+To cut, copy, or paste in the editor, touch and hold the code, then lift your finger. A menu opens with **Cut**, **Copy**, and **Paste** next to the editor's code actions. Your browser may show its own **Paste** button before it lets Shader Studio read the clipboard; tap it to finish pasting.
+
 Rotate your device when you need more room. You can also enable **Editor Overlay** from the preview menu to edit with the shader visible behind your code. Returning to a desktop-sized window restores your desktop panel arrangement.
 
 ## Add to Your Home Screen
