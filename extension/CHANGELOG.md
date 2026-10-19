@@ -1,6 +1,6 @@
 # Change Log
 
-### Unreleased
+### 1.3.0
 
 - Breaking: `mainVertex` now receives the vertex index as its first parameter in every language. Add it to existing vertex shaders:
   - GLSL: `void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv)`
@@ -37,6 +37,50 @@
 - Vertex and fragment functions can be mixed independently with ShaderToy hooks. Native mesh stages can use the viewer camera matrices.
 
 - Native WGSL and Slang buffer passes support multiple render targets with named output selectors, Create/Insert templates, and per-output debugging. Capture snapshots feedback, camera and storage state without advancing live simulations. GLSL stays single-output.
+
+- New VR preview for fullscreen GLSL Image shaders: add `void mainVR(out vec4 fragColor, in vec2 fragCoord, in vec3 rayOrigin, in vec3 rayDirection)` next to `mainImage`, then open **VR** from the preview toolbar or options menu. **Desktop preview** lets you look around without a headset: move with W/A/S/D and Q/E, and look by dragging or with the arrow keys. In a browser with WebXR and a connected headset, click **Enter VR** to render each eye. **Headset navigation** (off by default) adds thumbstick movement with **Snap** or **Smooth** turning, and **Movement speed** and **Turn speed** apply to both views. Slang, WGSL and mesh passes keep using `mainImage`.
+- New VR controller inputs: add `#define SHADER_STUDIO_VR_INPUTS` to read `iVRActive`, `iVRControllerPosition`, `iVRControllerDirection`, `iVRControllerButtons`, `iVRControllerAxes`, `iVRControllerFaceButtons`, `iVRControllerTouches` and `iVRControllerFaceTouches` (slot 0 is the left hand, 1 the right). Shaders without the define keep their own identifiers and stay Shadertoy-compatible.
+- New built-in uniform `iPointer` in GLSL, Slang and WGSL: pointer position including hover, `inside`, `held`/`pressed`/`released` button masks (left = 1, right = 2, middle = 4, back = 8, forward = 16), `modifiers`, and `wheel`/`wheelDelta` scrolling. `iMouse` keeps its Shadertoy behaviour.
+- New **Prevent default mouse actions** setting (`shader-studio.preview.preventMouseDefaults` in VS Code, on by default) stops context menus, middle-click actions, back/forward navigation and page scrolling over the canvas, so shaders can use right-click and the scroll wheel.
+- The standalone Particle Swarm example now pushes particles away on right-drag; left-drag still pulls them in. Existing browser workspaces keep their saved copy.
+- New volume inputs: choose **Volumes** in a channel's settings to load an uncompressed R8 or RGBA8 3D KTX2 file and sample it with a three-component coordinate in GLSL, Slang or WGSL. Set **Linear** or **Nearest** filtering and **Wrap X / Y / Z**, and inspect the volume in a rotatable 3D preview or with **Slices**. In `.sha.json`, use `{ "type": "volume", "path": "./clouds.ktx2" }`; `.size` includes depth.
+- **Random Greyscale.ktx2** and **Random RGBA.ktx2**, 32 × 32 × 32 random noise volumes, are built in and can be chosen under **Volumes** without downloading a file.
+- The built-in **Nebula Texture** and **Desert Cubemap** that standalone offers are now in the VS Code asset picker too, so shaders that use them open in either.
+- Refreshed the built-in Nebula texture.
+- New cubemap buffers for GLSL and Slang: choose **+ New → Cubemap** and write `mainCubemap(out vec4 color, in vec2 fragCoord, in vec3 rayOri, in vec3 rayDir)`, then sample the result from a Buffer channel with a direction vector. Set **Face size** under **Output** (512 by default) and inspect the result as a **Face**, **Cross layout** or **Environment** preview. In `.sha.json`, set `"outputKind": "cubemap"` and `"faceSize"` on the pass. Slang can also fill cubemaps from compute with `cubemapDirection` and `writeOutput(pixel, face, color)`. A cubemap pass can read its own previous frame for feedback. WGSL cubemap buffers are not supported yet.
+- New live inputs: **Webcam** and **Screen** in a channel's **Misc** tab, and **Mic** and **Shared Audio** (browser tab or system audio) in its **Audio** tab. Saved configs only record the type, such as `{ "type": "webcam" }`, `"microphone"`, `"screen"` or `"system-audio"`; device choices and permissions last for the session only. Live inputs need HTTPS or localhost and are greyed out in VS Code panels: use **Open in Browser** to use them with a shader from VS Code.
+- Audio channels now use Shadertoy's analyser settings: a 2048-point FFT with 0.8 smoothing and a −100 to −30 dB range. Existing audio-reactive shaders may respond differently, because the spectrum row now covers about 0 to `iSampleRate / 4` Hz.
+- New **Live** and **Render** modes for screenshots and video recording. **Live** captures the preview as it runs, without restarting it, and records until **Stop & save**. **Render** captures at a chosen time and resolution, first rendering every earlier frame so feedback buffers and `iFrame` match a continuous run. Render does not replay mouse, keyboard or live input.
+- Recording only offers MP4 and WebM when your browser or VS Code can encode them. MP4 sizes are rounded up to even dimensions. The **FPS** list adds a **Screen** option. The GIF **Colors** option has been removed.
+- Redesigned GPU storage for Slang and WGSL. Each storage buffer has its own card in the config panel, added with **+ New → Storage buffer**, with **Settings** and **Inspect** tabs. Settings can define numeric struct fields, start from a binary file of up to 256 KiB, clear the buffer every frame, keep its data across restarts, and **Reset data now**. Changes take effect when you click **Apply changes**. **Inspect** shows current values as a snapshot or live, read at **Latest values** or before or after a chosen pass. New `.sha.json` storage fields: `fields`, `initialData`, `initialDataName`, `clearEachFrame` and `resetOnRestart`.
+- Config passes are now cards. Click a render pass's eye button to preview that pass's output with the shader's inputs, shown by a **Viewing** badge, or use **Preview this pass** from its right-click menu. **Preview file standalone** opens a buffer's file as a shader of its own. While inline rendering is active, the badge reads **Viewing · L24** and follows the debugged line.
+- Buffer and compute passes have a new **Shader file** picker listing the files already used by the config, with **Browse workspace…**, **Create file…** and **Enter a path…**. Several passes can share one source file. **Open editor** opens the pass's file.
+- The **Vertex shader** section now comes last in a pass's settings, after Resolution for Image and after Output for buffers.
+- Opening a buffer, Common or vertex file linked to the current shader now keeps that shader's preview without locking it. Double-clicking a pass card no longer locks the preview. Use **Lock** to keep the preview while you edit unrelated shaders; hover over it to see what it will do.
+- New debug settings now start with **Variable inspector** on and **Pixel inspector** and **Inline rendering** off. Saved profiles keep their choices. A line icon on the **Debug** tab shows when line rendering is on.
+- Opening a different shader now resets the 3D viewer's orbit, pan and zoom. Editing or recompiling the current shader keeps the view.
+- New VS Code settings `shader-studio.webgpu.useViewerCamera`, the default for **Use viewer camera** on mesh passes in GLSL, WGSL and Slang, and `shader-studio.webgpu.defaultRenderAuthoring`, which chooses Built-in hooks or Native entry points for new WGSL and Slang shaders. Standalone has the same choices in **Settings**.
+- Shaders with no aspect ratio in their config now open at 16:9 instead of matching your screen. The **Auto** aspect ratio is now labelled **Screen**.
+- Shader Explorer now updates its list and thumbnails when shader or `.sha.json` files are added, changed or deleted.
+- Shader Explorer options moved to an **Explorer settings** panel (gear button) with **Display**, **Filters** and **Files** groups, a new **Hide vertex files** filter, and **Reset to defaults**.
+- New **Only keep active shader files open** Explorer setting (`shader-studio.explorer.keepActiveShaderFiles` in VS Code, off by default there and on by default in standalone). Each preview opens its shader's main, buffer, Common and vertex files and closes other shader tabs, asking first about unsaved changes.
+- New AI assistant connection (VS Code only): run **Shader Studio: Connect AI Assistant** and turn on **Enable AI connection** to let a local MCP-compatible assistant read and edit your shader files, check errors, capture images and short recordings, inspect storage values, control playback, and send input to an open preview. Edits stay unsaved for you to review. The connection is off by default, needs a trusted workspace, and uses a private token. It also adds the commands **Shader Studio: Regenerate MCP Token** and **Shader Studio: Verify MCP Connection**, and the `shader-studio.mcpEnabled` and `shader-studio.mcpPort` settings.
+- Standalone works on phones and tablets: narrow windows switch to bottom navigation with **Explorer**, **Editor**, **Preview** and **Tools**. Turn off **Settings → Mobile mode** to keep the desktop layout at every size.
+- Standalone can be installed with your browser's **Install** or **Add to Home Screen** and works offline. Use **Workspace → Prepare Offline Compilers** to make Slang and WGSL available offline.
+- Standalone shows whether your work is **Saved** or **Session-only** and warns about storage limits. New **Workspace → Export Workspace Backup**, **Import Workspace Backup…** and **Request storage protection** commands.
+- Standalone updates itself: when a new version is available, it saves your changes and reloads. Reloading while online always opens the latest version.
+- New standalone **Files** pane (**View → Files**) to browse, filter, create, move, rename, delete and download workspace files and folders, with multi-select. Folders and multiple files download as one ZIP.
+- Standalone can upload shaders, `.sha.json` configs and assets, using **Upload Files** or drag and drop. Channel pickers have **Upload…** and can choose any image, cubemap, volume, audio or video already in the workspace. Uploads stay in your browser and are included in workspace backups.
+- New standalone workspaces keep starter files and new shaders at the top level instead of in a `/shaders` folder. Existing workspaces are left as they are.
+- New standalone **Pixel** theme: choose **Settings → Theme → Style → Pixel**, in light or dark appearance.
+- Standalone panels with a single tab hide their tab header until you hover over its top edge or a divider, or drag a panel.
+- GLSL completion and navigation no longer read `#include` files, because the preview does not support `#include`. Put shared GLSL code in Common.
+- Fixed paused, stopped or hidden previews with a video input keeping the GPU busy. Video frames are now uploaded only when the preview renders a frame and the video has moved.
+- Fixed GLSL shaders sometimes failing with "Compile timed out" when the preview was in the background.
+- Fixed quick config panel edits sometimes being undone by an older saved config that arrived late.
+- Fixed the preview jumping back to the previous shader after you unlocked it with a Common or vertex file focused, then quickly opened another shader.
+- Fixed a spurious config error for unsaved, untitled shader documents in VS Code.
+- Fixed standalone tab context menus having a see-through background.
 
 ### 1.2.0
 
