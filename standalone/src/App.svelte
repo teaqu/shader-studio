@@ -19,6 +19,7 @@
     resetShellState, setNewShaderVisible,
   } from './state/shellState.svelte';
   import { clearStandaloneWorkspace } from './clearWorkspace';
+  import { isMobileViewport } from './state/mobileShellState.svelte';
   import { shaderLanguageForPath, type ShaderLanguageId, type WebGPUAuthoringMode } from '@shader-studio/types';
   import type { PwaController, PwaStatus } from './pwa';
   import type { WorkspacePersistenceStatus } from './VirtualWorkspace';
@@ -94,6 +95,7 @@
     }
   }
   const session = $derived(getViewerSession());
+  const mobileLayout = $derived(isMobileViewport());
   const explorerApi = transport.getShaderExplorerHostApi();
   let shellMounted = false;
   let updateInProgress = false;
@@ -361,29 +363,7 @@
 
 <svelte:window onclick={closeMenusOnOutsideClick} onkeydown={closeMenusOnEscape} />
 <div class="standalone-app" class:desktop-layout={!getMobileModeEnabled()} inert={updateLocked} aria-busy={updateLocked}>
-  <header class="standalone-toolbar" aria-label="Standalone workspace">
-    <strong>Shader Studio</strong>
-    <div class="toolbar-menu">
-      <button class="menu-trigger" aria-expanded={viewMenuOpen} aria-haspopup="menu" onclick={toggleViewMenu}>
-        View <span class="dropdown-indicator" data-testid="dropdown-indicator" aria-hidden="true"></span>
-      </button>
-      {#if viewMenuOpen}
-        <div class="dropdown-menu" role="menu" aria-label="View">
-          <button role="menuitemcheckbox" aria-checked={panelVisibility.explorer} onclick={() => togglePanel('explorer')}>
-            <span aria-hidden="true">{panelVisibility.explorer ? '✓' : ''}</span> Shader Explorer
-          </button>
-          <button role="menuitemcheckbox" aria-checked={panelVisibility.files} onclick={() => togglePanel('files')}>
-            <span aria-hidden="true">{panelVisibility.files ? '✓' : ''}</span> Files
-          </button>
-          <button role="menuitemcheckbox" aria-checked={panelVisibility.editor} onclick={() => togglePanel('editor')}>
-            <span aria-hidden="true">{panelVisibility.editor ? '✓' : ''}</span> Editor
-          </button>
-          <button role="menuitemcheckbox" aria-checked={panelVisibility.preview} onclick={() => togglePanel('preview')}>
-            <span aria-hidden="true">{panelVisibility.preview ? '✓' : ''}</span> Preview
-          </button>
-        </div>
-      {/if}
-    </div>
+  {#snippet workspaceActions()}
     <div class="toolbar-menu workspace-menu">
       <button class="menu-trigger" aria-expanded={workspaceMenuOpen} aria-haspopup="menu" onclick={toggleWorkspaceMenu}>
         Workspace <span class="dropdown-indicator" data-testid="dropdown-indicator" aria-hidden="true"></span>
@@ -441,8 +421,8 @@
       viewMenuOpen = false;
       workspaceMenuOpen = false;
     }}>Settings</button>
-    <a class="toolbar-right" href="https://teaqu.github.io/shader-studio/docs/" target="_blank" rel="noopener noreferrer">Documentation</a>
-    <a href="https://github.com/teaqu/shader-studio" target="_blank" rel="noopener noreferrer">GitHub</a>
+  {/snippet}
+  {#snippet workspaceStatus()}
     <span
       class="build-status"
       role="status"
@@ -462,22 +442,63 @@
         <i class="codicon codicon-package" aria-hidden="true"></i>
       {/if}
     </span>
-  </header>
+  {/snippet}
+  {#snippet shellNotices()}
+    {#if alphaNoticeVisible}
+      <aside class="alpha-notice" data-testid="web-alpha-warning" role="note">
+        <span>
+          Changes are saved only in this browser. Clearing browser data will delete them.
+        </span>
+        <button class="dismiss-alpha-notice" aria-label="Dismiss alpha notice" title="Close warning" onclick={dismissAlphaNotice}>×</button>
+      </aside>
+    {/if}
+    {#if workspaceError}<p role="alert">{workspaceError} <button aria-label="Dismiss workspace warning" title="Close warning" onclick={() => workspaceError = ''}>×</button></p>{/if}
+    {#if pwaStatus.offlinePreparation.state === 'error' && dismissedOfflineError !== pwaStatus.offlinePreparation.message}
+      {@const offlineError = pwaStatus.offlinePreparation.message}
+      <p class="shell-status-error" role="alert">Offline preparation failed: {offlineError} <button aria-label="Dismiss offline warning" title="Close warning" onclick={() => dismissedOfflineError = offlineError}>×</button></p>
+    {/if}
+  {/snippet}
+  <!-- Phones show one destination at a time, so the header moves into Studio. -->
+  {#if !mobileLayout}
+    <header class="standalone-toolbar" aria-label="Standalone workspace">
+      <strong>Shader Studio</strong>
+      <div class="toolbar-menu">
+        <button class="menu-trigger" aria-expanded={viewMenuOpen} aria-haspopup="menu" onclick={toggleViewMenu}>
+          View <span class="dropdown-indicator" data-testid="dropdown-indicator" aria-hidden="true"></span>
+        </button>
+        {#if viewMenuOpen}
+          <div class="dropdown-menu" role="menu" aria-label="View">
+            <button role="menuitemcheckbox" aria-checked={panelVisibility.explorer} onclick={() => togglePanel('explorer')}>
+              <span aria-hidden="true">{panelVisibility.explorer ? '✓' : ''}</span> Shader Explorer
+            </button>
+            <button role="menuitemcheckbox" aria-checked={panelVisibility.files} onclick={() => togglePanel('files')}>
+              <span aria-hidden="true">{panelVisibility.files ? '✓' : ''}</span> Files
+            </button>
+            <button role="menuitemcheckbox" aria-checked={panelVisibility.editor} onclick={() => togglePanel('editor')}>
+              <span aria-hidden="true">{panelVisibility.editor ? '✓' : ''}</span> Editor
+            </button>
+            <button role="menuitemcheckbox" aria-checked={panelVisibility.preview} onclick={() => togglePanel('preview')}>
+              <span aria-hidden="true">{panelVisibility.preview ? '✓' : ''}</span> Preview
+            </button>
+          </div>
+        {/if}
+      </div>
+      {@render workspaceActions()}
+      <a class="toolbar-right" href="https://teaqu.github.io/shader-studio/docs/" target="_blank" rel="noopener noreferrer">Documentation</a>
+      <a href="https://github.com/teaqu/shader-studio" target="_blank" rel="noopener noreferrer">GitHub</a>
+      {@render workspaceStatus()}
+    </header>
+    {@render shellNotices()}
+  {/if}
   <input class="visually-hidden" bind:this={workspaceFileInput} type="file" accept="application/json,.json" onchange={importWorkspace} />
-  {#if alphaNoticeVisible}
-    <aside class="alpha-notice" data-testid="web-alpha-warning" role="note">
-      <span>
-        Changes are saved only in this browser. Clearing browser data will delete them.
-      </span>
-      <button class="dismiss-alpha-notice" aria-label="Dismiss alpha notice" title="Close warning" onclick={dismissAlphaNotice}>×</button>
-    </aside>
-  {/if}
-  {#if workspaceError}<p role="alert">{workspaceError} <button aria-label="Dismiss workspace warning" title="Close warning" onclick={() => workspaceError = ''}>×</button></p>{/if}
-  {#if pwaStatus.offlinePreparation.state === 'error' && dismissedOfflineError !== pwaStatus.offlinePreparation.message}
-    {@const offlineError = pwaStatus.offlinePreparation.message}
-    <p class="shell-status-error" role="alert">Offline preparation failed: {offlineError} <button aria-label="Dismiss offline warning" title="Close warning" onclick={() => dismissedOfflineError = offlineError}>×</button></p>
-  {/if}
   <StandaloneLayout bind:this={layout} {hostedPanels} {transport}>
+    {#snippet studio()}
+      <div class="standalone-toolbar studio-toolbar" role="group" aria-label="Studio workspace">
+        {@render workspaceActions()}
+        {@render workspaceStatus()}
+      </div>
+      {@render shellNotices()}
+    {/snippet}
     {#snippet explorer()}
       <ShaderExplorer hostApi={explorerApi} compact={true} selectedShaderPath={session?.selectedShaderPath ?? ''} />
     {/snippet}
@@ -516,6 +537,7 @@
   .dropdown-indicator { width: 0; height: 0; border-right: 4px solid transparent; border-left: 4px solid transparent; border-top: 5px solid currentColor; opacity: 0.8; }
   .toolbar-menu { position: relative; }
   .toolbar-right { margin-left: auto; }
+  .studio-toolbar .build-status { margin-left: auto; }
   .workspace-menu { padding-left: 8px; border-left: 1px solid var(--vscode-panel-border); }
   .dropdown-menu { position: absolute; top: calc(100% + 4px); left: 0; display: grid; min-width: 190px; padding: 4px; border: 1px solid var(--vscode-panel-border); border-radius: 4px; background: var(--vscode-menu-background, var(--vscode-sideBar-background)); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25); }
   .dropdown-menu button { display: grid; grid-template-columns: 16px 1fr; gap: 4px; width: 100%; border: 0; text-align: left; white-space: nowrap; }

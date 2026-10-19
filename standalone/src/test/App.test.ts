@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AppLayoutStub, { layoutStub } from './AppLayoutStub.svelte';
@@ -15,6 +15,7 @@ vi.mock('@shader-studio/ui', async () => {
 });
 
 import App from '../App.svelte';
+import { resetMobileShellState, setMobileViewport } from '../state/mobileShellState.svelte';
 import { StandaloneSettings } from '../settings/StandaloneSettings';
 afterEach(() => vi.unstubAllGlobals());
 import type { WorkspacePersistenceStatus } from '../VirtualWorkspace';
@@ -227,6 +228,65 @@ describe('standalone App', () => {
     expect(screen.getByRole('menuitemcheckbox', { name: 'Shader Explorer' }).getAttribute('aria-checked')).toBe('true');
     expect(screen.getByRole('menuitemcheckbox', { name: 'Editor' }).getAttribute('aria-checked')).toBe('true');
     expect(screen.getByRole('menuitemcheckbox', { name: 'Preview' }).getAttribute('aria-checked')).toBe('true');
+  });
+
+  describe('on a phone', () => {
+    afterEach(() => {
+      resetMobileShellState();
+    });
+
+    it('hides the header and shows Workspace, Settings, status and notices in Studio', async () => {
+      setMobileViewport(true);
+      render(App, { props: { transport: createTransport() } });
+      await tick();
+
+      expect(screen.queryByRole('banner', { name: 'Standalone workspace' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'View' })).toBeNull();
+      expect(screen.queryByRole('link', { name: 'Documentation' })).toBeNull();
+      const studio = screen.getByTestId('studio-bar');
+      const bar = within(studio).getByRole('group', { name: 'Studio workspace' });
+      expect(within(bar).getByRole('button', { name: 'Workspace' })).toBeTruthy();
+      expect(within(bar).getByRole('button', { name: 'Settings' })).toBeTruthy();
+      expect(await within(bar).findByRole('status', { name: 'Online · Saved' })).toBeTruthy();
+      expect(within(studio).getByTestId('web-alpha-warning')).toBeTruthy();
+      expect(screen.getAllByTestId('web-alpha-warning')).toHaveLength(1);
+
+      await fireEvent.click(within(bar).getByRole('button', { name: 'Workspace' }));
+      expect(within(bar).getByRole('menu', { name: 'Workspace' })).toBeTruthy();
+      // jsdom has no modal dialogs.
+      const original = HTMLDialogElement.prototype.showModal;
+      const showModal = vi.fn();
+      HTMLDialogElement.prototype.showModal = showModal;
+      try {
+        await fireEvent.click(within(bar).getByRole('button', { name: 'Settings' }));
+        expect(showModal).toHaveBeenCalled();
+      } finally {
+        HTMLDialogElement.prototype.showModal = original;
+      }
+    });
+
+    it('brings the header back when the window widens', async () => {
+      setMobileViewport(true);
+      render(App, { props: { transport: createTransport() } });
+      await tick();
+      expect(screen.queryByRole('banner', { name: 'Standalone workspace' })).toBeNull();
+
+      setMobileViewport(false);
+      await tick();
+      const header = screen.getByRole('banner', { name: 'Standalone workspace' });
+      expect(within(header).getByRole('button', { name: 'Workspace' })).toBeTruthy();
+      expect(screen.queryByTestId('studio-bar')).toBeNull();
+      expect(screen.getAllByTestId('web-alpha-warning')).toHaveLength(1);
+    });
+
+    it('keeps the header when mobile mode is turned off', async () => {
+      setMobileViewport(true);
+      const transport = createTransport();
+      transport.settings.update('layout.mobileMode', false);
+      render(App, { props: { transport } });
+      await tick();
+      expect(screen.getByRole('banner', { name: 'Standalone workspace' })).toBeTruthy();
+    });
   });
 
   it('dismisses the alpha notice and remembers that preference', async () => {

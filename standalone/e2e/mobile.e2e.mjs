@@ -9,7 +9,7 @@ test.beforeEach(({ context }) => useSharedShaderEditor(context));
 test('new shader opens blank and focused, validates its name, and saves the named shader', async ({ page }) => {
   await page.goto('/');
   const nav = page.getByRole('navigation', { name: 'Workspace panels' });
-  await nav.getByRole('button', { name: 'Explorer' }).click();
+  await nav.getByRole('button', { name: 'Studio' }).click();
   await page.getByTestId('web-shader-explorer').getByTitle('New Shader').click();
   const dialog = page.getByRole('dialog', { name: 'New Shader' });
   const name = dialog.getByLabel('Shader name');
@@ -27,21 +27,21 @@ test('new shader opens blank and focused, validates its name, and saves the name
   await expect(dialog).toBeHidden();
   await expect.poll(async () => (await readWorkspaceFiles(page)).some(file => file.path === '/mobile-named.glsl')).toBe(true);
   await page.reload();
-  await nav.getByRole('button', { name: 'Explorer' }).click();
+  await nav.getByRole('button', { name: 'Studio' }).click();
   await expect(page.getByTestId('web-shader-explorer').getByTestId('shader-option-mobile-named-glsl')).toBeVisible();
 });
 
 test('vertex visibility is default-on and the chosen option survives reload', async ({ page }) => {
   await page.goto('/');
   const nav = page.getByRole('navigation', { name: 'Workspace panels' });
-  await nav.getByRole('button', { name: 'Explorer' }).click();
+  await nav.getByRole('button', { name: 'Studio' }).click();
   const explorer = page.getByTestId('web-shader-explorer');
   await explorer.getByTitle('New Shader').click();
   const dialog = page.getByRole('dialog', { name: 'New Shader' });
   await dialog.getByLabel('Shader name').fill('mesh.vert');
   await dialog.getByRole('button', { name: 'Create Shader' }).click();
   await expect(dialog).toBeHidden();
-  await nav.getByRole('button', { name: 'Explorer' }).click();
+  await nav.getByRole('button', { name: 'Studio' }).click();
   await explorer.getByTitle('Options').click();
   const hideVertex = explorer.getByLabel('Hide vertex files');
   await expect(hideVertex).toBeChecked();
@@ -54,7 +54,7 @@ test('vertex visibility is default-on and the chosen option survives reload', as
     return state && JSON.parse(state.contents).hideVertexShaders;
   }).toBe(false);
   await page.reload();
-  await nav.getByRole('button', { name: 'Explorer' }).click();
+  await nav.getByRole('button', { name: 'Studio' }).click();
   await expect(explorer.getByTestId('shader-option-mesh-vert-glsl')).toBeVisible();
   // Tapping outside the settings closes them, so reopen them if needed.
   await openExplorerSettings(page);
@@ -101,6 +101,7 @@ test('storage protection is requested automatically and the Workspace menu expla
   });
   await page.goto('/');
   await expect.poll(() => page.evaluate(() => window.__storageProtectionRequests)).toBe(1);
+  await openStudio(page);
   const warning = page.getByRole('button', { name: 'Storage warning' });
   await expect(warning).toBeVisible();
   await expect(warning).toHaveAttribute('title', /space runs low/);
@@ -109,6 +110,7 @@ test('storage protection is requested automatically and the Workspace menu expla
   const warningBox = await warning.boundingBox();
   expect(warningBox.x + warningBox.width).toBeLessThanOrEqual(page.viewportSize().width);
   await page.reload();
+  await openStudio(page);
   await warning.click();
   const menu = page.getByRole('menu', { name: 'Workspace' });
   await expect(menu).toContainText('Work saves automatically.');
@@ -179,17 +181,17 @@ test(`preview and explorer keep user widths ${explorerWidth}/${previewWidth} whi
   await expectWidths();
 });
 }
-test('phone shell preserves the selected shader across Explorer, Preview, Editor, and Tools', async ({ page }) => {
+test('phone shell preserves the selected shader across Studio, Preview, Editor, and Tools', async ({ page }) => {
   await page.goto('/');
   const workspaceNav = page.getByRole('navigation', { name: 'Workspace panels' });
   await expect(workspaceNav).toBeVisible();
   await expect(workspaceNav.getByRole('button', { name: 'Preview' })).toHaveAttribute('aria-current', 'page');
 
-  await workspaceNav.getByRole('button', { name: 'Explorer' }).click();
+  await workspaceNav.getByRole('button', { name: 'Studio' }).click();
   const explorer = page.getByTestId('web-shader-explorer');
   await expect(explorer).toBeInViewport();
   await explorer.getByTestId('shader-option-aurora-glsl').click();
-  await expect(workspaceNav.getByRole('button', { name: 'Explorer' })).toHaveAttribute('aria-current', 'page');
+  await expect(workspaceNav.getByRole('button', { name: 'Studio' })).toHaveAttribute('aria-current', 'page');
 
   await workspaceNav.getByRole('button', { name: 'Preview' }).click();
   await expect(page.getByTestId('web-preview')).toBeInViewport();
@@ -226,7 +228,7 @@ test('phone shell preserves the selected shader across Explorer, Preview, Editor
 test('touch input survives cancellation and remains usable after orientation changes', async ({ page }) => {
   await page.goto('/');
   const nav = page.getByRole('navigation', { name: 'Workspace panels' });
-  await nav.getByRole('button', { name: 'Explorer' }).click();
+  await nav.getByRole('button', { name: 'Studio' }).click();
   await page.getByTestId('shader-option-aurora-glsl').click();
   await nav.getByRole('button', { name: 'Preview' }).click();
   const canvas = page.getByTestId('web-preview').locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
@@ -304,7 +306,7 @@ test('small desktop windows keep mobile navigation in a bottom row', async ({ pa
 test('a finger tap pins the pixel inspector, a second tap moves it, and tapping the pin clears it', async ({ page }) => {
   await page.goto('/');
   const nav = page.getByRole('navigation', { name: 'Workspace panels' });
-  await nav.getByRole('button', { name: 'Explorer' }).click();
+  await nav.getByRole('button', { name: 'Studio' }).click();
   await page.getByTestId('shader-option-aurora-glsl').dispatchEvent('click');
   await nav.getByRole('button', { name: 'Preview' }).click();
   const preview = page.getByTestId('web-preview');
@@ -372,13 +374,17 @@ test('a finger tap pins the pixel inspector, a second tap moves it, and tapping 
 async function openAuroraOnPhone(page) {
   await page.goto('/');
   const nav = page.getByRole('navigation', { name: 'Workspace panels' });
-  await nav.getByRole('button', { name: 'Explorer' }).click();
+  await nav.getByRole('button', { name: 'Studio' }).click();
   await page.getByTestId('shader-option-aurora-glsl').click();
   await expect(page.getByTestId('shader-option-aurora-glsl')).toHaveAttribute('aria-pressed', 'true');
-  // Selection leaves the phone on Explorer; the Editor tab shows the shader.
-  await expect(nav.getByRole('button', { name: 'Explorer' })).toHaveAttribute('aria-current', 'page');
+  // Selection leaves the phone on Studio; the Editor tab shows the shader.
+  await expect(nav.getByRole('button', { name: 'Studio' })).toHaveAttribute('aria-current', 'page');
   await nav.getByRole('button', { name: 'Editor' }).click();
   return nav;
+}
+
+async function openStudio(page) {
+  await page.getByRole('navigation', { name: 'Workspace panels' }).getByRole('button', { name: 'Studio' }).click();
 }
 
 async function persisted(page, marker) {
@@ -434,6 +440,7 @@ test('a workspace backup exported on a phone restores the work after the workspa
   await expect(editor.locator('.view-lines')).not.toContainText('iResolution');
   await persisted(page, 'backed up');
 
+  await openStudio(page);
   await page.getByRole('button', { name: 'Workspace' }).click();
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export Workspace Backup' }).click();
@@ -452,6 +459,7 @@ test('a workspace backup exported on a phone restores the work after the workspa
     .some((file) => file.contents.includes('backed up'))).toBe(false);
 
   page.once('dialog', (dialog) => dialog.accept());
+  await openStudio(page);
   await page.getByRole('button', { name: 'Workspace' }).click();
   const chooserPromise = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: 'Import Workspace Backup…' }).click();
@@ -461,7 +469,7 @@ test('a workspace backup exported on a phone restores the work after the workspa
   await reloaded;
   await persisted(page, 'backed up');
 
-  await page.getByRole('navigation', { name: 'Workspace panels' }).getByRole('button', { name: 'Explorer' }).click();
+  await openStudio(page);
   await page.getByTestId('shader-option-aurora-glsl').dispatchEvent('click');
   await expect(editor.locator('.view-lines')).toContainText('backed up');
 });
@@ -470,6 +478,8 @@ test('global Mobile mode override keeps desktop layout across reload and can be 
   await page.goto('/');
   const nav = page.getByRole('navigation', { name: 'Workspace panels' });
   await expect(nav).toBeVisible();
+  // Phones keep Settings at the top of Studio; desktop keeps it in the header.
+  await openStudio(page);
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   const settings = page.getByRole('dialog', { name: 'Settings', exact: true });
   await settings.getByRole('checkbox', { name: 'Mobile mode', exact: true }).uncheck();

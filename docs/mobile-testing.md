@@ -6,7 +6,7 @@ Standalone mode is in alpha. Save regular [workspace backups](standalone.md#savi
 
 ## Open and Edit a Shader
 
-1. In **Explorer**, select an example or choose **New Shader**. Start with **GLSL** if your device does not support WebGPU.
+1. In **Studio**, select an example or choose **New Shader**. **Studio** has two sections at the bottom: **Shaders** lists your shaders and **Files** lists every file in the workspace. Start with **GLSL** if your device does not support WebGPU.
 2. Tap **Editor** to change the shader. In the default **Hot** compile mode, the preview updates as you type.
 3. Tap **Preview** to see the result with more screen space.
 4. Tap **Tools** to open **Config**, **Debug**, **Frame Times**, or **Export**. Tools remembers your last selection.
@@ -23,7 +23,7 @@ For Slang or WGSL offline use, choose **Workspace → Prepare Offline Compilers*
 
 ## Keep Your Work
 
-Your workspace is saved in the current browser and is not synced between devices. Check the save status before closing the app:
+Your workspace is saved in the current browser and is not synced between devices. On a phone, the top of **Studio** holds the **Workspace** menu, **Settings**, and the save status. Check the save status before closing the app:
 
 - **Saved** means your latest changes are stored in this browser.
 - **Session-only** means they will be lost when you close or reload the app. Export a backup before leaving.

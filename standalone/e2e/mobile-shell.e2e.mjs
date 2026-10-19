@@ -27,23 +27,23 @@ test('the phone Editor shows the file editor a desktop session opened, and keeps
   await expect(editor.locator('.view-lines')).toBeInViewport();
 });
 
-test('Explorer holds Shaders and Files, and reopens the section last used', async ({ page }) => {
+test('Studio holds Shaders and Files, and reopens the section last used', async ({ page }) => {
   await page.goto('/');
   const nav = page.getByRole('navigation', { name: 'Workspace panels' });
-  await expect(nav.getByRole('button')).toHaveText(['Explorer', 'Editor', 'Preview', 'Tools']);
-  await nav.getByRole('button', { name: 'Explorer' }).click();
-  const sections = page.getByRole('navigation', { name: 'Explorer sections' });
+  await expect(nav.getByRole('button')).toHaveText(['Studio', 'Editor', 'Preview', 'Tools']);
+  await nav.getByRole('button', { name: 'Studio' }).click();
+  const sections = page.getByRole('navigation', { name: 'Studio sections' });
   await expect(sections.getByRole('button', { name: 'Shaders' })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByTestId('shader-option-aurora-glsl')).toBeVisible();
 
   await sections.getByRole('button', { name: 'Files' }).click();
   await expect(page.getByRole('treeitem', { name: 'aurora.glsl', exact: true })).toBeInViewport();
   await expect(page.getByTestId('shader-option-aurora-glsl')).not.toBeInViewport();
-  await expect(nav.getByRole('button', { name: 'Explorer' })).toHaveAttribute('aria-current', 'page');
+  await expect(nav.getByRole('button', { name: 'Studio' })).toHaveAttribute('aria-current', 'page');
 
   await nav.getByRole('button', { name: 'Preview' }).click();
   await expect(sections).toBeHidden();
-  await nav.getByRole('button', { name: 'Explorer' }).click();
+  await nav.getByRole('button', { name: 'Studio' }).click();
   await expect(sections.getByRole('button', { name: 'Files' })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('treeitem', { name: 'aurora.glsl', exact: true })).toBeVisible();
 });
@@ -59,15 +59,15 @@ test('the phone tools include VR', async ({ page }) => {
     .toHaveText(['Config', 'Debug', 'Frame Times', 'Export', 'VR']);
 });
 
-test('opening a shader from the phone Explorer stays on Explorer without revealing the editor', async ({ page }) => {
+test('opening a shader from the phone Studio stays on Studio without revealing the editor', async ({ page }) => {
   await page.goto('/');
   const nav = page.getByRole('navigation', { name: 'Workspace panels' });
-  await nav.getByRole('button', { name: 'Explorer' }).click();
+  await nav.getByRole('button', { name: 'Studio' }).click();
   await page.getByTestId('shader-option-aurora-glsl').click();
   await page.getByTestId('shader-option-nebula-texture-glsl').click();
 
   await expect(page.getByTestId('shader-option-nebula-texture-glsl')).toHaveAttribute('aria-pressed', 'true');
-  await expect(nav.getByRole('button', { name: 'Explorer' })).toHaveAttribute('aria-current', 'page');
+  await expect(nav.getByRole('button', { name: 'Studio' })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByTestId('shader-option-nebula-texture-glsl')).toBeInViewport();
   // Dockview hides groups without emptying their boxes, so check what is on screen.
   const editor = page.locator('[data-testid="file-editor"][data-path="/nebula-texture.glsl"]');
@@ -90,7 +90,7 @@ test.describe('phone editor on iOS', () => {
   async function openPhoneEditor(page) {
     await page.goto('/');
     const nav = page.getByRole('navigation', { name: 'Workspace panels' });
-    await nav.getByRole('button', { name: 'Explorer' }).click();
+    await nav.getByRole('button', { name: 'Studio' }).click();
     await page.getByTestId('shader-option-aurora-glsl').click();
     await nav.getByRole('button', { name: 'Editor' }).click();
     const editor = page.locator('[data-testid="file-editor"][data-path="/aurora.glsl"]');
@@ -129,4 +129,39 @@ test.describe('phone editor on iOS', () => {
     await menu.getByRole('menuitem', { name: 'Paste' }).click();
     await expect(editor.locator('.view-lines')).toContainText('pasted_from_menu');
   });
+});
+
+test('the phone shell has no header; Studio holds Workspace, Settings and the save status', async ({ page }) => {
+  await page.goto('/');
+  const nav = page.getByRole('navigation', { name: 'Workspace panels' });
+  await expect(nav.getByRole('button')).toHaveText(['Studio', 'Editor', 'Preview', 'Tools']);
+  await expect(page.locator('header.standalone-toolbar')).toBeHidden();
+  const workspace = page.getByRole('button', { name: 'Workspace', exact: true });
+  await expect(workspace).toBeHidden();
+  await expect(page.getByTestId('web-alpha-warning')).toBeHidden();
+
+  await nav.getByRole('button', { name: 'Studio' }).click();
+  await expect(nav.getByRole('button', { name: 'Studio' })).toHaveAttribute('aria-current', 'page');
+  await expect(workspace).toBeInViewport();
+  await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeInViewport();
+  await expect(page.getByRole('status', { name: /saved|saving|session/i })).toBeInViewport();
+  await expect(page.getByTestId('web-alpha-warning')).toBeInViewport();
+  await expect(page.getByTestId('shader-option-aurora-glsl')).toBeInViewport();
+
+  await workspace.click();
+  await expect(page.getByRole('menu', { name: 'Workspace' }).getByRole('button', { name: 'Export Workspace Backup' })).toBeInViewport();
+  await page.keyboard.press('Escape');
+
+  await page.getByRole('navigation', { name: 'Studio sections' }).getByRole('button', { name: 'Files' }).click();
+  await expect(workspace).toBeInViewport();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: /settings/i })).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  await nav.getByRole('button', { name: 'Editor' }).click();
+  await expect(workspace).toBeHidden();
+
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await expect(page.locator('header.standalone-toolbar')).toBeVisible();
+  await expect(page.locator('header.standalone-toolbar').getByRole('button', { name: 'Workspace', exact: true })).toBeVisible();
 });

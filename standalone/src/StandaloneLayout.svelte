@@ -35,10 +35,12 @@
     files?: Snippet;
     editor: Snippet;
     preview: Snippet;
+    /** Workspace controls and status shown above Shaders and Files on phones. */
+    studio?: Snippet;
     hostedPanels?: HostedPanels;
   }
 
-  let { transport, explorer, files, editor, preview, hostedPanels = new HostedPanels() }: Props = $props();
+  let { transport, explorer, files, editor, preview, studio, hostedPanels = new HostedPanels() }: Props = $props();
 
   let dockviewElement: HTMLElement;
   let sourceElement: HTMLElement;
@@ -54,10 +56,10 @@
   let removeViewportListener: (() => void) | null = null;
   let activeMobileTool = $state<HostedPanelId>('config');
   const MOBILE_TOOLS = [['config', 'Config'], ['debug', 'Debug'], ['performance', 'Frame Times'], ['recording', 'Export'], ['vr', 'VR']] as const;
-  const MOBILE_DESTINATIONS = [['explorer', 'Explorer'], ['editor', 'Editor'], ['preview', 'Preview'], ['tools', 'Tools']] as const;
+  const MOBILE_DESTINATIONS = [['explorer', 'Studio'], ['editor', 'Editor'], ['preview', 'Preview'], ['tools', 'Tools']] as const;
   const EXPLORER_SECTIONS = [['explorer', 'Shaders'], ['files', 'Files']] as const;
   type ExplorerSection = typeof EXPLORER_SECTIONS[number][0];
-  /** Explorer and Files share one phone destination; this remembers which was last open. */
+  /** Shaders and Files share the phone Studio destination; this remembers which was last open. */
   let explorerSection = $state<ExplorerSection>('explorer');
   const mobilePanel = $derived(getMobilePanel());
   const mobileViewport = $derived(isMobileViewport());
@@ -262,6 +264,9 @@
 </script>
 
 <div class:mobile-layout={mobileViewport} class="standalone-layout" data-mobile-panel={mobilePanel}>
+  {#if mobileViewport && studio && isExplorerSection(mobilePanel)}
+    <div class="mobile-studio-bar">{@render studio()}</div>
+  {/if}
   <div class="standalone-dockview" bind:this={dockviewElement}></div>
   <div class="standalone-panel-sources" bind:this={sourceElement} aria-hidden="true">
     <div class="standalone-panel-source" bind:this={explorerSource}>{@render explorer()}</div>
@@ -282,7 +287,7 @@
       </nav>
     {/if}
     {#if files && isExplorerSection(mobilePanel)}
-      <nav class="mobile-tools-navigation" aria-label="Explorer sections">
+      <nav class="mobile-tools-navigation" aria-label="Studio sections">
         {#each EXPLORER_SECTIONS as [panelId, label]}
           <button
             class:active={mobilePanel === panelId}
@@ -333,6 +338,7 @@
   .standalone-panel-source, :global(.standalone-panel-content) { width: 100%; height: 100%; min-width: 0; min-height: 0; }
   .mobile-panel-navigation { display: none; }
   .mobile-tools-navigation { display: none; }
+  .mobile-studio-bar { flex: 0 0 auto; min-width: 0; }
 
   @media (max-width: 767px) {
     .standalone-layout.mobile-layout { position: relative; flex-direction: column; padding-bottom: env(safe-area-inset-bottom); }

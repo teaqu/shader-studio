@@ -203,28 +203,28 @@ describe('StandaloneLayout', () => {
       } });
     }
 
-    it('groups Explorer and Files under one phone destination', async () => {
+    it('groups Shaders and Files under the phone Studio destination', async () => {
       stubViewport(true);
       const result = renderLayoutWithFiles();
       await tick();
       const nav = result.getByRole('navigation', { name: 'Workspace panels' });
-      expect(within(nav).getAllByRole('button').map((button) => button.textContent)).toEqual(['Explorer', 'Editor', 'Preview', 'Tools']);
-      expect(result.queryByRole('navigation', { name: 'Explorer sections' })).toBeNull();
+      expect(within(nav).getAllByRole('button').map((button) => button.textContent)).toEqual(['Studio', 'Editor', 'Preview', 'Tools']);
+      expect(result.queryByRole('navigation', { name: 'Studio sections' })).toBeNull();
 
-      await fireEvent.click(within(nav).getByRole('button', { name: 'Explorer' }));
-      const sections = result.getByRole('navigation', { name: 'Explorer sections' });
+      await fireEvent.click(within(nav).getByRole('button', { name: 'Studio' }));
+      const sections = result.getByRole('navigation', { name: 'Studio sections' });
       expect(within(sections).getByRole('button', { name: 'Shaders' }).getAttribute('aria-current')).toBe('page');
       expect(result.component.getSelectedMobilePanel()).toBe('explorer');
 
       await fireEvent.click(within(sections).getByRole('button', { name: 'Files' }));
       expect(result.component.getSelectedMobilePanel()).toBe('files');
       expect(within(sections).getByRole('button', { name: 'Files' }).getAttribute('aria-current')).toBe('page');
-      expect(within(nav).getByRole('button', { name: 'Explorer' }).getAttribute('aria-current')).toBe('page');
+      expect(within(nav).getByRole('button', { name: 'Studio' }).getAttribute('aria-current')).toBe('page');
 
-      // Explorer reopens on the section that was last used.
+      // Studio reopens on the section that was last used.
       await fireEvent.click(within(nav).getByRole('button', { name: 'Preview' }));
-      expect(result.queryByRole('navigation', { name: 'Explorer sections' })).toBeNull();
-      await fireEvent.click(within(nav).getByRole('button', { name: 'Explorer' }));
+      expect(result.queryByRole('navigation', { name: 'Studio sections' })).toBeNull();
+      await fireEvent.click(within(nav).getByRole('button', { name: 'Studio' }));
       expect(result.component.getSelectedMobilePanel()).toBe('files');
     });
 
@@ -234,18 +234,48 @@ describe('StandaloneLayout', () => {
       await tick();
       result.component.selectMobilePanel('files');
       await tick();
-      const sections = result.getByRole('navigation', { name: 'Explorer sections' });
+      const sections = result.getByRole('navigation', { name: 'Studio sections' });
       expect(within(sections).getByRole('button', { name: 'Files' }).getAttribute('aria-current')).toBe('page');
-      expect(within(result.getByRole('navigation', { name: 'Workspace panels' })).getByRole('button', { name: 'Explorer' })
+      expect(within(result.getByRole('navigation', { name: 'Workspace panels' })).getByRole('button', { name: 'Studio' })
         .getAttribute('aria-current')).toBe('page');
     });
 
-    it('offers no Explorer sections when the host has no Files panel', async () => {
+    it('shows the Studio workspace bar on Shaders and Files only', async () => {
+      stubViewport(true);
+      const result = render(StandaloneLayout, { props: {
+        explorer: source('explorer'), files: source('files'), editor: source('editor'), preview: source('preview'),
+        studio: source('studio-bar'),
+      } });
+      await tick();
+      const nav = result.getByRole('navigation', { name: 'Workspace panels' });
+      const studioBar = () => result.container.querySelector('.mobile-studio-bar [data-source="studio-bar"]');
+      expect(studioBar()).toBeNull();
+
+      await fireEvent.click(within(nav).getByRole('button', { name: 'Studio' }));
+      expect(studioBar()).not.toBeNull();
+      await fireEvent.click(within(result.getByRole('navigation', { name: 'Studio sections' })).getByRole('button', { name: 'Files' }));
+      expect(studioBar()).not.toBeNull();
+      await fireEvent.click(within(nav).getByRole('button', { name: 'Editor' }));
+      expect(studioBar()).toBeNull();
+    });
+
+    it('keeps the Studio workspace bar out of the desktop layout', async () => {
+      stubViewport(false);
+      const result = render(StandaloneLayout, { props: {
+        explorer: source('explorer'), editor: source('editor'), preview: source('preview'), studio: source('studio-bar'),
+      } });
+      await tick();
+      result.component.selectMobilePanel('explorer');
+      await tick();
+      expect(result.container.querySelector('.mobile-studio-bar')).toBeNull();
+    });
+
+    it('offers no Studio sections when the host has no Files panel', async () => {
       stubViewport(true);
       const result = renderLayout();
       await tick();
-      await fireEvent.click(result.getByRole('button', { name: 'Explorer' }));
-      expect(result.queryByRole('navigation', { name: 'Explorer sections' })).toBeNull();
+      await fireEvent.click(result.getByRole('button', { name: 'Studio' }));
+      expect(result.queryByRole('navigation', { name: 'Studio sections' })).toBeNull();
       expect(result.component.getSelectedMobilePanel()).toBe('explorer');
     });
 
@@ -326,7 +356,7 @@ describe('StandaloneLayout', () => {
       expect(result.getByRole('button', { name: 'Export' }).getAttribute('aria-current')).toBe('page');
     });
 
-    it.each(['Explorer', 'Editor', 'Preview', 'Tools'])('marks %s current when tapped', async (name) => {
+    it.each(['Studio', 'Editor', 'Preview', 'Tools'])('marks %s current when tapped', async (name) => {
       stubViewport(true);
       const result = renderLayout();
       await tick();

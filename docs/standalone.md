@@ -73,7 +73,7 @@ The workspace contains Shader Explorer, Editor, and Preview panels. Drag tabs to
 
 The preview has its own controls for configuration, debugging, performance, and recording. Use **Workspace → Reset workspace layout** to restore the outer workspace arrangement. Use the preview's **Layout** menu to reset the viewer layout separately.
 
-On phones, the bottom navigation shows one main destination at a time: **Explorer**, **Editor**, **Preview**, or **Tools**. Tools includes **Config**, **Debug**, **Frame Times**, and **Export** and remembers the last selection. The Preview editor overlay remains available from its Editor Overlay menu. Rotating the device or returning to a larger viewport does not replace the saved desktop panel arrangement.
+On phones, the bottom navigation shows one main destination at a time: **Studio**, **Editor**, **Preview**, or **Tools**. The top bar is hidden to leave more room; its **Workspace** menu, **Settings**, save status, and storage notices appear at the top of **Studio**, above the **Shaders** and **Files** sections. Tools includes **Config**, **Debug**, **Frame Times**, and **Export** and remembers the last selection. The Preview editor overlay remains available from its Editor Overlay menu. Rotating the device or returning to a larger viewport does not replace the saved desktop panel arrangement.
 
 ## Saving and Browser Storage
 

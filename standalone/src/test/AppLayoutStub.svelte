@@ -16,14 +16,16 @@
 
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import { isMobileViewport } from '../state/mobileShellState.svelte';
 
   interface Props {
     explorer: Snippet; files?: Snippet;
     editor: Snippet;
     preview: Snippet;
+    studio?: Snippet;
   }
 
-  let { explorer, files, editor, preview }: Props = $props();
+  let { explorer, files, editor, preview, studio }: Props = $props();
 
   export function selectEditor(path: string) {
     layoutStub.selectEditor(path);
@@ -67,4 +69,5 @@
   <section data-testid="files-panel">{@render files?.()}</section>
   <section data-testid="editor-panel">{@render editor()}</section>
   <section data-testid="preview-panel">{@render preview()}</section>
+  {#if isMobileViewport()}<section data-testid="studio-bar">{@render studio?.()}</section>{/if}
 </div>
