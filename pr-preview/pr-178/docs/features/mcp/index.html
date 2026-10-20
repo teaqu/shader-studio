@@ -1070,6 +1070,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#browser-app-webmcp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Browser App (WebMCP)
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1945,6 +1956,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#browser-app-webmcp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Browser App (WebMCP)
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1967,7 +1989,7 @@
 
 <h1 id="connect-an-ai-assistant">Connect an AI Assistant<a class="headerlink" href="#connect-an-ai-assistant" title="Permanent link">&para;</a></h1>
 <p>Connect a compatible AI assistant to Shader Studio so it can help edit your shaders, explain errors, inspect values, and see images from your running preview. The connection uses Model Context Protocol (MCP), a standard supported by many AI tools.</p>
-<p>This feature requires the <strong>VS Code extension</strong>, a trusted workspace, and an AI tool with a <strong>Streamable HTTP MCP</strong> client running on the same computer. It works with previews in VS Code and previews opened from VS Code in your browser. The standalone browser app does not provide this connection.</p>
+<p>This feature requires the <strong>VS Code extension</strong>, a trusted workspace, and an AI tool with a <strong>Streamable HTTP MCP</strong> client running on the same computer. It works with previews in VS Code and previews opened from VS Code in your browser. The standalone browser app uses <a href="#browser-app-webmcp">WebMCP</a> instead of this local server connection.</p>
 <h2 id="enable-the-connection">Enable the Connection<a class="headerlink" href="#enable-the-connection" title="Permanent link">&para;</a></h2>
 <ol>
 <li>Run <strong>Shader Studio: Connect AI Assistant</strong> from the Command Palette.</li>
@@ -2195,6 +2217,17 @@
 </tr>
 </tbody>
 </table>
+<h2 id="browser-app-webmcp">Browser App (WebMCP)<a class="headerlink" href="#browser-app-webmcp" title="Permanent link">&para;</a></h2>
+<p>Open Shader Studio in an assistant's browser that supports WebMCP. WebMCP is off by default. Open <strong>Settings</strong>, find <strong>AI tools</strong>, and turn on <strong>Enable WebMCP</strong>. The browser can then discover Shader Studio's site tools while the app is open; there is no server URL or token to configure. Codex's built-in browser supports this workflow. If your browser does not expose site tools, you can continue using Shader Studio normally, but the assistant cannot use WebMCP there.</p>
+<p>Ask the assistant to list previews and read the selected shader before editing. For example:</p>
+<blockquote>
+<p>List the Shader Studio preview, read its shader, and make the colors blue and orange. Keep the animation. Check compilation errors after your edit.</p>
+</blockquote>
+<p>The assistant can list, read and create workspace text files, edit files with revision checks, select a shader, inspect settings and diagnostics, change playback and temporary uniform values, inspect passes and GPU storage, and record or replay input events. Persistent configuration changes go through the shader's <code>.sha.json</code> file. GPU storage inspection requires a supported WebGPU shader.</p>
+<p>Edits are saved in this browser's workspace and appear in the editor. If you change a file after the assistant reads it, an edit using the old revision is rejected; the assistant must read it again. Export a workspace backup when you want a separate copy of your work.</p>
+<p><code>capture_output</code> and frame-capture tools return timing, resolution and compilation metadata. The assistant can inspect the visible canvas to see the rendered image. Image bytes, video recording artifacts, the extension's retained logs, and its bundled documentation resources are not returned through this WebMCP connection. Use Shader Studio's export panel to save images or videos, and this guide for reference.</p>
+<p>Your choice is saved in the browser’s global settings for all shaders. Turn off <strong>Enable WebMCP</strong> to remove the tools and cancel pending requests immediately. <strong>Reset all settings</strong> also turns it off.</p>
+<p>Site tools apply to the current browser tab. Keep the app open while the assistant works. Closing the app disconnects the tools.</p>
 
 
 
