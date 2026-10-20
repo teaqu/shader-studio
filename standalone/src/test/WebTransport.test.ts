@@ -1,3 +1,4 @@
+import { resetMobileShellState, setMobileViewport } from '../state/mobileShellState.svelte';
 import { getEditorDocument } from '../state/editorDocuments.svelte';
 import { getActiveShaderEditors, getSelectedEditor, getRequestedEditor, getNewShaderVisible, getRequestedPanel, resetShellState, setNewShaderVisible } from '../state/shellState.svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -733,6 +734,36 @@ describe('WebTransport preview file and save edge cases', () => {
     expect(getActiveShaderEditors() ?? []).toHaveLength(0);
   });
 
+  it.each(['/aurora.glsl', '/glow-trails/trails.buffer.glsl'])(
+    'opens the mobile Editor tab for explorer selection %s', async (path) => {
+      resetMobileShellState();
+      setMobileViewport(true);
+      const transport = tracking(new WebTransport());
+      try {
+        transport.getShaderExplorerHostApi().postMessage({ type: 'openShader', path });
+        await transport.flush();
+        expect(getRequestedPanel()).toBe('editor');
+      } finally {
+        transport.dispose();
+        resetMobileShellState();
+      }
+    },
+  );
+
+  it('does not switch mobile tabs for a missing explorer file', async () => {
+    resetMobileShellState();
+    setMobileViewport(true);
+    const transport = tracking(new WebTransport());
+    try {
+      transport.getShaderExplorerHostApi().postMessage({ type: 'openShader', path: '/missing.glsl' });
+      await transport.flush();
+      expect(getRequestedPanel()).toBeNull();
+    } finally {
+      transport.dispose();
+      resetMobileShellState();
+    }
+  });
+
   it('focuses an explorer-selected pass that the tracked preview already has open', async () => {
     const transport = tracking(new WebTransport());
     transport.postMessage({ type: 'previewFilesChanged', payload: { shaderPath: '/glow-trails.glsl' } });
@@ -748,6 +779,7 @@ describe('WebTransport preview file and save edge cases', () => {
     explorer.postMessage({ type: 'openShader', path: '/aurora.glsl' });
     await transport.flush();
     expect(getSelectedEditor()).toBeNull();
+    expect(getRequestedPanel()).toBeNull();
     transport.dispose();
   });
 
