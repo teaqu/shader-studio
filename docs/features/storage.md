@@ -14,7 +14,11 @@ Choose a scalar or vector type, a struct defined in shader source, or define num
 
 Use distinct field names and match your binary data to the displayed layout. GPU alignment matters: an array of `vec3<f32>` has a 16-byte stride even though each vector holds 12 bytes of values. Struct fields can also contain padding. Fields are not tightly packed automatically.
 
-Buffers are available to every pass. Shader code determines which ones it accesses. The pass list describes this access model; it does not connect or disconnect buffers. Compute passes can read and write; vertex and fragment passes have read-only access.
+Buffers are available by name in every pass, but each pass binds only the buffers referenced by its shader, vertex shader, Common code, or imported helpers. Compute passes can read and write; vertex and fragment passes have read-only access.
+
+The buffer-count limit applies to each pass, rather than the total number of declarations. For example, on a device allowing eight buffers per pass, two passes can use separate sets of eight buffers. Shader Studio requests the larger limits supported by your GPU. Each buffer must fit the device's allocation and storage-binding size limits; there is no fixed 256 MiB limit on total storage.
+
+Reference detection is conservative: buffers mentioned in unused shared helpers or preprocessor branches may still count toward a pass's limit. Token-pasting macros retain all declarations. Using a config-defined struct type directly also retains its buffer declaration. Keep pass-specific helpers in the pass file when a shared helper would otherwise add unwanted bindings.
 
 ## Initial data and reset
 

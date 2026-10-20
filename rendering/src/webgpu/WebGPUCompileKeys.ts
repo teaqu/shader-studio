@@ -1,3 +1,4 @@
+import { resolvePassStorage } from "./PassStorage";
 import { meshDepthCompare } from "./MeshDepthCompare";
 import type { StorageBindingNode } from "../types/PassGraph";
 import { renderPipelineStateKey,verticesSpace } from "../types/Geometry";
@@ -16,6 +17,8 @@ export function wgslCacheKey(
   customUniforms: { name: string; type: string }[] = [],
   modules: Array<{ moduleName: string; path: string; source: string }> = [],
 ): string {
+  storage = resolvePassStorage(storage, pass.source, pass.vertexSrc ?? "", commonCode,
+    ...modules.map(module => module.source));
   const channels = buildSlangBindingPlan(getSlangChannels(pass.channels)).channels
     .map(channel => [channel.slot, channel.key, channel.kind, channel.outputKind, channel.textureBinding, channel.samplerBinding]);
   const storageLayout = storage.map((node) => [
@@ -53,6 +56,8 @@ export function pipelineCacheKey(
   customUniforms: { name: string; type: string }[] = [],
   modules: Array<{ moduleName: string; path: string; source: string }> = [],
 ): string {
+  storage = resolvePassStorage(storage, pass.source, pass.vertexSrc ?? "", commonCode,
+    ...modules.map(module => module.source));
   const channels = buildSlangBindingPlan(getSlangChannels(pass.channels)).channels
     .map(channel => [channel.slot, channel.key, channel.kind, channel.outputKind, channel.textureBinding, channel.samplerBinding]);
   const storageLayout = storage.map((node) => [

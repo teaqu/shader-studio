@@ -41,8 +41,6 @@ export interface BuildSlangPassGraphOptions {
   maxOutputLayers?: number;
   /** Maximum cube-face extent supported by the active WebGPU device. */
   maxTextureDimension2D?: number;
-  /** Maximum storage buffers per shader stage for the warning threshold; defaults to 8. */
-  maxStorageBuffers?: number;
 }
 
 export interface ComputeWorkgroupLimits {
@@ -102,7 +100,6 @@ const BUILTIN_STORAGE_SIZES_WGSL: ReadonlyMap<string, number> = new Map([
 ]);
 
 const SPECIAL_PASS_NAMES = new Set(["common", "Image"]);
-const MAX_TOTAL_STORAGE_BYTES = 256 * 1024 * 1024;
 const PORTABLE_COMPUTE_WORKGROUP_LIMITS: ComputeWorkgroupLimits = {
   maxInvocations: 256,
   maxSizeX: 256,
@@ -225,7 +222,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       .filter(([name]) => !SPECIAL_PASS_NAMES.has(name))
       .map(([name, pass]) => [name, isComputePass(pass) ? "compute" : "render"] as const),
   );
-  const storage = resolveStorage(config.storage, warnings, errors, options.maxStorageBuffers ?? 8, parsedStructs);
+  const storage = resolveStorage(config.storage, errors, parsedStructs);
   warnOnCustomStorageReferencesInCommon(storage, commonCode, warnings, language);
   const storageNames = new Set(storage.map(({ name }) => name));
   const computePasses: RenderPassNode[] = [];
@@ -474,13 +471,10 @@ function resolveStorageType(declaration: StorageBufferConfig, elementType: strin
 
 function resolveStorage(
   storageConfig: ShaderConfig["storage"],
-  warnings: string[],
   errors: string[],
-  maxStorageBuffers: number,
   parsedStructs: Map<string, { size: number; alignment: number; containsAtomic?: boolean }>,
 ): StorageBindingNode[] {
   const storage: StorageBindingNode[] = [];
-  let totalBytes = 0;
   const structDefinitions = new Map<string, string>();
 
   for (const [name, declaration] of Object.entries(storageConfig ?? {})) {
@@ -538,17 +532,8 @@ function resolveStorage(
       clearEachFrame: declaration.clearEachFrame,
       resetOnRestart: declaration.resetOnRestart,
     });
-    totalBytes += declaration.count * stride;
   }
 
-  if (storage.length > maxStorageBuffers) {
-    warnings.push(
-      `Storage uses ${storage.length} buffers but the device supports at most ${maxStorageBuffers}; consider packing buffers`,
-    );
-  }
-  if (totalBytes > MAX_TOTAL_STORAGE_BYTES) {
-    errors.push("Total storage size exceeds 256 MiB");
-  }
   return storage;
 }
 

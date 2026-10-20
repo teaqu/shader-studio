@@ -1523,10 +1523,7 @@ describe("Slang storage graph", () => {
 
     expect(graph.errors).toEqual([]);
     expect(graph.storage).toHaveLength(9);
-    expect(graph.warnings.some((warning) =>
-      warning.includes("Storage uses 9 buffers")
-      && warning.includes("consider packing buffers")
-    )).toBe(true);
+    expect(graph.warnings).toEqual([]);
   });
 
   it("warns in config order when common references custom-typed storage", () => {
@@ -1825,10 +1822,10 @@ float4 inactive = particles[0].position;
     expect(graph.warnings).toEqual([]);
   }, 500);
 
-  it("reports total valid storage larger than 256 MiB", () => {
+  it("defers storage size limits above 256 MiB to the active device", () => {
     const graph = build({ huge: { count: 268_435_457, elementType: "uint" } });
 
-    expect(graph.errors.some((error) => error.includes("256 MiB"))).toBe(true);
+    expect(graph.errors).toEqual([]);
     expect(graph.storage).toHaveLength(1);
   });
 });

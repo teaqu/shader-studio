@@ -1287,7 +1287,7 @@ describe("WebGPURenderingEngine capture wiring", () => {
     (engineOwners(engine).session as any).passGraph = [
       { name: "BufferA", source: "a", output: "texture", width: 1, height: 1, channels: [] },
       {
-        name: "Image", source: "i", output: "canvas", width: 1, height: 1,
+        name: "Image", source: "positions[0]", output: "canvas", width: 1, height: 1,
         channels: [{
           kind: "buffer", slot: 0, key: "iChannel0", source: "BufferA", readFrom: "current-frame",
         }],
@@ -1334,7 +1334,7 @@ float4 mainImage(float2 fragCoord) {
   float2 uv = fragCoord / iResolution.xy;
   float3 sharp = iChannel0.Sample(uv).rgb;
   float3 glow = iChannel1.Sample(uv).rgb;
-  return float4(sharp + glow, 1.0);
+  return float4(sharp + glow, 1.0) + positions[0];
 }`;
     (engine as any).canvas = { width: 1340, height: 753 };
     const config = {
