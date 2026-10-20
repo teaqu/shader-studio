@@ -81,6 +81,26 @@ describe('standalone global settings', () => {
     reloaded.reset();
     expect(reloaded.snapshot['editor.mobileShaderBackdrop']).toBe(false);
   });
+  it('persists editor overlay shading, rejects invalid values, and resets to 75%', () => {
+    const backend = storage();
+    const settings = new StandaloneSettings(backend);
+    expect(settings.snapshot['editor.overlayOpacity']).toBe(75);
+    for (const value of [-1, 101, 74.5, NaN, '75']) {
+      expect(settings.update('editor.overlayOpacity', value)).toBe(false);
+    }
+    expect(settings.update('editor.overlayOpacity', 42)).toBe(true);
+    expect(new StandaloneSettings(backend).snapshot['editor.overlayOpacity']).toBe(42);
+    settings.reset();
+    expect(settings.snapshot['editor.overlayOpacity']).toBe(75);
+  });
+  it('ignores malformed persisted editor overlay shading', () => {
+    const backend = storage();
+    backend.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({
+      version: 1,
+      values: { 'editor.overlayOpacity': 100.5 },
+    }));
+    expect(new StandaloneSettings(backend).snapshot['editor.overlayOpacity']).toBe(75);
+  });
   it('loads valid values independently and ignores unknown or malformed values', () => {
     const backend = storage();
     backend.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({ version: 1, values: { 'editor.fontSize': 80, 'editor.tabSize': 2, 'editor.wordWrap': 'on', unrelated: false } }));

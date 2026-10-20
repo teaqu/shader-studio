@@ -40,6 +40,7 @@ export interface EditorPreferences {
   wordWrap: 'on' | 'off';
   lineNumbers: 'on' | 'off';
   autoSuggestions?: boolean;
+  overlayOpacity?: number;
 }
 export interface CodeMirrorEditorOptions {
   path: string;
@@ -181,7 +182,7 @@ export class ShaderCodeMirrorEditor {
       EditorState.tabSize.of(tabSize), indentUnit.of(insertSpaces ? ' '.repeat(tabSize) : '\t'),
       this.preferences.lineNumbers === 'on' ? [lineNumbers(), foldGutter()] : [],
       wordWrap === 'on' ? EditorView.lineWrapping : [],
-      this.vim ? vim() : [], editorTheme(this.dark, this.overlay, fontSize),
+      this.vim ? vim() : [], editorTheme(this.dark, this.overlay, fontSize, this.preferences.overlayOpacity),
     ];
   }
 

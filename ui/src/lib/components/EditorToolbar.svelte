@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import { getHostEditorMobileShaderBackdrop, toggleHostEditorMobileShaderBackdrop, getHostEditorMobileNavigation, toggleHostEditorMobileNavigation, getHostEditorAutoSuggestions, toggleHostEditorAutoSuggestions, getHostEditorDescriptions, toggleHostEditorDescriptions } from '../state/hostState.svelte';
+  import { getHostEditorOverlayOpacity, setHostEditorOverlayOpacity, getHostEditorMobileShaderBackdrop, toggleHostEditorMobileShaderBackdrop, getHostEditorMobileNavigation, toggleHostEditorMobileNavigation, getHostEditorAutoSuggestions, toggleHostEditorAutoSuggestions, getHostEditorDescriptions, toggleHostEditorDescriptions } from '../state/hostState.svelte';
 
   interface Props {
     options?: Snippet;
@@ -18,6 +18,19 @@
   const descriptions = $derived(getHostEditorDescriptions(touch));
   const mobileNavigation = $derived(getHostEditorMobileNavigation());
   const shaderBackdrop = $derived(getHostEditorMobileShaderBackdrop());
+  const overlayOpacity = $derived(getHostEditorOverlayOpacity());
+  let shadingFocusTarget: HTMLElement | null = null;
+
+  function rememberEditorFocus() {
+    const active = document.activeElement;
+    shadingFocusTarget = active instanceof HTMLElement && active.closest('[data-editor-engine]')
+      && active.matches('textarea, [contenteditable="true"]') ? active : null;
+  }
+
+  function restoreEditorFocus() {
+    shadingFocusTarget?.focus({ preventScroll: true });
+    shadingFocusTarget = null;
+  }
   const historyCommands = [
     { command: 'undo', label: 'Undo', text: 'Undo' },
     { command: 'redo', label: 'Redo', text: 'Redo' },
@@ -78,6 +91,15 @@
           <button type="button" aria-label={shaderBackdrop ? 'Hide shader behind text' : 'Show shader behind text'} aria-pressed={shaderBackdrop}
             onmousedown={event => event.preventDefault()} onclick={toggleHostEditorMobileShaderBackdrop}>Shader behind text</button>
         {/if}
+        {#if shaderBackdrop && overlayOpacity !== undefined}
+          <label class="shading-control">
+            <span>Text shading <output>{overlayOpacity}%</output></span>
+            <input type="range" aria-label="Text shading" min="0" max="100" step="5" value={overlayOpacity}
+              aria-valuetext={`${overlayOpacity}% shading`}
+              onpointerdown={rememberEditorFocus} onpointerup={restoreEditorFocus} onpointercancel={restoreEditorFocus}
+              oninput={event => setHostEditorOverlayOpacity(event.currentTarget.valueAsNumber)} />
+          </label>
+        {/if}
         {@render options?.()}
       </div>
     {/if}
@@ -133,6 +155,9 @@
   .more-button { margin-left: auto; }
   .editor-actions { position: absolute; bottom: calc(100% + 4px); right: 4px; z-index: 2; display: grid; gap: 6px; width: min(260px, calc(100% - 8px)); max-height: max(80px, calc(var(--mobile-viewport-height, 100dvh) - 60px)); overflow-y: auto; overscroll-behavior: contain; box-sizing: border-box; padding: 8px; border: 1px solid var(--vscode-panel-border); border-radius: 6px; background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background)); box-shadow: 0 2px 10px rgb(0 0 0 / 20%); }
   .history-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+  .shading-control { display: grid; gap: 2px; padding: 4px 10px; font-size: 13px; }
+  .shading-control > span { display: flex; justify-content: space-between; }
+  .shading-control input { width: 100%; min-height: 32px; margin: 0; accent-color: var(--vscode-focusBorder); }
   .suggestions-toggle, .editor-actions :global(button[aria-pressed]) { display: flex; align-items: center; justify-content: space-between; min-height: 36px; padding: 6px 10px; font: inherit; text-align: left; }
   .editor-actions :global(button[aria-pressed]::after) { content: 'Off'; font-size: 12px; }
   .editor-actions :global(button[aria-pressed='true']::after) { content: 'On'; }

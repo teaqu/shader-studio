@@ -24,6 +24,7 @@ it('publishes initial settings and reacts to all editor and authoring preference
   store.update('editor.autoSuggestions', false);
   store.update('editor.mobileNavigation', false);
   store.update('editor.mobileShaderBackdrop', true);
+  store.update('editor.overlayOpacity', 42);
   expect(getDefaultShaderMode()).toBe('hooks');
   expect(getEditorPreferences()).toEqual({
     fontSize: 20, tabSize: 2, insertSpaces: false, wordWrap: 'on', minimap: true, lineNumbers: 'off',
@@ -32,6 +33,7 @@ it('publishes initial settings and reacts to all editor and authoring preference
     desktopDescriptions: true, mobileDescriptions: false,
     mobileNavigation: false,
     mobileShaderBackdrop: true,
+    overlayOpacity: 42,
   });
   disconnect();
   store.update('editor.fontSize', 30);

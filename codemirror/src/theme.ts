@@ -3,7 +3,9 @@ import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
 import type { Extension } from '@codemirror/state';
 
-export function editorTheme(dark: boolean, overlay: boolean, fontSize: number): Extension {
+export function editorTheme(dark: boolean, overlay: boolean, fontSize: number, overlayOpacity = 75): Extension {
+  const opacity = Number.isFinite(overlayOpacity) ? Math.max(0, Math.min(100, overlayOpacity)) : 75;
+  const shading = `rgb(10 10 10 / ${opacity}%)`;
   const dim = dark || overlay;
   const colors = dim ? {
     foreground: '#d4d4d4',
@@ -53,9 +55,10 @@ export function editorTheme(dark: boolean, overlay: boolean, fontSize: number): 
     '&.cm-focused': { outline: 'none' },
     '.cm-scroller': { overflow: 'auto', fontFamily: 'var(--vscode-editor-font-family, monospace)', lineHeight: '1.45', overscrollBehavior: 'contain' },
     '.cm-content': { padding: '4px 0', caretColor: colors.cursor, minHeight: '100%', ...(overlay ? { textShadow: '0 1px 3px #000' } : {}) },
-    '.cm-line': { padding: '0 6px', ...(overlay ? { backgroundColor: 'rgb(10 10 10 / 75%)', width: 'fit-content', minWidth: '1px' } : {}) },
-    '.cm-gutters': { backgroundColor: overlay ? 'rgb(10 10 10 / 75%)' : 'transparent', color: colors.gutter, border: 'none' },
-    '.cm-activeLine, .cm-activeLineGutter': { backgroundColor: colors.activeLine },
+    '.cm-line': { padding: '0 6px', ...(overlay ? { backgroundColor: shading, width: 'fit-content', minWidth: '1px' } : {}) },
+    '.cm-gutters': { backgroundColor: 'transparent', color: colors.gutter, border: 'none' },
+    '.cm-gutterElement': { ...(overlay ? { backgroundColor: shading } : {}) },
+    '.cm-activeLine, .cm-activeLineGutter': { backgroundColor: overlay ? shading : colors.activeLine },
     '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': { backgroundColor: colors.selection },
     '.cm-cursor, .cm-dropCursor': { borderLeftColor: colors.cursor },
     '.cm-tooltip, .cm-panels': { color: colors.popupForeground, backgroundColor: colors.popupBackground, borderColor: colors.border },

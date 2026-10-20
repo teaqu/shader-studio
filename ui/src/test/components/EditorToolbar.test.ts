@@ -69,6 +69,41 @@ it('toggles the shader backdrop from the mobile keys menu', async () => {
   expect(getFixturePreferences().mobileShaderBackdrop).toBe(false);
 });
 
+it('adjusts text shading live and restores editor focus after dragging the slider', async () => {
+  setFixturePreferences({ ...getFixturePreferences(), mobileShaderBackdrop: false, overlayOpacity: 75 });
+  configureHost({
+    getEditorPreferences: getFixturePreferences,
+    setEditorMobileShaderBackdrop: enabled => setFixturePreferences({ ...getFixturePreferences(), mobileShaderBackdrop: enabled }),
+    setEditorOverlayOpacity: opacity => setFixturePreferences({ ...getFixturePreferences(), overlayOpacity: opacity }),
+  });
+  const view = render(EditorToolbar, { touch: true, onCommand: vi.fn() });
+  await fireEvent.click(view.getByRole('button', { name: 'Show keyboard toolbar' }));
+  await fireEvent.click(view.getByRole('button', { name: 'More editing options' }));
+  expect(view.queryByRole('slider', { name: 'Text shading' })).toBeNull();
+  await fireEvent.click(view.getByRole('button', { name: 'Show shader behind text' }));
+  const slider = view.getByRole('slider', { name: 'Text shading' });
+  expect(slider).toHaveValue('75');
+  const wrapper = view.container.appendChild(document.createElement('div'));
+  wrapper.dataset.editorEngine = 'codemirror';
+  const field = wrapper.appendChild(document.createElement('textarea'));
+  field.focus();
+  await fireEvent.pointerDown(slider);
+  slider.focus();
+  await fireEvent.input(slider, { target: { value: '35' } });
+  expect(getFixturePreferences().overlayOpacity).toBe(35);
+  expect(slider).toHaveAttribute('aria-valuetext', '35% shading');
+  await fireEvent.pointerUp(slider);
+  expect(field).toHaveFocus();
+  expect(view.getByRole('group', { name: 'More editing options' })).toBeVisible();
+  slider.focus();
+  await fireEvent.pointerDown(slider);
+  await fireEvent.pointerCancel(slider);
+  expect(slider).toHaveFocus();
+  await fireEvent.click(view.getByRole('button', { name: 'Hide shader behind text' }));
+  expect(view.queryByRole('slider', { name: 'Text shading' })).toBeNull();
+  expect(getFixturePreferences().overlayOpacity).toBe(35);
+});
+
 it('toggles mobile descriptions independently from suggestions and desktop descriptions', async () => {
   setFixturePreferences({ ...getFixturePreferences(), mobileDescriptions: false, desktopDescriptions: true, autoSuggestions: true });
   const setter = vi.fn((mobile: boolean, enabled: boolean) => {

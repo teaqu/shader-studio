@@ -23,6 +23,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   'editor.mobileDescriptions': false,
   'editor.mobileNavigation': true,
   'editor.mobileShaderBackdrop': false,
+  'editor.overlayOpacity': 75,
   'editor.minimap.enabled': false,
   'editor.lineNumbers': 'on' as 'off' | 'on',
 });
@@ -44,6 +45,9 @@ function valid(key: StandaloneSettingKey, value: unknown): boolean {
   }
   if (key === 'webgpu.defaultRenderAuthoring') {
     return value === 'hooks' || value === 'native';
+  }
+  if (key === 'editor.overlayOpacity') {
+    return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 100;
   }
   if (key === 'editor.fontSize' || key === 'editor.tabSize') {
     return typeof value === 'number' && Number.isInteger(value)

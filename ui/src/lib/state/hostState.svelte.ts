@@ -18,6 +18,7 @@ export interface HostEditorPreferences {
   mobileDescriptions?: boolean;
   mobileNavigation?: boolean;
   mobileShaderBackdrop?: boolean;
+  overlayOpacity?: number;
   /** The editor selected for desktop-sized viewports by the standalone host. */
   desktopEditor?: 'monaco' | 'codemirror';
   /** The editor selected for mobile-sized viewports by the standalone host. */
@@ -35,6 +36,7 @@ export interface HostConfig {
   setEditorDescriptions?: (mobile: boolean, enabled: boolean) => void;
   setEditorMobileNavigation?: (enabled: boolean) => void;
   setEditorMobileShaderBackdrop?: (enabled: boolean) => void;
+  setEditorOverlayOpacity?: (opacity: number) => void;
   getPreviewEditorEnabled?: () => boolean;
   uploadAssets?: (files: readonly File[], shaderPath: string) => Promise<WorkspaceFileInfo[]>;
 }
@@ -135,4 +137,15 @@ export function toggleHostEditorMobileShaderBackdrop(): void {
 
 export function isHostPreviewEditorEnabled(): boolean {
   return host.getPreviewEditorEnabled?.() ?? true;
+}
+
+export function getHostEditorOverlayOpacity(): number | undefined {
+  const preferences = host.getEditorPreferences?.();
+  return host.setEditorOverlayOpacity && preferences ? preferences.overlayOpacity ?? 75 : undefined;
+}
+
+export function setHostEditorOverlayOpacity(opacity: number): void {
+  if (getHostEditorOverlayOpacity() !== undefined && Number.isFinite(opacity)) {
+    host.setEditorOverlayOpacity?.(Math.max(0, Math.min(100, Math.round(opacity))));
+  }
 }

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy, untrack } from "svelte";
+  import { getHostEditorPreferences } from "../state/hostState.svelte";
   import EditorToolbar from "./EditorToolbar.svelte";
   import type { ShaderEditorProps } from "../editor/ShaderEditorProps";
   import * as monaco from "monaco-editor/editor/editor.api.js";
@@ -87,6 +88,7 @@
     editorOptions = undefined,
   }: Props = $props();
 
+  const overlayOpacity = $derived(getHostEditorPreferences()?.().overlayOpacity ?? 75);
   const activePassName = $derived(
     parseVertexPassKey(activeBufferName) ?? activeBufferName,
   );
@@ -990,7 +992,7 @@
 </script>
 
 {#if isVisible}
-  <div class="editor-wrapper" class:ready={editorReady} class:pane={displayMode === "pane"} data-editor-engine="monaco" data-language-service-status={languageServiceStatus} style={`bottom: ${bottomInset}px; --editor-top-inset: ${topInset}px; --editor-bottom-inset: ${bottomInset}px;`}>
+  <div class="editor-wrapper" class:ready={editorReady} class:pane={displayMode === "pane"} data-editor-engine="monaco" data-language-service-status={languageServiceStatus} style={`bottom: ${bottomInset}px; --editor-top-inset: ${topInset}px; --editor-bottom-inset: ${bottomInset}px; --editor-overlay-opacity: ${overlayOpacity}%;`}>
     {#if renameFeedback}<div class="rename-feedback" role="status">{renameFeedback}</div>{/if}
     <div class="editor-body">
       <div
@@ -1115,7 +1117,7 @@
 
   /* Give shader-preview text a readable sheet without styling the web editor pane. */
   .editor-wrapper:not(.pane) .editor-overlay :global(.monaco-editor .view-lines .view-line > span) {
-    background: rgba(10, 10, 10, 0.75);
+    background: rgb(10 10 10 / var(--editor-overlay-opacity, 75%));
     text-shadow: 0 0 1px rgba(0, 0, 0, 0.8), 0 0 3px rgba(0, 0, 0, 0.4);
   }
 
@@ -1134,7 +1136,7 @@
 
   /* Match the overlay text sheet in the line-number gutter. */
   .editor-wrapper:not(.pane) .editor-overlay :global(.monaco-editor .margin-view-overlays .line-numbers) {
-    background: rgba(10, 10, 10, 0.75);
+    background: rgb(10 10 10 / var(--editor-overlay-opacity, 75%));
   }
 
   /* Current line number highlight */

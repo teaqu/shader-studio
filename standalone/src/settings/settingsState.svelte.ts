@@ -32,5 +32,6 @@ export function getEditorPreferences() {
     mobileDescriptions: values['editor.mobileDescriptions'],
     mobileNavigation: values['editor.mobileNavigation'],
     mobileShaderBackdrop: values['editor.mobileShaderBackdrop'],
+    overlayOpacity: values['editor.overlayOpacity'],
   };
 }

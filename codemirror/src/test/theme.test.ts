@@ -1,5 +1,5 @@
 import { EditorState } from '@codemirror/state';
-import { EditorView } from '@codemirror/view';
+import { EditorView, highlightActiveLine, highlightActiveLineGutter, lineNumbers } from '@codemirror/view';
 import { afterEach, describe, expect, it } from 'vitest';
 import { editorTheme } from '../theme';
 
@@ -11,11 +11,26 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-function mountTheme(dark: boolean, overlay: boolean, fontSize: number): EditorView {
+function mountTheme(dark: boolean, overlay: boolean, fontSize: number, overlayOpacity?: number, doc = 'fn main() {}'): EditorView {
   const parent = document.body.appendChild(document.createElement('div'));
-  const view = new EditorView({ parent, state: EditorState.create({ doc: 'fn main() {}', extensions: editorTheme(dark, overlay, fontSize) }) });
+  const view = new EditorView({
+    parent,
+    state: EditorState.create({
+      doc,
+      extensions: [lineNumbers(), highlightActiveLine(), highlightActiveLineGutter(), editorTheme(dark, overlay, fontSize, overlayOpacity)],
+    }),
+  });
   views.push(view);
   return view;
+}
+
+function backgroundColors(element: HTMLElement): string[] {
+  return Array.from(document.styleSheets).flatMap(sheet =>
+    Array.from(sheet.cssRules)
+      .filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule)
+      .filter(rule => element.matches(rule.selectorText))
+      .map(rule => rule.style.getPropertyValue('background-color'))
+      .filter(Boolean));
 }
 
 describe('editorTheme', () => {
@@ -51,6 +66,49 @@ describe('editorTheme', () => {
     expect(css).toContain('13px');
     expect(css).toContain('text-shadow');
     expect(css).toContain('rgb(10 10 10 / 75%)');
+  });
+
+  it.each([
+    [undefined, '75%'],
+    [0, '0%'],
+    [35, '35%'],
+    [100, '100%'],
+    [-1, '0%'],
+    [101, '100%'],
+    [Number.NaN, '75%'],
+    [Number.POSITIVE_INFINITY, '75%'],
+  ] as const)('shades overlay code rows at %s opacity', (opacity, expected) => {
+    const view = mountTheme(true, true, 14, opacity, 'one\ntwo');
+    const line = view.dom.querySelector<HTMLElement>('.cm-line');
+
+    expect(line).not.toBeNull();
+    expect(backgroundColors(line!)).toContain(`rgb(10 10 10 / ${expected})`);
+  });
+
+  it('keeps overlay active rows and line numbers shaded without tinting the gutter background', () => {
+    const view = mountTheme(true, true, 14, 35, 'one\ntwo');
+    view.focus();
+    const line = view.dom.querySelector<HTMLElement>('.cm-line');
+    const gutter = view.dom.querySelector<HTMLElement>('.cm-gutters');
+    const gutterRow = view.dom.querySelector<HTMLElement>('.cm-gutterElement.cm-activeLineGutter');
+
+    expect(line).not.toBeNull();
+    expect(gutter).not.toBeNull();
+    expect(gutterRow).not.toBeNull();
+
+    expect(backgroundColors(line!)).toContain('rgb(10 10 10 / 35%)');
+    expect(backgroundColors(line!)).not.toContain('rgb(255 255 255 / 6%)');
+    expect(backgroundColors(gutterRow!)).toContain('rgb(10 10 10 / 35%)');
+    expect(backgroundColors(gutterRow!)).not.toContain('rgb(255 255 255 / 6%)');
+    expect(backgroundColors(gutter!)).toContain('transparent');
+  });
+
+  it('keeps pane active rows highlighted', () => {
+    const view = mountTheme(true, false, 14);
+    const line = view.dom.querySelector<HTMLElement>('.cm-line');
+    line!.classList.add('cm-activeLine');
+
+    expect(backgroundColors(line!)).toContain('rgb(255 255 255 / 6%)');
   });
 });
 

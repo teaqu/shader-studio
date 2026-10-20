@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { getHostEditorMobileNavigation, toggleHostEditorMobileNavigation, editorDescriptionsEnabled, getHostEditorDescriptions, toggleHostEditorDescriptions, getHostEditorWordWrap, toggleHostEditorWordWrap, getHostEditorAutoSuggestions, toggleHostEditorAutoSuggestions, getHostEditorMobileShaderBackdrop, toggleHostEditorMobileShaderBackdrop, configureHost, getHostCapabilities, getHostDefaultAssets, getHostTransportFactory, isHostPreviewEditorEnabled, resetHost } from '../lib/state/hostState.svelte';
+import { getHostEditorMobileNavigation, toggleHostEditorMobileNavigation, editorDescriptionsEnabled, getHostEditorDescriptions, toggleHostEditorDescriptions, getHostEditorWordWrap, toggleHostEditorWordWrap, getHostEditorAutoSuggestions, toggleHostEditorAutoSuggestions, getHostEditorMobileShaderBackdrop, toggleHostEditorMobileShaderBackdrop, getHostEditorOverlayOpacity, setHostEditorOverlayOpacity, configureHost, getHostCapabilities, getHostDefaultAssets, getHostTransportFactory, isHostPreviewEditorEnabled, resetHost } from '../lib/state/hostState.svelte';
 
 afterEach(resetHost);
 
@@ -45,6 +45,32 @@ describe('viewer host contract', () => {
     expect(isHostPreviewEditorEnabled()).toBe(false);
     configureHost({ getPreviewEditorEnabled: () => true });
     expect(isHostPreviewEditorEnabled()).toBe(true);
+  });
+  it('defaults overlay shading to 75% and only writes rounded, clamped finite values', () => {
+    expect(getHostEditorOverlayOpacity()).toBeUndefined();
+    expect(() => setHostEditorOverlayOpacity(42)).not.toThrow();
+    configureHost({ setEditorOverlayOpacity: () => { throw new Error('No preference to save'); } });
+    expect(getHostEditorOverlayOpacity()).toBeUndefined();
+    let overlayOpacity: number | undefined;
+    const appliedValues: number[] = [];
+    const setOverlayOpacity = (value: number) => {
+      overlayOpacity = value;
+      appliedValues.push(value);
+    };
+    configureHost({
+      getEditorPreferences: () => ({ fontSize: 14, tabSize: 4, insertSpaces: true, wordWrap: 'off', minimap: false, lineNumbers: 'on', overlayOpacity }),
+      setEditorOverlayOpacity: setOverlayOpacity,
+    });
+    expect(getHostEditorOverlayOpacity()).toBe(75);
+    setHostEditorOverlayOpacity(42.4);
+    expect(overlayOpacity).toBe(42);
+    setHostEditorOverlayOpacity(-2);
+    expect(overlayOpacity).toBe(0);
+    setHostEditorOverlayOpacity(101);
+    expect(overlayOpacity).toBe(100);
+    setHostEditorOverlayOpacity(Number.NaN);
+    expect(overlayOpacity).toBe(100);
+    expect(appliedValues).toEqual([42, 0, 100]);
   });
   it('resolves separate description defaults and only toggles writable host preferences', () => {
     expect(editorDescriptionsEnabled(undefined, true)).toBe(false);

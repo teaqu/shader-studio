@@ -417,6 +417,16 @@ test('the phone editor reuses the live shader behind text without losing edits o
   await editor.getByRole('button', { name: 'More editing options' }).click();
   await editor.getByRole('button', { name: 'Show shader behind text' }).click();
   await expect(editor.getByRole('button', { name: 'Hide shader behind text' })).toHaveAttribute('aria-pressed', 'true');
+  const shading = editor.getByRole('slider', { name: 'Text shading' });
+  await expect(shading).toHaveValue('75');
+  await expect(editor.locator('.cm-activeLine')).toHaveCSS('background-color', 'rgba(10, 10, 10, 0.75)');
+  await expect(editor.locator('.cm-gutters')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(editor.locator('.cm-lineNumbers .cm-activeLineGutter')).toHaveCSS('background-color', 'rgba(10, 10, 10, 0.75)');
+  await shading.press('Home');
+  for (let step = 0; step < 7; step++) await shading.press('ArrowRight');
+  await expect(shading).toHaveValue('35');
+  await expect(editor.locator('.cm-activeLine')).toHaveCSS('background-color', 'rgba(10, 10, 10, 0.35)');
+  await expect(editor.locator('.cm-lineNumbers .cm-activeLineGutter')).toHaveCSS('background-color', 'rgba(10, 10, 10, 0.35)');
   await expect(backdrop.locator('.canvas-container > canvas').first()).toBeVisible();
   // A mounted canvas can still be covered by Dockview's nested theme layer.
   await expect(editorLayout).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -449,6 +459,8 @@ test('the phone editor reuses the live shader behind text without losing edits o
   await expect(editorText(editor)).toContainText('phone edit');
   await editor.getByRole('button', { name: 'Show keyboard toolbar' }).click();
   await editor.getByRole('button', { name: 'More editing options' }).click();
+  await expect(shading).toHaveValue('35');
+  await expect(editor.locator('.cm-activeLine')).toHaveCSS('background-color', 'rgba(10, 10, 10, 0.35)');
   await editor.getByRole('button', { name: 'Hide shader behind text' }).click();
   await expect(backdrop).toBeHidden();
   await expect(editor.locator('.editor-wrapper')).toHaveClass(/\bpane\b/);

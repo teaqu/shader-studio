@@ -52,6 +52,9 @@ configureHost({
   setEditorMobileShaderBackdrop: enabled => {
     transport.settings.update('editor.mobileShaderBackdrop', enabled);
   },
+  setEditorOverlayOpacity: opacity => {
+    transport.settings.update('editor.overlayOpacity', opacity);
+  },
   getPreviewEditorEnabled: () => !isMobileViewport(),
   defaultAssets: defaultAssets(),
   uploadAssets: (files, shaderPath) => transport.uploadAssets(files, shaderPath),
