@@ -46,3 +46,17 @@ Failed Playwright runs upload their traces as the `e2e-focus-*` artifact.
   runner as arguments. Spec filters are limited to plain paths.
 - A focused run does not replace the full workflow: other specs can still be
   affected by the same change.
+
+## Full verification and labels
+
+Adding or removing a PR label, including `preview` or `ci:full`, does not start
+or cancel **Test**. The `ci:full` label selects all E2E suites on the next PR
+update. For a full run immediately, choose **Test → Run workflow** and select
+the PR branch, or run:
+
+```bash
+gh workflow run test.yml --ref my-branch
+```
+
+A manual Test run always selects every suite. Preview labels independently
+control the **PR Preview** workflow.
