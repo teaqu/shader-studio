@@ -28,6 +28,58 @@ function harness() {
 }
 
 describe("WebGPUStorage boundaries", () => {
+  it.each(['replace', 'lose device', 'newer reset'])('does not reset stale storage after %s during file loading', async change => {
+    const { storage, queue, encoder, loseDevice } = harness();
+    const declaration = { ...node(), initialDataFiles: [{ path: 'a.bin' }] };
+    storage.publishPreparedStorage(storage.prepareStorageBuffers([declaration], 1));
+    let release: (response: Response) => void = () => {};
+    vi.stubGlobal('fetch', vi.fn().mockImplementationOnce(() => new Promise<Response>(resolve => {
+      release = resolve;
+    }))
+      .mockResolvedValue({ ok: true, arrayBuffer: async () => new Uint8Array([2]).buffer }));
+    try {
+      const slow = storage.resetStorageBuffer('particles');
+      if (change === 'replace') {
+        storage.publishPreparedStorage(storage.prepareStorageBuffers([{ ...declaration, count: 8 }], 2));
+      }
+      if (change === 'lose device') {
+        loseDevice();
+      }
+      if (change === 'newer reset') {
+        await storage.resetStorageBuffer('particles');
+      }
+      queue.submit.mockClear();
+      queue.writeBuffer.mockClear();
+      encoder.clearBuffer.mockClear();
+      release({ ok: true, arrayBuffer: async () => new Uint8Array([1]).buffer } as Response);
+      await expect(slow).rejects.toThrow('changed while resetting');
+      expect(queue.submit).not.toHaveBeenCalled();
+      expect(queue.writeBuffer).not.toHaveBeenCalled();
+      expect(encoder.clearBuffer).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it('reloads all files before resetting storage and preserves live data on load failure', async () => {
+    const { storage, queue, encoder } = harness();
+    const declaration = { ...node(), initialDataFiles: [{ path: 'a.bin', byteOffset: 1 }, { path: 'b.bin', byteOffset: 2 }] };
+    storage.publishPreparedStorage(storage.prepareStorageBuffers([declaration], 1));
+    const fetchBytes = vi.fn(async (url: string) => ({ ok: true, arrayBuffer: async () => new Uint8Array(url === 'a.bin' ? [1, 2] : [9]).buffer }) as Response);
+    vi.stubGlobal('fetch', fetchBytes);
+    try {
+      await storage.resetStorageBuffer('particles');
+      expect(fetchBytes).toHaveBeenCalledTimes(2);
+      expect(queue.writeBuffer).toHaveBeenLastCalledWith(storage.storageBuffers.get('particles'), 0, new Uint8Array([0, 1, 9, 0]));
+      queue.submit.mockClear();
+      encoder.clearBuffer.mockClear();
+      fetchBytes.mockRejectedValueOnce(new Error('offline'));
+      await expect(storage.resetStorageBuffer('particles')).rejects.toThrow('offline');
+      expect(queue.submit).not.toHaveBeenCalled();
+      expect(encoder.clearBuffer).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
   it('enforces a readback byte limit before allocating a staging buffer', async () => {
     const { storage, createBuffer } = harness();
     storage.publishPreparedStorage(storage.prepareStorageBuffers([node()], 1));
@@ -35,7 +87,7 @@ describe("WebGPUStorage boundaries", () => {
     await expect(storage.readStorageBuffer('particles', 0, 4, undefined, 8)).rejects.toThrow('Request fewer elements');
     expect(createBuffer).not.toHaveBeenCalled();
   });
-  it('initializes new and reset allocations, but retains opted-out buffers on restart', () => {
+  it('initializes new and reset allocations, but retains opted-out buffers on restart', async () => {
     const { storage, createBuffer, queue, encoder, loseDevice } = harness();
     const keep = { ...node('keep'), initialBytes: new Uint8Array([1, 2, 3, 4]), resetOnRestart: false };
     const reset = { ...node('reset'), initialBytes: new Uint8Array([5, 6, 7, 8]), clearEachFrame: true };
@@ -57,14 +109,14 @@ describe("WebGPUStorage boundaries", () => {
     expect(restarted.buffers.get('keep')).toBe(existing);
     expect(restarted.buffers.get('reset')).toBe(pending.storageBuffers.get('reset'));
     storage.publishPreparedStorage(restarted);
-    storage.resetStorageBuffer('keep');
+    await storage.resetStorageBuffer('keep');
     expect(encoder.clearBuffer).toHaveBeenCalledWith(existing);
     expect(queue.submit).toHaveBeenCalledOnce();
     expect(queue.writeBuffer).toHaveBeenLastCalledWith(existing, 0, new Uint8Array([1, 2, 3, 4]));
     storage.clearFrame(encoder as unknown as GPUCommandEncoder);
     expect(encoder.clearBuffer).toHaveBeenLastCalledWith(restarted.buffers.get('reset'));
     loseDevice();
-    expect(() => storage.resetStorageBuffer('keep')).toThrow('not available');
+    await expect(storage.resetStorageBuffer('keep')).rejects.toThrow('not available');
   });
   it("rejects allocation without a device and leaves installed buffers intact", () => {
     const { storage, loseDevice } = harness();

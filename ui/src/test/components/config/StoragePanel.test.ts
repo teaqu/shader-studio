@@ -14,7 +14,7 @@ describe('StoragePanel', () => {
   });
   it('forwards the host file picker to the initial data path input', async () => {
     const postMessage = vi.fn();
-    const ui = render(StoragePanel, { scope: 'panel-picker', storage: { data: { count: 4, elementType: 'u32', initialDataPath: 'a.bin' } }, ...commands(), shaderPath: '/s/sim.wgsl', postMessage, onMessage: vi.fn() });
+    const ui = render(StoragePanel, { scope: 'panel-picker', storage: { data: { count: 4, elementType: 'u32', initialDataFiles: [{ path: 'a.bin' }] } }, ...commands(), shaderPath: '/s/sim.wgsl', postMessage, onMessage: vi.fn() });
     await fireEvent.click(ui.getByRole('button', { name: 'Select' }));
     expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'selectFile', payload: expect.objectContaining({ shaderPath: '/s/sim.wgsl', fileType: 'binary' }) }));
   });

@@ -905,13 +905,16 @@ export class WebExtensionHost {
 
   private resolveConfigAssets(config: ShaderConfig, shaderPath: string): void {
     for (const declaration of Object.values(config.storage ?? {})) {
-      if (declaration && typeof declaration.initialDataPath === 'string') {
-        const path = this.resolveSourcePath(shaderPath, declaration.initialDataPath);
+      for (const file of Array.isArray(declaration?.initialDataFiles) ? declaration.initialDataFiles : []) {
+        if (typeof file?.path !== 'string') {
+          continue;
+        }
+        const path = this.resolveSourcePath(shaderPath, file.path);
         const contents = path && this.workspace.exists(path) ? this.workspace.readText(path) : null;
         if (contents?.startsWith('data:')) {
-          declaration.resolved_path = contents;
+          file.resolved_path = contents;
         } else {
-          delete declaration.resolved_path;
+          delete file.resolved_path;
         }
       }
     }

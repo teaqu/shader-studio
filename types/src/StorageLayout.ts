@@ -108,26 +108,30 @@ function validateFields(config: StorageBufferConfig): string[] {
   return errors;
 }
 
-/** Former config keys that embedded base64 bytes; files are referenced by path now. */
-export const REMOVED_EMBEDDED_STORAGE_KEYS = ['initialData', 'initialDataName'] as const;
-
 function validateInitialData(config: StorageBufferConfig): string[] {
-  if (REMOVED_EMBEDDED_STORAGE_KEYS.some(key => key in config)) {
-    return ['Embedded initialData is no longer supported; reference a raw binary file with initialDataPath'];
-  }
-  if (config.initialDataPath === undefined) {
+  if (config.initialDataFiles === undefined) {
     return [];
   }
-  if (typeof config.initialDataPath !== 'string') {
-    return ['Initial data path must be a string'];
+  if (!Array.isArray(config.initialDataFiles)) {
+    return ['Initial data files must be a list'];
   }
-  if (!config.initialDataPath.trim()) {
-    return ['Choose an initial data file'];
-  }
-  if (config.resolved_path !== undefined && typeof config.resolved_path !== 'string') {
-    return ['resolved_path must be a string'];
-  }
-  return [];
+  return config.initialDataFiles.flatMap((file, index) => {
+    const prefix = `Initial data file ${index + 1}: `;
+    if (!file || typeof file !== 'object' || Array.isArray(file)) {
+      return [prefix + 'must be an object'];
+    }
+    const errors: string[] = [];
+    if (typeof file.path !== 'string' || !file.path.trim()) {
+      errors.push(prefix + 'Choose an initial data file');
+    }
+    if (file.byteOffset !== undefined && (!Number.isSafeInteger(file.byteOffset) || file.byteOffset < 0)) {
+      errors.push(prefix + 'Byte offset must be a non-negative safe integer');
+    }
+    if (file.resolved_path !== undefined && typeof file.resolved_path !== 'string') {
+      errors.push(prefix + 'resolved_path must be a string');
+    }
+    return errors;
+  });
 }
 
 /** Shared validation for UI mutations and runtime graph construction. */

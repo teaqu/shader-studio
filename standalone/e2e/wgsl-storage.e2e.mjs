@@ -82,7 +82,7 @@ test('inspects WGSL vec3 storage read-only through the standalone config UI', as
 }`],
     ['inspector.sha.json', JSON.stringify({
       version: '1.0',
-      storage: { directions: { count: 2, elementType: 'vec3<f32>', initialDataPath: 'directions.bin' } },
+      storage: { directions: { count: 2, elementType: 'vec3<f32>', initialDataFiles: [{ path: 'directions.bin' }] } },
       passes: { Image: { inputs: {} } },
     })],
     ['directions.bin', `data:application/octet-stream;base64,${Buffer.from(new Float32Array([0.25, 0.75, 0.5, 0, 0, 0, 0, 0]).buffer).toString('base64')}`],
@@ -187,7 +187,7 @@ test('storage inspector focuses one struct field and captures scalar values befo
     ['storage-inspect.wgsl', 'fn mainImage(p: vec2f) -> vec4f { return particles[0].position; }'],
     ['storage-inspect.compute.wgsl', '@compute @workgroup_size(1) fn update() { counters[0] = 42u; }'],
     ['storage-inspect.sha.json', JSON.stringify({ version: '1', storage: {
-      particles: { count: 2, elementType: 'ParticleData', fields: [{ name: 'position', type: 'float4' }, { name: 'velocity', type: 'float4' }], initialDataPath: 'particles.bin' },
+      particles: { count: 2, elementType: 'ParticleData', fields: [{ name: 'position', type: 'float4' }, { name: 'velocity', type: 'float4' }], initialDataFiles: [{ path: 'particles.bin' }] },
       counters: { count: 4, elementType: 'u32', clearEachFrame: true },
     }, passes: { Image: {}, Simulate: { type: 'compute', path: 'storage-inspect.compute.wgsl', entryPoint: 'update', dispatch: { x: 1, y: 1, z: 1 } } } })],
     ['particles.bin', `data:application/octet-stream;base64,${Buffer.from(new Float32Array([0.25, 0.5, 0.75, 1, 10, 20, 30, 40]).buffer).toString('base64')}`],
@@ -352,6 +352,7 @@ async function uploadStorageBinary(page) {
     ['binary-upload.wgsl', 'fn mainImage(p: vec2f) -> vec4f { return values[0]; }'],
     ['binary-upload.sha.json', JSON.stringify({ version: '1', storage: { values: { count: 2, elementType: 'float4' } }, passes: { Image: {} } })],
     ['values.bin', `data:application/octet-stream;base64,${Buffer.from(new Float32Array([0.25, 0.75, 0.5, 1, 0.125, 0.25, 0.5, 1]).buffer).toString('base64')}`],
+    ['overlay.bin', `data:application/octet-stream;base64,${Buffer.from(new Float32Array([0.75, 0.5, 0.25, 1]).buffer).toString('base64')}`],
   ]);
   await page.getByTestId('shader-option-binary-upload-wgsl').click();
   const preview = page.getByTestId('web-preview'), config = page.locator('.config-panel');
@@ -381,7 +382,7 @@ test('binary file selection applies from the header and persists only the file p
   const saved = await readWorkspaceFiles(page);
   const configFile = saved.find(file => file.path === '/binary-upload.sha.json');
   const storage = JSON.parse(configFile.contents).storage.values;
-  expect(storage).toEqual({ count: 2, elementType: 'float4', initialDataPath: expect.stringMatching(/^\/?values\.bin$/) });
+  expect(storage).toEqual({ count: 2, elementType: 'float4', initialDataFiles: [{ path: expect.stringMatching(/^\/?values\.bin$/), byteOffset: 0 }] });
 });
 
 test('binary file initializes real GPU storage and inspection after reload', async ({ page }) => {
@@ -393,5 +394,33 @@ test('binary file initializes real GPU storage and inspection after reload', asy
     for (const [component, value] of values.entries()) {
       await expect(inspector.getByLabel(`Element ${row} component ${component}`, { exact: true })).toHaveText(value);
     }
+  }
+});
+
+
+test('multiple binary files preserve offsets after reload and apply later overlaps on the GPU', async ({ page }) => {
+  const config = await uploadStorageBinary(page);
+  await config.getByRole('button', { name: '+ Add file', exact: true }).click();
+  await config.getByRole('button', { name: 'Select', exact: true }).nth(1).click();
+  const picker = page.getByRole('dialog', { name: 'Select workspace file' });
+  await picker.getByRole('button', { name: /overlay\.bin$/ }).click();
+  await config.getByLabel('File 2 byte offset', { exact: true }).fill('0x10');
+  await config.getByLabel('File 2 byte offset', { exact: true }).press('Tab');
+  await config.getByRole('button', { name: 'Apply pending storage changes' }).click();
+  await expect(config.getByRole('button', { name: 'Apply pending storage changes' })).toHaveCount(0);
+  const saved = await readWorkspaceFiles(page);
+  const storage = JSON.parse(saved.find(file => file.path === '/binary-upload.sha.json').contents).storage.values;
+  expect(storage.initialDataFiles).toEqual([{ path: expect.stringMatching(/^\/?values\.bin$/), byteOffset: 0 }, { path: expect.stringMatching(/^\/?overlay\.bin$/), byteOffset: 16 }]);
+  await page.reload();
+  await page.getByTestId('shader-option-binary-upload-wgsl').click();
+  const preview = page.getByTestId('web-preview');
+  if (!await config.isVisible()) {
+    await preview.getByLabel('Toggle config panel').click();
+  }
+  await config.getByRole('button', { name: 'Storage buffer values', exact: true }).click();
+  await config.getByRole('tab', { name: 'Inspect', exact: true }).click();
+  const inspector = page.getByLabel('Inspect values', { exact: true });
+  for (const [component, value] of ['0.75', '0.5', '0.25', '1'].entries()) {
+    await expect(inspector.getByLabel(`Element 1 component ${component}`, { exact: true })).toHaveText(value);
   }
 });

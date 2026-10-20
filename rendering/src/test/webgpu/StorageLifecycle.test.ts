@@ -43,10 +43,19 @@ describe("initializeStorage", () => {
 
 describe("storageCacheKey", () => {
   it("changes when referenced file bytes or URL change", () => {
-    const base = storageCacheKey(node({ initialDataUrl: "a.bin", initialBytes: new Uint8Array([1]) }));
-    expect(storageCacheKey(node({ initialDataUrl: "a.bin", initialBytes: new Uint8Array([1]) }))).toBe(base);
-    expect(storageCacheKey(node({ initialDataUrl: "a.bin", initialBytes: new Uint8Array([2]) }))).not.toBe(base);
-    expect(storageCacheKey(node({ initialDataUrl: "b.bin", initialBytes: new Uint8Array([1]) }))).not.toBe(base);
+    const base = storageCacheKey(node({ initialDataFiles: [{ path: "a.bin" }], initialBytes: new Uint8Array([1]) }));
+    expect(storageCacheKey(node({ initialDataFiles: [{ path: "a.bin" }], initialBytes: new Uint8Array([1]) }))).toBe(base);
+    expect(storageCacheKey(node({ initialDataFiles: [{ path: "a.bin" }], initialBytes: new Uint8Array([2]) }))).not.toBe(base);
+    expect(storageCacheKey(node({ initialDataFiles: [{ path: "b.bin" }], initialBytes: new Uint8Array([1]) }))).not.toBe(base);
     expect(storageCacheKey(node())).not.toBe(base);
   });
+  it('includes ordered paths, URLs and offsets even when the resulting bytes are identical', () => {
+    const files = [{ path: 'a.bin', byteOffset: 0 }, { path: 'b.bin', byteOffset: 4 }];
+    const base = storageCacheKey(node({ initialDataFiles: files }));
+    expect(storageCacheKey(node({ initialDataFiles: files.map(file => ({ ...file, resolved_path: 'https://host/' + file.path })) }))).not.toBe(base);
+    expect(storageCacheKey(node({ initialDataFiles: [...files].reverse() }))).not.toBe(base);
+    expect(storageCacheKey(node({ initialDataFiles: [{ path: 'a.bin', byteOffset: 1 }, files[1]!] }))).not.toBe(base);
+    expect(storageCacheKey(node({ initialDataFiles: [{ path: 'a.bin' }, files[1]!] }))).toBe(base);
+  });
+
 });

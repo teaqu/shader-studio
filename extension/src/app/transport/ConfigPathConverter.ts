@@ -33,11 +33,14 @@ export class ConfigPathConverter {
 
     // Storage buffers may reference a raw binary file for their initial bytes
     for (const declaration of Object.values<StorageBufferConfig>(config.storage ?? {})) {
-      if (declaration && typeof declaration.initialDataPath === 'string' && declaration.initialDataPath) {
+      for (const file of Array.isArray(declaration?.initialDataFiles) ? declaration.initialDataFiles : []) {
+        if (typeof file?.path !== 'string' || !file.path) {
+          continue;
+        }
         const absolutePath = processedMessage.path
-          ? PathResolver.resolvePath(processedMessage.path, declaration.initialDataPath)
-          : (path.isAbsolute(declaration.initialDataPath) ? declaration.initialDataPath : path.join(configDir, declaration.initialDataPath));
-        declaration.resolved_path = this.convertUriForClient(absolutePath, webview);
+          ? PathResolver.resolvePath(processedMessage.path, file.path)
+          : (path.isAbsolute(file.path) ? file.path : path.join(configDir, file.path));
+        file.resolved_path = this.convertUriForClient(absolutePath, webview);
       }
     }
 

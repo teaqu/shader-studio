@@ -471,8 +471,8 @@ suite('WebSocketTransport Test Suite', () => {
         path: '/test/shader.slang',
         config: {
           storage: {
-            data: { count: 4, elementType: 'uint', initialDataPath: 'values.bin' },
-            remote: { count: 4, elementType: 'uint', initialDataPath: 'https://example.com/values.bin' },
+            data: { count: 4, elementType: 'uint', initialDataFiles: [{ path: 'values.bin' }] },
+            remote: { count: 4, elementType: 'uint', initialDataFiles: [{ path: 'https://example.com/values.bin' }] },
             zero: { count: 4, elementType: 'uint' },
           },
           passes: { Image: {} }
@@ -481,11 +481,11 @@ suite('WebSocketTransport Test Suite', () => {
 
       const sentData = JSON.parse(mockWsClient.send.getCall(0).args[0] as string);
       assert.strictEqual(
-        sentData.config.storage.data.resolved_path,
+        sentData.config.storage.data.initialDataFiles[0].resolved_path,
         `http://localhost:3000/textures/${encodeURIComponent(path.join('/test', 'values.bin'))}`,
       );
-      assert.strictEqual(sentData.config.storage.data.initialDataPath, 'values.bin');
-      assert.strictEqual(sentData.config.storage.remote.resolved_path, 'https://example.com/values.bin');
+      assert.strictEqual(sentData.config.storage.data.initialDataFiles[0].path, 'values.bin');
+      assert.strictEqual(sentData.config.storage.remote.initialDataFiles[0].resolved_path, 'https://example.com/values.bin');
       assert.strictEqual(sentData.config.storage.zero.resolved_path, undefined);
     });
 

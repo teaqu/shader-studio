@@ -302,8 +302,11 @@ export class WebSocketTransport implements MessageTransport {
     const configDir = shaderPath ? path.dirname(shaderPath) : '';
 
     for (const declaration of Object.values(config.storage ?? {})) {
-      if (declaration && typeof declaration.initialDataPath === 'string' && declaration.initialDataPath) {
-        declaration.resolved_path = this.convertUriForClient(resolveConfigAssetPath(declaration.initialDataPath, configDir, this.extensionPath, (value) => this.normalizeLocalPath(value)));
+      for (const file of Array.isArray(declaration?.initialDataFiles) ? declaration.initialDataFiles : []) {
+        if (typeof file?.path !== 'string' || !file.path) {
+          continue;
+        }
+        file.resolved_path = this.convertUriForClient(resolveConfigAssetPath(file.path, configDir, this.extensionPath, (value) => this.normalizeLocalPath(value)));
       }
     }
 

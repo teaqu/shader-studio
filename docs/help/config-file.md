@@ -367,7 +367,7 @@ Declare WebGPU storage at the top level of the config, alongside `passes`. The v
     "counter": {
       "count": 1,
       "elementType": "u32",
-      "initialDataPath": "data/counter.bin"
+      "initialDataFiles": [{ "path": "data/counter.bin", "byteOffset": 0 }]
     }
   },
   "passes": { "Image": {} }
@@ -379,7 +379,7 @@ Declare WebGPU storage at the top level of the config, alongside `passes`. The v
 | `count` | Positive integer element count. |
 | `elementType` | Numeric Slang/WGSL type or struct name. |
 | `fields` | Optional 1-64 named numeric fields. When supplied, generates the named struct; omit for a type defined in shader source. Field names must be unique shader identifiers. |
-| `initialDataPath` | Optional path to a raw binary file whose bytes initialise the buffer, resolved like texture paths (relative to the shader, `@/` workspace-relative, or absolute). No fixed size limit beyond the buffer's own size. Missing bytes are zero. Embedded base64 `initialData` from earlier versions is no longer accepted. |
+| `initialDataFiles` | Optional ordered list of `{ path, byteOffset }`. Each path points to raw binary data and resolves relative to the shader, `@/` workspace-relative, or absolute. Offsets are destination bytes from the buffer's start and default to zero. Offset plus file length must fit in the buffer. Later files overwrite overlaps; unfilled bytes are zero. |
 | `clearEachFrame` | Optional boolean, default `false`. Zeros storage before each normal simulation frame. |
 | `resetOnRestart` | Optional boolean, default `true`. Set `false` to preserve compatible existing storage during a shader restart. |
 

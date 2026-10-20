@@ -534,8 +534,7 @@ function resolveStorage(
         wgsl: storageStructDeclaration(declaration, 'wgsl'),
         slang: storageStructDeclaration(declaration, 'slang'),
       } : undefined,
-      initialDataPath: declaration.initialDataPath,
-      initialDataUrl: declaration.initialDataPath ? declaration.resolved_path ?? declaration.initialDataPath : undefined,
+      initialDataFiles: declaration.initialDataFiles?.map(file => ({ ...file })),
       clearEachFrame: declaration.clearEachFrame,
       resetOnRestart: declaration.resetOnRestart,
     });

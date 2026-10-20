@@ -5,7 +5,6 @@
   import { setPendingStorageForm } from "../../state/storageViewState.svelte";
   import {
     configuredStorageLayout,
-    REMOVED_EMBEDDED_STORAGE_KEYS,
     storageStructDeclaration,
     validateStorageOptions,
     type StorageBufferConfig,
@@ -146,25 +145,14 @@
       draft.elementType = "float4";
     }
   }
-  /** Configs saved before initial data moved to file paths may still embed bytes. */
-  const hasRemovedEmbeddedData = $derived(
-    REMOVED_EMBEDDED_STORAGE_KEYS.some((key) => key in draft),
-  );
-  const usesInitialData = $derived(
-    draft.initialDataPath !== undefined || hasRemovedEmbeddedData,
-  );
-  function clearInitialData(): void {
-    delete draft.initialDataPath;
-    delete draft.resolved_path;
-    const record = draft as unknown as Record<string, unknown>;
-    for (const key of REMOVED_EMBEDDED_STORAGE_KEYS) {
-      delete record[key];
-    }
-  }
-  function setInitialDataPath(path: string): void {
-    clearInitialData();
-    draft.initialDataPath = path;
-    errors = {};
+  const usesInitialData = $derived(draft.initialDataFiles !== undefined);
+  function moveInitialFile(index: number, direction: -1 | 1): void {
+    const files = draft.initialDataFiles;
+    const target = index + direction;
+    if (!files || target < 0 || target >= files.length) {
+return;
+}
+    [files[index], files[target]] = [files[target]!, files[index]!];
   }
   async function reset(): Promise<void> {
     if (!onReset || resetting) {
@@ -323,13 +311,13 @@
           value={usesInitialData ? "file" : "zero"}
           onchange={(event) => {
             if (event.currentTarget.value === "zero") {
-              clearInitialData();
+              delete draft.initialDataFiles;
             } else {
-              draft.initialDataPath = "";
+              draft.initialDataFiles = [{ path: "", byteOffset: 0 }];
             }
           }}
           ><option value="zero">Zeros</option><option value="file"
-            >Binary file</option
+            >Binary files</option
           ></select
         ></label
       ><label
@@ -350,29 +338,52 @@
       >
     </div>
     {#if usesInitialData}
-      <PathInput
-        label="Initial data file"
-        inputId={`${id}-initial-data`}
-        value={draft.initialDataPath ?? ""}
-        placeholder="data.bin"
-        onPathChange={(path) => {
-          if (path) {
-            setInitialDataPath(path);
-          }
-        }}
-        fileType="binary"
-        allowCreate={false}
-        {shaderPath}
-        {postMessage}
-        {onMessage}
-      />
+      <div class="initial-files">
+        {#each draft.initialDataFiles ?? [] as file, index (file)}
+          <div class="initial-file">
+            <PathInput
+              label={`Initial data file ${index + 1}`}
+              inputId={`${id}-initial-data-${index}`}
+              value={file.path}
+              placeholder="data.bin"
+              onPathChange={(path) => {
+                if (path) {
+                  file.path = path;
+                  delete file.resolved_path;
+                  errors = {};
+                }
+              }}
+              fileType="binary"
+              allowCreate={false}
+              {shaderPath}
+              {postMessage}
+              {onMessage}
+            />
+            <div class="file-options">
+              <label class="byte-offset">Byte offset<input
+                aria-label={`File ${index + 1} byte offset`}
+                value={file.byteOffset ?? 0}
+                onchange={(event) => {
+                  const value = event.currentTarget.value.trim();
+                  file.byteOffset = value ? Number(value) : NaN;
+                }}
+              /></label>
+              <div class="actions">
+                <button type="button" aria-label={`Move up file ${index + 1}`} disabled={index === 0} onclick={() => moveInitialFile(index, -1)}>↑</button>
+                <button type="button" aria-label={`Move down file ${index + 1}`} disabled={index === (draft.initialDataFiles?.length ?? 0) - 1} onclick={() => moveInitialFile(index, 1)}>↓</button>
+                <button type="button" aria-label={`Remove file ${index + 1}`} onclick={() => draft.initialDataFiles?.splice(index, 1)}>×</button>
+              </div>
+            </div>
+          </div>
+        {/each}
+        <div class="actions"><button type="button" onclick={() => draft.initialDataFiles?.push({ path: "", byteOffset: 0 })}>+ Add file</button></div>
+      </div>
       <p class="meta">
-        {#if hasRemovedEmbeddedData}Embedded data is no longer supported ·
-          choose a raw binary file to replace it.
-        {/if}Raw bytes are read from the file when the shader loads, up to the
-        buffer's {stride ? `${stride * Number(count || 0)} bytes` : "size"}.
-        Unfilled bytes start at zero.
-      </p>{/if}
+        Raw bytes load in list order at byte offsets from the buffer's start.
+        Later files overwrite overlapping bytes. Unfilled bytes start at zero.
+        Files must fit within the buffer's {stride ? `${stride * Number(count || 0)} bytes` : "size"}.
+      </p>
+    {/if}
     <label class="check"
       ><input
         type="checkbox"
@@ -483,6 +494,11 @@
     min-height: 0;
     accent-color: var(--storage-accent);
   }
+  .initial-files { display: grid; gap: 12px; }
+  .initial-file { display: grid; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid var(--storage-line); }
+  .file-options { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .byte-offset { display: flex; align-items: center; gap: 8px; }
+  .byte-offset input { width: 120px; }
   .schema {
     display: grid;
     border: 1px solid var(--storage-line);

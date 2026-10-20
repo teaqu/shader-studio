@@ -269,6 +269,16 @@ export interface CommonPass {
   entryPoints?: never;
 }
 
+/** One raw binary file loaded into a zero-filled storage buffer, in list order. */
+export interface StorageInitialDataFile {
+    /** Relative to the shader, `@/` workspace-relative, or absolute. */
+    path: string;
+    /** Destination offset in bytes, from the start of the buffer. Defaults to zero. */
+    byteOffset?: number;
+    /** Host-injected loadable URL. Never persisted. */
+    resolved_path?: string;
+}
+
 /** Describes the layout of a named GPU storage buffer. Stride is always
  *  auto-inferred from the element type (built-in table or parsed struct). */
 export interface StorageBufferConfig {
@@ -276,11 +286,8 @@ export interface StorageBufferConfig {
     elementType: string;
     /** Optional config-owned struct. Omit to use a type declared in shader source. */
     fields?: Array<{ name: string; type: string }>;
-    /** Raw binary file whose bytes initialise the buffer; missing bytes start at zero.
-     *  Resolved like texture paths: relative to the shader, `@/` workspace-relative, or absolute. */
-    initialDataPath?: string;
-    /** Host-injected loadable URL for `initialDataPath`. Never persisted. */
-    resolved_path?: string;
+    /** Files applied in order. Later files overwrite overlaps; unfilled bytes stay zero. */
+    initialDataFiles?: StorageInitialDataFile[];
     clearEachFrame?: boolean;
     /** Defaults to true, preserving the existing restart behaviour. */
     resetOnRestart?: boolean;

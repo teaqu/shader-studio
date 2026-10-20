@@ -6,6 +6,8 @@ vi.mock('vscode', () => ({
 }));
 import { WebviewTransport } from '../../app/transport/WebviewTransport.js';
 import { WebSocketTransport } from '../../app/transport/WebSocketTransport.js';
+import { ConfigPathConverter } from '../../app/transport/ConfigPathConverter.js';
+import type { Webview } from 'vscode';
 
 const volumeMessage = () => ({
   type: 'shaderSource', path: '/workspace/shader.glsl',
@@ -46,15 +48,25 @@ describe('volume transport resources', () => {
 const storageMessage = () => ({
   type: 'shaderSource', path: '/workspace/shader.slang',
   config: { version: '1.0', storage: {
-    data: { count: 4, elementType: 'uint', initialDataPath: 'data/values.bin' },
-    shared: { count: 4, elementType: 'uint', initialDataPath: '@/shared/table.bin' },
-    remote: { count: 4, elementType: 'uint', initialDataPath: 'https://example.com/r.bin' },
-    empty: { count: 4, elementType: 'uint', initialDataPath: '' },
+    data: { count: 4, elementType: 'uint', initialDataFiles: [{ path: 'data/values.bin' }, { path: '@/shared/next.bin', byteOffset: 8 }] },
+    shared: { count: 4, elementType: 'uint', initialDataFiles: [{ path: '@/shared/table.bin' }] },
+    remote: { count: 4, elementType: 'uint', initialDataFiles: [{ path: 'https://example.com/r.bin' }] },
+    empty: { count: 4, elementType: 'uint', initialDataFiles: [{ path: '' }] },
     zero: { count: 4, elementType: 'uint' },
-  } as Record<string, { count: number; elementType: string; initialDataPath?: string; resolved_path?: string }>, passes: { Image: {} } },
+  } as Record<string, { count: number; elementType: string; initialDataFiles?: Array<{ path: string; byteOffset?: number; resolved_path?: string }> }>, passes: { Image: {} } },
 });
 
 describe('storage initial data transport resources', () => {
+  it('resolves every file for webviews without mutating paths or offsets in the original config', async () => {
+    const message = storageMessage();
+    const webview = { asWebviewUri: (uri: { fsPath: string }) => ({ toString: () => `webview:${uri.fsPath}` }) } as unknown as Webview;
+    const converted = await ConfigPathConverter.processConfigPaths(message, webview);
+    expect(converted.config.storage?.data?.initialDataFiles).toEqual([
+      { path: 'data/values.bin', resolved_path: 'webview:/workspace/data/values.bin' },
+      { path: '@/shared/next.bin', byteOffset: 8, resolved_path: 'webview:/workspace/shared/next.bin' },
+    ]);
+    expect(message.config.storage.data.initialDataFiles).toEqual([{ path: 'data/values.bin' }, { path: '@/shared/next.bin', byteOffset: 8 }]);
+  });
   it('adds each initial data file directory to webview resource roots', () => {
     const webview = { options: { localResourceRoots: [] as Array<{ fsPath: string }> } };
     const transport = new WebviewTransport() as unknown as { panels: Set<unknown>; handleVideoResourceRoots(message: ReturnType<typeof storageMessage>): void };
@@ -67,10 +79,11 @@ describe('storage initial data transport resources', () => {
     const process = (WebSocketTransport.prototype as unknown as { processConfigPaths(message: ReturnType<typeof storageMessage>): ReturnType<typeof storageMessage> }).processConfigPaths;
     const converted = process.call({ convertUriForClient: (value: string) => `client:${value}` }, storageMessage());
     const storage = converted.config.storage;
-    expect(storage.data).toMatchObject({ initialDataPath: 'data/values.bin', resolved_path: 'client:/workspace/data/values.bin' });
-    expect(storage.shared.resolved_path).toBe('client:/workspace/shared/table.bin');
-    expect(storage.remote.resolved_path).toBe('client:https://example.com/r.bin');
-    expect(storage.empty.resolved_path).toBeUndefined();
-    expect(storage.zero.resolved_path).toBeUndefined();
+    expect(storage.data.initialDataFiles![0]).toMatchObject({ path: 'data/values.bin', resolved_path: 'client:/workspace/data/values.bin' });
+    expect(storage.data.initialDataFiles![1]).toMatchObject({ path: '@/shared/next.bin', byteOffset: 8, resolved_path: 'client:/workspace/shared/next.bin' });
+    expect(storage.shared.initialDataFiles![0].resolved_path).toBe('client:/workspace/shared/table.bin');
+    expect(storage.remote.initialDataFiles![0].resolved_path).toBe('client:https://example.com/r.bin');
+    expect(storage.empty.initialDataFiles![0].resolved_path).toBeUndefined();
+    expect(storage.zero.initialDataFiles).toBeUndefined();
   });
 });

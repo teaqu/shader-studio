@@ -607,9 +607,9 @@ describe('WebExtensionHost', () => {
       { path: '/sim.sha.json', contents: JSON.stringify({
         version: '1.0',
         storage: {
-          values: { count: 1, elementType: 'u32', initialDataPath: 'data/values.bin', resolved_path: 'stale' },
-          missing: { count: 1, elementType: 'u32', initialDataPath: 'gone.bin', resolved_path: 'stale' },
-          remote: { count: 1, elementType: 'u32', initialDataPath: 'https://example.com/a.bin' },
+          values: { count: 1, elementType: 'u32', initialDataFiles: [{ path: 'data/values.bin', resolved_path: 'stale' }, { path: '@/data/values.bin', byteOffset: 4 }] },
+          missing: { count: 1, elementType: 'u32', initialDataFiles: [{ path: 'gone.bin', resolved_path: 'stale' }] },
+          remote: { count: 1, elementType: 'u32', initialDataFiles: [{ path: 'https://example.com/a.bin' }] },
           zero: { count: 1, elementType: 'u32' },
         },
         passes: { Image: {} },
@@ -622,9 +622,10 @@ describe('WebExtensionHost', () => {
     await host.handleExplorerMessage({ type: 'requestShaderCode', path: '/sim.wgsl', requestId: 1 });
 
     const storage = receive.mock.calls.find(([message]) => message.type === 'shaderCode')![0].config.storage;
-    expect(storage.values.resolved_path).toBe('data:application/octet-stream;base64,AQAAAA==');
-    expect(storage.missing.resolved_path).toBeUndefined();
-    expect(storage.remote.resolved_path).toBeUndefined();
+    expect(storage.values.initialDataFiles[0].resolved_path).toBe('data:application/octet-stream;base64,AQAAAA==');
+    expect(storage.values.initialDataFiles[1]).toMatchObject({ path: '@/data/values.bin', byteOffset: 4, resolved_path: 'data:application/octet-stream;base64,AQAAAA==' });
+    expect(storage.missing.initialDataFiles[0].resolved_path).toBeUndefined();
+    expect(storage.remote.initialDataFiles[0].resolved_path).toBeUndefined();
     expect(storage.zero.resolved_path).toBeUndefined();
   });
 

@@ -32,6 +32,15 @@ describe('stripResolvedPath', () => {
     expect(JSON.stringify(clean)).not.toContain('resolved_path');
   });
 
+  it('persists ordered storage paths and offsets while stripping every resolved URL', () => {
+    const initialDataFiles = [{ path: 'boot.bin', byteOffset: 0, resolved_path: 'data:application/octet-stream;base64,AQ==' }, { path: '@/kernel.bin', byteOffset: 32, resolved_path: 'https://host/kernel.bin' }];
+    const config: ShaderConfig = { version: '1.0', storage: { ram: { count: 32, elementType: 'uint', initialDataFiles } }, passes: { Image: {} } };
+    const { clean, text } = stripResolvedPath(config);
+    expect(clean.storage?.ram?.initialDataFiles).toEqual([{ path: 'boot.bin', byteOffset: 0 }, { path: '@/kernel.bin', byteOffset: 32 }]);
+    expect(text).not.toContain('resolved_path');
+    expect(initialDataFiles[0]!.resolved_path).toContain('data:');
+  });
+
   it('preserves all other fields', () => {
     const config: ShaderConfig = {
       version: '1.0',

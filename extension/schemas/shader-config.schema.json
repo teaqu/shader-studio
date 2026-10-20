@@ -471,7 +471,10 @@
     },
     "StorageBuffer": {
       "type": "object",
-      "required": ["count", "elementType"],
+      "required": [
+        "count",
+        "elementType"
+      ],
       "properties": {
         "count": {
           "description": "Number of elements",
@@ -485,6 +488,59 @@
           "type": "string",
           "pattern": "\\S",
           "description": "Slang element type"
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "type"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+              },
+              "type": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "initialDataFiles": {
+          "type": "array",
+          "description": "Binary files loaded in list order. Later files overwrite overlaps; unfilled bytes stay zero.",
+          "items": {
+            "type": "object",
+            "required": [
+              "path"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "pattern": "\\S"
+              },
+              "byteOffset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991,
+                "default": 0,
+                "description": "Destination byte offset from the start of the buffer."
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "clearEachFrame": {
+          "type": "boolean"
+        },
+        "resetOnRestart": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false
