@@ -31,6 +31,7 @@
     "rollup": "^4.64.5"
   },
   "dependencies": {
+    "@shader-studio/codemirror": "*",
     "@shader-studio/debug": "*",
     "@shader-studio/glsl-language-server": "*",
     "@shader-studio/language-server-core": "*",

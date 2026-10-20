@@ -1,6 +1,6 @@
 import * as monaco from 'monaco-editor/editor/editor.api.js';
 import { setupMonacoGlsl, setupMonacoJson, setupMonacoSlang, setupMonacoWgsl } from '@shader-studio/monaco';
-import { getHostEditorPreferences, type HostEditorPreferences } from '../state/hostState.svelte';
+import { editorDescriptionsEnabled, getHostEditorPreferences, type HostEditorPreferences } from '../state/hostState.svelte';
 
 export interface ShaderEditorFactoryOptions {
   shaderCode: string;
@@ -33,8 +33,16 @@ function lineHeightFor(fontSize: number): number {
 
 export class HostEditorPreferencesController {
   private readonly cleanup: () => void;
+  private readonly media = globalThis.matchMedia?.('(max-width: 767px), (pointer: coarse)');
+  private readonly updateViewport = () => {
+    const preferences = getHostEditorPreferences()?.();
+    if (preferences) {
+      this.apply(preferences);
+    }
+  };
 
   constructor(private readonly editor: monaco.editor.IStandaloneCodeEditor) {
+    this.media?.addEventListener('change', this.updateViewport);
     const getter = getHostEditorPreferences();
     this.cleanup = getter
       ? $effect.root(() => {
@@ -55,6 +63,7 @@ export class HostEditorPreferencesController {
 
   dispose(): void {
     this.cleanup();
+    this.media?.removeEventListener('change', this.updateViewport);
   }
 
   private apply(preferences: HostEditorPreferences): void {
@@ -64,6 +73,9 @@ export class HostEditorPreferencesController {
       wordWrap: preferences.wordWrap,
       minimap: { enabled: preferences.minimap },
       lineNumbers: preferences.lineNumbers,
+      quickSuggestions: preferences.autoSuggestions ?? true,
+      suggestOnTriggerCharacters: preferences.autoSuggestions ?? true,
+      hover: { enabled: editorDescriptionsEnabled(preferences, this.media?.matches ?? false) ? 'on' : 'off' },
     });
     applyModelPreferences(this.editor.getModel(), preferences);
   }

@@ -17,6 +17,7 @@ export const shaderStudioAliases = {
   '@shader-studio/glsl-analysis': path.resolve(root, 'language-servers/glsl-analysis/src'),
   '@shader-studio/glsl-language-server': path.resolve(root, 'language-servers/glsl/src'),
   '@shader-studio/language-server-core': path.resolve(root, 'language-servers/core/src'),
+  '@shader-studio/codemirror': path.resolve(root, 'codemirror/src'),
   '@shader-studio/monaco': path.resolve(root, 'monaco/src'),
   '@shader-studio/rendering': path.resolve(root, 'rendering/src'),
   '@shader-studio/slang-language-server': path.resolve(root, 'language-servers/slang/src'),

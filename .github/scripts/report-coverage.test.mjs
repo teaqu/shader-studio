@@ -27,3 +27,9 @@ test("summary reports the newly measured language services separately from their
   assert.deepEqual(result["language-servers/wgsl-analysis"].lines, { covered: 8, total: 10 });
   assert.match(formatCoverage(result), /language-servers\/wgsl \| 90\.00%/);
 });
+
+test('summary includes the modular CodeMirror workspace', () => {
+  const summary = summarizeCoverage({ '/repo/codemirror/src/editor.ts': counters(9, 10) }, '/repo');
+  assert.deepEqual(summary.codemirror.lines, { covered: 9, total: 10 });
+  assert.match(formatCoverage(summary), /\| codemirror \| 90\.00% \| 90\.00% \| 90\.00% \| 90\.00% \|/);
+});

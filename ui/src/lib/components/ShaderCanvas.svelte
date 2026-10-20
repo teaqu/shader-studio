@@ -186,6 +186,15 @@
 </div>
 
 <style>
+  /* Long presses interact with the shader instead of selecting the preview
+     or opening Safari's native image callout. Include the letterboxed area. */
+  .canvas-container,
+  canvas {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+
   .canvas-container {
     position: relative;
   }

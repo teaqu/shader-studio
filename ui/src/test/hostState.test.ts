@@ -1,9 +1,51 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { getHostEditorWordWrap, toggleHostEditorWordWrap, configureHost, getHostCapabilities, getHostDefaultAssets, getHostTransportFactory, resetHost } from '../lib/state/hostState.svelte';
+import { editorDescriptionsEnabled, getHostEditorDescriptions, toggleHostEditorDescriptions, getHostEditorWordWrap, toggleHostEditorWordWrap, getHostEditorAutoSuggestions, toggleHostEditorAutoSuggestions, configureHost, getHostCapabilities, getHostDefaultAssets, getHostTransportFactory, resetHost } from '../lib/state/hostState.svelte';
 
 afterEach(resetHost);
 
 describe('viewer host contract', () => {
+  it('resolves separate description defaults and only toggles writable host preferences', () => {
+    expect(editorDescriptionsEnabled(undefined, true)).toBe(false);
+    expect(editorDescriptionsEnabled(undefined, false)).toBe(true);
+    expect(getHostEditorDescriptions(true)).toBeUndefined();
+    expect(() => toggleHostEditorDescriptions(true)).not.toThrow();
+    const preferences = { fontSize: 14, tabSize: 4, insertSpaces: true, wordWrap: 'off' as const, minimap: false, lineNumbers: 'on' as const, mobileDescriptions: false, desktopDescriptions: true };
+    configureHost({ getEditorPreferences: () => preferences });
+    expect(getHostEditorDescriptions(true)).toBeUndefined();
+    configureHost({
+      getEditorPreferences: () => preferences,
+      setEditorDescriptions: (mobile, enabled) => {
+        preferences[mobile ? 'mobileDescriptions' : 'desktopDescriptions'] = enabled;
+      },
+    });
+    expect(getHostEditorDescriptions(true)).toBe(false);
+    toggleHostEditorDescriptions(true);
+    expect(getHostEditorDescriptions(true)).toBe(true);
+    toggleHostEditorDescriptions(false);
+    expect(getHostEditorDescriptions(false)).toBe(false);
+    expect(getHostEditorDescriptions(true)).toBe(true);
+  });
+  it('only exposes automatic suggestions when the host can save that preference', () => {
+    expect(getHostEditorAutoSuggestions()).toBeUndefined();
+    expect(() => toggleHostEditorAutoSuggestions()).not.toThrow();
+    configureHost({ setEditorAutoSuggestions: () => {
+      throw new Error('No preference to toggle');
+    } });
+    expect(getHostEditorAutoSuggestions()).toBeUndefined();
+    expect(() => toggleHostEditorAutoSuggestions()).not.toThrow();
+    let autoSuggestions: boolean | undefined;
+    configureHost({
+      getEditorPreferences: () => ({ fontSize: 14, tabSize: 4, insertSpaces: true, wordWrap: 'off', minimap: false, lineNumbers: 'on', autoSuggestions }),
+      setEditorAutoSuggestions: enabled => {
+        autoSuggestions = enabled;
+      },
+    });
+    expect(getHostEditorAutoSuggestions()).toBe(true);
+    toggleHostEditorAutoSuggestions();
+    expect(getHostEditorAutoSuggestions()).toBe(false);
+    toggleHostEditorAutoSuggestions();
+    expect(getHostEditorAutoSuggestions()).toBe(true);
+  });
   it('defaults to no host services and to full extension capabilities', () => {
     expect(getHostDefaultAssets()).toEqual([]);
     expect(getHostTransportFactory()).toBeUndefined();

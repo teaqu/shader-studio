@@ -9,7 +9,7 @@ function fixture(packages) {
   const root = mkdtempSync(join(tmpdir(), "shader-studio-boundaries-"));
   mkdirSync(join(root, "language-servers"));
   // Every workspace the checker scans must exist; supply quiet ones a case omits.
-  const quiet = [["file-explorer", { name: "@shader-studio/file-explorer" }, ""]]
+  const quiet = [["file-explorer", { name: "@shader-studio/file-explorer" }, ""], ["codemirror", { name: "@shader-studio/codemirror" }, ""]]
     .filter(([directory]) => !packages.some(([present]) => present === directory));
   for (const [directory, manifest, source] of [...packages, ...quiet]) {
     mkdirSync(join(root, directory), { recursive: true });
@@ -80,7 +80,7 @@ test("boundary check resolves local modules, relative package bypasses, query im
       "second.ts": 'import "./first";',
     }],
     ["utils", { name: "@shader-studio/utils" }, 'import "../types/index"; import "../types/index?worker&url";'],
-    ["ui", { name: "shader-studio-ui" }, 'new Worker(new URL("@shader-studio/glsl-language-server/private", import.meta.url));'],
+    ["ui", { name: "shader-studio-ui" }, 'new Worker(new URL("@shader-studio/glsl-language-server/private", import.meta.url)); new URL("https://example.com"); new URL();'],
     ["rendering", { name: "@shader-studio/rendering" }, ""],
     ["extension", { name: "shader-studio" }, ""],
     ["standalone", { name: "@shader-studio/standalone" }, ""],

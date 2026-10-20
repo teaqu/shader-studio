@@ -1,0 +1,1194 @@
+<script lang="ts">
+  import { onMount, onDestroy, untrack } from "svelte";
+  import EditorToolbar from "./EditorToolbar.svelte";
+  import type { ShaderEditorProps } from "../editor/ShaderEditorProps";
+  import * as monaco from "monaco-editor/editor/editor.api.js";
+  // Monaco's `editor.api` entrypoint ships the API only: every editor
+  // contribution registers itself as an import side effect. Each import below
+  // is the UI half of a provider registered in MonacoLanguageServiceManager —
+  // without it the provider is called and its results are silently dropped.
+  import "monaco-editor/editor/contrib/gotoError/browser/gotoError";
+  import "monaco-editor/editor/contrib/hover/browser/hoverContribution";
+  import "monaco-editor/editor/contrib/suggest/browser/suggestController";
+  import "monaco-editor/editor/contrib/parameterHints/browser/parameterHints";
+  import "monaco-editor/editor/contrib/gotoSymbol/browser/goToCommands";
+  import "monaco-editor/editor/contrib/gotoSymbol/browser/link/goToDefinitionAtPosition";
+  import "monaco-editor/editor/standalone/browser/referenceSearch/standaloneReferenceSearch";
+  import "monaco-editor/editor/contrib/rename/browser/rename";
+  import "monaco-editor/editor/contrib/colorPicker/browser/colorPickerContribution";
+  import "monaco-editor/editor/contrib/documentSymbols/browser/documentSymbols";
+  import "monaco-editor/editor/standalone/browser/quickAccess/standaloneGotoSymbolQuickAccess";
+  import "monaco-editor/editor/contrib/wordHighlighter/browser/wordHighlighter";
+  import { initVimMode, VimMode } from "monaco-vim";
+  import { setCompilerMarkers } from "@shader-studio/monaco";
+  import type { ShaderLanguageId } from "@shader-studio/types";
+  import { isShaderLanguageId, parseVertexPassKey, resourcesForSharedSource, shaderLanguageForPath, SHADER_LANGUAGES } from "@shader-studio/types";
+  import { EditorSourceSession } from "../editor/EditorSourceSession";
+  import { compilerDiagnostics } from "../editor/compilerDiagnostics";
+  import { bindRenamePopupKeys } from "../editor/renamePopupKeys";
+  import { createLanguageServiceController } from "../editor/createLanguageServiceController";
+  import { createShaderEditor, type HostEditorPreferencesController } from "../editor/createShaderEditor.svelte";
+  import type { LanguageServiceController } from "../editor/LanguageServiceController.svelte";
+  import { shaderAuthoringEnvironment } from "../editor/shaderAuthoringEnvironment";
+  import { getCommonShaderSource } from "../state/commonSourceState.svelte";
+  import { currentTheme, type Theme } from "../stores/themeStore";
+  import { getRenameFeedback } from "../state/renameFeedback.svelte";
+  import {
+    createEditorSelectionSource,
+    getEditorSelection,
+    setEditorSelection,
+  } from "../state/editorSelectionState.svelte";
+  import {
+    releaseOverlayTokenColors,
+    retainOverlayTokenColors,
+    syncOverlayTokenColors,
+  } from "../editor/overlayTokenTheme";
+
+  type CompileMode = "hot" | "save" | "manual";
+
+  interface Props extends ShaderEditorProps {}
+
+  interface OverlayKeyEvent {
+    preventDefault?: () => void;
+    stopPropagation?: () => void;
+    browserEvent?: {
+      key?: string;
+      metaKey?: boolean;
+      ctrlKey?: boolean;
+      preventDefault?: () => void;
+      stopPropagation?: () => void;
+    };
+  }
+
+  let {
+    isVisible = false,
+    shaderCode = "",
+    shaderPath = "",
+    transport,
+    onCodeChange = () => {},
+    vimMode = false,
+    topInset = 0,
+    bottomInset = 0,
+    bufferNames = ["Image"],
+    activeBufferName = "Image",
+    onBufferSwitch = (_bufferName: string) => {},
+    errors = [],
+    compileMode = "hot",
+    onManualCompile = () => {},
+    config = null,
+    customUniformInfo = [],
+    slangModules = [],
+    commonPath = undefined,
+    commonSource = undefined,
+    sourcePassNames = [],
+    onCursorChange = (_line: number, _lineContent: string, _bufferName: string) => {},
+    displayMode = "overlay",
+    overflowWidgetsDomNode = undefined,
+    editorOptions = undefined,
+  }: Props = $props();
+
+  const activePassName = $derived(
+    parseVertexPassKey(activeBufferName) ?? activeBufferName,
+  );
+  const selectionSource = createEditorSelectionSource();
+  const sharedSelection = $derived(shaderPath ? getEditorSelection(shaderPath) : null);
+  // Names the Monarch grammar cannot know: script-declared custom uniforms plus
+  // the configured input and storage resources the renderer declares for them.
+  const dynamicUniformNames = $derived([
+    ...customUniformInfo.map(({ name }) => name),
+    ...resourcesForSharedSource(config, activePassName, sourcePassNames).map(({ name }) => name),
+  ]);
+
+  let containerEl = $state<HTMLDivElement | null>(null);
+  let statusBarEl = $state<HTMLDivElement | null>(null);
+  // Svelte can detach the conditional bar before the Vim toggle effect runs.
+  let vimStatusElement: HTMLDivElement | null = null;
+  let editor: monaco.editor.IStandaloneCodeEditor | null = null;
+  let languageServiceController = $state<LanguageServiceController | null>(null);
+  let environmentGeneration = 0;
+  // codemirror-vim ships an untyped, versioned runtime extension; this is the
+  // isolated adapter boundary for its instance and Ex command callback API.
+  let vimModeInstance: any = null;
+  let popupContainer: HTMLDivElement | null = null;
+  let hostEditorPreferences: HostEditorPreferencesController | null = null;
+  let renamePopupKeyCleanup: (() => void) | null = null;
+  let editorReady = $state(false);
+  let languageServiceStatus = $state<"pending" | "ready" | "error">("pending");
+  let editorModelUri = $state("");
+  const renameFeedback = $derived(getRenameFeedback(editorModelUri));
+  let applyingHostContent = false;
+  let lastSentCode: string | null = null;
+  let cursorChangeDisposable: monaco.IDisposable | null = null;
+  let selectionChangeDisposable: monaco.IDisposable | null = null;
+  let applyingSharedSelection = false;
+  let cursorChangeTimer: ReturnType<typeof setTimeout> | null = null;
+  let uniformDecorationIds: string[] = [];
+  let lastShaderPath: string = "";
+  let vimStatusAttached = false;
+  let vimCurrentMode = "normal";
+  const savedViewStates = new Map<string, monaco.editor.ICodeEditorViewState | null>();
+  const sourceSession = untrack(() => new EditorSourceSession(transport,
+    (code, path) => {
+      if (shaderPath === path) {
+        onCodeChange(code, path);
+      }
+    },
+    (code, path) => {
+      if (shaderPath === path) {
+        lastSentCode = code;
+      }
+    }));
+  // Observability for the marker pipeline. updateCount separates "never ran"
+  // from "ran and produced nothing", which the DOM alone cannot distinguish.
+  // Plain counters written straight onto the element: updateErrorMarkers runs
+  // inside effects, where mutating $state is not allowed.
+  let markerUpdateCount = 0;
+  let editorTheme: Theme = "light";
+  let unsubscribeTheme: (() => void) | null = null;
+  let overlayTokensRetained = false;
+
+  // Monaco's theme is global to the page, so the overlay shares the
+  // workspace theme with any docked pane and recolours its own tokens through
+  // scoped overrides instead of stealing the global theme.
+  function monacoThemeFor(theme: Theme): string {
+    return theme === "light" ? "shader-studio-transparent-light" : "shader-studio-transparent";
+  }
+
+  function languageForShaderPath(path: string): ShaderLanguageId | "typescript" | "javascript" | "json" {
+    const lower = path.toLowerCase();
+    if (lower.endsWith(".json")) {
+      return "json";
+    }
+    if (lower.endsWith(".ts") || lower.endsWith(".tsx")) {
+      return "typescript";
+    }
+    if (lower.endsWith(".js") || lower.endsWith(".jsx")) {
+      return "javascript";
+    }
+    // Shader extensions resolve through the registry, so a new language only
+    // touches this function if it needs a non-shader Monaco language.
+    return shaderLanguageForPath(path) ?? "glsl";
+  }
+
+  function focusMonacoTextInput() {
+    if (!containerEl) {
+      return;
+    }
+    const input = (containerEl.querySelector("textarea.inputarea")
+      || containerEl.querySelector(".monaco-editor textarea")
+      || containerEl.querySelector("textarea")) as HTMLTextAreaElement | null;
+    input?.focus({ preventScroll: true });
+  }
+
+  function syncVimStatus(mode?: string) {
+    vimCurrentMode = mode ?? "normal";
+    const statusBar = statusBarEl;
+    if (!statusBar) {
+      return;
+    }
+
+    const setStatusText = (text: string) => {
+      const modeNode = statusBar.firstElementChild;
+      if (modeNode) {
+        modeNode.textContent = text;
+        return;
+      }
+      statusBar.textContent = text;
+    };
+
+    switch (mode) {
+      case "insert":
+        setStatusText("-- INSERT --");
+        break;
+      case "visual":
+        setStatusText("-- VISUAL --");
+        break;
+      case "visualblock":
+        setStatusText("-- VISUAL BLOCK --");
+        break;
+      case "replace":
+        setStatusText("-- REPLACE --");
+        break;
+      default:
+        setStatusText("-- NORMAL --");
+        break;
+    }
+  }
+
+  function syncCursorForMode(mode?: string) {
+    if (!editor) {
+      return;
+    }
+
+    if (mode === "insert" || mode === "replace") {
+      editor.updateOptions({
+        cursorStyle: "line",
+        cursorWidth: 1,
+      });
+      return;
+    }
+
+    editor.updateOptions({
+      cursorStyle: "block",
+      cursorWidth: 2,
+    });
+  }
+
+  function handleContainerMouseDown() {
+    focusMonacoTextInput();
+  }
+
+  function uniformDecorations(
+    source: string,
+    uniformNames: string[],
+  ): monaco.editor.IModelDeltaDecoration[] {
+    const names = new Set(uniformNames.filter((name) => /^[A-Za-z_]\w*$/.test(name)));
+    if (names.size === 0) {
+      return [];
+    }
+
+    const decorations: monaco.editor.IModelDeltaDecoration[] = [];
+    const lines = source.split("\n");
+    let inBlockComment = false;
+
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+      const line = lines[lineIndex];
+      let column = 0;
+      while (column < line.length) {
+        if (inBlockComment) {
+          const commentEnd = line.indexOf("*/", column);
+          if (commentEnd < 0) {
+            break;
+          }
+          inBlockComment = false;
+          column = commentEnd + 2;
+          continue;
+        }
+
+        if (line.startsWith("//", column)) {
+          break;
+        }
+        if (line.startsWith("/*", column)) {
+          inBlockComment = true;
+          column += 2;
+          continue;
+        }
+
+        const character = line[column];
+        if (character === '"' || character === "'") {
+          const quote = character;
+          column += 1;
+          while (column < line.length) {
+            if (line[column] === "\\") {
+              column += 2;
+            } else if (line[column] === quote) {
+              column += 1;
+              break;
+            } else {
+              column += 1;
+            }
+          }
+          continue;
+        }
+
+        if (/[A-Za-z_]/.test(character)) {
+          const start = column;
+          column += 1;
+          while (column < line.length && /\w/.test(line[column])) {
+            column += 1;
+          }
+          if (names.has(line.slice(start, column))) {
+            decorations.push({
+              range: new monaco.Range(lineIndex + 1, start + 1, lineIndex + 1, column + 1),
+              options: { inlineClassName: "shader-uniform-token" },
+            });
+          }
+          continue;
+        }
+        column += 1;
+      }
+    }
+
+    return decorations;
+  }
+
+  function updateUniformDecorations(uniformNames: string[]) {
+    if (!editor) {
+      return;
+    }
+    const language = languageForShaderPath(shaderPath);
+    const decorations = language in SHADER_LANGUAGES
+      ? uniformDecorations(editor.getValue(), uniformNames)
+      : [];
+    uniformDecorationIds = editor.deltaDecorations(uniformDecorationIds, decorations);
+  }
+
+  function handleOverlaySave() {
+    if (!transport || !shaderPath) {
+      return;
+    }
+    transport.postMessage({
+      type: "extensionCommand",
+      payload: { command: "saveCurrentShader" },
+    });
+  }
+
+  function editorHasFocus(): boolean {
+    if (!editor) {
+      return false;
+    }
+    if (editor.hasTextFocus()) {
+      return true;
+    }
+    // Host updates affect every pane attached to this model. A background
+    // pane must not apply a stale snapshot over another pane's active edits.
+    const model = editor.getModel();
+    return !!model && monaco.editor.getEditors().some(candidate =>
+      candidate.getModel() === model && candidate.hasTextFocus());
+  }
+
+  function runEditorAction(actionId: string, args?: unknown) {
+    editor?.getAction(actionId)?.run(args);
+  }
+
+  function stopKeyEvent(event: OverlayKeyEvent) {
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    event.browserEvent?.preventDefault?.();
+    event.browserEvent?.stopPropagation?.();
+  }
+
+  function switchToNextBuffer() {
+    const idx = bufferNames.indexOf(activeBufferName);
+    const next = bufferNames[(idx + 1) % bufferNames.length];
+    onBufferSwitch(next);
+  }
+
+  function switchToPrevBuffer() {
+    const idx = bufferNames.indexOf(activeBufferName);
+    const prev = bufferNames[(idx - 1 + bufferNames.length) % bufferNames.length];
+    onBufferSwitch(prev);
+  }
+
+  function switchToNamedBuffer(name: string) {
+    const exact = bufferNames.find(b => b === name);
+    if (exact) {
+      onBufferSwitch(exact); return;
+    }
+    const lower = name.toLowerCase();
+    const match = bufferNames.find(b => b.toLowerCase().startsWith(lower));
+    if (match) {
+      onBufferSwitch(match);
+    }
+  }
+
+  let vimCommandsRegistered = false;
+
+  function registerVimCommands() {
+    if (vimCommandsRegistered) {
+      return;
+    }
+    try {
+      const vim = (VimMode as any).Vim;
+      if (!vim?.defineEx) {
+        return;
+      }
+
+      vim.defineEx('bnext', 'bn', () => switchToNextBuffer());
+      vim.defineEx('bprev', 'bp', () => switchToPrevBuffer());
+      vim.defineEx('buffer', 'b', (_cm: any, params: any) => {
+        const name = params?.args?.[0];
+        if (name) {
+          switchToNamedBuffer(name);
+        }
+      });
+      vim.defineEx('lnext', 'lne', () => {
+        runEditorAction('editor.action.marker.next');
+      });
+      vim.defineEx('lprev', 'lp', () => {
+        runEditorAction('editor.action.marker.prev');
+      });
+
+      vimCommandsRegistered = true;
+    } catch (e) {
+      console.warn('Failed to register vim buffer commands:', e);
+    }
+  }
+
+  function enableVim() {
+    if (!editor || vimModeInstance) {
+      return;
+    }
+    registerVimCommands();
+    vimStatusElement = statusBarEl;
+    vimModeInstance = initVimMode(editor as any, vimStatusElement);
+    vimModeInstance.on?.("vim-mode-change", ({ mode }: { mode?: string }) => {
+      syncVimStatus(mode);
+      syncCursorForMode(mode);
+      if (mode === "insert" || mode === "replace") {
+        requestAnimationFrame(() => focusMonacoTextInput());
+      }
+    });
+    editor.updateOptions({ readOnly: false, domReadOnly: false });
+    editor.focus();
+    requestAnimationFrame(() => focusMonacoTextInput());
+    vimStatusAttached = !!statusBarEl;
+    syncVimStatus();
+    syncCursorForMode();
+    setTimeout(() => {
+      if (vimModeInstance) {
+        syncVimStatus(vimCurrentMode);
+      }
+    }, 0);
+  }
+
+  function disableVim() {
+    if (vimModeInstance) {
+      vimModeInstance.dispose();
+      vimModeInstance = null;
+    }
+    vimStatusAttached = false;
+    const statusBar = vimStatusElement ?? statusBarEl;
+    if (statusBar) {
+      statusBar.textContent = "";
+    }
+    vimStatusElement = null;
+  }
+
+  function fallbackEnterInsertMode(key: string) {
+    if (!editor || !vimModeInstance?.state?.vim) {
+      return;
+    }
+
+    const position = editor.getPosition();
+    const model = editor.getModel();
+    if (!position || !model) {
+      return;
+    }
+
+    const lineNumber = position.lineNumber;
+    const lineContent = model.getLineContent(lineNumber);
+    const lineMaxColumn = model.getLineMaxColumn(lineNumber);
+
+    switch (key) {
+      case "a":
+        editor.setPosition({
+          lineNumber,
+          column: Math.min(position.column + 1, lineMaxColumn),
+        });
+        break;
+      case "I": {
+        const indentColumn = (lineContent.match(/^\s*/) ?? [""])[0].length + 1;
+        editor.setPosition({ lineNumber, column: indentColumn });
+        break;
+      }
+      case "A":
+        editor.setPosition({ lineNumber, column: lineMaxColumn });
+        break;
+      case "o":
+        editor.executeEdits("vim-fallback", [{
+          range: new monaco.Range(lineNumber, lineMaxColumn, lineNumber, lineMaxColumn),
+          text: "\n",
+        }]);
+        editor.setPosition({ lineNumber: lineNumber + 1, column: 1 });
+        break;
+      case "O":
+        editor.executeEdits("vim-fallback", [{
+          range: new monaco.Range(lineNumber, 1, lineNumber, 1),
+          text: "\n",
+        }]);
+        editor.setPosition({ lineNumber, column: 1 });
+        break;
+      default:
+        break;
+    }
+
+    vimModeInstance.state.keyMap = "vim-insert";
+    vimModeInstance.state.vim.insertMode = true;
+    vimModeInstance.state.vim.visualMode = false;
+    syncVimStatus("insert");
+    syncCursorForMode("insert");
+    requestAnimationFrame(() => focusMonacoTextInput());
+  }
+
+  function updateBlankLineDecorations() {
+    if (!editor || !containerEl) {
+      return;
+    }
+    const model = editor.getModel();
+    if (!model) {
+      return;
+    }
+    const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight);
+    const padding = editor.getOption(monaco.editor.EditorOption.padding);
+    const topPad = padding?.top ?? 0;
+    requestAnimationFrame(() => {
+      if (!containerEl) {
+        return;
+      }
+      const viewLines = containerEl.querySelectorAll('.view-lines .view-line');
+      viewLines.forEach((el) => {
+        const htmlEl = el as HTMLElement;
+        const top = parseFloat(htmlEl.style.top);
+        if (isNaN(top)) {
+          return;
+        }
+        const lineNum = Math.round((top - topPad) / lineHeight) + 1;
+        const isBlank = lineNum >= 1 && lineNum <= model!.getLineCount()
+          && model!.getLineContent(lineNum).trim() === '';
+        htmlEl.classList.toggle('blank-line', isBlank);
+      });
+    });
+  }
+
+  function createEditor() {
+    if (!containerEl || editor) {
+      return;
+    }
+
+    const created = createShaderEditor(containerEl, {
+      shaderCode,
+      shaderPath,
+      language: languageForShaderPath(shaderPath),
+      theme: monacoThemeFor(editorTheme),
+      overflowWidgetsDomNode,
+    });
+    editor = created.editor;
+    popupContainer = created.popupContainer;
+    hostEditorPreferences = created.preferences;
+    editorModelUri = editor.getModel()?.uri.toString() ?? "";
+    if (popupContainer) {
+      renamePopupKeyCleanup = bindRenamePopupKeys(popupContainer, editor);
+    }
+    // Monaco has now generated its token classes for the workspace theme, so
+    // the overlay's scoped overrides can be derived from them.
+    if (displayMode === "overlay" && !overlayTokensRetained) {
+      overlayTokensRetained = true;
+      retainOverlayTokenColors(editorTheme);
+    }
+    languageServiceController = createLanguageServiceController(monaco, transport);
+
+    if (shaderPath && savedViewStates.has(shaderPath)) {
+      editor.restoreViewState(savedViewStates.get(shaderPath) ?? null);
+    }
+
+    editor.onKeyDown?.((event: OverlayKeyEvent) => {
+      const browserKey = event.browserEvent?.key;
+      const metaKey = !!event.browserEvent?.metaKey;
+      const ctrlKey = !!event.browserEvent?.ctrlKey;
+
+      if ((metaKey || ctrlKey) && browserKey?.toLowerCase() === "s") {
+        stopKeyEvent(event);
+        handleOverlaySave();
+        return;
+      }
+
+      if ((metaKey || ctrlKey) && browserKey === "Enter") {
+        stopKeyEvent(event);
+        onManualCompile();
+        return;
+      }
+
+      if (
+        browserKey
+        && ["i", "a", "I", "A", "o", "O"].includes(browserKey)
+        && vimCurrentMode === "normal"
+        && vimModeInstance?.state?.vim
+        && !vimModeInstance.state.vim.inputState?.operator
+      ) {
+        event.browserEvent?.preventDefault?.();
+        event.browserEvent?.stopPropagation?.();
+        fallbackEnterInsertMode(browserKey);
+      }
+    });
+
+    editor.onDidScrollChange(() => updateBlankLineDecorations());
+    containerEl.addEventListener("mousedown", handleContainerMouseDown, true);
+
+    editor.onDidChangeModelContent(() => {
+      if (!editor) {
+        return;
+      }
+      updateBlankLineDecorations();
+      updateUniformDecorations(dynamicUniformNames);
+      // Marker lines are clamped to the model's line count. If errors arrive
+      // while the model is still empty every marker collapses to line 0, which
+      // Monaco discards, and nothing recomputes them once the content lands.
+      updateErrorMarkers(errors);
+      const code = editor.getValue();
+      if (applyingHostContent || code === undefined || !shaderPath) {
+        return;
+      }
+
+      sourceSession.change(shaderPath, code, compileMode === "hot");
+    });
+
+    lastShaderPath = shaderPath;
+
+    if (vimMode) {
+      enableVim();
+    }
+
+    const publishCursorPosition = () => {
+      const position = editor?.getPosition();
+      const model = editor?.getModel();
+      if (!position || !model) {
+        return;
+      }
+      const line = position.lineNumber - 1;
+      const content = model.getLineContent(position.lineNumber);
+      const buffer = activeBufferName;
+      if (cursorChangeTimer) {
+        clearTimeout(cursorChangeTimer);
+      }
+      cursorChangeTimer = setTimeout(() => onCursorChange(line, content, buffer), 150);
+    };
+    cursorChangeDisposable = editor.onDidChangeCursorPosition(publishCursorPosition);
+    selectionChangeDisposable = editor.onDidChangeCursorSelection?.((event) => {
+      if (!applyingSharedSelection && shaderPath) {
+        setEditorSelection(shaderPath, selectionSource, event.selection);
+      }
+    }) ?? null;
+
+    editor.focus();
+    // Monaco keeps a selection for each model. Opening a separate pass can
+    // therefore restore the requested line without firing a cursor-change
+    // event, leaving debug ownership on the previously viewed Image pass.
+    // Publish the initial selection so the viewer has the editor's file
+    // identity before debug mode is enabled.
+    publishCursorPosition();
+    requestAnimationFrame(() => focusMonacoTextInput());
+    updateBlankLineDecorations();
+    updateUniformDecorations(dynamicUniformNames);
+    updateErrorMarkers(errors);
+    editorReady = true;
+  }
+
+  function flushPendingSource() {
+    sourceSession.flush();
+  }
+
+  function destroyEditor() {
+    sourceSession.dispose();
+    if (cursorChangeTimer) {
+      clearTimeout(cursorChangeTimer);
+      cursorChangeTimer = null;
+    }
+    if (cursorChangeDisposable) {
+      cursorChangeDisposable.dispose();
+      cursorChangeDisposable = null;
+    }
+    selectionChangeDisposable?.dispose();
+    selectionChangeDisposable = null;
+    disableVim();
+    languageServiceController?.dispose();
+    languageServiceController = null;
+    if (containerEl) {
+      containerEl.removeEventListener("mousedown", handleContainerMouseDown, true);
+    }
+    if (editor) {
+      editor.deltaDecorations(uniformDecorationIds, []);
+      uniformDecorationIds = [];
+      if (shaderPath) {
+        savedViewStates.set(shaderPath, editor.saveViewState());
+      }
+      renamePopupKeyCleanup?.();
+      renamePopupKeyCleanup = null;
+      hostEditorPreferences?.dispose();
+      hostEditorPreferences = null;
+      editor.dispose();
+      editor = null;
+      editorModelUri = "";
+    }
+    popupContainer?.remove();
+    popupContainer = null;
+    if (overlayTokensRetained) {
+      overlayTokensRetained = false;
+      releaseOverlayTokenColors();
+    }
+    editorReady = false;
+    languageServiceStatus = "pending";
+    lastSentCode = null;
+  }
+
+  $effect(() => {
+    const state = sharedSelection;
+    const currentEditor = editorReady ? editor : null;
+    // shaderPath changes before the model swaps; wait for the matching model
+    // rather than moving the previous document's cursor.
+    const showingShader = Boolean(shaderPath) && editorModelUri === monaco.Uri.file(shaderPath).toString();
+    if (!state || state.source === selectionSource || !currentEditor || !showingShader) {
+      return;
+    }
+    const current = currentEditor.getSelection();
+    const next = state.selection;
+    if (current?.startLineNumber === next.startLineNumber
+      && current.startColumn === next.startColumn
+      && current.endLineNumber === next.endLineNumber
+      && current.endColumn === next.endColumn) {
+      return;
+    }
+    applyingSharedSelection = true;
+    currentEditor.setSelection(next);
+    // A hidden editor (an inactive tab or phone panel) keeps a stale, tiny
+    // layout, so revealing would scroll its top away before it is shown.
+    if ((currentEditor.getContainerDomNode?.().clientHeight ?? 0) > 0) {
+      currentEditor.revealPositionInCenterIfOutsideViewport?.({
+        lineNumber: next.endLineNumber,
+        column: next.endColumn,
+      });
+    }
+    applyingSharedSelection = false;
+  });
+
+  $effect(() => {
+    if (isVisible && containerEl && !editor) {
+      createEditor();
+    }
+    if (!isVisible && editor) {
+      destroyEditor();
+    }
+  });
+
+  $effect(() => {
+    const controller = languageServiceController;
+    const model = editor?.getModel();
+    const modelUri = editorModelUri;
+    const language = languageForShaderPath(shaderPath);
+    const currentConfig = config;
+    const uniforms = customUniformInfo;
+    const modules = slangModules;
+    const common = getCommonShaderSource();
+    const configuredCommonPath = commonPath;
+    const configuredCommonSource = commonSource;
+    const bufferName = activeBufferName;
+    if (!controller || !model?.uri || !isShaderLanguageId(language)
+      || (shaderPath && modelUri !== monaco.Uri.file(shaderPath).toString())) {
+      languageServiceStatus = "pending";
+      return;
+    }
+    environmentGeneration += 1;
+    const environment = shaderAuthoringEnvironment({
+      shaderPath, shaderCode, transport, activeBufferName: bufferName,
+      config: currentConfig, customUniformInfo: uniforms, slangModules: modules,
+      commonPath: configuredCommonPath, commonSource: configuredCommonSource, sourcePassNames,
+    }, environmentGeneration, common, (filePath) => monaco.Uri.file(filePath).toString());
+    if (!environment) {
+      return;
+    }
+    let cancelled = false;
+    languageServiceStatus = "pending";
+    void (async () => {
+      await controller.syncEnvironment(environment);
+      if (cancelled) {
+        return;
+      }
+      if (transport.getWorkspaceDocuments) {
+        const workspaceDocuments = await transport.getWorkspaceDocuments(language);
+        if (cancelled) {
+          return;
+        }
+        await controller.syncEnvironment({ ...environment, workspaceDocuments });
+      }
+      if (!cancelled) {
+        languageServiceStatus = "ready";
+      }
+    })().catch((error: unknown) => {
+      if (!cancelled) {
+        languageServiceStatus = "error";
+        console.error("Shader Studio language service failed to initialize", error);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  });
+
+  $effect(() => {
+    const names = dynamicUniformNames;
+    const ready = editorReady;
+    if (ready && editor) {
+      updateUniformDecorations(names);
+    }
+  });
+
+  $effect(() => {
+    if (isVisible && editor) {
+      editor.focus();
+      requestAnimationFrame(() => focusMonacoTextInput());
+    }
+  });
+
+  $effect(() => {
+    // Read reactive deps (vimMode, editorReady) unconditionally so the effect
+    // re-runs on toggle. `editor` is a plain let and can't be a dependency, so
+    // gate on editorReady ($state) which tracks the lazily-created editor.
+    const enabled = vimMode;
+    if (!editorReady || !editor) {
+      return;
+    }
+    if (enabled && !vimModeInstance) {
+      enableVim();
+    } else if (!enabled && vimModeInstance) {
+      disableVim();
+    }
+  });
+
+  $effect(() => {
+    const enabled = vimMode;
+    const statusBar = statusBarEl;
+    if (!editorReady || !editor) {
+      return;
+    }
+    if (enabled && vimModeInstance && statusBar && !vimStatusAttached) {
+      vimModeInstance.dispose();
+      vimModeInstance = null;
+      enableVim();
+    }
+  });
+
+  $effect(() => {
+    // Read errors before the editor guard. `editor` is a plain variable, so if
+    // this effect first runs before the editor exists the guard short-circuits,
+    // errors is never read, and the effect ends up with no dependencies at all
+    // - it would never react to another compile result. Editor creation applies
+    // the current errors itself, so skipping the call here is safe.
+    const currentErrors = errors;
+    // Errors describe `shaderPath`. When the path and its errors change in the
+    // same flush, this runs before the model swap, and models are shared per
+    // file: another pane may still show the file this editor is leaving. The
+    // swap updates editorModelUri, which re-runs this for the right model.
+    const showingPath = !shaderPath || editorModelUri === monaco.Uri.file(shaderPath).toString();
+    if (editor && showingPath) {
+      updateErrorMarkers(currentErrors);
+    }
+  });
+
+  function updateErrorMarkers(errs: string[]) {
+    if (!editor) {
+      return;
+    }
+    const model = editor.getModel();
+    if (!model) {
+      return;
+    }
+
+    const markers = compilerDiagnostics(errs, activeBufferName, model)
+      .map(diagnostic => ({ ...diagnostic, severity: monaco.MarkerSeverity.Error }));
+
+    markerUpdateCount += 1;
+    containerEl?.setAttribute("data-marker-updates", String(markerUpdateCount));
+    containerEl?.setAttribute("data-marker-count", String(markers.length));
+    containerEl?.setAttribute("data-errors-count", String(errs.length));
+    // Routed through the arbiter so a line the language service already
+    // reported is not squiggled twice.
+    setCompilerMarkers(monaco, model, markers);
+  }
+
+  function applyHostContent(code: string) {
+    // Monaco emits content changes for setValue as well as user edits.
+    // Loading host state must not schedule a save back to the host.
+    applyingHostContent = true;
+    try {
+      editor?.setValue(code);
+    } finally {
+      applyingHostContent = false;
+    }
+  }
+
+  $effect(() => {
+    if (editor && shaderCode !== undefined) {
+      const fileChanged = shaderPath !== lastShaderPath;
+      const currentValue = editor.getValue();
+      // setValue() replaces the model content and drops the markers already on
+      // it. When new content and new errors arrive in the same flush the marker
+      // effect above runs first, so its markers would be lost; re-apply them
+      // after any content replacement. Untracked so this effect keeps reacting
+      // to content alone rather than re-running on every error change.
+      let contentReplaced = false;
+
+      if (fileChanged) {
+        flushPendingSource();
+        if (lastShaderPath) {
+          savedViewStates.set(lastShaderPath, editor.saveViewState());
+        }
+        const uri = shaderPath ? monaco.Uri.file(shaderPath) : null;
+        const model = uri ? monaco.editor.getModel(uri)
+          ?? monaco.editor.createModel(shaderCode, languageForShaderPath(shaderPath), uri)
+          : monaco.editor.createModel(shaderCode, languageForShaderPath(shaderPath));
+        // A second pane may already be typing in this URI model. Even an
+        // identical setValue flushes it and resets every attached cursor.
+        const modelWasAttached = model.isAttachedToEditor?.() ?? false;
+        editor.setModel(model);
+        hostEditorPreferences?.applyToModel(model);
+        editorModelUri = model.uri.toString();
+        if (!modelWasAttached) {
+          applyHostContent(shaderCode);
+        }
+        contentReplaced = true;
+        const nextViewState = shaderPath ? savedViewStates.get(shaderPath) : null;
+        if (nextViewState) {
+          editor.restoreViewState(nextViewState);
+        } else {
+          editor.setPosition({ lineNumber: 1, column: 1 });
+          editor.setScrollTop(0);
+        }
+        lastSentCode = null;
+        lastShaderPath = shaderPath;
+      } else if (currentValue === shaderCode) {
+        lastSentCode = null;
+      } else if (lastSentCode !== null && shaderCode === lastSentCode) {
+        lastSentCode = null;
+      } else if (!editorHasFocus()) {
+        const position = editor.getPosition();
+        const scrollTop = editor.getScrollTop();
+        applyHostContent(shaderCode);
+        contentReplaced = true;
+        if (position) {
+          editor.setPosition(position);
+        }
+        editor.setScrollTop(scrollTop);
+        lastSentCode = null;
+      }
+
+      if (contentReplaced) {
+        untrack(() => updateErrorMarkers(errors));
+      }
+    }
+  });
+
+  onMount(() => {
+    const detachPendingSave = transport.registerPendingSave?.(flushPendingSource);
+    unsubscribeTheme = currentTheme.subscribe((theme) => {
+      editorTheme = theme;
+      monaco.editor.setTheme(monacoThemeFor(theme));
+      // Monaco regenerates its token classes on setTheme, so the overlay's
+      // overrides have to be rebuilt from the rules it just emitted.
+      syncOverlayTokenColors(theme);
+    });
+    if (isVisible) {
+      createEditor();
+    }
+    return () => detachPendingSave?.();
+  });
+
+  onDestroy(() => {
+    unsubscribeTheme?.();
+    destroyEditor();
+  });
+</script>
+
+{#if isVisible}
+  <div class="editor-wrapper" class:ready={editorReady} class:pane={displayMode === "pane"} data-editor-engine="monaco" data-language-service-status={languageServiceStatus} style={`bottom: ${bottomInset}px; --editor-top-inset: ${topInset}px; --editor-bottom-inset: ${bottomInset}px;`}>
+    {#if renameFeedback}<div class="rename-feedback" role="status">{renameFeedback}</div>{/if}
+    <div class="editor-body">
+      <div
+        class="editor-overlay"
+        class:shader-studio-overlay-tokens={displayMode === "overlay"}
+        data-active-buffer={activeBufferName}
+        bind:this={containerEl}
+      ></div>
+      {#if vimMode}
+        <div class="vim-status-bar" bind:this={statusBarEl}></div>
+      {/if}
+    </div>
+    <EditorToolbar options={editorOptions} />
+  </div>
+{/if}
+
+<style>
+  .editor-wrapper {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1200;
+    pointer-events: auto;
+    display: flex;
+    flex-direction: column;
+    /* Hidden until Monaco initializes */
+    opacity: 0;
+    transition: opacity 0.15s ease-in;
+  }
+
+  .editor-wrapper.ready {
+    opacity: 1;
+  }
+
+  .editor-wrapper.pane {
+    position: relative;
+    margin-top: var(--editor-top-inset, 0px);
+    height: calc(100% - var(--editor-top-inset, 0px) - var(--editor-bottom-inset, 0px));
+    min-height: 0;
+    z-index: auto;
+    background: transparent;
+  }
+
+  /* The shader-preview overlay retains its original dark, high-contrast
+     presentation regardless of the docked web editor's workspace theme. */
+  .editor-wrapper:not(.pane) {
+    --shader-studio-editor-foreground: #d4d4d4;
+    --shader-studio-editor-current-line-background: rgba(255, 255, 255, 0.06);
+    --shader-studio-editor-active-line-number: #c6c6c6;
+    --shader-studio-editor-cursor: #ffffff;
+    --shader-studio-editor-selection-background: rgba(255, 255, 255, 0.3);
+    --shader-studio-editor-uniform-token: #50f5ff;
+    --shader-studio-editor-hover-background: rgba(30, 30, 30, 0.95);
+    --shader-studio-editor-hover-border: rgba(255, 255, 255, 0.15);
+    --shader-studio-editor-hover-status-background: rgba(255, 255, 255, 0.05);
+    --shader-studio-editor-status-background: rgba(10, 10, 10, 0.88);
+    --shader-studio-editor-status-border: rgba(255, 255, 255, 0.08);
+  }
+
+  .editor-body {
+    position: relative;
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .editor-overlay {
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .vim-status-bar {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    min-height: 20px;
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--shader-studio-editor-foreground);
+    background: var(--shader-studio-editor-status-background);
+    border: 1px solid var(--shader-studio-editor-status-border);
+    border-radius: 4px;
+    padding: 0 8px;
+    line-height: 20px;
+    z-index: 1200;
+    pointer-events: none;
+  }
+
+  /* Make ALL Monaco backgrounds transparent */
+  .editor-overlay :global(.monaco-editor),
+  .editor-overlay :global(.monaco-editor .overflow-guard),
+  .editor-overlay :global(.monaco-editor-background),
+  .editor-overlay :global(.monaco-editor .inputarea.ime-input) {
+    background: transparent !important;
+    outline: none !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  .editor-overlay :global(.monaco-editor.focused),
+  .editor-overlay :global(.monaco-editor:focus),
+  .editor-overlay :global(.monaco-editor [tabindex]:focus),
+  .editor-overlay :global(.monaco-editor textarea:focus) {
+    outline: none !important;
+    box-shadow: none !important;
+    border-color: transparent !important;
+  }
+
+  /* Force-hide Monaco's internal textarea */
+  .editor-overlay :global(.monaco-editor textarea) {
+    resize: none !important;
+  }
+
+  .editor-overlay :global(.monaco-editor .view-lines .view-line > span) {
+    background: transparent;
+    border-radius: 0;
+    padding-right: 4px;
+    text-shadow: none;
+  }
+
+  /* Give shader-preview text a readable sheet without styling the web editor pane. */
+  .editor-wrapper:not(.pane) .editor-overlay :global(.monaco-editor .view-lines .view-line > span) {
+    background: rgba(10, 10, 10, 0.75);
+    text-shadow: 0 0 1px rgba(0, 0, 0, 0.8), 0 0 3px rgba(0, 0, 0, 0.4);
+  }
+
+  /* No background for blank lines */
+  .editor-wrapper:not(.pane) .editor-overlay :global(.monaco-editor .view-line.blank-line > span),
+  .editor-overlay :global(.monaco-editor .view-line.blank-line > span) {
+    background: transparent !important;
+  }
+
+  .editor-overlay :global(.monaco-editor .margin-view-overlays .line-numbers) {
+    background: transparent;
+    border-radius: 0;
+    padding-left: 4px;
+    padding-right: 8px;
+  }
+
+  /* Match the overlay text sheet in the line-number gutter. */
+  .editor-wrapper:not(.pane) .editor-overlay :global(.monaco-editor .margin-view-overlays .line-numbers) {
+    background: rgba(10, 10, 10, 0.75);
+  }
+
+  /* Current line number highlight */
+  .editor-overlay :global(.monaco-editor .margin-view-overlays .current-line ~ .line-numbers) {
+    color: var(--shader-studio-editor-active-line-number);
+  }
+
+  /* Current line highlight */
+  .editor-overlay :global(.monaco-editor .current-line) {
+    background: var(--shader-studio-editor-current-line-background) !important;
+    border: none !important;
+  }
+
+  /* Make the margin/gutter background transparent */
+  .editor-overlay :global(.monaco-editor .margin) {
+    background: transparent !important;
+  }
+
+  /* Cursor — bright and visible */
+  .editor-overlay :global(.monaco-editor .cursor) {
+    background: var(--shader-studio-editor-cursor) !important;
+    border-color: var(--shader-studio-editor-cursor) !important;
+  }
+
+  /* Selection styling */
+  .editor-overlay :global(.monaco-editor .selected-text) {
+    background: var(--shader-studio-editor-selection-background) !important;
+  }
+
+  .editor-overlay :global(.monaco-editor .shader-uniform-token) {
+    color: var(--shader-studio-editor-uniform-token) !important;
+  }
+
+  /* Hide scrollbars */
+  .editor-overlay :global(.monaco-editor .monaco-scrollable-element > .scrollbar) {
+    opacity: 0;
+  }
+
+  /* Active line number in gutter */
+  .editor-overlay :global(.monaco-editor .active-line-number) {
+    color: var(--shader-studio-editor-active-line-number) !important;
+  }
+
+/* Error squiggly — raise above the semi-transparent text backgrounds */
+  .editor-overlay :global(.monaco-editor .view-overlays) {
+    z-index: 1 !important;
+    pointer-events: none;
+  }
+  .editor-overlay :global(.monaco-editor .squiggly-error) {
+    opacity: 1 !important;
+  }
+
+  /* Hover widget (error tooltips) */
+  .editor-overlay :global(.monaco-editor .monaco-hover) {
+    background: var(--shader-studio-editor-hover-background) !important;
+    border: 1px solid var(--shader-studio-editor-hover-border) !important;
+  }
+
+  .editor-overlay :global(.monaco-editor .monaco-hover-content) {
+    background: transparent !important;
+    color: var(--shader-studio-editor-foreground) !important;
+  }
+
+  /* Hover status bar (bottom of hover widget) */
+  .editor-overlay :global(.monaco-editor .monaco-hover .hover-row.status-bar) {
+    background: var(--shader-studio-editor-hover-status-background) !important;
+  }
+</style>

@@ -9,6 +9,22 @@ function storage() {
 }
 
 describe('standalone global settings', () => {
+  it('defaults descriptions off on mobile and saves independent desktop and mobile choices', () => {
+    const backend = storage();
+    const settings = new StandaloneSettings(backend);
+    expect(settings.snapshot['editor.mobileDescriptions']).toBe(false);
+    expect(settings.snapshot['editor.desktopDescriptions']).toBe(true);
+    expect(settings.update('editor.mobileDescriptions', 'true')).toBe(false);
+    settings.update('editor.mobileDescriptions', true);
+    settings.update('editor.desktopDescriptions', false);
+    const reloaded = new StandaloneSettings(backend);
+    expect(reloaded.snapshot['editor.mobileDescriptions']).toBe(true);
+    expect(reloaded.snapshot['editor.desktopDescriptions']).toBe(false);
+    expect(reloaded.snapshot['editor.autoSuggestions']).toBe(true);
+    reloaded.reset();
+    expect(reloaded.snapshot['editor.mobileDescriptions']).toBe(false);
+    expect(reloaded.snapshot['editor.desktopDescriptions']).toBe(true);
+  });
   it('migrates camera preferences and preserves them across reloads', () => {
     const backend = storage();
     backend.setItem(CAMERA_STORAGE_KEY, 'false');
@@ -25,10 +41,23 @@ describe('standalone global settings', () => {
       expect(settings.update('editor.fontSize', value)).toBe(false);
     }
     expect(settings.update('editor.wordWrap', 'invalid')).toBe(false);
+    expect(settings.update('editor.desktop', 'invalid')).toBe(false);
+    expect(settings.update('editor.mobile', 'Monaco')).toBe(false);
     expect(settings.update('webgpu.defaultRenderAuthoring', 'invalid')).toBe(false);
     expect(settings.update('editor.insertSpaces', 'false')).toBe(false);
+    expect(settings.update('editor.autoSuggestions', 'false')).toBe(false);
     expect(listener).not.toHaveBeenCalled();
     expect(settings.snapshot).toEqual(DEFAULT_SETTINGS);
+  });
+  it('persists automatic suggestions independently of language services and restores the default on reset', () => {
+    const backend = storage();
+    const settings = new StandaloneSettings(backend);
+    expect(settings.snapshot['editor.autoSuggestions']).toBe(true);
+    settings.update('editor.autoSuggestions', false);
+    expect(new StandaloneSettings(backend).snapshot['editor.autoSuggestions']).toBe(false);
+    expect(settings.snapshot['languageServers.glsl.enabled']).toBe(true);
+    settings.reset();
+    expect(settings.snapshot['editor.autoSuggestions']).toBe(true);
   });
   it('loads valid values independently and ignores unknown or malformed values', () => {
     const backend = storage();
@@ -59,6 +88,24 @@ describe('standalone global settings', () => {
     expect(settings.update('editor.minimap.enabled', true)).toBe(true);
     expect(settings.snapshot['editor.minimap.enabled']).toBe(true);
   });
+});
+
+it('defaults editor selection to Monaco on desktop and CodeMirror on mobile, persists valid choices, and resets them', () => {
+  const backend = storage();
+  const settings = new StandaloneSettings(backend);
+  expect(settings.snapshot['editor.desktop']).toBe('monaco');
+  expect(settings.snapshot['editor.mobile']).toBe('codemirror');
+  expect(settings.update('editor.desktop', 'codemirror')).toBe(true);
+  expect(settings.update('editor.mobile', 'monaco')).toBe(true);
+  expect(new StandaloneSettings(backend).snapshot).toMatchObject({ 'editor.desktop': 'codemirror', 'editor.mobile': 'monaco' });
+  settings.reset();
+  expect(settings.snapshot).toMatchObject({ 'editor.desktop': 'monaco', 'editor.mobile': 'codemirror' });
+});
+
+it('ignores malformed persisted editor choices while retaining valid choices independently', () => {
+  const backend = storage();
+  backend.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({ version: 1, values: { 'editor.desktop': 'invalid', 'editor.mobile': 'monaco' } }));
+  expect(new StandaloneSettings(backend).snapshot).toMatchObject({ 'editor.desktop': 'monaco', 'editor.mobile': 'monaco' });
 });
 
 it('reloads external preferences without writing them back to storage', () => {

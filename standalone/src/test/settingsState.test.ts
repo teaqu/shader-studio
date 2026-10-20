@@ -19,9 +19,15 @@ it('publishes initial settings and reacts to all editor and authoring preference
   store.update('editor.wordWrap', 'on');
   store.update('editor.minimap.enabled', true);
   store.update('editor.lineNumbers', 'off');
+  store.update('editor.desktop', 'codemirror');
+  store.update('editor.mobile', 'monaco');
+  store.update('editor.autoSuggestions', false);
   expect(getDefaultShaderMode()).toBe('hooks');
   expect(getEditorPreferences()).toEqual({
     fontSize: 20, tabSize: 2, insertSpaces: false, wordWrap: 'on', minimap: true, lineNumbers: 'off',
+    desktopEditor: 'codemirror', mobileEditor: 'monaco',
+    autoSuggestions: false,
+    desktopDescriptions: true, mobileDescriptions: false,
   });
   disconnect();
   store.update('editor.fontSize', 30);

@@ -12,19 +12,39 @@ test('the phone Editor shows the file editor a desktop session opened, and keeps
   await page.getByTestId('shader-option-aurora-glsl').click();
   await page.getByTestId('shader-option-nebula-texture-glsl').click();
   const editor = page.locator('[data-testid="file-editor"][data-path="/nebula-texture.glsl"]');
-  await expect(editor.locator('.view-lines')).toContainText('mainImage');
+  await expect(editor.locator('.cm-content, .view-lines').first()).toContainText('mainImage');
 
   await page.setViewportSize(phone);
   const nav = page.getByRole('navigation', { name: 'Workspace panels' });
   await nav.getByRole('button', { name: 'Editor' }).click();
   await expect(nav.getByRole('button', { name: 'Editor' })).toHaveAttribute('aria-current', 'page');
   // Dockview hides groups without emptying their boxes, so check what is on screen.
-  await expect(editor.locator('.view-lines')).toBeInViewport();
-  await expect(editor.locator('.view-lines')).toContainText('mainImage');
+  await expect(editor.locator('.cm-content, .view-lines').first()).toBeInViewport();
+  await expect(editor.locator('.cm-content, .view-lines').first()).toContainText('mainImage');
 
   await page.reload();
-  await nav.getByRole('button', { name: 'Editor' }).click();
-  await expect(editor.locator('.view-lines')).toBeInViewport();
+  await expect(nav.getByRole('button', { name: 'Editor' })).toHaveAttribute('aria-current', 'page');
+  await expect(editor.locator('.cm-content, .view-lines').first()).toBeInViewport();
+});
+
+test('refresh restores each phone destination, including Studio Files', async ({ page }) => {
+  await page.goto('/');
+  const nav = page.getByRole('navigation', { name: 'Workspace panels' });
+  for (const name of ['Studio', 'Editor', 'Tools', 'Preview']) {
+    await nav.getByRole('button', { name, exact: true }).click();
+    await page.reload();
+    await expect(nav.getByRole('button', { name, exact: true })).toHaveAttribute('aria-current', 'page');
+    await expect(page.locator('.standalone-layout')).toHaveAttribute(
+      'data-mobile-panel', name === 'Studio' ? 'explorer' : name.toLowerCase(),
+    );
+  }
+  await nav.getByRole('button', { name: 'Studio' }).click();
+  await page.getByRole('navigation', { name: 'Studio sections' }).getByRole('button', { name: 'Files' }).click();
+  await page.reload();
+  await expect(nav.getByRole('button', { name: 'Studio' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('navigation', { name: 'Studio sections' }).getByRole('button', { name: 'Files' }))
+    .toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('treeitem', { name: 'aurora.glsl', exact: true })).toBeInViewport();
 });
 
 test('Studio holds Shaders and Files, and reopens the section last used', async ({ page }) => {

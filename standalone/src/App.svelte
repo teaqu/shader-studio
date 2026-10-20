@@ -19,7 +19,7 @@
     resetShellState, setNewShaderVisible,
   } from './state/shellState.svelte';
   import { clearStandaloneWorkspace } from './clearWorkspace';
-  import { isMobileViewport } from './state/mobileShellState.svelte';
+  import { getMobileVisualViewportHeight, getMobileVisualViewportTop, getMobileKeyboardInset, isMobileViewport, observeMobileVisualViewport } from './state/mobileShellState.svelte';
   import { shaderLanguageForPath, type ShaderLanguageId, type WebGPUAuthoringMode } from '@shader-studio/types';
   import type { PwaController, PwaStatus } from './pwa';
   import type { WorkspacePersistenceStatus } from './VirtualWorkspace';
@@ -65,6 +65,10 @@
     };
   });
   let settingsOpen = $state(false);
+  const mobileViewportHeight = $derived(getMobileVisualViewportHeight());
+  const mobileViewportTop = $derived(getMobileVisualViewportTop());
+  const mobileKeyboardInset = $derived(getMobileKeyboardInset());
+  onMount(observeMobileVisualViewport);
   let alphaNoticeVisible = $state(shouldShowAlphaNotice());
   let viewMenuOpen = $state(false);
   let workspaceMenuOpen = $state(false);
@@ -365,7 +369,9 @@
 <WorkspaceFilePicker />
 
 <svelte:window onclick={closeMenusOnOutsideClick} onkeydown={closeMenusOnEscape} />
-<div class="standalone-app" class:desktop-layout={!getMobileModeEnabled()} inert={updateLocked} aria-busy={updateLocked}>
+<div class="standalone-app" class:desktop-layout={!getMobileModeEnabled()} inert={updateLocked} aria-busy={updateLocked}
+  class:viewport-bound={mobileViewportHeight !== undefined}
+  style={mobileViewportHeight === undefined ? undefined : `--mobile-viewport-height: ${mobileViewportHeight}px; --mobile-viewport-top: ${mobileViewportTop}px; --mobile-keyboard-inset: ${mobileKeyboardInset}px;`}>
   {#snippet workspaceActions()}
     <div class="toolbar-menu workspace-menu">
       <!-- The phone Studio row has room for icons only; the name stays for assistive tech. -->
@@ -565,7 +571,8 @@
   .visually-hidden { position: fixed; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
   @media (max-width: 767px) {
-    .standalone-app:not(.desktop-layout) { height: 100dvh; }
+    .standalone-app:not(.desktop-layout) { height: calc(var(--mobile-viewport-height, 100dvh) + var(--mobile-keyboard-inset, 0px)); }
+    .standalone-app.viewport-bound:not(.desktop-layout) { position: fixed; top: var(--mobile-viewport-top, 0px); left: 0; right: 0; min-height: 0; overflow: hidden; }
     .standalone-app:not(.desktop-layout) .standalone-toolbar { min-height: 44px; padding: max(4px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) 4px max(8px, env(safe-area-inset-left)); }
     .standalone-app:not(.desktop-layout) .standalone-toolbar > strong { flex: 1; }
     .standalone-app:not(.desktop-layout) .standalone-toolbar > a { display: none; }

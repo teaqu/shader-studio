@@ -67,10 +67,10 @@ test('word wrap shortcuts share the preference and persist across reload', async
   await page.goto('/');
   const nav = page.getByRole('navigation', { name: 'Workspace panels' });
   await nav.getByRole('button', { name: 'Editor', exact: true }).click();
-  const wrap = page.getByTestId('web-editor').getByRole('button', { name: 'Wrap text' });
-  await expect(wrap).toHaveAttribute('aria-pressed', 'false');
-  await wrap.click();
-  await expect(wrap).toHaveAttribute('aria-pressed', 'true');
+  const content = page.getByTestId('web-editor').locator('.cm-content');
+  await content.click();
+  await page.keyboard.press('Alt+z');
+  await expect(content).toHaveClass(/cm-lineWrapping/);
   await nav.getByRole('button', { name: 'Preview' }).click();
   await page.getByRole('button', { name: 'Open options menu' }).click();
   await page.getByRole('button', { name: 'Open editor submenu' }).click();
@@ -80,11 +80,13 @@ test('word wrap shortcuts share the preference and persist across reload', async
   await expect(overlayWrap).toHaveAttribute('aria-pressed', 'false');
   await page.keyboard.press('Escape');
   await nav.getByRole('button', { name: 'Editor', exact: true }).click();
-  await expect(wrap).toHaveAttribute('aria-pressed', 'false');
-  await wrap.click();
+  await expect(content).not.toHaveClass(/cm-lineWrapping/);
+  await content.click();
+  await page.keyboard.press('Alt+z');
+  await expect(content).toHaveClass(/cm-lineWrapping/);
   await page.reload();
   await nav.getByRole('button', { name: 'Editor', exact: true }).click();
-  await expect(wrap).toHaveAttribute('aria-pressed', 'true');
+  await expect(content).toHaveClass(/cm-lineWrapping/);
 });
 
 test('storage protection is requested automatically and the Workspace menu explains a declined request', async ({ page }) => {
@@ -198,7 +200,7 @@ test('phone shell preserves the selected shader across Studio, Preview, Editor, 
   await expect(explorer.getByTestId('shader-option-aurora-glsl')).toHaveAttribute('aria-pressed', 'true');
 
   await workspaceNav.getByRole('button', { name: 'Editor' }).click();
-  await expect(page.getByTestId('web-editor').locator('.monaco-editor')).toBeInViewport();
+  await expect(page.getByTestId('web-editor').locator('.cm-editor')).toBeInViewport();
 
   await workspaceNav.getByRole('button', { name: 'Tools' }).click();
   const tools = page.getByRole('navigation', { name: 'Tools' });
@@ -369,8 +371,8 @@ test('a finger tap pins the pixel inspector, a second tap moves it, and tapping 
   await inspectorShows(null);
 });
 
-// Monaco picks shortcuts from the emulated Android user agent, so phone tests
-// press Control even on a macOS host, where ControlOrMeta would send Meta.
+// Phone tests use Control for an attached Android keyboard. Lowercase key names
+// preserve an unshifted key event in CodeMirror (Ctrl-A is a block-comment shortcut).
 async function openAuroraOnPhone(page) {
   await page.goto('/');
   const nav = page.getByRole('navigation', { name: 'Workspace panels' });
@@ -389,15 +391,23 @@ async function persisted(page, marker) {
     .some((file) => file.path.endsWith('/aurora.glsl') && file.contents.includes(marker))).toBe(true);
 }
 
+function editorText(editor) {
+  return editor.locator('.cm-content, .view-lines').first();
+}
+
+function editorInput(editor) {
+  return editor.locator('.cm-content[contenteditable="true"], .inputarea').first();
+}
+
 test('the phone Editor and the preview overlay edit one document with shared undo, and the edit survives reload', async ({ page }) => {
   const nav = await openAuroraOnPhone(page);
   const editor = page.getByTestId('web-editor');
-  await editor.locator('.view-lines').click({ position: { x: 80, y: 20 } });
-  await editor.locator('.inputarea').press('Control+A');
+  await editorText(editor).click({ position: { x: 80, y: 20 } });
+  await editorInput(editor).press('Control+a');
   await page.keyboard.insertText('void mainImage(out vec4 color, in vec2 coord) { color = vec4(0.5); } // phone edit');
-  await expect(editor.locator('.view-lines')).toContainText('phone edit');
+  await expect(editorText(editor)).toContainText('phone edit');
   // Proves select-all replaced the shader rather than inserting into it.
-  await expect(editor.locator('.view-lines')).not.toContainText('iResolution');
+  await expect(editorText(editor)).not.toContainText('iResolution');
 
   await nav.getByRole('button', { name: 'Preview' }).click();
   await page.getByLabel('Open options menu', { exact: true }).click();
@@ -405,36 +415,35 @@ test('the phone Editor and the preview overlay edit one document with shared und
   await page.getByLabel('Enable editor overlay').locator('visible=true').click();
   const overlay = page.locator('.editor-wrapper:not(.pane)');
   await expect(overlay).toBeVisible();
-  await expect(overlay.locator('.view-lines')).toContainText('phone edit');
+  await expect(editorText(overlay)).toContainText('phone edit');
   await page.getByLabel('Open options menu', { exact: true }).click();
   await expect(page.getByLabel('Open editor submenu').locator('visible=true')).toHaveCount(0);
 
   // Undo from the overlay reverts the edit made in the Editor panel.
-  // The long line leaves Monaco scrolled sideways, so aim at the editor itself.
-  await overlay.locator('.monaco-editor').click({ position: { x: 120, y: 10 } });
-  await overlay.locator('.inputarea').press('Control+Z');
-  await expect(overlay.locator('.view-lines')).not.toContainText('phone edit');
+  await editorText(overlay).click({ position: { x: 120, y: 10 } });
+  await editorInput(overlay).press('Control+z');
+  await expect(editorText(overlay)).not.toContainText('phone edit');
   await nav.getByRole('button', { name: 'Editor' }).click();
-  await expect(editor.locator('.view-lines')).not.toContainText('phone edit');
+  await expect(editorText(editor)).not.toContainText('phone edit');
 
-  await editor.locator('.monaco-editor').click({ position: { x: 120, y: 10 } });
-  await editor.locator('.inputarea').press('Control+Shift+Z');
-  await expect(editor.locator('.view-lines')).toContainText('phone edit');
+  await editorText(editor).click({ position: { x: 120, y: 10 } });
+  await editorInput(editor).press('Control+Shift+z');
+  await expect(editorText(editor)).toContainText('phone edit');
   await persisted(page, 'phone edit');
 
   await page.reload();
   await expect(page.getByTestId('shader-option-aurora-glsl')).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('navigation', { name: 'Workspace panels' }).getByRole('button', { name: 'Editor' }).click();
-  await expect(editor.locator('.view-lines')).toContainText('phone edit');
+  await expect(editorText(editor)).toContainText('phone edit');
 });
 
 test('a workspace backup exported on a phone restores the work after the workspace is cleared', async ({ page }, testInfo) => {
   await openAuroraOnPhone(page);
   const editor = page.getByTestId('web-editor');
-  await editor.locator('.view-lines').click({ position: { x: 80, y: 20 } });
-  await editor.locator('.inputarea').press('Control+A');
+  await editorText(editor).click({ position: { x: 80, y: 20 } });
+  await editorInput(editor).press('Control+a');
   await page.keyboard.insertText('void mainImage(out vec4 color, in vec2 coord) { color = vec4(0.25); } // backed up');
-  await expect(editor.locator('.view-lines')).not.toContainText('iResolution');
+  await expect(editorText(editor)).not.toContainText('iResolution');
   await persisted(page, 'backed up');
 
   await openStudio(page);
@@ -468,7 +477,7 @@ test('a workspace backup exported on a phone restores the work after the workspa
 
   await openStudio(page);
   await page.getByTestId('shader-option-aurora-glsl').dispatchEvent('click');
-  await expect(editor.locator('.view-lines')).toContainText('backed up');
+  await expect(editorText(editor)).toContainText('backed up');
 });
 
 test('global Mobile mode override keeps desktop layout across reload and can be re-enabled', async ({ page }) => {

@@ -17,4 +17,5 @@ export type {
 export { getViewerSession } from './lib/state/viewerSession.svelte';
 export type { ViewerSession } from './lib/state/viewerSession.svelte';
 export { default as ShaderEditor } from './lib/components/ShaderEditor.svelte';
+export { default as EditorToolbar } from './lib/components/EditorToolbar.svelte';
 export { getSlangAssetUrls } from './lib/slangAssets';

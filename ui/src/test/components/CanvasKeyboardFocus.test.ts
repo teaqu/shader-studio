@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, fireEvent } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import ShaderCanvas from '../../lib/components/ShaderCanvas.svelte';
-import ShaderEditor from '../../lib/components/ShaderEditor.svelte';
+import ShaderEditor from '../../lib/components/MonacoShaderEditor.svelte';
 import type { Transport } from '../../lib/transport/MessageTransport';
 
 vi.mock('@shader-studio/monaco', async () => {

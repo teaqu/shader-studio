@@ -6,12 +6,12 @@ import ShaderEditorStub from './ShaderEditorStub.svelte';
 vi.mock('@shader-studio/ui', async () => {
   const { getViewerSession } = await import('@shader-studio/ui/lib/state/viewerSession.svelte');
   const { getHostEditorWordWrap, toggleHostEditorWordWrap } = await import('@shader-studio/ui/lib/state/hostState.svelte');
-  return { getViewerSession, getHostEditorWordWrap, toggleHostEditorWordWrap, ShaderEditor: ShaderEditorStub };
+  const { default: EditorToolbar } = await import('@shader-studio/ui/lib/components/EditorToolbar.svelte');
+  return { getViewerSession, getHostEditorWordWrap, toggleHostEditorWordWrap, ShaderEditor: ShaderEditorStub, EditorToolbar };
 });
 
 import { clearEditorDocuments } from '../state/editorDocuments.svelte';
 import type { WebTransport } from '../WebTransport';
-import { getRequestedEditor, resetShellState } from '../state/shellState.svelte';
 import EditorPane from '../EditorPane.svelte';
 import { setViewerSession } from '@shader-studio/ui/lib/state/viewerSession.svelte';
 import type { ViewerSession } from '@shader-studio/ui';
@@ -180,6 +180,36 @@ describe('EditorPane', () => {
 
 describe('file-specific editors', () => {
   beforeEach(clearEditorDocuments);
+  it.each([
+    ['/particle-swarm.wgsl', true],
+    ['/simulate.wgsl', true],
+    ['/unrelated.wgsl', false],
+  ] as const)('supplies authoring configuration only to owned file %s', async (path, owned) => {
+    const config: ViewerSession['config'] = {
+      version: '1.0',
+      storage: { density: { count: 1024, elementType: 'atomic<u32>' } },
+      passes: { Image: {}, BufferA: { path: 'simulate.wgsl' } },
+    };
+    const session = createSession({
+      shaderPath: '/particle-swarm.wgsl', config,
+      customUniformInfo: [{ name: 'speed', type: 'float' }],
+    });
+    setViewerSession(session);
+    const transport = { readEditorFile: vi.fn().mockResolvedValue('fn mainImage() {}') } as unknown as WebTransport;
+    const { getByTestId } = render(EditorPane, { path, transport });
+    await vi.waitFor(() => expect(getByTestId('shader-editor')).toBeTruthy());
+    const editor = getByTestId('shader-editor');
+    expect(editor.getAttribute('data-config')).toBe(owned ? JSON.stringify(config) : null);
+    expect(editor.getAttribute('data-uniforms')).toBe(JSON.stringify(owned ? session.customUniformInfo : []));
+    // A new preview must not lend its resources to a file from the old shader.
+    setViewerSession(createSession({ shaderPath: '/replacement.wgsl', config: { version: '1.0', passes: { Image: {} } } }));
+    await tick();
+    expect(editor.getAttribute('data-config')).toBeNull();
+    setViewerSession(null);
+    await tick();
+    expect(editor.getAttribute('data-config')).toBeNull();
+  });
+
   it.each(['glsl', 'slang', 'wgsl'])('forwards a separate %s editor cursor with its actual path', async language => {
     const path = `/buffer.${language}`;
     const transport = { readEditorFile: vi.fn().mockResolvedValue('buffer source'), postMessage: vi.fn() } as unknown as WebTransport;
@@ -240,13 +270,13 @@ describe('file-specific editors', () => {
     expect(queryByTestId('shader-editor')).toBeNull();
   });
 
-  it('opens the current buffer in a separate editor', async () => {
-    resetShellState();
+  it('keeps the desktop toolbar limited to Vim and wrap', () => {
+    configureHost({ getEditorPreferences: () => ({ fontSize: 14, tabSize: 4, insertSpaces: true, wordWrap: 'off', minimap: false, lineNumbers: 'on' }), setEditorWordWrap: vi.fn() });
     setViewerSession(createSession({ shaderPath: '/buffer.glsl', activeBufferName: 'Buffer A' }));
-    const { getByRole } = render(EditorPane);
-    await getByRole('button', { name: 'Open in separate editor' }).click();
-    expect(getRequestedEditor()).toBe('/buffer.glsl');
-    resetShellState();
+    const view = render(EditorPane);
+    const toolbar = view.getByRole('toolbar', { name: 'Editor options' });
+    expect(Array.from(toolbar.querySelectorAll('button')).map(button => button.textContent?.trim())).toEqual(['Wrap', 'Vim']);
+    resetHost();
   });
 });
 

@@ -24,6 +24,7 @@
   import {
     getMobilePanel,
     isMobileViewport,
+    isMobileKeyboardOpen,
     setMobilePanel,
     setMobileViewport,
     type MobileShellPanel,
@@ -265,7 +266,7 @@
   }
 </script>
 
-<div class:mobile-layout={mobileViewport} class="standalone-layout" data-mobile-panel={mobilePanel}>
+<div class:mobile-layout={mobileViewport} class:keyboard-open={isMobileKeyboardOpen()} class="standalone-layout" data-mobile-panel={mobilePanel}>
   {#if mobileViewport && studioNotices && isExplorerSection(mobilePanel)}
     <div class="mobile-studio-notices">{@render studioNotices()}</div>
   {/if}
@@ -304,15 +305,17 @@
         {#if studio}<div class="mobile-studio-actions">{@render studio()}</div>{/if}
       </div>
     {/if}
-    <nav class="mobile-panel-navigation" aria-label="Workspace panels">
-      {#each MOBILE_DESTINATIONS as [panelId, label]}
-        <button
-          class:active={isDestinationCurrent(panelId)}
-          aria-current={isDestinationCurrent(panelId) ? 'page' : undefined}
-          onclick={() => selectDestination(panelId)}
-        >{label}</button>
-      {/each}
-    </nav>
+    {#if !isMobileKeyboardOpen()}
+      <nav class="mobile-panel-navigation" aria-label="Workspace panels">
+        {#each MOBILE_DESTINATIONS as [panelId, label]}
+          <button
+            class:active={isDestinationCurrent(panelId)}
+            aria-current={isDestinationCurrent(panelId) ? 'page' : undefined}
+            onclick={() => selectDestination(panelId)}
+          >{label}</button>
+        {/each}
+      </nav>
+    {/if}
   {/if}
 </div>
 
@@ -349,6 +352,7 @@
 
   @media (max-width: 767px) {
     .standalone-layout.mobile-layout { position: relative; flex-direction: column; padding-bottom: env(safe-area-inset-bottom); }
+    .standalone-layout.mobile-layout.keyboard-open { padding-bottom: 0; }
     .standalone-dockview { min-height: 0; }
     /* The bottom navigation replaces panel tabs, except the Editor's open-file tabs. */
     .mobile-layout:not([data-mobile-panel='editor']) .standalone-dockview :global(.dv-tabs-and-actions-container) { display: none; }

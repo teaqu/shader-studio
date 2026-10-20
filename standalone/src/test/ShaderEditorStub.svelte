@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ViewerSession } from '@shader-studio/ui';
-  import { onDestroy } from 'svelte';
+  import { onDestroy, type Snippet } from 'svelte';
+  import EditorToolbar from '@shader-studio/ui/lib/components/EditorToolbar.svelte';
   interface Props {
     isVisible: boolean;
     shaderCode: string;
@@ -19,6 +20,7 @@
     onBufferSwitch: (bufferName: string) => void;
     onCursorChange?: (line: number, content: string, buffer: string) => void;
     onManualCompile?: () => void;
+    editorOptions?: Snippet;
   }
 
   let {
@@ -39,6 +41,7 @@
     onBufferSwitch,
     onCursorChange = () => {},
     onManualCompile = () => {},
+    editorOptions,
   }: Props = $props();
 
   // The real editor reads these props while saving its view and pending edits
@@ -71,3 +74,4 @@
 <button type="button" onclick={() => onManualCompile()}>Manual compile</button>
 
 <button type="button" onclick={() => onCursorChange(2, "shade = 0.375;", activeBufferName)}>Select line</button>
+<EditorToolbar options={editorOptions} />

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render } from '@testing-library/svelte';
 import { tick } from 'svelte';
-import EditorOverlay from '../../lib/components/ShaderEditor.svelte';
+import EditorOverlay from '../../lib/components/MonacoShaderEditor.svelte';
 import type { Transport } from '../../lib/transport/MessageTransport';
 import type { ShaderAuthoringEnvironment } from '@shader-studio/types';
 

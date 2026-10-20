@@ -10,6 +10,30 @@ beforeEach(() => {
   HTMLDialogElement.prototype.close = vi.fn();
 });
 
+it('offers independent mobile and desktop description toggles', async () => {
+  const settings = new StandaloneSettings({ getItem: () => null, setItem: vi.fn() });
+  render(SettingsPanel, { settings, onClose: vi.fn() });
+  const mobile = screen.getByRole('checkbox', { name: 'Mobile descriptions' });
+  const desktop = screen.getByRole('checkbox', { name: 'Desktop descriptions' });
+  expect(mobile).not.toBeChecked();
+  expect(desktop).toBeChecked();
+  await fireEvent.click(mobile);
+  expect(settings.snapshot['editor.mobileDescriptions']).toBe(true);
+  await fireEvent.click(desktop);
+  expect(settings.snapshot['editor.desktopDescriptions']).toBe(false);
+  expect(settings.snapshot['editor.autoSuggestions']).toBe(true);
+});
+
+it('offers an automatic suggestions toggle without disabling language services', async () => {
+  const settings = new StandaloneSettings({ getItem: () => null, setItem: vi.fn() });
+  render(SettingsPanel, { settings, onClose: vi.fn() });
+  const suggestions = screen.getByRole('checkbox', { name: 'Automatic suggestions' });
+  expect((suggestions as HTMLInputElement).checked).toBe(true);
+  await fireEvent.click(suggestions);
+  expect(settings.snapshot['editor.autoSuggestions']).toBe(false);
+  expect(settings.snapshot['languageServers.glsl.enabled']).toBe(true);
+});
+
 it('exposes a persistent default shader mode in global settings', async () => {
   const values = new Map<string, string>();
   const backend = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => {
@@ -20,6 +44,18 @@ it('exposes a persistent default shader mode in global settings', async () => {
   const mode = screen.getByRole('combobox', { name: 'Default shader mode' });
   await fireEvent.change(mode, { target: { value: 'native' } });
   expect(new StandaloneSettings(backend).snapshot).toMatchObject({ 'webgpu.defaultRenderAuthoring': 'native' });
+});
+
+it('offers independently persisted editor choices for desktop and mobile', async () => {
+  const settings = new StandaloneSettings({ getItem: () => null, setItem: vi.fn() });
+  render(SettingsPanel, { settings, onClose: vi.fn() });
+  const desktop = screen.getByRole('combobox', { name: 'Desktop editor' });
+  const mobile = screen.getByRole('combobox', { name: 'Mobile editor' });
+  expect((desktop as HTMLSelectElement).value).toBe('monaco');
+  expect((mobile as HTMLSelectElement).value).toBe('codemirror');
+  await fireEvent.change(desktop, { target: { value: 'codemirror' } });
+  await fireEvent.change(mobile, { target: { value: 'monaco' } });
+  expect(settings.snapshot).toMatchObject({ 'editor.desktop': 'codemirror', 'editor.mobile': 'monaco' });
 });
 
 it('searches relevant preferences and applies and resets them through the store', async () => {

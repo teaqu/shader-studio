@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
 import { HostEditorPreferencesController } from '../../lib/editor/createShaderEditor.svelte';
 import { configureHost, resetHost } from '../../lib/state/hostState.svelte';
@@ -17,6 +17,7 @@ function createEditor() {
 }
 
 describe('HostEditorPreferencesController', () => {
+  afterEach(() => vi.unstubAllGlobals());
   beforeEach(() => {
     resetHost();
     setFixturePreferences({ fontSize: 14, tabSize: 2, insertSpaces: true, wordWrap: 'off', minimap: false, lineNumbers: 'on' });
@@ -30,17 +31,37 @@ describe('HostEditorPreferencesController', () => {
     controller.dispose();
   });
 
+  it('follows mobile description defaults across viewport changes and removes its listener', async () => {
+    const media = Object.assign(new EventTarget(), { matches: true });
+    vi.stubGlobal('matchMedia', vi.fn(() => media));
+    configureHost({ getEditorPreferences: getFixturePreferences });
+    const { editor } = createEditor();
+    const controller = new HostEditorPreferencesController(editor as unknown as ConstructorParameters<typeof HostEditorPreferencesController>[0]);
+    await tick();
+    expect(editor.updateOptions).toHaveBeenLastCalledWith(expect.objectContaining({ hover: { enabled: 'off' } }));
+    setFixturePreferences({ ...getFixturePreferences(), mobileDescriptions: true, desktopDescriptions: false });
+    await tick();
+    expect(editor.updateOptions).toHaveBeenLastCalledWith(expect.objectContaining({ hover: { enabled: 'on' } }));
+    media.matches = false;
+    media.dispatchEvent(new Event('change'));
+    expect(editor.updateOptions).toHaveBeenLastCalledWith(expect.objectContaining({ hover: { enabled: 'off' } }));
+    controller.dispose();
+    editor.updateOptions.mockClear();
+    media.dispatchEvent(new Event('change'));
+    expect(editor.updateOptions).not.toHaveBeenCalled();
+  });
+
   it('applies live preferences and reapplies model options after a switch', async () => {
     configureHost({ getEditorPreferences: getFixturePreferences });
     const { editor, firstModel, setModel } = createEditor();
     const controller = new HostEditorPreferencesController(editor as unknown as ConstructorParameters<typeof HostEditorPreferencesController>[0]);
     await tick();
-    expect(editor.updateOptions).toHaveBeenLastCalledWith({ fontSize: 14, lineHeight: 20, wordWrap: 'off', minimap: { enabled: false }, lineNumbers: 'on' });
+    expect(editor.updateOptions).toHaveBeenLastCalledWith({ fontSize: 14, lineHeight: 20, wordWrap: 'off', minimap: { enabled: false }, lineNumbers: 'on', quickSuggestions: true, suggestOnTriggerCharacters: true, hover: { enabled: 'on' } });
     expect(firstModel.updateOptions).toHaveBeenLastCalledWith({ tabSize: 2, insertSpaces: true });
 
-    setFixturePreferences({ fontSize: 18, tabSize: 4, insertSpaces: false, wordWrap: 'on', minimap: true, lineNumbers: 'off' });
+    setFixturePreferences({ fontSize: 18, tabSize: 4, insertSpaces: false, wordWrap: 'on', minimap: true, lineNumbers: 'off', autoSuggestions: false, desktopDescriptions: false });
     await tick();
-    expect(editor.updateOptions).toHaveBeenLastCalledWith({ fontSize: 18, lineHeight: 26, wordWrap: 'on', minimap: { enabled: true }, lineNumbers: 'off' });
+    expect(editor.updateOptions).toHaveBeenLastCalledWith({ fontSize: 18, lineHeight: 26, wordWrap: 'on', minimap: { enabled: true }, lineNumbers: 'off', quickSuggestions: false, suggestOnTriggerCharacters: false, hover: { enabled: 'off' } });
     expect(firstModel.updateOptions).toHaveBeenLastCalledWith({ tabSize: 4, insertSpaces: false });
 
     const secondModel = { updateOptions: vi.fn() };

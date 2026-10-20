@@ -1,12 +1,11 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { getViewerSession, ShaderEditor, getHostEditorWordWrap, toggleHostEditorWordWrap } from '@shader-studio/ui';
+  import { getViewerSession, ShaderEditor, EditorToolbar, getHostEditorWordWrap, toggleHostEditorWordWrap } from '@shader-studio/ui';
 
   import { getEditorDocument, setEditorDocument } from './state/editorDocuments.svelte';
   import { passNameForFile } from './passSources';
   import type { WebTransport } from './WebTransport';
-  import { requestEditor } from './state/shellState.svelte';
   interface Props { path?: string; transport?: WebTransport; }
   let { path, transport }: Props = $props();
   const fileCode = $derived(path ? getEditorDocument(path) ?? null : null);
@@ -47,9 +46,33 @@
   const owningPass = $derived(session?.shaderPath && path
     ? passNameForFile(session.config, session.shaderPath, path)
     : undefined);
+  // The main shader usually has no explicit Image.path in its configuration,
+  // so passNameForFile alone cannot establish its ownership.
+  const authoringSession = $derived(fileSession ?? (owningPass ? session : null));
   let vimMode = $state(false);
   const wordWrap = $derived(getHostEditorWordWrap());
+  const canEdit = $derived(path && transport ? fileCode !== null : !!session?.ready && !!session.transport);
 </script>
+
+{#snippet editorOptions()}
+  {#if wordWrap !== undefined}
+    <button class="vim-toggle" type="button" aria-label="Wrap text"
+      aria-pressed={wordWrap === 'on'} onmousedown={event => event.preventDefault()} onclick={toggleHostEditorWordWrap}>
+      Wrap
+    </button>
+  {/if}
+  <button
+    class="vim-toggle"
+    type="button"
+    aria-label={vimMode ? 'Disable Vim mode' : 'Enable Vim mode'}
+    aria-pressed={vimMode}
+    disabled={!canEdit}
+    onmousedown={event => event.preventDefault()}
+    onclick={() => vimMode = !vimMode}
+  >
+    Vim
+  </button>
+{/snippet}
 
 <div class="editor-pane">
   {#if path && transport}
@@ -59,13 +82,13 @@
         <ShaderEditor isVisible={true} shaderCode={fileCode} shaderPath={path} {transport}
           errors={fileSession?.errors ?? []}
           activeBufferName={owningPass ?? (commonEditorPath === path ? "Common" : (fileSession?.activeBufferName ?? "Image"))}
-          config={owningPass ? session?.config : undefined}
-          customUniformInfo={owningPass ? session?.customUniformInfo : undefined}
-          slangModules={owningPass ? session?.slangModules : undefined}
+          config={authoringSession?.config}
+          customUniformInfo={authoringSession?.customUniformInfo}
+          slangModules={authoringSession?.slangModules}
           commonPath={session?.commonPath}
           commonSource={session?.commonSource}
           onCursorChange={(line, lineContent) => transport?.postMessage({ type: "cursorPosition", payload: { line, lineContent, filePath: path! } })}
-          {vimMode} displayMode="pane" overflowWidgetsDomNode={document.body} />
+          {vimMode} {editorOptions} displayMode="pane" overflowWidgetsDomNode={document.body} />
       </div>
     {/if}
   {:else}
@@ -79,6 +102,7 @@
           transport={editorSession.transport!}
           onCodeChange={editorSession.onCodeChange}
           {vimMode}
+          {editorOptions}
           bufferNames={editorSession.bufferNames}
           activeBufferName={editorSession.activeBufferName}
           onBufferSwitch={editorSession.onBufferSwitch}
@@ -97,29 +121,7 @@
       </div>
     {/each}
   {/if}
-  <div class="editor-footer" role="toolbar" aria-label="Editor options">
-    {#if wordWrap !== undefined}
-      <button class="vim-toggle" type="button" aria-label="Wrap text"
-        aria-pressed={wordWrap === 'on'} onclick={toggleHostEditorWordWrap}>
-        Wrap{wordWrap === 'on' ? ' on' : ''}
-      </button>
-    {/if}
-    {#if !path && session?.shaderPath}
-      <button class="vim-toggle" type="button" onclick={() => requestEditor(session?.shaderPath ?? null)}>
-        Open in separate editor
-      </button>
-    {/if}
-    <button
-      class="vim-toggle"
-      type="button"
-      aria-label={vimMode ? 'Disable Vim mode' : 'Enable Vim mode'}
-      aria-pressed={vimMode}
-      disabled={path ? fileCode === null : !session?.ready || !session.transport}
-      onclick={() => vimMode = !vimMode}
-    >
-      Vim{vimMode ? ' on' : ''}
-    </button>
-  </div>
+  {#if !canEdit}<div class="editor-fallback"><EditorToolbar options={editorOptions} /></div>{/if}
 </div>
 
 <style>
@@ -138,19 +140,7 @@
     min-height: 0;
   }
 
-  .editor-footer {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    min-height: 32px;
-    box-sizing: border-box;
-    margin-top: auto;
-    flex-shrink: 0;
-    padding: 4px 8px;
-    border-top: 1px solid var(--vscode-panel-border);
-    background: var(--vscode-statusBar-background, var(--vscode-sideBar-background));
-    color: var(--vscode-statusBar-foreground, var(--vscode-foreground));
-  }
+  .editor-fallback { margin-top: auto; }
 
   .vim-toggle {
     padding: var(--shader-studio-control-padding);

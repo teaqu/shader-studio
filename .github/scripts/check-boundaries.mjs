@@ -79,7 +79,7 @@ const RELATIVE_CROSS_PACKAGE_EXCEPTIONS = new Set([
 
 function workspaceDirectories(root) {
   return [
-    "types", "standalone", "file-explorer", "debug", "rendering", "utils", "extension", "ui", "shader-explorer", "monaco",
+    "types", "standalone", "file-explorer", "debug", "rendering", "utils", "extension", "ui", "shader-explorer", "monaco", "codemirror",
     ...readdirSync(join(root, "language-servers"), { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .map((entry) => join("language-servers", entry.name)),
@@ -154,7 +154,7 @@ function importsIn(path) {
       }
     } else if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "URL") {
       const [specifier, base] = node.arguments ?? [];
-      if (ts.isStringLiteral(specifier)
+      if (specifier && base && ts.isStringLiteral(specifier)
         && ts.isPropertyAccessExpression(base)
         && ts.isMetaProperty(base.expression)
         && base.name.text === "url") {

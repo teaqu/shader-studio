@@ -39,6 +39,12 @@ configureHost({
   setEditorWordWrap: value => {
     transport.settings.update('editor.wordWrap', value);
   },
+  setEditorAutoSuggestions: enabled => {
+    transport.settings.update('editor.autoSuggestions', enabled);
+  },
+  setEditorDescriptions: (mobile, enabled) => {
+    transport.settings.update(mobile ? 'editor.mobileDescriptions' : 'editor.desktopDescriptions', enabled);
+  },
   defaultAssets: defaultAssets(),
   uploadAssets: (files, shaderPath) => transport.uploadAssets(files, shaderPath),
   capabilities: { compileOnSave: false },

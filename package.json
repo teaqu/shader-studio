@@ -15,6 +15,7 @@
     "ui",
     "shader-explorer",
     "monaco",
+    "codemirror",
     "language-servers/*",
     "file-explorer"
   ],

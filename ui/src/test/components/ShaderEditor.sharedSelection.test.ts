@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import * as monaco from 'monaco-editor';
-import ShaderEditor from '../../lib/components/ShaderEditor.svelte';
+import ShaderEditor from '../../lib/components/MonacoShaderEditor.svelte';
 import {
   createEditorSelectionSource,
   getEditorSelection,

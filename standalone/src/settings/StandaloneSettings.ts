@@ -11,11 +11,16 @@ export const DEFAULT_SETTINGS = Object.freeze({
   'languageServers.slang.enabled': true,
   'languageServers.wgsl.enabled': true,
   'editor.colorDecorators': true,
+  'editor.desktop': 'monaco' as 'monaco' | 'codemirror',
+  'editor.mobile': 'codemirror' as 'monaco' | 'codemirror',
   'navigateOnBufferSwitch': true,
   'editor.fontSize': 14,
   'editor.tabSize': 4,
   'editor.insertSpaces': true,
   'editor.wordWrap': 'off' as 'off' | 'on',
+  'editor.autoSuggestions': true,
+  'editor.desktopDescriptions': true,
+  'editor.mobileDescriptions': false,
   'editor.minimap.enabled': false,
   'editor.lineNumbers': 'on' as 'off' | 'on',
 });
@@ -44,6 +49,9 @@ function valid(key: StandaloneSettingKey, value: unknown): boolean {
   }
   if (key === 'editor.wordWrap' || key === 'editor.lineNumbers') {
     return value === 'off' || value === 'on';
+  }
+  if (key === 'editor.desktop' || key === 'editor.mobile') {
+    return value === 'monaco' || value === 'codemirror';
   }
   return typeof value === 'boolean';
 }

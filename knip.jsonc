@@ -52,6 +52,10 @@
         "@types/mocha"
       ]
     },
+    "codemirror": {
+      "entry": ["src/index.ts", "src/test/**/*.test.ts", "vitest.config.ts"],
+      "project": ["src/**/*.ts"]
+    },
     "monaco": {
       "entry": [
         "src/index.ts",

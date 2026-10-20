@@ -26,5 +26,9 @@ export function getEditorPreferences() {
     fontSize: values['editor.fontSize'], tabSize: values['editor.tabSize'],
     insertSpaces: values['editor.insertSpaces'], wordWrap: values['editor.wordWrap'],
     minimap: values['editor.minimap.enabled'], lineNumbers: values['editor.lineNumbers'],
+    desktopEditor: values['editor.desktop'], mobileEditor: values['editor.mobile'],
+    autoSuggestions: values['editor.autoSuggestions'],
+    desktopDescriptions: values['editor.desktopDescriptions'],
+    mobileDescriptions: values['editor.mobileDescriptions'],
   };
 }
