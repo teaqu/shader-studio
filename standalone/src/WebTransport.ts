@@ -103,10 +103,24 @@ export function createWorkspace(
 export class WebTransport implements Transport {
   private readonly previews = new StandalonePreviews();
   private webMcpCleanup?: () => void;
+  private stopWebMcpSettings?: () => void;
   private mcpApplication?: Promise<StandaloneMcpApplication>;
 
-  enableWebMcp(): void {
-    this.webMcpCleanup?.();
+  initializeWebMcp(): void {
+    this.stopWebMcpSettings?.();
+    this.stopWebMcpSettings = this.settings.subscribe(() => this.updateWebMcp());
+    this.updateWebMcp();
+  }
+
+  private updateWebMcp(): void {
+    if (!this.connected || !this.settings.snapshot['webmcp.enabled']) {
+      this.webMcpCleanup?.();
+      this.webMcpCleanup = undefined;
+      return;
+    }
+    if (this.webMcpCleanup) {
+      return;
+    }
     this.mcpApplication ??= Promise.all([this.workspace, this.host]).then(([workspace, host]) =>
       new StandaloneMcpApplication(workspace, host, this.previews, () => this.flush(),
         () => import('./workspaceEditorAccess').then(module => module.workspaceEditorAccess)));
@@ -436,7 +450,10 @@ export class WebTransport implements Transport {
   }
 
   dispose(): void {
+    this.stopWebMcpSettings?.();
+    this.stopWebMcpSettings = undefined;
     this.webMcpCleanup?.();
+    this.webMcpCleanup = undefined;
     this.previews.dispose();
     for (const cleanup of this.workspaceCleanups) {
       cleanup();

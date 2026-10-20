@@ -102,7 +102,7 @@
 
   onMount(() => {
     shellMounted = true;
-    transport.enableWebMcp();
+    transport.initializeWebMcp();
     const stopFiles = transport.onWorkspaceFiles(files => {
       workspaceHasShaders = files.some(file => !file.directory && shaderLanguageForPath(file.path));
     });

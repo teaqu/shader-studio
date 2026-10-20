@@ -11,9 +11,10 @@ interface SettingDefinitionBase {
 }
 type SettingDefinition = SettingDefinitionBase & (
   | { group: 'Theme'; kind: 'choice'; choices: readonly { value: string; label: string }[] }
-  | { group: 'Preview' | 'Language services' | 'Editor' }
+  | { group: 'Preview' | 'AI tools' | 'Language services' | 'Editor' }
 );
 export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
+  { key: 'webmcp.enabled', label: 'Enable WebMCP', description: 'Let compatible browser assistants discover tools to read and edit this workspace and control its previews. Off by default. Turning off removes tools and cancels pending requests.', group: 'AI tools', kind: 'boolean' },
   { key: 'theme.style', label: 'Style', description: 'VS Code keeps the familiar studio controls. Pixel adds an arcade palette, crisp edges and raised buttons in both light and dark mode.', group: 'Theme', kind: 'choice', choices: [{ value: 'classic', label: 'VS Code' }, { value: 'pixel', label: 'Pixel' }] },
   { key: 'layout.mobileMode', label: 'Mobile mode', description: 'Use the mobile layout on narrow screens. Turn off to keep desktop docking and controls at every window size.', group: 'Preview', kind: 'boolean' },
   { key: 'webgpu.defaultRenderAuthoring', label: 'Default shader mode', description: 'Default for new WGSL/Slang shaders, buffers, and source insertion. Choose Built-in hooks or Native entry points.', group: 'Preview', kind: 'choice', choices: [{ value: 'hooks', label: 'Built-in' }, { value: 'native', label: 'Native' }] },

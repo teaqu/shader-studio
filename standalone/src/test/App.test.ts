@@ -44,7 +44,7 @@ type TestTransport = WebTransport & {
 
 function createTransport(): TestTransport {
   return {
-    enableWebMcp: vi.fn(),
+    initializeWebMcp: vi.fn(),
     dispose: vi.fn(),
     settings: new StandaloneSettings(),
     postMessage: vi.fn(),
@@ -855,7 +855,7 @@ describe('standalone App', () => {
   it('resets transient shell state when the app unmounts', async () => {
     const transport = createTransport();
     const app = render(App, { props: { transport } });
-    expect(transport.enableWebMcp).toHaveBeenCalledOnce();
+    expect(transport.initializeWebMcp).toHaveBeenCalledOnce();
     setNewShaderVisible(true);
     requestPanel('preview');
     await tick();

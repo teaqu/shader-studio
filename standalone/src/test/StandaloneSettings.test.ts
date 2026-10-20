@@ -114,3 +114,14 @@ it('persists Pixel style, rejects invalid styles and resets to Classic', () => {
   settings.reset();
   expect(new StandaloneSettings(backend).snapshot['theme.style']).toBe('classic');
 });
+
+it('keeps WebMCP disabled by default and persists only a valid explicit opt-in', () => {
+  const backend = storage();
+  const settings = new StandaloneSettings(backend);
+  expect(settings.snapshot['webmcp.enabled']).toBe(false);
+  expect(settings.update('webmcp.enabled', 'true')).toBe(false);
+  expect(settings.update('webmcp.enabled', true)).toBe(true);
+  expect(new StandaloneSettings(backend).snapshot['webmcp.enabled']).toBe(true);
+  settings.reset();
+  expect(new StandaloneSettings(backend).snapshot['webmcp.enabled']).toBe(false);
+});

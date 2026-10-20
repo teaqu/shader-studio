@@ -820,7 +820,9 @@ describe('WebMCP transport wiring', () => {
         };
       };
       first.onMessage(response(first, '/aurora.glsl')); second.onMessage(response(second, '/glow-trails.glsl'));
-      transport.enableWebMcp();
+      transport.initializeWebMcp();
+      expect(tools.size).toBe(0);
+      transport.settings.update('webmcp.enabled', true);
       const list = tools.get('list_previews')!;
       const result = JSON.parse(await list.execute({}));
       expect(result.previews).toHaveLength(2);
@@ -849,6 +851,104 @@ describe('WebMCP transport wiring', () => {
       expect(JSON.parse(await list.execute({}))).toHaveProperty('error');
     } finally {
       transport.dispose();
+      Reflect.deleteProperty(document, 'modelContext');
+    }
+  });
+});
+
+describe('WebMCP opt-in lifecycle', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    const values = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        values.set(key, value);
+      },
+    });
+  });
+
+  function context() {
+    const tools = new Map<string, import('../registerWebMcp').WebMcpTool>();
+    const registerTool = vi.fn((tool: import('../registerWebMcp').WebMcpTool) => {
+      tools.set(tool.name, tool);
+    });
+    const unregisterTool = vi.fn((name: string) => {
+      tools.delete(name);
+    });
+    Object.defineProperty(document, 'modelContext', { configurable: true, value: { registerTool, unregisterTool } });
+    return { tools, registerTool };
+  }
+
+  it('registers only after opt-in, avoids duplicate registration and removes tools on reset/disposal', () => {
+    const { tools, registerTool } = context();
+    const transport = new WebTransport();
+    try {
+      transport.initializeWebMcp();
+      expect(registerTool).not.toHaveBeenCalled();
+      transport.settings.update('webmcp.enabled', true);
+      expect(tools.has('get_shader')).toBe(true);
+      const count = registerTool.mock.calls.length;
+      transport.settings.update('editor.fontSize', 20);
+      transport.initializeWebMcp();
+      expect(registerTool).toHaveBeenCalledTimes(count);
+      transport.settings.reset();
+      expect(tools.size).toBe(0);
+      transport.settings.update('webmcp.enabled', true);
+      expect(registerTool).toHaveBeenCalledTimes(count * 2);
+      transport.dispose();
+      expect(tools.size).toBe(0);
+      transport.settings.update('webmcp.enabled', false);
+      transport.settings.update('webmcp.enabled', true);
+      expect(tools.size).toBe(0);
+      transport.initializeWebMcp();
+      expect(tools.size).toBe(0);
+    } finally {
+      transport.dispose();
+      Reflect.deleteProperty(document, 'modelContext');
+    }
+  });
+
+  it('restores a saved opt-in and reacts to preferences reloaded from another tab', () => {
+    const { tools } = context();
+    const first = new WebTransport();
+    first.settings.update('webmcp.enabled', true);
+    first.dispose();
+    const restored = new WebTransport();
+    try {
+      restored.initializeWebMcp();
+      expect(tools.has('get_shader')).toBe(true);
+      localStorage.setItem('shader-studio.standalone.settings', JSON.stringify({ version: 1, values: { 'webmcp.enabled': false } }));
+      window.dispatchEvent(new StorageEvent('storage', { key: 'shader-studio.standalone.settings' }));
+      expect(tools.size).toBe(0);
+    } finally {
+      restored.dispose();
+      Reflect.deleteProperty(document, 'modelContext');
+    }
+  });
+
+  it('cancels an in-flight viewer request immediately when access is disabled', async () => {
+    const { tools } = context();
+    const transport = new WebTransport();
+    const viewer = transport.createViewerTransport();
+    let requested = false;
+    viewer.onMessage(event => {
+      if (event.data.type === 'viewerRpcRequest' && event.data.operation === 'get_state') {
+        requested = true;
+      }
+    });
+    try {
+      transport.initializeWebMcp();
+      transport.settings.update('webmcp.enabled', true);
+      const tool = tools.get('get_diagnostics')!;
+      const pending = tool.execute({});
+      await vi.waitFor(() => expect(requested).toBe(true));
+      transport.settings.update('webmcp.enabled', false);
+      expect(JSON.parse(await pending).error).toContain('cancelled');
+      expect(tools.size).toBe(0);
+      expect(JSON.parse(await tool.execute({}))).toHaveProperty('error');
+    } finally {
+      viewer.dispose(); transport.dispose();
       Reflect.deleteProperty(document, 'modelContext');
     }
   });
