@@ -140,3 +140,20 @@ it('reflects appearance changes from the preview while settings are open', async
   applyThemeProfile('light');
   await vi.waitFor(() => expect((screen.getByRole('combobox', { name: 'Appearance' }) as HTMLSelectElement).value).toBe('light'));
 });
+
+it('offers an off-by-default WebMCP toggle that persists, can be searched, and resets', async () => {
+  const data = new Map<string, string>();
+  const backend = { getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string) => {
+    data.set(key, value);
+  } };
+  const settings = new StandaloneSettings(backend);
+  render(SettingsPanel, { settings, onClose: vi.fn() });
+  const toggle = screen.getByRole('checkbox', { name: 'Enable WebMCP' });
+  expect((toggle as HTMLInputElement).checked).toBe(false);
+  await fireEvent.click(toggle);
+  expect(new StandaloneSettings(backend).snapshot['webmcp.enabled']).toBe(true);
+  await fireEvent.input(screen.getByRole('searchbox'), { target: { value: 'WebMCP' } });
+  expect(screen.getByRole('checkbox', { name: 'Enable WebMCP' })).toBe(toggle);
+  await fireEvent.click(screen.getByRole('button', { name: 'Reset all settings' }));
+  expect((toggle as HTMLInputElement).checked).toBe(false);
+});

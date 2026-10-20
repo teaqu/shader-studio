@@ -1,3 +1,5 @@
+vi.mock('../workspaceEditorAccess', () => ({ workspaceEditorAccess: { read: vi.fn(() => undefined), commit: vi.fn() } }));
+import { resetMobileShellState, setMobileViewport } from '../state/mobileShellState.svelte';
 import { getEditorDocument } from '../state/editorDocuments.svelte';
 import { getActiveShaderEditors, getSelectedEditor, getRequestedEditor, getNewShaderVisible, getRequestedPanel, resetShellState, setNewShaderVisible } from '../state/shellState.svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -733,6 +735,36 @@ describe('WebTransport preview file and save edge cases', () => {
     expect(getActiveShaderEditors() ?? []).toHaveLength(0);
   });
 
+  it.each(['/aurora.glsl', '/glow-trails/trails.buffer.glsl'])(
+    'opens the mobile Editor tab for explorer selection %s', async (path) => {
+      resetMobileShellState();
+      setMobileViewport(true);
+      const transport = tracking(new WebTransport());
+      try {
+        transport.getShaderExplorerHostApi().postMessage({ type: 'openShader', path });
+        await transport.flush();
+        expect(getRequestedPanel()).toBe('editor');
+      } finally {
+        transport.dispose();
+        resetMobileShellState();
+      }
+    },
+  );
+
+  it('does not switch mobile tabs for a missing explorer file', async () => {
+    resetMobileShellState();
+    setMobileViewport(true);
+    const transport = tracking(new WebTransport());
+    try {
+      transport.getShaderExplorerHostApi().postMessage({ type: 'openShader', path: '/missing.glsl' });
+      await transport.flush();
+      expect(getRequestedPanel()).toBeNull();
+    } finally {
+      transport.dispose();
+      resetMobileShellState();
+    }
+  });
+
   it('focuses an explorer-selected pass that the tracked preview already has open', async () => {
     const transport = tracking(new WebTransport());
     transport.postMessage({ type: 'previewFilesChanged', payload: { shaderPath: '/glow-trails.glsl' } });
@@ -748,6 +780,7 @@ describe('WebTransport preview file and save edge cases', () => {
     explorer.postMessage({ type: 'openShader', path: '/aurora.glsl' });
     await transport.flush();
     expect(getSelectedEditor()).toBeNull();
+    expect(getRequestedPanel()).toBeNull();
     transport.dispose();
   });
 
@@ -784,6 +817,171 @@ describe('WebTransport preview file and save edge cases', () => {
       expect(confirm).toHaveBeenCalledOnce();
     } finally {
       confirm.mockRestore(); transport.dispose();
+    }
+  });
+});
+
+
+describe('WebMCP transport wiring', () => {
+  it('registers tools and targets one viewer, then unregisters on dispose', async () => {
+    const tools = new Map<string, import('../registerWebMcp').WebMcpTool>();
+    const unregisterTool = vi.fn((name: string) => {
+      tools.delete(name);
+    });
+    Object.defineProperty(document, 'modelContext', { configurable: true, value: {
+      registerTool: (tool: import('../registerWebMcp').WebMcpTool) => {
+        tools.set(tool.name, tool);
+      }, unregisterTool,
+    } });
+    const transport = new WebTransport();
+    try {
+      const first = transport.createViewerTransport(), second = transport.createViewerTransport();
+      const response = (viewer: typeof first, initialPath: string) => {
+        let path = initialPath;
+        let compileSequence = 1;
+        return (event: MessageEvent) => {
+          if (event.data.type === 'shaderSource') {
+            path = event.data.path;
+            compileSequence = event.data.compileSequence;
+          }
+          if (event.data.type === 'viewerRpcRequest') {
+            viewer.postMessage({ type: 'viewerRpcResponse', requestId: event.data.requestId,
+              result: { path, language: 'glsl', compileSequence, renderedSequence: compileSequence, compiling: false,
+                errors: [], warnings: [], time: 1, frame: 1, paused: false, width: 10, height: 10, fpsLimit: 60, speed: 1, uniforms: [] } });
+          }
+        };
+      };
+      first.onMessage(response(first, '/aurora.glsl')); second.onMessage(response(second, '/glow-trails.glsl'));
+      transport.initializeWebMcp();
+      expect(tools.size).toBe(0);
+      transport.settings.update('webmcp.enabled', true);
+      const list = tools.get('list_previews')!;
+      const result = JSON.parse(await list.execute({}));
+      expect(result.previews).toHaveLength(2);
+      expect(result.previews.map((preview: { path: string }) => preview.path)).toEqual(['/aurora.glsl', '/glow-trails.glsl']);
+      expect(JSON.parse(await tools.get('read_file')!.execute({ path: '/aurora.glsl' }))).toHaveProperty('revision');
+      const diagnostics = tools.get('get_diagnostics')!;
+      expect(JSON.parse(await diagnostics.execute({})).error).toContain('Multiple previews');
+      expect(JSON.parse(await diagnostics.execute({ previewId: result.previews[1].id }))).toMatchObject({ path: '/glow-trails.glsl' });
+      const source = vi.fn();
+      second.onMessage(source);
+      const selection = JSON.parse(await tools.get('select_shader')!.execute({
+        previewId: result.previews[1].id, path: '/aurora-slang.slang',
+      }));
+      expect(selection).toMatchObject({ previewId: result.previews[1].id, path: '/aurora-slang.slang' });
+      expect(source).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+        type: 'shaderSource', path: '/aurora-slang.slang',
+      }) }));
+      expect(JSON.parse(await diagnostics.execute({ previewId: result.previews[0].id }))).toMatchObject({ path: '/aurora.glsl' });
+      second.dispose();
+      expect(JSON.parse(await diagnostics.execute({}))).toMatchObject({ path: '/aurora.glsl' });
+      first.dispose();
+      const interrupted = list.execute({});
+      transport.dispose();
+      expect(JSON.parse(await interrupted)).toEqual({ error: 'Workspace disconnected.' });
+      expect(unregisterTool).toHaveBeenCalled(); expect(tools.size).toBe(0);
+      expect(JSON.parse(await list.execute({}))).toHaveProperty('error');
+    } finally {
+      transport.dispose();
+      Reflect.deleteProperty(document, 'modelContext');
+    }
+  });
+});
+
+describe('WebMCP opt-in lifecycle', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    const values = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        values.set(key, value);
+      },
+    });
+  });
+
+  function context() {
+    const tools = new Map<string, import('../registerWebMcp').WebMcpTool>();
+    const registerTool = vi.fn((tool: import('../registerWebMcp').WebMcpTool) => {
+      tools.set(tool.name, tool);
+    });
+    const unregisterTool = vi.fn((name: string) => {
+      tools.delete(name);
+    });
+    Object.defineProperty(document, 'modelContext', { configurable: true, value: { registerTool, unregisterTool } });
+    return { tools, registerTool };
+  }
+
+  it('registers only after opt-in, avoids duplicate registration and removes tools on reset/disposal', () => {
+    const { tools, registerTool } = context();
+    const transport = new WebTransport();
+    try {
+      transport.initializeWebMcp();
+      expect(registerTool).not.toHaveBeenCalled();
+      transport.settings.update('webmcp.enabled', true);
+      expect(tools.has('get_shader')).toBe(true);
+      const count = registerTool.mock.calls.length;
+      transport.settings.update('editor.fontSize', 20);
+      transport.initializeWebMcp();
+      expect(registerTool).toHaveBeenCalledTimes(count);
+      transport.settings.reset();
+      expect(tools.size).toBe(0);
+      transport.settings.update('webmcp.enabled', true);
+      expect(registerTool).toHaveBeenCalledTimes(count * 2);
+      transport.dispose();
+      expect(tools.size).toBe(0);
+      transport.settings.update('webmcp.enabled', false);
+      transport.settings.update('webmcp.enabled', true);
+      expect(tools.size).toBe(0);
+      transport.initializeWebMcp();
+      expect(tools.size).toBe(0);
+    } finally {
+      transport.dispose();
+      Reflect.deleteProperty(document, 'modelContext');
+    }
+  });
+
+  it('restores a saved opt-in and reacts to preferences reloaded from another tab', () => {
+    const { tools } = context();
+    const first = new WebTransport();
+    first.settings.update('webmcp.enabled', true);
+    first.dispose();
+    const restored = new WebTransport();
+    try {
+      restored.initializeWebMcp();
+      expect(tools.has('get_shader')).toBe(true);
+      localStorage.setItem('shader-studio.standalone.settings', JSON.stringify({ version: 1, values: { 'webmcp.enabled': false } }));
+      window.dispatchEvent(new StorageEvent('storage', { key: 'shader-studio.standalone.settings' }));
+      expect(tools.size).toBe(0);
+    } finally {
+      restored.dispose();
+      Reflect.deleteProperty(document, 'modelContext');
+    }
+  });
+
+  it('cancels an in-flight viewer request immediately when access is disabled', async () => {
+    const { tools } = context();
+    const transport = new WebTransport();
+    const viewer = transport.createViewerTransport();
+    let requested = false;
+    viewer.onMessage(event => {
+      if (event.data.type === 'viewerRpcRequest' && event.data.operation === 'get_state') {
+        requested = true;
+      }
+    });
+    try {
+      transport.initializeWebMcp();
+      transport.settings.update('webmcp.enabled', true);
+      const tool = tools.get('get_diagnostics')!;
+      const pending = tool.execute({});
+      await vi.waitFor(() => expect(requested).toBe(true));
+      transport.settings.update('webmcp.enabled', false);
+      expect(JSON.parse(await pending).error).toContain('cancelled');
+      expect(tools.size).toBe(0);
+      expect(JSON.parse(await tool.execute({}))).toHaveProperty('error');
+    } finally {
+      viewer.dispose(); transport.dispose();
+      Reflect.deleteProperty(document, 'modelContext');
     }
   });
 });

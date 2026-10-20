@@ -286,17 +286,19 @@ test('every E2E job and suite uses its published selection output', () => {
   }
 });
 
-test('ci:full label changes retrigger the caller workflow', () => {
+test('label-only PR events cannot create or replace a Test run', () => {
   const caller = fs.readFileSync(path.join(root, '.github/workflows/test.yml'), 'utf8');
-  assert.match(caller, /types: \[opened, synchronize, reopened, labeled, unlabeled\]/);
+  const events = caller.match(/types: \[([^\]]+)\]/)[1].split(',').map(event => event.trim());
+  assert.deepEqual(events, ['opened', 'synchronize', 'reopened']);
+  for (const event of ['labeled', 'unlabeled']) {
+    assert.equal(events.includes(event), false);
+  }
 });
 
-test('other label changes neither run nor cancel the caller workflow', () => {
+test('normal PR updates and manual full verification remain available', () => {
   const caller = fs.readFileSync(path.join(root, '.github/workflows/test.yml'), 'utf8');
-  const labelEvent = `contains(fromJSON('["labeled", "unlabeled"]'), github.event.action)`;
-  // A run started by another label must not join, and so cancel, the PR's group.
-  assert.ok(caller.includes(`group: \u0024{{ github.workflow }}-\u0024{{ (${labelEvent} && github.event.label.name != 'ci:full') && format('ignored-label-{0}', github.run_id) || `));
-  assert.ok(caller.includes(`if: \u0024{{ !${labelEvent} || github.event.label.name == '${FULL_RUN_LABEL}' }}`));
+  assert.match(caller, /^  workflow_dispatch:/m);
+  assert.match(caller, /uses: \.\/\.github\/workflows\/verify\.yml/);
 });
 
 /**

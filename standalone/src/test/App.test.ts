@@ -44,6 +44,8 @@ type TestTransport = WebTransport & {
 
 function createTransport(): TestTransport {
   return {
+    initializeWebMcp: vi.fn(),
+    dispose: vi.fn(),
     settings: new StandaloneSettings(),
     postMessage: vi.fn(),
     getShaderExplorerHostApi: vi.fn(() => ({ getShaders: vi.fn() })),
@@ -851,7 +853,9 @@ describe('standalone App', () => {
   });
 
   it('resets transient shell state when the app unmounts', async () => {
-    const app = render(App, { props: { transport: createTransport() } });
+    const transport = createTransport();
+    const app = render(App, { props: { transport } });
+    expect(transport.initializeWebMcp).toHaveBeenCalledOnce();
     setNewShaderVisible(true);
     requestPanel('preview');
     await tick();
@@ -860,5 +864,6 @@ describe('standalone App', () => {
 
     expect(getNewShaderVisible()).toBe(false);
     expect(getRequestedPanel()).toBeNull();
+    expect(transport.dispose).toHaveBeenCalledOnce();
   });
 });
