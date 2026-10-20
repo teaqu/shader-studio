@@ -611,6 +611,8 @@ describe('WebExtensionHost', () => {
           missing: { count: 1, elementType: 'u32', initialDataFiles: [{ path: 'gone.bin', resolved_path: 'stale' }] },
           remote: { count: 1, elementType: 'u32', initialDataFiles: [{ path: 'https://example.com/a.bin' }] },
           zero: { count: 1, elementType: 'u32' },
+          malformed: { count: 1, elementType: 'u32', initialDataFiles: [null, {}, { path: 42 }] },
+          invalidList: { count: 1, elementType: 'u32', initialDataFiles: {} },
         },
         passes: { Image: {} },
       }), createdAt: 1, modifiedAt: 1 },
@@ -627,6 +629,8 @@ describe('WebExtensionHost', () => {
     expect(storage.missing.initialDataFiles[0].resolved_path).toBeUndefined();
     expect(storage.remote.initialDataFiles[0].resolved_path).toBeUndefined();
     expect(storage.zero.resolved_path).toBeUndefined();
+    expect(storage.malformed.initialDataFiles).toEqual([null, {}, { path: 42 }]);
+    expect(storage.invalidList.initialDataFiles).toEqual({});
   });
 
   it('refreshes the requested shader instead of the active source file', async () => {

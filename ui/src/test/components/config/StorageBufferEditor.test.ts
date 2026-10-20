@@ -117,6 +117,17 @@ describe('StorageBufferEditor', () => {
     expect(ui.onApply).toHaveBeenLastCalledWith('particles', 'particles', { count: 1, elementType: 'uint', initialDataFiles: [] });
   });
 
+  it('shows the unknown buffer size for files using a shader-defined struct', async () => {
+    const ui = renderEditor([], { count: 4, elementType: 'Particle', initialDataFiles: [{ path: 'particles.bin' }] });
+    expect(ui.getByText(/Files must fit within the buffer's size/)).toBeInTheDocument();
+    await fireEvent.input(ui.getByLabelText('Initial data file 1'), { target: { value: '' } });
+    await fireEvent.blur(ui.getByLabelText('Initial data file 1'));
+    expect(ui.queryByRole('button', { name: 'Apply particles changes' })).not.toBeInTheDocument();
+    await fireEvent.input(ui.getByLabelText('Element count'), { target: { value: '8' } });
+    await fireEvent.click(ui.getByRole('button', { name: 'Apply particles changes' }));
+    expect(ui.onApply).toHaveBeenLastCalledWith('particles', 'particles', { count: 8, elementType: 'Particle', initialDataFiles: [{ path: 'particles.bin' }] });
+  });
+
   it('ignores a cancelled file selection', async () => {
     const ui = renderEditor([], { count: 1, elementType: 'u32', initialDataFiles: [{ path: 'keep.bin' }] });
     await ui.selectFile('');
