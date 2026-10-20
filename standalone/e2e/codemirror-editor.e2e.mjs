@@ -280,7 +280,9 @@ test('mobile bottom toolbar follows a panned keyboard viewport without leaving b
   await expect.poll(() => shell.evaluate(element => ({
     top: element.getBoundingClientRect().top,
     height: element.getBoundingClientRect().height,
-  }))).toEqual({ top: 100, height: fullHeight });
+  }))).toEqual({ top: 100, height: fullHeight - 100 });
+  const pageScrollHeight = await page.evaluate(() => document.documentElement.scrollHeight);
+  expect(pageScrollHeight).toBeLessThanOrEqual(fullHeight);
   const cm = activeEditor(page).locator('.cm-editor');
   await expect.poll(async () => {
     const shellBounds = await shell.boundingBox();
@@ -317,7 +319,11 @@ test('mobile bottom toolbar follows a panned keyboard viewport without leaving b
   await expect(content).toBeVisible();
   await expect(content).toHaveText(code);
   await page.evaluate(() => window.setKeyboardViewport(400, 160));
-  await expect.poll(() => shell.evaluate(element => element.getBoundingClientRect().top)).toBe(160);
+  await expect.poll(() => shell.evaluate(element => ({
+    top: element.getBoundingClientRect().top, bottom: element.getBoundingClientRect().bottom,
+  }))).toEqual({ top: 160, bottom: fullHeight });
+  expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBe(pageScrollHeight);
+  expect(await page.evaluate(() => document.documentElement.scrollTop)).toBe(0);
   await content.evaluate(element => element.blur());
   await expect(nav).toBeHidden();
   await page.evaluate(() => window.restoreKeyboardViewport());

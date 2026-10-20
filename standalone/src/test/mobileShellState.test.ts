@@ -40,6 +40,8 @@ it('tracks the iPhone keyboard viewport, ignores pinch zoom, and releases its li
   viewport.dispatchEvent(new Event('scroll'));
   expect(getMobileVisualViewportHeight()).toBe(viewport.height);
   expect(getMobileVisualViewportTop()).toBe(20);
+  expect(getMobileKeyboardInset()).toBe(230);
+  expect(getMobileVisualViewportTop() + getMobileVisualViewportHeight()! + getMobileKeyboardInset()).toBe(window.innerHeight);
   viewport.scale = 2;
   viewport.dispatchEvent(new Event('resize'));
   expect(getMobileVisualViewportHeight()).toBeUndefined();
@@ -75,21 +77,45 @@ it('keeps navigation hidden when innerHeight also shrinks and focus briefly leav
   viewport.offsetTop = 120;
   viewport.dispatchEvent(new Event('resize'));
   expect(getMobileVisualViewportHeight()).toBe(400);
-  expect(getMobileKeyboardInset()).toBe(400);
+  expect(getMobileKeyboardInset()).toBe(280);
   expect(getMobileVisualViewportTop()).toBe(120);
   expect(isMobileKeyboardOpen()).toBe(true);
   input.blur();
   expect(isMobileKeyboardOpen()).toBe(true);
-  // A browser pan moves the shell, never changes the available editor height.
+  // A browser pan changes the visible origin, not the bottom of the page.
   viewport.offsetTop = 180;
   viewport.dispatchEvent(new Event('scroll'));
   expect(getMobileVisualViewportTop()).toBe(180);
   expect(getMobileVisualViewportHeight()).toBe(400);
+  expect(getMobileKeyboardInset()).toBe(220);
+  expect(getMobileVisualViewportTop() + getMobileVisualViewportHeight()! + getMobileKeyboardInset()).toBe(800);
   vi.stubGlobal('innerHeight', 800);
   viewport.height = 800;
   viewport.offsetTop = 0;
   viewport.dispatchEvent(new Event('resize'));
   expect(isMobileKeyboardOpen()).toBe(false);
+  expect(getMobileKeyboardInset()).toBe(0);
+  stop();
+});
+
+it('does not add space below the page when keyboard panning changes the visible bottom', () => {
+  vi.stubGlobal('innerHeight', 800);
+  const viewport = Object.assign(new EventTarget(), { scale: 1, height: 800, offsetTop: 0 });
+  vi.stubGlobal('visualViewport', viewport);
+  const stop = observeMobileVisualViewport();
+  const editor = document.body.appendChild(document.createElement('div'));
+  editor.dataset.editorEngine = 'codemirror';
+  editor.appendChild(document.createElement('textarea')).focus();
+  viewport.height = 400;
+  for (const top of [0, 100, 160, 400]) {
+    viewport.offsetTop = top;
+    viewport.dispatchEvent(new Event('resize'));
+    expect(isMobileKeyboardOpen()).toBe(true);
+    expect(getMobileKeyboardInset()).toBe(400 - top);
+    expect(getMobileVisualViewportTop() + getMobileVisualViewportHeight()! + getMobileKeyboardInset()).toBe(800);
+  }
+  viewport.offsetTop = 450;
+  viewport.dispatchEvent(new Event('scroll'));
   expect(getMobileKeyboardInset()).toBe(0);
   stop();
 });

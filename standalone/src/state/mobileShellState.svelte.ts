@@ -71,9 +71,11 @@ export function observeMobileVisualViewport(): () => void {
     // Keep the keyboard state until the viewport recovers, rather than showing
     // navigation in the middle of the keyboard's dismissal animation.
     mobileKeyboardOpen = unzoomed && (editing || mobileKeyboardOpen) && availableHeight - viewport.height > 100;
-    // Keep the code surface behind Safari's translucent browser/keyboard UI.
-    // Only floating controls and caret scrolling use the obscured inset.
-    mobileKeyboardInset = mobileKeyboardOpen ? Math.max(0, availableHeight - viewport.height) : 0;
+    // The shell already starts at offsetTop. Extend code from the visual bottom
+    // to the layout bottom, without adding that pan offset to the page height.
+    // Floating controls still sit at offsetTop + height, above the keyboard.
+    mobileKeyboardInset = mobileKeyboardOpen
+      ? Math.max(0, availableHeight - (viewport.offsetTop + viewport.height)) : 0;
     if (unzoomed && !editing && !mobileKeyboardOpen) {
       restingHeight = viewport.height;
     }
