@@ -46,12 +46,12 @@ describe('Storage captures and lifecycle', () => {
     expect(f.readback.destroy).toHaveBeenCalledOnce();
   });
   it('initializes padded binary data and clears only opted-in buffers', () => {
-    const f = fixture(); f.node.initialData = 'AQID';
+    const f = fixture(); f.node.initialBytes = new Uint8Array([1, 2, 3]);
     initializeStorage(f.device, f.source, f.node);
     expect(f.device.queue.writeBuffer).toHaveBeenCalledWith(f.source, 0, new Uint8Array([1, 2, 3, 0]));
     clearFrameStorage(f.encoder, f.buffers, f.layouts); expect(f.encoder.clearBuffer).not.toHaveBeenCalled();
     f.node.clearEachFrame = true; clearFrameStorage(f.encoder, f.buffers, f.layouts); expect(f.encoder.clearBuffer).toHaveBeenCalledWith(f.source);
-    f.node.initialData = btoa('0123456789'); expect(() => initializeStorage(f.device, f.source, f.node)).toThrow('exceeds');
+    f.node.initialBytes = new TextEncoder().encode('0123456789'); expect(() => initializeStorage(f.device, f.source, f.node)).toThrow('exceeds');
   });
   it('rejects encoding failures, changed ranges and pending requests without leaking allocations', async () => {
     const queue = new StorageCaptureQueue(), f = fixture(), point = { pass: 'Image', timing: 'after' as const };

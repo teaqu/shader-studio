@@ -101,7 +101,8 @@ export class KeyboardManager {
       this.emit(code, false, 'injected');
     }
     this.keyHeld.fill(0);
-    this.keyPressed.fill(0);
+    // Match key-up: the next rendered frame must still observe pending presses.
+    // Replay can finish between frames, including immediately after a short tap.
   }
 
   public getHeldCodes(): string[] {

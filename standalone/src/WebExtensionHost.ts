@@ -904,6 +904,20 @@ export class WebExtensionHost {
   }
 
   private resolveConfigAssets(config: ShaderConfig, shaderPath: string): void {
+    for (const declaration of Object.values(config.storage ?? {})) {
+      for (const file of Array.isArray(declaration?.initialDataFiles) ? declaration.initialDataFiles : []) {
+        if (typeof file?.path !== 'string') {
+          continue;
+        }
+        const path = this.resolveSourcePath(shaderPath, file.path);
+        const contents = path && this.workspace.exists(path) ? this.workspace.readText(path) : null;
+        if (contents?.startsWith('data:')) {
+          file.resolved_path = contents;
+        } else {
+          delete file.resolved_path;
+        }
+      }
+    }
     for (const pass of Object.values(config.passes ?? {})) {
       for (const input of Object.values(pass?.inputs ?? {})) {
         if ('path' in input && typeof input.path === 'string') {

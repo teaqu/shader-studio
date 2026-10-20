@@ -56,6 +56,8 @@ Click the gear button to open **Explorer settings** over the shader list. Settin
 
 ## Refresh
 
+Shader Explorer updates by itself when shader or `.sha.json` files are added, changed, or deleted, and redraws the affected thumbnails.
+
 Click the **refresh button** in the toolbar to re-scan the workspace for shaders and regenerate all thumbnails.
 
 Clicking an individual shader card also refreshes that shader's thumbnail — useful after editing a shader to update its preview in the explorer.

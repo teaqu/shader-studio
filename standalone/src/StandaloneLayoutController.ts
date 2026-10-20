@@ -1,6 +1,12 @@
 export const STANDALONE_LAYOUT_STORAGE_KEY = 'shader-studio.standalone-layout.v1';
 
 export type StandalonePanelId = 'explorer' | 'files' | 'editor' | 'preview';
+type EditorPanelId = 'editor' | `editor:${string}`;
+
+function isEditorPanel(id: string): id is EditorPanelId {
+  return id === 'editor' || id.startsWith('editor:');
+}
+
 export type MobileDockviewPanelId = StandalonePanelId | 'debug' | 'config' | 'performance' | 'recording' | 'vr';
 
 interface Disposable {
@@ -172,7 +178,7 @@ export class StandaloneLayoutController {
   private editorTitle = 'No file open';
   private activeEditorId = 'editor';
   private layoutChangeDisposable: Disposable | null = null;
-  private readonly panelRestorations = new Map<StandalonePanelId, PanelRestoration>();
+  private readonly panelRestorations = new Map<StandalonePanelId | EditorPanelId, PanelRestoration>();
   private readonly storage: LayoutStorage | null;
   private desktopVisibility: Map<PanelGroup, boolean> | null = null;
   /** Desktop group sizes from before the phone shell hid them. */
@@ -359,11 +365,18 @@ export class StandaloneLayoutController {
   }
 
   isPanelVisible(panelId: StandalonePanelId): boolean {
+    if (panelId === 'editor') {
+      return this.api.panels.some(panel => isEditorPanel(panel.id) && panel.api.group.api.isVisible);
+    }
     const panel = this.api.getPanel(panelId);
     return Boolean(panel?.api.group.api.isVisible);
   }
 
   togglePanel(panelId: StandalonePanelId): void {
+    if (panelId === 'editor') {
+      this.toggleEditors();
+      return;
+    }
     const existing = this.api.getPanel(panelId);
     if (existing) {
       if (!existing.api.group.api.isVisible) {
@@ -382,6 +395,44 @@ export class StandaloneLayoutController {
       return;
     }
     this.addPanel(panelId);
+  }
+
+  private toggleEditors(): void {
+    const editors = this.api.panels.filter(panel => isEditorPanel(panel.id));
+    if (!this.isPanelVisible('editor')) {
+      for (const id of [...this.panelRestorations.keys()]) {
+        if (isEditorPanel(id)) {
+          if (!this.api.getPanel(id)) {
+            this.addPanel(id);
+          }
+          this.panelRestorations.delete(id);
+        }
+      }
+      const restored = this.api.panels.filter(panel => isEditorPanel(panel.id));
+      if (!restored.length) {
+        this.addPanel('editor');
+        return;
+      }
+      for (const group of new Set(restored.map(panel => panel.api.group))) {
+        group.api.setVisible(true);
+      }
+      (restored.find(panel => panel.id === this.activeEditorId) ?? restored[0]).api.setActive();
+      return;
+    }
+    for (const group of new Set(editors.map(panel => panel.api.group))) {
+      if (group.panels.every(panel => isEditorPanel(panel.id))) {
+        group.api.setVisible(false);
+        continue;
+      }
+      // A group can also contain Preview or tools: remove only its editor tabs.
+      const tabOrder = group.panels.map(panel => panel.id);
+      for (const panel of [...group.panels]) {
+        if (isEditorPanel(panel.id)) {
+          this.panelRestorations.set(panel.id, { tabOrder });
+          panel.api.close();
+        }
+      }
+    }
   }
 
   resetLayout(): void {
@@ -478,8 +529,9 @@ export class StandaloneLayoutController {
     this.api.getPanel('preview')?.api.setSize({ width: 560 });
   }
 
-  private addPanel(panelId: StandalonePanelId): void {
-    const definition = panelDefinitions[panelId];
+  private addPanel(panelId: StandalonePanelId | EditorPanelId): void {
+    const path = panelId.startsWith('editor:') ? panelId.slice('editor:'.length) : null;
+    const definition = panelDefinitions[isEditorPanel(panelId) ? 'editor' : panelId];
     const restoration = this.panelRestorations.get(panelId);
     const restoredReference = restoration?.tabOrder
       .map((id) => this.api.getPanel(id))
@@ -498,8 +550,9 @@ export class StandaloneLayoutController {
         : undefined;
     this.api.addPanel({
       id: panelId,
-      component: panelId,
-      title: panelId === 'editor' ? this.editorTitle : definition.title,
+      component: path ? 'file-editor' : panelId,
+      ...(path ? { params: { path } } : {}),
+      title: path ? path.split('/').pop() || path : panelId === 'editor' ? this.editorTitle : definition.title,
       renderer: 'always',
       ...(position ? { position } : {}),
       ...(definition.initialWidth ? { initialWidth: definition.initialWidth } : {}),

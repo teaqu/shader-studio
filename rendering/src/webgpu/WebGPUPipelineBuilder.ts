@@ -1,3 +1,4 @@
+import { resolvePassStorage } from "./PassStorage";
 import type { SlangSourceModule } from "@shader-studio/types";
 import { CustomUniformManager } from "../webgl/CustomUniformManager";
 import { verticesSpace } from "../types/Geometry";
@@ -57,7 +58,7 @@ export async function buildWebGPUPipelines(
   errors: string[],
   passTimings: PassTiming[],
 ) {
-  let storageStridesValidated: boolean | null = null;
+  const validatedStorage = new Set<string>();
   const nextPipelines = new Map<string, SlangPassPipeline>();
   const nextKeys = new Map<string, string>();
   const nextComputePipelines = new Map<string, SlangComputePipeline>();
@@ -70,6 +71,8 @@ export async function buildWebGPUPipelines(
     const passModules = slangModules
       .filter((module) => module.ownerPass === pass.name)
       .map(({ ownerPass: _ownerPass, ...module }) => module);
+    const passStorage = resolvePassStorage(graph.storage, pass.source, pass.vertexSrc ?? "",
+      graph.commonCode, ...passModules.map(module => module.source));
     const uniformInfo = nextCustomUniformManager.getUniformInfo();
     const wgslKey = compileKeys.wgslCacheKey(
       pass,
@@ -127,7 +130,7 @@ export async function buildWebGPUPipelines(
           passName: pass.name,
           commonCode: graph.commonCode,
           channels,
-          storage: graph.storage,
+          storage: passStorage,
           passKind: pass.kind,
           ...(pass.geometry !== "fullscreen" ? { geometry: pass.geometry } : {}),
           ...(pass.vertexSrc ? { vertexCode: pass.vertexSrc } : {}),
@@ -190,14 +193,16 @@ export async function buildWebGPUPipelines(
       }
       // After the first successful compile, validate custom struct strides
       // against the actual WGSL layout that Slang generated.
-      if (wgsl && storageStridesValidated === null) {
-        storageStridesValidated = false;
+      if (wgsl) {
         const structSizes = extractStructSizes(wgsl);
         for (const storageNode of graph.storage) {
-          if (storageNode.builtin) {
+          if (storageNode.builtin || validatedStorage.has(storageNode.name)) {
             continue;
           }
           const actualSize = structSizes.get(resolveStorageStructType(wgsl, storageNode.elementType, storageNode.name));
+          if (actualSize !== undefined) {
+            validatedStorage.add(storageNode.name);
+          }
           storageNode.fields = extractStorageFields(wgsl, storageNode.elementType, storageNode.name) ?? storageNode.fields;
           if (actualSize !== undefined && actualSize.size !== storageNode.stride) {
             graph.warnings.push(
@@ -209,7 +214,7 @@ export async function buildWebGPUPipelines(
       }
       pipeline = dependencies.passFactory.createPassPipeline(
         pass,
-        graph.storage,
+        passStorage,
         createSlangCustomUniformLayout(uniformInfo, getShaderToyChannelCount(pass.channels)).size,
         compilation ?? undefined,
       );

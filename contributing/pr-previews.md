@@ -13,8 +13,17 @@ it; the **PR Preview** workflow comments the link. Every push to the pull
 request redeploys it while the label is on. Removing the label or closing the
 pull request takes the preview down.
 
+Only an approver can switch a preview on. The label counts only when the
+repository owner, or a login listed in the **`PREVIEW_APPROVERS`** repository
+variable (**Settings → Secrets and variables → Actions → Variables**, separated
+by commas or spaces), was the last to add it. This is checked again on every
+push, so a later push cannot deploy a label someone else added. When anyone
+else adds the label, the run skips the deploy and says who added it.
+
 Only pull requests from branches in this repository get previews. Pull requests
-from forks are never built with a token that can write to the site.
+from forks are never built with a token that can write to the site. People who
+can push branches here can already change workflows, so the approver check
+guards against labels added by collaborators who can only triage.
 
 ## How It Is Served
 

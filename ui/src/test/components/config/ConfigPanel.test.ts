@@ -7,7 +7,7 @@ import { tick } from 'svelte';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import ConfigPanel from '../../../lib/components/config/ConfigPanel.svelte';
 import type { Transport } from '../../../lib/transport/MessageTransport';
-import type { ShaderConfig } from '@shader-studio/types';
+import type { SelectFileMessage, ShaderConfig } from '@shader-studio/types';
 import { ConfigManager } from '../../../lib/ConfigManager';
 import { reactiveConfig } from './reactiveConfig.svelte';
 import {
@@ -128,6 +128,28 @@ describe('ConfigPanel', () => {
       expect(ui.getByLabelText('Currently previewing Image')).toHaveTextContent('Viewing');
       expect(ui.getByRole('button', { name: 'Preview B' })).toBeEnabled();
     });
+    it('routes binary storage selection through the panel transport and retains the selected path', async () => {
+      const listeners: Array<(event: MessageEvent) => void> = [];
+      vi.mocked(mockTransport.onMessage).mockImplementation(handler => {
+        listeners.push(handler);
+        return { dispose: vi.fn() };
+      });
+      const config: ShaderConfig = { version: '1.0', passes: { Image: {} }, storage: { values: { count: 2, elementType: 'float4' } } };
+      const ui = render(ConfigPanel, { config, transport: mockTransport, language: 'wgsl', shaderPath: '/data/image.wgsl' });
+      await fireEvent.click(ui.getByRole('button', { name: /^Storage buffer values$/ }));
+      await fireEvent.change(ui.getByLabelText('Initial data', { exact: true }), { target: { value: 'file' } });
+      await fireEvent.click(ui.getByRole('button', { name: /^Select$/ }));
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({ type: 'selectFile', payload: expect.objectContaining({ shaderPath: '/data/image.wgsl', fileType: 'binary' }) });
+      const request = vi.mocked(mockTransport.postMessage).mock.calls.find(([message]) => message.type === 'selectFile')?.[0] as SelectFileMessage | undefined;
+      expect(request).toBeDefined();
+      for (const handler of listeners) {
+        handler(new MessageEvent('message', { data: { type: 'fileSelected', payload: { path: './values.bin', requestId: request?.payload.requestId } } }));
+      }
+      await waitFor(() => expect(ui.getByLabelText('Initial data file 1', { exact: true })).toHaveValue('./values.bin'));
+      await fireEvent.click(ui.getByRole('button', { name: 'Apply pending storage changes' }));
+      expect(getLatestConfigManagerInstance().applyStorageBuffer).toHaveBeenCalledWith('values', 'values', expect.objectContaining({ initialDataFiles: [{ path: './values.bin', byteOffset: 0 }] }));
+    });
+
     it('storage cards select individual data without changing the preview or duplicating navigation', async () => {
       const config: ShaderConfig = { version: '1.0', storage: {
         particles: { count: 16, elementType: 'u32' }, density: { count: 8, elementType: 'u32' },
@@ -1118,8 +1140,8 @@ describe('ConfigPanel', () => {
       const manager = createMockConfigManager(['Sky']);
       manager.getConfig.mockReturnValue(config);
       (ConfigManager as unknown as Mock).mockImplementation(function () {
- return manager; 
-});
+        return manager;
+      });
       const view = render(ConfigPanel, { config, language: 'slang', pathMap: {}, transport: mockTransport,
         shaderPath: '/test/image.slang', isVisible: true, onFileSelect: mockOnFileSelect,
         selectedBuffer: 'Sky', onConfigChange: vi.fn() });

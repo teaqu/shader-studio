@@ -40,3 +40,29 @@ describe('ConfigPathConverter volume paths', () => {
     expect(webview.asWebviewUri).not.toHaveBeenCalled();
   });
 });
+
+
+describe('ConfigPathConverter storage initial data paths', () => {
+  it.each([
+    ['/workspace/shader.wgsl', 'data/values.bin', '/workspace/data/values.bin'],
+    [undefined, '/absolute/values.bin', '/absolute/values.bin'],
+    [undefined, 'data/values.bin', 'data/values.bin'],
+  ])('resolves %s / %s without mutating saved paths', async (shaderPath, initialDataPath, expected) => {
+    const webview = { asWebviewUri: vi.fn((uri: { fsPath: string }) => ({ toString: () => `webview:${uri.fsPath}` })) };
+    const message = { type: 'shaderSource', path: shaderPath, config: { version: '1.0', passes: { Image: {} }, storage: {
+      values: { count: 1, elementType: 'uint', initialDataFiles: [{ path: initialDataPath }] },
+    } } };
+    const result = await ConfigPathConverter.processConfigPaths(message, webview as never);
+    expect(result.config.storage?.values).toEqual({ count: 1, elementType: 'uint', initialDataFiles: [{ path: initialDataPath, resolved_path: `webview:${expected}` }] });
+    expect(message.config.storage.values.initialDataFiles[0]).not.toHaveProperty('resolved_path');
+  });
+
+  it.each([undefined, null, {}, { empty: { initialDataFiles: [{ path: '' }] }, zero: {}, malformed: { initialDataFiles: [{ path: 42 }, null, {}] }, invalidList: { initialDataFiles: {} }, absent: null }])('ignores absent or malformed storage files: %j', async storage => {
+    const webview = { asWebviewUri: vi.fn() };
+    // Partial JSON configs can contain incomplete or invalid storage declarations.
+    const message = { type: 'shaderSource', config: { version: '1.0', passes: { Image: {} }, storage } } as unknown as Parameters<typeof ConfigPathConverter.processConfigPaths>[0];
+    const result = await ConfigPathConverter.processConfigPaths(message, webview as never);
+    expect(result.config.storage).toEqual(storage);
+    expect(webview.asWebviewUri).not.toHaveBeenCalled();
+  });
+});

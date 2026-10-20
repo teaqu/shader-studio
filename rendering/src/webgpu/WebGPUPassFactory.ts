@@ -1,3 +1,4 @@
+import { resolvePassStorage } from "./PassStorage";
 import type { ShaderConfig,SlangSourceModule } from "@shader-studio/types";
 import type { StorageBindingNode } from "../types/PassGraph";
 import { meshTopology,resolveRenderState,verticesSpace,verticesTopology } from "../types/Geometry";
@@ -170,7 +171,8 @@ export class WebGPUPassFactory {
         try {
           replacement = this.createPassPipeline(
             pass,
-            graph.storage,
+            resolvePassStorage(graph.storage, pass.source, pass.vertexSrc ?? "", graph.commonCode,
+              ...passModules.map(module => module.source)),
             createSlangCustomUniformLayout(customUniforms, getShaderToyChannelCount(pass.channels)).size,
             compilation ?? undefined,
           );
@@ -297,15 +299,15 @@ export class WebGPUPassFactory {
         ? { width: canvasWidth, height: canvasHeight }
         : pass.outputKind === "cubemap"
           ? { width: faceSize ?? 512, height: faceSize ?? 512 }
-        : resolvePassResolution({
-          passName: pass.name,
-          passConfig: configuredPass,
-          canvasWidth,
-          canvasHeight,
-          // Resolution settings were already validated at compile time; a
-          // resize cannot introduce new config errors.
-          errors: [],
-        });
+          : resolvePassResolution({
+            passName: pass.name,
+            passConfig: configuredPass,
+            canvasWidth,
+            canvasHeight,
+            // Resolution settings were already validated at compile time; a
+            // resize cannot introduce new config errors.
+            errors: [],
+          });
       const resolution = this.host.constraints.clampResolutionToTextureLimit(unclampedResolution);
       pass.width = resolution.width;
       pass.height = resolution.height;
