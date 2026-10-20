@@ -1,0 +1,3206 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="User guide for the Shader Studio VS Code extension">
+      
+      
+      
+        <link rel="canonical" href="https://teaqu.github.io/shader-studio/docs/features/vertex-shaders/">
+      
+      
+        <link rel="prev" href="../vr/">
+      
+      
+        <link rel="next" href="../language-support/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/shader-studio-icon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Vertex Shaders - Shader Studio Docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="https://unpkg.com/@vscode/codicons@0.0.36/dist/codicon.css">
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/home.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="deep-purple">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#vertex-shaders" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+  
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Shader Studio Docs" class="md-header__button md-logo" aria-label="Shader Studio Docs" data-md-component="logo">
+      
+  <img src="../../assets/shader-studio-icon.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Shader Studio Docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Vertex Shaders
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="deep-purple"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="deep-purple" data-md-color-accent="deep-purple"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/teaqu/shader-studio" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    teaqu/shader-studio
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+  
+
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Shader Studio Docs" class="md-nav__button md-logo" aria-label="Shader Studio Docs" data-md-component="logo">
+      
+  <img src="../../assets/shader-studio-icon.png" alt="logo">
+
+    </a>
+    Shader Studio Docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/teaqu/shader-studio" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    teaqu/shader-studio
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../standalone/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Standalone Mode
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../mobile-testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phones and Tablets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../config-buffers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configure Buffers And Inputs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../compute/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compute Passes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GPU Storage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../channels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Channels
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../help/volume-inputs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Volume Inputs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../multiple-render-targets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multiple Render Targets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../uniforms/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Uniforms
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../time-controls/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Time And Playback Controls
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resolution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../panel-layout/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Panel Layout
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../locking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Locking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../editor-overlay/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Editor Overlay
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../compile-modes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compile Modes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recording/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recording
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../web-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Open In Browser
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI Agents (MCP)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../shader-explorer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Shader Explorer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../camera/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    3D Camera
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../vr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    VR Shaders
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vertex Shaders
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vertex Shaders
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#when-to-use-a-vertex-shader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to Use a Vertex Shader
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuring-a-vertex-shader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuring a Vertex Shader
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#native-webgpu-stages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Native WebGPU Stages
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-mainvertex-function" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The mainVertex Function
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#geometry-context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Geometry Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#vertices-geometry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vertices Geometry
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Vertices Geometry">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#world-and-clip-space" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        World and clip space
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limitations
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mesh-topology" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mesh Topology
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#instancing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Instancing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#camera-matrices" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Camera Matrices
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#render-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Render Settings
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Render Settings">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#clear-colour" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Clear Colour
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#blend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Blend
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#depth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Depth
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cull" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cull
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#antialiasing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Antialiasing
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#available-built-ins" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Available Built-ins
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fragment-shader-access" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fragment Shader Access
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Examples">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fullscreen-a-procedural-triangle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fullscreen: a Procedural Triangle
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vertices-a-clip-space-hexagon" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vertices: a Clip-Space Hexagon
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vertices-a-3d-shape-in-world-space" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vertices: a 3D Shape in World Space
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#additive-particles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Additive Particles
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#displacing-a-plane" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Displacing a Plane
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../language-support/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Language Support
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../glsl/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GLSL Support
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../slang/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Slang Support
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../language-servers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Language Servers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../code-snippets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code Snippets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Debugging
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Debugging
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../debugging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../debugging/pixel-inspector/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pixel Inspector
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../debugging/inline-rendering/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Inline Rendering
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../debugging/variable-inspector/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Variable Inspector
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../debugging/parameters-and-loops/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Parameters & Loops
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../debugging/normalization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Normalization And Step
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../help/transpilation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JavaScript Transpilation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Help
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Help
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../help/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../help/shadertoy-compatibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Shadertoy Compatibility
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../help/config-file/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Config File Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../help/settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../help/keyboard-shortcuts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Keyboard Shortcuts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#when-to-use-a-vertex-shader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to Use a Vertex Shader
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuring-a-vertex-shader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuring a Vertex Shader
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#native-webgpu-stages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Native WebGPU Stages
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-mainvertex-function" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The mainVertex Function
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#geometry-context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Geometry Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#vertices-geometry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vertices Geometry
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Vertices Geometry">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#world-and-clip-space" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        World and clip space
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limitations
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mesh-topology" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mesh Topology
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#instancing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Instancing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#camera-matrices" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Camera Matrices
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#render-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Render Settings
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Render Settings">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#clear-colour" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Clear Colour
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#blend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Blend
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#depth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Depth
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cull" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cull
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#antialiasing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Antialiasing
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#available-built-ins" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Available Built-ins
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fragment-shader-access" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fragment Shader Access
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Examples">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fullscreen-a-procedural-triangle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fullscreen: a Procedural Triangle
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vertices-a-clip-space-hexagon" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vertices: a Clip-Space Hexagon
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vertices-a-3d-shape-in-world-space" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vertices: a 3D Shape in World Space
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#additive-particles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Additive Particles
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#displacing-a-plane" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Displacing a Plane
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="vertex-shaders">Vertex Shaders<a class="headerlink" href="#vertex-shaders" title="Permanent link">&para;</a></h1>
+<p>Vertex shaders let you deform 3D geometry before it reaches the fragment shader. Each render pass can select its vertex source in <strong>Vertex shader</strong>, then choose what to draw in <strong>Geometry</strong>.</p>
+<h2 id="when-to-use-a-vertex-shader">When to Use a Vertex Shader<a class="headerlink" href="#when-to-use-a-vertex-shader" title="Permanent link">&para;</a></h2>
+<p>A vertex shader is useful when you want to:</p>
+<ul>
+<li><strong>Deform geometry</strong> — displace vertices of a sphere, cube, or plane with noise or waves</li>
+<li><strong>Animate 3D models</strong> — modify a GLB mesh's vertex positions over time</li>
+<li><strong>Custom projections</strong> — apply non-standard camera transforms per pass</li>
+<li><strong>Raymarching</strong> — use 3D geometry as a bounding volume, then raymarch in the fragment shader</li>
+</ul>
+<p>Fullscreen passes can also use vertex shaders for warping, custom projections, or screen-space effects without switching to 3D geometry. To draw your own shapes, lines or points, use <a href="#vertices-geometry">Vertices geometry</a>.</p>
+<h2 id="configuring-a-vertex-shader">Configuring a Vertex Shader<a class="headerlink" href="#configuring-a-vertex-shader" title="Permanent link">&para;</a></h2>
+<ol>
+<li>In the config panel, select the pass you want to configure</li>
+<li>In <strong>Vertex shader</strong>, choose <strong>Built-in</strong>, <strong>Same file</strong>, or <strong>Separate file</strong>.</li>
+<li>Same file uses the pass source and hides the path. Separate file shows an editable <strong>File</strong> row; <strong>Change…</strong> lets you reuse a config file, browse the workspace, or create a source.</li>
+<li>WGSL/Slang list the available vertex functions from the chosen source. Select a row, or use <strong>Add function…</strong> to append a Built-in hook or Native entry point there. GLSL uses the fixed <code>mainVertex</code> name, so it only shows Add when that hook is missing.</li>
+</ol>
+<p>Built-in clears the custom vertex source and selection. It does not create a vertex file. New native shaders and buffers retain this generated stage by default. If you select <strong>Vertices</strong> geometry, you still need code that places the vertices: their default positions coincide and produce no visible triangles.</p>
+<p><strong>Double-click the "Vertex shader" title</strong> to open the file in the <a href="../editor-overlay/">editor overlay</a>.</p>
+<h2 id="native-webgpu-stages">Native WebGPU Stages<a class="headerlink" href="#native-webgpu-stages" title="Permanent link">&para;</a></h2>
+<p>Slang and WGSL can select native vertex and fragment entry points independently. For mesh geometry, native vertex inputs must match the supplied mesh layout: location 0 is a three-component position, location 1 is a three-component normal, and location 2 is a two-component UV. Use <code>float3</code>/<code>float2</code> in Slang or <code>vec3f</code>/<code>vec2f</code> in WGSL.</p>
+<p>Native shaders own their transforms and vertex-to-fragment interface. The built-in mesh vertex shader outputs UV at location 0, world position at location 1, and normal at location 2. A native fragment paired with that vertex shader must use compatible input locations and types. A native vertex paired with <code>mainImage</code> must produce that interface. A separate <code>mainVertex</code> hook file can also be paired with a native fragment.</p>
+<p>With <strong>Use viewer camera</strong> enabled, the built-in mesh vertex shader applies the viewer camera after <code>mainVertex</code>, so an empty hook still responds to drag rotation. Native mesh vertices can use <code>iModelMatrix</code>, <code>iViewProjectionMatrix</code>, and <code>iNormalMatrix</code> to follow that same camera. For Slang, use <code>mul(matrix, vector)</code>; in WGSL:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kd">let</span><span class="w"> </span><span class="n">world</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">iModelMatrix</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nb">vec4f</span><span class="p">(</span><span class="nb">position</span><span class="p">,</span><span class="w"> </span><span class="mf">1.0</span><span class="p">);</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kd">let</span><span class="w"> </span><span class="n">clip</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">iViewProjectionMatrix</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">world</span><span class="p">;</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="kd">let</span><span class="w"> </span><span class="n">worldNormal</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">iNormalMatrix</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nb">vec4f</span><span class="p">(</span><span class="n">normal</span><span class="p">,</span><span class="w"> </span><span class="mf">0.0</span><span class="p">)).</span><span class="n">xyz</span><span class="p">;</span>
+</code></pre></div>
+<p>A fullscreen WGSL vertex uses <code>@builtin(vertex_index)</code> instead of the mesh attributes; Slang uses <code>SV_VertexID</code>. Changing geometry keeps your explicit stage selections; choose a compatible vertex when switching between mesh and fullscreen geometry.</p>
+<p>Debugging a native fragment uses the vertex positions, interpolated inputs, and depth from your shader. Color outputs must be four-component floating-point vectors. Inputs passed directly to a native fragment are marked <strong>GPU-provided</strong> and cannot be replaced with parameter controls; parameters of helper functions remain editable. Native buffers can write <a href="../multiple-render-targets/">multiple render targets</a>; choose an output in the debug panel to inspect its color.</p>
+<h2 id="the-mainvertex-function">The <code>mainVertex</code> Function<a class="headerlink" href="#the-mainvertex-function" title="Permanent link">&para;</a></h2>
+<p>A Built-in vertex hook defines <code>mainVertex</code>. WGSL and Slang can instead select a native annotated vertex entry point; see <a href="../config-buffers/#native-entry-points-and-shared-files">Native entry points</a>. The hook receives the index of the vertex being processed, followed by the vertex data as <code>inout</code> parameters — modify them in-place to change the rendered geometry.</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:3"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><input id="__tabbed_1_3" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">GLSL</label><label for="__tabbed_1_2">Slang</label><label for="__tabbed_1_3">WGSL</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kt">void</span><span class="w"> </span><span class="n">mainVertex</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">vertexIndex</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">vec3</span><span class="w"> </span><span class="n">position</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">vec3</span><span class="w"> </span><span class="n">normal</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">vec2</span><span class="w"> </span><span class="n">uv</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span><span class="c1">// vertexIndex: the vertex being processed (gl_VertexID)</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="c1">// position: the vertex position in object space</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="c1">// normal:   the vertex normal in object space</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="c1">// uv:       the vertex texture coordinates</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="p">}</span>
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kt">void</span><span class="w"> </span><span class="n">mainVertex</span><span class="p">(</span><span class="kt">uint</span><span class="w"> </span><span class="n">vertexIndex</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">float3</span><span class="w"> </span><span class="n">position</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">float3</span><span class="w"> </span><span class="n">normal</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">float2</span><span class="w"> </span><span class="n">uv</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span><span class="c1">// vertexIndex: the vertex being processed (SV_VertexID)</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="c1">// position: the vertex position in object space</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="c1">// normal:   the vertex normal in object space</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">    </span><span class="c1">// uv:       the vertex texture coordinates</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="p">}</span>
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">fn</span><span class="w"> </span><span class="n">mainVertex</span><span class="p">(</span><span class="n">vertexIndex</span><span class="p">:</span><span class="w"> </span><span class="nb">u32</span><span class="p">,</span><span class="w"> </span><span class="nb">position</span><span class="p">:</span><span class="w"> </span><span class="nb">ptr</span><span class="o">&lt;</span><span class="nb">function</span><span class="p">,</span><span class="w"> </span><span class="nb">vec3</span><span class="o">&lt;</span><span class="nb">f32</span><span class="o">&gt;&gt;</span><span class="p">,</span><span class="w"> </span><span class="n">normal</span><span class="p">:</span><span class="w"> </span><span class="nb">ptr</span><span class="o">&lt;</span><span class="nb">function</span><span class="p">,</span><span class="w"> </span><span class="nb">vec3</span><span class="o">&lt;</span><span class="nb">f32</span><span class="o">&gt;&gt;</span><span class="p">,</span><span class="w"> </span><span class="n">uv</span><span class="p">:</span><span class="w"> </span><span class="nb">ptr</span><span class="o">&lt;</span><span class="nb">function</span><span class="p">,</span><span class="w"> </span><span class="nb">vec2</span><span class="o">&lt;</span><span class="nb">f32</span><span class="o">&gt;&gt;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="c1">// vertexIndex: the vertex being processed (@builtin(vertex_index))</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="c1">// position: the vertex position in object space</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span><span class="c1">// normal:   the vertex normal in object space</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span><span class="c1">// uv:       the vertex texture coordinates</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="p">}</span>
+</code></pre></div>
+<p>WGSL has no <code>inout</code> parameters, so the hook receives pointers. Dereference them to read or modify the vertex data: <code>(*position).y += 0.1;</code>. Changes to these values affect the rendered geometry, as with <code>inout</code> in GLSL and Slang.</p>
+</div>
+</div>
+</div>
+<h2 id="geometry-context">Geometry Context<a class="headerlink" href="#geometry-context" title="Permanent link">&para;</a></h2>
+<p>The meaning of the parameters depends on the geometry type:</p>
+<table>
+<thead>
+<tr>
+<th>Geometry</th>
+<th><code>vertexIndex</code></th>
+<th><code>position</code></th>
+<th><code>normal</code></th>
+<th><code>uv</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Fullscreen</strong></td>
+<td>0, 1, 2</td>
+<td>Clip-space triangle corner, Z=0</td>
+<td><code>(0, 0, 1)</code></td>
+<td>Corner × 0.5 + 0.5</td>
+</tr>
+<tr>
+<td><strong>Vertices</strong></td>
+<td>0 to <code>iVertexCount - 1</code></td>
+<td><code>(0, 0, 0)</code>; you place every vertex</td>
+<td><code>(0, 0, 1)</code></td>
+<td><code>(0, 0)</code></td>
+</tr>
+<tr>
+<td><strong>Plane</strong></td>
+<td>Mesh vertex index</td>
+<td>XZ-plane object-space vertex</td>
+<td><code>(0, 1, 0)</code></td>
+<td>0–1 grid UV</td>
+</tr>
+<tr>
+<td><strong>Cube</strong></td>
+<td>Mesh vertex index</td>
+<td>Unit-cube object-space vertex</td>
+<td>Face normal</td>
+<td>Face UV</td>
+</tr>
+<tr>
+<td><strong>Sphere</strong></td>
+<td>Mesh vertex index</td>
+<td>Unit-sphere object-space vertex</td>
+<td>Surface normal</td>
+<td>Latitude/longitude UV</td>
+</tr>
+<tr>
+<td><strong>Model</strong></td>
+<td>Mesh vertex index</td>
+<td>GLB mesh vertex position</td>
+<td>Mesh vertex normal</td>
+<td>Mesh UV</td>
+</tr>
+</tbody>
+</table>
+<p>For 3D geometry types (plane, cube, sphere, model), the engine applies the model, view, and projection matrices after <code>mainVertex</code> returns when <strong>Use viewer camera</strong> is enabled. Disable it to use the returned positions directly in clip space. This applies to GLSL, WGSL, and Slang mesh passes. Their draws are indexed, so <code>vertexIndex</code> is the index of the mesh vertex, and a vertex shared by several triangles may run more than once with the same index. <code>iVertexCount</code> is the number of distinct mesh vertices, so <code>vertexIndex</code> runs from 0 to <code>iVertexCount - 1</code> here too.</p>
+<p>For fullscreen, <code>position</code> is in clip-space coordinates directly. A fullscreen pass always draws one oversized triangle with three vertices, <code>(-1, -1)</code>, <code>(3, -1)</code> and <code>(-1, 3)</code>, which covers the whole screen, and <code>iVertexCount</code> is 3. Assign <code>position</code> from <code>vertexIndex</code> to move the triangle yourself; pixels it no longer covers are cleared to opaque black. To draw your own shapes, lines or points, use <a href="#vertices-geometry">Vertices geometry</a>.</p>
+<h2 id="vertices-geometry">Vertices Geometry<a class="headerlink" href="#vertices-geometry" title="Permanent link">&para;</a></h2>
+<p><strong>Vertices</strong> geometry draws as many vertices as you ask for, with no mesh behind them: <code>mainVertex</code> decides where every vertex goes. Select <strong>Vertices</strong> in the <strong>Geometry</strong> dropdown, or set it in <code>.sha.json</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">"geometry"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"vertices"</span><span class="p">,</span><span class="w"> </span><span class="nt">"vertexCount"</span><span class="p">:</span><span class="w"> </span><span class="mi">6</span><span class="p">,</span><span class="w"> </span><span class="nt">"topology"</span><span class="p">:</span><span class="w"> </span><span class="s2">"triangle-strip"</span><span class="p">,</span><span class="w"> </span><span class="nt">"space"</span><span class="p">:</span><span class="w"> </span><span class="s2">"clip"</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Values</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>vertexCount</code></td>
+<td>Whole number from 1 to 2147483647</td>
+<td><code>3</code></td>
+</tr>
+<tr>
+<td><code>topology</code></td>
+<td><code>triangle-list</code>, <code>triangle-strip</code>, <code>line-list</code>, <code>line-strip</code>, <code>point-list</code></td>
+<td><code>triangle-list</code></td>
+</tr>
+<tr>
+<td><code>space</code></td>
+<td><code>world</code>, <code>clip</code></td>
+<td><code>world</code></td>
+</tr>
+</tbody>
+</table>
+<p>The config panel shows them as <strong>Vertices</strong>, <strong>Topology</strong> and <strong>Space</strong>. Switching the pass to another geometry and back restores them for the rest of the session; they are never written for other geometry.</p>
+<p><code>mainVertex</code> runs once per vertex with <code>vertexIndex</code> from 0 to <code>vertexCount - 1</code>; read the count in the shader as <code>iVertexCount</code>. Every vertex starts at <code>(0, 0, 0)</code> with normal <code>(0, 0, 1)</code> and uv <code>(0, 0)</code>, so a pass without a vertex shader draws nothing. Place the vertices in shader code, for example from an array or from maths over <code>vertexIndex</code>. <code>topology</code> says how consecutive vertices join up: every three vertices make a triangle (<code>triangle-list</code>), each new vertex makes a triangle with the two before it (<code>triangle-strip</code>), every two make a line (<code>line-list</code>), each new vertex continues one line (<code>line-strip</code>), or each vertex is a single point (<code>point-list</code>).</p>
+<p>Out-of-range counts, other topologies, and any of these fields on fullscreen geometry are config errors. Plane, cube, sphere, and model geometry reject <code>vertexCount</code> and <code>space</code>, and accept only the mesh topologies below.</p>
+<h3 id="world-and-clip-space">World and clip space<a class="headerlink" href="#world-and-clip-space" title="Permanent link">&para;</a></h3>
+<p><code>space</code> says what the position you write means.</p>
+<ul>
+<li><strong><code>world</code></strong> (the default) treats your positions like the vertices of a plane or cube: points in the 3D scene. The orbit camera looks at them, so dragging the preview moves around your shape, and nearer surfaces hide farther ones. <code>mainImage</code> receives <code>uv * iResolution</code>, so whatever you write to <code>uv</code> comes through, and <code>iWorldPosition</code>, <code>iNormal</code> and <code>iCameraPosition</code> work as they do for meshes. Use it for 3D shapes, particle clouds and procedural meshes.</li>
+<li><strong><code>clip</code></strong> treats your positions as places on the screen: <code>(-1, -1)</code> is the bottom-left corner and <code>(1, 1)</code> the top-right, whatever the camera does. <code>mainImage</code> receives the real pixel coordinate, as in a fullscreen pass; read the interpolated vertex coordinate separately as <code>iVertexUv</code>. Use it for HUDs, waveforms, graphs and 2D shapes that should stay put. Keep <code>z</code> between 0 and 1: WebGPU clips anything outside that range, and WebGL accepts it. Shapes are drawn in the order you emit them, later ones on top, because the depth test is off by default in clip space.</li>
+</ul>
+<h3 id="limitations">Limitations<a class="headerlink" href="#limitations" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Lines and points are 1px wide.</strong> WebGPU has no line width or point size, and point size is not portable in WebGL, so lines and points always rasterise at one pixel. Build thick lines and sized particles from triangles instead.</li>
+<li><strong>There are no geometry shaders.</strong> WebGL and WebGPU cannot create vertices on the GPU. Use vertex pulling: draw a fixed number of vertices per item and derive the item and corner from <code>vertexIndex</code>. For example, particles as quads use 6 vertices each; see <a href="#additive-particles">Additive particles</a>.</li>
+<li><strong>Debugging covers the whole pass.</strong> Variable capture, pixel debugging, and pause inspection evaluate <code>mainImage</code> over every pixel of a synthetic fullscreen pass, including pixels no triangle, line, or point covers. In that synthetic pass, <code>iVertexUv</code> is the normalised capture-grid coordinate rather than the original geometry's interpolated value, <code>iFrontFacing</code> is <code>true</code>, and <code>iInstanceIndex</code> is 0.</li>
+</ul>
+<h2 id="mesh-topology">Mesh Topology<a class="headerlink" href="#mesh-topology" title="Permanent link">&para;</a></h2>
+<p>Plane, cube, sphere, and model geometry take a <code>topology</code> too, for wireframe and point-cloud views of the mesh:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">"geometry"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sphere"</span><span class="p">,</span><span class="w"> </span><span class="nt">"topology"</span><span class="p">:</span><span class="w"> </span><span class="s2">"line-list"</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th><code>topology</code></th>
+<th>Draws</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>triangle-list</code> (default)</td>
+<td>The mesh's triangles</td>
+</tr>
+<tr>
+<td><code>line-list</code></td>
+<td>A wireframe: each unique edge of the triangles once</td>
+</tr>
+<tr>
+<td><code>point-list</code></td>
+<td>Each unique vertex once, as a 1px point</td>
+</tr>
+</tbody>
+</table>
+<p>The vertex shader runs as usual, with <code>vertexIndex</code> the mesh vertex index, so a displaced or animated mesh stays displaced in every view. Strip topologies do not apply to meshes. Lines and points are 1px wide and are never culled, so <code>cull</code> has no effect on them. In the config panel, the Topology control under Geometry offers Triangles, Wireframe and Points for meshes.</p>
+<h2 id="instancing">Instancing<a class="headerlink" href="#instancing" title="Permanent link">&para;</a></h2>
+<p>Add <code>instanceCount</code> to any geometry except fullscreen to draw it many times in one draw call. The vertex shader runs for every vertex of every copy, and <code>iInstanceIndex</code> says which copy it is on, from 0 to <code>iInstanceCount - 1</code>. Use it to offset, rotate or colour each copy. This works for meshes too, where vertex pulling cannot: a field of 100 cubes is one cube drawn 100 times.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">"geometry"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"cube"</span><span class="p">,</span><span class="w"> </span><span class="nt">"instanceCount"</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Values</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>instanceCount</code></td>
+<td>Whole number from 1 to 2147483647</td>
+<td><code>1</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>vertexIndex</code> repeats the same range for every copy. <code>iInstanceIndex</code> is also available in <code>mainImage</code>, holding the copy that drew the fragment, so each copy can be shaded differently. Fullscreen passes always draw one copy: <code>iInstanceCount</code> is 1 and <code>iInstanceIndex</code> is 0, and <code>instanceCount</code> on fullscreen geometry is a config error. In the config panel, set the count with the Instances control under Geometry.</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="2:3"><input checked="checked" id="__tabbed_2_1" name="__tabbed_2" type="radio" /><input id="__tabbed_2_2" name="__tabbed_2" type="radio" /><input id="__tabbed_2_3" name="__tabbed_2" type="radio" /><div class="tabbed-labels"><label for="__tabbed_2_1">GLSL</label><label for="__tabbed_2_2">Slang</label><label for="__tabbed_2_3">WGSL</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1">// cubes.vert.glsl: a 10 × 10 grid of small cubes</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="kt">void</span><span class="w"> </span><span class="n">mainVertex</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">vertexIndex</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">vec3</span><span class="w"> </span><span class="n">position</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">vec3</span><span class="w"> </span><span class="n">normal</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">vec2</span><span class="w"> </span><span class="n">uv</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span><span class="kt">vec2</span><span class="w"> </span><span class="n">cell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec2</span><span class="p">(</span><span class="n">iInstanceIndex</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="n">iInstanceIndex</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">10</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mf">4.5</span><span class="p">;</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">    </span><span class="n">position</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">position</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.08</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span><span class="n">cell</span><span class="p">.</span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="n">cell</span><span class="p">.</span><span class="n">y</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.2</span><span class="p">;</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="p">}</span>
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1">// cubes.vert.slang: a 10 × 10 grid of small cubes</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="kt">void</span><span class="w"> </span><span class="n">mainVertex</span><span class="p">(</span><span class="kt">uint</span><span class="w"> </span><span class="n">vertexIndex</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">float3</span><span class="w"> </span><span class="n">position</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">float3</span><span class="w"> </span><span class="n">normal</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">float2</span><span class="w"> </span><span class="n">uv</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span><span class="kt">float2</span><span class="w"> </span><span class="n">cell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">float2</span><span class="p">(</span><span class="n">iInstanceIndex</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="mi">10</span><span class="n">u</span><span class="p">,</span><span class="w"> </span><span class="n">iInstanceIndex</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">10</span><span class="n">u</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mf">4.5</span><span class="p">;</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">    </span><span class="n">position</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">position</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.08</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="kt">float3</span><span class="p">(</span><span class="n">cell</span><span class="p">.</span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="n">cell</span><span class="p">.</span><span class="n">y</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.2</span><span class="p">;</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="p">}</span>
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1">// cubes.vert.wgsl: a 10 × 10 grid of small cubes</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="k">fn</span><span class="w"> </span><span class="n">mainVertex</span><span class="p">(</span><span class="n">vertexIndex</span><span class="p">:</span><span class="w"> </span><span class="nb">u32</span><span class="p">,</span><span class="w"> </span><span class="nb">position</span><span class="p">:</span><span class="w"> </span><span class="nb">ptr</span><span class="o">&lt;</span><span class="nb">function</span><span class="p">,</span><span class="w"> </span><span class="nb">vec3f</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="n">normal</span><span class="p">:</span><span class="w"> </span><span class="nb">ptr</span><span class="o">&lt;</span><span class="nb">function</span><span class="p">,</span><span class="w"> </span><span class="nb">vec3f</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="n">uv</span><span class="p">:</span><span class="w"> </span><span class="nb">ptr</span><span class="o">&lt;</span><span class="nb">function</span><span class="p">,</span><span class="w"> </span><span class="nb">vec2f</span><span class="o">&gt;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">cell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">vec2f</span><span class="p">(</span><span class="nb">f32</span><span class="p">(</span><span class="n">iInstanceIndex</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="mi">10u</span><span class="p">),</span><span class="w"> </span><span class="nb">f32</span><span class="p">(</span><span class="n">iInstanceIndex</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">10u</span><span class="p">))</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mf">4.5</span><span class="p">;</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">    </span><span class="o">*</span><span class="nb">position</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">*</span><span class="nb">position</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.08</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nb">vec3f</span><span class="p">(</span><span class="n">cell</span><span class="p">.</span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="n">cell</span><span class="p">.</span><span class="n">y</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.2</span><span class="p">;</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="p">}</span>
+</code></pre></div>
+</div>
+</div>
+</div>
+<h2 id="camera-matrices">Camera Matrices<a class="headerlink" href="#camera-matrices" title="Permanent link">&para;</a></h2>
+<p><code>iViewMatrix</code>, <code>iProjectionMatrix</code> and <code>iViewProjection</code> are the orbit camera that plane, cube, sphere, model and world-space vertices are drawn with, in the vertex and fragment shader of every pass. <code>iViewProjection</code> is <code>iProjectionMatrix * iViewMatrix</code>; there is no model matrix, because meshes are drawn at the origin unscaled. The projection has a 45° vertical field of view, near plane 0.01 and far plane 100, and follows the pass's aspect ratio.</p>
+<p>Use them in clip space to project some points yourself while keeping control of the rest, for example a 3D shape with a screen-space overlay. Divide by <code>w</code> to get the position a clip-space vertex writes:</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="3:3"><input checked="checked" id="__tabbed_3_1" name="__tabbed_3" type="radio" /><input id="__tabbed_3_2" name="__tabbed_3" type="radio" /><input id="__tabbed_3_3" name="__tabbed_3" type="radio" /><div class="tabbed-labels"><label for="__tabbed_3_1">GLSL</label><label for="__tabbed_3_2">Slang</label><label for="__tabbed_3_3">WGSL</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kt">vec4</span><span class="w"> </span><span class="n">clip</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">iViewProjection</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="kt">vec4</span><span class="p">(</span><span class="n">worldPoint</span><span class="p">,</span><span class="w"> </span><span class="mf">1.0</span><span class="p">);</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">position</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">clip</span><span class="p">.</span><span class="n">xyz</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">clip</span><span class="p">.</span><span class="n">w</span><span class="p">;</span>
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kt">float4</span><span class="w"> </span><span class="n">clip</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">mul</span><span class="p">(</span><span class="n">iViewProjection</span><span class="p">,</span><span class="w"> </span><span class="kt">float4</span><span class="p">(</span><span class="n">worldPoint</span><span class="p">,</span><span class="w"> </span><span class="mf">1.0</span><span class="p">));</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="n">position</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">clip</span><span class="p">.</span><span class="n">xyz</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">clip</span><span class="p">.</span><span class="n">w</span><span class="p">;</span>
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kd">let</span><span class="w"> </span><span class="n">clip</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">iViewProjection</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nb">vec4f</span><span class="p">(</span><span class="n">worldPoint</span><span class="p">,</span><span class="w"> </span><span class="mf">1.0</span><span class="p">);</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="o">*</span><span class="nb">position</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">clip</span><span class="p">.</span><span class="n">xyz</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">clip</span><span class="p">.</span><span class="n">w</span><span class="p">;</span>
+</code></pre></div>
+</div>
+</div>
+</div>
+<p>Clip-space depth follows the renderer: <code>z</code> runs from -1 to 1 in GLSL (WebGL) and from 0 to 1 in Slang and WGSL (WebGPU), so the projected <code>z</code> is valid in either. Because the hook writes a <code>vec3</code> with <code>w = 1</code>, primitives that cross behind the camera are not clipped the way world-space geometry is; keep projected points in front of the camera.</p>
+<h2 id="render-settings">Render Settings<a class="headerlink" href="#render-settings" title="Permanent link">&para;</a></h2>
+<p>Image and buffer passes have render settings next to <code>geometry</code>, under <strong>Rendering</strong> and <strong>Depth testing</strong> in the config panel. Compute and Common passes do not accept them.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nt">"Image"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">  </span><span class="nt">"geometry"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"vertices"</span><span class="p">,</span><span class="w"> </span><span class="nt">"vertexCount"</span><span class="p">:</span><span class="w"> </span><span class="mi">6000</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">  </span><span class="nt">"clear"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">],</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">  </span><span class="nt">"blend"</span><span class="p">:</span><span class="w"> </span><span class="s2">"additive"</span><span class="p">,</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">  </span><span class="nt">"depth"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"test"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">"write"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w"> </span><span class="nt">"compare"</span><span class="p">:</span><span class="w"> </span><span class="s2">"less"</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="w">  </span><span class="nt">"cull"</span><span class="p">:</span><span class="w"> </span><span class="s2">"back"</span><span class="p">,</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="w">  </span><span class="nt">"samples"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="p">}</span>
+</code></pre></div>
+<h3 id="clear-colour">Clear Colour<a class="headerlink" href="#clear-colour" title="Permanent link">&para;</a></h3>
+<p><code>clear</code> is the RGBA colour the pass starts with each frame. Its four components range from 0 to 1, and the default is opaque black, <code>[0, 0, 0, 1]</code>. Use <code>[0, 0, 0, 0]</code> for a transparent layer that a later pass can composite by alpha. The setting works with every geometry, including fullscreen, and is applied before blending.</p>
+<h3 id="blend">Blend<a class="headerlink" href="#blend" title="Permanent link">&para;</a></h3>
+<p><code>blend</code> decides what happens when a pass draws over a pixel it already drew this frame. Each pass starts every frame with its <code>clear</code> colour, so blending combines shapes with that background and with earlier shapes in the same draw.</p>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Result</th>
+<th>Use it for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>none</code> (default)</td>
+<td>The new colour replaces the old one</td>
+<td>Opaque shapes</td>
+</tr>
+<tr>
+<td><code>alpha</code></td>
+<td>Mixed by the new colour's alpha: <code>new × a + old × (1 − a)</code></td>
+<td>Soft, see-through shapes</td>
+</tr>
+<tr>
+<td><code>premultiplied</code></td>
+<td><code>new + old × (1 − a)</code>, for colours already multiplied by alpha</td>
+<td>Layered 2D drawing</td>
+</tr>
+<tr>
+<td><code>additive</code></td>
+<td>The colours add up</td>
+<td>Glows, sparks and light</td>
+</tr>
+</tbody>
+</table>
+<p><code>blend</code> works with every geometry, fullscreen included. A buffer pass renders into a 32-bit float texture by default; on a GPU that cannot blend 32-bit floats (no WebGPU <code>float32-blendable</code>, no WebGL <code>EXT_float_blend</code>), a blended buffer pass renders into 16-bit floats instead and the preview shows a warning.</p>
+<h3 id="depth">Depth<a class="headerlink" href="#depth" title="Permanent link">&para;</a></h3>
+<p>These controls appear in the <strong>Depth testing</strong> section of the pass config panel.</p>
+<p><code>depth</code> controls how nearer surfaces hide farther ones. It applies to vertices, plane, cube, sphere and model geometry; fullscreen passes have no depth buffer, so <code>depth</code> there is a config error.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Values</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>test</code></td>
+<td><code>true</code>, <code>false</code></td>
+<td><code>true</code>; <code>false</code> for vertices in clip space</td>
+</tr>
+<tr>
+<td><code>write</code></td>
+<td><code>true</code>, <code>false</code></td>
+<td><code>true</code></td>
+</tr>
+<tr>
+<td><code>compare</code></td>
+<td><code>never</code>, <code>less</code>, <code>equal</code>, <code>less-equal</code>, <code>greater</code>, <code>not-equal</code>, <code>greater-equal</code>, <code>always</code></td>
+<td><code>less</code></td>
+</tr>
+</tbody>
+</table>
+<p>With <code>test</code> on, a fragment is drawn only if its depth passes <code>compare</code> against what is already there; <code>less</code> keeps the nearest surface. With <code>write</code> on, drawn fragments record their depth for later ones to test against. Turn <code>write</code> off for transparent or additive effects that should not hide each other. The depth buffer starts each frame at the far value, or at the near value for <code>greater</code> and <code>greater-equal</code> so those comparisons can pass.</p>
+<h3 id="cull">Cull<a class="headerlink" href="#cull" title="Permanent link">&para;</a></h3>
+<p><code>cull</code> skips triangles facing one way: <code>none</code> (default) draws both sides, <code>back</code> skips triangles facing away from the camera, and <code>front</code> skips those facing it. A triangle faces the camera when its corners go counter-clockwise on screen, as on the built-in meshes and glTF models. Culling <code>back</code> saves work on closed shapes; culling <code>front</code> shows the inside of a cube. Lines and points are never culled, and <code>cull</code> on fullscreen geometry is a config error.</p>
+<h3 id="antialiasing">Antialiasing<a class="headerlink" href="#antialiasing" title="Permanent link">&para;</a></h3>
+<p><code>samples</code> turns on multisample antialiasing for rasterised geometry: <code>1</code> (default) is off and <code>4</code> smooths the edges of triangles, lines and points. It applies to vertices, plane, cube, sphere and model geometry; fullscreen passes antialias in <code>mainImage</code> instead, so <code>samples</code> on fullscreen geometry is a config error. In the config panel it is the Antialiasing control under Rendering.</p>
+<p>Later passes, the Variable Inspector, and the Pixel Inspector all see the smoothed image. A buffer with multisampling uses <code>rgba16float</code> precision in every shader language; Shader Studio shows a warning if the buffer would otherwise use <code>rgba32float</code>. Multisampling substantially increases graphics memory use, so enable it only on passes that need smoother edges.</p>
+<h2 id="available-built-ins">Available Built-ins<a class="headerlink" href="#available-built-ins" title="Permanent link">&para;</a></h2>
+<p>All standard shader uniforms are available in the vertex shader:</p>
+<table>
+<thead>
+<tr>
+<th>Built-in</th>
+<th>Type (GLSL)</th>
+<th>Type (Slang)</th>
+<th>Type (WGSL)</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>iResolution</code></td>
+<td><code>vec3</code></td>
+<td><code>float3</code></td>
+<td><code>vec3f</code></td>
+<td>Canvas resolution in pixels</td>
+</tr>
+<tr>
+<td><code>iTime</code></td>
+<td><code>float</code></td>
+<td><code>float</code></td>
+<td><code>f32</code></td>
+<td>Shader time in seconds</td>
+</tr>
+<tr>
+<td><code>iTimeDelta</code></td>
+<td><code>float</code></td>
+<td><code>float</code></td>
+<td><code>f32</code></td>
+<td>Time since last frame</td>
+</tr>
+<tr>
+<td><code>iFrameRate</code></td>
+<td><code>float</code></td>
+<td><code>float</code></td>
+<td><code>f32</code></td>
+<td>Current frame rate</td>
+</tr>
+<tr>
+<td><code>iMouse</code></td>
+<td><code>vec4</code></td>
+<td><code>float4</code></td>
+<td><code>vec4f</code></td>
+<td>Mouse position and button state</td>
+</tr>
+<tr>
+<td><code>iFrame</code></td>
+<td><code>int</code></td>
+<td><code>int</code></td>
+<td><code>i32</code></td>
+<td>Current frame number</td>
+</tr>
+<tr>
+<td><code>iDate</code></td>
+<td><code>vec4</code></td>
+<td><code>float4</code></td>
+<td><code>vec4f</code></td>
+<td>Year, month, day, seconds</td>
+</tr>
+<tr>
+<td><code>iChannelTime</code></td>
+<td><code>float[N]</code></td>
+<td>—</td>
+<td>—</td>
+<td>Playback time per configured channel (use channel metadata in Slang and WGSL)</td>
+</tr>
+<tr>
+<td><code>iSampleRate</code></td>
+<td><code>float</code></td>
+<td><code>float</code></td>
+<td><code>f32</code></td>
+<td>Audio sample rate</td>
+</tr>
+<tr>
+<td><code>iCameraPos</code></td>
+<td><code>vec3</code></td>
+<td><code>float3</code></td>
+<td><code>vec3f</code></td>
+<td>Camera position in world space</td>
+</tr>
+<tr>
+<td><code>iCameraDir</code></td>
+<td><code>vec3</code></td>
+<td><code>float3</code></td>
+<td><code>vec3f</code></td>
+<td>Camera forward direction</td>
+</tr>
+<tr>
+<td><code>iVertexCount</code></td>
+<td><code>int</code></td>
+<td><code>uint</code></td>
+<td><code>u32</code></td>
+<td>Vertices drawn by the pass: the vertices <code>vertexCount</code>, 3 for fullscreen, or the mesh vertex count</td>
+</tr>
+<tr>
+<td><code>iInstanceCount</code></td>
+<td><code>int</code></td>
+<td><code>uint</code></td>
+<td><code>u32</code></td>
+<td>Copies drawn by the pass: the geometry's <code>instanceCount</code> (default 1), or 1 for fullscreen</td>
+</tr>
+<tr>
+<td><code>iInstanceIndex</code></td>
+<td><code>int</code></td>
+<td><code>uint</code></td>
+<td><code>u32</code></td>
+<td>The copy being drawn, from 0 to <code>iInstanceCount - 1</code>; see <a href="#instancing">Instancing</a></td>
+</tr>
+<tr>
+<td><code>iViewMatrix</code></td>
+<td><code>mat4</code></td>
+<td><code>float4x4</code></td>
+<td><code>mat4x4f</code></td>
+<td>The orbit camera's view matrix; see <a href="#camera-matrices">Camera matrices</a></td>
+</tr>
+<tr>
+<td><code>iProjectionMatrix</code></td>
+<td><code>mat4</code></td>
+<td><code>float4x4</code></td>
+<td><code>mat4x4f</code></td>
+<td>The orbit camera's projection at the pass's aspect ratio</td>
+</tr>
+<tr>
+<td><code>iViewProjection</code></td>
+<td><code>mat4</code></td>
+<td><code>float4x4</code></td>
+<td><code>mat4x4f</code></td>
+<td><code>iProjectionMatrix * iViewMatrix</code></td>
+</tr>
+</tbody>
+</table>
+<div class="tabbed-set tabbed-alternate" data-tabs="4:3"><input checked="checked" id="__tabbed_4_1" name="__tabbed_4" type="radio" /><input id="__tabbed_4_2" name="__tabbed_4" type="radio" /><input id="__tabbed_4_3" name="__tabbed_4" type="radio" /><div class="tabbed-labels"><label for="__tabbed_4_1">GLSL</label><label for="__tabbed_4_2">Slang</label><label for="__tabbed_4_3">WGSL</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<p>Configured channels use the existing samplers and metadata accessors, such as <code>iChannel0</code> and <code>iCh0</code>.</p>
+</div>
+<div class="tabbed-block">
+<p>Configured inputs are available as <code>&lt;config key&gt;</code>, for example <code>iChannel0</code> or <code>noise</code>. Slang channel methods are available in all shader stages. In a vertex shader, use explicit-level sampling such as <code>iChannel0.SampleLevel(textureUv, 0.0)</code>; <code>Sample(uv)</code> is fragment-only.</p>
+</div>
+<div class="tabbed-block">
+<p>Configured inputs expose metadata as <code>&lt;config key&gt;</code> and native handles as
+<code>&lt;config key&gt;Texture</code> and <code>&lt;config key&gt;Sampler</code>. In a vertex shader, use an
+explicit level, for example
+<code>sample2DLevel(iChannel0Texture, iChannel0Sampler, textureUv, 0.0)</code>;
+<code>sample2D</code> is fragment-only.</p>
+</div>
+</div>
+</div>
+<h2 id="fragment-shader-access">Fragment Shader Access<a class="headerlink" href="#fragment-shader-access" title="Permanent link">&para;</a></h2>
+<p>Every geometry exposes the post-<code>mainVertex</code>, perspective-correct interpolated UV as <code>iVertexUv</code>. Three-dimensional geometry, including vertices in world space, also exposes its world-space context:</p>
+<p><code>iFrontFacing</code> tells you whether you are looking at the front of a primitive drawn with Vertices or mesh geometry. It is always <code>true</code> for fullscreen passes and fullscreen variable captures.</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="5:3"><input checked="checked" id="__tabbed_5_1" name="__tabbed_5" type="radio" /><input id="__tabbed_5_2" name="__tabbed_5" type="radio" /><input id="__tabbed_5_3" name="__tabbed_5" type="radio" /><div class="tabbed-labels"><label for="__tabbed_5_1">GLSL</label><label for="__tabbed_5_2">Slang</label><label for="__tabbed_5_3">WGSL</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<p>The <code>mainImage</code> signature is unchanged, but the following globals are available:
+- <code>iVertexUv</code> — interpolated <code>uv</code> for every geometry and space
+- <code>iFrontFacing</code> — whether the current primitive is front-facing
+- <code>iWorldPosition</code> — world-space position of the fragment
+- <code>iNormal</code> — world-space interpolated normal
+- <code>iCameraPosition</code> — world-space camera position</p>
+</div>
+<div class="tabbed-block">
+<p>The <code>mainImage</code> signature is unchanged, but the following globals are available:
+- <code>iVertexUv</code> — interpolated <code>uv</code> for every geometry and space
+- <code>iFrontFacing</code> — whether the current primitive is front-facing
+- <code>iWorldPosition</code> — world-space position of the fragment
+- <code>iNormal</code> — world-space interpolated normal
+- <code>iCameraPosition</code> — world-space camera position</p>
+</div>
+<div class="tabbed-block">
+<p>The <code>mainImage</code> signature is unchanged, but the following globals are available:
+- <code>iVertexUv: vec2&lt;f32&gt;</code> — interpolated <code>uv</code> for every geometry and space
+- <code>iFrontFacing: bool</code> — whether the current primitive is front-facing
+- <code>iWorldPosition: vec3&lt;f32&gt;</code> — world-space position of the fragment
+- <code>iNormal: vec3&lt;f32&gt;</code> — world-space interpolated normal
+- <code>iCameraPosition: vec3&lt;f32&gt;</code> — world-space camera position</p>
+</div>
+</div>
+</div>
+<h2 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h2>
+<h3 id="fullscreen-a-procedural-triangle">Fullscreen: a Procedural Triangle<a class="headerlink" href="#fullscreen-a-procedural-triangle" title="Permanent link">&para;</a></h3>
+<p>A fullscreen vertex shader can place its three vertices from <code>vertexIndex</code>, for example from an array of points in clip space:</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="6:3"><input checked="checked" id="__tabbed_6_1" name="__tabbed_6" type="radio" /><input id="__tabbed_6_2" name="__tabbed_6" type="radio" /><input id="__tabbed_6_3" name="__tabbed_6" type="radio" /><div class="tabbed-labels"><label for="__tabbed_6_1">GLSL</label><label for="__tabbed_6_2">WGSL</label><label for="__tabbed_6_3">Slang</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1">// triangle.vert.glsl</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="k">const</span><span class="w"> </span><span class="kt">vec2</span><span class="w"> </span><span class="n">points</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec2</span><span class="p">[</span><span class="mi">3</span><span class="p">](</span><span class="kt">vec2</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="mf">0.5</span><span class="p">),</span><span class="w"> </span><span class="kt">vec2</span><span class="p">(</span><span class="o">-</span><span class="mf">0.5</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mf">0.5</span><span class="p">),</span><span class="w"> </span><span class="kt">vec2</span><span class="p">(</span><span class="mf">0.5</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mf">0.5</span><span class="p">));</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="kt">void</span><span class="w"> </span><span class="n">mainVertex</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">vertexIndex</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">vec3</span><span class="w"> </span><span class="n">position</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">vec3</span><span class="w"> </span><span class="n">normal</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">vec2</span><span class="w"> </span><span class="n">uv</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="w">    </span><span class="n">position</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span><span class="n">points</span><span class="p">[</span><span class="n">vertexIndex</span><span class="p">],</span><span class="w"> </span><span class="mf">0.0</span><span class="p">);</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="p">}</span>
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="c1">// triangle.vert.wgsl</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="k">fn</span><span class="w"> </span><span class="n">mainVertex</span><span class="p">(</span><span class="n">vertexIndex</span><span class="p">:</span><span class="w"> </span><span class="nb">u32</span><span class="p">,</span><span class="w"> </span><span class="nb">position</span><span class="p">:</span><span class="w"> </span><span class="nb">ptr</span><span class="o">&lt;</span><span class="nb">function</span><span class="p">,</span><span class="w"> </span><span class="nb">vec3f</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="n">normal</span><span class="p">:</span><span class="w"> </span><span class="nb">ptr</span><span class="o">&lt;</span><span class="nb">function</span><span class="p">,</span><span class="w"> </span><span class="nb">vec3f</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="n">uv</span><span class="p">:</span><span class="w"> </span><span class="nb">ptr</span><span class="o">&lt;</span><span class="nb">function</span><span class="p">,</span><span class="w"> </span><span class="nb">vec2f</span><span class="o">&gt;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">    </span><span class="kd">var</span><span class="w"> </span><span class="n">points</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">array</span><span class="o">&lt;</span><span class="nb">vec2f</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="o">&gt;</span><span class="p">(</span><span class="nb">vec2f</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="mf">0.5</span><span class="p">),</span><span class="w"> </span><span class="nb">vec2f</span><span class="p">(</span><span class="o">-</span><span class="mf">0.5</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mf">0.5</span><span class="p">),</span><span class="w"> </span><span class="nb">vec2f</span><span class="p">(</span><span class="mf">0.5</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mf">0.5</span><span class="p">));</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="w">    </span><span class="o">*</span><span class="nb">position</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">vec3f</span><span class="p">(</span><span class="n">points</span><span class="p">[</span><span class="n">vertexIndex</span><span class="p">],</span><span class="w"> </span><span class="mf">0.0</span><span class="p">);</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="p">}</span>
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="c1">// triangle.vert.slang</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="k">static</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">float2</span><span class="w"> </span><span class="n">points</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="kt">float2</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="mf">0.5</span><span class="p">),</span><span class="w"> </span><span class="kt">float2</span><span class="p">(</span><span class="o">-</span><span class="mf">0.5</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mf">0.5</span><span class="p">),</span><span class="w"> </span><span class="kt">float2</span><span class="p">(</span><span class="mf">0.5</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mf">0.5</span><span class="p">)</span><span class="w"> </span><span class="p">};</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="kt">void</span><span class="w"> </span><span class="n">mainVertex</span><span class="p">(</span><span class="kt">uint</span><span class="w"> </span><span class="n">vertexIndex</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">float3</span><span class="w"> </span><span class="n">position</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">float3</span><span class="w"> </span><span class="n">normal</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">float2</span><span class="w"> </span><span class="n">uv</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="w">    </span><span class="n">position</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">float3</span><span class="p">(</span><span class="n">points</span><span class="p">[</span><span class="n">vertexIndex</span><span class="p">],</span><span class="w"> </span><span class="mf">0.0</span><span class="p">);</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="p">}</span>
+</code></pre></div>
+</div>
+</div>
+</div>
+<p><code>mainImage</code> shades only the pixels inside the triangle; the rest of the pass is cleared to black.</p>
+<h3 id="vertices-a-clip-space-hexagon">Vertices: a Clip-Space Hexagon<a class="headerlink" href="#vertices-a-clip-space-hexagon" title="Permanent link">&para;</a></h3>
+<p>Six points joined as a triangle strip make a hexagon that stays in the middle of the screen. Set the pass geometry to <code>{ "type": "vertices", "vertexCount": 6, "topology": "triangle-strip", "space": "clip" }</code>:</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="7:3"><input checked="checked" id="__tabbed_7_1" name="__tabbed_7" type="radio" /><input id="__tabbed_7_2" name="__tabbed_7" type="radio" /><input id="__tabbed_7_3" name="__tabbed_7" type="radio" /><div class="tabbed-labels"><label for="__tabbed_7_1">GLSL</label><label for="__tabbed_7_2">Slang</label><label for="__tabbed_7_3">WGSL</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="c1">// hexagon.vert.glsl</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="k">const</span><span class="w"> </span><span class="kt">vec2</span><span class="w"> </span><span class="n">points</span><span class="p">[</span><span class="mi">6</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec2</span><span class="p">[</span><span class="mi">6</span><span class="p">](</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="w">    </span><span class="kt">vec2</span><span class="p">(</span><span class="w"> </span><span class="mf">0.25</span><span class="p">,</span><span class="w"> </span><span class="mf">0.433</span><span class="p">),</span><span class="w"> </span><span class="kt">vec2</span><span class="p">(</span><span class="o">-</span><span class="mf">0.25</span><span class="p">,</span><span class="w"> </span><span class="mf">0.433</span><span class="p">),</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="w">    </span><span class="kt">vec2</span><span class="p">(</span><span class="w"> </span><span class="mf">0.5</span><span class="p">,</span><span class="w">  </span><span class="mf">0.0</span><span class="p">),</span><span class="w">   </span><span class="kt">vec2</span><span class="p">(</span><span class="o">-</span><span class="mf">0.5</span><span class="p">,</span><span class="w">  </span><span class="mf">0.0</span><span class="p">),</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="w">    </span><span class="kt">vec2</span><span class="p">(</span><span class="w"> </span><span class="mf">0.25</span><span class="p">,</span><span class="o">-</span><span class="mf">0.433</span><span class="p">),</span><span class="w"> </span><span class="kt">vec2</span><span class="p">(</span><span class="o">-</span><span class="mf">0.25</span><span class="p">,</span><span class="o">-</span><span class="mf">0.433</span><span class="p">)</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="p">);</span>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="kt">void</span><span class="w"> </span><span class="n">mainVertex</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">vertexIndex</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">vec3</span><span class="w"> </span><span class="n">position</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">vec3</span><span class="w"> </span><span class="n">normal</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">vec2</span><span class="w"> </span><span class="n">uv</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="w">    </span><span class="n">position</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span><span class="n">points</span><span class="p">[</span><span class="n">vertexIndex</span><span class="p">],</span><span class="w"> </span><span class="mf">0.0</span><span class="p">);</span>
+<a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a><span class="p">}</span>
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="c1">// hexagon.vert.slang</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="k">static</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">float2</span><span class="w"> </span><span class="n">points</span><span class="p">[</span><span class="mi">6</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="w">    </span><span class="kt">float2</span><span class="p">(</span><span class="w"> </span><span class="mf">0.25</span><span class="p">,</span><span class="w"> </span><span class="mf">0.433</span><span class="p">),</span><span class="w"> </span><span class="kt">float2</span><span class="p">(</span><span class="o">-</span><span class="mf">0.25</span><span class="p">,</span><span class="w"> </span><span class="mf">0.433</span><span class="p">),</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="w">    </span><span class="kt">float2</span><span class="p">(</span><span class="w"> </span><span class="mf">0.5</span><span class="p">,</span><span class="w">  </span><span class="mf">0.0</span><span class="p">),</span><span class="w">   </span><span class="kt">float2</span><span class="p">(</span><span class="o">-</span><span class="mf">0.5</span><span class="p">,</span><span class="w">  </span><span class="mf">0.0</span><span class="p">),</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="w">    </span><span class="kt">float2</span><span class="p">(</span><span class="w"> </span><span class="mf">0.25</span><span class="p">,</span><span class="o">-</span><span class="mf">0.433</span><span class="p">),</span><span class="w"> </span><span class="kt">float2</span><span class="p">(</span><span class="o">-</span><span class="mf">0.25</span><span class="p">,</span><span class="o">-</span><span class="mf">0.433</span><span class="p">)</span>
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a><span class="p">};</span>
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a>
+<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a><span class="kt">void</span><span class="w"> </span><span class="n">mainVertex</span><span class="p">(</span><span class="kt">uint</span><span class="w"> </span><span class="n">vertexIndex</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">float3</span><span class="w"> </span><span class="n">position</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">float3</span><span class="w"> </span><span class="n">normal</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">float2</span><span class="w"> </span><span class="n">uv</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a><span class="w">    </span><span class="n">position</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">float3</span><span class="p">(</span><span class="n">points</span><span class="p">[</span><span class="n">vertexIndex</span><span class="p">],</span><span class="w"> </span><span class="mf">0.0</span><span class="p">);</span>
+<a id="__codelineno-18-10" name="__codelineno-18-10" href="#__codelineno-18-10"></a><span class="p">}</span>
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="c1">// hexagon.vert.wgsl</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="k">fn</span><span class="w"> </span><span class="n">mainVertex</span><span class="p">(</span><span class="n">vertexIndex</span><span class="p">:</span><span class="w"> </span><span class="nb">u32</span><span class="p">,</span><span class="w"> </span><span class="nb">position</span><span class="p">:</span><span class="w"> </span><span class="nb">ptr</span><span class="o">&lt;</span><span class="nb">function</span><span class="p">,</span><span class="w"> </span><span class="nb">vec3f</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="n">normal</span><span class="p">:</span><span class="w"> </span><span class="nb">ptr</span><span class="o">&lt;</span><span class="nb">function</span><span class="p">,</span><span class="w"> </span><span class="nb">vec3f</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="n">uv</span><span class="p">:</span><span class="w"> </span><span class="nb">ptr</span><span class="o">&lt;</span><span class="nb">function</span><span class="p">,</span><span class="w"> </span><span class="nb">vec2f</span><span class="o">&gt;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="w">    </span><span class="kd">var</span><span class="w"> </span><span class="n">points</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">array</span><span class="o">&lt;</span><span class="nb">vec2f</span><span class="p">,</span><span class="w"> </span><span class="mi">6</span><span class="o">&gt;</span><span class="p">(</span>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="w">        </span><span class="nb">vec2f</span><span class="p">(</span><span class="w"> </span><span class="mf">0.25</span><span class="p">,</span><span class="w"> </span><span class="mf">0.433</span><span class="p">),</span><span class="w"> </span><span class="nb">vec2f</span><span class="p">(</span><span class="o">-</span><span class="mf">0.25</span><span class="p">,</span><span class="w"> </span><span class="mf">0.433</span><span class="p">),</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="w">        </span><span class="nb">vec2f</span><span class="p">(</span><span class="w"> </span><span class="mf">0.5</span><span class="p">,</span><span class="w">  </span><span class="mf">0.0</span><span class="p">),</span><span class="w">   </span><span class="nb">vec2f</span><span class="p">(</span><span class="o">-</span><span class="mf">0.5</span><span class="p">,</span><span class="w">  </span><span class="mf">0.0</span><span class="p">),</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a><span class="w">        </span><span class="nb">vec2f</span><span class="p">(</span><span class="w"> </span><span class="mf">0.25</span><span class="p">,</span><span class="o">-</span><span class="mf">0.433</span><span class="p">),</span><span class="w"> </span><span class="nb">vec2f</span><span class="p">(</span><span class="o">-</span><span class="mf">0.25</span><span class="p">,</span><span class="o">-</span><span class="mf">0.433</span><span class="p">)</span>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="w">    </span><span class="p">);</span>
+<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="w">    </span><span class="o">*</span><span class="nb">position</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">vec3f</span><span class="p">(</span><span class="n">points</span><span class="p">[</span><span class="n">vertexIndex</span><span class="p">],</span><span class="w"> </span><span class="mf">0.0</span><span class="p">);</span>
+<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a><span class="p">}</span>
+</code></pre></div>
+</div>
+</div>
+</div>
+<p>The same shape as a <code>triangle-list</code> needs 12 vertices, three per triangle. Index the same points with <code>vertexIndex / 3 + vertexIndex % 3</code> (<code>3u</code> in Slang and WGSL) to get triangles (0, 1, 2), (1, 2, 3), (2, 3, 4) and (3, 4, 5).</p>
+<p>Use <code>iVertexCount</code> to spread vertices without hard-coding the count, for example a <code>line-strip</code> across the screen:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="n">position</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span><span class="o">-</span><span class="mf">0.75</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mf">1.5</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="kt">float</span><span class="p">(</span><span class="n">vertexIndex</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="kt">float</span><span class="p">(</span><span class="n">iVertexCount</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="mf">0.0</span><span class="p">);</span>
+</code></pre></div>
+<h3 id="vertices-a-3d-shape-in-world-space">Vertices: a 3D Shape in World Space<a class="headerlink" href="#vertices-a-3d-shape-in-world-space" title="Permanent link">&para;</a></h3>
+<p>In world space the same idea builds 3D objects the camera can orbit. This draws a tetrahedron as 12 vertices (four triangles) with <code>{ "type": "vertices", "vertexCount": 12 }</code>, setting each face's normal so <code>mainImage</code> can light it with <code>iNormal</code>:</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="8:3"><input checked="checked" id="__tabbed_8_1" name="__tabbed_8" type="radio" /><input id="__tabbed_8_2" name="__tabbed_8" type="radio" /><input id="__tabbed_8_3" name="__tabbed_8" type="radio" /><div class="tabbed-labels"><label for="__tabbed_8_1">GLSL</label><label for="__tabbed_8_2">Slang</label><label for="__tabbed_8_3">WGSL</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="c1">// tetrahedron.vert.glsl</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="k">const</span><span class="w"> </span><span class="kt">vec3</span><span class="w"> </span><span class="n">corners</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec3</span><span class="p">[</span><span class="mi">4</span><span class="p">](</span><span class="kt">vec3</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">));</span>
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="k">const</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">faces</span><span class="p">[</span><span class="mi">12</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">int</span><span class="p">[</span><span class="mi">12</span><span class="p">](</span><span class="mo">0</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w">  </span><span class="mo">0</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w">  </span><span class="mo">0</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w">  </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">);</span>
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a>
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="kt">void</span><span class="w"> </span><span class="n">mainVertex</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">vertexIndex</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">vec3</span><span class="w"> </span><span class="n">position</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">vec3</span><span class="w"> </span><span class="n">normal</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">vec2</span><span class="w"> </span><span class="n">uv</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a><span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">face</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">vertexIndex</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">3</span><span class="p">;</span>
+<a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="w">    </span><span class="kt">vec3</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">corners</span><span class="p">[</span><span class="n">faces</span><span class="p">[</span><span class="n">face</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">3</span><span class="p">]];</span>
+<a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a><span class="w">    </span><span class="kt">vec3</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">corners</span><span class="p">[</span><span class="n">faces</span><span class="p">[</span><span class="n">face</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">]];</span>
+<a id="__codelineno-21-9" name="__codelineno-21-9" href="#__codelineno-21-9"></a><span class="w">    </span><span class="kt">vec3</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">corners</span><span class="p">[</span><span class="n">faces</span><span class="p">[</span><span class="n">face</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">2</span><span class="p">]];</span>
+<a id="__codelineno-21-10" name="__codelineno-21-10" href="#__codelineno-21-10"></a><span class="w">    </span><span class="n">position</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">corners</span><span class="p">[</span><span class="n">faces</span><span class="p">[</span><span class="n">vertexIndex</span><span class="p">]]</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.5</span><span class="p">;</span>
+<a id="__codelineno-21-11" name="__codelineno-21-11" href="#__codelineno-21-11"></a><span class="w">    </span><span class="n">normal</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">normalize</span><span class="p">(</span><span class="n">cross</span><span class="p">(</span><span class="n">b</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">a</span><span class="p">));</span>
+<a id="__codelineno-21-12" name="__codelineno-21-12" href="#__codelineno-21-12"></a><span class="p">}</span>
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="c1">// tetrahedron.vert.slang</span>
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="k">static</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">float3</span><span class="w"> </span><span class="n">corners</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="kt">float3</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="kt">float3</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="kt">float3</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="kt">float3</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="p">};</span>
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="k">static</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">uint</span><span class="w"> </span><span class="n">faces</span><span class="p">[</span><span class="mi">12</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="mo">0</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w">  </span><span class="mo">0</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w">  </span><span class="mo">0</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w">  </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="p">};</span>
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="kt">void</span><span class="w"> </span><span class="n">mainVertex</span><span class="p">(</span><span class="kt">uint</span><span class="w"> </span><span class="n">vertexIndex</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">float3</span><span class="w"> </span><span class="n">position</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">float3</span><span class="w"> </span><span class="n">normal</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">float2</span><span class="w"> </span><span class="n">uv</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a><span class="w">    </span><span class="kt">uint</span><span class="w"> </span><span class="n">face</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">vertexIndex</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">3</span><span class="n">u</span><span class="p">;</span>
+<a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a><span class="w">    </span><span class="kt">float3</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">corners</span><span class="p">[</span><span class="n">faces</span><span class="p">[</span><span class="n">face</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">3</span><span class="n">u</span><span class="p">]];</span>
+<a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a><span class="w">    </span><span class="kt">float3</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">corners</span><span class="p">[</span><span class="n">faces</span><span class="p">[</span><span class="n">face</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">3</span><span class="n">u</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="n">u</span><span class="p">]];</span>
+<a id="__codelineno-22-9" name="__codelineno-22-9" href="#__codelineno-22-9"></a><span class="w">    </span><span class="kt">float3</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">corners</span><span class="p">[</span><span class="n">faces</span><span class="p">[</span><span class="n">face</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">3</span><span class="n">u</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">2</span><span class="n">u</span><span class="p">]];</span>
+<a id="__codelineno-22-10" name="__codelineno-22-10" href="#__codelineno-22-10"></a><span class="w">    </span><span class="n">position</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">corners</span><span class="p">[</span><span class="n">faces</span><span class="p">[</span><span class="n">vertexIndex</span><span class="p">]]</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.5</span><span class="p">;</span>
+<a id="__codelineno-22-11" name="__codelineno-22-11" href="#__codelineno-22-11"></a><span class="w">    </span><span class="n">normal</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">normalize</span><span class="p">(</span><span class="n">cross</span><span class="p">(</span><span class="n">b</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">a</span><span class="p">));</span>
+<a id="__codelineno-22-12" name="__codelineno-22-12" href="#__codelineno-22-12"></a><span class="p">}</span>
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="c1">// tetrahedron.vert.wgsl</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="k">fn</span><span class="w"> </span><span class="n">mainVertex</span><span class="p">(</span><span class="n">vertexIndex</span><span class="p">:</span><span class="w"> </span><span class="nb">u32</span><span class="p">,</span><span class="w"> </span><span class="nb">position</span><span class="p">:</span><span class="w"> </span><span class="nb">ptr</span><span class="o">&lt;</span><span class="nb">function</span><span class="p">,</span><span class="w"> </span><span class="nb">vec3f</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="n">normal</span><span class="p">:</span><span class="w"> </span><span class="nb">ptr</span><span class="o">&lt;</span><span class="nb">function</span><span class="p">,</span><span class="w"> </span><span class="nb">vec3f</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="n">uv</span><span class="p">:</span><span class="w"> </span><span class="nb">ptr</span><span class="o">&lt;</span><span class="nb">function</span><span class="p">,</span><span class="w"> </span><span class="nb">vec2f</span><span class="o">&gt;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="w">    </span><span class="kd">var</span><span class="w"> </span><span class="n">corners</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">array</span><span class="o">&lt;</span><span class="nb">vec3f</span><span class="p">,</span><span class="w"> </span><span class="mi">4</span><span class="o">&gt;</span><span class="p">(</span><span class="nb">vec3f</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="nb">vec3f</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="nb">vec3f</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="nb">vec3f</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">));</span>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="w">    </span><span class="kd">var</span><span class="w"> </span><span class="n">faces</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">array</span><span class="o">&lt;</span><span class="nb">u32</span><span class="p">,</span><span class="w"> </span><span class="mi">12</span><span class="o">&gt;</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w">  </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w">  </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w">  </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">);</span>
+<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">face</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">vertexIndex</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">3u</span><span class="p">;</span>
+<a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">corners</span><span class="p">[</span><span class="n">faces</span><span class="p">[</span><span class="n">face</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">3u</span><span class="p">]];</span>
+<a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">corners</span><span class="p">[</span><span class="n">faces</span><span class="p">[</span><span class="n">face</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">3u</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1u</span><span class="p">]];</span>
+<a id="__codelineno-23-8" name="__codelineno-23-8" href="#__codelineno-23-8"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">corners</span><span class="p">[</span><span class="n">faces</span><span class="p">[</span><span class="n">face</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">3u</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">2u</span><span class="p">]];</span>
+<a id="__codelineno-23-9" name="__codelineno-23-9" href="#__codelineno-23-9"></a><span class="w">    </span><span class="o">*</span><span class="nb">position</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">corners</span><span class="p">[</span><span class="n">faces</span><span class="p">[</span><span class="n">vertexIndex</span><span class="p">]]</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.5</span><span class="p">;</span>
+<a id="__codelineno-23-10" name="__codelineno-23-10" href="#__codelineno-23-10"></a><span class="w">    </span><span class="o">*</span><span class="n">normal</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">normalize</span><span class="p">(</span><span class="n">cross</span><span class="p">(</span><span class="n">b</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">a</span><span class="p">));</span>
+<a id="__codelineno-23-11" name="__codelineno-23-11" href="#__codelineno-23-11"></a><span class="p">}</span>
+</code></pre></div>
+</div>
+</div>
+</div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="c1">// tetrahedron.glsl</span>
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="kt">void</span><span class="w"> </span><span class="n">mainImage</span><span class="p">(</span><span class="k">out</span><span class="w"> </span><span class="kt">vec4</span><span class="w"> </span><span class="n">fragColor</span><span class="p">,</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="kt">vec2</span><span class="w"> </span><span class="n">fragCoord</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="w">    </span><span class="kt">float</span><span class="w"> </span><span class="n">light</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">max</span><span class="p">(</span><span class="n">dot</span><span class="p">(</span><span class="n">iNormal</span><span class="p">,</span><span class="w"> </span><span class="n">normalize</span><span class="p">(</span><span class="kt">vec3</span><span class="p">(</span><span class="mf">0.5</span><span class="p">,</span><span class="w"> </span><span class="mf">1.0</span><span class="p">,</span><span class="w"> </span><span class="mf">0.3</span><span class="p">))),</span><span class="w"> </span><span class="mf">0.0</span><span class="p">);</span>
+<a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a><span class="w">    </span><span class="n">fragColor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec4</span><span class="p">(</span><span class="kt">vec3</span><span class="p">(</span><span class="mf">0.2</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mf">0.8</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">light</span><span class="p">),</span><span class="w"> </span><span class="mf">1.0</span><span class="p">);</span>
+<a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a><span class="p">}</span>
+</code></pre></div>
+<p>Each face winds counter-clockwise seen from outside, so <code>"cull": "back"</code> skips the faces turned away from the camera.</p>
+<h3 id="additive-particles">Additive Particles<a class="headerlink" href="#additive-particles" title="Permanent link">&para;</a></h3>
+<p>Particles are quads built from 6 vertices each (vertex pulling). With additive blending, overlapping particles add up to a glow; with depth writes off, a particle in front never hides one behind it. This is 1000 particles in world space:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="nt">"Image"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a><span class="w">  </span><span class="nt">"vertex"</span><span class="p">:</span><span class="w"> </span><span class="s2">"particles.vert.glsl"</span><span class="p">,</span>
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a><span class="w">  </span><span class="nt">"geometry"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"vertices"</span><span class="p">,</span><span class="w"> </span><span class="nt">"vertexCount"</span><span class="p">:</span><span class="w"> </span><span class="mi">6000</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a><span class="w">  </span><span class="nt">"blend"</span><span class="p">:</span><span class="w"> </span><span class="s2">"additive"</span><span class="p">,</span>
+<a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a><span class="w">  </span><span class="nt">"depth"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"write"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-25-6" name="__codelineno-25-6" href="#__codelineno-25-6"></a><span class="p">}</span>
+</code></pre></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="9:3"><input checked="checked" id="__tabbed_9_1" name="__tabbed_9" type="radio" /><input id="__tabbed_9_2" name="__tabbed_9" type="radio" /><input id="__tabbed_9_3" name="__tabbed_9" type="radio" /><div class="tabbed-labels"><label for="__tabbed_9_1">GLSL</label><label for="__tabbed_9_2">Slang</label><label for="__tabbed_9_3">WGSL</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="c1">// particles.vert.glsl</span>
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a><span class="k">const</span><span class="w"> </span><span class="kt">vec2</span><span class="w"> </span><span class="n">corners</span><span class="p">[</span><span class="mi">6</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec2</span><span class="p">[</span><span class="mi">6</span><span class="p">](</span><span class="kt">vec2</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="kt">vec2</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="kt">vec2</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="kt">vec2</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="kt">vec2</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="kt">vec2</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">));</span>
+<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a>
+<a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a><span class="kt">void</span><span class="w"> </span><span class="n">mainVertex</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">vertexIndex</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">vec3</span><span class="w"> </span><span class="n">position</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">vec3</span><span class="w"> </span><span class="n">normal</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">vec2</span><span class="w"> </span><span class="n">uv</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-26-5" name="__codelineno-26-5" href="#__codelineno-26-5"></a><span class="w">    </span><span class="kt">float</span><span class="w"> </span><span class="n">id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">float</span><span class="p">(</span><span class="n">vertexIndex</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">6</span><span class="p">);</span>
+<a id="__codelineno-26-6" name="__codelineno-26-6" href="#__codelineno-26-6"></a><span class="w">    </span><span class="kt">vec2</span><span class="w"> </span><span class="n">corner</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">corners</span><span class="p">[</span><span class="n">vertexIndex</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="mi">6</span><span class="p">];</span>
+<a id="__codelineno-26-7" name="__codelineno-26-7" href="#__codelineno-26-7"></a><span class="w">    </span><span class="kt">vec3</span><span class="w"> </span><span class="n">centre</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span><span class="n">sin</span><span class="p">(</span><span class="n">id</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">1.7</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">iTime</span><span class="p">),</span><span class="w"> </span><span class="n">cos</span><span class="p">(</span><span class="n">id</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">2.3</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">iTime</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.5</span><span class="p">),</span><span class="w"> </span><span class="n">sin</span><span class="p">(</span><span class="n">id</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.9</span><span class="p">))</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.8</span><span class="p">;</span>
+<a id="__codelineno-26-8" name="__codelineno-26-8" href="#__codelineno-26-8"></a><span class="w">    </span><span class="n">position</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">centre</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span><span class="n">corner</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.03</span><span class="p">,</span><span class="w"> </span><span class="mf">0.0</span><span class="p">);</span>
+<a id="__codelineno-26-9" name="__codelineno-26-9" href="#__codelineno-26-9"></a><span class="w">    </span><span class="n">uv</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">corner</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.5</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mf">0.5</span><span class="p">;</span>
+<a id="__codelineno-26-10" name="__codelineno-26-10" href="#__codelineno-26-10"></a><span class="p">}</span>
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="c1">// particles.vert.slang</span>
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a><span class="k">static</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">float2</span><span class="w"> </span><span class="n">corners</span><span class="p">[</span><span class="mi">6</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="kt">float2</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="kt">float2</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="kt">float2</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="kt">float2</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="kt">float2</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="kt">float2</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="p">};</span>
+<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a>
+<a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a><span class="kt">void</span><span class="w"> </span><span class="n">mainVertex</span><span class="p">(</span><span class="kt">uint</span><span class="w"> </span><span class="n">vertexIndex</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">float3</span><span class="w"> </span><span class="n">position</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">float3</span><span class="w"> </span><span class="n">normal</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">float2</span><span class="w"> </span><span class="n">uv</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-27-5" name="__codelineno-27-5" href="#__codelineno-27-5"></a><span class="w">    </span><span class="kt">float</span><span class="w"> </span><span class="n">id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">float</span><span class="p">(</span><span class="n">vertexIndex</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">6</span><span class="n">u</span><span class="p">);</span>
+<a id="__codelineno-27-6" name="__codelineno-27-6" href="#__codelineno-27-6"></a><span class="w">    </span><span class="kt">float2</span><span class="w"> </span><span class="n">corner</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">corners</span><span class="p">[</span><span class="n">vertexIndex</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="mi">6</span><span class="n">u</span><span class="p">];</span>
+<a id="__codelineno-27-7" name="__codelineno-27-7" href="#__codelineno-27-7"></a><span class="w">    </span><span class="kt">float3</span><span class="w"> </span><span class="n">centre</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">float3</span><span class="p">(</span><span class="n">sin</span><span class="p">(</span><span class="n">id</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">1.7</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">iTime</span><span class="p">),</span><span class="w"> </span><span class="n">cos</span><span class="p">(</span><span class="n">id</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">2.3</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">iTime</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.5</span><span class="p">),</span><span class="w"> </span><span class="n">sin</span><span class="p">(</span><span class="n">id</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.9</span><span class="p">))</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.8</span><span class="p">;</span>
+<a id="__codelineno-27-8" name="__codelineno-27-8" href="#__codelineno-27-8"></a><span class="w">    </span><span class="n">position</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">centre</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="kt">float3</span><span class="p">(</span><span class="n">corner</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.03</span><span class="p">,</span><span class="w"> </span><span class="mf">0.0</span><span class="p">);</span>
+<a id="__codelineno-27-9" name="__codelineno-27-9" href="#__codelineno-27-9"></a><span class="w">    </span><span class="n">uv</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">corner</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.5</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mf">0.5</span><span class="p">;</span>
+<a id="__codelineno-27-10" name="__codelineno-27-10" href="#__codelineno-27-10"></a><span class="p">}</span>
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="c1">// particles.vert.wgsl</span>
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a><span class="k">fn</span><span class="w"> </span><span class="n">mainVertex</span><span class="p">(</span><span class="n">vertexIndex</span><span class="p">:</span><span class="w"> </span><span class="nb">u32</span><span class="p">,</span><span class="w"> </span><span class="nb">position</span><span class="p">:</span><span class="w"> </span><span class="nb">ptr</span><span class="o">&lt;</span><span class="nb">function</span><span class="p">,</span><span class="w"> </span><span class="nb">vec3f</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="n">normal</span><span class="p">:</span><span class="w"> </span><span class="nb">ptr</span><span class="o">&lt;</span><span class="nb">function</span><span class="p">,</span><span class="w"> </span><span class="nb">vec3f</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="n">uv</span><span class="p">:</span><span class="w"> </span><span class="nb">ptr</span><span class="o">&lt;</span><span class="nb">function</span><span class="p">,</span><span class="w"> </span><span class="nb">vec2f</span><span class="o">&gt;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a><span class="w">    </span><span class="kd">var</span><span class="w"> </span><span class="n">corners</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">array</span><span class="o">&lt;</span><span class="nb">vec2f</span><span class="p">,</span><span class="w"> </span><span class="mi">6</span><span class="o">&gt;</span><span class="p">(</span><span class="nb">vec2f</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="nb">vec2f</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="nb">vec2f</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="nb">vec2f</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="nb">vec2f</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="nb">vec2f</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">));</span>
+<a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">f32</span><span class="p">(</span><span class="n">vertexIndex</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">6u</span><span class="p">);</span>
+<a id="__codelineno-28-5" name="__codelineno-28-5" href="#__codelineno-28-5"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">corner</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">corners</span><span class="p">[</span><span class="n">vertexIndex</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="mi">6u</span><span class="p">];</span>
+<a id="__codelineno-28-6" name="__codelineno-28-6" href="#__codelineno-28-6"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">centre</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">vec3f</span><span class="p">(</span><span class="n">sin</span><span class="p">(</span><span class="n">id</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">1.7</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">iTime</span><span class="p">),</span><span class="w"> </span><span class="n">cos</span><span class="p">(</span><span class="n">id</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">2.3</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">iTime</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.5</span><span class="p">),</span><span class="w"> </span><span class="n">sin</span><span class="p">(</span><span class="n">id</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.9</span><span class="p">))</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.8</span><span class="p">;</span>
+<a id="__codelineno-28-7" name="__codelineno-28-7" href="#__codelineno-28-7"></a><span class="w">    </span><span class="o">*</span><span class="nb">position</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">centre</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nb">vec3f</span><span class="p">(</span><span class="n">corner</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.03</span><span class="p">,</span><span class="w"> </span><span class="mf">0.0</span><span class="p">);</span>
+<a id="__codelineno-28-8" name="__codelineno-28-8" href="#__codelineno-28-8"></a><span class="w">    </span><span class="o">*</span><span class="n">uv</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">corner</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.5</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mf">0.5</span><span class="p">;</span>
+<a id="__codelineno-28-9" name="__codelineno-28-9" href="#__codelineno-28-9"></a><span class="p">}</span>
+</code></pre></div>
+</div>
+</div>
+</div>
+<p>In world space <code>mainImage</code> receives <code>uv * iResolution</code>, so divide by <code>iResolution.xy</code> to get the particle's own 0–1 coordinate back and fade its edges:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a><span class="c1">// particles.glsl</span>
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a><span class="kt">void</span><span class="w"> </span><span class="n">mainImage</span><span class="p">(</span><span class="k">out</span><span class="w"> </span><span class="kt">vec4</span><span class="w"> </span><span class="n">fragColor</span><span class="p">,</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="kt">vec2</span><span class="w"> </span><span class="n">fragCoord</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a><span class="w">    </span><span class="kt">vec2</span><span class="w"> </span><span class="n">uv</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fragCoord</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">iResolution</span><span class="p">.</span><span class="n">xy</span><span class="p">;</span>
+<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a><span class="w">    </span><span class="kt">float</span><span class="w"> </span><span class="n">glow</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">smoothstep</span><span class="p">(</span><span class="mf">0.5</span><span class="p">,</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="n">length</span><span class="p">(</span><span class="n">uv</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mf">0.5</span><span class="p">));</span>
+<a id="__codelineno-29-5" name="__codelineno-29-5" href="#__codelineno-29-5"></a><span class="w">    </span><span class="n">fragColor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec4</span><span class="p">(</span><span class="kt">vec3</span><span class="p">(</span><span class="mf">1.0</span><span class="p">,</span><span class="w"> </span><span class="mf">0.6</span><span class="p">,</span><span class="w"> </span><span class="mf">0.2</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">glow</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.5</span><span class="p">,</span><span class="w"> </span><span class="mf">1.0</span><span class="p">);</span>
+<a id="__codelineno-29-6" name="__codelineno-29-6" href="#__codelineno-29-6"></a><span class="p">}</span>
+</code></pre></div>
+<h3 id="displacing-a-plane">Displacing a Plane<a class="headerlink" href="#displacing-a-plane" title="Permanent link">&para;</a></h3>
+<div class="tabbed-set tabbed-alternate" data-tabs="10:3"><input checked="checked" id="__tabbed_10_1" name="__tabbed_10" type="radio" /><input id="__tabbed_10_2" name="__tabbed_10" type="radio" /><input id="__tabbed_10_3" name="__tabbed_10" type="radio" /><div class="tabbed-labels"><label for="__tabbed_10_1">GLSL</label><label for="__tabbed_10_2">Slang</label><label for="__tabbed_10_3">WGSL</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a><span class="c1">// noise.vert.glsl</span>
+<a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a><span class="kt">void</span><span class="w"> </span><span class="n">mainVertex</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">vertexIndex</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">vec3</span><span class="w"> </span><span class="n">position</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">vec3</span><span class="w"> </span><span class="n">normal</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">vec2</span><span class="w"> </span><span class="n">uv</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a><span class="w">    </span><span class="kt">float</span><span class="w"> </span><span class="n">wave</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">sin</span><span class="p">(</span><span class="n">position</span><span class="p">.</span><span class="n">x</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">5.0</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">iTime</span><span class="p">)</span><span class="w"> </span><span class="o">*</span>
+<a id="__codelineno-30-4" name="__codelineno-30-4" href="#__codelineno-30-4"></a><span class="w">                 </span><span class="n">cos</span><span class="p">(</span><span class="n">position</span><span class="p">.</span><span class="n">z</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">5.0</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">iTime</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.2</span><span class="p">;</span>
+<a id="__codelineno-30-5" name="__codelineno-30-5" href="#__codelineno-30-5"></a><span class="w">    </span><span class="n">position</span><span class="p">.</span><span class="n">y</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">wave</span><span class="p">;</span>
+<a id="__codelineno-30-6" name="__codelineno-30-6" href="#__codelineno-30-6"></a><span class="p">}</span>
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a><span class="c1">// noise.vert.slang</span>
+<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a><span class="kt">void</span><span class="w"> </span><span class="n">mainVertex</span><span class="p">(</span><span class="kt">uint</span><span class="w"> </span><span class="n">vertexIndex</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">float3</span><span class="w"> </span><span class="n">position</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">float3</span><span class="w"> </span><span class="n">normal</span><span class="p">,</span><span class="w"> </span><span class="k">inout</span><span class="w"> </span><span class="kt">float2</span><span class="w"> </span><span class="n">uv</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a><span class="w">    </span><span class="kt">float</span><span class="w"> </span><span class="n">wave</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">sin</span><span class="p">(</span><span class="n">position</span><span class="p">.</span><span class="n">x</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">5.0</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">iTime</span><span class="p">)</span><span class="w"> </span><span class="o">*</span>
+<a id="__codelineno-31-4" name="__codelineno-31-4" href="#__codelineno-31-4"></a><span class="w">                 </span><span class="n">cos</span><span class="p">(</span><span class="n">position</span><span class="p">.</span><span class="n">z</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">5.0</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">iTime</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.2</span><span class="p">;</span>
+<a id="__codelineno-31-5" name="__codelineno-31-5" href="#__codelineno-31-5"></a><span class="w">    </span><span class="n">position</span><span class="p">.</span><span class="n">y</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">wave</span><span class="p">;</span>
+<a id="__codelineno-31-6" name="__codelineno-31-6" href="#__codelineno-31-6"></a><span class="p">}</span>
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a><span class="c1">// noise.vert.wgsl</span>
+<a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a><span class="k">fn</span><span class="w"> </span><span class="n">mainVertex</span><span class="p">(</span><span class="n">vertexIndex</span><span class="p">:</span><span class="w"> </span><span class="nb">u32</span><span class="p">,</span><span class="w"> </span><span class="nb">position</span><span class="p">:</span><span class="w"> </span><span class="nb">ptr</span><span class="o">&lt;</span><span class="nb">function</span><span class="p">,</span><span class="w"> </span><span class="nb">vec3f</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="n">normal</span><span class="p">:</span><span class="w"> </span><span class="nb">ptr</span><span class="o">&lt;</span><span class="nb">function</span><span class="p">,</span><span class="w"> </span><span class="nb">vec3f</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="n">uv</span><span class="p">:</span><span class="w"> </span><span class="nb">ptr</span><span class="o">&lt;</span><span class="nb">function</span><span class="p">,</span><span class="w"> </span><span class="nb">vec2f</span><span class="o">&gt;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-32-3" name="__codelineno-32-3" href="#__codelineno-32-3"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">wave</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">sin</span><span class="p">((</span><span class="o">*</span><span class="nb">position</span><span class="p">).</span><span class="n">x</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">5.0</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">iTime</span><span class="p">)</span><span class="w"> </span><span class="o">*</span>
+<a id="__codelineno-32-4" name="__codelineno-32-4" href="#__codelineno-32-4"></a><span class="w">               </span><span class="n">cos</span><span class="p">((</span><span class="o">*</span><span class="nb">position</span><span class="p">).</span><span class="n">z</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">5.0</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">iTime</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.2</span><span class="p">;</span>
+<a id="__codelineno-32-5" name="__codelineno-32-5" href="#__codelineno-32-5"></a><span class="w">    </span><span class="p">(</span><span class="o">*</span><span class="nb">position</span><span class="p">).</span><span class="n">y</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">wave</span><span class="p">;</span>
+<a id="__codelineno-32-6" name="__codelineno-32-6" href="#__codelineno-32-6"></a><span class="p">}</span>
+</code></pre></div>
+</div>
+</div>
+</div>
+<p>This displaces a plane's Y-coordinate with a time-varying wave pattern. The fragment shader receives the displaced geometry and shades it with interpolated normals.</p>
+<h2 id="next">Next<a class="headerlink" href="#next" title="Permanent link">&para;</a></h2>
+<p><a href="../channels/">Channels</a> — bind textures, video, audio, cubemaps, buffers, and keyboard input</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "navigation.instant", "toc.follow", "search.highlight", "search.suggest", "content.code.copy", "content.code.annotate"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../assets/javascripts/external-links.js"></script>
+      
+    
+  </body>
+</html>
