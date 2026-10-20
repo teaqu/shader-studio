@@ -226,6 +226,50 @@ describe("PassRenderer", () => {
     expect(mockGl.scissor).toHaveBeenLastCalledWith(0, 0, 800, 600);
   });
 
+  it("uploads typed script uniforms with the live GL program and preserves float fallback", () => {
+    const typed = { getUniformLocation: vi.fn((): WebGLUniformLocation | null => ({})), uniform1i: vi.fn(), uniform1ui: vi.fn(), uniform1iv: vi.fn(), uniform1uiv: vi.fn(), uniform1fv: vi.fn() };
+    Object.assign(mockGl, typed);
+    const shader = { mProgram: {} } as PiShader;
+    passRenderer.renderPass({ name: "Image", geometry: "fullscreen", inputs: {}, shaderSrc: "" }, null, shader, defaultUniforms, [
+      { name: "signed", type: "int", value: -9 },
+      { name: "unsigned", type: "uint", value: 4294967295 },
+      { name: "array", type: "uint[2]", value: [4, 5] },
+      { name: "gain", type: "float", value: 0.5 },
+    ]);
+    expect(typed.uniform1i).toHaveBeenCalledWith(expect.anything(), -9);
+    expect(typed.uniform1ui).toHaveBeenCalledWith(expect.anything(), 4294967295);
+    expect(typed.getUniformLocation).toHaveBeenCalledWith(shader.mProgram, "array[0]");
+    expect(typed.uniform1uiv).toHaveBeenCalledWith(expect.anything(), new Uint32Array([4, 5]));
+    expect(mockRenderer.SetShaderConstant1F).toHaveBeenCalledWith("gain", 0.5);
+    typed.getUniformLocation.mockReturnValueOnce(null);
+    passRenderer.renderPass({ name: "Image", geometry: "fullscreen", inputs: {}, shaderSrc: "" }, null, shader, defaultUniforms, [{ name: "missing", type: "uint", value: 1 }]);
+    expect(typed.uniform1ui).toHaveBeenCalledTimes(1);
+    passRenderer.renderPass({ name: "Image", geometry: "fullscreen", inputs: {}, shaderSrc: "" }, null, createMockShader(), defaultUniforms, [{ name: "gain", type: "float", value: 0.75 }]);
+    expect(mockRenderer.SetShaderConstant1F).toHaveBeenCalledWith("gain", 0.75);
+  });
+
+  it.each(["no program", "no context"])("retains scalar/vector fallback uploads with %s", mode => {
+    const renderer = mode === "no program" ? passRenderer : new PassRenderer(
+      { getContext: () => null } as unknown as HTMLCanvasElement,
+      mockResourceManager as unknown as ConstructorParameters<typeof PassRenderer>[1],
+      mockBufferManager as unknown as ConstructorParameters<typeof PassRenderer>[2],
+      mockRenderer,
+      mockKeyboardManager as unknown as ConstructorParameters<typeof PassRenderer>[4],
+    );
+    renderer.renderPass({ name: "Image", geometry: "fullscreen", inputs: {}, shaderSrc: "" }, null, createMockShader(), defaultUniforms, [
+      { name: "f", type: "float", value: 2 }, { name: "v2", type: "vec2", value: [1, 2] },
+      { name: "v3", type: "vec3", value: [1, 2, 3] }, { name: "v4", type: "vec4", value: [1, 2, 3, 4] },
+      { name: "b", type: "bool", value: true }, { name: "off", type: "bool", value: false },
+    ]);
+    expect(mockRenderer.SetShaderConstant1F).toHaveBeenCalledWith("f", 2);
+    expect(mockRenderer.SetShaderConstant2F).toHaveBeenCalledWith("v2", [1, 2]);
+    expect(mockRenderer.SetShaderConstant3F).toHaveBeenCalledWith("v3", 1, 2, 3);
+    expect(mockRenderer.SetShaderConstant4FV).toHaveBeenCalledWith("v4", [1, 2, 3, 4]);
+    expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("b", 1);
+    expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("off", 0);
+    renderer.dispose();
+  });
+
   describe("renderPass", () => {
     it("draws all six cubemap faces with distinct face uniforms", () => {
       const target = { mTex0: createMockTexture(32, 32) } as PiRenderTarget;

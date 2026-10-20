@@ -111,6 +111,63 @@ describe("WebGPURenderingEngine", () => {
     pixelRegionCapturerMock.constructor.mockClear();
   });
 
+  it("gates stream delivery on shader installation and consumes only submitted live frames", () => {
+    const { engine } = pausableEngine();
+    const device = lifecycleInternals(engine).device!;
+    const writeBuffer = vi.mocked(device.queue.writeBuffer);
+    const send = vi.fn();
+    const info = [{ name: "events", maxPerFrame: 4, maxQueued: 16 }];
+    const buffer = { destroy: vi.fn() } as unknown as GPUBuffer;
+    engineOwners(engine).storage.storageBuffers.set("events", buffer);
+    const host = (engineOwners(engine).session as unknown as { host: { onShaderInstalled(path: string): void; scriptStreamInfo(): typeof info } }).host;
+    engine.configureScriptStreams(info, 7, send);
+    expect(host.scriptStreamInfo()).toEqual(info);
+    engine.refreshScriptStreamStatus();
+    expect(send).not.toHaveBeenCalled();
+    engine.renderForCapture();
+    expect(send).not.toHaveBeenCalled();
+    host.onShaderInstalled("stream.slang");
+    engine.refreshScriptStreamStatus();
+    const statusRequest = send.mock.calls.at(-1)![0];
+    expect(statusRequest.status).toBe(true);
+    engine.receiveScriptStreamStatus({ ...statusRequest, streams: [{ name: "events", queued: 6 }] });
+    expect(engine.getScriptStreamStatus()[0].queued).toBe(6);
+    engine.render(1000);
+    const request = send.mock.calls.at(-1)![0];
+    expect(request.status).toBeUndefined();
+    expect(engine.receiveScriptStreamFrame({ session: 7, sequence: 1, streams: [{ name: "events", data: [9, 10], queued: 6 }] }, request.request)).toBe(true);
+    writeBuffer.mockClear();
+    engine.renderForCapture();
+    const streamWrites = () => writeBuffer.mock.calls.filter(call => call[0] === buffer).map(call => Array.from(new Uint32Array(call[2] instanceof ArrayBuffer ? call[2] : (call[2] as Uint32Array).buffer)));
+    expect(streamWrites()).toEqual([[0], [0]]);
+    expect(engine.getScriptStreamStatus()[0].lastFrame).toBe(0);
+    writeBuffer.mockClear();
+    engine.render(1016);
+    expect(streamWrites()).toEqual([[0], [2, 9, 10]]);
+    expect(engine.getScriptStreamStatus()[0]).toMatchObject({ queued: 4, lastFrame: 2 });
+    expect(send.mock.calls.at(-1)![0].acknowledgedSequence).toBe(1);
+    engine.resetTime();
+    expect(engine.getScriptStreamStatus()[0]).toMatchObject({ queued: 0, lastFrame: 0 });
+    engine.configureScriptStreams([{ ...info[0], maxPerFrame: 8 }], 8, send);
+    expect(send.mock.calls.some(([request]) => request.release && request.session === 7)).toBe(true);
+    writeBuffer.mockClear();
+    engine.renderForCapture();
+    expect(streamWrites()).toEqual([[0]]);
+    host.onShaderInstalled("stream.slang");
+    engineOwners(engine).storage.storageBuffers.delete("events");
+    engine.renderForCapture();
+    engine.configureScriptStreams([{ ...info[0], name: "other" }], 9, send);
+    engine.renderForCapture();
+    lifecycleInternals(engine).device = null;
+    Object.assign((engine as unknown as { mouseManager: object }).mouseManager, { dispose: vi.fn() });
+    for (const pipeline of engineOwners(engine).session.passPipelines.values()) {
+      Object.assign(pipeline, { dispose: vi.fn() });
+    }
+    engine.dispose();
+    expect(send.mock.calls.at(-1)![0]).toMatchObject({ release: true, session: 9 });
+    expect(engine.getScriptStreamStatus()).toEqual([]);
+  });
+
   it('routes direct input, traces it, and reports WebGL-only feedback readback', () => {
     const engine = new WebGPURenderingEngine(assets);
     let mouseListener: ((type: 'pointer_move' | 'pointer_down' | 'pointer_up', x: number | undefined, y: number | undefined, source: 'physical' | 'injected') => void) | undefined;
@@ -1262,6 +1319,22 @@ describe("WebGPURenderingEngine", () => {
     (engine as any).compiler = compiler;
     engine.dispose();
     expect(compiler.dispose).toHaveBeenCalled();
+  });
+
+  it("compiles for session hosts that do not provide script stream metadata", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    stubEngineInternals(engine);
+    const host = (engineOwners(engine).session as unknown as { host: { scriptStreamInfo?: () => unknown } }).host;
+    const original = host.scriptStreamInfo;
+    try {
+      host.scriptStreamInfo = undefined;
+      const result = await engine.compileShaderPipeline("image without script streams", { version: "1", passes: { Image: { inputs: {} } } }, "/no-streams.slang", {});
+      expect(result?.success).toBe(true);
+      expect(engine.getPasses().map(pass => pass.name)).toEqual(["Image"]);
+    } finally {
+      host.scriptStreamInfo = original;
+      engine.dispose();
+    }
   });
 
   it("remembers the config from the last successful compile", async () => {

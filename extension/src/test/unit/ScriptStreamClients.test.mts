@@ -51,3 +51,40 @@ describe('stream queue monitoring',()=>{
     expect(provider.requestScriptStreamFrame).not.toHaveBeenCalled();expect(respond).toHaveBeenCalledWith({type:'scriptStreamStatus',payload:{session:1,request:1,consumer:'a',streams:[{name:'net',queued:5}]}});
   });
 });
+
+describe('stream transport validation boundaries', () => {
+  it.each([
+    {session:'1'}, {session:0}, {session:1.5}, {session:Infinity},
+    {request:'1'}, {request:0}, {request:1.5}, {request:Infinity},
+    {acknowledgedSequence:'1'}, {acknowledgedSequence:0}, {acknowledgedSequence:1.5}, {acknowledgedSequence:Infinity},
+    {consumer:1}, {consumer:''}, {consumer:'a'.repeat(129)},
+  ])('rejects invalid protocol field %#', override => {
+    const provider = {requestScriptStreamFrame:vi.fn(),releaseScriptStreamConsumer:vi.fn()};
+    const clients = new ScriptStreamClients(provider);
+    clients.handle({session:1,request:1,consumer:'a',...override},vi.fn(),{});
+    expect(provider.requestScriptStreamFrame).not.toHaveBeenCalled();
+  });
+  it('accepts a maximum-length identity and replaces the same owner consumer in the same session', () => {
+    const provider={requestScriptStreamFrame:vi.fn(()=>({session:1,sequence:1,streams:[]})),releaseScriptStreamConsumer:vi.fn()};
+    const clients=new ScriptStreamClients(provider);const owner={};const respond=vi.fn();
+    clients.handle({session:1,request:1,consumer:'a'.repeat(128)},respond,owner);
+    clients.handle({session:1,request:2,consumer:'a'.repeat(128)},respond,owner);
+    expect(provider.releaseScriptStreamConsumer).not.toHaveBeenCalled();
+    clients.handle({session:1,request:3,consumer:'b'},respond,owner);
+    expect(provider.releaseScriptStreamConsumer).toHaveBeenCalledExactlyOnceWith(1,'a'.repeat(128));
+    clients.handle({session:2,request:4,consumer:'b',release:true},respond,owner);
+    clients.handle({session:1,request:4,consumer:'a',release:true},respond,owner);
+    expect(provider.releaseScriptStreamConsumer).toHaveBeenCalledTimes(1);
+    clients.release(owner);
+    expect(provider.releaseScriptStreamConsumer).toHaveBeenLastCalledWith(1,'b');
+  });
+  it('silently ignores status requests when the provider has no queue or stale session', () => {
+    const provider={requestScriptStreamFrame:vi.fn(()=>null),releaseScriptStreamConsumer:vi.fn()};
+    const clients=new ScriptStreamClients(provider);const respond=vi.fn();
+    clients.handle({session:1,request:1,consumer:'a',status:true},respond,{});
+    const queues={...provider,getScriptStreamQueues:vi.fn(()=>null)};
+    new ScriptStreamClients(queues).handle({session:1,request:1,consumer:'a',status:true},respond,{});
+    expect(respond).not.toHaveBeenCalled();
+    expect(provider.requestScriptStreamFrame).not.toHaveBeenCalled();
+  });
+});

@@ -60,7 +60,9 @@ vi.mock('../../src/app/mcp/LocalMcpEndpoint', () => ({ LocalMcpEndpoint: class {
 } }));
 vi.mock('../../src/app/mcp/VscodeMcpApplication', () => ({ VscodeMcpApplication: class {} }));
 vi.mock('../../src/app/PanelManager', () => ({ PanelManager: class {} }));
-vi.mock('../../src/app/ShaderProvider', () => ({ ShaderProvider: class { dispose = vi.fn(); } }));
+vi.mock('../../src/app/ShaderProvider', () => ({ ShaderProvider: class {
+  dispose = vi.fn();
+} }));
 vi.mock('../../src/app/WebServer', () => ({ WebServer: class {
   setMessenger() {} setMcpHandler = state.mount; stopWebServer() {}
 } }));

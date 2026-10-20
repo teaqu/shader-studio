@@ -32,3 +32,13 @@ describe('Script outputs UI', () => {
     expect(view.queryByRole('region', { name: 'Script streams' })).toBeNull();
   });
 });
+
+it('formats float arrays and handles not-yet-received integer and array values', async () => {
+  const view = render(ScriptInfo, { filename: 'demo.js', uniforms: [{name: 'weights', type: 'float[2]'}, {name: 'missing', type: 'int'}, {name: 'empty', type: 'uint[2]'}], uniformValues: {weights: [0.25, 0.5]} });
+  expect(view.getByText('—')).toBeTruthy();
+  for (const button of view.getAllByRole('button', {name: /2 elements/})) {
+    await fireEvent.click(button);
+  }
+  expect(view.getByText('[0] 0.250')).toBeTruthy();
+  expect(view.getByText('[1] 0.500')).toBeTruthy();
+});

@@ -135,3 +135,99 @@ describe('script backend capabilities', () => {
     }
   });
 });
+
+describe('stream evaluator edge cases', () => {
+  it.each([
+    ['streams(){return null;}', 'named object'],
+    ['streams(){return 1;}', 'named object'],
+    ['streams(){return [];}', 'named object'],
+    ['streams(ctx){return Object.fromEntries(Array.from({length:9},(_,i)=>["s"+i,ctx.stream()]));}', 'at most 8'],
+    ['streams(ctx){ctx.onDispose(1);return {};}', 'onDispose expects'],
+    ['uniforms(){return null;}', 'synchronously'],
+    ['uniforms(){return 1;}', 'synchronously'],
+    ['uniforms(){return [];}', 'synchronously'],
+    ['uniforms(){return Promise.resolve({});}', 'synchronously'],
+    ['uniforms(){throw "plain failure";}', 'plain failure'],
+    ['uniforms(){throw {message:42};}', '42'],
+  ])('rejects malformed exports %s', (code, error) => {
+    expect(load(code).result.error).toContain(error);
+  });
+  it.each(['gl_custom', 'a__b', 'iChannel19', 'iCh9', '_stExtra', '_dbgExtra', '_scriptStreamExtra', '_ScriptStreamExtra', 'bad-name'])('rejects reserved name %s', name => {
+    expect(load(`uniforms(){return {${JSON.stringify(name)}:1};}`).result.error).toContain('invalid');
+  });
+  it('disposes unexported streams and rejects creation from a retained disposed context', () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      const { evaluator, result } = load(`streams(ctx){const unused=ctx.stream();console.log({ctx,unused,setTimeout,setInterval});return {net:ctx.stream()};}`);
+      expect(result.error).toBeUndefined();
+      const retained = log.mock.calls[0][0] as {
+        ctx: {stream: () => unknown; onDispose: (cleanup: () => void) => void};
+        unused: {push: (words: number[]) => boolean};
+        setTimeout: (callback: () => void) => unknown;
+        setInterval: (callback: () => void) => unknown;
+      };
+      expect(retained.unused.push([1])).toBe(false);
+      evaluator.dispose();
+      expect(() => retained.ctx.stream()).toThrow('disposed');
+      const cleanup = vi.fn();
+      retained.ctx.onDispose(cleanup);
+      expect(cleanup).toHaveBeenCalledOnce();
+      expect(retained.setTimeout(vi.fn())).toBeUndefined();
+      expect(retained.setInterval(vi.fn())).toBeUndefined();
+    } finally {
+      log.mockRestore();
+    }
+  });
+  it('forwards timer arguments, clears timers explicitly, and contains asynchronous callback errors', () => {
+    vi.useFakeTimers();
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      load(`streams(ctx){
+        const net=ctx.stream();
+        const cancelled=setTimeout(()=>console.log('cancelled'),1);clearTimeout(cancelled);
+        const cancelledInterval=setInterval(()=>console.log('cancelled'),1);clearInterval(cancelledInterval);
+        setTimeout((a,b)=>console.log(a,b),2,'arg',7);
+        setTimeout(()=>{throw Error('timeout');},3);
+        setInterval(()=>{throw Error('interval');},5);
+        return {net};
+      }`);
+      vi.advanceTimersByTime(10);
+      expect(log).toHaveBeenCalledExactlyOnceWith('arg', 7);
+      expect(vi.getTimerCount()).toBe(1);
+    } finally {
+      log.mockRestore();
+    }
+  });
+  it('limits live cursors, reports source/consumer queues and releases slots safely', () => {
+    const { evaluator, result } = load(`streams(ctx){const net=ctx.stream({maxPerFrame:1});net.push([1,2]);return {net};}`);
+    const session = result.session!;
+    expect(evaluator.getStreamQueues(session - 1, 'missing')).toBeNull();
+    expect(evaluator.getStreamQueues(session, 'missing')).toEqual([{name: 'net', queued: 2}]);
+    const first = evaluator.requestStreamFrame(session, undefined, 'first')!;
+    expect(evaluator.requestStreamFrame(session, first.sequence + 1, 'first')).toBe(first);
+    evaluator.requestStreamFrame(session, first.sequence, 'first');
+    expect(evaluator.getStreamQueues(session, 'first')).toEqual([{name: 'net', queued: 1}]);
+    for (let i = 1; i < 16; i++) {
+      evaluator.requestStreamFrame(session, undefined, `other${i}`);
+    }
+    expect(() => evaluator.requestStreamFrame(session, undefined, 'overflow')).toThrow('at most 16');
+    evaluator.releaseStreamConsumer(session - 1, 'first');
+    evaluator.releaseStreamConsumer(session, 'missing');
+    expect(() => evaluator.requestStreamFrame(session, undefined, 'overflow')).toThrow('at most 16');
+    evaluator.releaseStreamConsumer(session, 'first');
+    expect(evaluator.requestStreamFrame(session, undefined, 'overflow')).not.toBeNull();
+    evaluator.dispose();
+    expect(evaluator.getStreamQueues(session, 'overflow')).toBeNull();
+    expect(evaluator.requestStreamFrame(session)).toBeNull();
+    expect(evaluator.currentValues()).toEqual([]);
+  });
+  it('skips unsupported uniform values and preserves typed zero shapes after runtime errors', () => {
+    const { evaluator, result } = load(`uniforms(ctx){if(ctx.iTime>0)throw Error('runtime');return {ignored:'text',flag:true,vector:[1,2,3,4],array:ctx.uintArray([1,2]),scalar:ctx.int(4)};}`);
+    expect(result.uniforms.map(value => value.name)).not.toContain('ignored');
+    evaluator.setRuntimeState({time: 1, paused: true});
+    expect(evaluator.currentValues()).toEqual([
+      {name:'flag',type:'bool',value:false}, {name:'vector',type:'vec4',value:[0,0,0,0]},
+      {name:'array',type:'uint[2]',value:[0,0]}, {name:'scalar',type:'int',value:0},
+    ]);
+  });
+});

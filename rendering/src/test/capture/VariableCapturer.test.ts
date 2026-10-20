@@ -1235,6 +1235,24 @@ describe("VariableCapturer", () => {
       );
     });
 
+    it("uploads typed integers and arrays during variable capture", async () => {
+      const typed = { uniform1ui: vi.fn(), uniform1iv: vi.fn(), uniform1uiv: vi.fn(), uniform1fv: vi.fn() };
+      Object.assign(gl, typed);
+      capturer.setCustomUniforms("", [
+        { name: "signed", type: "int", value: -7 },
+        { name: "unsigned", type: "uint", value: 4294967295 },
+        { name: "signedArray", type: "int[2]", value: [-2, 3] },
+        { name: "unsignedArray", type: "uint[2]", value: [4, 4294967295] },
+        { name: "floatArray", type: "float[2]", value: [0.5, 1.5] },
+      ]);
+      await capturer.issueCaptureAtPixel([{ varName: "test", varType: "float", captureShader: "code" }], 0, 0, 800, 600, createDefaultUniforms());
+      expect(gl.uniform1i).toHaveBeenCalledWith(expect.anything(), -7);
+      expect(typed.uniform1ui).toHaveBeenCalledWith(expect.anything(), 4294967295);
+      expect(typed.uniform1iv).toHaveBeenCalledWith(expect.anything(), new Int32Array([-2, 3]));
+      expect(typed.uniform1uiv).toHaveBeenCalledWith(expect.anything(), new Uint32Array([4, 4294967295]));
+      expect(typed.uniform1fv).toHaveBeenCalledWith(expect.anything(), [0.5, 1.5]);
+    });
+
     it("should upload float custom uniform values during render", async () => {
       capturer.setCustomUniforms("uniform float uSpeed;", [
         { name: "uSpeed", type: "float", value: 2.5 },
