@@ -174,6 +174,27 @@ describe("KeyboardManager", () => {
       expect(keyboardManager.getKeyHeld()[87]).toBe(0);
     });
 
+    it('retains an unconsumed press when replay releases held keys before the next frame', () => {
+      keyboardManager.inject('Space', true);
+      keyboardManager.releaseAll();
+      expect(keyboardManager.getKeyHeld()[32]).toBe(0);
+      expect(keyboardManager.getKeyPressed()[32]).toBe(255);
+      expect(keyboardManager.getKeyToggled()[32]).toBe(255);
+      keyboardManager.clearPressed();
+      expect(keyboardManager.getKeyPressed()[32]).toBe(0);
+      keyboardManager.releaseAll();
+      expect(keyboardManager.getKeyPressed()[32]).toBe(0);
+    });
+
+    it('retains the final press after key-up and repeated release-all calls', () => {
+      keyboardManager.inject('Space', true);
+      keyboardManager.inject('Space', false);
+      keyboardManager.releaseAll();
+      keyboardManager.releaseAll();
+      expect(keyboardManager.getHeldCodes()).toEqual([]);
+      expect(keyboardManager.getKeyPressed()[32]).toBe(255);
+    });
+
     it('reports injected and physical events, then stops after subscription disposal', () => {
       keyboardManager.setupEventListeners();
       const listener = vi.fn();
