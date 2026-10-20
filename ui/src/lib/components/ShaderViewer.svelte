@@ -1358,7 +1358,10 @@
       if (
         messageTarget.kind === 'main'
         && appInitialized
-        && msgLanguage !== engineLanguage
+        // Sources can arrive before the keyed canvas remounts. Keep the
+        // newest source for the replacement engine instead of compiling it on
+        // the old engine and rejecting the queued source as an obsolete echo.
+        && (msgLanguage !== engineLanguage || pendingSwapMessage !== null)
       ) {
         renderingEngine?.stopRenderLoop?.();
         if (pendingSwapMessage) {
