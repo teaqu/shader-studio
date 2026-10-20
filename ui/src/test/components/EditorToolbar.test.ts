@@ -60,12 +60,14 @@ it('renders host controls in one toolbar and hides unused keyboard controls on d
   expect(view.queryByRole('toolbar')).toBeNull();
 });
 
-it('keeps desktop options out of the expanded mobile menu', async () => {
+it('shows host options inside More on mobile and directly on desktop', async () => {
   const options = createRawSnippet(() => ({ render: () => '<button type="button">Wrap</button>' }));
   const view = render(EditorToolbar, { options, touch: true, onCommand: vi.fn() });
   await fireEvent.click(view.getByRole('button', { name: 'Show keyboard toolbar' }));
-  await fireEvent.click(view.getByRole('button', { name: 'More editing options' }));
   expect(view.queryByRole('button', { name: 'Wrap' })).toBeNull();
+  await fireEvent.click(view.getByRole('button', { name: 'More editing options' }));
+  expect(view.getByRole('group', { name: 'More editing options' }))
+    .toContainElement(view.getByRole('button', { name: 'Wrap' }));
   await view.rerender({ touch: false });
   expect(view.getByRole('button', { name: 'Wrap' })).toBeVisible();
 });

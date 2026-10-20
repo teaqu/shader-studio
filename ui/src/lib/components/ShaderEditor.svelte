@@ -27,7 +27,7 @@
 </script>
 
 {#if engine === 'codemirror'}
-  <CodeMirrorShaderEditor {...props} editorOptions={mobile ? undefined : props.editorOptions} />
+  <CodeMirrorShaderEditor {...props} />
 {:else}
-  <MonacoShaderEditor {...props} editorOptions={mobile ? undefined : props.editorOptions} />
+  <MonacoShaderEditor {...props} />
 {/if}

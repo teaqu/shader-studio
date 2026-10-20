@@ -68,6 +68,7 @@
           <button type="button" aria-label={descriptions ? 'Disable descriptions' : 'Enable descriptions'} aria-pressed={descriptions}
             onmousedown={event => event.preventDefault()} onclick={() => toggleHostEditorDescriptions(touch)}>Descriptions</button>
         {/if}
+        {@render options?.()}
       </div>
     {/if}
     <div class="toolbar-row">

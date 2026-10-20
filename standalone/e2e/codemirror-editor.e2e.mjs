@@ -355,8 +355,13 @@ test('mobile bottom toolbar uses one key row and persists automatic suggestions'
   await expect(actions.getByRole('button', { name: 'Search code' })).toBeHidden();
   await expect(actions.getByRole('button', { name: 'Compile shader' })).toBeHidden();
   await tap(actions.getByRole('button', { name: 'Undo', exact: true }));
-  await expect(toolbar.getByRole('button', { name: 'Wrap text' })).toHaveCount(0);
-  await expect(toolbar.getByRole('button', { name: /Vim mode/ })).toHaveCount(0);
+  const wrap = actions.getByRole('button', { name: 'Wrap text' });
+  await tap(wrap);
+  await expect(wrap).toHaveAttribute('aria-pressed', 'true');
+  await expect(content).toHaveClass(/cm-lineWrapping/);
+  await tap(actions.getByRole('button', { name: 'Enable Vim mode' }));
+  await expect(actions.getByRole('button', { name: 'Disable Vim mode' })).toHaveAttribute('aria-pressed', 'true');
+  await tap(actions.getByRole('button', { name: 'Disable Vim mode' }));
   await tap(actions.getByRole('button', { name: 'Disable suggestions' }));
   await expect(actions.getByRole('button', { name: 'Enable suggestions' })).toHaveAttribute('aria-pressed', 'false');
   await expect(actions.getByRole('button', { name: 'Enable descriptions' })).toHaveAttribute('aria-pressed', 'false');
@@ -373,7 +378,7 @@ test('mobile bottom toolbar uses one key row and persists automatic suggestions'
   await expect(actions.getByRole('button', { name: 'Enable suggestions' })).toHaveAttribute('aria-pressed', 'false');
   await expect(actions.getByRole('button', { name: 'Disable descriptions' })).toHaveAttribute('aria-pressed', 'true');
   await tap(actions.getByRole('button', { name: 'Disable descriptions' }));
-  await expect(toolbar.getByRole('button', { name: 'Wrap text' })).toHaveCount(0);
+  await expect(wrap).toHaveAttribute('aria-pressed', 'true');
   await tap(actions.getByRole('button', { name: 'Enable suggestions' }));
   await expect(actions.getByRole('button', { name: 'Disable suggestions' })).toHaveAttribute('aria-pressed', 'true');
   await tap(actions.getByRole('button', { name: 'Hide keyboard' }));
@@ -384,8 +389,8 @@ test('mobile bottom toolbar uses one key row and persists automatic suggestions'
   await expect(more).toBeHidden();
   expect((await activeEditor(page).locator('.cm-editor').boundingBox()).height).toBe(collapsedEditorHeight);
   await chooseEditor(page, 'Mobile editor', 'monaco');
-  await expect(editor(page).getByRole('button', { name: 'Wrap text' })).toHaveCount(0);
-  await expect(editor(page).getByRole('button', { name: /Vim mode/ })).toHaveCount(0);
+  await expect(editor(page).getByRole('button', { name: 'Wrap text' })).toBeVisible();
+  await expect(editor(page).getByRole('button', { name: 'Enable Vim mode' })).toBeVisible();
   await chooseEditor(page, 'Mobile editor', 'codemirror');
   await expect(showKeys).toBeVisible();
 });
