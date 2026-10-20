@@ -694,6 +694,23 @@ vi.mock('../../lib/state/profileStore.svelte', () => ({
 }));
 
 describe('ShaderViewer', () => {
+  it('forwards focused canvas keys to its script transport and detaches on unmount', async () => {
+    const initialized = vi.fn();
+    const { container, unmount } = render(ShaderViewer, { onInitialized: initialized });
+    await vi.waitFor(() => expect(initialized).toHaveBeenCalled());
+    const canvas = container.querySelector('canvas[tabindex="0"]') as HTMLCanvasElement;
+    expect(canvas).toBeTruthy();
+    canvas.focus();
+    await fireEvent.keyDown(canvas, { key: 'é', code: 'KeyE', repeat: true });
+    expect(mockTransport.postMessage).toHaveBeenCalledWith({
+      type: 'scriptKeyboardInput', payload: expect.objectContaining({ type: 'keydown', key: 'é', code: 'KeyE', repeat: true }),
+    });
+    unmount();
+    mockTransport.postMessage.mockClear();
+    await fireEvent.keyDown(canvas, { key: 'x', code: 'KeyX' });
+    expect(mockTransport.postMessage).not.toHaveBeenCalled();
+  });
+
   function getEditorOverlayVisible(): boolean {
     return getEditorOverlayVisibleState();
   }

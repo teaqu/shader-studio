@@ -36,6 +36,12 @@ suite('ScriptEvaluator', () => {
   });
 
   suite('loadScript', () => {
+    test('resolves Node modules from an explicit script path', () => {
+      const result = evaluator.loadScript(makeBundle("return { nameLength: require('node:path').basename('/data/keys.js').length };"), '/project/uniforms.js');
+      assert.strictEqual(result.error, undefined);
+      assert.strictEqual(evaluator.currentValues()[0].value, 7);
+    });
+
     test('should load a valid script', () => {
       const result = evaluator.loadScript(makeBundle('return { uVal: 1.0 };'));
       assert.strictEqual(result.error, undefined);

@@ -491,6 +491,12 @@ describe('ShaderPreview - renderer selection and cleanup', () => {
         await waitFor(() => expect(mockEngine.setCustomUniformValues).toHaveBeenCalledWith(
             [{ name: 'uFloat', type: 'float', value: 0.75 }],
         ));
+        // A thumbnail renderer can request a chunk, but its snapshot must never
+        // start a producer or forward live stream requests to the host.
+        const requestChunk = mockEngine.configureScriptStreams.mock.calls.at(-1)![2];
+        requestChunk({ session: 0, request: 1, consumer: 'thumbnail' });
+        expect(vscodeApi.postMessage.mock.calls.some(([message]) => message.type === 'requestScriptStreamFrame')).toBe(false);
+
         await waitFor(() => expect(mockEngine.compileShaderPipeline).toHaveBeenCalledWith(
             expect.stringContaining('uFloat'),
             { script: './uniforms.ts' },
