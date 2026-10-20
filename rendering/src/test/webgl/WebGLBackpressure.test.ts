@@ -41,6 +41,22 @@ afterEach(() => {
 });
 
 describe("RenderingEngine GPU backpressure", () => {
+  it("applies live defaults and per-shader overrides without discarding pending work", () => {
+    const { engine, submit } = engineWithGl(() => TIMEOUT_EXPIRED);
+    const shouldWait = (time = 0) => engine.shouldWaitForGpu(time);
+    engine.setGpuBackpressureDefaults({ framesInFlight: 1, stallTimeoutMs: 50 });
+    submit();
+    expect(shouldWait()).toBe(true);
+    expect(shouldWait(49)).toBe(true);
+    expect(shouldWait(50)).toBe(false);
+    engine.setGpuBackpressureDefaults({ framesInFlight: 4, stallTimeoutMs: 500 });
+    expect(shouldWait(51)).toBe(false);
+    (engine as unknown as { currentConfig: import("@shader-studio/types").ShaderConfig }).currentConfig = { version: "1.0", passes: { Image: {} }, gpuBackpressure: { framesInFlight: 1 } };
+    expect(shouldWait(52)).toBe(true);
+    expect(shouldWait(551)).toBe(true);
+    expect(shouldWait(552)).toBe(false);
+  });
+
   it("keeps the GPU pipelined rather than serialised", () => {
     const { engine, submit } = engineWithGl(() => TIMEOUT_EXPIRED);
 

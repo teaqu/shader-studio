@@ -1,3 +1,4 @@
+import { resolveGpuBackpressure } from "@shader-studio/types";
 import * as vscode from "vscode";
 import { PreviewRegistry } from '../mcp/PreviewRegistry';
 import { mcpLogs } from '../mcp/McpLogs';
@@ -48,6 +49,15 @@ export class Messenger {
   private messageHandler: MessageHandler;
   private errorHandler: ErrorHandler;
   private transports: MessageTransport[] = [];
+  private settingsListener: vscode.Disposable | undefined;
+
+  private getGpuDefaults() {
+    const config = vscode.workspace.getConfiguration("shader-studio");
+    return resolveGpuBackpressure({
+      framesInFlight: config.get<number>("gpuBackpressure.framesInFlight"),
+      stallTimeoutMs: config.get<number>("gpuBackpressure.stallTimeoutMs"),
+    });
+  }
 
   constructor(
     outputChannel: vscode.LogOutputChannel,
@@ -56,6 +66,11 @@ export class Messenger {
     onShaderLockChanged?: (lockedShaderPath?: string) => void,
   ) {
     this.errorHandler = errorHandler;
+    this.settingsListener = vscode.workspace.onDidChangeConfiguration?.((event) => {
+      if (event.affectsConfiguration("shader-studio.gpuBackpressure")) {
+        this.send({ type: "gpuBackpressureSettings", defaults: this.getGpuDefaults() });
+      }
+    });
     this.messageHandler = new MessageHandler(
       outputChannel,
       errorHandler,
@@ -76,6 +91,7 @@ export class Messenger {
         if (typeof message.path === 'string' && typeof message.compileSequence === 'number') {
           this.compileSequences.set(message.path, message.compileSequence);
         }
+        message = { ...message, gpuBackpressureDefaults: this.getGpuDefaults() };
         this.errorHandler.setShaderConfig({
           config: message.config,
           shaderPath: message.path,
@@ -106,6 +122,8 @@ export class Messenger {
 
   public close(): void {
     this.setMcpEnabled(false);
+    this.settingsListener?.dispose();
+    this.settingsListener = undefined;
     this.transports.forEach(transport => transport.close());
   }
 

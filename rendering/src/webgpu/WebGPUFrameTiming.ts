@@ -1,7 +1,6 @@
+import { resolveGpuBackpressure, type GpuBackpressureSettings } from "@shader-studio/types";
 import {
   gpuBackpressureEnabled,
-  MAX_FRAMES_IN_FLIGHT,
-  MAX_GPU_STALL_MS,
 } from "../util/GpuBackpressure";
 import { TimeManager } from "../util/TimeManager";
 import type { WebGPUCompileDiagnostics } from "./WebGPUCompileDiagnostics";
@@ -9,6 +8,7 @@ import type { WebGPUCompileDiagnostics } from "./WebGPUCompileDiagnostics";
 interface WebGPUFrameTimingHost {
   diagnostics: Pick<WebGPUCompileDiagnostics, "ms" | "now">;
   running: boolean;
+  gpuBackpressure?: Partial<GpuBackpressureSettings>;
   device: GPUDevice | null;
   disposed: boolean;
   timeManager: TimeManager;
@@ -17,6 +17,8 @@ interface WebGPUFrameTimingHost {
 /** Owns timing state and operations; dependencies stay live across compilation swaps. */
 export class WebGPUFrameTiming {
   constructor(private readonly host: WebGPUFrameTimingHost) {}
+
+  gpuDefaults = resolveGpuBackpressure();
 
   fpsLimit = 0;
 
@@ -49,14 +51,15 @@ export class WebGPUFrameTiming {
       this.gpuStallStartMs = null;
       return false;
     }
-    if (this.framesInFlight < MAX_FRAMES_IN_FLIGHT) {
+    const settings = resolveGpuBackpressure(this.gpuDefaults, this.host.gpuBackpressure);
+    if (this.framesInFlight < settings.framesInFlight) {
       this.gpuStallStartMs = null;
       return false;
     }
     if (this.gpuStallStartMs === null) {
       this.gpuStallStartMs = time;
     }
-    if (time - this.gpuStallStartMs >= MAX_GPU_STALL_MS) {
+    if (time - this.gpuStallStartMs >= settings.stallTimeoutMs) {
       this.gpuStallStartMs = null;
       return false;
     }

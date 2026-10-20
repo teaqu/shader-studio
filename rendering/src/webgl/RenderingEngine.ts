@@ -1,3 +1,4 @@
+import { resolveGpuBackpressure, type GpuBackpressureSettings } from "@shader-studio/types";
 import { WebXrRenderer } from "../webxr/WebXrRenderer";
 import { isImmersiveVrSupported } from "../webxr/WebXrSession";
 import { normalizeVrNavigation, type VrNavigationSettings } from "../webxr/VrNavigationSettings";
@@ -6,8 +7,6 @@ import type { LiveInputType, LiveInputPreview } from "../resources/LiveInputText
 import { piRenderer } from "../../../vendor/pilibs/src/piRenderer";
 import {
   gpuBackpressureEnabled,
-  MAX_FRAMES_IN_FLIGHT,
-  MAX_GPU_STALL_MS,
 } from "../util/GpuBackpressure";
 import { piCreateGlContext } from "../../../vendor/pilibs/src/piWebUtils";
 import { ShaderCompiler } from "./ShaderCompiler";
@@ -65,6 +64,12 @@ export class RenderingEngine implements RenderingEngineInterface {
   private customUniformManager!: CustomUniformManager;
   private pendingCustomUniformValues: { name: string; type: string; value: number | number[] | boolean }[] | null = null;
   private currentConfig: ShaderConfig | null = null;
+  private gpuDefaults = resolveGpuBackpressure();
+
+  public setGpuBackpressureDefaults(defaults?: Partial<GpuBackpressureSettings>): void {
+    this.gpuDefaults = resolveGpuBackpressure(defaults);
+  }
+
   private compileQueue: Promise<void> = Promise.resolve();
   private renderLimits: WebGLRenderLimits | null = null;
   private holdVideoResumeForResetCompile = false;
@@ -184,14 +189,15 @@ export class RenderingEngine implements RenderingEngineInterface {
       return false;
     }
     this.releaseCompletedFences();
-    if (this.inFlightFences.length < MAX_FRAMES_IN_FLIGHT) {
+    const settings = resolveGpuBackpressure(this.gpuDefaults, this.currentConfig?.gpuBackpressure);
+    if (this.inFlightFences.length < settings.framesInFlight) {
       this.gpuStallStartMs = null;
       return false;
     }
     if (this.gpuStallStartMs === null) {
       this.gpuStallStartMs = time;
     }
-    if (time - this.gpuStallStartMs >= MAX_GPU_STALL_MS) {
+    if (time - this.gpuStallStartMs >= settings.stallTimeoutMs) {
       this.gpuStallStartMs = null;
       return false;
     }

@@ -241,6 +241,20 @@
           "type": "boolean",
           "default": true,
           "description": "Show editable color swatches for literal GLSL vec3/vec4, Slang float3/float4, and WGSL vec3f/vec4f colors."
+        },
+        "shader-studio.gpuBackpressure.framesInFlight": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "description": "Maximum unfinished GPU frames.",
+          "default": 2
+        },
+        "shader-studio.gpuBackpressure.stallTimeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "description": "Maximum time to wait for GPU completion before allowing another frame.",
+          "default": 2000
         }
       }
     },

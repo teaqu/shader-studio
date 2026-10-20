@@ -1,3 +1,4 @@
+export * from "./GpuBackpressure";
 export * from './ShaderConfig';
 export * from './ShaderEntryPoints';
 export * from './ShaderOutputs';

@@ -94,6 +94,7 @@ nav:
       - Language Servers: features/language-servers.md
       - Code Snippets: features/code-snippets.md
       - Performance: features/performance.md
+      - GPU Backpressure: features/gpu-backpressure.md
   - Debugging:
       - Overview: debugging/index.md
       - Pixel Inspector: debugging/pixel-inspector.md

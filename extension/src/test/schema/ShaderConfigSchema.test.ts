@@ -26,6 +26,15 @@ import {
 } from '@shader-studio/types';
 
 suite('Shader config JSON schema', () => {
+  test('accepts independent GPU overrides and rejects malformed settings', () => {
+    const base = { version: '1.0', passes: { Image: {} } };
+    for (const gpuBackpressure of [{}, { framesInFlight: 1 }, { stallTimeoutMs: 250 }, { framesInFlight: 3, stallTimeoutMs: 2000 }]) {
+      assertValid({ ...base, gpuBackpressure });
+    }
+    for (const gpuBackpressure of [null, [], 2, { framesInFlight: 0 }, { framesInFlight: 1.5 }, { stallTimeoutMs: -1 }, { stallTimeoutMs: '2' }, { framesInFlight: 9007199254740992 }, { other: 2 }]) {
+      assert.strictEqual(validate({ ...base, gpuBackpressure }), false, JSON.stringify(gpuBackpressure));
+    }
+  });
   const schemaPath = path.resolve(__dirname, '../../../schemas/shader-config.schema.json');
   const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
   const ajv = new Ajv({ allErrors: true });

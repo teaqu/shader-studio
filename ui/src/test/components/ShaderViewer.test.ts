@@ -58,6 +58,8 @@ vi.mock('../../lib/components/config/ConfigPanel.svelte', async importOriginal =
   };
 });
 
+const gpuMocks = vi.hoisted(() => ({ setDefaults: vi.fn() }));
+
 // Mock ResizeObserver
 global.ResizeObserver = vi.fn().mockImplementation(function () {
   return {
@@ -165,6 +167,7 @@ vi.mock('../../lib/ViewerInteraction', () => ({
 
 vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
   const MockRenderingEngine = class {
+    setGpuBackpressureDefaults = gpuMocks.setDefaults;
     private _canvas = { width: 800, height: 600 };
     initialize() {}
     handleCanvasResize(width: number, height: number) {
@@ -303,6 +306,7 @@ vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
 
 vi.mock('../../../../rendering/src/webgpu/WebGPURenderingEngine', () => {
   const MockWebGPURenderingEngine = class {
+    setGpuBackpressureDefaults = gpuMocks.setDefaults;
     private _canvas = { width: 800, height: 600 };
     initialize() {}
     handleCanvasResize(width: number, height: number) {
@@ -927,6 +931,18 @@ describe('ShaderViewer', () => {
     expect(screen.queryByTestId('web-alpha-warning')).not.toBeInTheDocument();
     expect(container.querySelector('[data-testid="web-editor"]')).toBeNull();
     expect(container.querySelector('[data-testid="web-shader-explorer"]')).toBeNull();
+  });
+
+  it('applies GPU defaults from shader messages and live updates without recompiling', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await sendMessage({ type: 'shaderSource', path: '/test/shader.glsl', code: 'void mainImage() {}',
+      config: { version: '1.0', passes: { Image: {} } }, gpuBackpressureDefaults: { framesInFlight: 3, stallTimeoutMs: 500 } });
+    expect(gpuMocks.setDefaults).toHaveBeenLastCalledWith({ framesInFlight: 3, stallTimeoutMs: 500 });
+    const compiles = mockPipelineHandleShaderMessage.mock.calls.length;
+    await sendMessage({ type: 'gpuBackpressureSettings', defaults: { framesInFlight: 1, stallTimeoutMs: 800 } });
+    expect(gpuMocks.setDefaults).toHaveBeenLastCalledWith({ framesInFlight: 1, stallTimeoutMs: 800 });
+    expect(mockPipelineHandleShaderMessage).toHaveBeenCalledTimes(compiles);
   });
 
   it('should disable shader inputs while editor overlay is visible', async () => {

@@ -45,6 +45,21 @@ afterEach(() => {
 });
 
 describe("WebGPURenderingEngine GPU backpressure", () => {
+  it("applies live defaults and per-shader overrides without discarding pending work", () => {
+    const { engine, submit, shouldWait } = engineWithQueue();
+    engine.setGpuBackpressureDefaults({ framesInFlight: 1, stallTimeoutMs: 50 });
+    submit();
+    expect(shouldWait()).toBe(true);
+    expect(shouldWait(49)).toBe(true);
+    expect(shouldWait(50)).toBe(false);
+    engine.setGpuBackpressureDefaults({ framesInFlight: 4, stallTimeoutMs: 500 });
+    expect(shouldWait(51)).toBe(false);
+    engineOwners(engine).session.currentConfig = { version: "1.0", passes: { Image: {} }, gpuBackpressure: { framesInFlight: 1 } };
+    expect(shouldWait(52)).toBe(true);
+    expect(shouldWait(551)).toBe(true);
+    expect(shouldWait(552)).toBe(false);
+  });
+
   it("never withholds a frame while it is switched off", () => {
     (globalThis as PerfGlobal).__gpuBackpressure = false;
     const { submit, shouldWait } = engineWithQueue();

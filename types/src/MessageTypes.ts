@@ -7,6 +7,11 @@ import type { ShaderAuthoringEnvironment } from './shader-environment/ShaderAuth
 import type { ShaderLanguageId } from './shader-environment/ShaderLanguages';
 import type { ShaderEntryPoints, WebGPUAuthoringMode } from './ShaderConfig';
 
+export interface GpuBackpressureSettingsMessage extends BaseMessage {
+  type: "gpuBackpressureSettings";
+  defaults: import('./GpuBackpressure').GpuBackpressureSettings;
+}
+
 export interface BaseMessage {
   type: string;
 }
@@ -78,6 +83,7 @@ export interface ShowConfigMessage extends BaseMessage {
 }
 
 export interface ShaderSourceMessage extends BaseMessage {
+  gpuBackpressureDefaults?: import('./GpuBackpressure').GpuBackpressureSettings;
   type: "shaderSource";
   code: string;
   config: ShaderConfig | null;
@@ -417,4 +423,4 @@ export interface ProfileDeleteProfileMessage extends BaseMessage {
   id: string;
 }
 
-export type MessageEvent = RequestCanvasInputSettingsMessage | CanvasInputSettingsMessage | RequestShaderAuthoringSettingsMessage | ShaderAuthoringSettingsMessage | LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | ShaderLockStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage | ResetLayoutMessage | RequestViewerCameraSettingsMessage | UpdateViewerCameraSettingsMessage | ViewerCameraSettingsMessage | ManualCompileMessage | SetCompileModeMessage | NavigateToBufferMessage | RequestWorkspaceFilesMessage | WorkspaceFilesMessage | ForkShaderMessage | GoToLineMessage | SaveFileMessage | SaveFileResultMessage | SelectFileMessage | CreateFileMessage | InsertShaderSourceMessage | FileSelectedMessage | CustomUniformValuesMessage | RequestCustomUniformValuesMessage | ScriptRuntimeStateMessage | LanguageServiceSettingsMessage | ShaderAuthoringEnvironmentMessage | ProfileReadIndexMessage | ProfileIndexDataMessage | ProfileReadProfileMessage | ProfileDataMessage | ProfileWriteProfileMessage | ProfileWriteIndexMessage | ProfileDeleteProfileMessage;
+export type MessageEvent = GpuBackpressureSettingsMessage | RequestCanvasInputSettingsMessage | CanvasInputSettingsMessage | RequestShaderAuthoringSettingsMessage | ShaderAuthoringSettingsMessage | LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | ShaderLockStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage | ResetLayoutMessage | RequestViewerCameraSettingsMessage | UpdateViewerCameraSettingsMessage | ViewerCameraSettingsMessage | ManualCompileMessage | SetCompileModeMessage | NavigateToBufferMessage | RequestWorkspaceFilesMessage | WorkspaceFilesMessage | ForkShaderMessage | GoToLineMessage | SaveFileMessage | SaveFileResultMessage | SelectFileMessage | CreateFileMessage | InsertShaderSourceMessage | FileSelectedMessage | CustomUniformValuesMessage | RequestCustomUniformValuesMessage | ScriptRuntimeStateMessage | LanguageServiceSettingsMessage | ShaderAuthoringEnvironmentMessage | ProfileReadIndexMessage | ProfileIndexDataMessage | ProfileReadProfileMessage | ProfileDataMessage | ProfileWriteProfileMessage | ProfileWriteIndexMessage | ProfileDeleteProfileMessage;

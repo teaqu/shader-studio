@@ -32,6 +32,7 @@
   import DockviewLayout from "./DockviewLayout.svelte";
   import { RecordingManager } from "../RecordingManager";
   import type { RenderingEngine as IRenderingEngine } from "../../../../rendering/src/types/RenderingEngine";
+  import { getGpuBackpressureDefaults, setGpuBackpressureDefaults } from "../state/gpuBackpressureState.svelte";
   import { createEngineForLanguage } from "../engineFactory";
   import { PixelInspectorManager } from "../PixelInspectorManager";
   import { ScriptRuntimeReporter } from "../ScriptRuntimeReporter";
@@ -615,6 +616,7 @@
     renderingEngine = createEngineForLanguage(engineLanguage);
     scriptRuntimeReporter?.dispose();
     scriptRuntimeReporter = null;
+    renderingEngine.setGpuBackpressureDefaults?.(getGpuBackpressureDefaults());
     try {
       renderingEngine.initialize(glCanvas, true);
     } catch (err) {
@@ -1285,6 +1287,15 @@
     if (type === 'saveFileResult') {
       captureSaveChannel?.handleResult(event.data.payload);
       return;
+    }
+
+    if (type === 'gpuBackpressureSettings' || type === 'shaderSource') {
+      const defaults = type === 'shaderSource' ? event.data.gpuBackpressureDefaults : event.data.defaults;
+      setGpuBackpressureDefaults(defaults);
+      renderingEngine?.setGpuBackpressureDefaults?.(getGpuBackpressureDefaults());
+      if (type === 'gpuBackpressureSettings') {
+        return;
+      }
     }
 
     if (type === 'error') {

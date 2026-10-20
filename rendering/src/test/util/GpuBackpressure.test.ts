@@ -1,3 +1,5 @@
+import { ConfigValidator } from "../../util/ConfigValidator";
+import type { ShaderConfig } from "@shader-studio/types";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   gpuBackpressureEnabled,
@@ -45,5 +47,15 @@ describe("gpuBackpressureEnabled", () => {
     // ordinary heavy load instead of only when a completion signal is truly
     // never coming back.
     expect(MAX_GPU_STALL_MS).toBeGreaterThanOrEqual(500);
+  });
+});
+
+describe("GPU config validation", () => {
+  it.each([{}, { framesInFlight: 1 }, { stallTimeoutMs: 300 }, { framesInFlight: 3, stallTimeoutMs: 1 }])("accepts partial settings %j", gpuBackpressure => {
+    expect(ConfigValidator.validateConfig({ version: "1.0", passes: { Image: {} }, gpuBackpressure }).isValid).toBe(true);
+  });
+  it.each([null, [], 2, { framesInFlight: 0 }, { framesInFlight: 1.5 }, { stallTimeoutMs: -1 }, { stallTimeoutMs: "3" }, { unknown: 1 }])("rejects invalid settings %j", value => {
+    const config = { version: "1.0", passes: { Image: {} }, gpuBackpressure: value } as unknown as ShaderConfig;
+    expect(ConfigValidator.validateConfig(config).isValid).toBe(false);
   });
 });

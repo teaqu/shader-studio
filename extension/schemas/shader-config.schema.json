@@ -5,6 +5,25 @@
   "type": "object",
   "required": ["version", "passes"],
   "properties": {
+    "gpuBackpressure": {
+      "type": "object",
+      "description": "Per-shader GPU backpressure overrides, shared by all passes.",
+      "additionalProperties": false,
+      "properties": {
+        "framesInFlight": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "description": "Maximum unfinished GPU frames. Omit to inherit the global default."
+        },
+        "stallTimeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "description": "Pause after this many milliseconds without GPU progress. Omit to inherit the global default."
+        }
+      }
+    },
     "version": {
       "type": "string",
       "const": "1.0",

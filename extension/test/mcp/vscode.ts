@@ -28,6 +28,7 @@ export interface TestDocument {
   uri: Uri; text: string; isDirty: boolean; getText(): string; positionAt(offset: number): number;
 }
 export const workspace = {
+  getConfiguration: () => ({ get: (_key: string, fallback?: unknown) => fallback }),
   isTrusted: true,
   workspaceFolders: [] as { uri: Uri }[],
   textDocuments: [] as TestDocument[],

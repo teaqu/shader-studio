@@ -8,6 +8,7 @@ import type { FeedbackReadback, ViewerInputEvent, ViewerInputListener, ViewerInp
 import type { VrNavigationSettings } from "../webxr/VrNavigationSettings";
 
 export interface RenderingEngine {
+  setGpuBackpressureDefaults?(defaults?: Partial<import("@shader-studio/types").GpuBackpressureSettings>): void;
   initialize(glCanvas: HTMLCanvasElement, preserveDrawingBuffer?: boolean): void;
   handleCanvasResize(width: number, height: number): void;
   compileShaderPipeline(

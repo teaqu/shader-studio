@@ -1,3 +1,4 @@
+import { resolveGpuBackpressure, type GpuBackpressureSettings } from "@shader-studio/types";
 import { ShaderCameraSession } from "../preview3d/ShaderCameraSession";
 import { RenderedCaptureState } from "./RenderedCaptureState";
 import { audioPreviewData, livePreviewData, controlSystemAudio, controlAudioInput } from "../resources/MediaPreview";
@@ -138,6 +139,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
       diagnostics: this.diagnostics,
       get running() {
         return engine.running;
+      },
+      get gpuBackpressure() {
+        return engine.session.currentConfig?.gpuBackpressure;
       },
       get device() {
         return engine.device;
@@ -489,6 +493,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   getGpuFrameTimeMs(): number | null {
     return this.timing.getGpuFrameTimeMs();
+  }
+
+  setGpuBackpressureDefaults(defaults?: Partial<GpuBackpressureSettings>): void {
+    this.timing.gpuDefaults = resolveGpuBackpressure(defaults);
   }
 
   setGpuTimingEnabled(enabled: boolean): void {

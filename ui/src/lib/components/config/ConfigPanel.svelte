@@ -13,6 +13,7 @@
   import type { ShaderConfig, BufferPass, ComputePass, ImagePass, StorageBufferConfig, StorageBufferSnapshot, ShaderEntryPoint } from "@shader-studio/types";
   import { getShaderEntryPoints, withDefaultRenderEntryPoints, SHADER_LANGUAGES, vertexPassKey } from "@shader-studio/types";
   import type { Transport } from "../../transport/MessageTransport";
+  import RenderingSettings from "./RenderingSettings.svelte";
   import BufferConfig from "./BufferConfig.svelte";
   import ScriptInfo from "./ScriptInfo.svelte";
   import StoragePanel from "./StoragePanel.svelte";
@@ -439,6 +440,9 @@
   }
 
   function passTypeLabel(tabName: string): string {
+    if (tabName === '@rendering') {
+      return 'GPU settings';
+    }
     if (tabName === 'Image') {
       return 'Final image';
     }
@@ -526,6 +530,7 @@
       tabs.push("Common");
     }
     tabs.push(...bufferTabs);
+    tabs.push("@rendering");
     if (config && config.script !== undefined) {
       tabs.push("Script");
     }
@@ -534,18 +539,18 @@
 
   function switchTab(tabName: string) {
     activeTab = tabName;
-    if (tabName !== "Script" && tabName !== "Storage") {
+    if (tabName !== "@rendering" && tabName !== "Script" && tabName !== "Storage") {
       const actualName = getActualBufferName(tabName);
       onFileSelect(actualName);
     }
   }
 
   function isRenameableTab(tabName: string): boolean {
-    return tabName !== "Image" && tabName !== "Common" && tabName !== "Script" && tabName !== "Storage";
+    return tabName !== "@rendering" && tabName !== "Image" && tabName !== "Common" && tabName !== "Script" && tabName !== "Storage";
   }
 
   function canOpenTab(tabName: string): boolean {
-    return tabName !== "Storage";
+    return tabName !== "@rendering" && tabName !== "Storage";
   }
 
   async function openRenameMenu(
@@ -740,6 +745,9 @@
   }
 
   function handleTabDblClick(tabName: string) {
+    if (tabName === "@rendering") {
+      return;
+    }
     if (tabName === "Script") {
       if (!scriptInfo?.filename) {
         return;
@@ -809,7 +817,7 @@
           <div class="pass-card" class:selected={activeTab === tabName}>
           <button
             class="tab-button {activeTab === tabName ? 'active' : ''}"
-            aria-label={tabName}
+            aria-label={tabName === "@rendering" ? "Rendering" : tabName}
             aria-pressed={activeTab === tabName}
             data-tab-name={tabName}
             onclick={() => switchTab(tabName)}
@@ -822,7 +830,7 @@
             }}
             onkeydown={(event) => handleTabKeyDown(tabName, event)}
           >
-            <span class="pass-card-heading"><span class="tab-label">{tabName}</span>
+            <span class="pass-card-heading"><span class="tab-label">{tabName === "@rendering" ? "Rendering" : tabName}</span>
             {#if tabName === viewedPass}
               <span class="preview-pass-marker" aria-label="Currently previewing {tabName}">Viewing{linePreviewActive ? ` · L${debugState!.currentLine! + 1}` : ''}</span>
             {/if}
@@ -840,7 +848,7 @@
                 onclick={() => setPassPreview(shaderPath, tabName)}
               ><span class="codicon codicon-eye" aria-hidden="true"></span></button>
             {/if}
-            {#if tabName !== "Image" && tabName !== "Storage" && config}
+            {#if tabName !== "@rendering" && tabName !== "Image" && tabName !== "Storage" && config}
               <button
                 class="tab-close"
                 onclick={(event) => {
@@ -934,7 +942,9 @@
       {#if isComputeTab(activeTab)}
         <p class="pass-preview-note">Direct preview is not available for compute passes.</p>
       {/if}
-      {#if activeTab === "Script"}
+      {#if activeTab === "@rendering"}
+        <RenderingSettings settings={config?.gpuBackpressure} onUpdate={(settings) => configManager?.updateGpuBackpressure(settings)} />
+      {:else if activeTab === "Script"}
         <ScriptInfo
           filename={scriptInfo?.filename || config?.script || ''}
           uniforms={scriptInfo?.uniforms || []}
