@@ -363,7 +363,7 @@ async function uploadStorageBinary(page) {
   await config.getByRole('button', { name: 'Select', exact: true }).click();
   const picker = page.getByRole('dialog', { name: 'Select workspace file' });
   await picker.getByRole('button', { name: /values\.bin$/ }).click();
-  await expect(config.getByDisplayValue(/^\/?values\.bin$/)).toBeVisible();
+  await expect(config.getByRole('textbox', { name: 'Initial data file 1', exact: true })).toHaveValue(/^\/?values\.bin$/);
   await config.getByRole('button', { name: 'Apply pending storage changes' }).click();
   await expect(config.getByRole('button', { name: 'Apply pending storage changes' })).toHaveCount(0);
   await page.reload();
@@ -373,7 +373,7 @@ async function uploadStorageBinary(page) {
 }
   await config.getByRole('button', { name: 'Storage buffer values', exact: true }).click();
   await expect(config.getByLabel('Initial data', { exact: true })).toHaveValue('file');
-  await expect(config.getByDisplayValue(/^\/?values\.bin$/)).toBeVisible();
+  await expect(config.getByRole('textbox', { name: 'Initial data file 1', exact: true })).toHaveValue(/^\/?values\.bin$/);
   return config;
 }
 

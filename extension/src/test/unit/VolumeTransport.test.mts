@@ -87,3 +87,21 @@ describe('storage initial data transport resources', () => {
     expect(storage.zero.initialDataFiles).toBeUndefined();
   });
 });
+
+
+it('normalizes storage and channel file URLs with the owning socket transport', () => {
+  const process = (WebSocketTransport.prototype as unknown as { processConfigPaths(message: object): { config: { storage: Record<string, { initialDataFiles: Array<{ resolved_path: string }> }>; passes: { Image: { inputs: Record<string, { resolved_path: string }> } } } } }).processConfigPaths;
+  const normalizeLocalPath = vi.fn((value: string) => value.slice('file://'.length));
+  const converted = process.call({ convertUriForClient: (value: string) => `client:${value}`, normalizeLocalPath }, {
+    type: 'shaderSource', config: { version: '1.0', storage: {
+      data: { count: 1, elementType: 'uint', initialDataFiles: [{ path: 'file:///data/values.bin' }] },
+      absolute: { count: 1, elementType: 'uint', initialDataFiles: [{ path: '/data/absolute.bin' }] },
+      relative: { count: 1, elementType: 'uint', initialDataFiles: [{ path: 'relative.bin' }] },
+    }, passes: { Image: { inputs: { texture: { type: 'texture', path: 'file:///data/image.png' } } } } },
+  });
+  expect(converted.config.storage.data.initialDataFiles[0].resolved_path).toBe('client:/data/values.bin');
+  expect(converted.config.storage.absolute.initialDataFiles[0].resolved_path).toBe('client:/data/absolute.bin');
+  expect(converted.config.storage.relative.initialDataFiles[0].resolved_path).toBe('client:relative.bin');
+  expect(converted.config.passes.Image.inputs.texture.resolved_path).toBe('client:/data/image.png');
+  expect(normalizeLocalPath.mock.calls).toEqual([['file:///data/values.bin'], ['file:///data/image.png']]);
+});
