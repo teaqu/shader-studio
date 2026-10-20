@@ -6,6 +6,8 @@
   import { getEditorDocument, setEditorDocument } from './state/editorDocuments.svelte';
   import { passNameForFile } from './passSources';
   import type { WebTransport } from './WebTransport';
+  import { isMobileViewport } from './state/mobileShellState.svelte';
+  import { getEditorPreferences } from './settings/settingsState.svelte';
   interface Props { path?: string; transport?: WebTransport; }
   let { path, transport }: Props = $props();
   const fileCode = $derived(path ? getEditorDocument(path) ?? null : null);
@@ -51,6 +53,7 @@
   const authoringSession = $derived(fileSession ?? (owningPass ? session : null));
   let vimMode = $state(false);
   const wordWrap = $derived(getHostEditorWordWrap());
+  const displayMode = $derived(isMobileViewport() && getEditorPreferences().mobileShaderBackdrop ? 'overlay' : 'pane');
   const canEdit = $derived(path && transport ? fileCode !== null : !!session?.ready && !!session.transport);
 </script>
 
@@ -88,7 +91,7 @@
           commonPath={session?.commonPath}
           commonSource={session?.commonSource}
           onCursorChange={(line, lineContent) => transport?.postMessage({ type: "cursorPosition", payload: { line, lineContent, filePath: path! } })}
-          {vimMode} {editorOptions} displayMode="pane" overflowWidgetsDomNode={document.body} />
+          {vimMode} {editorOptions} {displayMode} overflowWidgetsDomNode={document.body} />
       </div>
     {/if}
   {:else}
@@ -115,7 +118,7 @@
           commonPath={editorSession.commonPath}
           commonSource={editorSession.commonSource}
           onCursorChange={editorSession.onCursorChange}
-          displayMode="pane"
+          {displayMode}
           overflowWidgetsDomNode={document.body}
         />
       </div>

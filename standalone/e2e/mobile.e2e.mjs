@@ -71,15 +71,13 @@ test('word wrap shortcuts share the preference and persist across reload', async
   await content.click();
   await page.keyboard.press('Alt+z');
   await expect(content).toHaveClass(/cm-lineWrapping/);
-  await nav.getByRole('button', { name: 'Preview' }).click();
-  await page.getByRole('button', { name: 'Open options menu' }).click();
-  await page.getByRole('button', { name: 'Open editor submenu' }).click();
-  const overlayWrap = page.locator('.editor-submenu-portal').getByRole('button', { name: 'Wrap text' });
-  await expect(overlayWrap).toHaveAttribute('aria-pressed', 'true');
-  await overlayWrap.click();
-  await expect(overlayWrap).toHaveAttribute('aria-pressed', 'false');
+  await page.getByRole('button', { name: 'Show keyboard toolbar' }).click();
+  await page.getByRole('button', { name: 'More editing options' }).click();
+  const wrap = page.getByRole('group', { name: 'More editing options' }).getByRole('button', { name: 'Wrap text' });
+  await expect(wrap).toHaveAttribute('aria-pressed', 'true');
+  await wrap.click();
+  await expect(wrap).toHaveAttribute('aria-pressed', 'false');
   await page.keyboard.press('Escape');
-  await nav.getByRole('button', { name: 'Editor', exact: true }).click();
   await expect(content).not.toHaveClass(/cm-lineWrapping/);
   await content.click();
   await page.keyboard.press('Alt+z');
@@ -399,41 +397,57 @@ function editorInput(editor) {
   return editor.locator('.cm-content[contenteditable="true"], .inputarea').first();
 }
 
-test('the phone Editor and the preview overlay edit one document with shared undo, and the edit survives reload', async ({ page }) => {
+test('the phone editor reuses the live shader behind text without losing edits or undo, and remembers the backdrop', async ({ page }) => {
   const nav = await openAuroraOnPhone(page);
   const editor = page.getByTestId('web-editor');
+  const backdrop = page.locator('.mobile-preview-backdrop');
+  const canvas = page.locator('.canvas-container canvas').first();
+  const originalCanvas = await canvas.elementHandle();
+  const originalEditor = await editorInput(editor).elementHandle();
+  await expect(backdrop).toBeHidden();
   await editorText(editor).click({ position: { x: 80, y: 20 } });
   await editorInput(editor).press('Control+a');
   await page.keyboard.insertText('void mainImage(out vec4 color, in vec2 coord) { color = vec4(0.5); } // phone edit');
   await expect(editorText(editor)).toContainText('phone edit');
-  // Proves select-all replaced the shader rather than inserting into it.
   await expect(editorText(editor)).not.toContainText('iResolution');
 
-  await nav.getByRole('button', { name: 'Preview' }).click();
-  await page.getByLabel('Open options menu', { exact: true }).click();
-  await page.getByLabel('Open editor submenu').locator('visible=true').click();
-  await page.getByLabel('Enable editor overlay').locator('visible=true').click();
-  const overlay = page.locator('.editor-wrapper:not(.pane)');
-  await expect(overlay).toBeVisible();
-  await expect(editorText(overlay)).toContainText('phone edit');
-  await page.getByLabel('Open options menu', { exact: true }).click();
-  await expect(page.getByLabel('Open editor submenu').locator('visible=true')).toHaveCount(0);
+  await editor.getByRole('button', { name: 'Show keyboard toolbar' }).click();
+  await editor.getByRole('button', { name: 'More editing options' }).click();
+  await editor.getByRole('button', { name: 'Show shader behind text' }).click();
+  await expect(editor.getByRole('button', { name: 'Hide shader behind text' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(backdrop.locator('canvas')).toBeVisible();
+  await expect(editor.locator('.editor-wrapper')).not.toHaveClass(/\bpane\b/);
+  expect(await canvas.evaluate((node, original) => node === original, originalCanvas)).toBe(true);
+  expect(await editorInput(editor).evaluate((node, original) => node === original, originalEditor)).toBe(true);
+  await page.keyboard.press('Escape');
 
-  // Undo from the overlay reverts the edit made in the Editor panel.
-  await editorText(overlay).click({ position: { x: 120, y: 10 } });
-  await editorInput(overlay).press('Control+z');
-  await expect(editorText(overlay)).not.toContainText('phone edit');
-  await nav.getByRole('button', { name: 'Editor' }).click();
+  await editorInput(editor).press('Control+z');
   await expect(editorText(editor)).not.toContainText('phone edit');
-
-  await editorText(editor).click({ position: { x: 120, y: 10 } });
   await editorInput(editor).press('Control+Shift+z');
   await expect(editorText(editor)).toContainText('phone edit');
   await persisted(page, 'phone edit');
 
+  await nav.getByRole('button', { name: 'Preview' }).click();
+  await expect(backdrop).toBeHidden();
+  await expect(canvas).toBeVisible();
+  expect(await canvas.evaluate((node, original) => node === original, originalCanvas)).toBe(true);
+  await page.getByLabel('Open options menu', { exact: true }).click();
+  await expect(page.getByLabel('Open editor submenu')).toHaveCount(0);
+  await page.getByLabel('Open options menu', { exact: true }).click();
+  await nav.getByRole('button', { name: 'Editor' }).click();
+  await expect(backdrop.locator('canvas')).toBeVisible();
+  await expect(editorText(editor)).toContainText('phone edit');
+
   await page.reload();
-  await expect(page.getByTestId('shader-option-aurora-glsl')).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('navigation', { name: 'Workspace panels' }).getByRole('button', { name: 'Editor' }).click();
+  await expect(backdrop.locator('canvas')).toBeVisible();
+  await expect(editorText(editor)).toContainText('phone edit');
+  await editor.getByRole('button', { name: 'Show keyboard toolbar' }).click();
+  await editor.getByRole('button', { name: 'More editing options' }).click();
+  await editor.getByRole('button', { name: 'Hide shader behind text' }).click();
+  await expect(backdrop).toBeHidden();
+  await expect(editor.locator('.editor-wrapper')).toHaveClass(/\bpane\b/);
+  await page.reload();
+  await expect(backdrop).toBeHidden();
   await expect(editorText(editor)).toContainText('phone edit');
 });
 

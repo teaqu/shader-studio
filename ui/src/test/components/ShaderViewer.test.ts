@@ -3811,6 +3811,25 @@ describe('ShaderViewer', () => {
     expect(container.querySelector('.editor-wrapper')).toBeFalsy();
   });
 
+  it('suppresses a saved Preview overlay and toggle commands when the host disables it', async () => {
+    configureHost({ getPreviewEditorEnabled: () => false });
+    setEditorOverlayVisible(true);
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+    await loadShader();
+    const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
+    const messageHandler = onMessageCalls[0][0];
+    expect(container.querySelector('.editor-wrapper')).toBeFalsy();
+    await messageHandler({ data: { type: 'toggleEditorOverlay' } });
+    await tick();
+    expect(container.querySelector('.editor-wrapper')).toBeFalsy();
+    expect(getEditorOverlayVisibleState()).toBe(true);
+    configureHost({ getPreviewEditorEnabled: () => true });
+    await tick();
+    await waitForEditorOverlay(container);
+  });
+
   it('should handle toggleEditorOverlay message from extension when a shader is active', async () => {
     const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
     await tick();

@@ -22,6 +22,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   'editor.desktopDescriptions': true,
   'editor.mobileDescriptions': false,
   'editor.mobileNavigation': true,
+  'editor.mobileShaderBackdrop': false,
   'editor.minimap.enabled': false,
   'editor.lineNumbers': 'on' as 'off' | 'on',
 });

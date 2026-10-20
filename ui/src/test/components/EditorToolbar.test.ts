@@ -51,6 +51,24 @@ it('toggles mobile navigation from More without closing the menu', async () => {
   expect(view.getByRole('group', { name: 'More editing options' })).toBeVisible();
 });
 
+it('toggles the shader backdrop from the mobile keys menu', async () => {
+  setFixturePreferences({ ...getFixturePreferences(), mobileShaderBackdrop: false });
+  configureHost({
+    getEditorPreferences: getFixturePreferences,
+    setEditorMobileShaderBackdrop: enabled => setFixturePreferences({ ...getFixturePreferences(), mobileShaderBackdrop: enabled }),
+  });
+  const view = render(EditorToolbar, { touch: true, onCommand: vi.fn() });
+  await fireEvent.click(view.getByRole('button', { name: 'Show keyboard toolbar' }));
+  await fireEvent.click(view.getByRole('button', { name: 'More editing options' }));
+  const show = view.getByRole('button', { name: 'Show shader behind text' });
+  expect(show).toHaveAttribute('aria-pressed', 'false');
+  expect(await fireEvent.mouseDown(show)).toBe(false);
+  await fireEvent.click(show);
+  expect(getFixturePreferences().mobileShaderBackdrop).toBe(true);
+  await fireEvent.click(view.getByRole('button', { name: 'Hide shader behind text' }));
+  expect(getFixturePreferences().mobileShaderBackdrop).toBe(false);
+});
+
 it('toggles mobile descriptions independently from suggestions and desktop descriptions', async () => {
   setFixturePreferences({ ...getFixturePreferences(), mobileDescriptions: false, desktopDescriptions: true, autoSuggestions: true });
   const setter = vi.fn((mobile: boolean, enabled: boolean) => {

@@ -3,6 +3,7 @@
   import { onDestroy, type Snippet } from 'svelte';
   import EditorToolbar from '@shader-studio/ui/lib/components/EditorToolbar.svelte';
   interface Props {
+    displayMode?: 'overlay' | 'pane';
     isVisible: boolean;
     shaderCode: string;
     shaderPath: string;
@@ -24,6 +25,7 @@
   }
 
   let {
+    displayMode = 'pane',
     isVisible,
     shaderCode = '',
     shaderPath = '',
@@ -55,6 +57,7 @@
 
 <div
   data-testid="shader-editor"
+  data-display-mode={displayMode}
   data-buffers={bufferNames.join("|")}
   data-compile-mode={compileMode}
   data-config={JSON.stringify(config)}

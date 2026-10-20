@@ -133,7 +133,7 @@
   });
 
   $effect(() => {
-    editor?.configure(preferences, $currentTheme === 'dark', props.vimMode ?? false);
+    editor?.configure(preferences, $currentTheme === 'dark', props.vimMode ?? false, props.displayMode !== 'pane');
   });
 
   $effect(() => {

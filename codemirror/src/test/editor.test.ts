@@ -32,6 +32,17 @@ function key(view: EditorView, init: KeyboardEventInit): void {
 }
 
 describe('ShaderCodeMirrorEditor', () => {
+  it('changes backdrop styling without replacing the document or undo history', () => {
+    const { editor } = createEditor();
+    editor.insert('edited ');
+    editor.configure(defaultPreferences, false, false, true);
+    expect(editor.view.state.facet(EditorView.darkTheme)).toBe(true);
+    expect(editor.view.state.doc.toString()).toBe('edited let source = 1;');
+    editor.configure(defaultPreferences, false, false, false);
+    expect(editor.view.state.facet(EditorView.darkTheme)).toBe(false);
+    editor.command('undo');
+    expect(editor.view.state.doc.toString()).toBe('let source = 1;');
+  });
   it('lets the line-number and diagnostic gutters scroll with the code', () => {
     const { editor } = createEditor();
     expect(editor.view.dom.querySelector<HTMLElement>('.cm-gutters')?.style.position).toBe('');

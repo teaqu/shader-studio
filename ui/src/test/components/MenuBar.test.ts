@@ -644,6 +644,36 @@ describe('MenuBar', () => {
     expect(screen.queryByLabelText('Show preview')).not.toBeInTheDocument();
   });
 
+  it('omits the preview editor controls when the mobile host disables them', async () => {
+    configureHost({ getPreviewEditorEnabled: () => false });
+    renderMenuBar();
+    await tick();
+
+    await fireEvent.click(screen.getByLabelText('Open options menu'));
+    expect(screen.queryByLabelText('Open editor submenu')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Enable editor overlay')).not.toBeInTheDocument();
+  });
+
+  it('closes an open preview editor submenu when the mobile host disables it', async () => {
+    configureHost({ getPreviewEditorEnabled: () => true });
+    renderMenuBar();
+    await tick();
+
+    await fireEvent.click(screen.getByLabelText('Open options menu'));
+    await fireEvent.click(screen.getByLabelText('Open editor submenu'));
+    expect(screen.getByLabelText('Enable editor overlay')).toBeInTheDocument();
+
+    configureHost({ getPreviewEditorEnabled: () => false });
+    await tick();
+    expect(screen.queryByLabelText('Open editor submenu')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Enable editor overlay')).not.toBeInTheDocument();
+
+    configureHost({ getPreviewEditorEnabled: () => true });
+    await tick();
+    expect(screen.getByLabelText('Open editor submenu')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Enable editor overlay')).not.toBeInTheDocument();
+  });
+
   it('switches to another layout profile from the layout submenu', async () => {
     const profiles = await import('../../lib/state/profileStore.svelte');
     vi.mocked(profiles.getProfileList).mockReturnValue([

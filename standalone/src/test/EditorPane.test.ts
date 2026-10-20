@@ -10,6 +10,7 @@ vi.mock('@shader-studio/ui', async () => {
   return { getViewerSession, getHostEditorWordWrap, toggleHostEditorWordWrap, ShaderEditor: ShaderEditorStub, EditorToolbar };
 });
 
+import { resetMobileShellState, setMobileViewport } from '../state/mobileShellState.svelte';
 import { clearEditorDocuments } from '../state/editorDocuments.svelte';
 import type { WebTransport } from '../WebTransport';
 import EditorPane from '../EditorPane.svelte';
@@ -49,6 +50,33 @@ import { StandaloneSettings } from '../settings/StandaloneSettings';
 import { connectSettings, getEditorPreferences } from '../settings/settingsState.svelte';
 
 describe('EditorPane', () => {
+  it('switches the same mobile editor to the shader backdrop and restores pane styling on desktop', async () => {
+    const settings = new StandaloneSettings({ getItem: () => null, setItem: vi.fn() });
+    const disconnect = connectSettings(settings);
+    setMobileViewport(true);
+    setViewerSession(createSession());
+    const view = render(EditorPane);
+    try {
+      const editor = view.getByTestId('shader-editor');
+      expect(editor.getAttribute('data-display-mode')).toBe('pane');
+      settings.update('editor.mobileShaderBackdrop', true);
+      await tick();
+      expect(view.getByTestId('shader-editor')).toBe(editor);
+      expect(editor.getAttribute('data-display-mode')).toBe('overlay');
+      expect(editor.getAttribute('data-code')).toBe('initial source');
+      setMobileViewport(false);
+      await tick();
+      expect(editor.getAttribute('data-display-mode')).toBe('pane');
+      setMobileViewport(true);
+      await tick();
+      expect(editor.getAttribute('data-display-mode')).toBe('overlay');
+      settings.update('editor.mobileShaderBackdrop', false);
+      await tick();
+      expect(editor.getAttribute('data-display-mode')).toBe('pane');
+    } finally {
+      view.unmount(); disconnect(); resetMobileShellState();
+    }
+  });
   it('toggles the shared word-wrap preference and persists it for future editors', async () => {
     const values = new Map<string, string>();
     const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => {

@@ -484,6 +484,56 @@ describe('StandaloneLayout', () => {
       disconnect();
     });
 
+    it('reuses the preview behind the mobile editor and restores it for every destination change', async () => {
+      const settings = new StandaloneSettings({ getItem: () => null, setItem: vi.fn() });
+      const disconnect = connectSettings(settings);
+      const viewport = stubViewport(true);
+      const result = renderLayout();
+      try {
+        await tick();
+        const preview = result.container.querySelector('[data-source="preview"]') as HTMLElement;
+        expect(preview).toBeTruthy();
+        expect(result.container.querySelector('.mobile-preview-backdrop [data-source="preview"]')).toBeNull();
+
+        settings.update('editor.mobileShaderBackdrop', true);
+        result.component.selectMobilePanel('editor');
+        await tick();
+        const backdrop = result.container.querySelector('.mobile-preview-backdrop') as HTMLElement;
+        expect(backdrop.querySelector('[data-source="preview"]')).toBe(preview);
+
+        result.component.selectMobilePanel('preview');
+        await tick();
+        expect(backdrop.querySelector('[data-source="preview"]')).toBeNull();
+        expect(result.container.querySelectorAll('[data-source="preview"]')).toHaveLength(1);
+        expect(result.container.querySelector('[data-source="preview"]')).toBe(preview);
+
+        result.component.selectMobilePanel('editor');
+        await tick();
+        expect(backdrop.querySelector('[data-source="preview"]')).toBe(preview);
+
+        result.component.resetLayout();
+        await tick();
+        expect(backdrop.querySelector('[data-source="preview"]')).toBe(preview);
+        expect(result.container.querySelectorAll('[data-source="preview"]')).toHaveLength(1);
+
+        settings.update('editor.mobileShaderBackdrop', false);
+        await tick();
+        expect(backdrop.querySelector('[data-source="preview"]')).toBeNull();
+        expect(result.container.querySelector('[data-source="preview"]')).toBe(preview);
+
+        settings.update('editor.mobileShaderBackdrop', true);
+        await tick();
+        expect(backdrop.querySelector('[data-source="preview"]')).toBe(preview);
+        viewport.resize(false);
+        await tick();
+        expect(backdrop.querySelector('[data-source="preview"]')).toBeNull();
+        expect(result.container.querySelector('[data-source="preview"]')).toBe(preview);
+      } finally {
+        result.unmount();
+        disconnect();
+      }
+    });
+
     it('queries the phone breakpoint and stops listening on unmount', async () => {
       const viewport = stubViewport(true);
       const result = renderLayout();

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import { getHostEditorMobileNavigation, toggleHostEditorMobileNavigation, getHostEditorAutoSuggestions, toggleHostEditorAutoSuggestions, getHostEditorDescriptions, toggleHostEditorDescriptions } from '../state/hostState.svelte';
+  import { getHostEditorMobileShaderBackdrop, toggleHostEditorMobileShaderBackdrop, getHostEditorMobileNavigation, toggleHostEditorMobileNavigation, getHostEditorAutoSuggestions, toggleHostEditorAutoSuggestions, getHostEditorDescriptions, toggleHostEditorDescriptions } from '../state/hostState.svelte';
 
   interface Props {
     options?: Snippet;
@@ -17,6 +17,7 @@
   const suggestions = $derived(getHostEditorAutoSuggestions());
   const descriptions = $derived(getHostEditorDescriptions(touch));
   const mobileNavigation = $derived(getHostEditorMobileNavigation());
+  const shaderBackdrop = $derived(getHostEditorMobileShaderBackdrop());
   const historyCommands = [
     { command: 'undo', label: 'Undo', text: 'Undo' },
     { command: 'redo', label: 'Redo', text: 'Redo' },
@@ -72,6 +73,10 @@
         {#if mobileNavigation !== undefined}
           <button type="button" aria-label={mobileNavigation ? 'Hide Editor and Preview tabs' : 'Show Editor and Preview tabs'} aria-pressed={mobileNavigation}
             onmousedown={event => event.preventDefault()} onclick={toggleHostEditorMobileNavigation}>Editor / Preview tabs</button>
+        {/if}
+        {#if shaderBackdrop !== undefined}
+          <button type="button" aria-label={shaderBackdrop ? 'Hide shader behind text' : 'Show shader behind text'} aria-pressed={shaderBackdrop}
+            onmousedown={event => event.preventDefault()} onclick={toggleHostEditorMobileShaderBackdrop}>Shader behind text</button>
         {/if}
         {@render options?.()}
       </div>

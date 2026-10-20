@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 <script lang="ts">
   import { portal } from "../../actions/portal";
-  import { getHostCapabilities, getHostEditorWordWrap, toggleHostEditorWordWrap } from "../../state/hostState.svelte";
+  import { getHostCapabilities, getHostEditorWordWrap, toggleHostEditorWordWrap, isHostPreviewEditorEnabled } from "../../state/hostState.svelte";
   import { getActiveProfile, getProfileList, restoreActiveProfile, saveProfile, switchTo } from "../../state/profileStore.svelte";
   import type { CompileMode } from "../../stores/compileModeStore";
   import ProfileModal from "../ProfileModal.svelte";
@@ -69,6 +69,11 @@
   let confirmingSave = $state(false);
   let showProfileModal = $state(false);
   const wordWrap = $derived(getHostEditorWordWrap());
+  const previewEditorEnabled = $derived(isHostPreviewEditorEnabled());
+
+  $effect(() => {
+    if (!previewEditorEnabled) editorMenu.open = false;
+  });
 
   function handleVolumeSlider(event: Event) {
     onVolumeChange(parseFloat((event.target as HTMLInputElement).value));
@@ -195,21 +200,23 @@
         <span>Debug</span>
       </button>
     {/if}
-    <button
-      bind:this={editorMenu.trigger}
-      class="options-menu-item"
-      onclick={() => {
-        editorMenu.open = !editorMenu.open;
-      }}
-      aria-label="Open editor submenu"
-      style="width:100%;justify-content:space-between"
-    >
-      <div style="display:flex;align-items:center;gap:8px">
-        <i class="codicon codicon-code"></i>
-        <span>Editor Overlay</span>
-      </div>
-      <i class="codicon codicon-chevron-right"></i>
-    </button>
+    {#if previewEditorEnabled}
+      <button
+        bind:this={editorMenu.trigger}
+        class="options-menu-item"
+        onclick={() => {
+          editorMenu.open = !editorMenu.open;
+        }}
+        aria-label="Open editor submenu"
+        style="width:100%;justify-content:space-between"
+      >
+        <div style="display:flex;align-items:center;gap:8px">
+          <i class="codicon codicon-code"></i>
+          <span>Editor Overlay</span>
+        </div>
+        <i class="codicon codicon-chevron-right"></i>
+      </button>
+    {/if}
     <button
       class="options-menu-item"
       onclick={(event) => onRefresh(event)}
@@ -345,7 +352,7 @@
   </div>
 {/if}
 
-{#if editorMenu.open}
+{#if editorMenu.open && previewEditorEnabled}
   <div
     use:portal
     bind:this={editorMenu.element}

@@ -52,6 +52,8 @@
   let filesSource: HTMLElement;
   let editorSource: HTMLElement;
   let previewSource: HTMLElement;
+  let previewDestination = $state.raw<HTMLElement | null>(null);
+  let backdropElement = $state<HTMLDivElement>();
   let controller = $state<StandaloneLayoutController | null>(null);
   let dockviewApi: DockviewApi | null = null;
   let panelSizing: StandalonePanelSizing | null = null;
@@ -69,6 +71,17 @@
   const mobilePanel = $derived(getMobilePanel());
   const mobileViewport = $derived(isMobileViewport());
   const keyboardNavigation = $derived(isMobileKeyboardOpen() && getEditorPreferences().mobileNavigation);
+  const shaderBackdrop = $derived(mobileViewport && mobilePanel === 'editor' && getEditorPreferences().mobileShaderBackdrop);
+
+  // Reuse the mounted preview and GPU canvas. Keep the current Dockview host
+  // reactive so layout resets can replace it while the backdrop is enabled.
+  $effect(() => {
+    const target = shaderBackdrop ? backdropElement : previewDestination;
+    if (target && previewSource && previewSource.parentElement !== target) {
+      target.append(previewSource);
+      panelSizing?.refresh();
+    }
+  });
 
   $effect(() => {
     controller?.setEditorPath(getViewerSession()?.shaderPath ?? '');
@@ -132,9 +145,11 @@
       if (this.source) {
         this.element.append(this.source);
       }
+      if (this.panelId === 'preview') previewDestination = this.element;
     }
 
     dispose(): void {
+      if (previewDestination === this.element) previewDestination = null;
       if (this.source && sourceElement) {
         sourceElement.append(this.source);
       }
@@ -273,7 +288,10 @@
   {#if mobileViewport && studioNotices && isExplorerSection(mobilePanel)}
     <div class="mobile-studio-notices">{@render studioNotices()}</div>
   {/if}
-  <div class="standalone-dockview" bind:this={dockviewElement}></div>
+  <div class="standalone-stage" class:shader-backdrop-active={shaderBackdrop}>
+    <div class="mobile-preview-backdrop" hidden={!shaderBackdrop} inert aria-hidden="true" bind:this={backdropElement}></div>
+    <div class="standalone-dockview" bind:this={dockviewElement}></div>
+  </div>
   <div class="standalone-panel-sources" bind:this={sourceElement} aria-hidden="true">
     <div class="standalone-panel-source" bind:this={explorerSource}>{@render explorer()}</div>
     <div class="standalone-panel-source" bind:this={filesSource}>{@render files?.()}</div>
@@ -356,6 +374,10 @@
   }
 
   .standalone-layout { display: flex; flex: 1; min-height: 0; min-width: 0; }
+  .standalone-stage { position: relative; display: flex; flex: 1; min-height: 0; min-width: 0; }
+  .mobile-preview-backdrop { position: absolute; inset: 0; pointer-events: none; user-select: none; overflow: hidden; }
+  .mobile-preview-backdrop :global(.menu-bar) { display: none; }
+  .shader-backdrop-active > .standalone-dockview { position: relative; z-index: 1; --dv-group-view-background-color: transparent; }
   .standalone-dockview { flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
   .standalone-dockview :global(.dv-content-container) { min-width: 0; min-height: 0; }
   .standalone-panel-sources { display: none; }

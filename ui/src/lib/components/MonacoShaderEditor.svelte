@@ -957,6 +957,17 @@
     }
   });
 
+  $effect(() => {
+    if (!editorReady) return;
+    if (displayMode === 'overlay' && !overlayTokensRetained) {
+      overlayTokensRetained = true;
+      retainOverlayTokenColors(editorTheme);
+    } else if (displayMode !== 'overlay' && overlayTokensRetained) {
+      overlayTokensRetained = false;
+      releaseOverlayTokenColors();
+    }
+  });
+
   onMount(() => {
     const detachPendingSave = transport.registerPendingSave?.(flushPendingSource);
     unsubscribeTheme = currentTheme.subscribe((theme) => {

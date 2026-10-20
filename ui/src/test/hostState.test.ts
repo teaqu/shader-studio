@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { getHostEditorMobileNavigation, toggleHostEditorMobileNavigation, editorDescriptionsEnabled, getHostEditorDescriptions, toggleHostEditorDescriptions, getHostEditorWordWrap, toggleHostEditorWordWrap, getHostEditorAutoSuggestions, toggleHostEditorAutoSuggestions, configureHost, getHostCapabilities, getHostDefaultAssets, getHostTransportFactory, resetHost } from '../lib/state/hostState.svelte';
+import { getHostEditorMobileNavigation, toggleHostEditorMobileNavigation, editorDescriptionsEnabled, getHostEditorDescriptions, toggleHostEditorDescriptions, getHostEditorWordWrap, toggleHostEditorWordWrap, getHostEditorAutoSuggestions, toggleHostEditorAutoSuggestions, getHostEditorMobileShaderBackdrop, toggleHostEditorMobileShaderBackdrop, configureHost, getHostCapabilities, getHostDefaultAssets, getHostTransportFactory, isHostPreviewEditorEnabled, resetHost } from '../lib/state/hostState.svelte';
 
 afterEach(resetHost);
 
@@ -20,6 +20,31 @@ describe('viewer host contract', () => {
     expect(getHostEditorMobileNavigation()).toBe(false);
     toggleHostEditorMobileNavigation();
     expect(getHostEditorMobileNavigation()).toBe(true);
+  });
+
+  it('defaults the mobile shader backdrop off and only toggles it through a writable host preference', () => {
+    expect(getHostEditorMobileShaderBackdrop()).toBeUndefined();
+    expect(() => toggleHostEditorMobileShaderBackdrop()).not.toThrow();
+    configureHost({ setEditorMobileShaderBackdrop: () => { throw new Error('No preference to toggle'); } });
+    expect(getHostEditorMobileShaderBackdrop()).toBeUndefined();
+    let mobileShaderBackdrop: boolean | undefined;
+    configureHost({
+      getEditorPreferences: () => ({ fontSize: 14, tabSize: 4, insertSpaces: true, wordWrap: 'off', minimap: false, lineNumbers: 'on', mobileShaderBackdrop }),
+      setEditorMobileShaderBackdrop: enabled => { mobileShaderBackdrop = enabled; },
+    });
+    expect(getHostEditorMobileShaderBackdrop()).toBe(false);
+    toggleHostEditorMobileShaderBackdrop();
+    expect(getHostEditorMobileShaderBackdrop()).toBe(true);
+    toggleHostEditorMobileShaderBackdrop();
+    expect(getHostEditorMobileShaderBackdrop()).toBe(false);
+  });
+
+  it('keeps the preview editor enabled unless the host disables it for mobile', () => {
+    expect(isHostPreviewEditorEnabled()).toBe(true);
+    configureHost({ getPreviewEditorEnabled: () => false });
+    expect(isHostPreviewEditorEnabled()).toBe(false);
+    configureHost({ getPreviewEditorEnabled: () => true });
+    expect(isHostPreviewEditorEnabled()).toBe(true);
   });
   it('resolves separate description defaults and only toggles writable host preferences', () => {
     expect(editorDescriptionsEnabled(undefined, true)).toBe(false);

@@ -78,6 +78,7 @@ export class ShaderCodeMirrorEditor {
   private diagnostics: readonly Diagnostic[] = [];
   private preferences: EditorPreferences;
   private dark: boolean;
+  private overlay: boolean;
   private vim: boolean;
   private destroyed = false;
   private readonly anonymousKey = Symbol();
@@ -91,6 +92,7 @@ export class ShaderCodeMirrorEditor {
     this.path = options.path;
     this.preferences = options.preferences ?? defaultPreferences;
     this.dark = options.dark ?? false;
+    this.overlay = options.overlay ?? false;
     this.vim = options.vim ?? false;
     this.sharedDocument = this.acquireDocument(options.path, options.code);
     this.view = new EditorView({ parent, state: this.createState(this.sharedDocument.text) });
@@ -179,14 +181,15 @@ export class ShaderCodeMirrorEditor {
       EditorState.tabSize.of(tabSize), indentUnit.of(insertSpaces ? ' '.repeat(tabSize) : '\t'),
       this.preferences.lineNumbers === 'on' ? [lineNumbers(), foldGutter()] : [],
       wordWrap === 'on' ? EditorView.lineWrapping : [],
-      this.vim ? vim() : [], editorTheme(this.dark, this.options.overlay ?? false, fontSize),
+      this.vim ? vim() : [], editorTheme(this.dark, this.overlay, fontSize),
     ];
   }
 
-  configure(preferences: EditorPreferences, dark = this.dark, vimEnabled = this.vim): void {
+  configure(preferences: EditorPreferences, dark = this.dark, vimEnabled = this.vim, overlay = this.overlay): void {
     this.preferences = preferences;
     this.dark = dark;
     this.vim = vimEnabled;
+    this.overlay = overlay;
     this.view.dispatch({ effects: [
       this.configuration.reconfigure(this.configurationExtensions()),
       this.completion.reconfigure(this.completionExtension()),

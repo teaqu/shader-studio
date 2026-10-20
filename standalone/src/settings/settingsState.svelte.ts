@@ -31,5 +31,6 @@ export function getEditorPreferences() {
     desktopDescriptions: values['editor.desktopDescriptions'],
     mobileDescriptions: values['editor.mobileDescriptions'],
     mobileNavigation: values['editor.mobileNavigation'],
+    mobileShaderBackdrop: values['editor.mobileShaderBackdrop'],
   };
 }

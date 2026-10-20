@@ -85,7 +85,7 @@
   import { FileProfileAdapter } from "../profiles/FileProfileAdapter";
   import { init as initProfiles } from "../state/profileStore.svelte";
   import { setLanguageServiceSettings } from "../state/languageServiceState.svelte";
-  import { getHostCapabilities } from "../state/hostState.svelte";
+  import { getHostCapabilities, isHostPreviewEditorEnabled } from "../state/hostState.svelte";
 
   // --- Web layout slot helpers (inlined from deleted util/layoutSlot.ts) ---
   const WEB_SLOT_SESSION_KEY = "shader-studio.web-layout-slot";
@@ -282,7 +282,7 @@
   let uniformActualFps = $state<Record<string, number>>({});
 
   // Editor overlay state
-  let editorOverlayVisible = $derived(hasShader && getEditorOverlayVisible());
+  let editorOverlayVisible = $derived(hasShader && isHostPreviewEditorEnabled() && getEditorOverlayVisible());
   let editorVimMode = $derived(getVimMode());
   let currentShaderCode = $state('');
   let originalShaderCode = $state('');
@@ -1420,7 +1420,7 @@
     }
 
     if (type === 'toggleEditorOverlay') {
-      if (hasShader) {
+      if (hasShader && isHostPreviewEditorEnabled()) {
         toggleEditorOverlay();
       }
       return;

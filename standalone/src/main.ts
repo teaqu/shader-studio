@@ -10,6 +10,7 @@ import '@shader-studio/ui/app.css';
 import './themes.css';
 import '@vscode/codicons/dist/codicon.css';
 import { getEditorPreferences } from './settings/settingsState.svelte';
+import { isMobileViewport } from './state/mobileShellState.svelte';
 import App from './App.svelte';
 import { WebTransport } from './WebTransport';
 import { installSlangAssetMetadata } from './slangAssets';
@@ -48,6 +49,10 @@ configureHost({
   setEditorMobileNavigation: enabled => {
     transport.settings.update('editor.mobileNavigation', enabled);
   },
+  setEditorMobileShaderBackdrop: enabled => {
+    transport.settings.update('editor.mobileShaderBackdrop', enabled);
+  },
+  getPreviewEditorEnabled: () => !isMobileViewport(),
   defaultAssets: defaultAssets(),
   uploadAssets: (files, shaderPath) => transport.uploadAssets(files, shaderPath),
   capabilities: { compileOnSave: false },

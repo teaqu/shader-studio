@@ -70,6 +70,17 @@ describe('standalone global settings', () => {
     reloaded.reset();
     expect(reloaded.snapshot['editor.mobileNavigation']).toBe(true);
   });
+  it('persists the optional mobile shader backdrop and resets to plain code', () => {
+    const backend = storage();
+    const settings = new StandaloneSettings(backend);
+    expect(settings.snapshot['editor.mobileShaderBackdrop']).toBe(false);
+    expect(settings.update('editor.mobileShaderBackdrop', 'true')).toBe(false);
+    settings.update('editor.mobileShaderBackdrop', true);
+    const reloaded = new StandaloneSettings(backend);
+    expect(reloaded.snapshot['editor.mobileShaderBackdrop']).toBe(true);
+    reloaded.reset();
+    expect(reloaded.snapshot['editor.mobileShaderBackdrop']).toBe(false);
+  });
   it('loads valid values independently and ignores unknown or malformed values', () => {
     const backend = storage();
     backend.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({ version: 1, values: { 'editor.fontSize': 80, 'editor.tabSize': 2, 'editor.wordWrap': 'on', unrelated: false } }));

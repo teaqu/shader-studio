@@ -17,6 +17,7 @@ export interface HostEditorPreferences {
   desktopDescriptions?: boolean;
   mobileDescriptions?: boolean;
   mobileNavigation?: boolean;
+  mobileShaderBackdrop?: boolean;
   /** The editor selected for desktop-sized viewports by the standalone host. */
   desktopEditor?: 'monaco' | 'codemirror';
   /** The editor selected for mobile-sized viewports by the standalone host. */
@@ -33,6 +34,8 @@ export interface HostConfig {
   setEditorAutoSuggestions?: (enabled: boolean) => void;
   setEditorDescriptions?: (mobile: boolean, enabled: boolean) => void;
   setEditorMobileNavigation?: (enabled: boolean) => void;
+  setEditorMobileShaderBackdrop?: (enabled: boolean) => void;
+  getPreviewEditorEnabled?: () => boolean;
   uploadAssets?: (files: readonly File[], shaderPath: string) => Promise<WorkspaceFileInfo[]>;
 }
 
@@ -118,4 +121,18 @@ export function toggleHostEditorMobileNavigation(): void {
   if (current !== undefined) {
     host.setEditorMobileNavigation?.(!current);
   }
+}
+
+export function getHostEditorMobileShaderBackdrop(): boolean | undefined {
+  const preferences = host.getEditorPreferences?.();
+  return host.setEditorMobileShaderBackdrop && preferences ? preferences.mobileShaderBackdrop ?? false : undefined;
+}
+
+export function toggleHostEditorMobileShaderBackdrop(): void {
+  const current = getHostEditorMobileShaderBackdrop();
+  if (current !== undefined) host.setEditorMobileShaderBackdrop?.(!current);
+}
+
+export function isHostPreviewEditorEnabled(): boolean {
+  return host.getPreviewEditorEnabled?.() ?? true;
 }
