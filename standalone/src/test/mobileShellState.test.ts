@@ -144,6 +144,71 @@ it('does not mistake rotation or an unrelated focused field for the editor keybo
   stop();
 });
 
+it('returns native page scrolling to the origin while leaving editor scrolling alone', () => {
+  vi.stubGlobal('innerHeight', 616);
+  vi.stubGlobal('scrollY', 0);
+  const viewport = Object.assign(new EventTarget(), { scale: 1, height: 616, offsetTop: 0 });
+  vi.stubGlobal('visualViewport', viewport);
+  let nextFrame: FrameRequestCallback | undefined;
+  vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => {
+    nextFrame = callback;
+    return 1;
+  });
+  const cancel = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+  const scroll = vi.spyOn(window, 'scrollTo').mockImplementation(() => {
+    vi.stubGlobal('scrollY', 0);
+    viewport.offsetTop = 0;
+  });
+  setMobileViewport(true);
+  const stop = observeMobileVisualViewport();
+  const editor = document.body.appendChild(document.createElement('div'));
+  editor.dataset.editorEngine = 'codemirror';
+  editor.appendChild(document.createElement('textarea')).focus();
+  viewport.height = 314;
+  viewport.dispatchEvent(new Event('resize'));
+  editor.scrollTop = 25;
+  editor.dispatchEvent(new Event('scroll'));
+  expect(nextFrame).toBeUndefined();
+
+  // Values captured on iPhone after swiping with the keyboard open.
+  vi.stubGlobal('innerHeight', 238);
+  vi.stubGlobal('scrollY', 378);
+  viewport.height = 238;
+  viewport.offsetTop = 378;
+  window.dispatchEvent(new Event('scroll'));
+  viewport.dispatchEvent(new Event('scroll'));
+  expect(window.requestAnimationFrame).toHaveBeenCalledOnce();
+  nextFrame!(0);
+  expect(scroll).toHaveBeenCalledWith({ top: 0, left: 0, behavior: 'instant' });
+  expect(editor.scrollTop).toBe(25);
+  expect(getMobileVisualViewportTop()).toBe(0);
+  expect(getMobileVisualViewportHeight()! + getMobileKeyboardInset()).toBe(616);
+
+  // Pinch zoom and desktop navigation must retain their native scrolling.
+  scroll.mockClear();
+  vi.stubGlobal('scrollY', 100);
+  viewport.scale = 2;
+  window.dispatchEvent(new Event('scroll'));
+  expect(window.requestAnimationFrame).toHaveBeenCalledOnce();
+  viewport.scale = 1;
+  setMobileViewport(false);
+  window.dispatchEvent(new Event('scroll'));
+  expect(window.requestAnimationFrame).toHaveBeenCalledOnce();
+  setMobileViewport(true);
+  window.dispatchEvent(new Event('scroll'));
+  expect(window.requestAnimationFrame).toHaveBeenCalledTimes(2);
+  // Recheck eligibility when a queued frame runs, too.
+  setMobileViewport(false);
+  nextFrame!(0);
+  expect(scroll).not.toHaveBeenCalled();
+  setMobileViewport(true);
+  window.dispatchEvent(new Event('scroll'));
+  stop();
+  expect(cancel).toHaveBeenCalledWith(1);
+  window.dispatchEvent(new Event('scroll'));
+  expect(window.requestAnimationFrame).toHaveBeenCalledTimes(3);
+});
+
 it('keeps the normal layout when visual viewport information is unavailable', () => {
   vi.stubGlobal('visualViewport', undefined);
   const stop = observeMobileVisualViewport();

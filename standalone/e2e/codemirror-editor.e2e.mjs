@@ -254,14 +254,31 @@ test('mobile bottom toolbar follows a panned keyboard viewport without leaving b
     });
     const fullHeight = window.innerHeight;
     let innerHeight = fullHeight;
+    let nativePagePan = 0;
+    const scrollTo = window.scrollTo.bind(window);
     Object.defineProperty(window, 'visualViewport', { configurable: true, value: viewport });
     Object.defineProperty(window, 'innerHeight', { configurable: true, get: () => innerHeight });
+    Object.defineProperty(window, 'scrollY', { configurable: true, get: () => nativePagePan });
+    window.scrollTo = (...args) => {
+      scrollTo(...args);
+      if (nativePagePan) {
+        nativePagePan = 0;
+        viewport.offsetTop = 0;
+        window.dispatchEvent(new Event('scroll'));
+        viewport.dispatchEvent(new Event('scroll'));
+      }
+    };
     window.setKeyboardViewport = (height, offsetTop) => {
       innerHeight = height;
       viewport.height = height;
       viewport.offsetTop = offsetTop;
       viewport.dispatchEvent(new Event('resize'));
       viewport.dispatchEvent(new Event('scroll'));
+    };
+    window.panKeyboardPage = () => {
+      nativePagePan = 378;
+      window.setKeyboardViewport(238, 378);
+      window.dispatchEvent(new Event('scroll'));
     };
     window.restoreKeyboardViewport = () => window.setKeyboardViewport(fullHeight, 0);
   });
@@ -324,6 +341,15 @@ test('mobile bottom toolbar follows a panned keyboard viewport without leaving b
   }))).toEqual({ top: 160, bottom: fullHeight });
   expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBe(pageScrollHeight);
   expect(await page.evaluate(() => document.documentElement.scrollTop)).toBe(0);
+  // iPhone can pan the root even when its scrollHeight equals clientHeight.
+  // The shell must recover while the code remains editable.
+  await page.evaluate(() => window.panKeyboardPage());
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  await expect.poll(() => shell.evaluate(element => ({
+    top: element.getBoundingClientRect().top, height: element.getBoundingClientRect().height,
+  }))).toEqual({ top: 0, height: fullHeight });
+  await expect(content).toHaveText(code);
+  await expect(content).toBeFocused();
   await content.evaluate(element => element.blur());
   await expect(nav).toBeHidden();
   await page.evaluate(() => window.restoreKeyboardViewport());

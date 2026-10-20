@@ -52,6 +52,22 @@ export function observeMobileVisualViewport(): () => void {
   }
   let restingHeight = viewport.height;
   let viewportWidth = window.innerWidth;
+  let pageScrollFrame = 0;
+  const shouldResetPageScroll = () => isMobileViewport() && mobileKeyboardOpen
+    && viewport.scale === 1 && window.scrollY !== 0;
+  const keepPageAtOrigin = () => {
+    if (pageScrollFrame || !shouldResetPageScroll()) return;
+    pageScrollFrame = window.requestAnimationFrame(() => {
+      pageScrollFrame = 0;
+      if (!shouldResetPageScroll()) return;
+      // iOS can scroll the document with its keyboard open even though the
+      // full-screen shell has overflow:hidden. Only nested panels should scroll:
+      // retaining that document pan feeds it back into our shell size/position.
+      // Coalesce browser scroll events and leave the editor's scrollTop intact.
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+      update();
+    });
+  };
   const update = () => {
     const unzoomed = viewport.scale === 1 && viewport.height > 0;
     // The visible rectangle has an independent size and position. Adding the
@@ -79,6 +95,7 @@ export function observeMobileVisualViewport(): () => void {
     if (unzoomed && !editing && !mobileKeyboardOpen) {
       restingHeight = viewport.height;
     }
+    keepPageAtOrigin();
   };
   viewport.addEventListener('resize', update);
   viewport.addEventListener('scroll', update);
@@ -88,6 +105,7 @@ export function observeMobileVisualViewport(): () => void {
   document.addEventListener('focusout', update);
   update();
   return () => {
+    window.cancelAnimationFrame(pageScrollFrame);
     viewport.removeEventListener('resize', update);
     viewport.removeEventListener('scroll', update);
     window.removeEventListener('resize', update);
