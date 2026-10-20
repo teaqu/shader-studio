@@ -132,7 +132,9 @@ export function getHostEditorMobileShaderBackdrop(): boolean | undefined {
 
 export function toggleHostEditorMobileShaderBackdrop(): void {
   const current = getHostEditorMobileShaderBackdrop();
-  if (current !== undefined) host.setEditorMobileShaderBackdrop?.(!current);
+  if (current !== undefined) {
+    host.setEditorMobileShaderBackdrop?.(!current);
+  }
 }
 
 export function isHostPreviewEditorEnabled(): boolean {

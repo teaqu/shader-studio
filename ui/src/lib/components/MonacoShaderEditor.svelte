@@ -960,7 +960,9 @@
   });
 
   $effect(() => {
-    if (!editorReady) return;
+    if (!editorReady) {
+      return;
+    }
     if (displayMode === 'overlay' && !overlayTokensRetained) {
       overlayTokensRetained = true;
       retainOverlayTokenColors(editorTheme);

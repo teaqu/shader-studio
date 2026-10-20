@@ -76,7 +76,9 @@
   // Reuse the mounted preview and GPU canvas. Keep the current Dockview host
   // reactive so layout resets can replace it while the backdrop is enabled.
   $effect(() => {
-    const target = shaderBackdrop ? backdropElement : previewDestination;
+    // A reset recreates the preview host even while the backdrop is active.
+    const destination = previewDestination;
+    const target = shaderBackdrop ? backdropElement : destination;
     if (target && previewSource && previewSource.parentElement !== target) {
       target.append(previewSource);
       panelSizing?.refresh();
@@ -145,11 +147,15 @@
       if (this.source) {
         this.element.append(this.source);
       }
-      if (this.panelId === 'preview') previewDestination = this.element;
+      if (this.panelId === 'preview') {
+        previewDestination = this.element;
+      }
     }
 
     dispose(): void {
-      if (previewDestination === this.element) previewDestination = null;
+      if (previewDestination === this.element) {
+        previewDestination = null;
+      }
       if (this.source && sourceElement) {
         sourceElement.append(this.source);
       }

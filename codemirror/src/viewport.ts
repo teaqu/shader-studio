@@ -3,7 +3,9 @@ import { EditorView, ViewPlugin } from '@codemirror/view';
 /** Keep the cursor above the keyboard while code still paints behind it. */
 export function visibleScrollMargins(view: EditorView): { bottom: number } | null {
   const viewport = view.dom.ownerDocument.defaultView?.visualViewport;
-  if (!viewport || viewport.scale !== 1) return null;
+  if (!viewport || viewport.scale !== 1) {
+    return null;
+  }
   const bounds = view.scrollDOM.getBoundingClientRect();
   const hidden = bounds.bottom - (viewport.offsetTop + viewport.height);
   // Leave room for the optional single-row touch toolbar, but always retain
@@ -16,7 +18,9 @@ export class ViewportScrollController {
   private readonly window: Window | null;
   private frame = 0;
   private readonly changed = () => {
-    if (!this.window || this.frame) return;
+    if (!this.window || this.frame) {
+      return;
+    }
     this.frame = this.window.requestAnimationFrame(() => {
       this.frame = 0;
       if (this.view.hasFocus && this.viewport?.scale === 1) {

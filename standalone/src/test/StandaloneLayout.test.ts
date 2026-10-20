@@ -21,13 +21,22 @@ vi.mock('dockview-core', () => ({
       addPanel: vi.fn((panel) => {
         const renderer = options.createComponent({ id: panel.id, name: panel.component });
         renderers.push(renderer);
+        _element.append(renderer.element);
         renderer.init({ api: { id: panel.id } });
       }),
       clear: vi.fn(() => {
-        renderers.forEach((renderer) => renderer.dispose()); renderers = [];
+        renderers.forEach((renderer) => {
+          renderer.dispose();
+          renderer.element.remove();
+        });
+        renderers = [];
       }),
       dispose: vi.fn(() => {
-        renderers.forEach((renderer) => renderer.dispose()); renderers = [];
+        renderers.forEach((renderer) => {
+          renderer.dispose();
+          renderer.element.remove();
+        });
+        renderers = [];
       }),
       fromJSON: vi.fn(),
       getPanel: vi.fn(() => undefined),
@@ -225,7 +234,7 @@ describe('StandaloneLayout', () => {
         await tick();
         expect(result.queryByRole('navigation', { name: 'Editor and preview' })).toBeNull();
         expect(result.queryByRole('navigation', { name: 'Workspace panels' })).toBeNull();
-        expect(result.container.querySelector('.standalone-layout')).not.toHaveClass('keyboard-navigation');
+        expect(result.container.querySelector('.standalone-layout')?.classList.contains('keyboard-navigation')).toBe(false);
         settings.update('editor.mobileNavigation', true);
         await tick();
         expect(result.getByRole('navigation', { name: 'Editor and preview' })).toBeTruthy();

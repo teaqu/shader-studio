@@ -7,7 +7,10 @@ function fixture() {
   let callback: FrameRequestCallback | undefined;
   const window = {
     visualViewport: viewport,
-    requestAnimationFrame: vi.fn((next: FrameRequestCallback) => { callback = next; return 1; }),
+    requestAnimationFrame: vi.fn((next: FrameRequestCallback) => {
+      callback = next;
+      return 1;
+    }),
     cancelAnimationFrame: vi.fn(),
   };
   const view = {

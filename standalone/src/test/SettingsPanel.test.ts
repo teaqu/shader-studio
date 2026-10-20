@@ -15,8 +15,8 @@ it('offers independent mobile and desktop description toggles', async () => {
   render(SettingsPanel, { settings, onClose: vi.fn() });
   const mobile = screen.getByRole('checkbox', { name: 'Mobile descriptions' });
   const desktop = screen.getByRole('checkbox', { name: 'Desktop descriptions' });
-  expect(mobile).not.toBeChecked();
-  expect(desktop).toBeChecked();
+  expect((mobile as HTMLInputElement).checked).toBe(false);
+  expect((desktop as HTMLInputElement).checked).toBe(true);
   await fireEvent.click(mobile);
   expect(settings.snapshot['editor.mobileDescriptions']).toBe(true);
   await fireEvent.click(desktop);

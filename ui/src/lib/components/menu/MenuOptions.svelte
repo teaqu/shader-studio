@@ -72,7 +72,9 @@
   const previewEditorEnabled = $derived(isHostPreviewEditorEnabled());
 
   $effect(() => {
-    if (!previewEditorEnabled) editorMenu.open = false;
+    if (!previewEditorEnabled) {
+      editorMenu.open = false;
+    }
   });
 
   function handleVolumeSlider(event: Event) {

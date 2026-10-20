@@ -7,13 +7,17 @@ describe('viewer host contract', () => {
   it('only exposes mobile navigation for a host with writable preferences', () => {
     expect(getHostEditorMobileNavigation()).toBeUndefined();
     expect(() => toggleHostEditorMobileNavigation()).not.toThrow();
-    configureHost({ setEditorMobileNavigation: () => { throw new Error('No preferences'); } });
+    configureHost({ setEditorMobileNavigation: () => {
+      throw new Error('No preferences');
+    } });
     expect(getHostEditorMobileNavigation()).toBeUndefined();
     expect(() => toggleHostEditorMobileNavigation()).not.toThrow();
     let mobileNavigation: boolean | undefined;
     configureHost({
       getEditorPreferences: () => ({ fontSize: 14, tabSize: 4, insertSpaces: true, wordWrap: 'off', minimap: false, lineNumbers: 'on', mobileNavigation }),
-      setEditorMobileNavigation: enabled => { mobileNavigation = enabled; },
+      setEditorMobileNavigation: enabled => {
+        mobileNavigation = enabled;
+      },
     });
     expect(getHostEditorMobileNavigation()).toBe(true);
     toggleHostEditorMobileNavigation();
@@ -25,12 +29,16 @@ describe('viewer host contract', () => {
   it('defaults the mobile shader backdrop off and only toggles it through a writable host preference', () => {
     expect(getHostEditorMobileShaderBackdrop()).toBeUndefined();
     expect(() => toggleHostEditorMobileShaderBackdrop()).not.toThrow();
-    configureHost({ setEditorMobileShaderBackdrop: () => { throw new Error('No preference to toggle'); } });
+    configureHost({ setEditorMobileShaderBackdrop: () => {
+      throw new Error('No preference to toggle');
+    } });
     expect(getHostEditorMobileShaderBackdrop()).toBeUndefined();
     let mobileShaderBackdrop: boolean | undefined;
     configureHost({
       getEditorPreferences: () => ({ fontSize: 14, tabSize: 4, insertSpaces: true, wordWrap: 'off', minimap: false, lineNumbers: 'on', mobileShaderBackdrop }),
-      setEditorMobileShaderBackdrop: enabled => { mobileShaderBackdrop = enabled; },
+      setEditorMobileShaderBackdrop: enabled => {
+        mobileShaderBackdrop = enabled;
+      },
     });
     expect(getHostEditorMobileShaderBackdrop()).toBe(false);
     toggleHostEditorMobileShaderBackdrop();
@@ -49,7 +57,9 @@ describe('viewer host contract', () => {
   it('defaults overlay shading to 75% and only writes rounded, clamped finite values', () => {
     expect(getHostEditorOverlayOpacity()).toBeUndefined();
     expect(() => setHostEditorOverlayOpacity(42)).not.toThrow();
-    configureHost({ setEditorOverlayOpacity: () => { throw new Error('No preference to save'); } });
+    configureHost({ setEditorOverlayOpacity: () => {
+      throw new Error('No preference to save');
+    } });
     expect(getHostEditorOverlayOpacity()).toBeUndefined();
     let overlayOpacity: number | undefined;
     const appliedValues: number[] = [];

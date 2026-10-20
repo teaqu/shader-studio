@@ -397,9 +397,13 @@ test('mobile bottom toolbar uses one key row and persists automatic suggestions'
   const cm = activeEditor(page).locator('.cm-editor');
   const gutter = cm.locator('.cm-gutters').first();
   const gutterBefore = await gutter.boundingBox();
-  await cm.locator('.cm-scroller').evaluate(scroller => { scroller.scrollLeft = 100; });
+  await cm.locator('.cm-scroller').evaluate(scroller => {
+    scroller.scrollLeft = 100;
+  });
   await expect.poll(async () => (await gutter.boundingBox()).x).toBeLessThan(gutterBefore.x - 50);
-  await cm.locator('.cm-scroller').evaluate(scroller => { scroller.scrollLeft = 0; });
+  await cm.locator('.cm-scroller').evaluate(scroller => {
+    scroller.scrollLeft = 0;
+  });
 
   await content.click();
   const before = await content.innerText();

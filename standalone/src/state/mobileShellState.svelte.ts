@@ -56,10 +56,14 @@ export function observeMobileVisualViewport(): () => void {
   const shouldResetPageScroll = () => isMobileViewport() && mobileKeyboardOpen
     && viewport.scale === 1 && window.scrollY !== 0;
   const keepPageAtOrigin = () => {
-    if (pageScrollFrame || !shouldResetPageScroll()) return;
+    if (pageScrollFrame || !shouldResetPageScroll()) {
+      return;
+    }
     pageScrollFrame = window.requestAnimationFrame(() => {
       pageScrollFrame = 0;
-      if (!shouldResetPageScroll()) return;
+      if (!shouldResetPageScroll()) {
+        return;
+      }
       // iOS can scroll the document with its keyboard open even though the
       // full-screen shell has overflow:hidden. Only nested panels should scroll:
       // retaining that document pan feeds it back into our shell size/position.

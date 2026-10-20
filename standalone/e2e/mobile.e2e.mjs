@@ -423,7 +423,9 @@ test('the phone editor reuses the live shader behind text without losing edits o
   await expect(editor.locator('.cm-gutters')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await expect(editor.locator('.cm-lineNumbers .cm-activeLineGutter')).toHaveCSS('background-color', 'rgba(10, 10, 10, 0.75)');
   await shading.press('Home');
-  for (let step = 0; step < 7; step++) await shading.press('ArrowRight');
+  for (let step = 0; step < 7; step++) {
+    await shading.press('ArrowRight');
+  }
   await expect(shading).toHaveValue('35');
   await expect(editor.locator('.cm-activeLine')).toHaveCSS('background-color', 'rgba(10, 10, 10, 0.35)');
   await expect(editor.locator('.cm-lineNumbers .cm-activeLineGutter')).toHaveCSS('background-color', 'rgba(10, 10, 10, 0.35)');
