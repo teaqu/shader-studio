@@ -985,3 +985,49 @@ describe('WebMCP opt-in lifecycle', () => {
     }
   });
 });
+
+
+it('prepares explorer script metadata in a short-lived worker and respects script opt-in', async () => {
+  const transport = new WebTransport();
+  const api = transport.getShaderExplorerHostApi();
+  const messages: Record<string, unknown>[] = [];
+  const stop = api.onMessage!(event => messages.push(event.data));
+  try {
+    await transport.readEditorFile('/aurora.glsl');
+    transport.postMessage({ type: 'updateConfig', payload: { shaderPath: '/aurora.glsl', text: JSON.stringify({ script: './preview.js' }) } });
+    await transport.flush();
+    api.postMessage({ type: 'requestShaderCode', path: '/aurora.glsl', requestId: 17 });
+    await transport.flush();
+    await vi.waitFor(() => expect(messages.find(message => message.requestId === 17)).toMatchObject({
+      scriptBundleError: expect.stringContaining('Enable workspace scripts'),
+    }));
+  } finally {
+    stop(); transport.dispose();
+  }
+});
+
+
+it('delivers explorer script snapshots and terminates their workers', async () => {
+  const terminate=vi.fn();
+  class SnapshotWorker {
+    onmessage: ((event:{data:unknown})=>void) | null=null;
+    onerror: (()=>void) | null=null;
+    terminate=terminate;
+    postMessage(message:{type:string}) {
+      queueMicrotask(()=>this.onmessage?.({data:message.type==='load'
+        ? {type:'loaded',result:{declarations:'uniform float speed;',uniforms:[{name:'speed',type:'float'}],streams:[{name:'keys',maxPerFrame:64,maxQueued:128}],session:1},values:[{name:'speed',type:'float',value:0.75}]}
+        : {type:'disposed'}}));
+    }
+  }
+  vi.stubGlobal('Worker',SnapshotWorker);
+  const transport=new WebTransport();const api=transport.getShaderExplorerHostApi();const receive=vi.fn();const stop=api.onMessage!(receive);const stopSecond=api.onMessage!(vi.fn());
+  try {
+    await transport.createWorkspaceFile('/preview.js');transport.settings.update('scripts.enabled',true);
+    transport.postMessage({type:'updateConfig',payload:{shaderPath:'/aurora.glsl',text:JSON.stringify({script:'./preview.js'})}});await transport.flush();
+    api.postMessage({type:'requestShaderCode',path:'/aurora.glsl',requestId:18});await transport.flush();
+    await vi.waitFor(()=>expect(receive).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({type:'shaderCode',requestId:18,customUniformDeclarations:'uniform float speed;',customUniformValues:[{name:'speed',type:'float',value:0.75}],scriptStreams:[{name:'keys',maxPerFrame:64,maxQueued:128}]})})));
+    await vi.waitFor(()=>expect(terminate).toHaveBeenCalledOnce());
+  } finally {
+    stop();stopSecond();transport.dispose();vi.unstubAllGlobals();
+  }
+});

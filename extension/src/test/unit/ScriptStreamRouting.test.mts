@@ -44,7 +44,7 @@ describe('script stream routing', () => {
     provider.dispose();
     expect(scriptEvaluator.dispose).toHaveBeenCalledOnce();
   });
-  it.each([['slang',true],['glsl',false]] as const)('publishes stream metadata and sets backend capability for %s', async (language,allowStreams) => {
+  it.each([['slang',true],['wgsl',true],['glsl',false]] as const)('publishes stream metadata and sets backend capability for %s', async (language,allowStreams) => {
     const metadata=[{name:'net',maxPerFrame:4,maxQueued:8}];
     const scriptEvaluator={loadScript:vi.fn(()=>({declarations:'',uniforms:[],streams:metadata,session:7}))};
     const provider=Object.assign(Object.create(ShaderProvider.prototype),{

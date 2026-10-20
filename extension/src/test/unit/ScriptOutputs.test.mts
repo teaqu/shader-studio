@@ -152,7 +152,7 @@ describe('script backend capabilities', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => { });
     try {
       const result = evaluator.loadScript(`var __shaderUniforms={streams(){console.log('opened');return {};}};`, undefined, false);
-      expect(result.error).toContain('Slang / WebGPU');
+      expect(result.error).toContain('WebGPU');
       expect(log).not.toHaveBeenCalled();
       expect(evaluator.loadScript(`var __shaderUniforms={uniforms(ctx){return {_counter:ctx.uint(3)};}};`, undefined, false).error).toBeUndefined();
     } finally {

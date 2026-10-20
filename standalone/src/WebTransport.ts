@@ -1,3 +1,4 @@
+import { BrowserScriptSession, type BrowserScriptMessage } from './scripts/BrowserScriptSession';
 import { StandalonePreviews } from './StandalonePreviews';
 import { StandaloneMcpApplication } from './StandaloneMcpApplication';
 import { registerWebMcp } from './registerWebMcp';
@@ -145,6 +146,9 @@ export class WebTransport implements Transport {
     resolveDefaultAsset: resolveDefaultAssetUrl,
     settings: this.settings,
   }));
+  private readonly explorerHandlers = new Set<(event: MessageEvent) => void>();
+  private readonly explorerScriptCleanups = new Set<() => void>();
+  private explorerSubscription?: Promise<() => void>;
   private readonly viewerCleanups = new Set<() => void>();
   private readonly persistenceCleanups = new Set<() => void>();
   private readonly workspaceCleanups = new Set<() => void>();
@@ -275,6 +279,16 @@ export class WebTransport implements Transport {
     const previewId = crypto.randomUUID();
     let disposed = false;
     const handlers = new Set<(event: MessageEvent) => void>();
+    const send = (message: BrowserScriptMessage) => {
+      for (const handler of handlers) {
+        handler(new MessageEvent('message', { data: message }));
+      }
+    };
+    const scripts = new BrowserScriptSession({
+      send, enabled: this.settings.snapshot['scripts.enabled'],
+      read: async path => (await this.host).readEditorFile(path),
+    });
+    const stopScriptSettings = this.settings.subscribe(values => scripts.setEnabled(values['scripts.enabled']));
     const unregister = this.previews.register({
       id: previewId, kind: 'browser',
       send: message => {
@@ -282,17 +296,19 @@ export class WebTransport implements Transport {
           handler(new MessageEvent('message', { data: message }));
         }
       },
-      sendSource: message => {
-        for (const handler of handlers) {
-          handler(new MessageEvent('message', { data: message }));
-        }
-      },
+      sendSource: message => scripts.receive(message as BrowserScriptMessage),
     });
     const cleanups = new Set<() => void>();
+    const stopScripts = () => {
+      scripts.dispose(); stopScriptSettings();
+    };
+    this.workspaceCleanups.add(stopScripts);
     return {
       postMessage: message => {
         if (!disposed) {
-          if (message.type === 'viewerRpcResponse') {
+          if (scripts.handle(message as BrowserScriptMessage)) {
+            return;
+          } else if (message.type === 'viewerRpcResponse') {
             this.previews.receive(previewId, message);
           } else if (message.type === 'previewFilesChanged') {
             this.trackMessage(this.updatePreviewFiles(previewId, 'payload' in message ? message.payload : undefined).then(() => {
@@ -309,11 +325,16 @@ export class WebTransport implements Transport {
       onMessage: handler => {
         if (!disposed) {
           handlers.add(handler);
-          cleanups.add(this.subscribeViewer(handler));
+          cleanups.add(this.subscribeViewer(event => {
+            void scripts.receive(event.data);
+          }));
         }
       },
       dispose: () => {
         disposed = true;
+        scripts.dispose();
+        stopScriptSettings();
+        this.workspaceCleanups.delete(stopScripts);
         unregister();
         handlers.clear();
         this.previewFiles.delete(previewId);
@@ -397,6 +418,30 @@ export class WebTransport implements Transport {
     return (await this.host).readEditorFile(path);
   }
 
+  /** Explorer renders snapshots; release the worker as soon as metadata arrives. */
+  private prepareExplorerMessage(message: BrowserScriptMessage, deliver: (message: BrowserScriptMessage) => void, pending: Set<() => void>): void {
+    if (message.type !== 'shaderCode' || !(message.config as { script?: unknown } | null)?.script) {
+      deliver(message);
+      return;
+    }
+    const session = new BrowserScriptSession({
+      enabled: this.settings.snapshot['scripts.enabled'], snapshot: true,
+      read: path => this.readEditorFile(path),
+      send: prepared => {
+        if (prepared.type === 'shaderSource') {
+          deliver({ ...prepared, type: 'shaderCode' });
+          stop();
+        }
+      },
+    });
+    const unsubscribe = this.settings.subscribe(values => session.setEnabled(values['scripts.enabled']));
+    const stop = () => {
+      session.dispose(); unsubscribe(); pending.delete(stop); this.workspaceCleanups.delete(stop);
+    };
+    pending.add(stop); this.workspaceCleanups.add(stop);
+    void session.receive({ ...message, type: 'shaderSource' });
+  }
+
   getShaderExplorerHostApi(): ShaderExplorerHostApi {
     return {
       defaultKeepActiveShaderFiles: true,
@@ -435,26 +480,36 @@ export class WebTransport implements Transport {
           }));
         }
       },
-      onMessage: (handler) => {
-        let cleanup: (() => void) | undefined;
-        let disposed = false;
-        void this.host.then((host) => {
-          if (!disposed && this.connected) {
-            cleanup = host.onExplorerMessage((message) => {
-              handler(new MessageEvent('message', { data: message.type === 'shadersUpdate'
-                ? { ...message, savedState: savedExplorerState(message.savedState) } : message }));
-            });
-          }
-        });
+      onMessage: handler => {
+        if (!this.connected) {
+          return () => {};
+        }
+        this.explorerHandlers.add(handler);
+        this.explorerSubscription ??= this.host.then(host => this.connected
+          ? host.onExplorerMessage(message => {
+            this.prepareExplorerMessage(message as BrowserScriptMessage, prepared => {
+              const data = prepared.type === 'shadersUpdate'
+                ? { ...prepared, savedState: savedExplorerState(prepared.savedState) } : prepared;
+              for (const receive of this.explorerHandlers) {
+                receive(new MessageEvent('message', { data }));
+              }
+            }, this.explorerScriptCleanups);
+          }) : () => {});
         return () => {
-          disposed = true;
-          cleanup?.();
+          this.explorerHandlers.delete(handler);
+          if (!this.explorerHandlers.size) {
+            for (const stop of this.explorerScriptCleanups) {
+              stop();
+            }
+          }
         };
       },
     };
   }
 
   dispose(): void {
+    this.explorerHandlers.clear();
+    void this.explorerSubscription?.then(stop => stop());
     this.stopWebMcpSettings?.();
     this.stopWebMcpSettings = undefined;
     this.webMcpCleanup?.();

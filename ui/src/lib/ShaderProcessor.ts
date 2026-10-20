@@ -95,8 +95,8 @@ export class ShaderProcessor {
     if (message.configError) {
       return { success: false, errors: [message.configError] };
     }
-    if (message.scriptStreams?.length && this.renderEngine.getShaderLanguage() !== 'slang') {
-      return { success: false, errors: ['Script streams require Slang / WebGPU. Uniform-only scripts also work with GLSL.'] };
+    if (message.scriptStreams?.length && this.renderEngine.getShaderLanguage() !== 'slang' && this.renderEngine.getShaderLanguage() !== 'wgsl') {
+      return { success: false, errors: ['Script streams require Slang or WGSL / WebGPU. Uniform-only scripts also work with GLSL.'] };
     }
 
     if (message.slangDependencyDiagnostics?.length) {

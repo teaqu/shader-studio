@@ -40,18 +40,22 @@ describe('script outputs on real GPUs', () => {
       canvas.remove();
     }
   });
-  it('binds streams in compute and Image, delivers once, and preserves paused chunks', async () => {
+  it.each(['slang', 'wgsl'] as const)('binds streams in %s compute and Image, delivers once, and preserves paused chunks', async language => {
     const canvas = document.createElement('canvas');
     canvas.width = 2;
     canvas.height = 2;
     document.body.append(canvas);
-    const engine = new WebGPURenderingEngine({ scriptUrl, wasmUrl });
+    const engine = language === 'wgsl' ? new WebGPURenderingEngine(undefined, 'wgsl') : new WebGPURenderingEngine({ scriptUrl, wasmUrl });
     const requests: ScriptStreamRequest[] = [];
     try {
       engine.initialize(canvas, true);
       engine.configureScriptStreams([{ name: 'net', maxPerFrame: 4, maxQueued: 16 }], 1, request => requests.push(request));
-      const config = { version: '1.0', storage: { result: { elementType: 'uint', stride: 4, count: 3 } }, passes: { Image: {}, ComputeA: { type: 'compute' as const, path: 'compute.slang', dispatch: { count: 1 } } } };
-      const result = await engine.compileShaderPipeline('float4 mainImage(float2 p){return float4(float(net.length)/4.0,0,0,1);}', config, 'streams.slang', { ComputeA: '[shader("compute")] [numthreads(1,1,1)] void computeMain(uint3 id : SV_DispatchThreadID){if(id.x != 0) return; result[0]+=net.length; if(net.length>0){result[1]=net.data[0];result[2]=net.data[net.length-1];}}' });
+      const config = { version: '1.0', storage: { result: { elementType: 'uint', stride: 4, count: 3 } }, passes: { Image: {}, ComputeA: { type: 'compute' as const, path: `compute.${language}`, dispatch: { count: 1 } } } };
+      const image = language === 'wgsl' ? 'fn mainImage(p: vec2f) -> vec4f { return vec4f(f32(net.length)/4.0,0,0,1); }' : 'float4 mainImage(float2 p){return float4(float(net.length)/4.0,0,0,1);}';
+      const compute = language === 'wgsl'
+        ? '@compute @workgroup_size(1) fn computeMain(@builtin(global_invocation_id) id: vec3u) {if(id.x != 0u){return;} result[0]+=net.length; if(net.length>0u){result[1]=net.data[0];result[2]=net.data[net.length-1u];}}'
+        : '[shader("compute")] [numthreads(1,1,1)] void computeMain(uint3 id : SV_DispatchThreadID){if(id.x != 0) return; result[0]+=net.length; if(net.length>0){result[1]=net.data[0];result[2]=net.data[net.length-1];}}';
+      const result = await engine.compileShaderPipeline(image, config, `streams.${language}`, {ComputeA:compute});
       expect(result?.errors ?? []).toEqual([]);
       expect(result?.success).toBe(true);
       engine.render(100);

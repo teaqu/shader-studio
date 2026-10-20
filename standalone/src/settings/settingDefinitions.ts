@@ -14,6 +14,7 @@ type SettingDefinition = SettingDefinitionBase & (
   | { group: 'Preview' | 'AI tools' | 'Language services' | 'Editor' }
 );
 export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
+  { key: 'scripts.enabled', label: 'Enable workspace scripts', description: 'Run trusted JavaScript and TypeScript scripts in browser workers. Scripts can access browser networking APIs. Node.js modules are unavailable. Turning off stops all script workers.', group: 'Preview', kind: 'boolean' },
   { key: 'webmcp.enabled', label: 'Enable WebMCP', description: 'Let compatible browser assistants discover tools to read and edit this workspace and control its previews. Off by default. Turning off removes tools and cancels pending requests.', group: 'AI tools', kind: 'boolean' },
   { key: 'theme.style', label: 'Style', description: 'VS Code keeps the familiar studio controls. Pixel adds an arcade palette, crisp edges and raised buttons in both light and dark mode.', group: 'Theme', kind: 'choice', choices: [{ value: 'classic', label: 'VS Code' }, { value: 'pixel', label: 'Pixel' }] },
   { key: 'layout.mobileMode', label: 'Mobile mode', description: 'Use the mobile layout on narrow screens. Turn off to keep desktop docking and controls at every window size.', group: 'Preview', kind: 'boolean' },

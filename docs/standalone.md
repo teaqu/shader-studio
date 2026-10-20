@@ -99,9 +99,20 @@ Screenshots and recordings are saved as browser downloads.
 
 In shader paths, `@/` means the top level of your browser workspace. For example, `@/shared/common.wgsl` refers to `common.wgsl` in its `shared` folder.
 
+## Browser scripts
+
+The Script pass runs JavaScript and TypeScript files in the browser. Open **Settings**, enable **Enable workspace scripts** for scripts you trust, and close Settings. Add a Script pass with **+ New → Script**, then select a `.js` or `.ts` file from your workspace. The Script panel shows the inferred uniforms and live stream queue counts. Turning the setting off stops all script workers.
+
+Browser scripts support `uniforms(ctx)`, `streams(ctx)`, typed integer and array helpers, timers, `fetch` and `WebSocket`. Each preview has its own script instance. Shader Explorer thumbnails use initial uniform values and empty stream queues; their temporary script instances close after loading. Open the shader to see live streamed data. Streams require Slang or WGSL with WebGPU. The browser enforces the remote server's CORS rules; an HTTPS app generally needs `https:` and `wss:` sources.
+
+Scripts run in workers. They can use browser networking and worker APIs, but do not have access to the page DOM, Node.js modules, npm packages, or local module imports. Use self-contained JavaScript or TypeScript files. The installed extension continues to support Node.js APIs.
+
+For keyboard input, browser scripts can subscribe with `ctx.onKeyboard(listener)` inside `streams(ctx)`. Only the focused preview supplies events; typing in an editor is excluded. Events preserve `key`, physical `code`, `repeat`, modifiers and millisecond `timeStamp` values. `text` events carry pasted or composed Unicode text when the browser delivers them to the canvas. A `release_all` event accompanies loss of preview focus. IME composition availability depends on the browser; the canvas is not a full text editor.
+
+See [The Script Pass](features/config-buffers.md#browser-scripts-and-keyboard-streams) for a complete browser keyboard stream example.
+
 ## Not yet supported
 
-- Script passes and their custom uniforms.
 - Model geometry assets.
 - Slang imports/includes.
 

@@ -424,6 +424,11 @@ export function buildWgslStorageDeclarations(
 ): { beforeCommon: string; afterCommon: string } {
   const declaredTypes = new Set<string>();
   const declaration = (node: StorageBindingNode) => {
+    if (node.streamMaxPerFrame) {
+      return `struct _ss_ScriptStream_${node.name} { length: u32, data: array<u32, ${node.streamMaxPerFrame}>, };
+@group(0) @binding(${baseBinding + node.binding}) var<storage, read> ${node.name}: _ss_ScriptStream_${node.name};
+`;
+    }
     const access = passKind === "compute" || node.containsAtomic ? "read_write" : "read";
     const element = wgslStorageElementType(node.elementType, passKind);
     const struct = declaredTypes.has(element) ? '' : node.structDeclarations?.wgsl ?? '';

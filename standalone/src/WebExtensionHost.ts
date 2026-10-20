@@ -89,7 +89,7 @@ function relativePath(path: string): string {
 
 /** Workspace files whose changes can alter the explorer list or a thumbnail. */
 function affectsShaderExplorer(path: string): boolean {
-  return !path.startsWith('/.shader-studio/') && /\.(glsl|frag|vert|slang|wgsl)$|\.sha\.json$/i.test(path);
+  return !path.startsWith('/.shader-studio/') && /\.(glsl|frag|vert|slang|wgsl|[cm]?[jt]sx?)$|\.sha\.json$/i.test(path);
 }
 
 export class WebExtensionHost {
@@ -104,6 +104,8 @@ export class WebExtensionHost {
   private readonly confirm: (message: string) => boolean;
   private readonly selectFile: (paths: string[]) => Promise<string | null>;
   private readonly settingsController: HostSettingsController;
+  private readonly stopScriptSettings: () => void;
+  private scriptSettingsRevision = 0;
 
   constructor(
     private readonly workspace: VirtualWorkspace,
@@ -113,8 +115,17 @@ export class WebExtensionHost {
     this.resolveDefaultAsset = options.resolveDefaultAsset ?? (() => null);
     this.prompt = options.prompt ?? ((message, initialValue) => window.prompt(message, initialValue));
     this.confirm = options.confirm ?? ((message) => window.confirm(message));
+    const settings = options.settings ?? new StandaloneSettings();
+    let scriptsEnabled = settings.snapshot['scripts.enabled'];
+    this.stopScriptSettings = settings.subscribe(values => {
+      if (values['scripts.enabled'] !== scriptsEnabled) {
+        scriptsEnabled = values['scripts.enabled'];
+        this.scriptSettingsRevision++;
+        this.queueShaderList();
+      }
+    });
     this.settingsController = new HostSettingsController(
-      options.settings ?? new StandaloneSettings(),
+      settings,
       (message) => this.emitViewer(message),
     );
     const restoredPath = this.workspace.exists(ACTIVE_SHADER_PATH)
@@ -174,6 +185,7 @@ export class WebExtensionHost {
 
   dispose(): void {
     this.settingsController.dispose();
+    this.stopScriptSettings();
     this.viewerHandlers.clear();
     this.explorerHandlers.clear();
   }
@@ -308,6 +320,7 @@ export class WebExtensionHost {
         const authoringMode = payload.authoringMode === 'native' ? 'native' : 'hooks';
         const passName = typeof payload.passName === 'string' ? payload.passName : 'Buffer';
         const templates: Record<string, string> = {
+          script: 'export function uniforms(ctx) {\n  return { pulse: Math.sin(ctx.iTime) };\n}\n',
           'glsl-buffer': GLSL_STARTER_SHADER,
           glsl: GLSL_STARTER_SHADER,
           'slang-buffer': SLANG_STARTER_SHADER,
@@ -410,9 +423,11 @@ export class WebExtensionHost {
           const owner = this.activeShaderPath;
           const isBuffer = owner && Object.values(this.sourcePaths(owner)).includes(path);
           const isConfig = owner !== null && configPathForShader(owner) === path;
+          const script = owner ? this.readConfig(owner).config?.script : undefined;
+          const isScript = owner && typeof script === 'string' && this.resolveSourcePath(owner, script) === path;
           // Manual mode waits for an explicit compile before source edits reach the
           // preview; config changes apply straight away, as they do in the extension.
-          if (owner && (isConfig || (this.compileMode !== 'manual' && (path === owner || isBuffer)))) {
+          if (owner && (isConfig || (this.compileMode !== 'manual' && (path === owner || isBuffer || isScript)))) {
             this.emitViewer(this.shaderSourceMessage(owner));
           }
         }
@@ -791,12 +806,14 @@ export class WebExtensionHost {
   /** Newest change among the shader, its config and its pass sources. */
   private thumbnailVersion(shaderPath: string, shaderModifiedAt: number): number {
     let version = shaderModifiedAt;
-    for (const path of [configPathForShader(shaderPath), ...Object.values(this.sourcePaths(shaderPath))]) {
+    const script = this.readConfig(shaderPath).config?.script;
+    const scriptPath = typeof script === 'string' ? this.resolveSourcePath(shaderPath, script) : null;
+    for (const path of [configPathForShader(shaderPath), ...Object.values(this.sourcePaths(shaderPath)), ...(scriptPath ? [scriptPath] : [])]) {
       if (this.workspace.exists(path)) {
         version = Math.max(version, this.workspace.stat(path).modifiedAt);
       }
     }
-    return version;
+    return version + (scriptPath ? this.scriptSettingsRevision : 0);
   }
 
   private cachedThumbnail(shaderPath: string, thumbnailVersion: number): string | undefined {

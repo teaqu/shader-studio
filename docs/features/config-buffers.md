@@ -264,7 +264,7 @@ See [Compute Passes](compute.md) for shader examples, storage buffers, and dispa
 
 ## The Script Pass
 
-The Script pass supplies current uniform values and ordered data streams from a TypeScript or JavaScript file. It has no framebuffer. Uniforms work with GLSL/WebGL, Slang/WebGPU, and WGSL/WebGPU; streams require Slang/WebGPU.
+The Script pass supplies current uniform values and ordered data streams from a TypeScript or JavaScript file. It has no framebuffer. Uniforms work with GLSL/WebGL, Slang/WebGPU, and WGSL/WebGPU; streams work with Slang/WebGPU and WGSL/WebGPU.
 
 ### Exporting Uniforms
 
@@ -327,9 +327,7 @@ export function uniforms(ctx) {
 
 ### Script streams
 
-Use a Slang shader in the installed extension and select a script in its
-**Script** tab. The following example connects to a local WebSocket server that
-sends unsigned 32-bit words; start that server before opening the shader.
+Use a Slang shader and select a script in its **Script** tab. In the browser app, first enable **Settings → Enable workspace scripts** for scripts you trust. The example below connects to a local WebSocket server that sends unsigned 32-bit words; start that server before opening the shader. In an HTTPS browser app, use a secure `wss:` source permitted by the browser instead.
 
 ```js
 export function streams(ctx) {
@@ -354,6 +352,18 @@ for (uint i = 0; i < net.length; i++) {
 }
 ```
 
+WGSL exposes the same read-only `length` and `data` fields in render and compute passes:
+
+```wgsl
+for (var i = 0u; i < net.length; i++) {
+    handle(net.data[i]);
+}
+```
+
+The renderer declares and binds the stream struct automatically. Stream words are
+`u32`; copy them to persistent storage in a compute pass to keep a history. GLSL
+supports script uniforms but has no stream-buffer support in the WebGL renderer.
+
 - `push()` copies unsigned 32-bit words. Invalid words throw. A full queue rejects
   the entire push and returns `false`; the script decides whether to retry or slow
   its source. Accepted data is never silently dropped during ordinary delivery.
@@ -371,15 +381,62 @@ for (uint i = 0; i < net.length; i++) {
   into a new script load.
 - Stream names must be unique across uniforms, streams, channels, and storage.
   Up to eight streams are supported, subject to device storage binding limits.
-- Scripts continue to run in the extension's Node host, including for its hosted
-  browser previews. Browser-only standalone and vscode.dev script runtimes are
-  not introduced here. Native WebSocket availability depends on the host Node
-  version; scripts can also import their own Node networking library.
+- The installed extension runs scripts in its Node host, including for hosted browser previews. The standalone browser app runs a separate script instance for each preview in a worker. Browser scripts use browser APIs and self-contained files; Node scripts can also import networking libraries.
 - Stream data is live input; deterministic stream recording/replay is not yet provided.
 
 To try a stream without a network source, push a few words immediately before
 returning it: `net.push([10, 20, 30]);`. In your Slang shader, read `net.length`
 and `net.data[i]` as shown above.
+
+### Browser scripts and keyboard streams
+
+Enable **Settings → Enable workspace scripts**, then add a Script pass and choose a workspace `.js` or `.ts` file. Browser scripts can use timers, `fetch`, `WebSocket`, typed uniform helpers and streams. Each preview runs its own script instance; pausing retains queued words, and closing or switching the preview stops its worker. Node modules, npm packages and local imports are unavailable in browser scripts. Browser network access follows CORS and secure-context rules.
+
+For ordered keyboard input, use `ctx.onKeyboard` inside `streams(ctx)`. Focus the preview before typing. Unlike the 256×3 keyboard texture, this stream can preserve every event, repeat, Unicode scalar and event timestamp. The keyboard texture remains useful for held, pressed and toggled state.
+
+Create `keyboard.js`:
+
+```js
+export function streams(ctx) {
+  const keys = ctx.stream({ maxPerFrame: 256, maxQueued: 65536 });
+  const pending = [];
+  const stop = ctx.onKeyboard(event => {
+    if (event.type !== 'keydown') return;
+    const scalars = Array.from(event.key || '');
+    if (scalars.length !== 1) return;
+    if (pending.length >= 4096) throw Error('Keyboard source queue full');
+    pending.push(scalars[0].codePointAt(0));
+  });
+  const timer = setInterval(() => {
+    if (pending.length && keys.push(pending)) pending.length = 0;
+  }, 16);
+  ctx.onDispose(() => { stop(); clearInterval(timer); });
+  return { keys };
+}
+```
+
+Create `keyboard.sha.json` next to it:
+
+```json
+{
+  "version": "1.0",
+  "script": "./keyboard.js",
+  "passes": { "Image": {} }
+}
+```
+
+Create and open `keyboard.slang`:
+
+```slang
+float4 mainImage(float2 fragCoord) {
+    float strength = keys.length > 0 ? 1.0 : 0.08;
+    return float4(0.1, strength, strength * 0.8, 1.0);
+}
+```
+
+The preview flashes when a frame consumes typed characters. Add a compute pass and persistent storage when you want an event history or text buffer. Stream words are unsigned 32-bit integers; pack records to match your frame limit so a record is not split between frames. Handle a rejected `push()` without discarding its words.
+
+`ctx.onKeyboard(listener)` returns an unsubscribe function. Keyboard events have `type` (`keydown`, `keyup`, `text`, or `release_all`) and `timeStamp`. Key events include `key`, `code`, `repeat`, `isComposing`, `shiftKey`, `ctrlKey`, `altKey`, and `metaKey`. Text events carry a `text` string. Focus loss emits `release_all`; use it to clear held state. Pasted/composed text is available when the browser delivers those events to the canvas; full IME editing is browser-dependent. Editor input is never forwarded. This callback is specific to browser scripts; extension scripts can obtain input from their own Node sources.
 
 ### Polling Rate
 
@@ -389,7 +446,7 @@ For slowly-changing values, 1–10 fps is usually enough. High rates consume mor
 
 ### Using Node.js APIs
 
-Scripts run in Node.js and can `require()` any module. Modules resolve from the script file's own directory.
+In the installed extension, scripts run in Node.js and can `require()` any module. Modules resolve from the script file's own directory. These Node APIs are unavailable in the standalone browser app.
 
 ```typescript
 import * as fs from 'fs';

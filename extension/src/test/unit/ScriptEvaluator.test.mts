@@ -1,7 +1,8 @@
+import { describe as suite, beforeEach as setup, afterEach as teardown, it as test } from 'vitest';
 import * as assert from 'assert';
 import * as sinon from 'sinon';
-import { ScriptEvaluator } from '../app/ScriptEvaluator';
-import { Logger } from '../app/services/Logger';
+import { ScriptEvaluator } from '../../app/ScriptEvaluator.js';
+import { Logger } from '../../app/services/Logger.js';
 
 function makeBundle(body: string): string {
   return `var __shaderUniforms = { uniforms: function(ctx) { ${body} } };`;
