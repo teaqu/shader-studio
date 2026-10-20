@@ -2006,7 +2006,7 @@
 <p>An upload never replaces an existing file. If a filename is already present, rename the file on your device and select the files again. Uploads save in this browser and are included in workspace backups. Browser storage limits still apply; if saving fails, keep the original files and export a backup before closing the app. Files are stored locally in the browser and are not sent to a server.</p>
 <h3 id="file-explorer">File Explorer<a class="headerlink" href="#file-explorer" title="Permanent link">&para;</a></h3>
 <p><strong>Files</strong> is a separate dockable pane alongside <strong>Shader Explorer</strong>, available only in standalone. Use <strong>View → Files</strong> to show or hide it. Drag its header to move the pane; the layout is remembered after reload. No <code>/shaders</code> wrapper is required.</p>
-<p>Starter files and newly created shaders live at the workspace root. Existing standalone workspaces move files out of the old <code>/shaders</code> wrapper once and update their references. If a destination conflicts with an existing root file, the old folder is kept intact so nothing is overwritten.</p>
+<p>Starter files and newly created shaders live at the workspace root. A workspace created by an earlier version keeps its <code>/shaders</code> folder as it is; its shaders still open and run from there.</p>
 <ul>
 <li>Click a folder to expand or collapse it. Use the filter field to find a filename or path.</li>
 <li>Ctrl/Cmd-click to toggle files in a selection or Shift-click to select a range. Ctrl/Cmd+A selects all visible rows. Every selected row stays highlighted.</li>
