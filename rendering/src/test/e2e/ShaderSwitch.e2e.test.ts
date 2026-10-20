@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { RenderingEngine } from "../../webgl/RenderingEngine";
 
 const RED_SHADER =
@@ -25,6 +25,33 @@ function cleanup(engine: RenderingEngine, canvas: HTMLCanvasElement): void {
 }
 
 describe("Shader switch e2e", () => {
+  it("eventually renders a switched shader after a pending GPU frame completes", async () => {
+    const { engine, canvas } = createEngine();
+    const gl = canvas.getContext("webgl2")!;
+    const wait = vi.spyOn(gl, "clientWaitSync").mockReturnValue(gl.TIMEOUT_EXPIRED);
+    engine.setGpuBackpressureDefaults({ framesInFlight: 1 });
+
+    try {
+      await engine.compileShaderPipeline(RED_SHADER, null, "red.glsl");
+      engine.render(0);
+      expect(engine.readPixel(0, 0)).toEqual({ r: 255, g: 0, b: 0, a: 255 });
+      await engine.compileShaderPipeline(GREEN_SHADER, null, "green.glsl");
+      engine.render(16);
+      // Switching shaders must retain the pending GPU submission limit.
+      expect(engine.readPixel(0, 0)).toEqual({ r: 255, g: 0, b: 0, a: 255 });
+
+      // GPU completion becomes observable in a subsequent event-loop task.
+      setTimeout(() => wait.mockReturnValue(gl.ALREADY_SIGNALED), 0);
+      await expect.poll(() => {
+        engine.render(32);
+        return engine.readPixel(0, 0);
+      }).toEqual({ r: 0, g: 255, b: 0, a: 255 });
+    } finally {
+      wait.mockRestore();
+      cleanup(engine, canvas);
+    }
+  });
+
   it("should render red, switch to green, and read green", async () => {
     const { engine, canvas } = createEngine();
 
@@ -72,10 +99,13 @@ describe("Shader switch e2e", () => {
     engine.render(16);
     expect(engine.readPixel(0, 0)).toEqual({ r: 0, g: 0, b: 0, a: 255 });
 
-    // Switch to a new working shader — should render green
+    // The default two-frame queue may still contain the preceding submissions.
+    // Yield between render attempts so WebGL can report fence completion.
     await engine.compileShaderPipeline(GREEN_SHADER, null, "green.glsl");
-    engine.render(32);
-    expect(engine.readPixel(0, 0)).toEqual({ r: 0, g: 255, b: 0, a: 255 });
+    await expect.poll(() => {
+      engine.render(32);
+      return engine.readPixel(0, 0);
+    }).toEqual({ r: 0, g: 255, b: 0, a: 255 });
 
     cleanup(engine, canvas);
   });
