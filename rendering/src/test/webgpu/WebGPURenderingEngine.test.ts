@@ -7,6 +7,14 @@ import { TimeManager } from "../../util/TimeManager";
 import { ResourceManager } from "../../resources/ResourceManager";
 import { WebGPUTextureBackend } from "../../webgpu/WebGPUTextureBackend";
 import { UNIFORM_OFFSETS } from "../../webgpu/SlangPrelude";
+import { webgpuFrameCompletion } from "../../util/GpuBackpressure";
+
+// Existing synchronous renderer tests model a queue that completes immediately.
+// Dedicated admission tests below control completion explicitly.
+vi.mock("../../util/GpuBackpressure", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../util/GpuBackpressure")>();
+  return { ...actual, webgpuFrameCompletion: vi.fn(() => ({ poll: () => true, dispose: vi.fn() })) };
+});
 
 const pixelRegionCapturerMock = vi.hoisted(() => ({ constructor: vi.fn() }));
 
@@ -93,6 +101,7 @@ function lifecycleDevice() {
 
 describe("WebGPURenderingEngine", () => {
   beforeEach(() => {
+    vi.mocked(webgpuFrameCompletion).mockImplementation(() => ({ poll: () => true, dispose: vi.fn() }));
     sharedSlangWgslCache.clear();
     pixelRegionCapturerMock.constructor.mockClear();
   });
@@ -3785,6 +3794,46 @@ describe("WebGPURenderingEngine", () => {
     };
     (engine as any).canvas = { width: 320, height: 180 };
   }
+
+  it("bounds whole WebGPU frames, preserves frame state while waiting, and pauses on a stall", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    stubDeviceAndContext(engine);
+    // Access private test setup without constructing an actual GPU device.
+    const internals = engine as unknown as {
+      passGraph: unknown[]; passPipelines: Map<string, unknown>;
+      device: GPUDevice; currentConfig: ShaderConfig; resourceManager: null;
+    };
+    internals.passGraph = [{ name: "Image", width: 320, height: 180, output: "canvas", channels: [] }];
+    internals.passPipelines = new Map([["Image", renderablePipeline()]]);
+    internals.currentConfig = { version: "1.0", passes: { Image: {} }, gpuBackpressure: { framesInFlight: 1 } };
+    internals.resourceManager = null;
+    const poll = vi.fn(() => false), release = vi.fn(), warning = vi.fn();
+    vi.mocked(webgpuFrameCompletion).mockReturnValue({ poll, dispose: release });
+    engine.setGpuBackpressureDefaults({ framesInFlight: 4, stallTimeoutMs: 100 });
+    engine.setGpuStallHandler(warning);
+    let now = 0;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
+    const consoleWarning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      engine.render(1000);
+      const frame = engine.getTimeManager().getFrame();
+      now = 50; engine.render(1016);
+      expect(internals.device.queue.submit).toHaveBeenCalledTimes(1);
+      expect(engine.getTimeManager().getFrame()).toBe(frame);
+      now = 100; engine.render(1032);
+      expect(warning).toHaveBeenCalledOnce();
+      expect(engine.getTimeManager().isPaused()).toBe(true);
+      engine.render(1048);
+      expect(warning).toHaveBeenCalledOnce();
+      poll.mockReturnValue(true);
+      now = 101; engine.render(1064);
+      expect(release).toHaveBeenCalledOnce();
+      expect(internals.device.queue.submit).toHaveBeenCalledTimes(2);
+      expect(engine.getTimeManager().isPaused()).toBe(true);
+    } finally {
+      clock.mockRestore(); consoleWarning.mockRestore();
+    }
+  });
 
   it("passes the source pipeline's previous-frame view for a self-feedback buffer channel", () => {
     const engine = new WebGPURenderingEngine(assets);

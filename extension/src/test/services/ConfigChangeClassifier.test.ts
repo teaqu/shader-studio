@@ -2,6 +2,15 @@ import * as assert from 'assert';
 import { ConfigChangeClassifier } from '../../app/services/ConfigChangeClassifier';
 
 suite('ConfigChangeClassifier', () => {
+  test('GPU settings are live-safe when added, changed, or removed', () => {
+    const original = { ...base(), gpuBackpressure: { framesInFlight: 2 } };
+    const c = primed(original);
+    assert.strictEqual(c.classifyChange(CONFIG_PATH, JSON.stringify({ ...original, gpuBackpressure: { framesInFlight: 1 } })), 'recompile');
+    assert.strictEqual(c.classifyChange(CONFIG_PATH, JSON.stringify(base())), 'recompile');
+    const empty = primed();
+    assert.strictEqual(empty.classifyChange(CONFIG_PATH, JSON.stringify(original)), 'recompile');
+    assert.strictEqual(c.classifyChange(CONFIG_PATH, JSON.stringify({ ...original, script: 'other.ts' })), 'reload');
+  });
   const base = () => ({
     version: '1.0',
     passes: {

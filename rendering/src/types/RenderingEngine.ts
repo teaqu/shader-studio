@@ -5,6 +5,8 @@ import type { IVariableCapturer, CaptureUniforms, CaptureCustomUniform, CaptureC
 import type { PixelRegionResult } from "./PixelRegion";
 
 export interface RenderingEngine {
+  setGpuBackpressureDefaults?(defaults?: Partial<import("@shader-studio/types").GpuBackpressureSettings>): void;
+  setGpuStallHandler?(handler: (message: string) => void): void;
   initialize(glCanvas: HTMLCanvasElement, preserveDrawingBuffer?: boolean): void;
   handleCanvasResize(width: number, height: number): void;
   compileShaderPipeline(

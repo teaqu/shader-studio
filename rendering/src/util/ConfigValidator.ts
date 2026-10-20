@@ -18,6 +18,20 @@ export class ConfigValidator {
       errors.push('Config must have a valid version string');
     }
 
+    if (config.gpuBackpressure !== undefined) {
+      const settings = config.gpuBackpressure;
+      if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
+        errors.push("gpuBackpressure must be an object");
+      } else {
+        for (const [key, value] of Object.entries(settings)) {
+          if (!["framesInFlight", "stallTimeoutMs"].includes(key) ||
+              typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) {
+            errors.push(`gpuBackpressure.${key} must be a positive safe integer`);
+          }
+        }
+      }
+    }
+
     // Validate passes
     if (!config.passes || typeof config.passes !== 'object') {
       errors.push('Config must have a passes object');

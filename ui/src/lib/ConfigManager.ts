@@ -556,6 +556,16 @@ export class ConfigManager {
   /**
      * Update the configuration and notify via transport
      */
+  updateGpuBackpressure(settings: ShaderConfig["gpuBackpressure"]): void {
+    const next = { ...(this.config ?? { version: "1.0", passes: { Image: {} } }) };
+    if (settings && Object.keys(settings).length > 0) {
+      next.gpuBackpressure = { ...settings };
+    } else {
+      delete next.gpuBackpressure;
+    }
+    this.updateConfig(next);
+  }
+
   private updateConfig(newConfig: ShaderConfig, options?: { skipRefresh?: boolean }): void {
     this.config = newConfig;
 

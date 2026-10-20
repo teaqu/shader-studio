@@ -25,7 +25,7 @@ export type ConfigChangeVerdict = "skip" | "recompile" | "reload";
 const NO_SHADER_UPDATE_LEAF = /^passes\.[^.]+\.inputs\.[^.]+\.muted$/;
 
 // Leaf paths whose changes the runtime applies in place on a plain recompile.
-const LIVE_SAFE_LEAF = /^passes\.[^.]+\.inputs\.[^.]+\.(muted|startTime|endTime)$/;
+const LIVE_SAFE_LEAF = /^(passes\.[^.]+\.inputs\.[^.]+\.(muted|startTime|endTime)|gpuBackpressure(\.(framesInFlight|stallTimeoutMs))?)$/;
 
 export class ConfigChangeClassifier {
   private readonly snapshots = new Map<string, unknown>();

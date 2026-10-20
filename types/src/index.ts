@@ -1,4 +1,5 @@
 export * from './ShaderConfig';
+export * from './GpuBackpressure';
 export * from './MessageTypes';
 export * from './StorageInspection';
 export * from './assetExtensions';

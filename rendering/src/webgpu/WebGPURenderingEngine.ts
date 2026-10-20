@@ -1,4 +1,6 @@
 /// <reference types="@webgpu/types" />
+import { resolveGpuBackpressure, type GpuBackpressureSettings } from "@shader-studio/types";
+import { GpuBackpressure, webgpuFrameCompletion } from "../util/GpuBackpressure";
 import type { DebugInstrumentationPlan, ShaderConfig, SlangSourceModule, StorageBufferSnapshot } from "@shader-studio/types";
 import type { CompilationResult, PassUniforms } from "../models";
 import type { RenderingEngine } from "../types/RenderingEngine";
@@ -265,6 +267,25 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private keyboardManager = new KeyboardManager();
   private cameraManager = new CameraManager(this.keyboardManager);
   private fps = new FPSCalculator(60, 10);
+  private gpuDefaults = resolveGpuBackpressure();
+  private gpuStallHandler: ((message: string) => void) | null = null;
+  private readonly gpuBackpressure = new GpuBackpressure((message) => {
+    if (!this.timeManager.isPaused()) {
+      this.togglePause();
+    }
+    this.gpuStallHandler?.(message);
+    console.warn(message);
+  });
+
+  setGpuStallHandler(handler: (message: string) => void): void {
+    this.gpuStallHandler = handler;
+  }
+
+  setGpuBackpressureDefaults(defaults?: Partial<GpuBackpressureSettings>): void {
+    this.gpuDefaults = resolveGpuBackpressure(defaults);
+    this.gpuBackpressure.configure(resolveGpuBackpressure(this.gpuDefaults, this.currentConfig?.gpuBackpressure));
+  }
+
   private currentConfig: ShaderConfig | null = null;
   private running = false;
   private rafId: number | null = null;
@@ -1171,6 +1192,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.installedResourceKey = resourceKey;
       this.reloadOnNextApply = false;
       this.currentConfig = config;
+      this.setGpuBackpressureDefaults(this.gpuDefaults);
       this.installedCompile = prospectiveInstalledCompile;
       if (this.pendingCustomUniformValues) {
         nextCustomUniformManager.updateValues(this.pendingCustomUniformValues);
@@ -2099,6 +2121,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
     if (!this.device || !this.context) {
       return;
     }
+    if (!capture && !this.gpuBackpressure.canSubmit(this.now())) {
+      return;
+    }
     if (!capture && !this.shouldRenderFrame(time)) {
       return;
     }
@@ -2311,6 +2336,13 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.pixelRegionCapturer?.encodeAfterRender(encoder, canvasTexture, this.canvas.width, this.canvas.height);
     }
     this.device.queue.submit([encoder.finish()]);
+    if (!capture) {
+      try {
+        this.gpuBackpressure.submitted(webgpuFrameCompletion(this.device.queue), this.now());
+      } catch {
+        this.gpuBackpressure.fail("GPU completion tracking unavailable. Rendering paused; reload the viewer to retry.");
+      }
+    }
     this.hasSubmittedFrameForInstalledGeneration = true;
     this.pixelRegionCapturer?.beginMappings();
 
@@ -2577,7 +2609,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
         return;
       }
       this.render(t);
-      this.rafId = requestAnimationFrame(loop);
+      if (this.running) {
+        this.rafId = requestAnimationFrame(loop);
+      }
     };
     this.rafId = requestAnimationFrame(loop);
   }
@@ -2900,6 +2934,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.compilerAbortController = null;
     attempt(() => compilerAbortController?.abort());
     attempt(() => this.stopRenderLoop());
+    attempt(() => this.gpuBackpressure.dispose());
     attempt(() => this.mouseManager.dispose());
     attempt(() => this.keyboardManager.dispose());
     attempt(() => this.cameraManager.dispose());

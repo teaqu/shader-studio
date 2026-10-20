@@ -27,6 +27,19 @@ function createTestConfig(): ShaderConfig {
 }
 
 describe('ConfigManager', () => {
+  it('persists shader overrides and omits the field when inheritance is restored', () => {
+    const messages = createMockTransport();
+    const manager = new ConfigManager(messages, vi.fn());
+    manager.updateGpuBackpressure({ framesInFlight: 1 });
+    expect(manager.getConfig()).toMatchObject({ version: '1.0', passes: { Image: {} }, gpuBackpressure: { framesInFlight: 1 } });
+    expect(messages.postMessage).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: 'updateConfig', payload: expect.objectContaining({ config: expect.objectContaining({ gpuBackpressure: { framesInFlight: 1 } }) }),
+    }));
+    manager.updateGpuBackpressure(undefined);
+    expect(manager.getConfig()).not.toHaveProperty('gpuBackpressure');
+    expect(manager.getConfig()?.passes.Image).toEqual({});
+    manager.dispose();
+  });
   let transport: Transport;
   let onConfigChange: ReturnType<typeof vi.fn>;
   let configManager: ConfigManager;

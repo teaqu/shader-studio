@@ -5,6 +5,7 @@
   import { portal } from "../../actions/portal";
   import type { ShaderConfig, BufferPass, ComputePass, ImagePass, StorageBufferConfig, StorageBufferSnapshot } from "@shader-studio/types";
   import type { Transport } from "../../transport/MessageTransport";
+  import RenderingSettings from "./RenderingSettings.svelte";
   import BufferConfig from "./BufferConfig.svelte";
   import ScriptInfo from "./ScriptInfo.svelte";
   import StoragePanel from "./StoragePanel.svelte";
@@ -84,7 +85,7 @@
   $effect(() => {
     const displayName = selectedBuffer === "common" ? "Common" : selectedBuffer;
     untrack(() => {
-      if (displayName !== activeTab && activeTab !== "Script" && activeTab !== "Storage") {
+      if (displayName !== activeTab && activeTab !== "Script" && activeTab !== "Storage" && activeTab !== "@rendering") {
         activeTab = displayName;
       }
     });
@@ -392,6 +393,7 @@
     if (language === "slang") {
       tabs.push("Storage");
     }
+    tabs.push("@rendering");
     if (config && config.script !== undefined) {
       tabs.push("Script");
     }
@@ -400,14 +402,14 @@
 
   function switchTab(tabName: string) {
     activeTab = tabName;
-    if (tabName !== "Script" && tabName !== "Storage") {
+    if (tabName !== "Script" && tabName !== "Storage" && tabName !== "@rendering") {
       const actualName = getActualBufferName(tabName);
       onFileSelect(actualName);
     }
   }
 
   function isRenameableTab(tabName: string): boolean {
-    return tabName !== "Image" && tabName !== "Common" && tabName !== "Script" && tabName !== "Storage";
+    return tabName !== "@rendering" && tabName !== "Image" && tabName !== "Common" && tabName !== "Script" && tabName !== "Storage";
   }
 
   async function openRenameMenu(
@@ -584,6 +586,9 @@
   }
 
   function handleTabDblClick(tabName: string) {
+    if (tabName === "@rendering") {
+      return;
+    }
     if (!isLocked) {
       return;
     }
@@ -660,8 +665,8 @@
             }}
             onkeydown={(event) => handleTabKeyDown(tabName, event)}
           >
-            <span class="tab-label">{tabName}</span>
-            {#if tabName !== "Image" && tabName !== "Storage" && config}
+            <span class="tab-label">{tabName === "@rendering" ? "Rendering" : tabName}</span>
+            {#if tabName !== "Image" && tabName !== "Storage" && tabName !== "@rendering" && config}
               <span
                 class="tab-close"
                 role="button"
@@ -736,7 +741,9 @@
 
     <!-- Tab Content -->
     <div class="tab-content">
-      {#if activeTab === "Script"}
+      {#if activeTab === "@rendering"}
+        <RenderingSettings settings={config?.gpuBackpressure} onUpdate={(settings) => configManager?.updateGpuBackpressure(settings)} />
+      {:else if activeTab === "Script"}
         <ScriptInfo
           filename={scriptInfo?.filename || config?.script || ''}
           uniforms={scriptInfo?.uniforms || []}

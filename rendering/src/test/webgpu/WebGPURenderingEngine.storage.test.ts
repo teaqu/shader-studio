@@ -1,4 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// These synchronous pipeline tests model an immediately completed GPU queue.
+vi.mock("../../util/GpuBackpressure", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../util/GpuBackpressure")>();
+  return { ...actual, webgpuFrameCompletion: () => ({ poll: () => true, dispose: vi.fn() }) };
+});
+
 import type { ShaderConfig, StorageBufferConfig } from "@shader-studio/types";
 import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
 import { sharedSlangWgslCache } from "../../webgpu/SlangWgslCache";

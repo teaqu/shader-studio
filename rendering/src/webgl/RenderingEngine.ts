@@ -1,3 +1,5 @@
+import { resolveGpuBackpressure, type GpuBackpressureSettings } from "@shader-studio/types";
+import { GpuBackpressure, webglFrameCompletion } from "../util/GpuBackpressure";
 import { piRenderer } from "../../../vendor/pilibs/src/piRenderer";
 import { piCreateGlContext } from "../../../vendor/pilibs/src/piWebUtils";
 import { ShaderCompiler } from "./ShaderCompiler";
@@ -49,6 +51,25 @@ export class RenderingEngine implements RenderingEngineInterface {
   private frameRenderer!: FrameRenderer;
   private customUniformManager!: CustomUniformManager;
   private pendingCustomUniformValues: { name: string; type: string; value: number | number[] | boolean }[] | null = null;
+  private gpuDefaults = resolveGpuBackpressure();
+  private gpuStallHandler: ((message: string) => void) | null = null;
+  private readonly gpuBackpressure = new GpuBackpressure((message) => {
+    if (!this.timeManager.isPaused()) {
+      this.togglePause();
+    }
+    this.gpuStallHandler?.(message);
+    console.warn(message);
+  });
+
+  setGpuStallHandler(handler: (message: string) => void): void {
+    this.gpuStallHandler = handler;
+  }
+
+  setGpuBackpressureDefaults(defaults?: Partial<GpuBackpressureSettings>): void {
+    this.gpuDefaults = resolveGpuBackpressure(defaults);
+    this.gpuBackpressure.configure(resolveGpuBackpressure(this.gpuDefaults, this.currentConfig?.gpuBackpressure));
+  }
+
   private currentConfig: ShaderConfig | null = null;
   private compileQueue: Promise<void> = Promise.resolve();
   private renderLimits: WebGLRenderLimits | null = null;
@@ -58,6 +79,7 @@ export class RenderingEngine implements RenderingEngineInterface {
   initialize(glCanvas: HTMLCanvasElement, preserveDrawingBuffer: boolean = false) {
     this.frameRenderer?.setPostImageCallback?.(null);
     this.frameRenderer?.stopRenderLoop?.();
+    this.gpuBackpressure.dispose();
     this.pixelRegionCapturer?.dispose();
     this.pixelRegionCapturer = null;
     this.glCanvas = glCanvas;
@@ -118,8 +140,17 @@ export class RenderingEngine implements RenderingEngineInterface {
     );
     const pixelRegionCapturer = new WebGLPixelRegionCapturer(this.gl);
     this.pixelRegionCapturer = pixelRegionCapturer;
-    this.frameRenderer.setPostImageCallback(() => {
+    this.frameRenderer.setFrameAdmission(() => this.gpuBackpressure.canSubmit(performance.now()));
+    this.frameRenderer.setPostImageCallback((capture) => {
       pixelRegionCapturer.captureAfterRender(glCanvas.width, glCanvas.height);
+      if (capture) {
+        return;
+      }
+      try {
+        this.gpuBackpressure.submitted(webglFrameCompletion(this.gl!), performance.now());
+      } catch {
+        this.gpuBackpressure.fail("GPU completion tracking unavailable. Rendering paused; reload the viewer to retry.");
+      }
     });
   }
 
@@ -154,6 +185,7 @@ export class RenderingEngine implements RenderingEngineInterface {
   ): Promise<CompilationResult | undefined> {
     // Save the config for later use
     this.currentConfig = config;
+    this.setGpuBackpressureDefaults(this.gpuDefaults);
 
     // Validate config before processing
     if (config) {
@@ -681,6 +713,7 @@ export class RenderingEngine implements RenderingEngineInterface {
     this.pixelRegionCapturer = null;
     attempt(() => this.bufferManager?.dispose());
     attempt(() => this.frameRenderer?.stopRenderLoop());
+    attempt(() => this.gpuBackpressure.dispose());
     attempt(() => this.cameraManager?.dispose());
     attempt(() => this.mouseManager?.dispose());
     attempt(() => this.keyboardManager?.dispose());

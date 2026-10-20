@@ -147,6 +147,20 @@
     "configuration": {
       "title": "Shader Studio",
       "properties": {
+        "shader-studio.gpuBackpressure.framesInFlight": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "description": "Maximum unfinished GPU frames.",
+          "default": 2
+        },
+        "shader-studio.gpuBackpressure.stallTimeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "description": "Pause after this many milliseconds without GPU progress.",
+          "default": 2000
+        },
         "shader-studio.webServerPort": {
           "type": "number",
           "default": 3000,

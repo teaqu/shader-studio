@@ -28,7 +28,8 @@ global.ResizeObserver = vi.fn().mockImplementation(() => ({
 }));
 
 // Mock RenderingEngine and transport - use vi.hoisted to define mock values before vi.mock hoisting
-const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop } = vi.hoisted(() => {
+const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop, gpuMocks } = vi.hoisted(() => {
+  const gpuMocks = { setDefaults: vi.fn(), setStallHandler: vi.fn() };
   const mockTimeManager = {
     getCurrentTime: () => 0.0,
     isPaused: () => false,
@@ -59,11 +60,13 @@ const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio,
   // step of reset) runs, so tests can assert it precedes audio/video resume.
   const mockPipelineHandleShaderMessage = vi.fn();
   const mockStopRenderLoop = vi.fn();
-  return { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop };
+  return { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop, gpuMocks };
 });
 
 vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
   const MockRenderingEngine = class {
+    setGpuBackpressureDefaults = gpuMocks.setDefaults;
+    setGpuStallHandler = gpuMocks.setStallHandler;
     private _canvas = { width: 800, height: 600 };
     initialize() {}
     handleCanvasResize(width: number, height: number) {
@@ -184,6 +187,8 @@ vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
 
 vi.mock('../../../../rendering/src/webgpu/WebGPURenderingEngine', () => {
   const MockWebGPURenderingEngine = class {
+    setGpuBackpressureDefaults = gpuMocks.setDefaults;
+    setGpuStallHandler = gpuMocks.setStallHandler;
     private _canvas = { width: 800, height: 600 };
     initialize() {}
     handleCanvasResize(width: number, height: number) {
@@ -590,6 +595,22 @@ describe('ShaderViewer', () => {
 
     expect(mockCreateTransport).toHaveBeenCalledTimes(1);
     expect(mockTransport.onMessage).toHaveBeenCalled();
+  });
+
+  it('applies GPU defaults from shader messages and live updates without recompiling', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await sendMessage({ type: 'shaderSource', path: '/test/shader.glsl', code: 'void mainImage() {}',
+      config: { version: '1.0', passes: { Image: {} } }, gpuBackpressureDefaults: { framesInFlight: 3, stallTimeoutMs: 500 } });
+    expect(gpuMocks.setDefaults).toHaveBeenLastCalledWith({ framesInFlight: 3, stallTimeoutMs: 500 });
+    const compiles = mockPipelineHandleShaderMessage.mock.calls.length;
+    await sendMessage({ type: 'gpuBackpressureSettings', defaults: { framesInFlight: 1, stallTimeoutMs: 800 } });
+    expect(gpuMocks.setDefaults).toHaveBeenLastCalledWith({ framesInFlight: 1, stallTimeoutMs: 800 });
+    expect(mockPipelineHandleShaderMessage).toHaveBeenCalledTimes(compiles);
+    const onStall = gpuMocks.setStallHandler.mock.calls.at(-1)![0];
+    onStall('GPU stalled for 800 ms. Rendering paused.');
+    await tick();
+    expect(screen.getByText('GPU stalled for 800 ms. Rendering paused.')).toBeInTheDocument();
   });
 
   it('should disable shader inputs while editor overlay is visible', async () => {

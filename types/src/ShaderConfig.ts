@@ -125,6 +125,8 @@ export interface ShaderPasses {
 }
 
 export interface ShaderConfig {
+    /** Per-shader overrides; omitted fields inherit the global defaults. */
+    gpuBackpressure?: Partial<import('./GpuBackpressure').GpuBackpressureSettings>;
     version: string;
     script?: string;
     scriptMaxPollingFps?: number;

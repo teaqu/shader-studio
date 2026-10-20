@@ -105,6 +105,28 @@ describe("FrameRenderer", () => {
   });
 
   describe("initialization", () => {
+    it("skips GPU-backpressured frames before advancing time or updating inputs", () => {
+      const admit = vi.fn(() => false);
+      frameRenderer.setFrameAdmission(admit);
+      frameRenderer.setRunning(true);
+      frameRenderer.render(1000);
+      expect(mockTimeManager.updateFrame).not.toHaveBeenCalled();
+      expect(mockResourceManager.updateAudioTextures).not.toHaveBeenCalled();
+      expect(mockPassRenderer.clearCanvas).not.toHaveBeenCalled();
+      admit.mockReturnValue(true);
+      frameRenderer.render(1016);
+      expect(mockTimeManager.updateFrame).toHaveBeenCalledOnce();
+      expect(mockTimeManager.incrementFrame).toHaveBeenCalledOnce();
+    });
+
+    it("keeps explicit capture renders independent of interactive admission", () => {
+      frameRenderer.setFrameAdmission(() => false);
+      const after = vi.fn();
+      frameRenderer.setPostImageCallback(after);
+      frameRenderer.renderForCapture();
+      expect(mockPassRenderer.clearCanvas).toHaveBeenCalledOnce();
+      expect(after).toHaveBeenCalledWith(true);
+    });
     it("should initialize with correct default state", () => {
       expect(frameRenderer.isRunning()).toBe(false);
       expect(frameRenderer.getCurrentFPS()).toBe(60);

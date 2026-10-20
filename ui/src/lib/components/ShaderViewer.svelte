@@ -14,6 +14,7 @@
   import DockviewLayout from "./DockviewLayout.svelte";
   import { RecordingManager } from "../RecordingManager";
   import type { RenderingEngine as IRenderingEngine } from "../../../../rendering/src/types/RenderingEngine";
+  import { getGpuBackpressureDefaults, setGpuBackpressureDefaults } from "../state/gpuBackpressureState.svelte";
   import { createEngineForLanguage } from "../engineFactory";
   import { PixelInspectorManager } from "../PixelInspectorManager";
   import { getInspectorState, setInspectorState, registerLockAtHandler } from "../state/pixelInspectorState.svelte";
@@ -478,6 +479,10 @@
     } catch { /* prior engine already gone */ }
 
     renderingEngine = createEngineForLanguage(engineLanguage);
+    renderingEngine.setGpuBackpressureDefaults?.(getGpuBackpressureDefaults());
+    renderingEngine.setGpuStallHandler?.((message) => {
+      addError(message);
+    });
     try {
       renderingEngine.initialize(glCanvas, true);
     } catch (err) {
@@ -911,6 +916,15 @@
 
   async function handleMessage(event: MessageEvent): Promise<void> {
     const { type } = event.data;
+
+    if (type === 'gpuBackpressureSettings' || type === 'shaderSource') {
+      const defaults = type === 'shaderSource' ? event.data.gpuBackpressureDefaults : event.data.defaults;
+      setGpuBackpressureDefaults(defaults);
+      renderingEngine?.setGpuBackpressureDefaults?.(getGpuBackpressureDefaults());
+      if (type === 'gpuBackpressureSettings') {
+        return;
+      }
+    }
 
     if (type === 'error') {
       const payload = event.data.payload;

@@ -13,6 +13,11 @@ import { FPSCalculator } from "../util/FPSCalculator";
 
 export class FrameRenderer {
   private running = false;
+  private frameAdmission: (() => boolean) | null = null;
+
+  public setFrameAdmission(admit: (() => boolean) | null): void {
+    this.frameAdmission = admit;
+  }
   private currentFrameTime = 0;
   private fpsLimit = 0;
   private lastRenderedAt: number | null = null;
@@ -37,7 +42,7 @@ export class FrameRenderer {
   private sampleRate: number = 44100;
   private lastWallTime: number | null = null;
   private customUniformManager: CustomUniformManager | null = null;
-  private postImageCallback: (() => void) | null = null;
+  private postImageCallback: ((capture?: boolean) => void) | null = null;
 
   constructor(
     timeManager: TimeManager,
@@ -80,7 +85,7 @@ export class FrameRenderer {
   }
 
   /** Runs after the final Image pass (or its clear fallback) has completed. */
-  public setPostImageCallback(callback: (() => void) | null): void {
+  public setPostImageCallback(callback: ((capture?: boolean) => void) | null): void {
     this.postImageCallback = callback;
   }
 
@@ -183,7 +188,7 @@ export class FrameRenderer {
     const customUniforms = this.evaluateCustomUniforms();
     this.renderBufferPasses(uniforms, customUniforms);
     this.renderImagePass(uniforms, customUniforms);
-    this.postImageCallback?.();
+    this.postImageCallback?.(true);
   }
 
   public startRenderLoop(): void {
@@ -214,6 +219,10 @@ export class FrameRenderer {
 
   public render(time: number): void {
     if (!this.running) {
+      return;
+    }
+
+    if (this.frameAdmission && !this.frameAdmission()) {
       return;
     }
 

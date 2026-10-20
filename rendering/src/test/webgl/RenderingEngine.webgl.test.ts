@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { piCreateGlContext } from "../../../../vendor/pilibs/src/piWebUtils";
 import { FrameRenderer } from "../../webgl/FrameRenderer";
+import { webglFrameCompletion } from "../../util/GpuBackpressure";
+
+vi.mock("../../util/GpuBackpressure", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../util/GpuBackpressure")>();
+  return { ...actual, webglFrameCompletion: vi.fn(() => ({ poll: () => true, dispose: vi.fn() })) };
+});
 
 const capturerState = vi.hoisted(() => ({
   instances: [] as Array<{
@@ -18,11 +24,15 @@ vi.mock("../../../../vendor/pilibs/src/piRenderer", () => ({
 }));
 
 vi.mock("../../resources/ResourceManager", () => ({
-  ResourceManager: class {},
+  ResourceManager: class {
+    cleanup = vi.fn();
+  },
 }));
 
 vi.mock("../../webgl/BufferManager", () => ({
-  BufferManager: class {},
+  BufferManager: class {
+    dispose = vi.fn();
+  },
 }));
 
 vi.mock("../../webgl/WebGLRenderLimits", async (importOriginal) => {
@@ -48,6 +58,7 @@ const mockPiCreateGlContext = vi.mocked(piCreateGlContext);
 
 describe("RenderingEngine WebGL Initialization", () => {
   beforeEach(() => {
+    vi.mocked(webglFrameCompletion).mockImplementation(() => ({ poll: () => true, dispose: vi.fn() }));
     vi.spyOn(console, "log").mockImplementation(() => {});
   });
 
@@ -58,6 +69,35 @@ describe("RenderingEngine WebGL Initialization", () => {
   });
 
   describe("piCreateGlContext usage", () => {
+    it("connects WebGL submission admission, per-shader overrides, and fence disposal", async () => {
+      const mockGL = { getExtension: vi.fn() } as unknown as WebGL2RenderingContext;
+      const canvas = { addEventListener: vi.fn(), removeEventListener: vi.fn(), getContext: () => mockGL, width: 320, height: 180 } as unknown as HTMLCanvasElement;
+      mockPiCreateGlContext.mockReturnValue(mockGL);
+      const admission = vi.spyOn(FrameRenderer.prototype, "setFrameAdmission");
+      const postImage = vi.spyOn(FrameRenderer.prototype, "setPostImageCallback");
+      const { RenderingEngine } = await import("../../webgl/RenderingEngine");
+      const engine = new RenderingEngine();
+      engine.initialize(canvas);
+      const internals = engine as unknown as { currentConfig: import("@shader-studio/types").ShaderConfig };
+      internals.currentConfig = { version: "1.0", passes: { Image: {} }, gpuBackpressure: { framesInFlight: 1 } };
+      engine.setGpuBackpressureDefaults({ framesInFlight: 4 });
+      const poll = vi.fn(() => false), dispose = vi.fn();
+      vi.mocked(webglFrameCompletion).mockReturnValue({ poll, dispose });
+      const canRender = admission.mock.calls.at(-1)![0]!;
+      const completedImage = postImage.mock.calls.at(-1)![0]!;
+      expect(canRender()).toBe(true);
+      completedImage();
+      expect(webglFrameCompletion).toHaveBeenCalledWith(mockGL);
+      expect(canRender()).toBe(false);
+      completedImage(true);
+      expect(webglFrameCompletion).toHaveBeenCalledTimes(1);
+      poll.mockReturnValue(true);
+      expect(canRender()).toBe(true);
+      expect(dispose).toHaveBeenCalledOnce();
+      completedImage();
+      engine.dispose();
+      expect(dispose).toHaveBeenCalledTimes(2);
+    });
     it("should call piCreateGlContext with alpha disabled", async () => {
       const mockGL = {} as any;
       const mockCanvas = { addEventListener: vi.fn() } as any;
