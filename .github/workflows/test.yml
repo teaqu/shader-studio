@@ -13,8 +13,11 @@ on:
     types: [opened, synchronize, reopened, labeled, unlabeled]
   workflow_dispatch:
 
+# Other labels (such as preview) still start a run, because pull_request
+# types cannot be filtered by label. That run gets its own group, so it never
+# cancels the PR's real run, and its job is skipped below.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || (startsWith(github.ref, 'refs/tags/') && format('tag-{0}-run-{1}', github.ref_name, github.run_id) || format('branch-{0}', github.ref_name)) }}
+  group: ${{ github.workflow }}-${{ (contains(fromJSON('["labeled", "unlabeled"]'), github.event.action) && github.event.label.name != 'ci:full') && format('ignored-label-{0}', github.run_id) || github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || (startsWith(github.ref, 'refs/tags/') && format('tag-{0}-run-{1}', github.ref_name, github.run_id) || format('branch-{0}', github.ref_name)) }}
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 permissions:
@@ -23,4 +26,5 @@ permissions:
 jobs:
   verify:
     name: Verify
+    if: ${{ !contains(fromJSON('["labeled", "unlabeled"]'), github.event.action) || github.event.label.name == 'ci:full' }}
     uses: ./.github/workflows/verify.yml
