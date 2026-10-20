@@ -77,7 +77,7 @@
   </button>
 {/snippet}
 
-<div class="editor-pane">
+<div class="editor-pane" class:mobile={isMobileViewport()}>
   {#if path && transport}
     {#if fileError}<p role="alert">{fileError}</p>{/if}
     {#if fileCode !== null}
@@ -141,6 +141,18 @@
     position: relative;
     flex: 1;
     min-height: 0;
+  }
+
+  /* Keep the actual scroll surface and its scrollbar above the keyboard.
+     The surrounding stage can still paint the shader behind browser chrome. */
+  .editor-pane.mobile {
+    box-sizing: border-box;
+    padding-bottom: var(--mobile-keyboard-inset, 0px);
+  }
+  .editor-pane.mobile .editor-content {
+    /* The editor now ends at the visible bottom, so its floating toolbar
+       must not subtract the keyboard height for a second time. */
+    --mobile-keyboard-inset: 0px;
   }
 
   .editor-fallback { margin-top: auto; }

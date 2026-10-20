@@ -7,6 +7,7 @@ function fixture() {
   let callback: FrameRequestCallback | undefined;
   const window = {
     visualViewport: viewport,
+    getComputedStyle: vi.fn(() => ({ getPropertyValue: () => '0px' })),
     requestAnimationFrame: vi.fn((next: FrameRequestCallback) => {
       callback = next;
       return 1;
@@ -24,6 +25,18 @@ function fixture() {
 }
 
 describe('visible editor viewport', () => {
+  it('keeps the cursor above floating keys when the scroller already ends above the keyboard', () => {
+    const { editor, view, viewport, window } = fixture();
+    window.getComputedStyle.mockReturnValue({ getPropertyValue: () => '48px' });
+    view.scrollDOM.getBoundingClientRect = () => new DOMRect(0, 100, 390, 400);
+    expect(visibleScrollMargins(editor)).toEqual({ bottom: 48 });
+    // Keep at least a line available on a very short landscape viewport.
+    view.scrollDOM.getBoundingClientRect = () => new DOMRect(0, 100, 390, 60);
+    viewport.height = 60;
+    expect(visibleScrollMargins(editor)).toEqual({ bottom: 20 });
+    window.getComputedStyle.mockReturnValue({ getPropertyValue: () => '' });
+    expect(visibleScrollMargins(editor)).toBeNull();
+  });
   it('leaves code full height while reserving a visible cursor area above the keyboard and keys', () => {
     const { editor, viewport } = fixture();
     expect(visibleScrollMargins(editor)).toEqual({ bottom: 390 });

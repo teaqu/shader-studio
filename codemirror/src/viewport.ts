@@ -1,16 +1,19 @@
 import { EditorView, ViewPlugin } from '@codemirror/view';
 
-/** Keep the cursor above the keyboard while code still paints behind it. */
+/** Keep the cursor above the keyboard and any floating touch controls. */
 export function visibleScrollMargins(view: EditorView): { bottom: number } | null {
-  const viewport = view.dom.ownerDocument.defaultView?.visualViewport;
-  if (!viewport || viewport.scale !== 1) {
+  const window = view.dom.ownerDocument.defaultView;
+  const viewport = window?.visualViewport;
+  if (!window || !viewport || viewport.scale !== 1) {
     return null;
   }
   const bounds = view.scrollDOM.getBoundingClientRect();
-  const hidden = bounds.bottom - (viewport.offsetTop + viewport.height);
+  const hidden = Math.max(0, bounds.bottom - (viewport.offsetTop + viewport.height));
+  const controls = Number.parseFloat(window.getComputedStyle(view.dom).getPropertyValue('--cm-touch-scroll-clearance')) || 0;
   // Leave room for the optional single-row touch toolbar, but always retain
   // at least one line of usable space on very short landscape viewports.
-  return hidden > 0 ? { bottom: Math.min(hidden + 40, Math.max(0, bounds.height - 40)) } : null;
+  return hidden > 0 || controls > 0
+    ? { bottom: Math.min(hidden + Math.max(controls, 40), Math.max(0, bounds.height - 40)) } : null;
 }
 
 export class ViewportScrollController {

@@ -58,6 +58,7 @@ describe('EditorPane', () => {
     const view = render(EditorPane);
     try {
       const editor = view.getByTestId('shader-editor');
+      expect(editor.closest('.editor-pane')?.classList.contains('mobile')).toBe(true);
       expect(editor.getAttribute('data-display-mode')).toBe('pane');
       settings.update('editor.mobileShaderBackdrop', true);
       await tick();
@@ -66,6 +67,7 @@ describe('EditorPane', () => {
       expect(editor.getAttribute('data-code')).toBe('initial source');
       setMobileViewport(false);
       await tick();
+      expect(editor.closest('.editor-pane')?.classList.contains('mobile')).toBe(false);
       expect(editor.getAttribute('data-display-mode')).toBe('pane');
       setMobileViewport(true);
       await tick();

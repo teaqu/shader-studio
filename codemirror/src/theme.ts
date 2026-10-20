@@ -43,18 +43,19 @@ export function editorTheme(dark: boolean, overlay: boolean, fontSize: number, o
     meta: '#0000ff',
   };
   return [EditorView.theme({
-    '&': { fontSize: `${fontSize}px`, color: colors.foreground, backgroundColor: 'transparent' },
+    '&': { fontSize: `${fontSize}px`, color: colors.foreground, backgroundColor: 'transparent', '--cm-touch-scroll-clearance': '0px' },
     // External tooltip containers also receive the theme classes. Only the
     // editor itself should fill its parent.
     '&.cm-editor': { height: '100%' },
     // iOS zooms focused editable text below 16px. Match the host's mobile
     // detection so this also covers touch devices in landscape orientation.
     '@media (max-width: 767px), (pointer: coarse)': {
+      '&': { '--cm-touch-scroll-clearance': '48px' },
       '.cm-scroller, .cm-panels': { fontSize: `${Math.max(16, fontSize)}px` },
     },
     '&.cm-focused': { outline: 'none' },
     '.cm-scroller': { overflow: 'auto', fontFamily: 'var(--vscode-editor-font-family, monospace)', lineHeight: '1.45', overscrollBehavior: 'contain' },
-    '.cm-content': { padding: '4px 0', caretColor: colors.cursor, minHeight: '100%', ...(overlay ? { textShadow: '0 1px 3px #000' } : {}) },
+    '.cm-content': { padding: '4px 0', paddingBottom: 'max(4px, var(--cm-touch-scroll-clearance))', caretColor: colors.cursor, minHeight: '100%', ...(overlay ? { textShadow: '0 1px 3px #000' } : {}) },
     '.cm-line': { padding: '0 6px', ...(overlay ? { backgroundColor: shading, width: 'fit-content', minWidth: '1px' } : {}) },
     '.cm-gutters': { backgroundColor: 'transparent', color: colors.gutter, border: 'none' },
     '.cm-gutterElement': { ...(overlay ? { backgroundColor: shading } : {}) },

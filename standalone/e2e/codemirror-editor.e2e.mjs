@@ -302,18 +302,22 @@ test('mobile bottom toolbar follows a panned keyboard viewport without leaving b
   expect(pageScrollHeight).toBeLessThanOrEqual(fullHeight);
   const cm = activeEditor(page).locator('.cm-editor');
   await expect.poll(async () => {
-    const shellBounds = await shell.boundingBox();
     const codeBounds = await cm.boundingBox();
-    return Math.abs(shellBounds.y + shellBounds.height - codeBounds.y - codeBounds.height);
-  }).toBeLessThanOrEqual(1);
+    return Math.round(codeBounds.y + codeBounds.height);
+  }).toBe(500);
+  const scroller = activeEditor(page).locator('.cm-scroller');
+  await expect.poll(async () => {
+    const box = await scroller.boundingBox();
+    return Math.round(box.y + box.height);
+  }).toBe(500);
   const keys = activeEditor(page).getByRole('button', { name: 'Show keyboard toolbar' });
   await expect.poll(async () => {
     const box = await keys.boundingBox();
     return Math.round(box.y + box.height);
   }).toBe(494);
-  // The editor continues beyond the visible controls, filling the area that
-  // Safari may expose behind its translucent bottom chrome.
-  expect((await cm.boundingBox()).y + (await cm.boundingBox()).height).toBeGreaterThan(500);
+  // Keys overlay the final visible strip of code; the scroll track itself
+  // ends at the keyboard rather than continuing behind it.
+  expect((await cm.boundingBox()).y + (await cm.boundingBox()).height).toBeGreaterThan(494);
   await keys.click();
   const toolbar = activeEditor(page).getByRole('toolbar', { name: 'Editor options', exact: true });
   const switchBounds = await quickNav.boundingBox();
@@ -350,12 +354,26 @@ test('mobile bottom toolbar follows a panned keyboard viewport without leaving b
   }))).toEqual({ top: 0, height: fullHeight });
   await expect(content).toHaveText(code);
   await expect(content).toBeFocused();
+  await page.keyboard.press('ControlOrMeta+End');
+  await expect.poll(async () => {
+    const cursor = await activeEditor(page).locator('.cm-cursor').first().boundingBox();
+    const keysBounds = await toolbar.boundingBox();
+    return cursor && keysBounds ? cursor.y + cursor.height <= keysBounds.y : false;
+  }).toBe(true);
+  await expect.poll(async () => {
+    const box = await scroller.boundingBox();
+    return Math.round(box.y + box.height);
+  }).toBe(238);
   await content.evaluate(element => element.blur());
   await expect(nav).toBeHidden();
   await page.evaluate(() => window.restoreKeyboardViewport());
   await expect(nav).toBeVisible();
   await expect(quickNav).toBeHidden();
   await expect.poll(() => shell.evaluate(element => element.getBoundingClientRect().top)).toBe(0);
+  await expect.poll(async () => {
+    const box = await scroller.boundingBox();
+    return Math.round(box.y + box.height);
+  }).toBeGreaterThan(238);
 });
 
 test('mobile bottom toolbar uses one key row and persists automatic suggestions', async ({ page, isMobile }) => {

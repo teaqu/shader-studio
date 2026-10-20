@@ -34,6 +34,16 @@ function backgroundColors(element: HTMLElement): string[] {
 }
 
 describe('editorTheme', () => {
+  it('allows the last line to scroll above floating mobile keys without a permanent footer', () => {
+    const view = mountTheme(false, false, 14);
+    const rules = Array.from(document.styleSheets).flatMap(sheet => Array.from(sheet.cssRules));
+    const mobile = rules.filter((rule): rule is CSSMediaRule => rule instanceof CSSMediaRule)
+      .filter(rule => rule.conditionText.includes('767px'));
+    expect(mobile.some(rule => rule.cssText.includes('--cm-touch-scroll-clearance: 48px'))).toBe(true);
+    const contentRules = rules.filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule)
+      .filter(rule => view.contentDOM.matches(rule.selectorText));
+    expect(contentRules.some(rule => rule.style.getPropertyValue('padding-bottom') === 'max(4px, var(--cm-touch-scroll-clearance))')).toBe(true);
+  });
   it.each([false, true])('keeps portalled diagnostic popups content-sized (dark: %s)', dark => {
     const view = mountTheme(dark, false, 14);
     // CodeMirror copies themeClasses to its external tooltip container.
