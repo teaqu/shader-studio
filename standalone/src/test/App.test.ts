@@ -160,6 +160,25 @@ describe('standalone App', () => {
     render(App, { props: { transport } });
     await waitFor(() => expect(screen.getByText('Create or upload a shader to start previewing.')).toBeTruthy());
   });
+  it('shows hidden Editors unchecked and routes the toggle to the editor panels', async () => {
+    layoutStub.isPanelVisible.mockImplementation(panel => panel !== 'editor');
+    render(App, { props: { transport: createTransport() } });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'View' }));
+    const editors = screen.getByRole('menuitemcheckbox', { name: 'Editors' });
+    expect(editors.getAttribute('aria-checked')).toBe('false');
+    expect(editors.querySelector('[aria-hidden="true"]')?.textContent).toBe('');
+
+    layoutStub.isPanelVisible.mockReturnValue(true);
+    await fireEvent.click(editors);
+    expect(layoutStub.togglePanel).toHaveBeenCalledWith('editor');
+    expect(screen.queryByRole('menu', { name: 'View' })).toBeNull();
+
+    await fireEvent.click(screen.getByRole('button', { name: 'View' }));
+    const restoredEditors = screen.getByRole('menuitemcheckbox', { name: 'Editors' });
+    expect(restoredEditors.getAttribute('aria-checked')).toBe('true');
+    expect(restoredEditors.querySelector('[aria-hidden="true"]')?.textContent).toBe('✓');
+  });
   it('uses the global Native mode when opening a new shader', async () => {
     const transport = createTransport();
     transport.settings.update('webgpu.defaultRenderAuthoring', 'native');
