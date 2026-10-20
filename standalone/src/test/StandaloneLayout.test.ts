@@ -5,7 +5,7 @@ import { StandaloneSettings } from '../settings/StandaloneSettings';
 import { connectSettings } from '../settings/settingsState.svelte';
 import StandaloneLayout from '../StandaloneLayout.svelte';
 import { createDockview } from 'dockview-core';
-import { resetMobileShellState } from '../state/mobileShellState.svelte';
+import { resetMobileShellState, observeMobileVisualViewport } from '../state/mobileShellState.svelte';
 import { HostedPanels } from '../HostedPanels';
 
 let renderers: { element: HTMLElement; dispose(): void; init(parameters: { api: { id: string } }): void }[] = [];
@@ -191,6 +191,49 @@ describe('StandaloneLayout', () => {
     function renderLayout() {
       return render(StandaloneLayout, { props: { explorer: source('explorer'), editor: source('editor'), preview: source('preview') } });
     }
+
+    it('keeps Editor and Preview accessible while the keyboard is open', async () => {
+      const media = stubViewport(true);
+      const viewport = Object.assign(new EventTarget(), { scale: 1, height: 800, offsetTop: 0 });
+      vi.stubGlobal('innerHeight', 800);
+      vi.stubGlobal('visualViewport', viewport);
+      const stop = observeMobileVisualViewport();
+      const editor = document.body.appendChild(document.createElement('div'));
+      editor.dataset.editorEngine = 'codemirror';
+      const input = editor.appendChild(document.createElement('textarea'));
+      const result = renderLayout();
+      try {
+        result.component.selectMobilePanel('editor');
+        input.focus();
+        viewport.height = 400;
+        viewport.dispatchEvent(new Event('resize'));
+        await tick();
+        expect(result.queryByRole('navigation', { name: 'Workspace panels' })).toBeNull();
+        const quickNav = result.getByRole('navigation', { name: 'Editor and preview' });
+        expect(within(quickNav).getAllByRole('button').map(button => button.textContent)).toEqual(['Editor', 'Preview']);
+        for (const [label, panel] of [['Preview', 'preview'], ['Editor', 'editor']]) {
+          const button = within(quickNav).getByRole('button', { name: label });
+          expect(await fireEvent.mouseDown(button)).toBe(false);
+          await fireEvent.click(button);
+          expect(result.component.getSelectedMobilePanel()).toBe(panel);
+          expect(button.getAttribute('aria-current')).toBe('page');
+          expect(document.activeElement).toBe(input);
+        }
+        media.resize(false);
+        await tick();
+        expect(result.queryByRole('navigation', { name: 'Editor and preview' })).toBeNull();
+        media.resize(true);
+        viewport.height = 800;
+        viewport.dispatchEvent(new Event('resize'));
+        await tick();
+        expect(result.queryByRole('navigation', { name: 'Editor and preview' })).toBeNull();
+        expect(result.getByRole('navigation', { name: 'Workspace panels' })).toBeTruthy();
+      } finally {
+        result.unmount();
+        stop();
+        editor.remove();
+      }
+    });
 
     afterEach(() => {
       vi.unstubAllGlobals();

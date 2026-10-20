@@ -60,6 +60,7 @@
   let activeMobileTool = $state<HostedPanelId>('config');
   const MOBILE_TOOLS = [['config', 'Config'], ['debug', 'Debug'], ['performance', 'Frame Times'], ['recording', 'Export'], ['vr', 'VR']] as const;
   const MOBILE_DESTINATIONS = [['explorer', 'Studio'], ['editor', 'Editor'], ['preview', 'Preview'], ['tools', 'Tools']] as const;
+  const EDITOR_DESTINATIONS = [['editor', 'Editor'], ['preview', 'Preview']] as const;
   const EXPLORER_SECTIONS = [['explorer', 'Shaders'], ['files', 'Files']] as const;
   type ExplorerSection = typeof EXPLORER_SECTIONS[number][0];
   /** Shaders and Files share the phone Studio destination; this remembers which was last open. */
@@ -305,7 +306,18 @@
         {#if studio}<div class="mobile-studio-actions">{@render studio()}</div>{/if}
       </div>
     {/if}
-    {#if !isMobileKeyboardOpen()}
+    {#if isMobileKeyboardOpen()}
+      <nav class="mobile-editor-navigation" aria-label="Editor and preview">
+        {#each EDITOR_DESTINATIONS as [panelId, label] (panelId)}
+          <button type="button"
+            class:active={mobilePanel === panelId}
+            aria-current={mobilePanel === panelId ? 'page' : undefined}
+            onmousedown={event => event.preventDefault()}
+            onclick={() => selectDestination(panelId)}
+          >{label}</button>
+        {/each}
+      </nav>
+    {:else}
       <nav class="mobile-panel-navigation" aria-label="Workspace panels">
         {#each MOBILE_DESTINATIONS as [panelId, label]}
           <button
@@ -347,12 +359,43 @@
   .standalone-panel-sources { display: none; }
   .standalone-panel-source, :global(.standalone-panel-content) { width: 100%; height: 100%; min-width: 0; min-height: 0; }
   .mobile-panel-navigation { display: none; }
+  .mobile-editor-navigation { display: none; }
   .mobile-tools-navigation { display: none; }
   .mobile-studio-notices { flex: 0 0 auto; min-width: 0; }
 
   @media (max-width: 767px) {
     .standalone-layout.mobile-layout { position: relative; flex-direction: column; padding-bottom: env(safe-area-inset-bottom); }
-    .standalone-layout.mobile-layout.keyboard-open { padding-bottom: 0; }
+    .standalone-layout.mobile-layout.keyboard-open { padding-bottom: 0; --mobile-editor-switch-width: 150px; }
+    .mobile-editor-navigation {
+      position: absolute;
+      left: 6px;
+      bottom: calc(6px + var(--mobile-keyboard-inset, 0px));
+      z-index: 3;
+      display: flex;
+      width: 144px;
+      box-sizing: border-box;
+      padding: 2px;
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 8px;
+      background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background));
+      box-shadow: 0 1px 5px rgb(0 0 0 / 18%);
+    }
+    .mobile-editor-navigation button {
+      flex: 1;
+      min-width: 0;
+      min-height: 32px;
+      padding: 4px;
+      border: 0;
+      border-radius: 5px;
+      font-size: 13px;
+      color: var(--vscode-foreground);
+      background: transparent;
+      touch-action: manipulation;
+    }
+    .mobile-editor-navigation button.active {
+      background: var(--vscode-list-activeSelectionBackground);
+      color: var(--vscode-list-activeSelectionForeground);
+    }
     .standalone-dockview { min-height: 0; }
     /* The bottom navigation replaces panel tabs, except the Editor's open-file tabs. */
     .mobile-layout:not([data-mobile-panel='editor']) .standalone-dockview :global(.dv-tabs-and-actions-container) { display: none; }

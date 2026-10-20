@@ -274,6 +274,9 @@ test('mobile bottom toolbar follows a panned keyboard viewport without leaving b
   await content.click();
   await page.evaluate(() => window.setKeyboardViewport(400, 100));
   await expect(nav).toBeHidden();
+  const quickNav = page.getByRole('navigation', { name: 'Editor and preview' });
+  await expect(quickNav).toBeVisible();
+  await expect(quickNav.getByRole('button', { name: 'Editor', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect.poll(() => shell.evaluate(element => ({
     top: element.getBoundingClientRect().top,
     height: element.getBoundingClientRect().height,
@@ -292,12 +295,26 @@ test('mobile bottom toolbar follows a panned keyboard viewport without leaving b
   // The editor continues beyond the visible controls, filling the area that
   // Safari may expose behind its translucent bottom chrome.
   expect((await cm.boundingBox()).y + (await cm.boundingBox()).height).toBeGreaterThan(500);
+  await keys.click();
+  const toolbar = activeEditor(page).getByRole('toolbar', { name: 'Editor options', exact: true });
+  const switchBounds = await quickNav.boundingBox();
+  const toolbarBounds = await toolbar.boundingBox();
+  expect(toolbarBounds.x).toBeGreaterThanOrEqual(switchBounds.x + switchBounds.width);
+  expect(Math.abs(toolbarBounds.y + toolbarBounds.height - switchBounds.y - switchBounds.height)).toBeLessThanOrEqual(1);
+  const code = await content.innerText();
+  await quickNav.getByRole('button', { name: 'Preview', exact: true }).click();
+  await expect(page.getByTestId('web-preview')).toBeVisible();
+  await expect(quickNav.getByRole('button', { name: 'Preview', exact: true })).toHaveAttribute('aria-current', 'page');
+  await quickNav.getByRole('button', { name: 'Editor', exact: true }).click();
+  await expect(content).toBeVisible();
+  await expect(content).toHaveText(code);
   await page.evaluate(() => window.setKeyboardViewport(400, 160));
   await expect.poll(() => shell.evaluate(element => element.getBoundingClientRect().top)).toBe(160);
   await content.evaluate(element => element.blur());
   await expect(nav).toBeHidden();
   await page.evaluate(() => window.restoreKeyboardViewport());
   await expect(nav).toBeVisible();
+  await expect(quickNav).toBeHidden();
   await expect.poll(() => shell.evaluate(element => element.getBoundingClientRect().top)).toBe(0);
 });
 

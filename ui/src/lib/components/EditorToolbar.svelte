@@ -111,7 +111,7 @@
   }
   .toolbar-row { display: flex; align-items: center; justify-content: flex-end; gap: 6px; padding: 2px 6px; }
   .toolbar-row :global(button) { flex: none; }
-  .editor-toolbar.touch { position: absolute; left: 6px; right: 6px; bottom: calc(6px + var(--mobile-keyboard-inset, 0px)); z-index: 2; border: 1px solid var(--vscode-panel-border); border-radius: 8px; background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background)); box-shadow: 0 1px 5px rgb(0 0 0 / 18%); }
+  .editor-toolbar.touch { position: absolute; left: calc(6px + var(--mobile-editor-switch-width, 0px)); right: 6px; bottom: calc(6px + var(--mobile-keyboard-inset, 0px)); z-index: 2; border: 1px solid var(--vscode-panel-border); border-radius: 8px; background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background)); box-shadow: 0 1px 5px rgb(0 0 0 / 18%); }
   .editor-toolbar.collapsed { left: auto; min-height: 0; border: 0; border-radius: 18px; background: transparent; }
   .collapsed .toolbar-row { padding: 0; }
   .touch.collapsed .toolbar-toggle { min-height: 36px; padding: 4px 10px; border-radius: 18px; background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background)); }
