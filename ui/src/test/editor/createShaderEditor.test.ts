@@ -1,7 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
-import * as monaco from 'monaco-editor/editor/editor.api.js';
-import { createShaderEditor, HostEditorPreferencesController, prefersTouchEditing } from '../../lib/editor/createShaderEditor.svelte';
+import { HostEditorPreferencesController } from '../../lib/editor/createShaderEditor.svelte';
 import { configureHost, resetHost } from '../../lib/state/hostState.svelte';
 import { getFixturePreferences, setFixturePreferences } from './editorPreferencesFixture.svelte';
 
@@ -60,47 +59,5 @@ describe('HostEditorPreferencesController', () => {
     setFixturePreferences({ fontSize: 17, tabSize: 3, insertSpaces: false, wordWrap: 'on', minimap: true, lineNumbers: 'off' });
     await tick();
     expect(editor.updateOptions).not.toHaveBeenCalled();
-  });
-});
-
-describe('touch editing', () => {
-  function stubPointer(coarse: boolean) {
-    vi.stubGlobal('matchMedia', vi.fn((query: string) => ({ matches: coarse && query === '(pointer: coarse)' })));
-  }
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it('detects a touch-first pointer', () => {
-    stubPointer(true);
-    expect(prefersTouchEditing()).toBe(true);
-    stubPointer(false);
-    expect(prefersTouchEditing()).toBe(false);
-  });
-
-  it('treats a browser without media queries as a desktop', () => {
-    vi.stubGlobal('matchMedia', undefined);
-    expect(prefersTouchEditing()).toBe(false);
-  });
-
-  it.each([[true], [false]])('enables the long-press menu only on touch-first devices (coarse: %s)', (coarse) => {
-    stubPointer(coarse);
-    const created = createShaderEditor(document.createElement('div'), {
-      shaderCode: '', shaderPath: '/touch.glsl', language: 'glsl', theme: 'vs',
-    });
-    expect(vi.mocked(monaco.editor.create).mock.calls.at(-1)?.[1]).toMatchObject({ contextmenu: coarse });
-    created.preferences.dispose();
-  });
-
-  it.each([[true], [false]])('shows a horizontal scrollbar for long lines (coarse: %s)', (coarse) => {
-    stubPointer(coarse);
-    const created = createShaderEditor(document.createElement('div'), {
-      shaderCode: '', shaderPath: '/wide.glsl', language: 'glsl', theme: 'vs',
-    });
-    expect(vi.mocked(monaco.editor.create).mock.calls.at(-1)?.[1]).toMatchObject({
-      scrollbar: { vertical: 'hidden', horizontal: 'auto' },
-    });
-    created.preferences.dispose();
   });
 });

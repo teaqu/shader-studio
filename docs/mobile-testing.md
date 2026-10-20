@@ -11,16 +11,6 @@ Standalone mode is in alpha. Save regular [workspace backups](standalone.md#savi
 3. Tap **Preview** to see the result with more screen space.
 4. Tap **Tools** to open **Config**, **Debug**, **Frame Times**, or **Export**. Tools remembers your last selection.
 
-On a phone or tablet, a bar under the code holds **Undo** (↶), **Redo** (↷), **Select**, **All**, **Copy**, **Cut**, **Paste**, and **Menu**. **Undo** and **Redo** step back and forward through your edits, and are dimmed when there is nothing to undo or redo. The editor's **Wrap**, **Vim**, and **Open in separate editor** buttons sit at the end of the same bar; swipe the bar sideways if they do not all fit. Phone browsers cannot show their own selection handles in the code editor, so use the bar instead:
-
-1. Tap **Select**, then drag your finger over the code you want. While **Select** is on, dragging selects text instead of scrolling. Tap **Select** again to turn it off.
-2. Tap **Copy** or **Cut**. **Select** turns off afterward, so dragging scrolls again.
-3. Tap where you want the text to go, then tap **Paste**. To replace the whole file, tap **All** first.
-
-Your browser may show its own **Paste** button before it lets Shader Studio read the clipboard; tap it to finish pasting. Tap **Menu** to open the editor menu at the cursor, with **Cut**, **Copy**, **Paste**, and the editor's code actions. Touching and holding the code without moving your finger also opens it.
-
-When a line is wider than the screen, a scrollbar appears along the bottom of the editor. Swipe sideways or drag the scrollbar to see the rest of the line.
-
 Rotate your device when you need more room. You can also enable **Editor Overlay** from the preview menu to edit with the shader visible behind your code. Returning to a desktop-sized window restores your desktop panel arrangement.
 
 ## Add to Your Home Screen

@@ -25,14 +25,6 @@ function applyModelPreferences(model: monaco.editor.ITextModel | null, preferenc
   model?.updateOptions({ tabSize: preferences.tabSize, insertSpaces: preferences.insertSpaces });
 }
 
-/**
- * Touch-first devices (phones, tablets) have no right click, so a long press
- * opens the editor menu for Cut, Copy and Paste. Desktop keeps it off.
- */
-export function prefersTouchEditing(): boolean {
-  return globalThis.matchMedia?.('(pointer: coarse)').matches ?? false;
-}
-
 function lineHeightFor(fontSize: number): number {
   // Preserve the established 14px/20px editor rhythm while allowing larger
   // user-selected fonts enough vertical room for glyph ascenders/descenders.
@@ -95,13 +87,12 @@ export function createShaderEditor(
     : monaco.editor.createModel(options.shaderCode, options.language);
   const editor = monaco.editor.create(container, {
     model, theme: options.theme, minimap: { enabled: false },
-    // Long lines need a way across; Monaco shows the bar only when a line overflows.
-    scrollbar: { vertical: 'hidden', horizontal: 'auto', useShadows: false },
+    scrollbar: { vertical: 'hidden', horizontal: 'hidden', useShadows: false },
     overviewRulerLanes: 0, overviewRulerBorder: false, hideCursorInOverviewRuler: true,
     renderLineHighlight: 'line', selectionHighlight: false, occurrencesHighlight: 'singleFile',
     automaticLayout: true, fontSize: 14, lineHeight: 20, padding: { top: 0 }, stickyScroll: { enabled: false },
     folding: false, glyphMargin: false, lineDecorationsWidth: 4, lineNumbers: 'on', lineNumbersMinChars: 4,
-    scrollBeyondLastLine: false, contextmenu: prefersTouchEditing(), fixedOverflowWidgets: true,
+    scrollBeyondLastLine: false, contextmenu: false, fixedOverflowWidgets: true,
     ...(popupContainer ? { overflowWidgetsDomNode: popupContainer } : {}),
     readOnly: false, domReadOnly: false, editContext: false, cursorStyle: 'line', cursorWidth: 2,
     cursorBlinking: 'smooth',

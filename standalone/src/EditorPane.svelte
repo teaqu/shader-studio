@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { getViewerSession, ShaderEditor, getHostEditorWordWrap, prefersTouchEditing, toggleHostEditorWordWrap } from '@shader-studio/ui';
+  import { getViewerSession, ShaderEditor, getHostEditorWordWrap, toggleHostEditorWordWrap } from '@shader-studio/ui';
 
   import { getEditorDocument, setEditorDocument } from './state/editorDocuments.svelte';
   import { passNameForFile } from './passSources';
@@ -49,35 +49,7 @@
     : undefined);
   let vimMode = $state(false);
   const wordWrap = $derived(getHostEditorWordWrap());
-  // Touch screens put these options in the editor's touch bar, so the pane has one toolbar row.
-  const touchEditing = prefersTouchEditing();
-  const touchBarExtras = touchEditing ? editorOptions : undefined;
 </script>
-
-{#snippet editorOptions()}
-  {#if wordWrap !== undefined}
-    <button class="vim-toggle" class:touch={touchEditing} type="button" aria-label="Wrap text"
-      aria-pressed={wordWrap === 'on'} onclick={toggleHostEditorWordWrap}>
-      Wrap{wordWrap === 'on' ? ' on' : ''}
-    </button>
-  {/if}
-  {#if !path && session?.shaderPath}
-    <button class="vim-toggle" class:touch={touchEditing} type="button" onclick={() => requestEditor(session?.shaderPath ?? null)}>
-      Open in separate editor
-    </button>
-  {/if}
-  <button
-    class="vim-toggle"
-    class:touch={touchEditing}
-    type="button"
-    aria-label={vimMode ? 'Disable Vim mode' : 'Enable Vim mode'}
-    aria-pressed={vimMode}
-    disabled={path ? fileCode === null : !session?.ready || !session.transport}
-    onclick={() => vimMode = !vimMode}
-  >
-    Vim{vimMode ? ' on' : ''}
-  </button>
-{/snippet}
 
 <div class="editor-pane">
   {#if path && transport}
@@ -93,7 +65,7 @@
           commonPath={session?.commonPath}
           commonSource={session?.commonSource}
           onCursorChange={(line, lineContent) => transport?.postMessage({ type: "cursorPosition", payload: { line, lineContent, filePath: path! } })}
-          {vimMode} displayMode="pane" overflowWidgetsDomNode={document.body} {touchBarExtras} />
+          {vimMode} displayMode="pane" overflowWidgetsDomNode={document.body} />
       </div>
     {/if}
   {:else}
@@ -121,16 +93,33 @@
           onCursorChange={editorSession.onCursorChange}
           displayMode="pane"
           overflowWidgetsDomNode={document.body}
-          {touchBarExtras}
         />
       </div>
     {/each}
   {/if}
-  {#if !touchEditing}
-    <div class="editor-footer" role="toolbar" aria-label="Editor options">
-      {@render editorOptions()}
-    </div>
-  {/if}
+  <div class="editor-footer" role="toolbar" aria-label="Editor options">
+    {#if wordWrap !== undefined}
+      <button class="vim-toggle" type="button" aria-label="Wrap text"
+        aria-pressed={wordWrap === 'on'} onclick={toggleHostEditorWordWrap}>
+        Wrap{wordWrap === 'on' ? ' on' : ''}
+      </button>
+    {/if}
+    {#if !path && session?.shaderPath}
+      <button class="vim-toggle" type="button" onclick={() => requestEditor(session?.shaderPath ?? null)}>
+        Open in separate editor
+      </button>
+    {/if}
+    <button
+      class="vim-toggle"
+      type="button"
+      aria-label={vimMode ? 'Disable Vim mode' : 'Enable Vim mode'}
+      aria-pressed={vimMode}
+      disabled={path ? fileCode === null : !session?.ready || !session.transport}
+      onclick={() => vimMode = !vimMode}
+    >
+      Vim{vimMode ? ' on' : ''}
+    </button>
+  </div>
 </div>
 
 <style>
@@ -181,14 +170,6 @@
   .vim-toggle:focus-visible {
     outline: 1px solid var(--vscode-focusBorder);
     outline-offset: 1px;
-  }
-
-  .vim-toggle.touch {
-    flex: 0 0 auto;
-    min-height: 44px;
-    padding: 6px 12px;
-    white-space: nowrap;
-    touch-action: manipulation;
   }
 
   .vim-toggle:disabled {

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy, untrack, type Snippet } from "svelte";
+  import { onMount, onDestroy, untrack } from "svelte";
   import type { Transport } from "../transport/MessageTransport";
   import * as monaco from "monaco-editor/editor/editor.api.js";
   // Monaco's `editor.api` entrypoint ships the API only: every editor
@@ -18,17 +18,13 @@
   import "monaco-editor/editor/contrib/documentSymbols/browser/documentSymbols";
   import "monaco-editor/editor/standalone/browser/quickAccess/standaloneGotoSymbolQuickAccess";
   import "monaco-editor/editor/contrib/wordHighlighter/browser/wordHighlighter";
-  // The touch long-press menu and its Cut, Copy and Paste entries.
-  import "monaco-editor/editor/contrib/contextmenu/browser/contextmenu";
-  import "monaco-editor/editor/contrib/clipboard/browser/clipboard";
   import { initVimMode, VimMode } from "monaco-vim";
   import { setCompilerMarkers } from "@shader-studio/monaco";
   import type { AuthoringResource, ShaderConfig, ShaderLanguageId, ShaderStage, SlangSourceModule } from "@shader-studio/types";
   import { isAuthoringValueType, isShaderLanguageId, parseVertexPassKey, resourcesForSharedSource, shaderLanguageForPath, SHADER_LANGUAGES, stageForPass } from "@shader-studio/types";
   import { bindRenamePopupKeys } from "../editor/renamePopupKeys";
   import { createLanguageServiceController } from "../editor/createLanguageServiceController";
-  import { createShaderEditor, prefersTouchEditing, type HostEditorPreferencesController } from "../editor/createShaderEditor.svelte";
-  import TouchEditBar from "./TouchEditBar.svelte";
+  import { createShaderEditor, type HostEditorPreferencesController } from "../editor/createShaderEditor.svelte";
   import type { LanguageServiceController } from "../editor/LanguageServiceController.svelte";
   import { commonAuthoringFile, slangAuthoringVirtualFiles } from "../editor/authoringVirtualFiles";
   import { nativeAuthoringMetadata } from "../editor/nativeAuthoringMetadata";
@@ -73,8 +69,6 @@
     displayMode?: "overlay" | "pane";
     /** Portal for Monaco completion/hover widgets when an ancestor clips or transforms them. */
     overflowWidgetsDomNode?: HTMLElement;
-    /** Host editor options shown at the end of the touch editing bar, so touch screens get one row. */
-    touchBarExtras?: Snippet;
   }
 
   interface OverlayKeyEvent {
@@ -113,7 +107,6 @@
     onCursorChange = (_line: number, _lineContent: string, _bufferName: string) => {},
     displayMode = "overlay",
     overflowWidgetsDomNode = undefined,
-    touchBarExtras = undefined,
   }: Props = $props();
 
   const activePassName = $derived(
@@ -142,8 +135,6 @@
   let hostEditorPreferences: HostEditorPreferencesController | null = null;
   let renamePopupKeyCleanup: (() => void) | null = null;
   let editorReady = $state(false);
-  // Raw: a Monaco instance must not be wrapped in a reactive proxy.
-  let touchEditor = $state.raw<monaco.editor.IStandaloneCodeEditor | null>(null);
   let languageServiceStatus = $state<"pending" | "ready" | "error">("pending");
   let editorModelUri = $state("");
   const renameFeedback = $derived(getRenameFeedback(editorModelUri));
@@ -703,7 +694,6 @@
     updateUniformDecorations(dynamicUniformNames);
     updateErrorMarkers(errors);
     editorReady = true;
-    touchEditor = prefersTouchEditing() ? editor : null;
   }
 
   function flushPendingSource() {
@@ -768,7 +758,6 @@
       releaseOverlayTokenColors();
     }
     editorReady = false;
-    touchEditor = null;
     languageServiceStatus = "pending";
     lastSentCode = null;
   }
@@ -1134,9 +1123,6 @@
       data-active-buffer={activeBufferName}
       bind:this={containerEl}
     ></div>
-    {#if touchEditor}
-      <TouchEditBar editor={touchEditor} extras={touchBarExtras} />
-    {/if}
     {#if vimMode}
       <div class="vim-status-bar" bind:this={statusBarEl}></div>
     {/if}
@@ -1144,15 +1130,6 @@
 {/if}
 
 <style>
-  /* Safari zooms into any focused text field under 16px, and Monaco moves its
-     hidden input to the cursor, so the page re-zoomed on every tap. The input
-     is invisible, so its size does not change how the code looks. */
-  @media (pointer: coarse) {
-    .editor-wrapper :global(.monaco-editor textarea.inputarea) {
-      font-size: 16px !important;
-    }
-  }
-
   .editor-wrapper {
     position: absolute;
     top: 0;
@@ -1304,6 +1281,11 @@
 
   .editor-overlay :global(.monaco-editor .shader-uniform-token) {
     color: var(--shader-studio-editor-uniform-token) !important;
+  }
+
+  /* Hide scrollbars */
+  .editor-overlay :global(.monaco-editor .monaco-scrollable-element > .scrollbar) {
+    opacity: 0;
   }
 
   /* Active line number in gutter */

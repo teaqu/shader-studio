@@ -376,10 +376,7 @@ async function openAuroraOnPhone(page) {
   const nav = page.getByRole('navigation', { name: 'Workspace panels' });
   await nav.getByRole('button', { name: 'Studio' }).click();
   await page.getByTestId('shader-option-aurora-glsl').click();
-  await expect(page.getByTestId('shader-option-aurora-glsl')).toHaveAttribute('aria-pressed', 'true');
-  // Opening a shader selects the phone Editor destination.
   await expect(nav.getByRole('button', { name: 'Editor' })).toHaveAttribute('aria-current', 'page');
-  await nav.getByRole('button', { name: 'Editor' }).click();
   return nav;
 }
 
