@@ -238,7 +238,7 @@ export class ScriptEvaluator {
         if (this.streams.has(name)) {
           throw new Error(`Uniform and stream names conflict: ${name}`);
         }
-        const type = this.inferType(value);
+        const type = this.readUniform(value)?.type;
         if (!type) {
           continue;
         }
@@ -613,13 +613,13 @@ export class ScriptEvaluator {
           continue;
         }
 
-        const actualType = this.inferType(value);
-        if (actualType !== expectedType) {
-          this.logger.warn(`Script uniform ${name} changed type or array length (${expectedType} to ${actualType}); reload the script to change its shape`);
+        const actual = this.readUniform(value);
+        if (!actual || actual.type !== expectedType) {
+          this.logger.warn(`Script uniform ${name} changed type or array length (${expectedType} to ${actual?.type ?? null}); reload the script to change its shape`);
           continue;
         }
 
-        values.push({ name, type: expectedType, value: readScriptUniform(value)!.value });
+        values.push({ name, type: expectedType, value: actual.value });
       }
       return values;
     } catch (err: unknown) {
@@ -663,7 +663,12 @@ export class ScriptEvaluator {
     return changed;
   }
 
-  private inferType(value: unknown): ScriptUniformType | null {
-    return readScriptUniform(value)?.type ?? null;
+  private readUniform(value: unknown): ReturnType<typeof readScriptUniform> {
+    // Existing scripts infer plain vectors by arity without validating elements.
+    // Keep that wire contract and snapshot arrays; explicit typed helpers remain strict.
+    if (Array.isArray(value) && value.length >= 2 && value.length <= 4) {
+      return { type: `vec${value.length}` as ScriptUniformType, value: [...value] };
+    }
+    return readScriptUniform(value);
   }
 }

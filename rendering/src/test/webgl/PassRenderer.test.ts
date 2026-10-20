@@ -248,6 +248,13 @@ describe("PassRenderer", () => {
     expect(mockRenderer.SetShaderConstant1F).toHaveBeenCalledWith("gain", 0.75);
   });
 
+  it('forwards legacy vector elements through the existing float upload path', () => {
+    // Legacy script vectors retain arity-only inference before WebGL coerces elements.
+    const value = ['1.25', 'legacy'] as unknown as number[];
+    passRenderer.renderPass({ name: "Image", geometry: "fullscreen", inputs: {}, shaderSrc: "" }, null, {mProgram: {}} as PiShader, defaultUniforms, [{name: 'legacy', type: 'vec2', value}]);
+    expect(mockRenderer.SetShaderConstant2F).toHaveBeenCalledWith('legacy', value);
+  });
+
   it.each(["no program", "no context"])("retains scalar/vector fallback uploads with %s", mode => {
     const renderer = mode === "no program" ? passRenderer : new PassRenderer(
       { getContext: () => null } as unknown as HTMLCanvasElement,

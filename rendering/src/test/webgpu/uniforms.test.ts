@@ -244,3 +244,15 @@ describe("typed uniform fallback packing", () => {
     expect(new Float32Array(buffer)[2]).toBe(1);
   });
 });
+
+it('keeps legacy vector coercion in the WebGPU float upload path', () => {
+  const input = {width: 1, height: 1, time: 0, timeDelta: 0, frameRate: 60, frame: 0, mouse: [], channelTime: [], channelLoaded: [], sampleRate: 44100, date: [], channelResolution: [], cameraPos: [], cameraDir: []};
+  const info = [{name: 'legacy', type: 'vec3'}];
+  // Match the existing host wire contract: vector arity precedes GPU conversion.
+  const value = ['1.25', '2.5', 'legacy'] as unknown as number[];
+  const offset = createSlangCustomUniformLayout(info).entries[0].offset / 4;
+  const buffer = packShaderToyUniforms(input, info, [{name: 'legacy', type: 'vec3', value}]);
+  const words = new Float32Array(buffer);
+  expect(Array.from(words.slice(offset, offset + 2))).toEqual([1.25, 2.5]);
+  expect(Number.isNaN(words[offset + 2])).toBe(true);
+});

@@ -120,6 +120,31 @@ describe('script lifecycle and independent preview cursors', () => {
     expect(fast.streams[0].data).toEqual([3]);
   });
 });
+describe('legacy script vector compatibility', () => {
+  it.each([2, 3, 4])('keeps vec%i arity inference when legacy values change', length => {
+    vi.useFakeTimers();
+    const { evaluator, result } = load(`uniforms(ctx) { return { legacy: Array.from({length:${length}}, (_, index) => ctx.iTime === 0 ? index + 1 : 'legacy' + index) }; }`);
+    expect(result.error).toBeUndefined();
+    const callback = vi.fn();
+    evaluator.startPolling(callback, 100);
+    vi.advanceTimersByTime(100);
+    expect(callback).toHaveBeenCalledTimes(2);
+    expect(callback.mock.calls[1][0]).toEqual([{name: 'legacy', type: `vec${length}`, value: Array.from({length}, (_, index) => `legacy${index}`)}]);
+  });
+});
+
+it('snapshots reused legacy vectors without weakening explicit array validation', () => {
+  vi.useFakeTimers();
+  const { evaluator } = load(`uniforms: (() => { const vector = [1,2]; return ctx => { vector[0] = ctx.iTime === 0 ? 1 : '3.5'; return {legacy: vector}; }; })()`);
+  const callback = vi.fn();
+  evaluator.startPolling(callback, 100);
+  vi.advanceTimersByTime(100);
+  expect(callback.mock.calls[0][0][0].value).toEqual([1,2]);
+  expect(callback.mock.calls[1][0][0].value).toEqual(['3.5',2]);
+  const invalid = load(`uniforms(ctx) { return {explicit: ctx.floatArray(['3.5',2])}; }`);
+  expect(invalid.result.error).toContain('Invalid float');
+});
+
 describe('script backend capabilities', () => {
   it('rejects stream exports on WebGL before opening sources, while keeping uniform-only scripts supported', () => {
     const evaluator = new ScriptEvaluator();
