@@ -1416,15 +1416,36 @@ describe("Slang compute passes", () => {
 
 describe("Slang storage graph", () => {
   it('builds config-owned fields and rejects conflicting generated struct definitions', () => {
-    const declaration = { count: 2, elementType: 'Configured', fields: [{ name: 'p', type: 'float3' }, { name: 'age', type: 'float' }], initialData: 'AQIDBA==', clearEachFrame: true, resetOnRestart: false };
+    const declaration = { count: 2, elementType: 'Configured', fields: [{ name: 'p', type: 'float3' }, { name: 'age', type: 'float' }], initialDataFiles: [{ path: 'p.bin' }], clearEachFrame: true, resetOnRestart: false };
     const graph = build({ first: declaration, second: declaration });
     expect(graph.errors).toEqual([]);
-    expect(graph.storage[0]).toMatchObject({ stride: 16, fields: [{ name: 'p', type: 'float3', offset: 0 }, { name: 'age', type: 'float', offset: 12 }], initialData: 'AQIDBA==', clearEachFrame: true, resetOnRestart: false });
+    expect(graph.storage[0]).toMatchObject({ stride: 16, fields: [{ name: 'p', type: 'float3', offset: 0 }, { name: 'age', type: 'float', offset: 12 }], initialDataFiles: [{ path: 'p.bin' }], clearEachFrame: true, resetOnRestart: false });
     expect(graph.storage[0]!.structDeclarations?.wgsl).toContain('p: vec3<f32>');
     const invalid = build({ first: declaration, second: { ...declaration, fields: [{ name: 'different', type: 'float4' }] } });
     expect(invalid.errors[0]).toContain('conflicting field definitions');
     expect(build({ invalid: { ...declaration, fields: [] } }).errors[0]).toContain('between 1 and 64');
     expect(build({ atomic: { count: 1, elementType: 'Counters', fields: [{ name: 'counter', type: 'atomic<u32>' }] } }).storage[0]!.containsAtomic).toBe(true);
+  });
+  it('carries file-backed initial data paths, preferring the host-resolved URL', () => {
+    const resolved = build({ data: { count: 4, elementType: 'uint', initialDataFiles: [{ path: 'data.bin', resolved_path: 'https://host/data.bin' }] } });
+    expect(resolved.errors).toEqual([]);
+    expect(resolved.storage[0]).toMatchObject({ initialDataFiles: [{ path: 'data.bin', resolved_path: 'https://host/data.bin' }] });
+    const unresolved = build({ data: { count: 4, elementType: 'uint', initialDataFiles: [{ path: 'data.bin' }] } });
+    expect(unresolved.storage[0]).toMatchObject({ initialDataFiles: [{ path: 'data.bin' }] });
+    expect(build({ data: { count: 4, elementType: 'uint' } }).storage[0]!.initialDataFiles).toBeUndefined();
+    expect(build({ data: { count: 4, elementType: 'uint', initialDataFiles: [{ path: '' }] } }).errors).toEqual(['Storage data: Initial data file 1: Choose an initial data file']);
+  });
+  it('preserves ordered files and offsets and rejects malformed entries before allocation', () => {
+    const files = [{ path: 'boot.bin', byteOffset: 1 }, { path: 'kernel.bin', byteOffset: 8, resolved_path: 'https://host/kernel.bin' }];
+    const graph = build({ ram: { count: 4, elementType: 'uint', initialDataFiles: files } });
+    expect(graph.errors).toEqual([]);
+    expect(graph.storage[0]?.initialDataFiles).toEqual(files);
+    expect(graph.storage[0]?.initialDataFiles).not.toBe(files);
+    for (const initialDataFiles of [null, [null], [{ path: 'a.bin', byteOffset: -1 }], [{ path: 'a.bin', byteOffset: 0.5 }]]) {
+      const invalid = build({ ram: { count: 4, elementType: 'uint', initialDataFiles } } as never);
+      expect(invalid.errors.length).toBeGreaterThan(0);
+      expect(invalid.storage).toEqual([]);
+    }
   });
   function build(storage: ShaderConfig["storage"], commonCode = "") {
     // Define any custom struct types referenced in storage config so stride

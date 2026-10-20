@@ -5,6 +5,7 @@ import { initializeStorage, clearFrameStorage } from './StorageLifecycle';
 import type { StorageBindingNode } from "../types/PassGraph";
 import type { PendingReset,PreparedStorageBuffers } from "./WebGPUCompilationTypes";
 import * as compileKeys from "./WebGPUCompileKeys";
+import { loadStorageInitialData } from './StorageInitialData';
 
 const WEBGPU_BUFFER_SIZE_ALIGNMENT = 4;
 
@@ -22,6 +23,7 @@ interface WebGPUStorageHost {
 /** Owns storage state and operations; dependencies stay live across compilation swaps. */
 export class WebGPUStorage {
   readonly captures = new StorageCaptureQueue();
+  private readonly resetRequests = new WeakMap<GPUBuffer, number>();
   constructor(private readonly host: WebGPUStorageHost) {}
 
   storageBuffers = new Map<string, GPUBuffer>();
@@ -255,16 +257,31 @@ export class WebGPUStorage {
     return { name, elementType: layout.elementType, stride: layout.stride, start, count, data, fields: layout.fields };
   }
 
-  resetStorageBuffer(name: string): void {
+  async resetStorageBuffer(name: string): Promise<void> {
     const buffer = this.storageBuffers.get(name), node = this.storageLayouts.get(name);
     const device = this.host.device;
     if (!buffer || !node || !device) {
       throw new Error(`Storage buffer "${name}" is not available`);
     }
+    const request = (this.resetRequests.get(buffer) ?? 0) + 1;
+    this.resetRequests.set(buffer, request);
+    const initial = { ...node };
+    if (node.initialDataFiles?.length) {
+      const errors = await loadStorageInitialData([initial]);
+      if (errors.length) {
+        throw new Error(errors.join('; '));
+      }
+    }
+    if (this.storageBuffers.get(name) !== buffer || this.storageLayouts.get(name) !== node
+      || this.host.device !== device || this.resetRequests.get(buffer) !== request) {
+      throw new Error(`Storage buffer "${name}" changed while resetting`);
+    }
     const encoder = device.createCommandEncoder();
     encoder.clearBuffer(buffer);
     device.queue.submit([encoder.finish()]);
-    initializeStorage(device, buffer, node);
+    initializeStorage(device, buffer, initial);
+    node.initialBytes = initial.initialBytes;
+    this.storageKeys.set(name, compileKeys.storageCacheKey(node));
   }
 
   clearFrame(encoder: GPUCommandEncoder): void {

@@ -117,6 +117,18 @@ suite('FileDialogHandler Test Suite', () => {
       assert.deepStrictEqual(opts.filters, { 'Script files': ['ts', 'js'] });
     });
 
+    test('passes binary and all-file filters when fileType is binary', async () => {
+      const showOpenStub = sandbox.stub(vscode.window, 'showOpenDialog').resolves(undefined);
+
+      await handler.handleSelectFile(
+        { shaderPath: '/test/image.slang', fileType: 'binary', requestId: 'req-binary-select' },
+        respondFn,
+      );
+
+      assert.ok(showOpenStub.calledOnce);
+      assert.deepStrictEqual(showOpenStub.firstCall.args[0]!.filters, { 'Binary files': ['bin', 'dat', 'raw'], 'All files': ['*'] });
+    });
+
     test('passes Slang filters when fileType is slang-compute', async () => {
       const showOpenStub = sandbox.stub(vscode.window, 'showOpenDialog').resolves(undefined);
 

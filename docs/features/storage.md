@@ -22,15 +22,17 @@ Reference detection is conservative: buffers mentioned in unused shared helpers 
 
 ## Initial data and reset
 
-**Start with** chooses zeros or a binary file. Select **Binary file**, choose the file, then apply the changes. The file's raw bytes are embedded as base64 in the shader config, so reopening the shader does not require the original file. Files are limited to 256 KiB and cannot exceed the buffer's allocated size. Bytes not supplied by the file start at zero.
+**Start with** chooses zeros or **Binary files**. Click **Select** to pick each file and **+ Add file** for another. Set each destination **Byte offset** from the start of the buffer, in decimal or hexadecimal (for example `0x00200000`). Use the arrows to change the load order, then apply the changes.
 
-The upload does not convert text, infer a format or rearrange fields. Supply raw bytes matching the shader's numeric representation, field offsets and array stride. For example, two `float4` elements need eight 32-bit floats (32 bytes).
+The config stores an ordered `initialDataFiles` list of `{ path, byteOffset }` entries. Paths resolve like texture paths: relative to the shader, `@/` for workspace-relative, or absolute. An omitted offset means zero. The buffer starts at zero, then each file's complete raw bytes are copied in list order. Later files overwrite any overlapping bytes. There is no fixed file size cap, but each offset plus file length must fit in the allocated buffer. A missing or oversized file fails the compile and leaves installed storage alone. Keep the data files alongside your shader.
+
+Initial data is not converted: the file's raw bytes are copied as-is. Supply bytes matching the shader's numeric representation (little-endian on every WebGPU device), field offsets and array stride. For example, two `float4` elements need eight 32-bit floats (32 bytes).
 
 **Between frames** defaults to keeping previous values. **Clear every frame** zeros the buffer before each normal simulation frame; it does not reload the binary initial data each frame. Paused redraws do not perform that clear.
 
-**Reset when the shader restarts** is enabled by default. Turning it off preserves an existing compatible buffer during a restart. Opening a different shader or changing the buffer's layout, size or initial data can allocate fresh storage. Compatible declarations preserve their contents across ordinary recompiles.
+**Reset when the shader restarts** is enabled by default. Turning it off preserves an existing compatible buffer during a restart. Opening a different shader or changing the buffer's layout, size, initial data file or that file's contents can allocate fresh storage. Compatible declarations preserve their contents across ordinary recompiles.
 
-**Reset data now** restores the selected buffer to its initial bytes, with the rest zeroed. Apply or cancel pending edits first. This resets the buffer data; it does not rerun compute passes.
+**Reset data now** reloads the selected buffer's files, clears the buffer and reapplies them in list order. A load failure preserves the current contents. Apply or cancel pending edits first. This resets the buffer data; it does not rerun compute passes.
 
 **Remove buffer** deletes the declaration. Remove any compute dispatch targets referring to it first, and update shader code that still uses its name.
 

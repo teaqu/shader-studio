@@ -109,7 +109,9 @@ for (const [language, compute] of [['slang', false], ['slang', true], ['wgsl', f
         ? '@compute @workgroup_size(1) fn update(@builtin(global_invocation_id) id: vec3u) {\n  let shade = values[0];\n  writeOutput(id.xy, vec4f(shade,1,0,1));\n}'
         : '[shader("compute")] [numthreads(1,1,1)] void update(uint3 id : SV_DispatchThreadID) {\n  float shade = values[0];\n  writeOutput(id.xy, float4(shade,1,0,1));\n}');
     }
-    const storageConfig = { version: '1', storage: { values: { count: 1, elementType: language === 'wgsl' ? 'f32' : 'float', initialData: Buffer.from(new Float32Array([0.375]).buffer).toString('base64') } }, passes: compute ? {
+    writeFileSync(join(directory, 'values.bin'), Buffer.from(new Float32Array([0.375]).buffer));
+    writeFileSync(join(directory, 'values-next.bin'), Buffer.from(new Float32Array([0.625]).buffer));
+    const storageConfig = { version: '1', storage: { values: { count: 2, elementType: language === 'wgsl' ? 'f32' : 'float', initialDataFiles: [{ path: 'values.bin', byteOffset: 4 }, { path: 'values.bin', byteOffset: 0 }] } }, passes: compute ? {
       Image: { inputs: { result: { type: 'buffer', source: 'Compute' } } },
       Compute: { type: 'compute', path: `storage.compute.${language}`, entryPoint: 'update' },
     } : { Image: {} } };
@@ -135,9 +137,9 @@ for (const [language, compute] of [['slang', false], ['slang', true], ['wgsl', f
       await expect(frame.locator('.header-info:not(.fn-name):not(.fn-type)')).toContainText('L2');
       await expect(frame.locator('.fn-name', { hasText: compute ? 'update' : 'mainImage' })).toBeVisible();
       await expect(row(frame, 'shade').locator('.var-value')).toHaveText('0.375');
-      // Edit and save the initialization through the real config editor. Recompilation
-      // must update both GPU storage and debug captures without an editable inspector.
-      storageConfig.storage.values.initialData = Buffer.from(new Float32Array([0.625]).buffer).toString('base64');
+      // Apply an ordered override plus a second value at a nonzero offset through the real config editor.
+      // Recompilation must update both GPU storage and debug captures without an editable inspector.
+      storageConfig.storage.values.initialDataFiles = [{ path: 'values.bin', byteOffset: 0 }, { path: 'values-next.bin', byteOffset: 0 }, { path: 'values.bin', byteOffset: 4 }];
       await showFileAtLine(vscode, config, 0);
       await replaceSource(vscode, JSON.stringify(storageConfig));
       await vscode.evaluateInHost(vscode => vscode.window.activeTextEditor.document.save());

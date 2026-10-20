@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   AUDIO_EXTENSIONS,
+  BINARY_EXTENSIONS,
   CUBEMAP_EXTENSIONS,
   GLSL_EXTENSIONS,
   SCRIPT_EXTENSIONS,
@@ -20,6 +21,7 @@ describe("asset extension filters", () => {
     VIDEO_EXTENSIONS,
     AUDIO_EXTENSIONS,
     CUBEMAP_EXTENSIONS,
+    BINARY_EXTENSIONS,
   ];
 
   it("keeps every extension lowercase, dotless, non-empty, and unique within its filter", () => {
@@ -53,5 +55,9 @@ describe("asset extension filters", () => {
     for (const extension of CUBEMAP_EXTENSIONS) {
       expect(TEXTURE_EXTENSIONS).toContain(extension);
     }
+  });
+
+  it("offers raw binary extensions for storage initial data", () => {
+    expect(BINARY_EXTENSIONS).toEqual(["bin", "dat", "raw"]);
   });
 });

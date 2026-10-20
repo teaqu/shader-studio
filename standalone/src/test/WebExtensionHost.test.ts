@@ -600,6 +600,39 @@ describe('WebExtensionHost', () => {
     }));
   });
 
+  it('resolves storage initial data files to their workspace data URLs', async () => {
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), [
+      { path: '/sim.wgsl', contents: '', createdAt: 1, modifiedAt: 1 },
+      { path: '/data/values.bin', contents: 'data:application/octet-stream;base64,AQAAAA==', createdAt: 1, modifiedAt: 1 },
+      { path: '/sim.sha.json', contents: JSON.stringify({
+        version: '1.0',
+        storage: {
+          values: { count: 1, elementType: 'u32', initialDataFiles: [{ path: 'data/values.bin', resolved_path: 'stale' }, { path: '@/data/values.bin', byteOffset: 4 }] },
+          missing: { count: 1, elementType: 'u32', initialDataFiles: [{ path: 'gone.bin', resolved_path: 'stale' }] },
+          remote: { count: 1, elementType: 'u32', initialDataFiles: [{ path: 'https://example.com/a.bin' }] },
+          zero: { count: 1, elementType: 'u32' },
+          malformed: { count: 1, elementType: 'u32', initialDataFiles: [null, {}, { path: 42 }] },
+          invalidList: { count: 1, elementType: 'u32', initialDataFiles: {} },
+        },
+        passes: { Image: {} },
+      }), createdAt: 1, modifiedAt: 1 },
+    ]);
+    const host = new WebExtensionHost(workspace);
+    const receive = vi.fn();
+    host.onExplorerMessage(receive);
+
+    await host.handleExplorerMessage({ type: 'requestShaderCode', path: '/sim.wgsl', requestId: 1 });
+
+    const storage = receive.mock.calls.find(([message]) => message.type === 'shaderCode')![0].config.storage;
+    expect(storage.values.initialDataFiles[0].resolved_path).toBe('data:application/octet-stream;base64,AQAAAA==');
+    expect(storage.values.initialDataFiles[1]).toMatchObject({ path: '@/data/values.bin', byteOffset: 4, resolved_path: 'data:application/octet-stream;base64,AQAAAA==' });
+    expect(storage.missing.initialDataFiles[0].resolved_path).toBeUndefined();
+    expect(storage.remote.initialDataFiles[0].resolved_path).toBeUndefined();
+    expect(storage.zero.resolved_path).toBeUndefined();
+    expect(storage.malformed.initialDataFiles).toEqual([null, {}, { path: 42 }]);
+    expect(storage.invalidList.initialDataFiles).toEqual({});
+  });
+
   it('refreshes the requested shader instead of the active source file', async () => {
     const host = await createHost();
     const receive = vi.fn();

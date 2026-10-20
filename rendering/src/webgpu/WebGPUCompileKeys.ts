@@ -1,6 +1,7 @@
 import { resolvePassStorage } from "./PassStorage";
 import { meshDepthCompare } from "./MeshDepthCompare";
 import type { StorageBindingNode } from "../types/PassGraph";
+import { initialDataFingerprint } from "./StorageInitialData";
 import { renderPipelineStateKey,verticesSpace } from "../types/Geometry";
 import { buildSlangBindingPlan,getSlangChannels } from "./SlangBindingPlan";
 import {
@@ -163,5 +164,5 @@ export function prefixPassError(passName: string, error: string): string {
 }
 
 export function storageCacheKey(node: StorageBindingNode): string {
-  return JSON.stringify([node.elementType, node.count, node.stride, node.containsAtomic === true, node.structDeclarations, node.initialData]);
+  return JSON.stringify([node.elementType, node.count, node.stride, node.containsAtomic === true, node.structDeclarations, node.initialDataFiles?.map(file => [file.path, file.resolved_path, file.byteOffset ?? 0]), initialDataFingerprint(node.initialBytes)]);
 }
