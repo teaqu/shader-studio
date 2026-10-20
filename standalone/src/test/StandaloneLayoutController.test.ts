@@ -712,6 +712,41 @@ it.each([0, 1, 2])('keeps a replaced editor at tab index %i', (index) => {
 });
 
 describe('phone shell editor panel', () => {
+  it('keeps one mobile panel visible when closing an old shader fails', async () => {
+    const api = createApi();
+    const controller = new StandaloneLayoutController(api, null, undefined, async () => {
+      throw new Error('save failed');
+    });
+    controller.initialize();
+    await controller.syncShaderEditors([{ shaderPath: '/old.glsl', files: ['/old.glsl'] }]);
+    controller.showMobilePanel('explorer');
+
+    await expect(controller.syncShaderEditors([{ shaderPath: '/new.glsl', files: ['/new.glsl'] }]))
+      .rejects.toThrow('save failed');
+
+    expect(api.getPanel('explorer')?.api.group.api.isVisible).toBe(true);
+    expect(api.getPanel('editor:/new.glsl')?.api.group.api.isVisible).toBe(false);
+    controller.dispose();
+  });
+
+  it.each(['editor', 'explorer', 'preview'] as const)(
+    'keeps only the %s tab visible after shader editors synchronize', async (panel) => {
+      const api = createApi();
+      const controller = new StandaloneLayoutController(api, null);
+      controller.initialize();
+      controller.showMobilePanel(panel);
+
+      await controller.syncShaderEditors([{ shaderPath: '/picked.glsl', files: ['/picked.glsl', '/buffer.glsl'] }]);
+
+      const selected = api.getPanel(panel === 'editor' ? 'editor:/picked.glsl' : panel)!;
+      const visibleGroups = new Set(api.panels.filter(candidate => candidate.api.group.api.isVisible)
+        .map(candidate => candidate.api.group));
+      expect([...visibleGroups]).toEqual([selected.api.group]);
+      expect(controller.getMobilePanel()).toBe(panel);
+      controller.dispose();
+    },
+  );
+
   it('shows the active file editor once the shader selection has replaced the main editor', () => {
     const api = createApi();
     const controller = new StandaloneLayoutController(api, null);

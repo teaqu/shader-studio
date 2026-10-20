@@ -275,6 +275,9 @@ export class StandaloneLayoutController {
         }
       } finally {
         this.syncingEditors = false;
+        if (this.mobilePanel) {
+          this.showMobileDockviewPanel(this.mobilePanel);
+        }
       }
     });
     return this.editorSync;
