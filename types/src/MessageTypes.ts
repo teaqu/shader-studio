@@ -326,6 +326,7 @@ export type FileDialogFileType =
   | `${ShaderLanguageId}-compute`
   | `${ShaderLanguageId}-vertex`
   | 'model'
+  | 'binary'
   | 'texture'
   | 'video'
   | 'audio'

@@ -1,3 +1,4 @@
+import { resolvePassStorage } from "./PassStorage";
 import { nativeRasterCaptureContext } from "./NativeRasterCaptureContext";
 import { captureFeedbackChannels } from "./CaptureFeedbackChannels";
 import { meshUniformData } from "./MeshUniformData";
@@ -36,7 +37,7 @@ interface WebGPUCaptureHost {
   geometry: Pick<WebGPUGeometry, "passCameraMatrices" | "resolvePassVertexCount">;
   channels: Pick<WebGPUChannels, "getChannelResources" | "getChannelUniforms">;
   storage: Pick<WebGPUStorage, "storageBuffers" | "storageLayouts">;
-  constraints: Pick<WebGPUDeviceConstraints, "maxTextureDimension2D" | "resolveComputeWorkgroupLimits" | "resolveMaxOutputLayers" | "resolveMaxStorageBuffers">;
+  constraints: Pick<WebGPUDeviceConstraints, "maxTextureDimension2D" | "resolveComputeWorkgroupLimits" | "resolveMaxOutputLayers">;
   device: GPUDevice | null;
   compiler: AsyncSlangCompiler | null;
   timeManager: TimeManager;
@@ -106,7 +107,8 @@ export class WebGPUCapture {
       commonCode,
       slangPassName: targetPass?.name,
       slangChannels: getSlangChannels(targetPass?.channels ?? []),
-      slangStorage: graph.storage,
+      slangStorage: resolvePassStorage(graph.storage, code ?? targetPass?.source ?? "",
+        targetPass?.vertexSrc ?? "", commonCode, ...slangModules.map(module => module.source)),
       slangStorageBuffers: this.host.storage.storageBuffers,
       slangModules,
       captureChannelSnapshot: () => this.host.device && targetPass
@@ -151,7 +153,6 @@ export class WebGPUCapture {
       canvasHeight: this.host.canvas?.height ?? 1,
       computeWorkgroupLimits: this.host.constraints.resolveComputeWorkgroupLimits(),
       maxOutputLayers: this.host.constraints.resolveMaxOutputLayers(),
-      maxStorageBuffers: this.host.constraints.resolveMaxStorageBuffers(),
       maxTextureDimension2D: this.host.constraints.maxTextureDimension2D,
     });
     return { passes: graph.passes, storage: graph.storage };

@@ -597,7 +597,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   async resetStorageBuffer(name: string): Promise<void> {
-    this.storage.resetStorageBuffer(name);
+    await this.storage.resetStorageBuffer(name);
   }
 
   async writeStorageBuffer(name: string, start: number, data: ArrayBuffer): Promise<void> {

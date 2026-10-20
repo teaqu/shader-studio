@@ -2,8 +2,10 @@ name: PR Preview
 
 # Opt-in previews: a pull request is deployed to
 # https://<owner>.github.io/<repo>/pr-preview/pr-<number>/ only while it carries
-# the `preview` label. Removing the label or closing the pull request removes
-# the preview. Preview builds keep their browser storage apart from the live
+# the `preview` label, and only when an approver added it: the repository
+# owner or a login in the PREVIEW_APPROVERS repository variable
+# (.github/scripts/preview-approval.mjs). Removing the label or closing the
+# pull request removes the preview. Preview builds keep their browser storage apart from the live
 # app on the same origin (standalone/src/previewIsolation.ts).
 
 on:
@@ -23,7 +25,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  authorize:
     # Forks never get a preview: their code would run with a token that can
     # write to this repository's Pages branch.
     if: >-
@@ -32,6 +34,39 @@ jobs:
       && github.event.action != 'unlabeled'
       && contains(github.event.pull_request.labels.*.name, 'preview')
       && (github.event.action != 'labeled' || github.event.label.name == 'preview')
+    runs-on: ubuntu-latest
+    outputs:
+      approved: ${{ steps.approval.outputs.approved }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/scripts
+
+      # Anyone with triage access can add a label, so it only counts when an
+      # approver added it. Checked on every push too, not just when labelled.
+      - name: Check who added the preview label
+        id: approval
+        uses: actions/github-script@v7
+        env:
+          PREVIEW_APPROVERS: ${{ vars.PREVIEW_APPROVERS }}
+        with:
+          script: |
+            const { previewApproval } = await import(`${process.env.GITHUB_WORKSPACE}/.github/scripts/preview-approval.mjs`);
+            const events = await github.paginate(github.rest.issues.listEvents, {
+              ...context.repo, issue_number: context.payload.pull_request.number,
+            });
+            const { labeller, approved } = previewApproval({
+              owner: context.repo.owner, configured: process.env.PREVIEW_APPROVERS, events,
+            });
+            core.setOutput('approved', String(approved));
+            if (!approved) {
+              core.notice(`Not deploying: the preview label was added by ${labeller ?? 'nobody'}, who is not a preview approver.`);
+            }
+
+  deploy:
+    needs: authorize
+    if: needs.authorize.outputs.approved == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

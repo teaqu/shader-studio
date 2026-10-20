@@ -291,6 +291,14 @@ test('ci:full label changes retrigger the caller workflow', () => {
   assert.match(caller, /types: \[opened, synchronize, reopened, labeled, unlabeled\]/);
 });
 
+test('other label changes neither run nor cancel the caller workflow', () => {
+  const caller = fs.readFileSync(path.join(root, '.github/workflows/test.yml'), 'utf8');
+  const labelEvent = `contains(fromJSON('["labeled", "unlabeled"]'), github.event.action)`;
+  // A run started by another label must not join, and so cancel, the PR's group.
+  assert.ok(caller.includes(`group: \u0024{{ github.workflow }}-\u0024{{ (${labelEvent} && github.event.label.name != 'ci:full') && format('ignored-label-{0}', github.run_id) || `));
+  assert.ok(caller.includes(`if: \u0024{{ !${labelEvent} || github.event.label.name == '${FULL_RUN_LABEL}' }}`));
+});
+
 /**
  * Root paths Turbo does not need to see because no build or E2E suite reads
  * them. Everything else at the top level must be a workspace, a global

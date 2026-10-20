@@ -1,20 +1,19 @@
 import type { StorageBindingNode } from '../types/PassGraph';
 
 export function initializeStorage(device: GPUDevice, buffer: GPUBuffer, node: StorageBindingNode): void {
-  if (!node.initialData) {
+  const bytes = node.initialBytes;
+  if (!bytes?.byteLength) {
     return;
   }
-  const decoded = atob(node.initialData);
-  if (decoded.length > node.count * node.stride) {
+  if (bytes.byteLength > node.count * node.stride) {
     throw new Error(`Initial data exceeds storage ${node.name}`);
   }
-  const data = new Uint8Array(Math.ceil(decoded.length / 4) * 4);
-  for (let i = 0; i < decoded.length; i++) {
-    data[i] = decoded.charCodeAt(i);
+  // writeBuffer sizes must be multiples of 4; the buffer itself is already padded.
+  const aligned = bytes.byteLength % 4 === 0 ? bytes : new Uint8Array(Math.ceil(bytes.byteLength / 4) * 4);
+  if (aligned !== bytes) {
+    aligned.set(bytes);
   }
-  if (data.length) {
-    device.queue.writeBuffer(buffer, 0, data);
-  }
+  device.queue.writeBuffer(buffer, 0, aligned);
 }
 
 export function clearFrameStorage(encoder: GPUCommandEncoder, buffers: Map<string, GPUBuffer>, layouts: Map<string, StorageBindingNode>): void {

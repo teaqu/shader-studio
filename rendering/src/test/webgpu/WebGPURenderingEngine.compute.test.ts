@@ -2010,14 +2010,14 @@ describe("WebGPURenderingEngine compute compilation", () => {
           storage: { particles: { count: 4, elementType: "float4" } },
         }),
         "/shader.slang",
-        { ComputeSim: COMPUTE_SOURCE },
+        { ComputeSim: "[shader(\"compute\")] [numthreads(8, 8, 1)] void computeMainEntry(uint3 tid : SV_DispatchThreadID) { particles[0] = 0; }" },
       );
 
       const result = await engine.compileShaderPipeline(
         IMAGE_SOURCE,
         computeConfig({ storage }),
         "/shader.slang",
-        { ComputeSim: COMPUTE_SOURCE },
+        { ComputeSim: `[shader("compute")] [numthreads(8, 8, 1)] void computeMainEntry(uint3 tid : SV_DispatchThreadID) { ${Object.keys(storage)[0]}[0] = 0; }` },
       );
 
       expect(result?.success).toBe(true);
@@ -2064,12 +2064,12 @@ describe("WebGPURenderingEngine compute compilation", () => {
     const storage = { particles: { count: 4, elementType: "float4" } };
 
     await engine.compileShaderPipeline(
-      IMAGE_SOURCE,
+      "float4 mainImage(float2 c) { return particles[0]; }",
       { version: "1", storage, passes: { Image: { inputs: {} } } },
       "/shader.slang",
     );
 
-    expect(compiler.compile).toHaveBeenCalledWith(IMAGE_SOURCE, expect.objectContaining({
+    expect(compiler.compile).toHaveBeenCalledWith("float4 mainImage(float2 c) { return particles[0]; }", expect.objectContaining({
       passKind: "render",
       storage: [expect.objectContaining({
         name: "particles",

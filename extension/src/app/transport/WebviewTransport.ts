@@ -151,6 +151,14 @@ export class WebviewTransport implements MessageTransport {
     // Collect paths for all resources that reference local files.
     const inputPaths: string[] = [];
 
+    for (const declaration of Object.values<{ initialDataFiles?: Array<{ path?: unknown }> }>(message.config.storage ?? {})) {
+      for (const file of Array.isArray(declaration?.initialDataFiles) ? declaration.initialDataFiles : []) {
+        if (typeof file?.path === 'string' && file.path) {
+          inputPaths.push(file.path);
+        }
+      }
+    }
+
     for (const passName of Object.keys(message.config.passes)) {
       const pass = message.config.passes[passName];
       if (pass?.geometry?.type === 'model' && pass.geometry.path) {

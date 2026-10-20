@@ -20,6 +20,33 @@ type ConfigPathMessage = {
   pathMap?: Record<string, string>;
 } & Record<string, unknown>;
 
+/** Resolve a config asset path (default asset, URL, `@/`, file://, absolute or config-relative). */
+function resolveConfigAssetPath(
+  assetPath: string,
+  configDir: string,
+  extensionPath: string | undefined,
+  normalizeLocalPath: (filePath: string) => string,
+): string {
+  const defaultAsset = resolveDefaultAssetPath(assetPath, extensionPath);
+  if (defaultAsset) {
+    return defaultAsset;
+  }
+  if (/^https?:\/\//i.test(assetPath)) {
+    return assetPath;
+  }
+  if (assetPath.startsWith('@/')) {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    return workspaceFolder ? path.join(workspaceFolder.uri.fsPath, assetPath.substring(2)) : assetPath;
+  }
+  if (assetPath.startsWith('file://')) {
+    return normalizeLocalPath(assetPath);
+  }
+  if (path.isAbsolute(assetPath)) {
+    return assetPath;
+  }
+  return configDir ? path.join(configDir, assetPath) : assetPath;
+}
+
 export class WebSocketTransport implements MessageTransport {
   private wsServer: WebSocketServer;
   private wsClients: Set<WebSocket> = new Set();
@@ -276,6 +303,15 @@ export class WebSocketTransport implements MessageTransport {
     const shaderPath = processedMessage.path || '';
     const configDir = shaderPath ? path.dirname(shaderPath) : '';
 
+    for (const declaration of Object.values(config.storage ?? {})) {
+      for (const file of Array.isArray(declaration?.initialDataFiles) ? declaration.initialDataFiles : []) {
+        if (typeof file?.path !== 'string' || !file.path) {
+          continue;
+        }
+        file.resolved_path = this.convertUriForClient(resolveConfigAssetPath(file.path, configDir, this.extensionPath, (value) => this.normalizeLocalPath(value)));
+      }
+    }
+
     for (const passName of Object.keys(config.passes)) {
       const pass = config.passes[passName];
       if (!pass?.inputs) {
@@ -291,27 +327,7 @@ export class WebSocketTransport implements MessageTransport {
           continue;
         }
 
-        // Resolve to absolute path
-        let absolutePath: string;
-        const defaultAsset = resolveDefaultAssetPath(input.path, this.extensionPath);
-        if (defaultAsset) {
-          absolutePath = defaultAsset;
-        } else if (/^https?:\/\//i.test(input.path)) {
-          absolutePath = input.path;
-        } else if (input.path.startsWith('@/')) {
-          const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-          absolutePath = workspaceFolder
-            ? path.join(workspaceFolder.uri.fsPath, input.path.substring(2))
-            : input.path;
-        } else if (input.path.startsWith('file://')) {
-          absolutePath = this.normalizeLocalPath(input.path);
-        } else if (path.isAbsolute(input.path)) {
-          absolutePath = input.path;
-        } else {
-          absolutePath = configDir ? path.join(configDir, input.path) : input.path;
-        }
-
-        input.resolved_path = this.convertUriForClient(absolutePath);
+        input.resolved_path = this.convertUriForClient(resolveConfigAssetPath(input.path, configDir, this.extensionPath, (value) => this.normalizeLocalPath(value)));
       }
     }
 

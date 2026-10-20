@@ -377,7 +377,7 @@
             <span aria-hidden="true">{panelVisibility.files ? '✓' : ''}</span> Files
           </button>
           <button role="menuitemcheckbox" aria-checked={panelVisibility.editor} onclick={() => togglePanel('editor')}>
-            <span aria-hidden="true">{panelVisibility.editor ? '✓' : ''}</span> Editor
+            <span aria-hidden="true">{panelVisibility.editor ? '✓' : ''}</span> Editors
           </button>
           <button role="menuitemcheckbox" aria-checked={panelVisibility.preview} onclick={() => togglePanel('preview')}>
             <span aria-hidden="true">{panelVisibility.preview ? '✓' : ''}</span> Preview

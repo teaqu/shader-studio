@@ -35,3 +35,10 @@ it('volume selection accepts KTX2 case-insensitively and excludes internal BIN f
   expect(selectableWorkspaceFile('/assets/noise.bin', 'volume')).toBe(false);
   expect(selectableWorkspaceFile('/assets/noise.png', 'volume')).toBe(false);
 });
+
+it('binary selection offers raw data files for storage initial data', () => {
+  expect(selectableWorkspaceFile('/data/values.bin', 'binary')).toBe(true);
+  expect(selectableWorkspaceFile('/data/values.DAT', 'binary')).toBe(true);
+  expect(selectableWorkspaceFile('/data/values.raw', 'binary')).toBe(true);
+  expect(selectableWorkspaceFile('/data/values.png', 'binary')).toBe(false);
+});

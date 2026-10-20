@@ -11,9 +11,6 @@ describe('Storage layouts', () => {
     expect(validateStorageOptions({ count: 1, elementType: 'u32', clearEachFrame: 1, resetOnRestart: 'yes' } as unknown as StorageBufferConfig)).toHaveLength(2);
     expect(validateStorageOptions({ count: 1, elementType: 'f32', fields: [{ name: 'x', type: 'float' }] })).toContain('Struct type must be a shader identifier');
     expect(validateStorageOptions({ count: 1, elementType: 'Data', fields: [{ type: 'f32' } as never] })).toContain('Field names must be unique shader identifiers');
-    expect(validateStorageOptions({ count: 1, elementType: 'u32', initialData: 'A'.repeat(349529) })).toHaveLength(1);
-    expect(validateStorageOptions({ count: 1, elementType: 'u32', initialData: 'AQI=' })).toEqual([]);
-    expect(validateStorageOptions({ count: 1, elementType: 'f16', initialData: 'AAAA' })).toContain('Initial data exceeds the buffer size');
   });
   it('emits native scalar, vector and atomic fields without changing source types', () => {
     expect(slangStorageFieldType('f16')).toBe('half');
@@ -34,8 +31,16 @@ describe('Storage layouts', () => {
     expect(configuredStorageLayout({ count: 1, elementType: 'External' })).toBeNull();
     expect(validateStorageOptions({ count: 1, elementType: 'External' })).toEqual([]);
     expect(validateStorageOptions({ count: 1, elementType: 'bad type', fields: [{ name: 'x', type: 'float' }, { name: 'x', type: 'texture' }] })).toHaveLength(3);
-    expect(validateStorageOptions({ count: 1, elementType: 'u32', initialData: 'not base64' })).toHaveLength(1);
-    expect(validateStorageOptions({ count: 1, elementType: 'u32', initialData: 'AAAAAAAAAAAA' })).toEqual(['Initial data exceeds the buffer size']);
-    expect(validateStorageOptions({ count: 1, elementType: 'u32', initialData: 'AQIDBA==' })).toEqual([]);
+  });
+  it('validates ordered file lists and optional offsets without a fixed size cap', () => {
+    for (const initialDataFiles of [undefined, [], [{ path: 'a.bin' }], [{ path: '@/a.bin', byteOffset: 0, resolved_path: 'https://host/a.bin' }, { path: '/large.bin', byteOffset: 512 * 1024 }]]) {
+      expect(validateStorageOptions({ count: 1, elementType: 'u32', initialDataFiles })).toEqual([]);
+    }
+    for (const initialDataFiles of [null, 'a.bin', {}, [null], [[]], [5], [{}], [{ path: 1 }], [{ path: '' }], [{ path: '  ' }], [{ path: 'a.bin', resolved_path: 1 }]]) {
+      expect(validateStorageOptions({ count: 1, elementType: 'u32', initialDataFiles } as unknown as StorageBufferConfig).length).toBeGreaterThan(0);
+    }
+    for (const byteOffset of [-1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, '4', null]) {
+      expect(validateStorageOptions({ count: 1, elementType: 'u32', initialDataFiles: [{ path: 'a.bin', byteOffset }] } as unknown as StorageBufferConfig)).toEqual(['Initial data file 1: Byte offset must be a non-negative safe integer']);
+    }
   });
 });

@@ -1,5 +1,6 @@
 import { addScriptStreams } from "./ScriptStreamGraph";
 import type { ScriptStreamInfo } from "@shader-studio/types";
+import { loadStorageInitialData } from "./StorageInitialData";
 import { debugPlanDisplaySource } from "./DebugPlanDisplaySource";
 import { audioLoadWarning } from "../util/LiveInputConfig";
 import type { DebugInstrumentationPlan,ShaderConfig,ShaderLanguageId,SlangSourceModule } from "@shader-studio/types";
@@ -195,6 +196,13 @@ export class WebGPUShaderSession {
     const errors: string[] = [];
     let published = false;
     try {
+      const initialDataErrors = await loadStorageInitialData(graph.storage);
+      if (generation !== this.compileGeneration || this.host.disposed) {
+        return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
+      }
+      if (initialDataErrors.length) {
+        return this.failedCompilation(path, generation, { success: false, errors: initialDataErrors, warnings: graph.warnings });
+      }
       try {
         preparedStorage = this.host.storage.prepareStorageBuffers(
           graph.storage,
@@ -514,7 +522,6 @@ export class WebGPUShaderSession {
       language: this.host.language,
       computeWorkgroupLimits: this.host.constraints.resolveComputeWorkgroupLimits(),
       maxOutputLayers: this.host.constraints.resolveMaxOutputLayers(),
-      maxStorageBuffers: this.host.constraints.resolveMaxStorageBuffers(),
       maxTextureDimension2D: this.host.constraints.maxTextureDimension2D,
     });
     addScriptStreams(graph, this.host.scriptStreamInfo?.() ?? [], attemptedCompile.customUniformInfo);
@@ -548,7 +555,7 @@ export class WebGPUShaderSession {
       pass.width = resolution.width;
       pass.height = resolution.height;
     }
-    const storageErrors = this.host.constraints.validateStorageLimits(graph.storage);
+    const storageErrors = this.host.constraints.validateStorageLimits(graph.storage, graph.passes, graph.commonCode, attemptedCompile.slangModules);
     if (storageErrors.length > 0) {
       return this.failedCompilation(path, generation, {
         success: false,

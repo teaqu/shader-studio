@@ -109,17 +109,29 @@ function validateFields(config: StorageBufferConfig): string[] {
 }
 
 function validateInitialData(config: StorageBufferConfig): string[] {
-  const errors: string[] = [];
-  if (config.initialData !== undefined && (typeof config.initialData !== 'string'
-    || config.initialData.length > 4 * Math.ceil(262144 / 3)
-    || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(config.initialData))) {
-    errors.push('Initial data must be base64 binary data up to 256 KiB');
+  if (config.initialDataFiles === undefined) {
+    return [];
   }
-  const layout = errors.length ? null : configuredStorageLayout(config);
-  if (layout && config.initialData && config.initialData.length * 3 / 4 - (config.initialData.endsWith('==') ? 2 : config.initialData.endsWith('=') ? 1 : 0) > layout.stride * config.count) {
-    errors.push('Initial data exceeds the buffer size');
+  if (!Array.isArray(config.initialDataFiles)) {
+    return ['Initial data files must be a list'];
   }
-  return errors;
+  return config.initialDataFiles.flatMap((file, index) => {
+    const prefix = `Initial data file ${index + 1}: `;
+    if (!file || typeof file !== 'object' || Array.isArray(file)) {
+      return [prefix + 'must be an object'];
+    }
+    const errors: string[] = [];
+    if (typeof file.path !== 'string' || !file.path.trim()) {
+      errors.push(prefix + 'Choose an initial data file');
+    }
+    if (file.byteOffset !== undefined && (!Number.isSafeInteger(file.byteOffset) || file.byteOffset < 0)) {
+      errors.push(prefix + 'Byte offset must be a non-negative safe integer');
+    }
+    if (file.resolved_path !== undefined && typeof file.resolved_path !== 'string') {
+      errors.push(prefix + 'resolved_path must be a string');
+    }
+    return errors;
+  });
 }
 
 /** Shared validation for UI mutations and runtime graph construction. */
