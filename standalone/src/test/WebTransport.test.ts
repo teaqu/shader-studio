@@ -744,10 +744,10 @@ describe('WebTransport preview file and save edge cases', () => {
     await transport.flush();
     expect(getSelectedEditor()).toBe('/glow-trails/trails.buffer.glsl');
     resetShellState();
-    // Another shader is opened by the preview change, not by a direct selection.
+    // Selecting a new shader must navigate before its asynchronous preview report arrives.
     explorer.postMessage({ type: 'openShader', path: '/aurora.glsl' });
     await transport.flush();
-    expect(getSelectedEditor()).toBeNull();
+    expect(getSelectedEditor()).toBe('/aurora.glsl');
     transport.dispose();
   });
 

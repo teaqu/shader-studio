@@ -191,7 +191,7 @@ test('phone shell preserves the selected shader across Studio, Preview, Editor, 
   const explorer = page.getByTestId('web-shader-explorer');
   await expect(explorer).toBeInViewport();
   await explorer.getByTestId('shader-option-aurora-glsl').click();
-  await expect(workspaceNav.getByRole('button', { name: 'Studio' })).toHaveAttribute('aria-current', 'page');
+  await expect(workspaceNav.getByRole('button', { name: 'Editor' })).toHaveAttribute('aria-current', 'page');
 
   await workspaceNav.getByRole('button', { name: 'Preview' }).click();
   await expect(page.getByTestId('web-preview')).toBeInViewport();
@@ -377,8 +377,8 @@ async function openAuroraOnPhone(page) {
   await nav.getByRole('button', { name: 'Studio' }).click();
   await page.getByTestId('shader-option-aurora-glsl').click();
   await expect(page.getByTestId('shader-option-aurora-glsl')).toHaveAttribute('aria-pressed', 'true');
-  // Selection leaves the phone on Studio; the Editor tab shows the shader.
-  await expect(nav.getByRole('button', { name: 'Studio' })).toHaveAttribute('aria-current', 'page');
+  // Opening a shader selects the phone Editor destination.
+  await expect(nav.getByRole('button', { name: 'Editor' })).toHaveAttribute('aria-current', 'page');
   await nav.getByRole('button', { name: 'Editor' }).click();
   return nav;
 }

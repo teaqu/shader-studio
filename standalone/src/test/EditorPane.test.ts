@@ -281,7 +281,7 @@ describe('file-specific editors', () => {
         }
 
         await fireEvent.click(getByRole('button', { name: 'Enable Vim mode' }));
-        expect(getByRole('button', { name: 'Disable Vim mode' })).toHaveAttribute('aria-pressed', 'true');
+        expect(getByRole('button', { name: 'Disable Vim mode' }).getAttribute('aria-pressed')).toBe('true');
         await fireEvent.click(getByRole('button', { name: 'Open in separate editor' }));
         expect(getRequestedEditor()).toBe('/buffer.glsl');
       } finally {

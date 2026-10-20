@@ -140,10 +140,6 @@ export class WebTransport implements Transport {
     }
   }
 
-  private isTrackedPreviewFile(path: string): boolean {
-    return [...this.previewFiles.values()].some(preview => preview.files.includes(path));
-  }
-
   private publishPreviewFiles(): void {
     setActiveShaderEditors(this.keepActiveShaderFiles ? [...this.previewFiles.values()] : null);
   }
@@ -367,10 +363,9 @@ export class WebTransport implements Transport {
               setEditorDocument(message.path, host.readEditorFile(message.path));
             }
             if (this.connected && message.type === 'openShader' && typeof message.path === 'string'
-              && host.readEditorFile(message.path) !== null
-              && (!this.keepActiveShaderFiles || this.isTrackedPreviewFile(message.path))) {
-              // Tracked editors follow the preview. A selected pass keeps the
-              // preview on its owner, so show the pass in its open tab.
+              && host.readEditorFile(message.path) !== null) {
+              // Navigate on the explicit open command. Preview file reports arrive
+              // asynchronously and must not decide whether selection navigates.
               selectEditor(message.path);
             }
           }));

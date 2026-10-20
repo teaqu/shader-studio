@@ -53,7 +53,7 @@ function createEditor(lines: string[], selections: FakeRange[] | null = [range(1
 function createClipboard(initial = '') {
   const board = {
     text: initial,
-    readText: vi.fn<TouchClipboard['readText']>(async () => board.text),
+    readText: vi.fn<TouchClipboard['readText']>(async (): Promise<string> => board.text),
     writeText: vi.fn<TouchClipboard['writeText']>(async (value: string) => {
       board.text = value;
     }),
