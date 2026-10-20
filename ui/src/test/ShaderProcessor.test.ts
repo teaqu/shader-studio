@@ -123,6 +123,16 @@ describe('ShaderProcessor', () => {
     const config: ShaderConfig = { version: "1", passes: { Image: {}, Cube: { path: "cube.glsl" } } };
     await shaderProcessor.processMainShaderCompilation({ type: "shaderSource", code: "image", config, path: "/preview.glsl", buffers: {} });
     expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith("image", config, "/preview.glsl", {}, undefined, undefined);
+});
+  it('rejects stream scripts on WebGL before starting compilation', async () => {
+    Object.assign(mockRenderEngine, { getShaderLanguage: () => 'glsl' });
+    const result = await shaderProcessor.processMainShaderCompilation({
+      type: 'shaderSource', code: '', config: null, path: 'test.glsl', buffers: {},
+      scriptStreams: [{ name: 'net', maxPerFrame: 4096, maxQueued: 65536 }],
+    });
+    expect(result.success).toBe(false);
+    expect(result.errors?.[0]).toContain('Slang / WebGPU');
+    expect(mockRenderEngine.compileShaderPipeline).not.toHaveBeenCalled();
   });
 
   describe('constructor', () => {

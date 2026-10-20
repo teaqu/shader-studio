@@ -4,6 +4,7 @@
   import { sharedSourcePassNames, shaderPathsEqual } from "../editor/sharedSourcePassNames";
   import { clearCurrentEditorSource, setCurrentEditorSource } from "../state/currentEditorSourceState.svelte";
   import { onMount, onDestroy, tick, setContext, untrack } from "svelte";
+  import { setScriptStreams } from "../state/scriptStreams.svelte";
   import { get } from "svelte/store";
   import { ShaderPipeline } from "../ShaderPipeline";
   import { ConfigEchoGuard } from '../config/ConfigEchoGuard';
@@ -522,6 +523,8 @@
     const fpsInterval = setInterval(() => {
       if (initialized) {
         currentFPS = renderingEngine.getCurrentFPS();
+        renderingEngine.refreshScriptStreamStatus?.();
+        setScriptStreams(renderingEngine.getScriptStreamStatus?.() ?? []);
       }
       // Evict stale poll timestamps so actualPollFps decays to 0 when messages stop
       const now = performance.now();
@@ -1304,6 +1307,16 @@
       return;
     }
 
+    if (type === 'scriptStreamStatus') {
+      renderingEngine?.receiveScriptStreamStatus?.(event.data.payload);
+      return;
+    }
+
+    if (type === 'scriptStreamFrame') {
+      renderingEngine?.receiveScriptStreamFrame?.(event.data.payload.frame, event.data.payload.request);
+      return;
+    }
+
     if (type === 'customUniformValues') {
       const values: { name: string; type: string; value: number | number[] | boolean }[] = event.data.payload.values;
       if (renderingEngine) {
@@ -1380,6 +1393,9 @@
           viewerControl.compileCancelled(event.data.path, event.data.compileSequence);
           return;
         }
+        renderingEngine.configureScriptStreams?.(event.data.scriptStreams ?? [], event.data.scriptSession ?? 0,
+          request => transport.postMessage({ type: 'requestScriptStreamFrame', payload: request }));
+        setScriptStreams([]);
         handleShaderSource(event);
       }
       publishCommonShaderSource(event.data);

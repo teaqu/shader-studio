@@ -210,3 +210,17 @@ it('packs the pointer struct without overlapping custom uniforms for every chann
     expect([...new Int32Array(packShaderToyUniforms({ ...input, pointer: undefined })).slice(offset, offset + 12)]).toEqual(new Array(12).fill(0));
   }
 });
+describe('typed script uniform packing', () => {
+  it('uses integer writes and std140 scalar array strides', () => {
+    const info=[{name:'u',type:'uint'},{name:'i',type:'int'},{name:'a',type:'uint[2]'},{name:'f',type:'float'}];
+    const layout=createSlangCustomUniformLayout(info);
+    const base = SHADERTOY_UNIFORM_SIZE;
+     expect(layout.entries.map(entry=>entry.offset)).toEqual([base,base+4,base+16,base+48]);
+    const input={width:1,height:1,time:0,timeDelta:0,frameRate:60,frame:0,mouse:[],channelTime:[],channelLoaded:[],sampleRate:44100,date:[],channelResolution:[],cameraPos:[],cameraDir:[]};
+    const buffer=packShaderToyUniforms(input,info,[{name:'u',type:'uint',value:4294967295},{name:'i',type:'int',value:-2147483648},{name:'a',type:'uint[2]',value:[123,4294967295]},{name:'f',type:'float',value:.5}]);
+    const view=new DataView(buffer);
+    expect(view.getUint32(base+0,true)).toBe(4294967295);expect(view.getInt32(base+4,true)).toBe(-2147483648);
+    expect(view.getUint32(base+16,true)).toBe(123);expect(view.getUint32(base+32,true)).toBe(4294967295);
+    expect(view.getFloat32(base+48,true)).toBe(.5);
+  });
+});

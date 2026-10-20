@@ -1,6 +1,8 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import type { MessageEvent as ShaderMessage } from "@shader-studio/types";
+  import { getScriptStreams } from "../../state/scriptStreams.svelte";
+  const streams = $derived(getScriptStreams());
   import PathInput from './PathInput.svelte';
 
   interface Props {
@@ -36,6 +38,7 @@
   }: Props = $props();
 
   let showUniformFps = $state(false);
+  let expandedArrays = $state<Record<string, boolean>>({});
 
   function formatValue(val: number | number[] | boolean | undefined): string {
     if (val === undefined) {
@@ -62,7 +65,7 @@
 
   let localFps = $state(untrack(() => pollingFps));
   $effect(() => {
-    localFps = pollingFps; 
+    localFps = pollingFps;
   });
 
   function handleSliderInput(e: Event) {
@@ -108,7 +111,18 @@
           <div class="uniform-row">
             <span class="uniform-type">{u.type}</span>
             <span class="uniform-name">{u.name}</span>
-            <span class="uniform-value">{formatValue(uniformValues[u.name])}</span>
+            <span class="uniform-value">
+              {#if u.type.includes('[')}
+                <button class="array-toggle" onclick={() => expandedArrays[u.name] = !expandedArrays[u.name]} aria-expanded={expandedArrays[u.name] ?? false}>
+                  {expandedArrays[u.name] ? '▾' : '▸'} {u.type.match(/\[(\d+)\]/)?.[1]} elements
+                </button>
+                {#if expandedArrays[u.name]}
+                  <span class="array-values">{#each (Array.isArray(uniformValues[u.name]) ? uniformValues[u.name] as number[] : []) as value, index}<span>[{index}] {u.type.startsWith('float') ? value.toFixed(3) : value}</span>{/each}</span>
+                {/if}
+              {:else}
+                {u.type === 'int' || u.type === 'uint' ? (uniformValues[u.name] ?? '—') : formatValue(uniformValues[u.name])}
+              {/if}
+            </span>
             {#if showUniformFps}
               <span class="uniform-fps">{uniformActualFps[u.name] ?? 0}fps</span>
             {/if}
@@ -118,6 +132,21 @@
     </div>
   {:else}
     <div class="uniforms-empty">No uniforms detected</div>
+  {/if}
+
+  {#if streams.length > 0}
+    <section class="streams-section" aria-label="Script streams">
+      <div class="uniforms-header"><span class="section-label">Streams</span><span class="section-label">WebGPU · uint32</span></div>
+      {#each streams as stream (stream.name)}
+        <div class="stream-row">
+          <strong>{stream.name}</strong>
+          <span>{stream.queued.toLocaleString()} words queued</span>
+          <span>Last frame: {stream.lastFrame.toLocaleString()} words</span>
+          <span>Max/frame: {stream.maxPerFrame.toLocaleString()} · Capacity: {stream.maxQueued.toLocaleString()}</span>
+        </div>
+      {/each}
+      <span class="section-label">Limits are set in streams(ctx). Full queues reject new pushes.</span>
+    </section>
   {/if}
 
   <div class="polling-section">
@@ -152,6 +181,12 @@
 </div>
 
 <style>
+  .streams-section, .stream-row, .array-values { display: flex; flex-direction: column; gap: 6px; }
+  .stream-row { padding: 8px; border: 1px solid var(--vscode-panel-border, #444); border-radius: 3px; font-size: 12px; }
+  .stream-row span { color: var(--vscode-descriptionForeground); }
+  .array-toggle { background: transparent; border: 0; color: inherit; font: inherit; cursor: pointer; }
+  .array-values { margin-top: 4px; white-space: normal; overflow-wrap: anywhere; }
+
   .script-tab-content {
     display: flex;
     flex-direction: column;

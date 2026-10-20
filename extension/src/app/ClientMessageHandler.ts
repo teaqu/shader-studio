@@ -1,3 +1,4 @@
+import { ScriptStreamClients } from "./ScriptStreamClients";
 import * as vscode from "vscode";
 import { ShaderProvider } from "./ShaderProvider";
 import { GlslFileTracker } from "./GlslFileTracker";
@@ -19,6 +20,7 @@ export class ClientMessageHandler {
   readonly files: FileDialogHandler;
   private logger: Logger;
   private layoutStateStore: LayoutStateStore;
+  private streamClients: ScriptStreamClients;
   private profileHandler: ProfileMessageHandler;
 
   constructor(
@@ -32,6 +34,7 @@ export class ClientMessageHandler {
   ) {
     this.logger = Logger.getInstance();
     this.layoutStateStore = new LayoutStateStore(context);
+    this.streamClients = new ScriptStreamClients(shaderProvider);
     this.overlay = new OverlayPanelHandler();
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
       ?? context.storageUri?.fsPath
@@ -52,10 +55,15 @@ export class ClientMessageHandler {
 
   // The UI protocol is deliberately open-ended for forward-compatible clients;
   // each switch branch delegates to a command handler that validates its shape.
+  public releaseScriptStreams(owner: object = this): void {
+    this.streamClients.release(owner);
+  }
+
   async handle(
     message: any,
     respondFn: (msg: any) => void,
     pathConverter: (absPath: string) => string = (p) => p,
+    owner: object = this,
   ): Promise<void> {
     this.logger.debug(`ClientMessageHandler: handling ${message.type}`);
 
@@ -115,6 +123,9 @@ export class ClientMessageHandler {
         }
         break;
       }
+      case 'requestScriptStreamFrame':
+        this.streamClients.handle(message.payload, respondFn, owner);
+        break;
       case 'resetScriptTime':
         this.shaderProvider.resetScriptTime();
         break;

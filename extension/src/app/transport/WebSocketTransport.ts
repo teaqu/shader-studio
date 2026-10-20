@@ -196,12 +196,14 @@ export class WebSocketTransport implements MessageTransport {
 
       ws.on("close", (code, reason) => {
         this.unregisterPreview(ws);
+        clientHandler.releaseScriptStreams();
         this.wsClients.delete(ws);
         Logger.debug(`WebSocket: client disconnected (code ${code}, `
           + `reason ${reason?.toString()}). Total clients: ${this.wsClients.size}`);
       });
 
       ws.on("error", (error) => {
+        clientHandler.releaseScriptStreams();
         console.error('WebSocket client error:', error);
         this.unregisterPreview(ws);
         this.wsClients.delete(ws);

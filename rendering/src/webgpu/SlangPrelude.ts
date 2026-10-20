@@ -434,6 +434,13 @@ export function buildStorageDeclarations(
   };
   const declaredTypes = new Set<string>();
   const declaration = (node: StorageBindingNode) => {
+    if (node.streamMaxPerFrame) {
+      return `struct _ScriptStream_${node.name} { uint length; uint data[${node.streamMaxPerFrame}]; };
+[[vk::binding(${baseBinding + node.binding}, 0)]]
+StructuredBuffer<_ScriptStream_${node.name}> _scriptStream_${node.name};
+#define ${node.name} (_scriptStream_${node.name}[0])
+`;
+    }
     const struct = declaredTypes.has(node.elementType) ? '' : node.structDeclarations?.slang ?? '';
     if (struct) {
       declaredTypes.add(node.elementType);

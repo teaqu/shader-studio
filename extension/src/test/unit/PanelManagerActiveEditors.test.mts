@@ -30,7 +30,8 @@ vi.mock('../../app/ActiveShaderEditors.js', () => ({ ActiveShaderEditors: class 
   } 
 } }));
 vi.mock('../../app/ClientMessageHandler.js', () => ({ ClientMessageHandler: class {
-  handle = vi.fn(); 
+  handle = vi.fn();
+  releaseScriptStreams = vi.fn(); 
 } }));
 vi.mock('../../app/transport/WebviewTransport.js', () => ({
   WebviewTransport: class {
