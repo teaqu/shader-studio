@@ -804,12 +804,20 @@ describe('WebMCP transport wiring', () => {
     const transport = new WebTransport();
     try {
       const first = transport.createViewerTransport(), second = transport.createViewerTransport();
-      const response = (viewer: typeof first, path: string) => (event: MessageEvent) => {
-        if (event.data.type === 'viewerRpcRequest') {
-          viewer.postMessage({ type: 'viewerRpcResponse', requestId: event.data.requestId,
-            result: { path, language: 'glsl', compileSequence: 1, renderedSequence: 1, compiling: false,
-              errors: [], warnings: [], time: 1, frame: 1, paused: false, width: 10, height: 10, fpsLimit: 60, speed: 1, uniforms: [] } });
-        }
+      const response = (viewer: typeof first, initialPath: string) => {
+        let path = initialPath;
+        let compileSequence = 1;
+        return (event: MessageEvent) => {
+          if (event.data.type === 'shaderSource') {
+            path = event.data.path;
+            compileSequence = event.data.compileSequence;
+          }
+          if (event.data.type === 'viewerRpcRequest') {
+            viewer.postMessage({ type: 'viewerRpcResponse', requestId: event.data.requestId,
+              result: { path, language: 'glsl', compileSequence, renderedSequence: compileSequence, compiling: false,
+                errors: [], warnings: [], time: 1, frame: 1, paused: false, width: 10, height: 10, fpsLimit: 60, speed: 1, uniforms: [] } });
+          }
+        };
       };
       first.onMessage(response(first, '/aurora.glsl')); second.onMessage(response(second, '/glow-trails.glsl'));
       transport.enableWebMcp();
@@ -821,10 +829,22 @@ describe('WebMCP transport wiring', () => {
       const diagnostics = tools.get('get_diagnostics')!;
       expect(JSON.parse(await diagnostics.execute({})).error).toContain('Multiple previews');
       expect(JSON.parse(await diagnostics.execute({ previewId: result.previews[1].id }))).toMatchObject({ path: '/glow-trails.glsl' });
+      const source = vi.fn();
+      second.onMessage(source);
+      const selection = JSON.parse(await tools.get('select_shader')!.execute({
+        previewId: result.previews[1].id, path: '/aurora-slang.slang',
+      }));
+      expect(selection).toMatchObject({ previewId: result.previews[1].id, path: '/aurora-slang.slang' });
+      expect(source).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+        type: 'shaderSource', path: '/aurora-slang.slang',
+      }) }));
+      expect(JSON.parse(await diagnostics.execute({ previewId: result.previews[0].id }))).toMatchObject({ path: '/aurora.glsl' });
       second.dispose();
       expect(JSON.parse(await diagnostics.execute({}))).toMatchObject({ path: '/aurora.glsl' });
       first.dispose();
+      const interrupted = list.execute({});
       transport.dispose();
+      expect(JSON.parse(await interrupted)).toEqual({ error: 'Workspace disconnected.' });
       expect(unregisterTool).toHaveBeenCalled(); expect(tools.size).toBe(0);
       expect(JSON.parse(await list.execute({}))).toHaveProperty('error');
     } finally {
