@@ -31,6 +31,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
   { key: 'editor.autoSuggestions', label: 'Automatic suggestions', description: 'Show code suggestions while typing. You can still request suggestions with Ctrl+Space when this is off.', group: 'Editor', kind: 'boolean' },
   { key: 'editor.desktopDescriptions', label: 'Desktop descriptions', description: 'Show symbol descriptions when hovering over code on desktop.', group: 'Editor', kind: 'boolean' },
   { key: 'editor.mobileDescriptions', label: 'Mobile descriptions', description: 'Show symbol descriptions when interacting with code on mobile. Off by default to keep the editor clear.', group: 'Editor', kind: 'boolean' },
+  { key: 'editor.mobileNavigation', label: 'Mobile Editor / Preview tabs', description: 'Show compact Editor and Preview buttons beside the keys while the mobile keyboard is open.', group: 'Editor', kind: 'boolean' },
   { key: 'editor.minimap.enabled', label: 'Minimap', description: 'Show the source overview alongside the Monaco editor.', group: 'Editor', kind: 'boolean' },
   { key: 'editor.lineNumbers', label: 'Line numbers', description: 'Show line numbers beside shader source.', group: 'Editor', kind: 'choice' },
 ];

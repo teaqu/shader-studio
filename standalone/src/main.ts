@@ -45,6 +45,9 @@ configureHost({
   setEditorDescriptions: (mobile, enabled) => {
     transport.settings.update(mobile ? 'editor.mobileDescriptions' : 'editor.desktopDescriptions', enabled);
   },
+  setEditorMobileNavigation: enabled => {
+    transport.settings.update('editor.mobileNavigation', enabled);
+  },
   defaultAssets: defaultAssets(),
   uploadAssets: (files, shaderPath) => transport.uploadAssets(files, shaderPath),
   capabilities: { compileOnSave: false },

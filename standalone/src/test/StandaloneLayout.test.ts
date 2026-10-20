@@ -194,6 +194,8 @@ describe('StandaloneLayout', () => {
 
     it('keeps Editor and Preview accessible while the keyboard is open', async () => {
       const media = stubViewport(true);
+      const settings = new StandaloneSettings({ getItem: () => null, setItem: vi.fn() });
+      const disconnect = connectSettings(settings);
       const viewport = Object.assign(new EventTarget(), { scale: 1, height: 800, offsetTop: 0 });
       vi.stubGlobal('innerHeight', 800);
       vi.stubGlobal('visualViewport', viewport);
@@ -219,6 +221,14 @@ describe('StandaloneLayout', () => {
           expect(button.getAttribute('aria-current')).toBe('page');
           expect(document.activeElement).toBe(input);
         }
+        settings.update('editor.mobileNavigation', false);
+        await tick();
+        expect(result.queryByRole('navigation', { name: 'Editor and preview' })).toBeNull();
+        expect(result.queryByRole('navigation', { name: 'Workspace panels' })).toBeNull();
+        expect(result.container.querySelector('.standalone-layout')).not.toHaveClass('keyboard-navigation');
+        settings.update('editor.mobileNavigation', true);
+        await tick();
+        expect(result.getByRole('navigation', { name: 'Editor and preview' })).toBeTruthy();
         media.resize(false);
         await tick();
         expect(result.queryByRole('navigation', { name: 'Editor and preview' })).toBeNull();
@@ -230,6 +240,7 @@ describe('StandaloneLayout', () => {
         expect(result.getByRole('navigation', { name: 'Workspace panels' })).toBeTruthy();
       } finally {
         result.unmount();
+        disconnect();
         stop();
         editor.remove();
       }

@@ -30,5 +30,6 @@ export function getEditorPreferences() {
     autoSuggestions: values['editor.autoSuggestions'],
     desktopDescriptions: values['editor.desktopDescriptions'],
     mobileDescriptions: values['editor.mobileDescriptions'],
+    mobileNavigation: values['editor.mobileNavigation'],
   };
 }

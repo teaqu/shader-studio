@@ -21,6 +21,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   'editor.autoSuggestions': true,
   'editor.desktopDescriptions': true,
   'editor.mobileDescriptions': false,
+  'editor.mobileNavigation': true,
   'editor.minimap.enabled': false,
   'editor.lineNumbers': 'on' as 'off' | 'on',
 });

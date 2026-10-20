@@ -20,6 +20,7 @@
   import EditorPane from './EditorPane.svelte';
   import type { WebTransport } from './WebTransport';
   import { HostedPanels } from './HostedPanels';
+  import { getEditorPreferences } from './settings/settingsState.svelte';
   import type { HostedPanelId } from '@shader-studio/ui/lib/layout/PanelHost';
   import {
     getMobilePanel,
@@ -67,6 +68,7 @@
   let explorerSection = $state<ExplorerSection>('explorer');
   const mobilePanel = $derived(getMobilePanel());
   const mobileViewport = $derived(isMobileViewport());
+  const keyboardNavigation = $derived(isMobileKeyboardOpen() && getEditorPreferences().mobileNavigation);
 
   $effect(() => {
     controller?.setEditorPath(getViewerSession()?.shaderPath ?? '');
@@ -267,7 +269,7 @@
   }
 </script>
 
-<div class:mobile-layout={mobileViewport} class:keyboard-open={isMobileKeyboardOpen()} class="standalone-layout" data-mobile-panel={mobilePanel}>
+<div class:mobile-layout={mobileViewport} class:keyboard-open={isMobileKeyboardOpen()} class:keyboard-navigation={keyboardNavigation} class="standalone-layout" data-mobile-panel={mobilePanel}>
   {#if mobileViewport && studioNotices && isExplorerSection(mobilePanel)}
     <div class="mobile-studio-notices">{@render studioNotices()}</div>
   {/if}
@@ -306,7 +308,7 @@
         {#if studio}<div class="mobile-studio-actions">{@render studio()}</div>{/if}
       </div>
     {/if}
-    {#if isMobileKeyboardOpen()}
+    {#if keyboardNavigation}
       <nav class="mobile-editor-navigation" aria-label="Editor and preview">
         {#each EDITOR_DESTINATIONS as [panelId, label] (panelId)}
           <button type="button"
@@ -317,7 +319,7 @@
           >{label}</button>
         {/each}
       </nav>
-    {:else}
+    {:else if !isMobileKeyboardOpen()}
       <nav class="mobile-panel-navigation" aria-label="Workspace panels">
         {#each MOBILE_DESTINATIONS as [panelId, label]}
           <button
@@ -365,7 +367,8 @@
 
   @media (max-width: 767px) {
     .standalone-layout.mobile-layout { position: relative; flex-direction: column; padding-bottom: env(safe-area-inset-bottom); }
-    .standalone-layout.mobile-layout.keyboard-open { padding-bottom: 0; --mobile-editor-switch-width: 150px; }
+    .standalone-layout.mobile-layout.keyboard-open { padding-bottom: 0; }
+    .standalone-layout.mobile-layout.keyboard-navigation { --mobile-editor-switch-width: 150px; }
     .mobile-editor-navigation {
       position: absolute;
       left: 6px;

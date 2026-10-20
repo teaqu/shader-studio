@@ -59,6 +59,17 @@ describe('standalone global settings', () => {
     settings.reset();
     expect(settings.snapshot['editor.autoSuggestions']).toBe(true);
   });
+  it('remembers hidden mobile navigation and restores its enabled default on reset', () => {
+    const backend = storage();
+    const settings = new StandaloneSettings(backend);
+    expect(settings.snapshot['editor.mobileNavigation']).toBe(true);
+    expect(settings.update('editor.mobileNavigation', 'false')).toBe(false);
+    settings.update('editor.mobileNavigation', false);
+    const reloaded = new StandaloneSettings(backend);
+    expect(reloaded.snapshot['editor.mobileNavigation']).toBe(false);
+    reloaded.reset();
+    expect(reloaded.snapshot['editor.mobileNavigation']).toBe(true);
+  });
   it('loads valid values independently and ignores unknown or malformed values', () => {
     const backend = storage();
     backend.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({ version: 1, values: { 'editor.fontSize': 80, 'editor.tabSize': 2, 'editor.wordWrap': 'on', unrelated: false } }));

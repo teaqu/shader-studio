@@ -301,6 +301,14 @@ test('mobile bottom toolbar follows a panned keyboard viewport without leaving b
   const toolbarBounds = await toolbar.boundingBox();
   expect(toolbarBounds.x).toBeGreaterThanOrEqual(switchBounds.x + switchBounds.width);
   expect(Math.abs(toolbarBounds.y + toolbarBounds.height - switchBounds.y - switchBounds.height)).toBeLessThanOrEqual(1);
+  await toolbar.getByRole('button', { name: 'More editing options', exact: true }).click();
+  await toolbar.getByRole('button', { name: 'Hide Editor and Preview tabs' }).click();
+  await expect(quickNav).toBeHidden();
+  await expect(nav).toBeHidden();
+  await expect.poll(async () => (await toolbar.boundingBox()).x).toBeLessThan(toolbarBounds.x);
+  await toolbar.getByRole('button', { name: 'Show Editor and Preview tabs' }).click();
+  await expect(quickNav).toBeVisible();
+  await toolbar.getByRole('button', { name: 'More editing options', exact: true }).click();
   const code = await content.innerText();
   await quickNav.getByRole('button', { name: 'Preview', exact: true }).click();
   await expect(page.getByTestId('web-preview')).toBeVisible();
@@ -384,6 +392,8 @@ test('mobile bottom toolbar uses one key row and persists automatic suggestions'
   await expect(actions.getByRole('button', { name: 'Enable descriptions' })).toHaveAttribute('aria-pressed', 'false');
   await tap(actions.getByRole('button', { name: 'Enable descriptions' }));
   await expect(actions.getByRole('button', { name: 'Disable descriptions' })).toHaveAttribute('aria-pressed', 'true');
+  await tap(actions.getByRole('button', { name: 'Hide Editor and Preview tabs' }));
+  await expect(actions.getByRole('button', { name: 'Show Editor and Preview tabs' })).toHaveAttribute('aria-pressed', 'false');
   await content.click();
   await expect(more).toHaveAttribute('aria-expanded', 'false');
 
@@ -392,6 +402,9 @@ test('mobile bottom toolbar uses one key row and persists automatic suggestions'
   await expect(showKeys).toBeVisible();
   await tap(showKeys);
   await tap(more);
+  await expect(actions.getByRole('button', { name: 'Show Editor and Preview tabs' })).toHaveAttribute('aria-pressed', 'false');
+  await tap(actions.getByRole('button', { name: 'Show Editor and Preview tabs' }));
+  await expect(actions.getByRole('button', { name: 'Hide Editor and Preview tabs' })).toHaveAttribute('aria-pressed', 'true');
   await expect(actions.getByRole('button', { name: 'Enable suggestions' })).toHaveAttribute('aria-pressed', 'false');
   await expect(actions.getByRole('button', { name: 'Disable descriptions' })).toHaveAttribute('aria-pressed', 'true');
   await tap(actions.getByRole('button', { name: 'Disable descriptions' }));

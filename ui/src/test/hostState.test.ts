@@ -1,9 +1,26 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { editorDescriptionsEnabled, getHostEditorDescriptions, toggleHostEditorDescriptions, getHostEditorWordWrap, toggleHostEditorWordWrap, getHostEditorAutoSuggestions, toggleHostEditorAutoSuggestions, configureHost, getHostCapabilities, getHostDefaultAssets, getHostTransportFactory, resetHost } from '../lib/state/hostState.svelte';
+import { getHostEditorMobileNavigation, toggleHostEditorMobileNavigation, editorDescriptionsEnabled, getHostEditorDescriptions, toggleHostEditorDescriptions, getHostEditorWordWrap, toggleHostEditorWordWrap, getHostEditorAutoSuggestions, toggleHostEditorAutoSuggestions, configureHost, getHostCapabilities, getHostDefaultAssets, getHostTransportFactory, resetHost } from '../lib/state/hostState.svelte';
 
 afterEach(resetHost);
 
 describe('viewer host contract', () => {
+  it('only exposes mobile navigation for a host with writable preferences', () => {
+    expect(getHostEditorMobileNavigation()).toBeUndefined();
+    expect(() => toggleHostEditorMobileNavigation()).not.toThrow();
+    configureHost({ setEditorMobileNavigation: () => { throw new Error('No preferences'); } });
+    expect(getHostEditorMobileNavigation()).toBeUndefined();
+    expect(() => toggleHostEditorMobileNavigation()).not.toThrow();
+    let mobileNavigation: boolean | undefined;
+    configureHost({
+      getEditorPreferences: () => ({ fontSize: 14, tabSize: 4, insertSpaces: true, wordWrap: 'off', minimap: false, lineNumbers: 'on', mobileNavigation }),
+      setEditorMobileNavigation: enabled => { mobileNavigation = enabled; },
+    });
+    expect(getHostEditorMobileNavigation()).toBe(true);
+    toggleHostEditorMobileNavigation();
+    expect(getHostEditorMobileNavigation()).toBe(false);
+    toggleHostEditorMobileNavigation();
+    expect(getHostEditorMobileNavigation()).toBe(true);
+  });
   it('resolves separate description defaults and only toggles writable host preferences', () => {
     expect(editorDescriptionsEnabled(undefined, true)).toBe(false);
     expect(editorDescriptionsEnabled(undefined, false)).toBe(true);

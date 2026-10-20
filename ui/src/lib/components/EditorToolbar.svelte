@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import { getHostEditorAutoSuggestions, toggleHostEditorAutoSuggestions, getHostEditorDescriptions, toggleHostEditorDescriptions } from '../state/hostState.svelte';
+  import { getHostEditorMobileNavigation, toggleHostEditorMobileNavigation, getHostEditorAutoSuggestions, toggleHostEditorAutoSuggestions, getHostEditorDescriptions, toggleHostEditorDescriptions } from '../state/hostState.svelte';
 
   interface Props {
     options?: Snippet;
@@ -16,6 +16,7 @@
   const optionsId = $props.id();
   const suggestions = $derived(getHostEditorAutoSuggestions());
   const descriptions = $derived(getHostEditorDescriptions(touch));
+  const mobileNavigation = $derived(getHostEditorMobileNavigation());
   const historyCommands = [
     { command: 'undo', label: 'Undo', text: 'Undo' },
     { command: 'redo', label: 'Redo', text: 'Redo' },
@@ -67,6 +68,10 @@
         {#if descriptions !== undefined}
           <button type="button" aria-label={descriptions ? 'Disable descriptions' : 'Enable descriptions'} aria-pressed={descriptions}
             onmousedown={event => event.preventDefault()} onclick={() => toggleHostEditorDescriptions(touch)}>Descriptions</button>
+        {/if}
+        {#if mobileNavigation !== undefined}
+          <button type="button" aria-label={mobileNavigation ? 'Hide Editor and Preview tabs' : 'Show Editor and Preview tabs'} aria-pressed={mobileNavigation}
+            onmousedown={event => event.preventDefault()} onclick={toggleHostEditorMobileNavigation}>Editor / Preview tabs</button>
         {/if}
         {@render options?.()}
       </div>

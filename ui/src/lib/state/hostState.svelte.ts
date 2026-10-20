@@ -16,6 +16,7 @@ export interface HostEditorPreferences {
   autoSuggestions?: boolean;
   desktopDescriptions?: boolean;
   mobileDescriptions?: boolean;
+  mobileNavigation?: boolean;
   /** The editor selected for desktop-sized viewports by the standalone host. */
   desktopEditor?: 'monaco' | 'codemirror';
   /** The editor selected for mobile-sized viewports by the standalone host. */
@@ -31,6 +32,7 @@ export interface HostConfig {
   setEditorWordWrap?: (value: HostEditorPreferences['wordWrap']) => void;
   setEditorAutoSuggestions?: (enabled: boolean) => void;
   setEditorDescriptions?: (mobile: boolean, enabled: boolean) => void;
+  setEditorMobileNavigation?: (enabled: boolean) => void;
   uploadAssets?: (files: readonly File[], shaderPath: string) => Promise<WorkspaceFileInfo[]>;
 }
 
@@ -103,5 +105,17 @@ export function toggleHostEditorDescriptions(mobile: boolean): void {
   const current = getHostEditorDescriptions(mobile);
   if (current !== undefined) {
     host.setEditorDescriptions?.(mobile, !current);
+  }
+}
+
+export function getHostEditorMobileNavigation(): boolean | undefined {
+  const preferences = host.getEditorPreferences?.();
+  return host.setEditorMobileNavigation && preferences ? preferences.mobileNavigation ?? true : undefined;
+}
+
+export function toggleHostEditorMobileNavigation(): void {
+  const current = getHostEditorMobileNavigation();
+  if (current !== undefined) {
+    host.setEditorMobileNavigation?.(!current);
   }
 }

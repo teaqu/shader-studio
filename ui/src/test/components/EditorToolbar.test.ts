@@ -30,6 +30,27 @@ it('starts collapsed, expands on demand, and closes the menu when collapsed agai
   expect(view.getByRole('button', { name: 'More editing options' })).toHaveAttribute('aria-expanded', 'false');
 });
 
+it('toggles mobile navigation from More without closing the menu', async () => {
+  setFixturePreferences({ ...getFixturePreferences(), mobileNavigation: true });
+  configureHost({
+    getEditorPreferences: getFixturePreferences,
+    setEditorMobileNavigation: enabled => setFixturePreferences({ ...getFixturePreferences(), mobileNavigation: enabled }),
+  });
+  const view = render(EditorToolbar, { touch: true, onCommand: vi.fn() });
+  await fireEvent.click(view.getByRole('button', { name: 'Show keyboard toolbar' }));
+  await fireEvent.click(view.getByRole('button', { name: 'More editing options' }));
+  const hide = view.getByRole('button', { name: 'Hide Editor and Preview tabs' });
+  expect(hide).toHaveAttribute('aria-pressed', 'true');
+  expect(await fireEvent.mouseDown(hide)).toBe(false);
+  await fireEvent.click(hide);
+  expect(getFixturePreferences().mobileNavigation).toBe(false);
+  const show = view.getByRole('button', { name: 'Show Editor and Preview tabs' });
+  expect(show).toHaveAttribute('aria-pressed', 'false');
+  await fireEvent.click(show);
+  expect(getFixturePreferences().mobileNavigation).toBe(true);
+  expect(view.getByRole('group', { name: 'More editing options' })).toBeVisible();
+});
+
 it('toggles mobile descriptions independently from suggestions and desktop descriptions', async () => {
   setFixturePreferences({ ...getFixturePreferences(), mobileDescriptions: false, desktopDescriptions: true, autoSuggestions: true });
   const setter = vi.fn((mobile: boolean, enabled: boolean) => {
