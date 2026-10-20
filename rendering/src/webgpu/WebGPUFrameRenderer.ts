@@ -28,6 +28,8 @@ import {
 } from "./uniforms";
 
 interface WebGPUFrameRendererHost {
+  prepareScriptStreams?(consume: boolean): void;
+  submitScriptStreams?(consume: boolean): void;
   renderedCaptureState: RenderedCaptureState;
   timing: Pick<WebGPUFrameTiming, "probeGpuFrameTime" | "recordFrameTime" | "shouldRenderFrame" | "trackFrameInFlight">;
   session: Pick<WebGPUShaderSession, "computePipelines" | "customUniformManager" | "dispatchOnceRan" | "hasSubmittedFrameForInstalledGeneration" | "passGraph" | "passPipelines" | "resourceManager" | "shaderPath">;
@@ -117,6 +119,8 @@ export class WebGPUFrameRenderer {
     // owns this submission state instead of inferring it from iFrame.
     const skipBufferPasses = isPaused && this.host.session.hasSubmittedFrameForInstalledGeneration;
 
+    const consumeStreams = !capture && !isPaused && !imageOnly;
+    this.host.prepareScriptStreams?.(consumeStreams);
     const encoder = this.host.device.createCommandEncoder();
     if (!skipBufferPasses && !imageOnly && !capture) {
       this.host.storage.clearFrame(encoder);
@@ -335,6 +339,7 @@ export class WebGPUFrameRenderer {
       this.host.pixelRegionCapturer?.encodeAfterRender(encoder, canvasTexture, this.host.canvas.width, this.host.canvas.height);
     }
     this.host.device.queue.submit([encoder.finish()]);
+    this.host.submitScriptStreams?.(consumeStreams);
     this.host.storage.captures.beginMappings();
     this.host.session.hasSubmittedFrameForInstalledGeneration = true;
     this.host.timing.probeGpuFrameTime();

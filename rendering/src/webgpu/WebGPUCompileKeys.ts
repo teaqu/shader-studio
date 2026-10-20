@@ -26,6 +26,7 @@ export function wgslCacheKey(
     node.name,
     node.elementType,
     node.builtin,
+    node.streamMaxPerFrame,
   ]);
   const hasOutput = pass.output === "texture";
   return JSON.stringify([
@@ -66,6 +67,7 @@ export function pipelineCacheKey(
     node.binding,
     node.elementType,
     node.builtin,
+    node.streamMaxPerFrame,
     node.count,
     node.stride,
   ]);

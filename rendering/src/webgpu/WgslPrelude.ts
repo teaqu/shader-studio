@@ -1,3 +1,4 @@
+import { parseScriptUniformType } from "@shader-studio/types";
 import { WGSL_POINTER_DECLARATION } from "@shader-studio/types";
 import { isolateShaderEntryPoints } from "@shader-studio/types";
 import { getShaderSourceFunctions, wgslStorageElementType } from "@shader-studio/types";
@@ -134,6 +135,8 @@ export function wgslUnsupportedFeatureMessage(
 }
 
 const WGSL_CUSTOM_UNIFORM_TYPES: Record<string, string> = {
+  int: "i32",
+  uint: "u32",
   float: "f32",
   vec2: "vec2<f32>",
   vec3: "vec3<f32>",
@@ -148,9 +151,10 @@ const WGSL_CUSTOM_UNIFORM_TYPES: Record<string, string> = {
  */
 function buildUniformPrelude(channelCount: number, customUniforms: SlangCustomUniformInfo[] = []): string {
   const customFields = customUniforms
-    .flatMap(({ name, type }) => isSlangCustomUniformType(type)
-      ? [`  custom_${name}: ${WGSL_CUSTOM_UNIFORM_TYPES[type]},`]
-      : [])
+    .flatMap(({ name, type }) => {
+      const shape = parseScriptUniformType(type);
+      return shape ? [`  custom_${name}: ${shape.length ? `array<vec4<${WGSL_CUSTOM_UNIFORM_TYPES[shape.base]}>, ${shape.length}>` : WGSL_CUSTOM_UNIFORM_TYPES[shape.base]},`] : [];
+    })
     .join("\n");
   return `// ---- shader-studio WGSL prelude (generated) ----
 ${WGSL_POINTER_DECLARATION}
@@ -252,10 +256,12 @@ function buildGlobalsPrelude(customUniforms: SlangCustomUniformInfo[] = [], opti
     if (!isSlangCustomUniformType(type)) {
       continue;
     }
-    declarations.push(`var<private> ${name}: ${type === "bool" ? "bool" : WGSL_CUSTOM_UNIFORM_TYPES[type]};`);
-    initialisers.push(type === "bool"
-      ? `  ${name} = _ss_u.custom_${name} != 0;`
-      : `  ${name} = _ss_u.custom_${name};`);
+    const shape = parseScriptUniformType(type)!;
+    const scalar = WGSL_CUSTOM_UNIFORM_TYPES[shape.base];
+    declarations.push(`var<private> ${name}: ${shape.length ? `array<${scalar}, ${shape.length}>` : type === "bool" ? "bool" : scalar};`);
+    initialisers.push(shape.length
+      ? `  for (var index = 0u; index < ${shape.length}u; index++) { ${name}[index] = _ss_u.custom_${name}[index].x; }`
+      : type === "bool" ? `  ${name} = _ss_u.custom_${name} != 0;` : `  ${name} = _ss_u.custom_${name};`);
   }
   if (options.channels?.length) {
     initialisers.push("  _ss_initChannels();");

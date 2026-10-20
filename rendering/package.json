@@ -24,12 +24,15 @@
     "@shader-studio/wgsl-analysis": "*"
   },
   "devDependencies": {
-    "@types/webxr": "^0.5.24",
     "@sveltejs/vite-plugin-svelte": "^5.0.3",
     "@testing-library/svelte": "^5.2.8",
+    "@types/webxr": "^0.5.24",
+    "@types/ws": "8.18.1",
     "@vitest/browser-playwright": "5.0.3",
     "@webgpu/types": "^0.1.70",
+    "esbuild": "0.28.2",
     "playwright": "^1.60.0",
-    "vitest": "*"
+    "vitest": "*",
+    "ws": "8.21.3"
   }
 }

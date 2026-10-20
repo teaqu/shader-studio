@@ -1,3 +1,4 @@
+import { parseScriptUniformType, type ScriptUniformType } from "../ScriptUniforms";
 import { buildSlangChannels } from './SlangChannels';
 import {
   SLANG_POINTER_DECLARATION,
@@ -15,7 +16,7 @@ import {
   type ShaderAuthoringEnvironment,
 } from "./ShaderAuthoringEnvironment";
 
-export type SlangCustomUniformType = AuthoringValueType;
+export type SlangCustomUniformType = ScriptUniformType;
 
 export interface SlangCustomUniformInfo {
   name: string;
@@ -30,7 +31,9 @@ const SLANG_AUTHORING_VALUE_TYPES = {
   bool: "bool",
 } as const satisfies Record<AuthoringValueType, string>;
 
-const SLANG_RUNTIME_VALUE_TYPES: Record<SlangCustomUniformType, string> = {
+const SLANG_RUNTIME_VALUE_TYPES: Record<string, string> = {
+  int: "int",
+  uint: "uint",
   float: "float",
   vec2: "float2",
   vec3: "float3",
@@ -39,7 +42,7 @@ const SLANG_RUNTIME_VALUE_TYPES: Record<SlangCustomUniformType, string> = {
 };
 
 export function isSlangCustomUniformType(type: string): type is SlangCustomUniformType {
-  return isAuthoringValueType(type);
+  return parseScriptUniformType(type) !== null;
 }
 
 /** Builds a standalone Slang declaration module for authoring tools. */
@@ -131,9 +134,10 @@ export function buildSlangRuntimePrelude(
   channelCount = 4,
 ): string {
   const fields = customUniforms
-    .flatMap(({ name, type }) => isSlangCustomUniformType(type)
-      ? [`    ${SLANG_RUNTIME_VALUE_TYPES[type]} custom_${name};`]
-      : [])
+    .flatMap(({ name, type }) => {
+      const shape = parseScriptUniformType(type);
+      return shape ? [`    ${SLANG_RUNTIME_VALUE_TYPES[shape.base]} custom_${name}${shape.length ? `[${shape.length}]` : ''};`] : [];
+    })
     .join("\n");
   const aliases = customUniforms
     .flatMap(({ name, type }) => !isSlangCustomUniformType(type)

@@ -59,6 +59,8 @@ export type RenderPassChannel =
   | { kind: "keyboard"; slot: number; key: string };
 
 export interface StorageBindingNode {
+  /** Read-only script input: length followed by uint32 words. */
+  streamMaxPerFrame?: number;
   name: string;
   /** Zero-based index among the graph's valid storage declarations. */
   binding: number;

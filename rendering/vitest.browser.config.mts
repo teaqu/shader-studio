@@ -1,3 +1,4 @@
+import { scriptStreamHarness } from "./src/test/e2e/node/ScriptStreamHarness";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
@@ -7,7 +8,7 @@ import { playwright } from "@vitest/browser-playwright";
 const directory = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
-  plugins: [svelte()],
+  plugins: [svelte(), scriptStreamHarness()],
   resolve: {
     // Browser tests must compile the workspace source, like the UI build does.
     // Loading core's CommonJS distribution directly leaves its named exports

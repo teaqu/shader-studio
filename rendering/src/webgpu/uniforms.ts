@@ -1,5 +1,6 @@
 import type { PointerState } from "@shader-studio/types";
 import { DEFAULT_INSTANCE_COUNT } from "@shader-studio/types";
+import { parseScriptUniformType } from "@shader-studio/types";
 import {
   createShaderToyUniformLayout,
   isSlangCustomUniformType,
@@ -22,8 +23,10 @@ export interface SlangCustomUniformLayout {
   size: number;
 }
 
-const CUSTOM_LAYOUT: Record<SlangCustomUniformType, { alignment: number; size: number }> = {
+const CUSTOM_LAYOUT: Record<string, { alignment: number; size: number }> = {
   float: { alignment: 4, size: 4 },
+  int: { alignment: 4, size: 4 },
+  uint: { alignment: 4, size: 4 },
   vec2: { alignment: 8, size: 8 },
   vec3: { alignment: 16, size: 12 },
   vec4: { alignment: 16, size: 16 },
@@ -44,7 +47,8 @@ export function createSlangCustomUniformLayout(
     if (!isSlangCustomUniformType(type)) {
       continue;
     }
-    const field = CUSTOM_LAYOUT[type];
+    const shape = parseScriptUniformType(type)!;
+    const field = shape.length ? { alignment: 16, size: shape.length * 16 } : CUSTOM_LAYOUT[shape.base];
     offset = alignTo(offset, field.alignment);
     entries.push({ name, type, offset });
     offset += field.size;
@@ -96,6 +100,7 @@ export function packShaderToyUniforms(
   const buf = new ArrayBuffer(customLayout.size);
   const f32 = new Float32Array(buf);
   const i32 = new Int32Array(buf);
+  const u32 = new Uint32Array(buf);
 
   f32[0] = input.width;
   f32[1] = input.height;
@@ -129,7 +134,6 @@ export function packShaderToyUniforms(
     f32[offsets.iCameraDir / 4 + component] = input.cameraDir[component] ?? 0;
   }
   // iVertexCount and iInstanceCount share one 16-byte slot as its x and y.
-  const u32 = new Uint32Array(buf);
   u32[offsets.iVertexCount / 4] = input.vertexCount ?? 0;
   u32[offsets.iVertexCount / 4 + 1] = input.instanceCount ?? DEFAULT_INSTANCE_COUNT;
   f32.set(input.viewMatrix ?? IDENTITY_MATRIX, offsets.iViewMatrix / 4);
@@ -151,7 +155,16 @@ export function packShaderToyUniforms(
   for (const entry of customLayout.entries) {
     const value = valuesByName.get(entry.name);
     const index = entry.offset / 4;
-    if (entry.type === "bool") {
+    const shape = parseScriptUniformType(entry.type)!;
+    if (shape.length) {
+      const values = Array.isArray(value) ? value : [];
+      const target = shape.base === 'uint' ? u32 : shape.base === 'int' ? i32 : f32;
+      for (let item = 0; item < shape.length; item++) {
+        target[index + item * 4] = values[item] ?? 0;
+      }
+    } else if (entry.type === 'uint' || entry.type === 'int') {
+      (entry.type === 'uint' ? u32 : i32)[index] = typeof value === 'number' ? value : 0;
+    } else if (entry.type === "bool") {
       i32[index] = value ? 1 : 0;
     } else if (entry.type === "float") {
       f32[index] = typeof value === "number" ? value : 0;

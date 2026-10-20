@@ -311,6 +311,8 @@ const notInputs = new Set([
   'THIRD-PARTY-NOTICES.md', 'assets', 'docs', 'contributing', 'mkdocs.yml',
   // Browser-only design references are not consumed by a build or test suite.
   'mockups', 'wireframes',
+  // Published shader examples are user-authored samples, not build or E2E fixtures.
+  'examples',
   // Static dead-code policy is always checked in CI; it does not change an E2E runtime.
   'knip.jsonc',
 ]);
@@ -395,6 +397,7 @@ test('Turbo selects the expected suites for representative changes', { timeout: 
     ['vite.aliases.mjs', all],
     ['styles/controls.css', all],
     ['docs/index.md', []],
+    ['examples/script-streams/stream-demo.uniforms.js', []],
     ['contributing/mobile-testing.md', []],
   ];
   for (const [file, expected] of cases) {

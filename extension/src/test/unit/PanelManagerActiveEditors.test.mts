@@ -7,6 +7,7 @@ import type { GlslFileTracker } from '../../app/GlslFileTracker.js';
 const editors = vi.hoisted(() => ({
   setEnabled: vi.fn(async () => {}), update: vi.fn(async () => {}), remove: vi.fn(async () => {}), dispose: vi.fn(),
 }));
+const client = vi.hoisted(() => ({handle: vi.fn(), release: vi.fn()}));
 const settings = vi.hoisted(() => ({ values: new Map<string, unknown>() }));
 const vscodeApi = vi.hoisted(() => {
   const workspace = {
@@ -30,7 +31,8 @@ vi.mock('../../app/ActiveShaderEditors.js', () => ({ ActiveShaderEditors: class 
   } 
 } }));
 vi.mock('../../app/ClientMessageHandler.js', () => ({ ClientMessageHandler: class {
-  handle = vi.fn(); 
+  handle = client.handle;
+  releaseScriptStreams = client.release;
 } }));
 vi.mock('../../app/transport/WebviewTransport.js', () => ({
   WebviewTransport: class {
@@ -101,4 +103,20 @@ describe('PanelManager active shader editor tracking', () => {
     handlers.dispose!();
     expect(editors.remove).toHaveBeenCalledExactlyOnceWith(panel);
   });
+  it('supplies the owning panel and URI/response adapters to shared stream routing', async () => {
+    const { panel, handlers } = fakePanel();
+    vscodeApi.window.createWebviewPanel.mockReturnValue(panel);
+    manager.createPanel();
+    client.handle.mockImplementation(async (_message: unknown, respond: (message: unknown) => unknown, convert: (path: string) => string, owner: unknown) => {
+      expect(owner).toBe(panel);
+      expect(convert('/work/image.png')).toBe('file:///work/image.png');
+      respond({type: 'scriptStreamFrame'});
+    });
+    await handlers.message!({type: 'requestScriptStreamFrame', payload: {session: 1}});
+    expect(client.handle).toHaveBeenCalledOnce();
+    expect(panel.webview.postMessage).toHaveBeenCalledWith({type: 'scriptStreamFrame'});
+    handlers.dispose!();
+    expect(client.release).toHaveBeenCalledWith(panel);
+  });
+
 });

@@ -382,7 +382,7 @@ export class SlangComputePipeline {
       entries.push({
         binding: storageBase + node.binding,
         visibility: GPUShaderStage.COMPUTE,
-        buffer: { type: "storage" },
+        buffer: { type: node.streamMaxPerFrame ? "read-only-storage" : "storage" },
       });
     }
 

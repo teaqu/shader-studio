@@ -1,3 +1,5 @@
+import { addScriptStreams } from "./ScriptStreamGraph";
+import type { ScriptStreamInfo } from "@shader-studio/types";
 import { loadStorageInitialData } from "./StorageInitialData";
 import { debugPlanDisplaySource } from "./DebugPlanDisplaySource";
 import { audioLoadWarning } from "../util/LiveInputConfig";
@@ -32,6 +34,7 @@ import type { WebGPUStorage } from "./WebGPUStorage";
 import { WebGPUTextureBackend,type WebGPUTextureHandle } from "./WebGPUTextureBackend";
 
 interface WebGPUShaderSessionHost {
+  scriptStreamInfo?: () => ScriptStreamInfo[];
   storage: WebGPUStorage;
   candidates: WebGPUPipelineCandidates;
   diagnostics: WebGPUCompileDiagnostics;
@@ -521,6 +524,7 @@ export class WebGPUShaderSession {
       maxOutputLayers: this.host.constraints.resolveMaxOutputLayers(),
       maxTextureDimension2D: this.host.constraints.maxTextureDimension2D,
     });
+    addScriptStreams(graph, this.host.scriptStreamInfo?.() ?? [], attemptedCompile.customUniformInfo);
     resolveGraphBufferFormats(graph, {
       rgba16floatRenderable: true,
       rgba32floatRenderable: true,

@@ -210,3 +210,49 @@ it('packs the pointer struct without overlapping custom uniforms for every chann
     expect([...new Int32Array(packShaderToyUniforms({ ...input, pointer: undefined })).slice(offset, offset + 12)]).toEqual(new Array(12).fill(0));
   }
 });
+describe('typed script uniform packing', () => {
+  it('uses integer writes and std140 scalar array strides', () => {
+    const info=[{name:'u',type:'uint'},{name:'i',type:'int'},{name:'a',type:'uint[2]'},{name:'f',type:'float'}];
+    const layout=createSlangCustomUniformLayout(info);
+    const base = SHADERTOY_UNIFORM_SIZE;
+    expect(layout.entries.map(entry=>entry.offset)).toEqual([base,base+4,base+16,base+48]);
+    const input={width:1,height:1,time:0,timeDelta:0,frameRate:60,frame:0,mouse:[],channelTime:[],channelLoaded:[],sampleRate:44100,date:[],channelResolution:[],cameraPos:[],cameraDir:[]};
+    const buffer=packShaderToyUniforms(input,info,[{name:'u',type:'uint',value:4294967295},{name:'i',type:'int',value:-2147483648},{name:'a',type:'uint[2]',value:[123,4294967295]},{name:'f',type:'float',value:.5}]);
+    const view=new DataView(buffer);
+    expect(view.getUint32(base+0,true)).toBe(4294967295);expect(view.getInt32(base+4,true)).toBe(-2147483648);
+    expect(view.getUint32(base+16,true)).toBe(123);expect(view.getUint32(base+32,true)).toBe(4294967295);
+    expect(view.getFloat32(base+48,true)).toBe(.5);
+  });
+});
+
+
+describe("typed uniform fallback packing", () => {
+  const input = { width: 1, height: 0, time: 0, timeDelta: 0, frameRate: 60, frame: 0, mouse: [], channelTime: [], channelLoaded: [], sampleRate: 44100, date: [], channelResolution: [], cameraPos: [], cameraDir: [] };
+  it.each(["float[3]", "int[3]", "uint[3]"])("packs %s with padded strides and zero missing elements", type => {
+    const info = [{ name: "values", type }];
+    const offset = createSlangCustomUniformLayout(info).entries[0].offset;
+    const buffer = packShaderToyUniforms(input, info, [{ name: "values", type, value: [7, 2] }]);
+    const view = type.startsWith("uint") ? new Uint32Array(buffer) : type.startsWith("int") ? new Int32Array(buffer) : new Float32Array(buffer);
+    expect(Array.from(view.slice(offset / 4, offset / 4 + 12))).toEqual([7, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0]);
+    const missing = packShaderToyUniforms(input, info, [{ name: "values", type, value: 9 }]);
+    expect(Array.from(new Uint32Array(missing).slice(offset / 4))).toEqual(new Array(12).fill(0));
+  });
+  it("defaults absent scalar integers, floats and vectors to zero", () => {
+    const info = ["int", "uint", "float", "vec2", "vec3", "vec4", "bool"].map((type, i) => ({ name: `u${i}`, type }));
+    const buffer = packShaderToyUniforms(input, info);
+    expect(Array.from(new Uint32Array(buffer).slice(SHADERTOY_UNIFORM_SIZE / 4))).toEqual(new Array((buffer.byteLength - SHADERTOY_UNIFORM_SIZE) / 4).fill(0));
+    expect(new Float32Array(buffer)[2]).toBe(1);
+  });
+});
+
+it('keeps legacy vector coercion in the WebGPU float upload path', () => {
+  const input = {width: 1, height: 1, time: 0, timeDelta: 0, frameRate: 60, frame: 0, mouse: [], channelTime: [], channelLoaded: [], sampleRate: 44100, date: [], channelResolution: [], cameraPos: [], cameraDir: []};
+  const info = [{name: 'legacy', type: 'vec3'}];
+  // Match the existing host wire contract: vector arity precedes GPU conversion.
+  const value = ['1.25', '2.5', 'legacy'] as unknown as number[];
+  const offset = createSlangCustomUniformLayout(info).entries[0].offset / 4;
+  const buffer = packShaderToyUniforms(input, info, [{name: 'legacy', type: 'vec3', value}]);
+  const words = new Float32Array(buffer);
+  expect(Array.from(words.slice(offset, offset + 2))).toEqual([1.25, 2.5]);
+  expect(Number.isNaN(words[offset + 2])).toBe(true);
+});
