@@ -219,6 +219,7 @@ suite('Bundled WGSL syntax assets', () => {
     const scoped = [
       'iResolution', 'iTime', 'iTimeDelta', 'iFrameRate', 'iMouse', 'iFrame',
       'iDate', 'iSampleRate', 'iCameraPos', 'iCameraDir', 'iVertexCount', 'iInstanceCount', 'iInstanceIndex', 'iViewMatrix', 'iProjectionMatrix', 'iViewProjection', 'iVertexUv', 'iFrontFacing', 'iDispatch',
+      'iVRActive', 'iVRControllerPosition', 'iVRControllerDirection', 'iVRControllerButtons', 'iVRControllerAxes', 'iVRControllerFaceButtons', 'iVRControllerTouches', 'iVRControllerFaceTouches',
       'iWorldPosition', 'iNormal', 'iCameraPosition',
     ];
     const unscoped = ['inputs', 'iChannel0', 'iTimeExtra', 'myiTime'];

@@ -7,6 +7,8 @@ import {
   SHADER_STUDIO_INDEXED_CHANNEL_PATTERN_SOURCE,
   SHADER_STUDIO_INDEXED_CHANNEL_METADATA_PATTERN_SOURCE,
   shaderStudioBuiltinUniformNames,
+  SLANG_RUNTIME_UNIFORM_ALIAS_LINES,
+  VR_CONTROLLER_FIELDS,
 } from "../index";
 
 describe("shaderStudioBuiltinUniformNames", () => {
@@ -214,10 +216,24 @@ describe("SHADER_STUDIO_INDEXED_CHANNEL_METADATA_PATTERN_SOURCE", () => {
 });
 
 
-it("exposes tracked VR inputs only to GLSL authoring", () => {
+it("exposes tracked VR inputs to GLSL, Slang, and WGSL authoring", () => {
   for (const name of ["iVRActive", "iVRControllerPosition", "iVRControllerDirection", "iVRControllerButtons", "iVRControllerAxes", "iVRControllerFaceButtons", "iVRControllerTouches", "iVRControllerFaceTouches"]) {
     expect(shaderStudioBuiltinUniformNames("glsl")).toContain(name);
-    expect(shaderStudioBuiltinUniformNames("slang")).not.toContain(name);
-    expect(shaderStudioBuiltinUniformNames("wgsl")).not.toContain(name);
+    expect(shaderStudioBuiltinUniformNames("slang")).toContain(name);
+    expect(shaderStudioBuiltinUniformNames("wgsl")).toContain(name);
   }
+});
+
+it("lists controller fields in uniform order, matching the catalog and controller data", () => {
+  expect(VR_CONTROLLER_FIELDS.map(({ name }) => name)).toEqual([
+    "iVRControllerPosition", "iVRControllerDirection", "iVRControllerButtons", "iVRControllerAxes",
+    "iVRControllerFaceButtons", "iVRControllerTouches", "iVRControllerFaceTouches",
+  ]);
+  for (const { name, field } of VR_CONTROLLER_FIELDS) {
+    expect(field).toBe(`vr${name.slice(3)}`);
+    expect(SLANG_RUNTIME_UNIFORM_ALIAS_LINES).toContain(`#define ${name} (_st.${field})`);
+    expect(SHADER_STUDIO_BUILTIN_UNIFORMS.find(entry => entry.name === name)).toMatchObject({ wgslType: "array<vec4f, 2>", slangDeclaration: `float4 ${name}[2];` });
+  }
+  expect(SLANG_RUNTIME_UNIFORM_ALIAS_LINES).toContain("#define iVRActive (_st.vrState.z != 0)");
+  expect(Object.isFrozen(VR_CONTROLLER_FIELDS)).toBe(true);
 });

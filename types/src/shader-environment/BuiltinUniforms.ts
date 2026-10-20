@@ -230,14 +230,14 @@ export const SHADER_STUDIO_BUILTIN_UNIFORMS: readonly Readonly<ShaderStudioBuilt
   { name: "iSampleRate", glslType: "float", slangType: "float", wgslType: "f32", slangDeclaration: "float iSampleRate;", languages: ["glsl", "slang", "wgsl"], description: "Audio sample rate in hertz." },
   { name: "iCameraPos", glslType: "vec3", slangType: "float3", wgslType: "vec3f", slangDeclaration: "float3 iCameraPos;", languages: ["glsl", "slang", "wgsl"], description: "Camera position in world space." },
   { name: "iCameraDir", glslType: "vec3", slangType: "float3", wgslType: "vec3f", slangDeclaration: "float3 iCameraDir;", languages: ["glsl", "slang", "wgsl"], description: "Normalised camera look direction." },
-  { name: "iVRActive", glslType: "bool", slangType: "bool", languages: ["glsl"], description: "True during an immersive WebXR session. Shader Studio extension: opt in with #define SHADER_STUDIO_VR_INPUTS." },
-  { name: "iVRControllerPosition", glslType: "vec4[2]", slangType: "float4[2]", languages: ["glsl"], description: "With SHADER_STUDIO_VR_INPUTS enabled: tracked aim-ray origin in shader-world metres; w is 1 when tracked, otherwise 0. Slots are left (0) and right (1)." },
-  { name: "iVRControllerDirection", glslType: "vec4[2]", slangType: "float4[2]", languages: ["glsl"], description: "With SHADER_STUDIO_VR_INPUTS enabled: tracked aim-ray direction; w is 1 when tracked, otherwise 0." },
-  { name: "iVRControllerButtons", glslType: "vec4[2]", slangType: "float4[2]", languages: ["glsl"], description: "With SHADER_STUDIO_VR_INPUTS enabled: xr-standard trigger (x), grip (y), touchpad click (z), thumbstick click (w), from 0 to 1. Left/right slots 0/1." },
-  { name: "iVRControllerAxes", glslType: "vec4[2]", slangType: "float4[2]", languages: ["glsl"], description: "With SHADER_STUDIO_VR_INPUTS enabled: touchpad xy and thumbstick zw, from -1 to 1. Left/right slots 0/1." },
-  { name: "iVRControllerFaceButtons", glslType: "vec4[2]", slangType: "float4[2]", languages: ["glsl"], description: "With SHADER_STUDIO_VR_INPUTS enabled: primary/secondary buttons in xy (Quest X/Y left, A/B right), from 0 to 1. zw are zero." },
-  { name: "iVRControllerTouches", glslType: "vec4[2]", slangType: "float4[2]", languages: ["glsl"], description: "With SHADER_STUDIO_VR_INPUTS enabled: touch states for trigger, grip, touchpad and thumbstick in xyzw; 0 or 1." },
-  { name: "iVRControllerFaceTouches", glslType: "vec4[2]", slangType: "float4[2]", languages: ["glsl"], description: "With SHADER_STUDIO_VR_INPUTS enabled: primary/secondary face-button touch states in xy; zw are zero." },
+  { name: "iVRActive", glslType: "bool", slangType: "bool", wgslType: "bool", slangDeclaration: "#define iVRActive false", languages: ["glsl", "slang", "wgsl"], description: "True during an immersive WebXR session. Shader Studio extension: GLSL opts in with #define SHADER_STUDIO_VR_INPUTS; Slang and WGSL always provide it." },
+  { name: "iVRControllerPosition", glslType: "vec4[2]", slangType: "float4[2]", wgslType: "array<vec4f, 2>", slangDeclaration: "float4 iVRControllerPosition[2];", languages: ["glsl", "slang", "wgsl"], description: "With SHADER_STUDIO_VR_INPUTS enabled in GLSL (always in Slang and WGSL): tracked aim-ray origin in shader-world metres; w is 1 when tracked, otherwise 0. Slots are left (0) and right (1)." },
+  { name: "iVRControllerDirection", glslType: "vec4[2]", slangType: "float4[2]", wgslType: "array<vec4f, 2>", slangDeclaration: "float4 iVRControllerDirection[2];", languages: ["glsl", "slang", "wgsl"], description: "With SHADER_STUDIO_VR_INPUTS enabled in GLSL (always in Slang and WGSL): tracked aim-ray direction; w is 1 when tracked, otherwise 0." },
+  { name: "iVRControllerButtons", glslType: "vec4[2]", slangType: "float4[2]", wgslType: "array<vec4f, 2>", slangDeclaration: "float4 iVRControllerButtons[2];", languages: ["glsl", "slang", "wgsl"], description: "With SHADER_STUDIO_VR_INPUTS enabled in GLSL (always in Slang and WGSL): xr-standard trigger (x), grip (y), touchpad click (z), thumbstick click (w), from 0 to 1. Left/right slots 0/1." },
+  { name: "iVRControllerAxes", glslType: "vec4[2]", slangType: "float4[2]", wgslType: "array<vec4f, 2>", slangDeclaration: "float4 iVRControllerAxes[2];", languages: ["glsl", "slang", "wgsl"], description: "With SHADER_STUDIO_VR_INPUTS enabled in GLSL (always in Slang and WGSL): touchpad xy and thumbstick zw, from -1 to 1. Left/right slots 0/1." },
+  { name: "iVRControllerFaceButtons", glslType: "vec4[2]", slangType: "float4[2]", wgslType: "array<vec4f, 2>", slangDeclaration: "float4 iVRControllerFaceButtons[2];", languages: ["glsl", "slang", "wgsl"], description: "With SHADER_STUDIO_VR_INPUTS enabled in GLSL (always in Slang and WGSL): primary/secondary buttons in xy (Quest X/Y left, A/B right), from 0 to 1. zw are zero." },
+  { name: "iVRControllerTouches", glslType: "vec4[2]", slangType: "float4[2]", wgslType: "array<vec4f, 2>", slangDeclaration: "float4 iVRControllerTouches[2];", languages: ["glsl", "slang", "wgsl"], description: "With SHADER_STUDIO_VR_INPUTS enabled in GLSL (always in Slang and WGSL): touch states for trigger, grip, touchpad and thumbstick in xyzw; 0 or 1." },
+  { name: "iVRControllerFaceTouches", glslType: "vec4[2]", slangType: "float4[2]", wgslType: "array<vec4f, 2>", slangDeclaration: "float4 iVRControllerFaceTouches[2];", languages: ["glsl", "slang", "wgsl"], description: "With SHADER_STUDIO_VR_INPUTS enabled in GLSL (always in Slang and WGSL): primary/secondary face-button touch states in xy; zw are zero." },
   { name: "iVertexCount", glslType: "int", slangType: "uint", wgslType: "u32", slangDeclaration: "uint32_t iVertexCount;", languages: ["glsl", "slang", "wgsl"], stages: ["fragment", "vertex"], description: "Vertices drawn by this pass: the configured vertexCount for vertices geometry (default 3), 3 for fullscreen, or the mesh vertex count for plane, cube, sphere, and model geometry. vertexIndex ranges from 0 to iVertexCount - 1." },
   { name: "iInstanceCount", glslType: "int", slangType: "uint", wgslType: "u32", slangDeclaration: "uint32_t iInstanceCount;", languages: ["glsl", "slang", "wgsl"], stages: ["fragment", "vertex"], description: "Instances drawn by this pass: the configured instanceCount (default 1), or 1 for fullscreen geometry. iInstanceIndex ranges from 0 to iInstanceCount - 1." },
   { name: "iViewMatrix", glslType: "mat4", slangType: "float4x4", wgslType: "mat4x4f", slangDeclaration: "float4x4 iViewMatrix;", languages: ["glsl", "slang", "wgsl"], stages: ["fragment", "vertex"], description: "The orbit camera's view matrix: world space to view space, the camera looking down -z. The model matrix is the identity, so world space is the space mainVertex writes for meshes and world-space vertices." },
@@ -294,6 +294,20 @@ export function shaderStudioBuiltinUniformNames(
   return BUILTIN_UNIFORM_NAMES_BY_LANGUAGE[language];
 }
 
+/**
+ * WebXR controller inputs in WebGPU uniform-block order. Each is a float4[2]
+ * (left, right) after the ray transform; GLSL declares the same names.
+ */
+export const VR_CONTROLLER_FIELDS = Object.freeze([
+  { name: "iVRControllerPosition", field: "vrControllerPosition", data: "positions" },
+  { name: "iVRControllerDirection", field: "vrControllerDirection", data: "directions" },
+  { name: "iVRControllerButtons", field: "vrControllerButtons", data: "buttons" },
+  { name: "iVRControllerAxes", field: "vrControllerAxes", data: "axes" },
+  { name: "iVRControllerFaceButtons", field: "vrControllerFaceButtons", data: "faceButtons" },
+  { name: "iVRControllerTouches", field: "vrControllerTouches", data: "touches" },
+  { name: "iVRControllerFaceTouches", field: "vrControllerFaceTouches", data: "faceTouches" },
+] as const);
+
 export const SLANG_RUNTIME_UNIFORM_BUFFER_NAME = "_st";
 export const SLANG_RUNTIME_INTERNAL_NAMES = Object.freeze([
   SLANG_RUNTIME_UNIFORM_BUFFER_NAME,
@@ -316,4 +330,6 @@ export const SLANG_RUNTIME_UNIFORM_ALIAS_LINES = Object.freeze([
   `#define iViewMatrix (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.viewMatrix)`,
   `#define iProjectionMatrix (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.projectionMatrix)`,
   `#define iViewProjection (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.viewProjection)`,
+  `#define iVRActive (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.vrState.z != 0)`,
+  ...VR_CONTROLLER_FIELDS.map(({ name, field }) => `#define ${name} (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.${field})`),
 ] as const);

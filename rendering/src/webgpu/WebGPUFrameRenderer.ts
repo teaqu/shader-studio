@@ -22,6 +22,8 @@ import type { WebGPUFrameTiming } from "./WebGPUFrameTiming";
 import { WebGPUPixelRegionCapturer } from "./WebGPUPixelRegionCapturer";
 import type { WebGPUShaderSession } from "./WebGPUShaderSession";
 import type { WebGPUStorage } from "./WebGPUStorage";
+import type { WebGPUVrState } from "./WebGPUVrState";
+import type { VrEyeView } from "../webxr/WebXrFrameData";
 import {
   packShaderToyUniforms,
   type ShaderToyUniformInput
@@ -48,6 +50,7 @@ interface WebGPUFrameRendererHost {
   canvas: HTMLCanvasElement | null;
   pixelRegionCapturer: WebGPUPixelRegionCapturer | null;
   keyboardManager: KeyboardManager;
+  vr: Pick<WebGPUVrState, "uniforms">;
 }
 
 type FrameUniformInput = Pick<
@@ -75,6 +78,8 @@ export class WebGPUFrameRenderer {
 
   pendingScreenshotCopies: Array<(encoder: GPUCommandEncoder, texture: GPUTexture) => void> = [];
   private completedComputePasses: ReadonlySet<string> = new Set();
+  /** The latest submitted frame's inputs, reused by headset eye draws. */
+  private latestFrame: { input: FrameUniformInput; customValues: CaptureCustomUniform[] } | null = null;
 
   renderFrame(time: number, capture: boolean, imageOnly = false, captureCanvas?: (encoder: GPUCommandEncoder, texture: GPUTexture) => void): void {
     try {
@@ -113,6 +118,7 @@ export class WebGPUFrameRenderer {
     // captured when the pause began, so e.g. mouse movement can't keep
     // driving a "paused" shader.
     const { frameInput, frameCustomUniformValues } = this.resolveFrameUniforms(time, isPaused);
+    this.latestFrame = { input: frameInput, customValues: frameCustomUniformValues };
 
     // A shader installed while paused still submits one complete initial
     // frame. TimeManager's frame stays at zero while paused, so the engine
@@ -172,6 +178,7 @@ export class WebGPUFrameRenderer {
         height: pass.height,
         ...frameInput,
         ...this.host.channels.getChannelUniforms(pass),
+        vr: this.host.vr.uniforms(pass.name),
       }, this.host.session.customUniformManager.getUniformInfo(), frameCustomUniformValues);
       this.host.device.queue.writeBuffer(uniformBuffer, 0, data);
 
@@ -250,6 +257,7 @@ export class WebGPUFrameRenderer {
         viewProjection: camera.viewProjection,
         ...frameInput,
         ...this.host.channels.getChannelUniforms(pass),
+        vr: this.host.vr.uniforms(pass.name),
       }, this.host.session.customUniformManager.getUniformInfo(), frameCustomUniformValues);
       this.host.device.queue.writeBuffer(pipeline.getUniformBuffer()!, 0, data);
       if (pass.geometry && pass.geometry !== "fullscreen" && pipeline.getMeshUniformBuffer?.()) {
@@ -372,6 +380,50 @@ export class WebGPUFrameRenderer {
         this.host.timeManager.incrementFrame();
       }
     }
+  }
+
+  /**
+   * Draws the fullscreen Image pass for one headset eye into `target`, reusing
+   * the latest frame's inputs and bind group so buffers advance once per XR
+   * frame. Each eye is its own submission, ordering its uniform write.
+   */
+  renderVrEye(view: VrEyeView, target: GPUTexture): boolean {
+    const device = this.host.device;
+    const pass = this.host.session.passGraph.find(candidate => candidate.name === "Image" && candidate.output === "canvas");
+    const pipeline = this.host.session.passPipelines.get("Image");
+    const gpuPipeline = pipeline?.getPipeline();
+    const uniformBuffer = pipeline?.getUniformBuffer();
+    const bindGroup = pipeline?.getBindGroup();
+    if (!device || !pass || !gpuPipeline || !uniformBuffer || !bindGroup || !this.latestFrame) {
+      return false;
+    }
+    const { input: frameInput, customValues } = this.latestFrame;
+    const camera = this.host.geometry.passCameraMatrices(pass);
+    const data = packShaderToyUniforms({
+      channelCount: getShaderToyChannelCount(pass.channels),
+      width: view.viewport.width,
+      height: view.viewport.height,
+      vertexCount: this.host.geometry.resolvePassVertexCount(pass),
+      instanceCount: geometryInstanceCount(pass),
+      viewMatrix: camera.view,
+      projectionMatrix: camera.projection,
+      viewProjection: camera.viewProjection,
+      ...frameInput,
+      ...this.host.channels.getChannelUniforms(pass),
+      vr: this.host.vr.uniforms(pass.name, view),
+    }, this.host.session.customUniformManager.getUniformInfo(), customValues);
+    device.queue.writeBuffer(uniformBuffer, 0, data);
+    const [r, g, b, a] = resolveRenderState(pass).clear;
+    const encoder = device.createCommandEncoder();
+    const renderPass = encoder.beginRenderPass({
+      colorAttachments: [{ view: target.createView(), clearValue: { r, g, b, a }, loadOp: "clear", storeOp: "store" }],
+    });
+    renderPass.setPipeline(gpuPipeline);
+    renderPass.setBindGroup(0, bindGroup);
+    renderPass.draw(FULLSCREEN_VERTEX_COUNT);
+    renderPass.end();
+    device.queue.submit([encoder.finish()]);
+    return true;
   }
 
   /** Advances non-capture state before any GPU commands are encoded. */

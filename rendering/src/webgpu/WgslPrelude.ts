@@ -13,6 +13,7 @@ import {
 } from "./SlangPrelude";
 import { INSTANCE_INDEX, isMeshGeometry, MESH_FRAGMENT_CONTEXT } from "../preview3d/MeshFragmentContext";
 import type { WgslVertexRange, WgslDirectiveRange } from "./wgslDiagnostics";
+import { referencesWebGpuVrInputs, usesWebGpuVrEntry, webGpuImageCall, wgslVrGlobals, wgslVrUniformFields, WGSL_VR_IMAGE_FUNCTION } from "./WebGPUVrEntry";
 import { getWgslComputeEntryPoints, parseWgslDocument, symbolAtPosition, tokenizeWgsl } from "@shader-studio/wgsl-analysis";
 
 export { getWgslComputeEntryPoints } from "@shader-studio/wgsl-analysis";
@@ -177,6 +178,7 @@ struct _ss_ShaderToyUniforms {
   projectionMatrix: mat4x4<f32>,
   viewProjection: mat4x4<f32>,
   pointer: ShaderStudioPointer,
+${wgslVrUniformFields()}
 ${customFields}
 }
 
@@ -189,6 +191,8 @@ interface WgslGlobalOptions {
   capture?: boolean;
   channels?: SlangChannelBinding[];
   nativeMesh?: boolean;
+  /** Declare the iVR* controller globals; only when the source references them. */
+  vrInputs?: boolean;
 }
 
 /**
@@ -262,6 +266,11 @@ function buildGlobalsPrelude(customUniforms: SlangCustomUniformInfo[] = [], opti
     initialisers.push(shape.length
       ? `  for (var index = 0u; index < ${shape.length}u; index++) { ${name}[index] = _ss_u.custom_${name}[index].x; }`
       : type === "bool" ? `  ${name} = _ss_u.custom_${name} != 0;` : `  ${name} = _ss_u.custom_${name};`);
+  }
+  if (options.vrInputs) {
+    const vr = wgslVrGlobals();
+    declarations.push(...vr.declarations);
+    initialisers.push(...vr.initialisers);
   }
   if (options.channels?.length) {
     initialisers.push("  _ss_initChannels();");
@@ -504,7 +513,7 @@ const WGSL_SET_INSTANCE_INDEX = `  ${INSTANCE_INDEX} = iid;`;
  * Fullscreen draws one instance and its primitive is always front-facing;
  * clip-space vertices read both from the rasterizer.
  */
-function buildWgslVertexUvFragment(clipVertices: boolean): string {
+function buildWgslVertexUvFragment(clipVertices: boolean, vr = false): string {
   const parameter = clipVertices ? ", @location(1) @interpolate(flat) instanceIndex: u32, @builtin(front_facing) frontFacing: bool" : "";
   const value = clipVertices ? "frontFacing" : "true";
   const instanceIndex = clipVertices ? `\n  ${INSTANCE_INDEX} = instanceIndex;` : "";
@@ -512,9 +521,9 @@ function buildWgslVertexUvFragment(clipVertices: boolean): string {
   _ss_initGlobals();${instanceIndex}
   ${MESH_FRAGMENT_CONTEXT.uv} = uv;
   ${MESH_FRAGMENT_CONTEXT.frontFacing} = ${value};
-  return mainImage(vec2<f32>(fragCoord.x, _ss_u.resolution.y - fragCoord.y));
+  return ${webGpuImageCall(vr, "vec2<f32>(fragCoord.x, _ss_u.resolution.y - fragCoord.y)")};
 }
-`;
+${vr ? WGSL_VR_IMAGE_FUNCTION : ""}`;
 }
 
 /** Every vertices-geometry vertex starts here before mainVertex moves it. */
@@ -623,7 +632,7 @@ ${WGSL_MESH_FRAGMENT_ENTRY_POINT}`,
   };
 }
 
-function buildFullscreenEntryPoints(vertexCode: string, hasAuthoredHook = false): WgslEntryPoints {
+function buildFullscreenEntryPoints(vertexCode: string, hasAuthoredHook: boolean, vr: boolean): WgslEntryPoints {
   const hook = vertexCode.trim() ? vertexCode : "";
   if (hook !== "" || hasAuthoredHook) {
     return {
@@ -642,7 +651,7 @@ ${WGSL_VERTEX_UV_OUT}
   return output;
 }
 
-${buildWgslVertexUvFragment(false)}
+${buildWgslVertexUvFragment(false, vr)}
 `,
       vertexStartLine: 1,
       vertexLineCount: hook === "" ? 0 : hook.split("\n").length,
@@ -665,9 +674,9 @@ ${WGSL_VERTEX_UV_OUT}
   ${MESH_FRAGMENT_CONTEXT.uv} = uv;
   ${MESH_FRAGMENT_CONTEXT.frontFacing} = true;
   // Flip Y so fragCoord origin is bottom-left, matching ShaderToy.
-  return mainImage(vec2<f32>(fragCoord.x, _ss_u.resolution.y - fragCoord.y));
+  return ${webGpuImageCall(vr, "vec2<f32>(fragCoord.x, _ss_u.resolution.y - fragCoord.y)")};
 }
-`,
+${vr ? WGSL_VR_IMAGE_FUNCTION : ""}`,
     vertexStartLine: 1,
     vertexLineCount: 0,
   };
@@ -1010,7 +1019,10 @@ function assembleWgslImageSource(userSource: string, options: WgslWrapOptions = 
   const channelCount = getShaderToyChannelCount(channels);
   const nativeMesh = options.renderEntryPoints !== undefined && isMeshGeometry(options.geometry);
   const prelude = buildUniformPrelude(channelCount, options.customUniforms)
-    + buildGlobalsPrelude(options.customUniforms, { capture: options.captureMode, channels, nativeMesh });
+    + buildGlobalsPrelude(options.customUniforms, {
+      capture: options.captureMode, channels, nativeMesh,
+      vrInputs: referencesWebGpuVrInputs(`${options.commonCode ?? ""}\n${userSource}\n${options.vertexCode ?? ""}`),
+    });
   const hoisted = hoistWgslDirectives(
     userSource,
     options.commonCode ?? "",
@@ -1086,7 +1098,8 @@ function assembleWgslImageSource(userSource: string, options: WgslWrapOptions = 
   }
   const body = `${prefix}${commonCode}`;
   const head = `${body}\n${strippedUserSource}\n${storageDeclarations.afterCommon}`;
-  const entries = buildFullscreenEntryPoints(vertexCode, hasAuthoredHook);
+  const entries = buildFullscreenEntryPoints(vertexCode, hasAuthoredHook,
+    usesWebGpuVrEntry(options, `${strippedCommonCode}\n${strippedUserSource}`));
   return {
     source: `${head}${entries.source}`,
     preludeLineCount: countLines(body) + 1,
@@ -1130,7 +1143,10 @@ function assembleWgslComputeSource(userSource: string, options: WgslComputeWrapO
   const storage = options.storage ?? [];
   const channelCount = getShaderToyChannelCount(channels);
   const prelude = buildUniformPrelude(channelCount, options.customUniforms)
-    + buildGlobalsPrelude(options.customUniforms, { dispatch: true, channels });
+    + buildGlobalsPrelude(options.customUniforms, {
+      dispatch: true, channels,
+      vrInputs: referencesWebGpuVrInputs(`${options.commonCode ?? ""}\n${userSource}`),
+    });
   const hoisted = hoistWgslDirectives(
     userSource,
     options.commonCode ?? "",

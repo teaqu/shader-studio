@@ -1,12 +1,12 @@
 # VR shaders
 
-View a 3D GLSL shader on your desktop or in a WebXR headset. Add `mainVR` to define the scene using a ray origin and direction for each eye.
+View a 3D GLSL, Slang or WGSL shader on your desktop or in a WebXR headset. Add `mainVR` to define the scene using a ray origin and direction for each eye.
 
 ## Desktop preview
 
-Use the desktop VR preview to look around a GLSL shader that defines `mainVR`, even without a headset.
+Use the desktop VR preview to look around a shader that defines `mainVR`, even without a headset.
 
-1. Create a GLSL shader and leave **Image → Geometry** set to **Fullscreen**.
+1. Create a GLSL, Slang or WGSL shader and leave **Image → Geometry** set to **Fullscreen**.
 2. Add both `mainImage` for the normal preview and `mainVR` for the view you can look around. The complete example below colors each viewing direction differently.
 3. Open **VR** in the preview toolbar and enable **Desktop preview**. Move with **W / A / S / D**, move vertically with **Q / E**, and look by dragging or pressing **arrow keys**.
 4. Disable **Desktop preview** to return to `mainImage`. Opening another shader also turns it off.
@@ -23,7 +23,33 @@ void mainVR(out vec4 fragColor, in vec2 fragCoord,
 }
 ```
 
-The **VR** pane can be opened even without a VR shader. Desktop preview and headset entry require a fullscreen GLSL Image shader defining `mainVR`; otherwise, the pane explains what is needed and disables those controls. Check the function signature and geometry setting if they remain disabled. Mesh passes continue to use `mainImage`; this VR workflow does not apply to Slang or WGSL.
+### Slang and WGSL
+
+Slang and WGSL `mainVR` returns the colour, like their `mainImage`. Both use the WebGPU renderer and work in desktop preview and in headsets.
+
+```slang
+float4 mainImage(float2 fragCoord) {
+    return float4(fragCoord / iResolution.xy, 0.5, 1.0);
+}
+
+float4 mainVR(float2 fragCoord, float3 rayOrigin, float3 rayDirection) {
+    return float4(rayDirection * 0.5 + 0.5, 1.0);
+}
+```
+
+```wgsl
+fn mainImage(fragCoord: vec2f) -> vec4f {
+    return vec4f(fragCoord / iResolution.xy, 0.5, 1.0);
+}
+
+fn mainVR(fragCoord: vec2f, rayOrigin: vec3f, rayDirection: vec3f) -> vec4f {
+    return vec4f(rayDirection * 0.5 + 0.5, 1.0);
+}
+```
+
+`mainVR` may also be defined in Common. It applies to the generated fullscreen Image entry; passes with native `entryPoints`, mesh or vertices geometry, and cubemap output keep using their own entries.
+
+The **VR** pane can be opened even without a VR shader. Desktop preview and headset entry require a fullscreen Image shader defining `mainVR`; otherwise, the pane explains what is needed and disables those controls. Check the function signature and geometry setting if they remain disabled. Mesh passes continue to use `mainImage`.
 
 VR opens a docked tool pane, like Config and Debug. **VR** is always available in
 the hamburger options menu. When a compatible VR shader is detected, a **VR**
@@ -45,6 +71,8 @@ The **Movement speed** and **Turn speed** sliders apply to both desktop preview 
 before another turn. These settings, including the enable switch, are remembered in this browser. Switching navigation off preserves the chosen speed, turn mode and angle for when you enable it again. Movement follows where you look, including upward and downward when you tilt your head. Left/right strafing stays horizontal. Movement does not include collision detection. Physical head movement continues to work.
 Exiting VR resets the virtual position and turning offset. Controller ray
 positions and directions follow the same virtual movement as your view.
+
+Slang and WGSL shaders render each eye with WebGPU, and the browser shows them through its WebGL headset layer, so the headset browser needs both WebGPU and WebXR.
 
 If **Enter VR** is absent, check the browser, device, and page requirements above. You can still use the desktop VR preview without WebXR support. Headset and controller behavior can vary by device.
 
@@ -82,14 +110,14 @@ System/menu buttons remain reserved by the headset. This demo uses the optional 
 ## Controller shader inputs
 
 `mainImage` and `mainVR` remain compatible with Shadertoy. The controller inputs
-below are Shader Studio extensions. To enable them, add this line at the top
-of the shader (or Common code):
+below are Shader Studio extensions. Slang and WGSL shaders can always use them.
+To enable them in GLSL, add this line at the top of the shader (or Common code):
 
 ```glsl
 #define SHADER_STUDIO_VR_INPUTS
 ```
 
-Without that opt-in, the extra names are not injected into the compiled shader.
+Without that opt-in, the extra names are not injected into the compiled GLSL shader.
 Shaders using these inputs require adapting before running on Shadertoy.
 All raw inputs remain available when built-in movement or turning is disabled,
 and are not consumed or zeroed when navigation is enabled.
@@ -97,6 +125,8 @@ and are not consumed or zeroed when navigation is enabled.
 The compact VR pane shows headset status beside **Enter VR**, switches for **Desktop preview** and **Headset navigation**, and **Snap** / **Smooth** turning buttons. **Reset** restores the defaults and disables navigation. Use the **?** link in the VR pane to open this guide. Close the pane with the VR toolbar button or its dock tab controls.
 
 These inputs are supplied during the session and reset on exit:
+
+In WGSL the arrays are `array<vec4f, 2>`; in Slang they are `float4[2]`.
 
 | Uniform | Type | Description |
 |---------|------|-------------|
@@ -126,5 +156,4 @@ Touch states are only available when supplied by the controller/runtime.
 Slot 0 is left and slot 1 right. Unhanded sources use the first free slot.
 Absent or untracked controllers supply zeroes. Button/axis order follows the
 controller's WebXR gamepad mapping; these inputs are Shader Studio additions.
-Slang and WGSL entry points remain unchanged.
 

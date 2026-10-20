@@ -6,6 +6,7 @@ import {
   SHADER_STUDIO_FRAGMENT_CONTEXT,
   SLANG_RUNTIME_UNIFORM_ALIAS_LINES,
   SLANG_RUNTIME_UNIFORM_BUFFER_NAME,
+  VR_CONTROLLER_FIELDS,
 } from "./BuiltinUniforms";
 import {
   isAuthoringValueType,
@@ -176,6 +177,10 @@ struct ShaderToyUniforms
     column_major float4x4 projectionMatrix;
     column_major float4x4 viewProjection;
     ShaderStudioPointer pointer;
+    int4 vrState;
+    float4 vrViewport;
+    column_major float4x4 vrRayTransform;
+${VR_CONTROLLER_FIELDS.map(({ field }) => `    float4 ${field}[2];`).join("\n")}
 ${fields}
 };
 
