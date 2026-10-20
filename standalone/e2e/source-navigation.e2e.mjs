@@ -106,8 +106,29 @@ test('clearing the workspace restores the default shaders after reload', async (
   await expect(page.getByTestId('shader-option-aurora-glsl')).toBeVisible();
 });
 
-for (const [language, locked] of ['glsl', 'slang', 'wgsl'].flatMap(language => [false, true].map(locked => [language, locked]))) {
-  test(`opening a buffer respects the preview lock (${language}, ${locked})`, async ({ page }) => {
+const bufferLockCases = [
+  ...['glsl', 'slang', 'wgsl'].flatMap(language => [false, true].map(locked => [language, locked, 0])),
+  ['slang', true, 6000],
+];
+for (const [language, locked, compileDelay] of bufferLockCases) {
+  test(`opening a buffer respects the preview lock (${language}, ${locked}${compileDelay ? ', slow compiler' : ''})`, async ({ page }) => {
+    if (compileDelay) {
+      // A busy CI compiler can leave the prior blue shader visible for more
+      // than the default five-second assertion timeout. Keep that path covered.
+      await page.addInitScript(delay => {
+        const postMessage = Worker.prototype.postMessage;
+        const delayedWorkers = new WeakSet();
+        Worker.prototype.postMessage = function(message, ...args) {
+          if (message?.type === 'compile' && message.options?.sourcePath === '/main.slang'
+            && !delayedWorkers.has(this)) {
+            delayedWorkers.add(this);
+            setTimeout(() => postMessage.call(this, message, ...args), delay);
+            return;
+          }
+          return postMessage.call(this, message, ...args);
+        };
+      }, compileDelay);
+    }
     await page.route('**/__buffer_lock__', route => route.fulfill({ contentType: 'text/html', body: '<html></html>' }));
     await page.goto('/__buffer_lock__');
     const shader = expression => language === 'glsl'
@@ -140,7 +161,8 @@ for (const [language, locked] of ['glsl', 'slang', 'wgsl'].flatMap(language => [
       const offset = (Math.floor(height / 2) * width + Math.floor(width / 2)) * 4;
       return [...data.subarray(offset, offset + 3)];
     };
-    await expect.poll(pixel).toEqual([255, 0, 0]);
+    const expectPixel = expected => expect.poll(pixel, { timeout: 15_000 }).toEqual(expected);
+    await expectPixel([255, 0, 0]);
     if (locked) {
       await lock.click();
     }
@@ -148,21 +170,21 @@ for (const [language, locked] of ['glsl', 'slang', 'wgsl'].flatMap(language => [
     await page.locator('[data-tab-name="BufferA"]').dblclick();
     await expect(page.locator(`[data-testid="file-editor"][data-path="/pass/buffer.${language}"] .monaco-editor`)).toBeVisible();
     await expect(lock).toHaveAttribute('aria-pressed', String(locked));
-    await expect.poll(pixel).toEqual([255, 0, 0]);
+    await expectPixel([255, 0, 0]);
     await page.getByRole('button', { name: 'Preview BufferA', exact: true }).click();
-    await expect.poll(pixel).toEqual([0, 255, 0]);
+    await expectPixel([0, 255, 0]);
     await expect(page.getByLabel('Currently previewing BufferA', { exact: true })).toHaveText('Viewing');
     await page.locator('[data-tab-name="Image"]').click();
     await expect(page.locator('[data-tab-name="Image"]')).toHaveAttribute('aria-pressed', 'true');
-    await expect.poll(pixel).toEqual([0, 255, 0]);
+    await expectPixel([0, 255, 0]);
     await page.getByRole('button', { name: 'Preview Image', exact: true }).click();
-    await expect.poll(pixel).toEqual([255, 0, 0]);
+    await expectPixel([255, 0, 0]);
     await page.locator('[data-tab-name="BufferA"]').click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Preview file standalone', exact: true }).click();
-    await expect.poll(pixel).toEqual([0, 0, 255]);
+    await expectPixel([0, 0, 255]);
     await expect(lock).toHaveAttribute('aria-pressed', String(locked));
     await page.reload();
-    await expect.poll(pixel).toEqual([0, 0, 255]);
+    await expectPixel([0, 0, 255]);
     await expect(lock).toHaveAttribute('aria-pressed', 'false');
   });
 }
