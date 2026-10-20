@@ -2411,7 +2411,7 @@ textures, video, audio, and more.</p>
 <h2 id="buffer-passes">Buffer Passes<a class="headerlink" href="#buffer-passes" title="Permanent link">&para;</a></h2>
 <p>Each buffer pass uses a <code>.glsl</code>, <code>.slang</code>, or <code>.wgsl</code> file to produce an image that other passes can sample. Buffer pass names are ordinary identifiers such as <code>Flow</code>, <code>BloomHorizontal</code>, or <code>BufferA</code>; there is no <code>BufferA</code>–<code>BufferD</code> name set or four-pass limit. Every pass can configure its own channels: GLSL uses <code>iChannelN</code> and <code>iChN</code>, Slang uses direct globals such as <code>iChannelN</code>, and WGSL uses free functions such as <code>iChannelNSample(uv)</code>. See <a href="../channels/">Channels</a> for how to bind textures, video, audio, and more.</p>
 <p>Choose <strong>+ New → Cubemap</strong> to create a cubemap buffer. Its Output section sets the square face size (512 pixels by default). To use the result, add a Buffer channel to a later pass and select the cubemap pass in <strong>Misc</strong>. Sample it with a three-component direction vector rather than a two-component UV coordinate. See <a href="#cubemap-buffers">Cubemap Buffers</a> for a complete walkthrough.</p>
-<p>The <strong>File</strong> row shows an editable path. <strong>Change…</strong> opens a chooser with files already used by the config, <strong>Browse workspace…</strong>, and <strong>Create</strong>. Several passes can use the same source file, each selecting a different function. Standalone’s Browse action selects files from its virtual workspace.</p>
+<p>The <strong>Shader file</strong> picker shows the pass's file. Click it to choose from the files already used by the config, or use <strong>Browse workspace…</strong>, <strong>Create file…</strong>, or <strong>Enter a path…</strong> to type one. <strong>Open editor</strong> opens the pass's file. Several passes can use the same source file, each selecting a different function. Standalone’s Browse action selects files from its virtual workspace.</p>
 <p>Three path forms are supported:</p>
 <table>
 <thead>
@@ -2439,7 +2439,7 @@ textures, video, audio, and more.</p>
 </tr>
 </tbody>
 </table>
-<p><strong>Create</strong> generates a source template using the shader mode preference. For WGSL/Slang, <strong>Render output → Function</strong> shows the selected fragment function; use the picker when multiple functions are available. <strong>+ Add…</strong> inserts a native fragment function or built-in <code>mainImage</code> into that file. A native fragment can run without <code>mainImage</code>, and native templates use the generated vertex stage until you request a custom one. GLSL has no fragment function selector or Built-in/Native chooser because it uses the fixed <code>mainImage</code> hook.</p>
+<p><strong>Create file…</strong> generates a source template using the shader mode preference. For WGSL/Slang, <strong>Render output → Function</strong> shows the selected fragment function; use the picker when multiple functions are available. <strong>+ Add…</strong> inserts a native fragment function or built-in <code>mainImage</code> into that file. A native fragment can run without <code>mainImage</code>, and native templates use the generated vertex stage until you request a custom one. GLSL has no fragment function selector or Built-in/Native chooser because it uses the fixed <code>mainImage</code> hook.</p>
 <p>The pass sections are arranged as Fragment source/functions, Channels, Geometry, Rendering, Resolution, Output, and Vertex shader. Image omits the file chooser. <strong>Output</strong> selects 2D or Cubemap, its cubemap face size, the buffer format, and read-only <a href="../multiple-render-targets/">inferred output slots and names</a>.</p>
 <p><strong>Resolution</strong> (optional) — by default a buffer inherits the Image pass resolution exactly. You can override this in two ways:</p>
 <table>
@@ -2512,7 +2512,7 @@ textures, video, audio, and more.</p>
 <h3 id="create-and-preview-a-cubemap">Create and Preview a Cubemap<a class="headerlink" href="#create-and-preview-a-cubemap" title="Permanent link">&para;</a></h3>
 <ol>
 <li>Open a GLSL or Slang shader and choose <strong>Config → + New → Cubemap</strong>.</li>
-<li>In the new pass, choose <strong>File → Change… → Create</strong> to create a starter shader, or choose an existing file containing <code>mainCubemap</code>.</li>
+<li>In the new pass, click the <strong>Shader file</strong> picker and choose <strong>Create file…</strong> to create a starter shader, or choose an existing file containing <code>mainCubemap</code>.</li>
 <li>In <strong>Output</strong>, set <strong>Face size</strong> (512 pixels by default).</li>
 <li>In <strong>Preview</strong>, choose <strong>Face</strong>, <strong>Cross layout</strong>, or <strong>Environment</strong> to inspect the result. The starter colors each direction differently.</li>
 <li>Choose <strong>Image output</strong> to return to your final shader image.</li>
@@ -2600,7 +2600,7 @@ textures, video, audio, and more.</p>
 <h2 id="gpu-storage">GPU Storage<a class="headerlink" href="#gpu-storage" title="Permanent link">&para;</a></h2>
 <p>Each storage buffer has its own card, labeled <strong>Storage buffer</strong> with its element count. Select it to open <strong>Settings</strong> / <strong>Inspect</strong> directly. Choose <strong>+ New → Storage buffer</strong> to add one. Apply pending settings from the header or below the form. See <a href="../storage/">GPU Storage</a> for layouts, binary initial data, resets and read-only inspection.</p>
 <h2 id="compute-passes">Compute Passes<a class="headerlink" href="#compute-passes" title="Permanent link">&para;</a></h2>
-<p>Use <strong>+ New → Compute</strong> to add a compute pass, then use <strong>File → Change…</strong> to select, reuse, or create its <code>.slang</code> or <code>.wgsl</code> source. Choose a compute function row or use <strong>Add function…</strong>. Compute has Channels, Dispatch, Execution, and Output settings, with no Built-in mode, vertex stage, or geometry section.
+<p>Use <strong>+ New → Compute</strong> to add a compute pass, then use the <strong>Shader file</strong> picker to select, reuse, or create its <code>.slang</code> or <code>.wgsl</code> source. Choose a compute function row or use <strong>Add function…</strong>. Compute has Channels, Dispatch, Execution, and Output settings, with no Built-in mode, vertex stage, or geometry section.
 See <a href="../compute/">Compute Passes</a> for shader examples, storage buffers, and dispatch settings.</p>
 <hr />
 <h2 id="the-script-pass">The Script Pass<a class="headerlink" href="#the-script-pass" title="Permanent link">&para;</a></h2>
