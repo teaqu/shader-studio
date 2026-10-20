@@ -377,7 +377,12 @@
   .standalone-stage { position: relative; display: flex; flex: 1; min-height: 0; min-width: 0; }
   .mobile-preview-backdrop { position: absolute; inset: 0; pointer-events: none; user-select: none; overflow: hidden; }
   .mobile-preview-backdrop :global(.menu-bar) { display: none; }
-  .shader-backdrop-active > .standalone-dockview { position: relative; z-index: 1; --dv-group-view-background-color: transparent; }
+  .shader-backdrop-active > .standalone-dockview { position: relative; z-index: 1; }
+  /* Dockview inserts its theme inside the host. Override the variable there:
+     setting it on the host is shadowed by the theme's opaque editor background. */
+  .shader-backdrop-active > .standalone-dockview :global(.shader-studio-standalone-theme) {
+    --dv-group-view-background-color: transparent;
+  }
   .standalone-dockview { flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
   .standalone-dockview :global(.dv-content-container) { min-width: 0; min-height: 0; }
   .standalone-panel-sources { display: none; }

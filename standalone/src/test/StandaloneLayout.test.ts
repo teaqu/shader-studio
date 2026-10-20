@@ -492,6 +492,8 @@ describe('StandaloneLayout', () => {
       try {
         await tick();
         const preview = result.container.querySelector('[data-source="preview"]') as HTMLElement;
+        const stage = result.container.querySelector('.standalone-stage') as HTMLElement;
+        expect(stage.classList.contains('shader-backdrop-active')).toBe(false);
         expect(preview).toBeTruthy();
         expect(result.container.querySelector('.mobile-preview-backdrop [data-source="preview"]')).toBeNull();
 
@@ -500,33 +502,40 @@ describe('StandaloneLayout', () => {
         await tick();
         const backdrop = result.container.querySelector('.mobile-preview-backdrop') as HTMLElement;
         expect(backdrop.querySelector('[data-source="preview"]')).toBe(preview);
+        expect(stage.classList.contains('shader-backdrop-active')).toBe(true);
 
         result.component.selectMobilePanel('preview');
         await tick();
         expect(backdrop.querySelector('[data-source="preview"]')).toBeNull();
+        expect(stage.classList.contains('shader-backdrop-active')).toBe(false);
         expect(result.container.querySelectorAll('[data-source="preview"]')).toHaveLength(1);
         expect(result.container.querySelector('[data-source="preview"]')).toBe(preview);
 
         result.component.selectMobilePanel('editor');
         await tick();
         expect(backdrop.querySelector('[data-source="preview"]')).toBe(preview);
+        expect(stage.classList.contains('shader-backdrop-active')).toBe(true);
 
         result.component.resetLayout();
         await tick();
         expect(backdrop.querySelector('[data-source="preview"]')).toBe(preview);
+        expect(stage.classList.contains('shader-backdrop-active')).toBe(true);
         expect(result.container.querySelectorAll('[data-source="preview"]')).toHaveLength(1);
 
         settings.update('editor.mobileShaderBackdrop', false);
         await tick();
         expect(backdrop.querySelector('[data-source="preview"]')).toBeNull();
+        expect(stage.classList.contains('shader-backdrop-active')).toBe(false);
         expect(result.container.querySelector('[data-source="preview"]')).toBe(preview);
 
         settings.update('editor.mobileShaderBackdrop', true);
         await tick();
         expect(backdrop.querySelector('[data-source="preview"]')).toBe(preview);
+        expect(stage.classList.contains('shader-backdrop-active')).toBe(true);
         viewport.resize(false);
         await tick();
         expect(backdrop.querySelector('[data-source="preview"]')).toBeNull();
+        expect(stage.classList.contains('shader-backdrop-active')).toBe(false);
         expect(result.container.querySelector('[data-source="preview"]')).toBe(preview);
       } finally {
         result.unmount();

@@ -401,10 +401,12 @@ test('the phone editor reuses the live shader behind text without losing edits o
   const nav = await openAuroraOnPhone(page);
   const editor = page.getByTestId('web-editor');
   const backdrop = page.locator('.mobile-preview-backdrop');
+  const editorLayout = page.locator('.standalone-dockview .dv-dockview');
   const canvas = page.locator('.canvas-container canvas').first();
   const originalCanvas = await canvas.elementHandle();
   const originalEditor = await editorInput(editor).elementHandle();
   await expect(backdrop).toBeHidden();
+  await expect(editorLayout).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await editorText(editor).click({ position: { x: 80, y: 20 } });
   await editorInput(editor).press('Control+a');
   await page.keyboard.insertText('void mainImage(out vec4 color, in vec2 coord) { color = vec4(0.5); } // phone edit');
@@ -415,7 +417,9 @@ test('the phone editor reuses the live shader behind text without losing edits o
   await editor.getByRole('button', { name: 'More editing options' }).click();
   await editor.getByRole('button', { name: 'Show shader behind text' }).click();
   await expect(editor.getByRole('button', { name: 'Hide shader behind text' })).toHaveAttribute('aria-pressed', 'true');
-  await expect(backdrop.locator('canvas')).toBeVisible();
+  await expect(backdrop.locator('.canvas-container > canvas').first()).toBeVisible();
+  // A mounted canvas can still be covered by Dockview's nested theme layer.
+  await expect(editorLayout).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await expect(editor.locator('.editor-wrapper')).not.toHaveClass(/\bpane\b/);
   expect(await canvas.evaluate((node, original) => node === original, originalCanvas)).toBe(true);
   expect(await editorInput(editor).evaluate((node, original) => node === original, originalEditor)).toBe(true);
@@ -435,17 +439,20 @@ test('the phone editor reuses the live shader behind text without losing edits o
   await expect(page.getByLabel('Open editor submenu')).toHaveCount(0);
   await page.getByLabel('Open options menu', { exact: true }).click();
   await nav.getByRole('button', { name: 'Editor' }).click();
-  await expect(backdrop.locator('canvas')).toBeVisible();
+  await expect(backdrop.locator('.canvas-container > canvas').first()).toBeVisible();
+  await expect(editorLayout).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await expect(editorText(editor)).toContainText('phone edit');
 
   await page.reload();
-  await expect(backdrop.locator('canvas')).toBeVisible();
+  await expect(backdrop.locator('.canvas-container > canvas').first()).toBeVisible();
+  await expect(editorLayout).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await expect(editorText(editor)).toContainText('phone edit');
   await editor.getByRole('button', { name: 'Show keyboard toolbar' }).click();
   await editor.getByRole('button', { name: 'More editing options' }).click();
   await editor.getByRole('button', { name: 'Hide shader behind text' }).click();
   await expect(backdrop).toBeHidden();
   await expect(editor.locator('.editor-wrapper')).toHaveClass(/\bpane\b/);
+  await expect(editorLayout).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await page.reload();
   await expect(backdrop).toBeHidden();
   await expect(editorText(editor)).toContainText('phone edit');
