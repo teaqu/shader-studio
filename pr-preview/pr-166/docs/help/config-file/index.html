@@ -2510,12 +2510,11 @@ order; WebGPU runs compute passes first, and <code>Image</code> always runs last
 <a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a><span class="w">    </span><span class="nt">"counter"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a><span class="w">      </span><span class="nt">"count"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a><span class="w">      </span><span class="nt">"elementType"</span><span class="p">:</span><span class="w"> </span><span class="s2">"u32"</span><span class="p">,</span>
-<a id="__codelineno-16-16" name="__codelineno-16-16" href="#__codelineno-16-16"></a><span class="w">      </span><span class="nt">"initialData"</span><span class="p">:</span><span class="w"> </span><span class="s2">"AQAAAA=="</span><span class="p">,</span>
-<a id="__codelineno-16-17" name="__codelineno-16-17" href="#__codelineno-16-17"></a><span class="w">      </span><span class="nt">"initialDataName"</span><span class="p">:</span><span class="w"> </span><span class="s2">"counter.bin"</span>
-<a id="__codelineno-16-18" name="__codelineno-16-18" href="#__codelineno-16-18"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-16-19" name="__codelineno-16-19" href="#__codelineno-16-19"></a><span class="w">  </span><span class="p">},</span>
-<a id="__codelineno-16-20" name="__codelineno-16-20" href="#__codelineno-16-20"></a><span class="w">  </span><span class="nt">"passes"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"Image"</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span><span class="w"> </span><span class="p">}</span>
-<a id="__codelineno-16-21" name="__codelineno-16-21" href="#__codelineno-16-21"></a><span class="p">}</span>
+<a id="__codelineno-16-16" name="__codelineno-16-16" href="#__codelineno-16-16"></a><span class="w">      </span><span class="nt">"initialDataFiles"</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="w"> </span><span class="nt">"path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"data/counter.bin"</span><span class="p">,</span><span class="w"> </span><span class="nt">"byteOffset"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">}]</span>
+<a id="__codelineno-16-17" name="__codelineno-16-17" href="#__codelineno-16-17"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-16-18" name="__codelineno-16-18" href="#__codelineno-16-18"></a><span class="w">  </span><span class="p">},</span>
+<a id="__codelineno-16-19" name="__codelineno-16-19" href="#__codelineno-16-19"></a><span class="w">  </span><span class="nt">"passes"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"Image"</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-16-20" name="__codelineno-16-20" href="#__codelineno-16-20"></a><span class="p">}</span>
 </code></pre></div>
 <table>
 <thead>
@@ -2538,12 +2537,8 @@ order; WebGPU runs compute passes first, and <code>Image</code> always runs last
 <td>Optional 1-64 named numeric fields. When supplied, generates the named struct; omit for a type defined in shader source. Field names must be unique shader identifiers.</td>
 </tr>
 <tr>
-<td><code>initialData</code></td>
-<td>Optional base64-encoded raw binary bytes, at most 256 KiB decoded and no larger than the buffer. Missing bytes are zero.</td>
-</tr>
-<tr>
-<td><code>initialDataName</code></td>
-<td>Optional display name of the uploaded file; not a path loaded at runtime.</td>
+<td><code>initialDataFiles</code></td>
+<td>Optional ordered list of <code>{ path, byteOffset }</code>. Each path points to raw binary data and resolves relative to the shader, <code>@/</code> workspace-relative, or absolute. Offsets are destination bytes from the buffer's start and default to zero. Offset plus file length must fit in the buffer. Later files overwrite overlaps; unfilled bytes are zero.</td>
 </tr>
 <tr>
 <td><code>clearEachFrame</code></td>
@@ -2555,7 +2550,7 @@ order; WebGPU runs compute passes first, and <code>Image</code> always runs last
 </tr>
 </tbody>
 </table>
-<p>The example initializes <code>counter[0]</code> to <code>1u</code>. Binary data must match the actual GPU element stride and field offsets, including padding. Changing a declaration's layout, size or initial data can recreate its buffer. Capture settings and the selected inspector field are UI choices, not storage declaration fields.</p>
+<p>The example initializes <code>counter[0]</code> to <code>1u</code> when <code>data/counter.bin</code> holds the four bytes <code>01 00 00 00</code>. Binary data must match the actual GPU element stride and field offsets, including padding. Changing a declaration's layout, size or initial data can recreate its buffer. Capture settings and the selected inspector field are UI choices, not storage declaration fields.</p>
 
 
 
