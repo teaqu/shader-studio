@@ -17,7 +17,7 @@ import type { PiRenderer, RenderingEngine as RenderingEngineInterface } from "..
 import type { ShaderConfig, StorageBufferSnapshot } from "@shader-studio/types";
 import type { ConfigInput } from "@shader-studio/types";
 import type { CompilationResult } from "../models";
-import { CustomUniformManager } from "./CustomUniformManager";
+import { mergeCustomUniformValues, CustomUniformManager } from "./CustomUniformManager";
 import { VariableCapturer } from "../capture/VariableCapturer";
 import type { CaptureCompileContext, CaptureUniforms } from "../capture/VariableCapturer";
 import { assignInputSlots } from "../util/InputSlotAssigner";
@@ -321,7 +321,7 @@ export class RenderingEngine implements RenderingEngineInterface {
     // Get current passes to find the buffer
     const passes = this.shaderPipeline.getPasses();
     const bufferPass = passes.find(pass => pass.name === bufferName && pass.name !== "Image");
-    
+
     if (!bufferPass) {
       return {
         success: false,
@@ -616,6 +616,7 @@ export class RenderingEngine implements RenderingEngineInterface {
   }
 
   public updateCustomUniformValues(changed: { name: string; type: string; value: number | number[] | boolean }[]): void {
+    this.pendingCustomUniformValues = mergeCustomUniformValues(this.pendingCustomUniformValues, changed);
     if (this.customUniformManager) {
       this.customUniformManager.updateValues(changed);
     }

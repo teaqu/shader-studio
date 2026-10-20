@@ -20,8 +20,37 @@ interface UniformContext {
 }
 
 type UniformValue =
+  | TypedUniform<number | number[]>
   | number
   | boolean
   | [number, number]
   | [number, number, number]
   | [number, number, number, number];
+
+interface TypedUniform<T extends number | number[]> {
+  readonly scriptUniformType: string;
+  readonly value: T;
+}
+interface ScriptStreamOptions {
+  /** 1–65536 uint32 words per rendered frame; default 4096. */
+  maxPerFrame?: number;
+  /** Queue capacity in words; default max(65536, maxPerFrame). Full pushes are rejected atomically. */
+  maxQueued?: number;
+}
+interface ScriptStream {
+  readonly queued: number;
+  /** Copies uint32 words. Returns false when full or disposed; invalid words throw. */
+  push(data: ArrayLike<number>): boolean;
+}
+interface StreamContext {
+  stream(options?: ScriptStreamOptions): ScriptStream;
+  /** Runs on reload, disposal, or failed initialization. */
+  onDispose(cleanup: () => void): void;
+}
+interface UniformContext {
+  int(value: number): TypedUniform<number>;
+  uint(value: number): TypedUniform<number>;
+  floatArray(values: readonly number[]): TypedUniform<number[]>;
+  intArray(values: readonly number[]): TypedUniform<number[]>;
+  uintArray(values: readonly number[]): TypedUniform<number[]>;
+}

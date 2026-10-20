@@ -60,6 +60,8 @@ export interface ShaderSourceMessage extends BaseMessage {
   pathMap?: Record<string, string>;
   bufferPathMap?: Record<string, string>;
   scriptBundleError?: string;
+  scriptStreams?: import('./ScriptStream').ScriptStreamInfo[];
+  scriptSession?: number;
   customUniformDeclarations?: string;
   customUniformInfo?: { name: string; type: string }[];
   /** In-memory Slang modules, grouped by the pass that imports them. */

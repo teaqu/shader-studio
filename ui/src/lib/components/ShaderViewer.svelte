@@ -1,5 +1,6 @@
 <svelte:options runes={true} />
 <script lang="ts">
+  import { setScriptStreams } from "../state/scriptStreams.svelte";
   import { onMount, onDestroy, tick, setContext } from "svelte";
   import { get } from "svelte/store";
   import { ShaderPipeline } from "../ShaderPipeline";
@@ -68,7 +69,7 @@
 
   function writeSlotClaims(claims: Record<string, number>): void {
     try {
-      localStorage.setItem(WEB_SLOT_CLAIMS_KEY, JSON.stringify(claims)); 
+      localStorage.setItem(WEB_SLOT_CLAIMS_KEY, JSON.stringify(claims));
     } catch { /* best-effort */ }
   }
 
@@ -99,7 +100,7 @@
       Object.entries(readSlotClaims()).filter(([, ts]) => now - ts < WEB_SLOT_STALE_MS),
     );
     if (existing) {
-      claims[existing] = now; writeSlotClaims(claims); return existing; 
+      claims[existing] = now; writeSlotClaims(claims); return existing;
     }
     let i = 1;
     while (claims[`web:${i}`]) {
@@ -223,10 +224,10 @@
   // Resolution controller — created at component level so setContext works synchronously
   const resolutionController = new ResolutionSessionController({
     get currentConfig() {
-      return currentConfig; 
+      return currentConfig;
     },
     get debugState() {
-      return debugState; 
+      return debugState;
     },
     setCurrentConfig: (config) => {
       currentConfig = config;
@@ -391,6 +392,8 @@
     const fpsInterval = setInterval(() => {
       if (initialized) {
         currentFPS = renderingEngine.getCurrentFPS();
+        renderingEngine.refreshScriptStreamStatus?.();
+        setScriptStreams(renderingEngine.getScriptStreamStatus?.() ?? []);
       }
       // Evict stale poll timestamps so actualPollFps decays to 0 when messages stop
       const now = performance.now();
@@ -923,6 +926,16 @@
       return;
     }
 
+    if (type === 'scriptStreamStatus') {
+      renderingEngine?.receiveScriptStreamStatus?.(event.data.payload);
+      return;
+    }
+
+    if (type === 'scriptStreamFrame') {
+      renderingEngine?.receiveScriptStreamFrame?.(event.data.payload.frame, event.data.payload.request);
+      return;
+    }
+
     if (type === 'customUniformValues') {
       const values: { name: string; type: string; value: number | number[] | boolean }[] = event.data.payload.values;
       if (renderingEngine) {
@@ -983,6 +996,9 @@
       }
 
       if (messageTarget.kind === 'main') {
+        renderingEngine.configureScriptStreams?.(event.data.scriptStreams ?? [], event.data.scriptSession ?? 0,
+          request => transport.postMessage({ type: 'requestScriptStreamFrame', payload: request }));
+        setScriptStreams([]);
         handleShaderSource(event);
       }
       try {
@@ -1092,7 +1108,7 @@
           });
         },
         (rec) => {
-          isRecording = rec; 
+          isRecording = rec;
         },
       );
 
@@ -1135,16 +1151,16 @@
       editorBufferNames = state.bufferNames;
     },
     onShaderCodeChanged: (code) => {
-      currentShaderCode = code; 
+      currentShaderCode = code;
     },
     onErrors: (errs) => {
-      errors = errs; 
+      errors = errs;
     },
     onClearErrors: () => {
-      errors = []; 
+      errors = [];
     },
     onStartRenderLoop: () => {
-      renderingEngine.startRenderLoop(); 
+      renderingEngine.startRenderLoop();
     },
     getLastShaderEvent: () => pipeline.getLastEvent(),
     handleShaderMessage: (event) => {

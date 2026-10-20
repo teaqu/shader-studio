@@ -143,6 +143,7 @@ export class PanelManager {
     });
 
     panel.onDidDispose(() => {
+      this.clientHandler.releaseScriptStreams(panel);
       this.webviewTransport.removePanel(panel);
       this.panels.delete(panel);
       this.panelSlots.delete(panel);
@@ -196,6 +197,7 @@ export class PanelManager {
       message,
       (msg) => panel.webview.postMessage(msg),
       (absPath) => ConfigPathConverter.convertUriForClient(absPath, panel.webview),
+      panel,
     );
   }
 

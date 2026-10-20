@@ -1,9 +1,22 @@
-export type CustomUniformType = 'float' | 'vec2' | 'vec3' | 'vec4' | 'bool';
+import { parseScriptUniformType, zeroScriptUniform, type ScriptUniformType } from "@shader-studio/types";
+export type CustomUniformType = ScriptUniformType;
 
 export interface CustomUniform {
   name: string;
   type: string;
   value: number | number[] | boolean;
+}
+
+/** Keep transport updates received before shader declarations are available. */
+export function mergeCustomUniformValues(current: CustomUniform[] | null, changed: CustomUniform[]): CustomUniform[] {
+  const merged = new Map((current ?? []).map(uniform => [uniform.name, uniform]));
+  for (const uniform of changed) {
+    merged.set(uniform.name, uniform);
+  }
+  return [...merged.values()].map(uniform => ({
+    ...uniform,
+    value: Array.isArray(uniform.value) ? [...uniform.value] : uniform.value,
+  }));
 }
 
 export class CustomUniformManager {
@@ -22,7 +35,7 @@ export class CustomUniformManager {
     this.externalValues = savedValues;
     this.declarations = declarations;
     for (const { name, type } of uniformInfo) {
-      if (['float', 'vec2', 'vec3', 'vec4', 'bool'].includes(type)) {
+      if (parseScriptUniformType(type)) {
         this.inferredTypes[name] = type as CustomUniformType;
       }
     }
@@ -92,14 +105,7 @@ export class CustomUniformManager {
 
   private getZeroUniforms(): CustomUniform[] {
     return Object.entries(this.inferredTypes).map(([name, type]) => {
-      let value: number | number[] | boolean;
-      switch (type) {
-        case 'float': value = 0; break;
-        case 'vec2': value = [0, 0]; break;
-        case 'vec3': value = [0, 0, 0]; break;
-        case 'vec4': value = [0, 0, 0, 0]; break;
-        case 'bool': value = false; break;
-      }
+      const value = zeroScriptUniform(type);
       return { name, type, value };
     });
   }

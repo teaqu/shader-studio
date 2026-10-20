@@ -1,5 +1,7 @@
 /// <reference types="@webgpu/types" />
-import type { DebugInstrumentationPlan, ShaderConfig, SlangSourceModule, StorageBufferSnapshot } from "@shader-studio/types";
+import { ScriptStreamDelivery, type ScriptStreamRequest } from "./ScriptStreamDelivery";
+import { addScriptStreams } from "./ScriptStreamGraph";
+import type { DebugInstrumentationPlan, ScriptStreamInfo, ScriptStreamFrame, ShaderConfig, SlangSourceModule, StorageBufferSnapshot } from "@shader-studio/types";
 import type { CompilationResult, PassUniforms } from "../models";
 import type { RenderingEngine } from "../types/RenderingEngine";
 import type {
@@ -22,7 +24,7 @@ import {
   packShaderToyUniforms,
   type ShaderToyUniformInput,
 } from "./uniforms";
-import { CustomUniformManager, type CustomUniform } from "../webgl/CustomUniformManager";
+import { mergeCustomUniformValues, CustomUniformManager, type CustomUniform } from "../webgl/CustomUniformManager";
 import { ConfigValidator } from "../util/ConfigValidator";
 import {
   buildSlangPassGraph,
@@ -239,6 +241,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private installedResourceKey: string | null = null;
   private lastCompile: ShaderCompileSnapshot | null = null;
   private installedCompile: ShaderCompileSnapshot | null = null;
+  private scriptStreams = new ScriptStreamDelivery();
+  private scriptStreamsReady = false;
+  private installedScriptStreamInfo: ScriptStreamInfo[] = [];
   private customUniformManager = new CustomUniformManager();
   private pendingCustomUniformValues: CustomUniform[] | null = null;
   /**
@@ -735,6 +740,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       canvasHeight: this.canvas?.height ?? 1,
       computeWorkgroupLimits: this.resolveComputeWorkgroupLimits(),
     });
+    addScriptStreams(graph, this.scriptStreams.info, customUniformInfo);
     const graphMs = this.now() - graphStartedAt;
 
     if (graph.errors.length > 0) {
@@ -1176,6 +1182,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
         nextCustomUniformManager.updateValues(this.pendingCustomUniformValues);
       }
       this.customUniformManager = nextCustomUniformManager;
+      this.scriptStreamsReady = true;
+      this.installedScriptStreamInfo = this.scriptStreams.info.map(stream => ({ ...stream }));
       if (this.resetFeedbackOnNextApply) {
         for (const pass of this.passGraph) {
           if (pass.output !== "texture") {
@@ -1798,6 +1806,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       node.name,
       node.elementType,
       node.builtin,
+      node.streamMaxPerFrame,
     ]);
     const hasOutput = pass.output === "texture";
     return JSON.stringify([
@@ -1832,6 +1841,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       node.binding,
       node.elementType,
       node.builtin,
+      node.streamMaxPerFrame,
       node.count,
       node.stride,
     ]);
@@ -2171,6 +2181,20 @@ export class WebGPURenderingEngine implements RenderingEngine {
     // owns this submission state instead of inferring it from iFrame.
     const skipBufferPasses = isPaused && this.hasSubmittedFrameForInstalledGeneration;
 
+    const consumeStreams = this.scriptStreamsReady && !capture && !isPaused && !imageOnly;
+    for (const stream of this.installedScriptStreamInfo) {
+      const buffer = this.storageBuffers.get(stream.name);
+      if (buffer) {
+        this.device.queue.writeBuffer(buffer, 0, new Uint32Array([0]));
+      }
+    }
+    this.scriptStreams.prepare((name, words) => {
+      const buffer = this.storageBuffers.get(name);
+      const installed = this.installedScriptStreamInfo.find(stream => stream.name === name);
+      if (buffer && installed && installed.maxPerFrame === this.scriptStreams.info.find(stream => stream.name === name)?.maxPerFrame) {
+        this.device!.queue.writeBuffer(buffer, 0, words.buffer as ArrayBuffer);
+      }
+    }, consumeStreams);
     const encoder = this.device.createCommandEncoder();
     let canvasTexture: GPUTexture | null = null;
     const encodedComputePasses = new Set<string>();
@@ -2311,6 +2335,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.pixelRegionCapturer?.encodeAfterRender(encoder, canvasTexture, this.canvas.width, this.canvas.height);
     }
     this.device.queue.submit([encoder.finish()]);
+    this.scriptStreams.submitted(consumeStreams);
     this.hasSubmittedFrameForInstalledGeneration = true;
     this.pixelRegionCapturer?.beginMappings();
 
@@ -2819,6 +2844,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     // compile state. A failed allocation leaves the installed generation
     // usable and makes resetTime safe to retry.
     const resetStorageBuffers = this.prepareResetStorageBuffers();
+    this.scriptStreams.reset();
     this.timeManager.cleanup();
     this.dispatchOnceRan.clear();
     this.hasSubmittedFrameForInstalledGeneration = false;
@@ -2881,6 +2907,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   dispose(): void {
+    this.scriptStreams.dispose();
     this.disposed = true;
 
     let firstError: unknown;
@@ -3199,6 +3226,26 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   // ---- Custom uniforms ----
 
+  refreshScriptStreamStatus(): void {
+    if (this.scriptStreamsReady) {
+      this.scriptStreams.refreshStatus();
+    }
+  }
+  receiveScriptStreamStatus(status: import('@shader-studio/types').ScriptStreamQueueStatus): void {
+    this.scriptStreams.receiveStatus(status);
+  }
+  getScriptStreamStatus() {
+    return this.scriptStreams.status();
+  }
+
+  configureScriptStreams(info: ScriptStreamInfo[], session: number, send: (request: ScriptStreamRequest) => void): void {
+    this.scriptStreamsReady = false;
+    this.scriptStreams.configure(info, session, send);
+  }
+  receiveScriptStreamFrame(frame: ScriptStreamFrame, request: number): boolean {
+    return this.scriptStreams.receive(frame, request);
+  }
+
   getCustomUniformInfo(): { name: string; type: string }[] {
     return this.customUniformManager.getUniformInfo();
   }
@@ -3213,7 +3260,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.customUniformManager.setValues(values);
   }
   updateCustomUniformValues(changed: CustomUniform[]): void {
+    this.pendingCustomUniformValues = mergeCustomUniformValues(this.pendingCustomUniformValues, changed);
     this.customUniformManager.updateValues(changed);
-    this.pendingCustomUniformValues = this.customUniformManager.getCurrentValues();
   }
 }

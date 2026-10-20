@@ -128,3 +128,17 @@ describe("packShaderToyUniforms", () => {
     expect(view.getInt32(216, true)).toBe(0);
   });
 });
+
+describe('typed script uniform packing', () => {
+  it('uses integer writes and std140 scalar array strides', () => {
+    const info=[{name:'u',type:'uint'},{name:'i',type:'int'},{name:'a',type:'uint[2]'},{name:'f',type:'float'}];
+    const layout=createSlangCustomUniformLayout(info);
+    expect(layout.entries.map(entry=>entry.offset)).toEqual([208,212,224,256]);
+    const input={width:1,height:1,time:0,timeDelta:0,frameRate:60,frame:0,mouse:[],channelTime:[],channelLoaded:[],sampleRate:44100,date:[],channelResolution:[],cameraPos:[],cameraDir:[]};
+    const buffer=packShaderToyUniforms(input,info,[{name:'u',type:'uint',value:4294967295},{name:'i',type:'int',value:-2147483648},{name:'a',type:'uint[2]',value:[123,4294967295]},{name:'f',type:'float',value:.5}]);
+    const view=new DataView(buffer);
+    expect(view.getUint32(208,true)).toBe(4294967295);expect(view.getInt32(212,true)).toBe(-2147483648);
+    expect(view.getUint32(224,true)).toBe(123);expect(view.getUint32(240,true)).toBe(4294967295);
+    expect(view.getFloat32(256,true)).toBe(.5);
+  });
+});

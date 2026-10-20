@@ -5,6 +5,11 @@ import type { IVariableCapturer, CaptureUniforms, CaptureCustomUniform, CaptureC
 import type { PixelRegionResult } from "./PixelRegion";
 
 export interface RenderingEngine {
+  refreshScriptStreamStatus?(): void;
+  receiveScriptStreamStatus?(status: import('@shader-studio/types').ScriptStreamQueueStatus): void;
+  getScriptStreamStatus?(): (import('@shader-studio/types').ScriptStreamInfo & { queued: number; lastFrame: number })[];
+  configureScriptStreams?(info: import('@shader-studio/types').ScriptStreamInfo[], session: number, send: (request: import('../webgpu/ScriptStreamDelivery').ScriptStreamRequest) => void): void;
+  receiveScriptStreamFrame?(frame: import('@shader-studio/types').ScriptStreamFrame, request: number): boolean;
   initialize(glCanvas: HTMLCanvasElement, preserveDrawingBuffer?: boolean): void;
   handleCanvasResize(width: number, height: number): void;
   compileShaderPipeline(

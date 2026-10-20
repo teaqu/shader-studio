@@ -38,6 +38,9 @@ export class ShaderProcessor {
   ): Promise<CompilationResult> {
     const { code, config, path, buffers } = message;
     const scriptBundleError = message.scriptBundleError;
+    if (message.scriptStreams?.length && this.renderEngine.getShaderLanguage() !== 'slang') {
+      return { success: false, errors: ['Script streams require Slang / WebGPU. Uniform-only scripts also work with GLSL.'] };
+    }
 
     if (message.slangDependencyDiagnostics?.length) {
       return {

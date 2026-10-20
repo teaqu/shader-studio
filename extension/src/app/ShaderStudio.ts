@@ -63,7 +63,7 @@ export class ShaderStudio {
     this.configViewToggler = new ConfigViewToggler(this.logger);
     this.glslFileTracker = new GlslFileTracker(context);
     this.shaderCreator = new ShaderCreator(this.logger, this.glslFileTracker);
-    
+
     const errorHandler = new ErrorHandler(outputChannel, diagnosticCollection);
     this.errorHandler = errorHandler;
     this.messenger = new Messenger(
@@ -124,6 +124,7 @@ export class ShaderStudio {
   }
 
   public dispose(): void {
+    this.shaderProvider.dispose();
     this.webServer.stopWebServer();
     this.messenger.close();
     this.sShaderExplorerProvider.dispose();

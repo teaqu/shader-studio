@@ -1,3 +1,4 @@
+import { parseScriptUniformType, type ScriptUniformType } from "@shader-studio/types";
 // Slang ShaderToy authoring convention for the WebGPU pipeline.
 //
 // A user `.slang` image shader defines:
@@ -51,15 +52,17 @@ export const UNIFORM_OFFSETS = {
 // Struct fields are NOT named iResolution/iTime/… on purpose: those names are
 // #define macros, and the Slang preprocessor would expand them inside the
 // struct member accesses below (`_st.resolution`), corrupting the code.
-export type SlangCustomUniformType = "float" | "vec2" | "vec3" | "vec4" | "bool";
+export type SlangCustomUniformType = ScriptUniformType;
 
 export interface SlangCustomUniformInfo {
   name: string;
   type: string;
 }
 
-const CUSTOM_SLANG_TYPES: Record<SlangCustomUniformType, string> = {
+const CUSTOM_SLANG_TYPES: Record<string, string> = {
   float: "float",
+  int: "int",
+  uint: "uint",
   vec2: "float2",
   vec3: "float3",
   vec4: "float4",
@@ -67,13 +70,16 @@ const CUSTOM_SLANG_TYPES: Record<SlangCustomUniformType, string> = {
 };
 
 export function isSlangCustomUniformType(type: string): type is SlangCustomUniformType {
-  return type in CUSTOM_SLANG_TYPES;
+  return parseScriptUniformType(type) !== null;
 }
 
 function buildPrelude(customUniforms: SlangCustomUniformInfo[] = []): string {
   const supported = customUniforms.filter(({ type }) => isSlangCustomUniformType(type));
   const fields = supported
-    .map(({ name, type }) => `    ${CUSTOM_SLANG_TYPES[type as SlangCustomUniformType]} custom_${name};`)
+    .map(({ name, type }) => {
+      const shape = parseScriptUniformType(type)!;
+      return `    ${CUSTOM_SLANG_TYPES[shape.base]} custom_${name}${shape.length ? `[${shape.length}]` : ''};`;
+    })
     .join("\n");
   const aliases = supported
     .map(({ name, type }) => type === "bool"
@@ -373,7 +379,12 @@ export function buildStorageDeclarations(
     }
     return elementType;
   };
-  const declaration = (node: StorageBindingNode) => `[[vk::binding(${1 + channelCount * 2 + node.binding}, 0)]]
+  const declaration = (node: StorageBindingNode) => node.streamMaxPerFrame ? `
+struct _ScriptStream_${node.name} { uint length; uint data[${node.streamMaxPerFrame}]; };
+[[vk::binding(${1 + channelCount * 2 + node.binding}, 0)]]
+StructuredBuffer<_ScriptStream_${node.name}> _scriptStream_${node.name};
+#define ${node.name} (_scriptStream_${node.name}[0])
+` : `[[vk::binding(${1 + channelCount * 2 + node.binding}, 0)]]
 ${bufferType}<${renderElementType(node.elementType)}> ${node.name};
 `;
 

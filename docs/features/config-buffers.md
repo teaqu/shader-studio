@@ -80,11 +80,11 @@ See [Compute Passes](compute.md) for the authoring convention, storage layout ru
 
 ## The Script Pass
 
-The Script pass drives custom `uniform` values per frame from a TypeScript or JavaScript file. It has no framebuffer — it only produces uniform data.
+The Script pass supplies current uniform values and ordered data streams from a TypeScript or JavaScript file. It has no framebuffer. Uniforms work with GLSL/WebGL and Slang/WebGPU; streams require Slang/WebGPU.
 
 ### Exporting Uniforms
 
-Your script must export a `uniforms(ctx)` function that returns an object:
+Export `uniforms(ctx)` for current values, `streams(ctx)` for queued inputs, or both. Each returns an object whose keys become shader input names. The uniforms function is polled; the streams function runs once per script load.
 
 ```typescript
 // shader.uniforms.ts
@@ -121,7 +121,7 @@ Types are inferred from the return value on the first call. The returned values 
 
 ### Polling Rate
 
-The **Max Polling Rate** slider (1–120 fps) controls how often the script runs. The config panel shows the actual vs. target polling rate for each uniform.
+The **Max Polling Rate** slider (1–120 fps) controls how often `uniforms(ctx)` runs. Stream delivery follows rendered frames independently. The config panel shows the actual vs. target polling rate for each uniform.
 
 For slowly-changing values, 1–10 fps is usually enough. High rates consume more CPU.
 
@@ -188,3 +188,74 @@ See [Config File Format](../help/config-file.md) for the full schema reference.
 ## Next
 
 [Channels](channels.md) — bind textures, video, audio, cubemaps, buffers, and keyboard input
+
+### Integer and array uniforms
+
+Use `ctx.int(value)` and `ctx.uint(value)` for exact 32-bit integers. Use
+`ctx.floatArray([...])`, `ctx.intArray([...])`, or `ctx.uintArray([...])` for
+fixed-length scalar arrays (1–1024 elements). Plain arrays of length 2–4 still
+mean vectors. Types and lengths are fixed at load; reload to change them.
+Integer values outside their 32-bit range, fractional integers, and non-finite
+numbers are rejected. The Script tab shows exact integer values and expandable arrays.
+
+```js
+export function uniforms(ctx) {
+  return {
+    tick: ctx.uint(ctx.iFrame),
+    mode: ctx.int(-1),
+    weights: ctx.floatArray([0.25, 0.5, 0.75]),
+    ids: ctx.uintArray([123, 4294967295]),
+  };
+}
+```
+
+### Script streams
+
+```js
+export function streams(ctx) {
+  const net = ctx.stream({ maxPerFrame: 4096, maxQueued: 65536 });
+  const uart = ctx.stream({ maxPerFrame: 64 });
+  const socket = new WebSocket('ws://localhost:9000');
+  socket.binaryType = 'arraybuffer';
+  socket.onmessage = ({ data }) => {
+    // The source protocol supplies aligned uint32 words.
+    if (!net.push(new Uint32Array(data))) console.warn('Queue full');
+  };
+  ctx.onDispose(() => socket.close());
+  return { net, uart };
+}
+```
+
+Both inputs bind automatically. No stream declarations are needed in `.sha.json`:
+
+```slang
+for (uint i = 0; i < net.length; i++) {
+    handle(net.data[i]);
+}
+```
+
+- `push()` copies unsigned 32-bit words. Invalid words throw. A full queue rejects
+  the entire push and returns `false`; the script decides whether to retry or slow
+  its source. Accepted data is never silently dropped during ordinary delivery.
+- `maxPerFrame` defaults to 4096 (range 1–65536). `maxQueued` defaults to at least
+  65536 words (maximum 1048576), and must hold at least one frame.
+- Each rendered frame gets up to the limit, in order. All passes see the same
+  chunk. Empty frames have length zero. Paused/skipped frames retain queued data;
+  capture does not consume live stream input.
+- Each preview has an independent delivery cursor. A newly joining preview sees
+  future pushes. A slow preview can backpressure the shared source. Closing a
+  preview releases its cursor.
+- Reset clears queues; script reload closes registered sources, clears queues,
+  and calls `streams(ctx)` again. Register connection cleanup with `onDispose`.
+  Script-created timers are also stopped automatically. Old producers cannot push
+  into a new script load.
+- Stream names must be unique across uniforms, streams, channels, and storage.
+  Up to eight streams are supported, subject to device storage binding limits.
+- Scripts continue to run in the extension's Node host, including for its hosted
+  browser previews. Browser-only standalone and vscode.dev script runtimes are
+  not introduced here. Native WebSocket availability depends on the host Node
+  version; scripts can also import their own Node networking library.
+- Stream data is live input; deterministic stream recording/replay is not yet provided.
+
+The runnable `examples/script-streams/stream-demo.slang` example uses two streams
+and typed uniforms without an external server.

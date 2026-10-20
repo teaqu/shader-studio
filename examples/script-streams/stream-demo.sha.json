@@ -1,0 +1,6 @@
+{
+  "version": "1.0",
+  "script": "./stream-demo.uniforms.js",
+  "scriptMaxPollingFps": 30,
+  "passes": { "Image": {} }
+}

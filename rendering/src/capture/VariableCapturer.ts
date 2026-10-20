@@ -1,4 +1,5 @@
 /// <reference types="@webgpu/types" />
+import { uploadTypedScriptUniform } from "../webgl/ScriptUniformUpload";
 import type { ShaderCompiler, ChannelSamplerType } from '../webgl/ShaderCompiler';
 import type { PiShader } from '../types/piRenderer';
 import type { PiTexture } from '../types/piRenderer';
@@ -681,6 +682,9 @@ export class VariableCapturer implements IVariableCapturer {
 
     // Set custom uniforms from script
     for (const u of this.customUniforms) {
+      if (uploadTypedScriptUniform(gl, program, u)) {
+        continue;
+      }
       const loc = gl.getUniformLocation(program, u.name);
       if (loc === null) {
         continue;
