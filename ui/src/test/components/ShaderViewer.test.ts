@@ -1492,6 +1492,33 @@ describe('ShaderViewer', () => {
     }));
   });
 
+  it.each([
+    ['glsl', 'wgsl'],
+    ['glsl', 'slang'],
+    ['slang', 'glsl'],
+  ] as const)('queues the latest %s to %s source until its replacement canvas is ready', async (initialLanguage, language) => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    if (initialLanguage !== 'glsl') {
+      await sendMessage({ type: 'shaderSource', language: initialLanguage,
+        path: `/test/initial.${initialLanguage}`, code: 'initial', compileSequence: 1 });
+    }
+    mockPipelineHandleShaderMessage.mockClear();
+    const handler = mockTransport.onMessage.mock.calls[0][0];
+    const path = `/test/latest.${language}`;
+    // The host's initial source and refresh reply can arrive in the same turn,
+    // before Svelte has remounted the canvas for the requested backend.
+    const first = handler({ data: { type: 'shaderSource', language, path, code: 'older', compileSequence: 2 } });
+    const second = handler({ data: { type: 'shaderSource', language, path, code: 'latest', compileSequence: 3 } });
+    expect(mockPipelineHandleShaderMessage).not.toHaveBeenCalled();
+    await Promise.all([first, second]);
+    await tick();
+    await vi.waitFor(() => expect(mockPipelineHandleShaderMessage).toHaveBeenCalledOnce());
+    expect(mockPipelineHandleShaderMessage).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ path, code: 'latest', compileSequence: 3 }),
+    }));
+  });
+
   it('swaps the engine when navigating from Slang to WGSL', async () => {
     const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
     await tick();
