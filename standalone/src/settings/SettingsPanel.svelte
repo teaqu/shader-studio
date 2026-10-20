@@ -77,7 +77,7 @@
         </div>
       </section>
     {/if}
-    {#each ['Preview', 'Language services', 'Editor'] as group}
+    {#each ['Preview', 'AI tools', 'Language services', 'Editor'] as group}
       {#if visible.some((setting) => setting.group === group)}
         <section aria-label={group}><h3>{group}</h3>
           {#each visible.filter((setting) => setting.group === group) as setting (setting.key)}
