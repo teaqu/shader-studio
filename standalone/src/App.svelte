@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { onDestroy, onMount, setContext } from 'svelte';
+  import { onDestroy, onMount, setContext, untrack } from 'svelte';
   import { PANEL_HOST_CONTEXT } from '@shader-studio/ui/lib/layout/PanelHost';
   import { HostedPanels } from './HostedPanels';
   import { ShaderStudioApp, getViewerSession } from '@shader-studio/ui';
@@ -55,7 +55,7 @@
   let layout = $state<StandaloneLayout>();
   let workspaceError = $state('');
   let dismissedOfflineError = $state('');
-  const disconnectSettings = connectSettings(transport.settings);
+  const disconnectSettings = untrack(() => connectSettings(transport.settings));
   onDestroy(disconnectSettings);
   $effect(() => {
     document.documentElement.dataset.studioTheme = getInterfaceTheme();
@@ -94,7 +94,7 @@
     }
   }
   const session = $derived(getViewerSession());
-  const explorerApi = transport.getShaderExplorerHostApi();
+  const explorerApi = untrack(() => transport.getShaderExplorerHostApi());
   let shellMounted = false;
   let updateInProgress = false;
   let updateApplied = false;
@@ -102,6 +102,7 @@
 
   onMount(() => {
     shellMounted = true;
+    transport.enableWebMcp();
     const stopFiles = transport.onWorkspaceFiles(files => {
       workspaceHasShaders = files.some(file => !file.directory && shaderLanguageForPath(file.path));
     });
@@ -125,6 +126,7 @@
     }) ?? (() => {});
     return () => {
       shellMounted = false;
+      transport.dispose();
       stopFiles();
       stopPersistence();
       stopPwa();

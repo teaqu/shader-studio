@@ -96,6 +96,7 @@ export class WebExtensionHost {
   private readonly viewerHandlers = new Set<MessageHandler>();
   private readonly explorerHandlers = new Set<MessageHandler>();
   private activeShaderPath: string | null = null;
+  private compileSequence = 0;
   private compileMode: 'hot' | 'manual' = 'hot';
   private shaderListQueued = false;
   private readonly resolveDefaultAsset: (path: string) => string | null;
@@ -872,11 +873,21 @@ export class WebExtensionHost {
     return paths;
   }
 
+  /** Build a revision-attributed source message for a specifically targeted viewer. */
+  prepareShader(path: string): HostMessage {
+    if (!shaderLanguageForPath(path) || !this.workspace.exists(path)) {
+      throw new Error('Select an existing shader file.');
+    }
+    this.setActiveShader(path);
+    return this.shaderSourceMessage(path);
+  }
+
   private shaderSourceMessage(path: string): HostMessage {
     const codeMessage = this.shaderCodeMessage(path);
     const config = codeMessage.config as ShaderConfig | null;
     return {
       type: 'shaderSource',
+      compileSequence: ++this.compileSequence,
       path,
       code: codeMessage.code,
       originalCode: codeMessage.code,

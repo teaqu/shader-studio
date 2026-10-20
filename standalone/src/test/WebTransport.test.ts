@@ -1,3 +1,4 @@
+vi.mock('../workspaceEditorAccess', () => ({ workspaceEditorAccess: { read: vi.fn(() => undefined), commit: vi.fn() } }));
 import { getEditorDocument } from '../state/editorDocuments.svelte';
 import { getActiveShaderEditors, getSelectedEditor, getRequestedEditor, getNewShaderVisible, getRequestedPanel, resetShellState, setNewShaderVisible } from '../state/shellState.svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -784,6 +785,51 @@ describe('WebTransport preview file and save edge cases', () => {
       expect(confirm).toHaveBeenCalledOnce();
     } finally {
       confirm.mockRestore(); transport.dispose();
+    }
+  });
+});
+
+
+describe('WebMCP transport wiring', () => {
+  it('registers tools and targets one viewer, then unregisters on dispose', async () => {
+    const tools = new Map<string, import('../registerWebMcp').WebMcpTool>();
+    const unregisterTool = vi.fn((name: string) => {
+      tools.delete(name);
+    });
+    Object.defineProperty(document, 'modelContext', { configurable: true, value: {
+      registerTool: (tool: import('../registerWebMcp').WebMcpTool) => {
+        tools.set(tool.name, tool);
+      }, unregisterTool,
+    } });
+    const transport = new WebTransport();
+    try {
+      const first = transport.createViewerTransport(), second = transport.createViewerTransport();
+      const response = (viewer: typeof first, path: string) => (event: MessageEvent) => {
+        if (event.data.type === 'viewerRpcRequest') {
+          viewer.postMessage({ type: 'viewerRpcResponse', requestId: event.data.requestId,
+            result: { path, language: 'glsl', compileSequence: 1, renderedSequence: 1, compiling: false,
+              errors: [], warnings: [], time: 1, frame: 1, paused: false, width: 10, height: 10, fpsLimit: 60, speed: 1, uniforms: [] } });
+        }
+      };
+      first.onMessage(response(first, '/aurora.glsl')); second.onMessage(response(second, '/glow-trails.glsl'));
+      transport.enableWebMcp();
+      const list = tools.get('list_previews')!;
+      const result = JSON.parse(await list.execute({}));
+      expect(result.previews).toHaveLength(2);
+      expect(result.previews.map((preview: { path: string }) => preview.path)).toEqual(['/aurora.glsl', '/glow-trails.glsl']);
+      expect(JSON.parse(await tools.get('read_file')!.execute({ path: '/aurora.glsl' }))).toHaveProperty('revision');
+      const diagnostics = tools.get('get_diagnostics')!;
+      expect(JSON.parse(await diagnostics.execute({})).error).toContain('Multiple previews');
+      expect(JSON.parse(await diagnostics.execute({ previewId: result.previews[1].id }))).toMatchObject({ path: '/glow-trails.glsl' });
+      second.dispose();
+      expect(JSON.parse(await diagnostics.execute({}))).toMatchObject({ path: '/aurora.glsl' });
+      first.dispose();
+      transport.dispose();
+      expect(unregisterTool).toHaveBeenCalled(); expect(tools.size).toBe(0);
+      expect(JSON.parse(await list.execute({}))).toHaveProperty('error');
+    } finally {
+      transport.dispose();
+      Reflect.deleteProperty(document, 'modelContext');
     }
   });
 });
