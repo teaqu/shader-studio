@@ -225,7 +225,7 @@ describe('standalone App', () => {
 
     await fireEvent.click(screen.getByRole('button', { name: 'View' }));
     expect(screen.getByRole('menuitemcheckbox', { name: 'Shader Explorer' }).getAttribute('aria-checked')).toBe('true');
-    expect(screen.getByRole('menuitemcheckbox', { name: 'Editor' }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByRole('menuitemcheckbox', { name: 'Editors' }).getAttribute('aria-checked')).toBe('true');
     expect(screen.getByRole('menuitemcheckbox', { name: 'Preview' }).getAttribute('aria-checked')).toBe('true');
   });
 
@@ -272,7 +272,7 @@ describe('standalone App', () => {
     await fireEvent.click(screen.getByRole('button', { name: 'View' }));
     await fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Shader Explorer' }));
     await fireEvent.click(screen.getByRole('button', { name: 'View' }));
-    await fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Editor' }));
+    await fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Editors' }));
     await fireEvent.click(screen.getByRole('button', { name: 'View' }));
     await fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Preview' }));
 

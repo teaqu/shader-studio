@@ -803,3 +803,63 @@ describe('leaving the phone shell', () => {
     expect(config.api.setSize).not.toHaveBeenCalled();
   });
 });
+
+
+describe('all editor visibility', () => {
+  it('hides and restores editor tabs across splits without closing them', () => {
+    const api = createApi();
+    const controller = new StandaloneLayoutController(api, null);
+    controller.initialize();
+    controller.openEditor('/first.glsl');
+    api.addPanel({ id: 'editor:/second.glsl' });
+    const ids = ['editor', 'editor:/first.glsl', 'editor:/second.glsl'];
+    for (let cycle = 0; cycle < 2; cycle++) {
+      controller.togglePanel('editor');
+      expect(controller.isPanelVisible('editor')).toBe(false);
+      for (const id of ids) {
+        expect(api.getPanel(id)?.api.group.api.isVisible).toBe(false);
+        expect(api.getPanel(id)?.api.close).not.toHaveBeenCalled();
+      }
+      expect(controller.isPanelVisible('preview')).toBe(true);
+      expect(controller.isPanelVisible('explorer')).toBe(true);
+      controller.togglePanel('editor');
+      for (const id of ids) {
+        expect(api.getPanel(id)?.api.group.api.isVisible).toBe(true);
+      }
+    }
+  });
+
+  it('uses remaining file editors when the original editor is closed', () => {
+    const api = createApi();
+    const controller = new StandaloneLayoutController(api, null);
+    controller.initialize();
+    controller.openEditor('/first.glsl');
+    api.remove('editor');
+    expect(controller.isPanelVisible('editor')).toBe(true);
+    controller.togglePanel('editor');
+    expect(controller.isPanelVisible('editor')).toBe(false);
+    controller.togglePanel('editor');
+    expect(controller.isPanelVisible('editor')).toBe(true);
+    expect(api.getPanel('editor')).toBeUndefined();
+  });
+
+  it('hides partially visible editors and restores mixed group tab order', () => {
+    const api = createApi();
+    const controller = new StandaloneLayoutController(api, null);
+    controller.initialize();
+    controller.openEditor('/first.glsl');
+    api.addPanel({ id: 'editor:/second.glsl' });
+    api.getPanel('editor:/second.glsl')?.api.group.api.setVisible(false);
+    api.groupTogether(['editor:/first.glsl', 'preview', 'editor']);
+    controller.togglePanel('editor');
+    expect(controller.isPanelVisible('editor')).toBe(false);
+    expect(controller.isPanelVisible('preview')).toBe(true);
+    controller.togglePanel('editor');
+    expect(api.getPanel('preview')?.api.group.panels.map(panel => panel.id))
+      .toEqual(['editor:/first.glsl', 'preview', 'editor']);
+    expect(api.getPanel('editor:/second.glsl')?.api.group.api.isVisible).toBe(true);
+    expect(api.addPanel).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'editor:/first.glsl', component: 'file-editor', params: { path: '/first.glsl' },
+    }));
+  });
+});
