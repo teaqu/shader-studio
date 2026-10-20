@@ -1,3 +1,4 @@
+import { isMobileViewport } from './state/mobileShellState.svelte';
 import { clearEditorDocuments, setEditorDocument } from './state/editorDocuments.svelte';
 import { selectEditor, requestEditor, requestPanel, setNewShaderVisible, setActiveShaderEditors, type ActiveShaderEditorSet } from './state/shellState.svelte';
 import type { BaseMessage } from '@shader-studio/types';
@@ -367,11 +368,15 @@ export class WebTransport implements Transport {
               setEditorDocument(message.path, host.readEditorFile(message.path));
             }
             if (this.connected && message.type === 'openShader' && typeof message.path === 'string'
-              && host.readEditorFile(message.path) !== null
-              && (!this.keepActiveShaderFiles || this.isTrackedPreviewFile(message.path))) {
-              // Tracked editors follow the preview. A selected pass keeps the
-              // preview on its owner, so show the pass in its open tab.
-              selectEditor(message.path);
+              && host.readEditorFile(message.path) !== null) {
+              if (isMobileViewport()) {
+                requestPanel('editor');
+              }
+              if (!this.keepActiveShaderFiles || this.isTrackedPreviewFile(message.path)) {
+                // Tracked editors follow the preview. A selected pass keeps the
+                // preview on its owner, so show the pass in its open tab.
+                selectEditor(message.path);
+              }
             }
           }));
         }
