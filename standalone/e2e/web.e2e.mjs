@@ -431,11 +431,11 @@ test('keeps one top-level Preview alive through docking, close/reopen, reset and
   await expect.poll(outerTabOrder).toEqual(expect.arrayContaining(['Preview', 'aurora.glsl']));
   const tabOrderBeforeClose = await outerTabOrder();
   await page.getByRole('button', { name: 'View', exact: true }).click();
-  const editorViewItem = page.getByRole('menuitemcheckbox', { name: 'Editor', exact: true });
+  const editorViewItem = page.getByRole('menuitemcheckbox', { name: 'Editors', exact: true });
   await editorViewItem.click();
   await expect(editor).toBeHidden();
   await page.getByRole('button', { name: 'View', exact: true }).click();
-  await page.getByRole('menuitemcheckbox', { name: 'Editor', exact: true }).click();
+  await page.getByRole('menuitemcheckbox', { name: 'Editors', exact: true }).click();
   await expect(editor).toBeVisible();
   await expect.poll(outerTabOrder).toEqual(tabOrderBeforeClose);
   await page.keyboard.press('Escape');
@@ -459,7 +459,7 @@ test('keeps one top-level Preview alive through docking, close/reopen, reset and
   await expect(preview.locator('.canvas-container > canvas:not(.pixel-canvas-marker)')).toBeVisible();
   await expect(editor).toBeHidden();
   await page.getByRole('button', { name: 'View', exact: true }).click();
-  await page.getByRole('menuitemcheckbox', { name: 'Editor', exact: true }).click();
+  await page.getByRole('menuitemcheckbox', { name: 'Editors', exact: true }).click();
   await expect(editor.locator('.monaco-editor')).toBeVisible();
 });
 
