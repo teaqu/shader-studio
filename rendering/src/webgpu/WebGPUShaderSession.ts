@@ -511,7 +511,6 @@ export class WebGPUShaderSession {
       language: this.host.language,
       computeWorkgroupLimits: this.host.constraints.resolveComputeWorkgroupLimits(),
       maxOutputLayers: this.host.constraints.resolveMaxOutputLayers(),
-      maxStorageBuffers: this.host.constraints.resolveMaxStorageBuffers(),
       maxTextureDimension2D: this.host.constraints.maxTextureDimension2D,
     });
     resolveGraphBufferFormats(graph, {
@@ -544,7 +543,7 @@ export class WebGPUShaderSession {
       pass.width = resolution.width;
       pass.height = resolution.height;
     }
-    const storageErrors = this.host.constraints.validateStorageLimits(graph.storage);
+    const storageErrors = this.host.constraints.validateStorageLimits(graph.storage, graph.passes, graph.commonCode, attemptedCompile.slangModules);
     if (storageErrors.length > 0) {
       return this.failedCompilation(path, generation, {
         success: false,

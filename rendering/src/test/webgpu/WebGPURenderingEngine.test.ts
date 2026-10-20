@@ -739,6 +739,7 @@ describe("WebGPURenderingEngine", () => {
         maxTextureDimension2D: 16384,
         maxStorageBuffersPerShaderStage: 16,
         maxStorageBufferBindingSize: 1024 * 1024 * 1024,
+        maxBufferSize: 1024 * 1024 * 1024,
         maxComputeInvocationsPerWorkgroup: 1024,
         maxComputeWorkgroupSizeX: 1024,
         maxComputeWorkgroupSizeY: 1024,
@@ -776,6 +777,7 @@ describe("WebGPURenderingEngine", () => {
           maxTextureDimension2D: 16384,
           maxStorageBuffersPerShaderStage: 16,
           maxStorageBufferBindingSize: 1024 * 1024 * 1024,
+          maxBufferSize: 1024 * 1024 * 1024,
           maxComputeInvocationsPerWorkgroup: 1024,
           maxComputeWorkgroupSizeX: 1024,
           maxComputeWorkgroupSizeY: 1024,
@@ -796,11 +798,13 @@ describe("WebGPURenderingEngine", () => {
       maxTextureDimension2D: 8192,
       maxStorageBuffersPerShaderStage: 8,
       maxStorageBufferBindingSize: 128 * 1024 * 1024,
+      maxBufferSize: 256 * 1024 * 1024,
     }],
     ["non-finite", {
       maxTextureDimension2D: Number.POSITIVE_INFINITY,
       maxStorageBuffersPerShaderStage: Number.NaN,
       maxStorageBufferBindingSize: Number.POSITIVE_INFINITY,
+      maxBufferSize: Number.NaN,
     }],
   ])("omits %s adapter limits from the device request descriptor", async (_case, limits) => {
     const context = { configure: vi.fn() };
@@ -6697,7 +6701,7 @@ describe("WebGPURenderingEngine", () => {
 it('retains WGSL storage layout in capture context before a graph is installed', () => {
   const engine = new WebGPURenderingEngine(undefined, 'wgsl');
   (engineOwners(engine).session as unknown as { lastCompile: unknown }).lastCompile = {
-    code: 'struct Particle { value: vec4f, }\nfn mainImage(coord: vec2f) -> vec4f { return vec4f(1); }',
+    code: 'struct Particle { value: vec4f, }\nfn mainImage(coord: vec2f) -> vec4f { return particles[0].value; }',
     config: { version: '1.0', storage: { particles: { count: 4, elementType: 'Particle' } }, passes: { Image: {} } },
     path: '/main.wgsl', buffers: {}, slangModules: [],
   };

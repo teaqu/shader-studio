@@ -1,3 +1,5 @@
+import { resolvePassStorage } from "./PassStorage";
+import type { SlangSourceModule } from "@shader-studio/types";
 import { resolveWorkgroupCounts,validateWorkgroupCounts } from "./WebGPUDispatch";
 
 import type { StorageBindingNode } from "../types/PassGraph";
@@ -11,6 +13,7 @@ import { WGSL_KNOWN_GPU_FEATURES } from "./WgslPrelude";
 const DEFAULT_MAX_TEXTURE_DIMENSION_2D = 8192;
 
 const DEFAULT_MAX_STORAGE_BUFFERS_PER_SHADER_STAGE = 8;
+const DEFAULT_MAX_BUFFER_SIZE = 256 * 1024 * 1024;
 
 const DEFAULT_MAX_STORAGE_BUFFER_BINDING_SIZE = 128 * 1024 * 1024;
 
@@ -19,6 +22,10 @@ const WEBGPU_BUFFER_SIZE_ALIGNMENT = 4;
 function storageBufferByteSize(node: StorageBindingNode): number {
   const logicalSize = node.count * node.stride;
   return Math.ceil(logicalSize / WEBGPU_BUFFER_SIZE_ALIGNMENT) * WEBGPU_BUFFER_SIZE_ALIGNMENT;
+}
+
+function positiveDeviceLimit(value: number | undefined, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
 }
 
 const DEFAULT_MAX_COMPUTE_WORKGROUPS_PER_DIMENSION = 65_535;
@@ -74,6 +81,7 @@ export class WebGPUDeviceConstraints {
       requiredLimits.maxStorageBufferBindingSize = adapterStorageSizeLimit;
     }
     const computeLimits: Array<[keyof GPUSupportedLimits, number]> = [
+      ["maxBufferSize", DEFAULT_MAX_BUFFER_SIZE],
       ["maxColorAttachments", 8],
       ["maxColorAttachmentBytesPerSample", 32],
       ["maxComputeInvocationsPerWorkgroup", DEFAULT_MAX_COMPUTE_INVOCATIONS_PER_WORKGROUP],
@@ -172,31 +180,42 @@ export class WebGPUDeviceConstraints {
     };
   }
 
-  validateStorageLimits(storage: StorageBindingNode[]): string[] {
+  validateStorageLimits(
+    storage: StorageBindingNode[],
+    passes?: RenderPassNode[],
+    commonCode = "",
+    modules: SlangSourceModule[] = [],
+  ): string[] {
     if (!this.host.device) {
       return ["WebGPU device unavailable while validating storage buffers"];
     }
 
-    const grantedCountLimit = this.host.device.limits?.maxStorageBuffersPerShaderStage;
-    const maxStorageBuffers = typeof grantedCountLimit === "number" &&
-      Number.isFinite(grantedCountLimit) && grantedCountLimit > 0
-      ? Math.floor(grantedCountLimit)
-      : DEFAULT_MAX_STORAGE_BUFFERS_PER_SHADER_STAGE;
-    const grantedSizeLimit = this.host.device.limits?.maxStorageBufferBindingSize;
-    const maxStorageBufferSize = typeof grantedSizeLimit === "number" &&
-      Number.isFinite(grantedSizeLimit) && grantedSizeLimit > 0
-      ? Math.floor(grantedSizeLimit)
-      : DEFAULT_MAX_STORAGE_BUFFER_BINDING_SIZE;
+    const limits = this.host.device.limits;
+    const maxStorageBuffers = positiveDeviceLimit(limits?.maxStorageBuffersPerShaderStage,
+      DEFAULT_MAX_STORAGE_BUFFERS_PER_SHADER_STAGE);
+    const maxStorageBufferSize = positiveDeviceLimit(limits?.maxStorageBufferBindingSize,
+      DEFAULT_MAX_STORAGE_BUFFER_BINDING_SIZE);
     const errors: string[] = [];
-    if (storage.length > maxStorageBuffers) {
-      errors.push(
-        `Storage config declares ${storage.length} buffers, but the device ` +
-        `maxStorageBuffersPerShaderStage limit is ${maxStorageBuffers}; ` +
-        "pack related buffers into structs to reduce the buffer count",
-      );
+    const selections = passes?.map(pass => ({
+      name: pass.name,
+      storage: resolvePassStorage(storage, pass.source, pass.vertexSrc ?? "", commonCode,
+        ...modules.filter(module => module.ownerPass === pass.name).map(module => module.source)),
+    })) ?? [{ name: "Storage config", storage }];
+    for (const selection of selections) {
+      if (selection.storage.length > maxStorageBuffers) {
+        errors.push(`${selection.name}: uses ${selection.storage.length} storage buffers, but the device ` +
+          `maxStorageBuffersPerShaderStage limit is ${maxStorageBuffers}; ` +
+          "pack related buffers into structs to reduce the buffer count");
+      }
     }
+    const maxBufferSize = positiveDeviceLimit(limits?.maxBufferSize, DEFAULT_MAX_BUFFER_SIZE);
     for (const node of storage) {
       const byteSize = storageBufferByteSize(node);
+      if (!Number.isSafeInteger(byteSize) || byteSize > maxBufferSize) {
+        errors.push(`Storage ${node.name} requires ${byteSize} bytes, but the device ` +
+          `maxBufferSize limit is ${maxBufferSize} bytes ` +
+          `(maxStorageBufferBindingSize: ${maxStorageBufferSize} bytes)`);
+      }
       if (byteSize > maxStorageBufferSize) {
         errors.push(
           `Storage ${node.name} requires ${byteSize} bytes, but the device ` +
@@ -246,13 +265,6 @@ export class WebGPUDeviceConstraints {
     return typeof grantedLimit === "number" && Number.isFinite(grantedLimit) && grantedLimit > 0
       ? Math.floor(grantedLimit)
       : DEFAULT_MAX_TEXTURE_ARRAY_LAYERS;
-  }
-
-  resolveMaxStorageBuffers(): number {
-    const grantedLimit = this.host.device?.limits?.maxStorageBuffersPerShaderStage;
-    return typeof grantedLimit === "number" && grantedLimit > 0
-      ? grantedLimit
-      : DEFAULT_MAX_STORAGE_BUFFERS_PER_SHADER_STAGE;
   }
 
   validateStaticComputeDispatchLimits(
