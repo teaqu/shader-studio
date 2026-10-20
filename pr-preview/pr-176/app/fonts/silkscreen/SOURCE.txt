@@ -1,3 +1,0 @@
-Silkscreen by The Silkscreen Project Authors.
-Source: https://github.com/google/fonts/tree/47d54ca1ebb14fd864695f1d39dc734f39017c33/ofl/silkscreen
-License: SIL Open Font License 1.1 (OFL.txt). Font file is unmodified.
