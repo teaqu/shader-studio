@@ -11,6 +11,8 @@
   } from "@shader-studio/types";
   import type { ConfigFieldErrors } from "../../config/ComputeConfigMutations";
   import { getBuiltinStorageStride } from "../../config/StorageTypeLayout";
+  import PathInput from "./PathInput.svelte";
+  import type { MessageEvent as ShaderMessage } from "@shader-studio/types";
   interface Props {
     name: string;
     scope?: string;
@@ -29,6 +31,9 @@
     onDeleted?: () => void;
     onRenamed?: (name: string) => void;
     onReset?: (name: string) => Promise<void>;
+    shaderPath?: string;
+    postMessage?: (msg: ShaderMessage) => void;
+    onMessage?: (handler: (event: MessageEvent) => void) => void;
   }
   let {
     name,
@@ -44,6 +49,9 @@
     onDeleted = () => {},
     onRenamed = () => {},
     onReset,
+    shaderPath = "",
+    postMessage,
+    onMessage,
   }: Props = $props();
   const id = $props.id();
   let draftName = $state("");
@@ -137,30 +145,14 @@
       draft.elementType = "float4";
     }
   }
-  async function importData(event: Event): Promise<void> {
-    const input = event.currentTarget as HTMLInputElement;
-    const file = input.files?.[0];
-    if (!file) {
-      return;
-    }
-    try {
-      if (file.size > 262144) {
-        throw new Error("Initial data files must be at most 256 KiB");
-      }
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      let text = "";
-      for (const byte of bytes) {
-        text += String.fromCharCode(byte);
-      }
-      draft.initialData = btoa(text);
-      draft.initialDataName = file.name;
-      errors = {};
-    } catch (reason) {
-      errors = {
-        initialData: reason instanceof Error ? reason.message : String(reason),
-      };
-    }
-    input.value = "";
+  const usesInitialData = $derived(draft.initialDataFiles !== undefined);
+  function moveInitialFile(index: number, direction: -1 | 1): void {
+    const files = draft.initialDataFiles;
+    const target = index + direction;
+    if (!files || target < 0 || target >= files.length) {
+return;
+}
+    [files[index], files[target]] = [files[target]!, files[index]!];
   }
   async function reset(): Promise<void> {
     if (!onReset || resetting) {
@@ -316,17 +308,16 @@
       <label
         >Start with<select
           aria-label="Initial data"
-          value={draft.initialData === undefined ? "zero" : "file"}
+          value={usesInitialData ? "file" : "zero"}
           onchange={(event) => {
             if (event.currentTarget.value === "zero") {
-              delete draft.initialData;
-              delete draft.initialDataName;
+              delete draft.initialDataFiles;
             } else {
-              draft.initialData = "";
+              draft.initialDataFiles = [{ path: "", byteOffset: 0 }];
             }
           }}
           ><option value="zero">Zeros</option><option value="file"
-            >Binary file</option
+            >Binary files</option
           ></select
         ></label
       ><label
@@ -346,17 +337,53 @@
         ></label
       >
     </div>
-    {#if draft.initialData !== undefined}<label
-        >Initial data file<input
-          type="file"
-          aria-label="Initial data file"
-          onchange={importData}
-        /></label
-      >
+    {#if usesInitialData}
+      <div class="initial-files">
+        {#each draft.initialDataFiles ?? [] as file, index (file)}
+          <div class="initial-file">
+            <PathInput
+              label={`Initial data file ${index + 1}`}
+              inputId={`${id}-initial-data-${index}`}
+              value={file.path}
+              placeholder="data.bin"
+              onPathChange={(path) => {
+                if (path) {
+                  file.path = path;
+                  delete file.resolved_path;
+                  errors = {};
+                }
+              }}
+              fileType="binary"
+              allowCreate={false}
+              {shaderPath}
+              {postMessage}
+              {onMessage}
+            />
+            <div class="file-options">
+              <label class="byte-offset">Byte offset<input
+                aria-label={`File ${index + 1} byte offset`}
+                value={file.byteOffset ?? 0}
+                onchange={(event) => {
+                  const value = event.currentTarget.value.trim();
+                  file.byteOffset = value ? Number(value) : NaN;
+                }}
+              /></label>
+              <div class="actions">
+                <button type="button" aria-label={`Move up file ${index + 1}`} disabled={index === 0} onclick={() => moveInitialFile(index, -1)}>↑</button>
+                <button type="button" aria-label={`Move down file ${index + 1}`} disabled={index === (draft.initialDataFiles?.length ?? 0) - 1} onclick={() => moveInitialFile(index, 1)}>↓</button>
+                <button type="button" aria-label={`Remove file ${index + 1}`} onclick={() => draft.initialDataFiles?.splice(index, 1)}>×</button>
+              </div>
+            </div>
+          </div>
+        {/each}
+        <div class="actions"><button type="button" onclick={() => draft.initialDataFiles?.push({ path: "", byteOffset: 0 })}>+ Add file</button></div>
+      </div>
       <p class="meta">
-        {draft.initialDataName ?? "Choose a binary file"} · up to 256 KiB, embedded
-        in config. Unfilled bytes start at zero.
-      </p>{/if}
+        Raw bytes load in list order at byte offsets from the buffer's start.
+        Later files overwrite overlapping bytes. Unfilled bytes start at zero.
+        Files must fit within the buffer's {stride ? `${stride * Number(count || 0)} bytes` : "size"}.
+      </p>
+    {/if}
     <label class="check"
       ><input
         type="checkbox"
@@ -467,6 +494,11 @@
     min-height: 0;
     accent-color: var(--storage-accent);
   }
+  .initial-files { display: grid; gap: 12px; }
+  .initial-file { display: grid; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid var(--storage-line); }
+  .file-options { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .byte-offset { display: flex; align-items: center; gap: 8px; }
+  .byte-offset input { width: 120px; }
   .schema {
     display: grid;
     border: 1px solid var(--storage-line);

@@ -286,9 +286,19 @@ test('every E2E job and suite uses its published selection output', () => {
   }
 });
 
-test('ci:full label changes retrigger the caller workflow', () => {
+test('label-only PR events cannot create or replace a Test run', () => {
   const caller = fs.readFileSync(path.join(root, '.github/workflows/test.yml'), 'utf8');
-  assert.match(caller, /types: \[opened, synchronize, reopened, labeled, unlabeled\]/);
+  const events = caller.match(/types: \[([^\]]+)\]/)[1].split(',').map(event => event.trim());
+  assert.deepEqual(events, ['opened', 'synchronize', 'reopened']);
+  for (const event of ['labeled', 'unlabeled']) {
+    assert.equal(events.includes(event), false);
+  }
+});
+
+test('normal PR updates and manual full verification remain available', () => {
+  const caller = fs.readFileSync(path.join(root, '.github/workflows/test.yml'), 'utf8');
+  assert.match(caller, /^  workflow_dispatch:/m);
+  assert.match(caller, /uses: \.\/\.github\/workflows\/verify\.yml/);
 });
 
 /**
@@ -301,6 +311,8 @@ const notInputs = new Set([
   'THIRD-PARTY-NOTICES.md', 'assets', 'docs', 'contributing', 'mkdocs.yml',
   // Browser-only design references are not consumed by a build or test suite.
   'mockups', 'wireframes',
+  // Published shader examples are user-authored samples, not build or E2E fixtures.
+  'examples',
   // Static dead-code policy is always checked in CI; it does not change an E2E runtime.
   'knip.jsonc',
 ]);
@@ -385,6 +397,7 @@ test('Turbo selects the expected suites for representative changes', { timeout: 
     ['vite.aliases.mjs', all],
     ['styles/controls.css', all],
     ['docs/index.md', []],
+    ['examples/script-streams/stream-demo.uniforms.js', []],
     ['contributing/mobile-testing.md', []],
   ];
   for (const [file, expected] of cases) {

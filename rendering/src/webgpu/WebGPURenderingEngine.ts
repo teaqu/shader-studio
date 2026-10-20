@@ -1,3 +1,5 @@
+import { ScriptStreamDelivery, type ScriptStreamRequest } from "./ScriptStreamDelivery";
+import type { ScriptStreamFrame, ScriptStreamInfo, ScriptStreamQueueStatus } from "@shader-studio/types";
 import { ShaderCameraSession } from "../preview3d/ShaderCameraSession";
 import { normalizeVrNavigation, type VrNavigationSettings } from "../webxr/VrNavigationSettings";
 import type { VrEyeView } from "../webxr/WebXrFrameData";
@@ -103,6 +105,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private readonly channels: WebGPUChannels;
   private readonly capture: WebGPUCapture;
   private readonly passFactory: WebGPUPassFactory;
+  private scriptStreams = new ScriptStreamDelivery();
+  private scriptStreamsReady = false;
+  private installedScriptStreamInfo: ScriptStreamInfo[] = [];
   private readonly session: WebGPUShaderSession;
   private readonly frameRenderer: WebGPUFrameRenderer;
   private readonly geometry: WebGPUGeometry;
@@ -191,6 +196,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       },
     });
     this.session = new WebGPUShaderSession({
+      scriptStreamInfo: () => this.scriptStreams.info,
       storage: this.storage,
       candidates: this.candidates,
       diagnostics: this.diagnostics,
@@ -198,6 +204,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
       passFactory: this.passFactory,
       resetPausedFrame: () => this.frameRenderer.resetPausedFrame(),
       onShaderInstalled: (path) => {
+        this.scriptStreamsReady = true;
+        this.installedScriptStreamInfo = this.scriptStreams.info.map(stream => ({ ...stream }));
         this.renderedCaptureState.clear();
         this.meshCameraSession.install(path);
         this.vr.update(path, this.session.passGraph, this.session.commonCode);
@@ -292,6 +300,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
       getUniforms: () => this.getUniforms(),
     });
     this.frameRenderer = new WebGPUFrameRenderer({
+      prepareScriptStreams: (consume) => this.prepareScriptStreams(consume),
+      submitScriptStreams: (consume) => this.scriptStreams.submitted(consume && this.scriptStreamsReady),
       renderedCaptureState: this.renderedCaptureState,
       timing: this.timing,
       session: this.session,
@@ -671,7 +681,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   async resetStorageBuffer(name: string): Promise<void> {
-    this.storage.resetStorageBuffer(name);
+    await this.storage.resetStorageBuffer(name);
   }
 
   async writeStorageBuffer(name: string, start: number, data: ArrayBuffer): Promise<void> {
@@ -705,6 +715,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   resetTime(): void {
+    this.scriptStreams.reset();
     this.renderedCaptureState.clear();
     // Allocate the complete storage replacement before invalidating any live
     // compile state. Until a matching compilation publishes, the installed
@@ -800,6 +811,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   dispose(): void {
+    this.scriptStreams.dispose();
     this.disposed = true;
     this.renderedCaptureState.clear();
 
@@ -1089,6 +1101,40 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   getAudioSampleRate(): number {
     return this.session.resourceManager?.getAudioSampleRate?.() || 44100;
+  }
+
+  private prepareScriptStreams(consume: boolean): void {
+    for (const stream of this.installedScriptStreamInfo) {
+      const buffer = this.storage.storageBuffers.get(stream.name);
+      if (buffer) {
+        this.device?.queue.writeBuffer(buffer, 0, new Uint32Array([0]));
+      }
+    }
+    this.scriptStreams.prepare((name, words) => {
+      const buffer = this.storage.storageBuffers.get(name);
+      const installed = this.installedScriptStreamInfo.find(stream => stream.name === name);
+      if (buffer && installed && installed.maxPerFrame === this.scriptStreams.info.find(stream => stream.name === name)?.maxPerFrame) {
+        this.device?.queue.writeBuffer(buffer, 0, words.buffer as ArrayBuffer);
+      }
+    }, consume && this.scriptStreamsReady);
+  }
+  refreshScriptStreamStatus(): void {
+    if (this.scriptStreamsReady) {
+      this.scriptStreams.refreshStatus();
+    }
+  }
+  receiveScriptStreamStatus(status: ScriptStreamQueueStatus): void {
+    this.scriptStreams.receiveStatus(status);
+  }
+  getScriptStreamStatus() {
+    return this.scriptStreams.status();
+  }
+  configureScriptStreams(info: ScriptStreamInfo[], session: number, send: (request: ScriptStreamRequest) => void): void {
+    this.scriptStreamsReady = false;
+    this.scriptStreams.configure(info, session, send);
+  }
+  receiveScriptStreamFrame(frame: ScriptStreamFrame, request: number): boolean {
+    return this.scriptStreams.receive(frame, request);
   }
 
   getCustomUniformInfo(): { name: string; type: string }[] {

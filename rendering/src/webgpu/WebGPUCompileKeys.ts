@@ -1,5 +1,7 @@
+import { resolvePassStorage } from "./PassStorage";
 import { meshDepthCompare } from "./MeshDepthCompare";
 import type { StorageBindingNode } from "../types/PassGraph";
+import { initialDataFingerprint } from "./StorageInitialData";
 import { renderPipelineStateKey,verticesSpace } from "../types/Geometry";
 import { buildSlangBindingPlan,getSlangChannels } from "./SlangBindingPlan";
 import {
@@ -16,12 +18,15 @@ export function wgslCacheKey(
   customUniforms: { name: string; type: string }[] = [],
   modules: Array<{ moduleName: string; path: string; source: string }> = [],
 ): string {
+  storage = resolvePassStorage(storage, pass.source, pass.vertexSrc ?? "", commonCode,
+    ...modules.map(module => module.source));
   const channels = buildSlangBindingPlan(getSlangChannels(pass.channels)).channels
     .map(channel => [channel.slot, channel.key, channel.kind, channel.outputKind, channel.textureBinding, channel.samplerBinding]);
   const storageLayout = storage.map((node) => [
     node.name,
     node.elementType,
     node.builtin,
+    node.streamMaxPerFrame,
   ]);
   const hasOutput = pass.output === "texture";
   return JSON.stringify([
@@ -53,6 +58,8 @@ export function pipelineCacheKey(
   customUniforms: { name: string; type: string }[] = [],
   modules: Array<{ moduleName: string; path: string; source: string }> = [],
 ): string {
+  storage = resolvePassStorage(storage, pass.source, pass.vertexSrc ?? "", commonCode,
+    ...modules.map(module => module.source));
   const channels = buildSlangBindingPlan(getSlangChannels(pass.channels)).channels
     .map(channel => [channel.slot, channel.key, channel.kind, channel.outputKind, channel.textureBinding, channel.samplerBinding]);
   const storageLayout = storage.map((node) => [
@@ -60,6 +67,7 @@ export function pipelineCacheKey(
     node.binding,
     node.elementType,
     node.builtin,
+    node.streamMaxPerFrame,
     node.count,
     node.stride,
   ]);
@@ -158,5 +166,5 @@ export function prefixPassError(passName: string, error: string): string {
 }
 
 export function storageCacheKey(node: StorageBindingNode): string {
-  return JSON.stringify([node.elementType, node.count, node.stride, node.containsAtomic === true, node.structDeclarations, node.initialData]);
+  return JSON.stringify([node.elementType, node.count, node.stride, node.containsAtomic === true, node.structDeclarations, node.initialDataFiles?.map(file => [file.path, file.resolved_path, file.byteOffset ?? 0]), initialDataFingerprint(node.initialBytes)]);
 }

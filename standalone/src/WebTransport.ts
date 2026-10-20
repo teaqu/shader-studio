@@ -1,3 +1,7 @@
+import { StandalonePreviews } from './StandalonePreviews';
+import { StandaloneMcpApplication } from './StandaloneMcpApplication';
+import { registerWebMcp } from './registerWebMcp';
+import { isMobileViewport } from './state/mobileShellState.svelte';
 import { clearEditorDocuments, setEditorDocument } from './state/editorDocuments.svelte';
 import { selectEditor, requestEditor, requestPanel, setNewShaderVisible, setActiveShaderEditors, type ActiveShaderEditorSet } from './state/shellState.svelte';
 import type { BaseMessage } from '@shader-studio/types';
@@ -16,6 +20,8 @@ import {
   type WorkspacePersistenceStatus,
 } from './VirtualWorkspace';
 import { WebExtensionHost } from './WebExtensionHost';
+import { previewChannel, workspaceDatabaseName, workspaceJournalKey } from './previewIsolation';
+import { previewStorageIsolated } from './installPreviewIsolation';
 import { syncSettingsAcrossTabs } from './settings/syncSettingsAcrossTabs';
 import { StandaloneSettings } from './settings/StandaloneSettings';
 import { uploadWorkspaceFiles } from './workspaceUploads';
@@ -75,22 +81,59 @@ function savedExplorerState(fallback: unknown): unknown {
   }
 }
 
-function createWorkspace(): Promise<WorkspaceSession> {
+export function createWorkspace(
+  channel = previewChannel(),
+  storageIsolated = previewStorageIsolated,
+): Promise<WorkspaceSession> {
   const seeds = createDefaultWorkspaceFiles();
-  if (typeof indexedDB === 'undefined') {
+  // A preview that could not isolate its storage keeps its work in memory
+  // rather than risk the live workspace on the same origin.
+  if (typeof indexedDB === 'undefined' || (channel && !storageIsolated)) {
     return VirtualWorkspace.open(new MemoryWorkspaceStore(), seeds)
       .then(workspace => ({ workspace, backend: 'session' as const }));
   }
   // Edits are journalled synchronously: a reload during a queued database
   // write must not take the text back to the last committed snapshot.
-  const journal = new LocalStorageWorkspaceJournal();
-  return VirtualWorkspace.open(new IndexedDbWorkspaceStore(), seeds, undefined, journal)
+  const journal = new LocalStorageWorkspaceJournal(workspaceJournalKey(channel));
+  return VirtualWorkspace.open(new IndexedDbWorkspaceStore(workspaceDatabaseName(channel)), seeds, undefined, journal)
     .then(workspace => ({ workspace, backend: 'indexeddb' as const }))
     .catch(() => VirtualWorkspace.open(new MemoryWorkspaceStore(), seeds, undefined, journal)
       .then(workspace => ({ workspace, backend: 'session' as const })));
 }
 
 export class WebTransport implements Transport {
+  private readonly previews = new StandalonePreviews();
+  private webMcpCleanup?: () => void;
+  private stopWebMcpSettings?: () => void;
+  private mcpApplication?: Promise<StandaloneMcpApplication>;
+
+  initializeWebMcp(): void {
+    this.stopWebMcpSettings?.();
+    this.stopWebMcpSettings = this.settings.subscribe(() => this.updateWebMcp());
+    this.updateWebMcp();
+  }
+
+  private updateWebMcp(): void {
+    if (!this.connected || !this.settings.snapshot['webmcp.enabled']) {
+      this.webMcpCleanup?.();
+      this.webMcpCleanup = undefined;
+      return;
+    }
+    if (this.webMcpCleanup) {
+      return;
+    }
+    this.mcpApplication ??= Promise.all([this.workspace, this.host]).then(([workspace, host]) =>
+      new StandaloneMcpApplication(workspace, host, this.previews, () => this.flush(),
+        () => import('./workspaceEditorAccess').then(module => module.workspaceEditorAccess)));
+    this.webMcpCleanup = registerWebMcp({ call: async (operation, args, signal) => {
+      const application = await this.mcpApplication!;
+      if (!this.connected) {
+        throw new Error('Workspace disconnected.');
+      }
+      return application.call(operation, args, signal);
+    } });
+  }
+
   private connected = true;
   private started = false;
   /** Browser-wide standalone preferences shared by the host and app shell. */
@@ -231,11 +274,27 @@ export class WebTransport implements Transport {
   createViewerTransport(): Transport {
     const previewId = crypto.randomUUID();
     let disposed = false;
+    const handlers = new Set<(event: MessageEvent) => void>();
+    const unregister = this.previews.register({
+      id: previewId, kind: 'browser',
+      send: message => {
+        for (const handler of handlers) {
+          handler(new MessageEvent('message', { data: message }));
+        }
+      },
+      sendSource: message => {
+        for (const handler of handlers) {
+          handler(new MessageEvent('message', { data: message }));
+        }
+      },
+    });
     const cleanups = new Set<() => void>();
     return {
       postMessage: message => {
         if (!disposed) {
-          if (message.type === 'previewFilesChanged') {
+          if (message.type === 'viewerRpcResponse') {
+            this.previews.receive(previewId, message);
+          } else if (message.type === 'previewFilesChanged') {
             this.trackMessage(this.updatePreviewFiles(previewId, 'payload' in message ? message.payload : undefined).then(() => {
               if (disposed) {
                 this.previewFiles.delete(previewId);
@@ -249,11 +308,14 @@ export class WebTransport implements Transport {
       },
       onMessage: handler => {
         if (!disposed) {
+          handlers.add(handler);
           cleanups.add(this.subscribeViewer(handler));
         }
       },
       dispose: () => {
         disposed = true;
+        unregister();
+        handlers.clear();
         this.previewFiles.delete(previewId);
         this.publishPreviewFiles();
         for (const cleanup of cleanups) {
@@ -360,11 +422,15 @@ export class WebTransport implements Transport {
               setEditorDocument(message.path, host.readEditorFile(message.path));
             }
             if (this.connected && message.type === 'openShader' && typeof message.path === 'string'
-              && host.readEditorFile(message.path) !== null
-              && (!this.keepActiveShaderFiles || this.isTrackedPreviewFile(message.path))) {
-              // Tracked editors follow the preview. A selected pass keeps the
-              // preview on its owner, so show the pass in its open tab.
-              selectEditor(message.path);
+              && host.readEditorFile(message.path) !== null) {
+              if (isMobileViewport()) {
+                requestPanel('editor');
+              }
+              if (!this.keepActiveShaderFiles || this.isTrackedPreviewFile(message.path)) {
+                // Tracked editors follow the preview. A selected pass keeps the
+                // preview on its owner, so show the pass in its open tab.
+                selectEditor(message.path);
+              }
             }
           }));
         }
@@ -389,6 +455,11 @@ export class WebTransport implements Transport {
   }
 
   dispose(): void {
+    this.stopWebMcpSettings?.();
+    this.stopWebMcpSettings = undefined;
+    this.webMcpCleanup?.();
+    this.webMcpCleanup = undefined;
+    this.previews.dispose();
     for (const cleanup of this.workspaceCleanups) {
       cleanup();
     }

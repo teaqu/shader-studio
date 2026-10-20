@@ -65,7 +65,7 @@ function engineHarness(limits: Partial<GPUSupportedLimits> = {}, language: "slan
     | { success: true; wgsl: string }
     | { success: false; errors: string[] };
   const compiler = {
-    compile: vi.fn(async (): Promise<CompilerResult> => ({ success: true, wgsl: "// wgsl" })),
+    compile: vi.fn(async (_source: string, _options: import("../../webgpu/slangTypes").SlangCompileOptions): Promise<CompilerResult> => ({ success: true, wgsl: "// wgsl" })),
     dispose: vi.fn(),
   };
   const engine = new WebGPURenderingEngine(assets, language);
@@ -124,6 +124,133 @@ function enableRendering(
 describe("WebGPURenderingEngine storage buffers", () => {
   beforeEach(() => {
     sharedSlangWgslCache.clear();
+  });
+
+  describe("file-backed initial data", () => {
+    function bytesResponse(bytes: number[], status = 200) {
+      return { ok: status >= 200 && status < 300, status, arrayBuffer: async () => new Uint8Array(bytes).buffer } as Response;
+    }
+
+    it("fetches the resolved initial data file and writes its raw bytes into new storage", async () => {
+      const fetchMock = vi.fn(async () => bytesResponse([1, 0, 0, 0, 2, 0]));
+      vi.stubGlobal("fetch", fetchMock);
+      try {
+        const { engine, device } = engineHarness();
+        const result = await engine.compileShaderPipeline(
+          IMAGE_SOURCE,
+          storageConfig({ data: { count: 2, elementType: "uint", initialDataFiles: [{ path: "data.bin", resolved_path: "https://host/data.bin" }] } }),
+          "/image.slang",
+        );
+        expect(result?.success).toBe(true);
+        expect(fetchMock).toHaveBeenCalledWith("https://host/data.bin");
+        expect(device.queue.writeBuffer).toHaveBeenCalledWith(
+          installedStorageBuffers(engine).get("data"), 0, new Uint8Array([1, 0, 0, 0, 2, 0, 0, 0]),
+        );
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("assembles unaligned multi-file writes and reloads them on recompile for both WebGPU languages", async () => {
+      let next = 9;
+      vi.stubGlobal("fetch", vi.fn(async (url: string) => bytesResponse(url === 'a.bin' ? [1, 2, 3, 4] : [next])));
+      try {
+        for (const language of ['slang', 'wgsl'] as const) {
+          const { engine, device } = engineHarness({}, language);
+          const code = language === 'slang' ? IMAGE_SOURCE : 'fn mainImage(fragCoord: vec2<f32>) -> vec4<f32> { return vec4<f32>(1.0); }';
+          const config = storageConfig({ data: { count: 2, elementType: 'uint', initialDataFiles: [{ path: 'a.bin', byteOffset: 1 }, { path: 'b.bin', byteOffset: 3 }] } });
+          expect((await engine.compileShaderPipeline(code, config, `/image.${language}`))?.success).toBe(true);
+          expect(device.queue.writeBuffer).toHaveBeenCalledWith(installedStorageBuffers(engine).get('data'), 0, new Uint8Array([0, 1, 2, next, 4, 0, 0, 0]));
+          next++;
+          expect((await engine.compileShaderPipeline(code, config, `/image.${language}`))?.success).toBe(true);
+          expect(device.queue.writeBuffer).toHaveBeenCalledWith(installedStorageBuffers(engine).get('data'), 0, new Uint8Array([0, 1, 2, next, 4, 0, 0, 0]));
+          engine.dispose();
+        }
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("fails the compile without touching installed storage when the file cannot be loaded", async () => {
+      const { engine, device, compiler } = engineHarness();
+      expect((await engine.compileShaderPipeline(IMAGE_SOURCE, storageConfig({ data: { count: 2, elementType: "uint" } }), "/image.slang"))?.success).toBe(true);
+      const installed = installedStorageBuffers(engine).get("data");
+      const compileCalls = compiler.compile.mock.calls.length;
+      vi.stubGlobal("fetch", vi.fn(async () => bytesResponse([], 404)));
+      try {
+        const result = await engine.compileShaderPipeline(
+          IMAGE_SOURCE,
+          storageConfig({ data: { count: 2, elementType: "uint", initialDataFiles: [{ path: "missing.bin", resolved_path: "https://host/missing.bin" }] } }),
+          "/image.slang",
+        );
+        expect(result?.success).toBe(false);
+        expect(result?.errors).toEqual(['Storage data: unable to load initial data file "missing.bin" (HTTP 404)']);
+        expect(installedStorageBuffers(engine).get("data")).toBe(installed);
+        expect(compiler.compile.mock.calls.length).toBe(compileCalls);
+        expect(storageCreateCalls(device)).toHaveLength(1);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("rejects a file larger than its buffer before allocating storage", async () => {
+      vi.stubGlobal("fetch", vi.fn(async () => bytesResponse([1, 2, 3, 4, 5])));
+      try {
+        const { engine, device } = engineHarness();
+        const result = await engine.compileShaderPipeline(
+          IMAGE_SOURCE,
+          storageConfig({ data: { count: 1, elementType: "uint", initialDataFiles: [{ path: "big.bin" }] } }),
+          "/image.slang",
+        );
+        expect(result?.success).toBe(false);
+        expect(result?.errors).toEqual(['Storage data: initial data file "big.bin" at byte offset 0 needs 5 bytes but the buffer holds 4 bytes']);
+        expect(storageCreateCalls(device)).toHaveLength(0);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("supersedes a compile whose file load finishes after a newer compile starts", async () => {
+      let release: (response: Response) => void = () => {};
+      vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => {
+        release = resolve;
+      })));
+      try {
+        const { engine } = engineHarness();
+        const slow = engine.compileShaderPipeline(
+          IMAGE_SOURCE,
+          storageConfig({ data: { count: 1, elementType: "uint", initialDataFiles: [{ path: "slow.bin" }] } }),
+          "/image.slang",
+        );
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        const fast = engine.compileShaderPipeline(IMAGE_SOURCE, storageConfig({ data: { count: 1, elementType: "uint" } }), "/image.slang");
+        release(bytesResponse([9, 0, 0, 0]));
+        expect(await slow).toMatchObject({ success: false, superseded: true });
+        expect((await fast)?.success).toBe(true);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("reinitialises storage from the file when its bytes change on recompile", async () => {
+      let bytes = [1, 0, 0, 0];
+      vi.stubGlobal("fetch", vi.fn(async () => bytesResponse(bytes)));
+      try {
+        const { engine, device } = engineHarness();
+        const config = storageConfig({ data: { count: 1, elementType: "uint", initialDataFiles: [{ path: "d.bin" }] } });
+        await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/image.slang");
+        const first = installedStorageBuffers(engine).get("data");
+        await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/image.slang");
+        expect(installedStorageBuffers(engine).get("data")).toBe(first);
+        bytes = [2, 0, 0, 0];
+        await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/image.slang");
+        const next = installedStorageBuffers(engine).get("data");
+        expect(next).not.toBe(first);
+        expect(device.queue.writeBuffer).toHaveBeenLastCalledWith(next, 0, new Uint8Array([2, 0, 0, 0]));
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
   });
 
   it("allocates declared storage before compiling passes", async () => {
@@ -229,7 +356,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
     const { engine, device } = engineHarness();
     const renderPass = enableRendering(engine, device);
     await engine.compileShaderPipeline(
-      IMAGE_SOURCE,
+      "float4 mainImage(float2 c) { return positions[0]; }",
       storageConfig({ positions: { count: 4, elementType: "float4" } }),
       "/image.slang",
     );
@@ -265,7 +392,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
     const { engine, device } = engineHarness();
     const renderPass = enableRendering(engine, device);
     await engine.compileShaderPipeline(
-      IMAGE_SOURCE,
+      "float4 mainImage(float2 c) { return positions[0]; }",
       storageConfig({ positions: { count: 4, elementType: "float4" } }),
       "/image.slang",
     );
@@ -312,18 +439,18 @@ describe("WebGPURenderingEngine storage buffers", () => {
   it("reuses an identical fragment pipeline but rebuilds it when storage layout changes", async () => {
     const { engine, device } = engineHarness();
     const config = storageConfig({ a: { count: 4, elementType: "float4" } });
-    await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/image.slang");
+    await engine.compileShaderPipeline("float4 mainImage(float2 c) { return a[0]; }", config, "/image.slang");
     const firstPipeline = (engineOwners(engine).session as unknown as {
       passPipelines: Map<string, unknown>;
     }).passPipelines.get("Image");
 
-    await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/image.slang");
+    await engine.compileShaderPipeline("float4 mainImage(float2 c) { return a[0]; }", config, "/image.slang");
     expect((engineOwners(engine).session as unknown as { passPipelines: Map<string, unknown> }).passPipelines.get("Image"))
       .toBe(firstPipeline);
     expect(device.createBindGroupLayout).toHaveBeenCalledTimes(1);
 
     await engine.compileShaderPipeline(
-      IMAGE_SOURCE,
+      "float4 mainImage(float2 c) { return a[0]; }",
       storageConfig({ a: { count: 8, elementType: "float4" } }),
       "/image.slang",
     );
@@ -340,13 +467,13 @@ describe("WebGPURenderingEngine storage buffers", () => {
     const { engine, device } = engineHarness();
 
     await engine.compileShaderPipeline(
-      IMAGE_SOURCE,
+      "float4 mainImage(float2 c) { return a[0]; }",
       storageConfig({ a: { count: 4, elementType: "float4" } }),
       "/image.slang",
     );
     const firstBuffer = createdStorageBuffers(device)[0];
     await engine.compileShaderPipeline(
-      IMAGE_SOURCE,
+      "float4 mainImage(float2 c) { return a[0]; }",
       storageConfig({ a: declaration }),
       "/image.slang",
     );
@@ -391,6 +518,96 @@ describe("WebGPURenderingEngine storage buffers", () => {
     ]).toEqual(["positions", "counters", "particles"]);
   });
 
+  it("allows more than eight declarations when Image only references one buffer", async () => {
+    const { engine, compiler, device } = engineHarness({ maxStorageBuffersPerShaderStage: 8 });
+    const result = await engine.compileShaderPipeline(
+      "float4 mainImage(float2 c) { return float4(buffer8[0]); }",
+      storageConfig(numberedStorage(9)), "/image.slang",
+    );
+    expect(result?.success).toBe(true);
+    expect(result?.warnings).toBeUndefined();
+    expect(compiler.compile).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
+      storage: [expect.objectContaining({ name: "buffer8", binding: 0 })],
+    }));
+    const entries = device.createBindGroupLayout.mock.calls[0]?.[0]?.entries;
+    expect(entries && Array.from(entries).filter((entry: GPUBindGroupLayoutEntry) => entry.buffer?.type === "read-only-storage")).toHaveLength(1);
+    engine.dispose();
+  });
+
+  it("updates dense bindings when the pass changes which buffer it references", async () => {
+    const { engine, compiler } = engineHarness();
+    const config = storageConfig(numberedStorage(2));
+    for (const name of ["buffer1", "buffer0", "buffer1"]) {
+      const result = await engine.compileShaderPipeline(
+        `float4 mainImage(float2 c) { return float4(${name}[0]); }`, config, "/image.slang",
+      );
+      expect(result?.success).toBe(true);
+    }
+    expect(compiler.compile.mock.calls.map((call) => call[1].storage!.map((node) => [node.name, node.binding])))
+      .toEqual([[["buffer1", 0]], [["buffer0", 0]]]);
+    engine.dispose();
+  });
+
+  it("includes common and owned module references but excludes other passes' modules", async () => {
+    const { engine, compiler } = engineHarness();
+    const result = await engine.compileShaderPipeline(IMAGE_SOURCE, storageConfig(numberedStorage(3)),
+      "/image.slang", { common: "uint helper() { return buffer2[0]; }" }, undefined, undefined, [
+        { ownerPass: "Image", moduleName: "owned", path: "/owned.slang", source: "buffer1[0]" },
+        { ownerPass: "BufferA", moduleName: "other", path: "/other.slang", source: "buffer0[0]" },
+      ]);
+    expect(result?.success).toBe(true);
+    expect(compiler.compile).toHaveBeenCalledWith(IMAGE_SOURCE, expect.objectContaining({ storage: [
+      expect.objectContaining({ name: "buffer1", binding: 0 }),
+      expect.objectContaining({ name: "buffer2", binding: 1 }),
+    ] }));
+    engine.dispose();
+  });
+
+  it("allows total storage above 256 MiB when individual buffers fit the limits", async () => {
+    const { engine } = engineHarness();
+    const result = await engine.compileShaderPipeline(IMAGE_SOURCE, storageConfig({
+      first: { count: 32 * 1024 * 1024, elementType: "uint" },
+      second: { count: 32 * 1024 * 1024, elementType: "uint" },
+      third: { count: 1, elementType: "uint" },
+    }), "/image.slang");
+    expect(result?.success).toBe(true);
+    engine.dispose();
+  });
+
+  it.each([{}, { maxBufferSize: 0 }, { maxBufferSize: -1 }, { maxBufferSize: Number.NaN }, { maxBufferSize: Number.POSITIVE_INFINITY }])(
+    "uses the portable allocation limit when maxBufferSize is unavailable (%j)", async (limits) => {
+      const { engine, device } = engineHarness({ maxStorageBufferBindingSize: 1024 ** 3, ...limits });
+      const result = await engine.compileShaderPipeline(IMAGE_SOURCE, storageConfig({
+        large: { count: 80 * 1024 * 1024, elementType: "uint" },
+      }), "/image.slang");
+      expect(result?.errors?.join("\n")).toContain("maxBufferSize limit is 268435456");
+      expect(storageCreateCalls(device)).toEqual([]);
+      engine.dispose();
+    },
+  );
+
+  it("accepts storage above 256 MiB when both device size limits permit it", async () => {
+    const { engine } = engineHarness({
+      maxBufferSize: 1024 ** 3, maxStorageBufferBindingSize: 1024 ** 3,
+    });
+    const result = await engine.compileShaderPipeline(IMAGE_SOURCE, storageConfig({
+      large: { count: 80 * 1024 * 1024, elementType: "uint" },
+    }), "/image.slang");
+    expect(result?.success).toBe(true);
+    engine.dispose();
+  });
+
+  it("rejects allocations above maxBufferSize even with a larger binding limit", async () => {
+    const { engine, device } = engineHarness({ maxBufferSize: 32, maxStorageBufferBindingSize: 128 });
+    const result = await engine.compileShaderPipeline(IMAGE_SOURCE, storageConfig({
+      large: { count: 16, elementType: "uint" },
+    }), "/image.slang");
+    expect(result?.success).toBe(false);
+    expect(result?.errors?.join("\n")).toContain("maxBufferSize limit is 32");
+    expect(storageCreateCalls(device)).toEqual([]);
+    engine.dispose();
+  });
+
   it("rejects storage count above the granted device limit before pass compilation", async () => {
     const { engine, device, compiler } = engineHarness({
       maxStorageBuffersPerShaderStage: 8,
@@ -398,7 +615,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
     });
 
     const result = await engine.compileShaderPipeline(
-      IMAGE_SOURCE,
+      "float4 mainImage(float2 c) { return float4(" + Object.keys(numberedStorage(9)).map(name => `${name}[0]`).join(" + ") + "); }",
       storageConfig(numberedStorage(9)),
       "/image.slang",
     );
@@ -412,14 +629,14 @@ describe("WebGPURenderingEngine storage buffers", () => {
     expect((engineOwners(engine).storage as unknown as { storageBuffers: Map<string, GPUBuffer> }).storageBuffers.size).toBe(0);
   });
 
-  it("keeps the graph baseline warning non-fatal when the device grants more buffers", async () => {
+  it("accepts nine used buffers without warnings when the device grants sixteen", async () => {
     const { engine, device } = engineHarness({
       maxStorageBuffersPerShaderStage: 16,
       maxStorageBufferBindingSize: 128 * 1024 * 1024,
     });
 
     const result = await engine.compileShaderPipeline(
-      IMAGE_SOURCE,
+      "float4 mainImage(float2 c) { return float4(" + Object.keys(numberedStorage(9)).map(name => `${name}[0]`).join(" + ") + "); }",
       storageConfig(numberedStorage(9)),
       "/image.slang",
     );
@@ -433,7 +650,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
     const { engine } = engineHarness();
 
     const result = await engine.compileShaderPipeline(
-      IMAGE_SOURCE,
+      "float4 mainImage(float2 c) { return float4(" + Object.keys(numberedStorage(9)).map(name => `${name}[0]`).join(" + ") + "); }",
       storageConfig(numberedStorage(9)),
       "/image.slang",
     );
@@ -536,7 +753,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
     const firstBuffer = createdStorageBuffers(device)[0];
 
     const result = await engine.compileShaderPipeline(
-      IMAGE_SOURCE,
+      "float4 mainImage(float2 c) { return float4(" + Object.keys(numberedStorage(9)).map(name => `${name}[0]`).join(" + ") + "); }",
       storageConfig(numberedStorage(9)),
       "/image.slang",
     );
@@ -813,7 +1030,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
     const { engine, device } = engineHarness();
     enableRendering(engine, device);
     await engine.compileShaderPipeline(
-      IMAGE_SOURCE,
+      "float4 mainImage(float2 c) { return a[0]; }",
       storageConfig({ a: { count: 4, elementType: "float4" } }),
       "/image.slang",
     );
@@ -830,7 +1047,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
     expect(interveningEntries).toContainEqual({ binding: 1, resource: { buffer: firstBuffer } });
 
     await engine.compileShaderPipeline(
-      IMAGE_SOURCE,
+      "float4 mainImage(float2 c) { return a[0]; }",
       storageConfig({ a: { count: 4, elementType: "float4" } }),
       "/image.slang",
     );

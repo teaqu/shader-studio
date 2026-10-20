@@ -11,9 +11,10 @@ import type { ShaderProvider } from '../../src/app/ShaderProvider';
 import type { GlslFileTracker } from '../../src/app/GlslFileTracker';
 import type { ErrorHandler } from '../../src/app/ErrorHandler';
 
-const mocks = vi.hoisted(() => ({ handle: vi.fn(async () => {}), message: vi.fn() }));
+const mocks = vi.hoisted(() => ({ handle: vi.fn(async () => {}), message: vi.fn(), release: vi.fn() }));
 vi.mock('../../src/app/ClientMessageHandler', () => ({ ClientMessageHandler: class {
   handle = mocks.handle;
+  releaseScriptStreams = mocks.release;
 } }));
 vi.mock('../../src/app/transport/MessageHandler', () => ({ MessageHandler: class {
   handleMessage = mocks.message;
@@ -160,6 +161,7 @@ describe('MCP transport routing', () => {
   });
 
   it('routes MCP directly over a connected browser socket and cleans up on disconnect', async () => {
+    mocks.release.mockClear();
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     // Isolate source loading; the actual loopback socket and connection routing are exercised.
     vi.spyOn(WebSocketTransport.prototype as unknown as { sendCurrentShaderToNewClient(): void }, 'sendCurrentShaderToNewClient').mockImplementation(() => {});
@@ -203,7 +205,13 @@ describe('MCP transport routing', () => {
       await expect(registry.request(registry.list()[0].id, 'get_state')).rejects.toThrow('disconnected');
       await expect(registry.sendSource(registry.list()[0].id, { type: 'shaderSource', config: {} })).rejects.toThrow('disconnected');
       Reflect.deleteProperty(socket, 'readyState');
-      client.close(); await vi.waitFor(() => expect(registry.list()).toEqual([]));
+      const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+      socket.emit('error', new Error('connection failed'));
+      expect(mocks.release).toHaveBeenCalledOnce();
+      expect(registry.list()).toEqual([]);
+      log.mockRestore();
+      client.close();
+      await vi.waitFor(() => expect(mocks.release).toHaveBeenCalledTimes(2));
     } finally {
       client.terminate(); transport.close(); registry.dispose();
     }

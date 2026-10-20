@@ -38,3 +38,26 @@ test('the bundled WGSL compute sample renders its particle density grid', async 
   await expect(preview.getByLabel('Toggle pause', { exact: true })).not.toHaveClass(/error/);
   await expect(sample.locator('.shader-error')).toHaveCount(0);
 });
+
+test('config pass and storage cards keep their card layout instead of flat tab styling', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('web-shader-explorer').getByTestId('shader-option-particle-swarm-wgsl').click();
+  const preview = page.getByTestId('web-preview');
+  await preview.getByLabel('Toggle config panel', { exact: true }).click();
+  const config = page.locator('.config-panel');
+  const storage = config.getByRole('button', { name: 'Storage buffer density', exact: true });
+  await storage.click();
+  await expect(storage).toHaveAttribute('aria-pressed', 'true');
+
+  const style = (locator) => locator.evaluate((element) => {
+    const computed = getComputedStyle(element);
+    return { padding: computed.padding, borderBottomWidth: computed.borderBottomWidth, color: computed.color };
+  });
+  // The Export panel's flat tabs once matched these buttons too, stripping the
+  // card padding and underlining the selected card.
+  const pass = config.getByRole('button', { name: 'Advect', exact: true });
+  for (const card of [pass, storage]) {
+    expect(await style(card)).toMatchObject({ padding: '7px 8px', borderBottomWidth: '0px' });
+  }
+  expect((await style(storage)).color).toBe((await style(pass)).color);
+});

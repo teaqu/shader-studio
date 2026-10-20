@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ViewerInteraction } from '../lib/ViewerInteraction';
+import { KeyboardManager } from '../../../rendering/src/input/KeyboardManager';
 import type { ViewerInputEvent, ViewerInputListener, ViewerInputSource } from '../../../rendering/src/types/ViewerInteraction';
 
 function fixture() {
   let listener: ViewerInputListener = () => {};
-  const injectInput = vi.fn(() => ({ mouse: [0, 0, 0, 0] as [number, number, number, number], heldCodes: ['KeyW'] }));
+  const injectInput = vi.fn((_events: readonly ViewerInputEvent[] = []) => ({ mouse: [0, 0, 0, 0] as [number, number, number, number], heldCodes: ['KeyW'] }));
   const unsubscribe = vi.fn();
   const engine = {
     injectInput, getTimeManager: () => ({ getCurrentTime: () => 2, getFrame: () => 4, isPaused: () => false }),
@@ -85,6 +86,39 @@ describe('ViewerInteraction', () => {
     expect(injectInput).toHaveBeenCalledWith([{ type: 'key_down', code: 'KeyW' }]);
     expect(controller.replayStatus()).toBe('completed');
     expect(injectInput).toHaveBeenLastCalledWith([{ type: 'release_all' }]);
+  });
+
+  it('keeps the final replay keypress visible to a frame rendered after completion', async () => {
+    const keyboard = new KeyboardManager();
+    const { controller, injectInput } = fixture();
+    injectInput.mockImplementation((events: readonly ViewerInputEvent[] = []) => {
+      for (const event of events) {
+        if (event.type === 'key_down' || event.type === 'key_up') {
+          keyboard.inject(event.code, event.type === 'key_down');
+        } else if (event.type === 'release_all') {
+          keyboard.releaseAll();
+        }
+      }
+      return { mouse: [0, 0, 0, 0], heldCodes: keyboard.getHeldCodes() };
+    });
+    const trace = controller.start();
+    trace.events = [
+      { sequence: 0, time: .074, frame: 1, source: 'injected', event: { type: 'key_down', code: 'Space' } },
+      { sequence: 1, time: .622, frame: 2, source: 'injected', event: { type: 'key_up', code: 'Space' } },
+      { sequence: 2, time: .642, frame: 3, source: 'injected', event: { type: 'key_down', code: 'Space' } },
+      { sequence: 3, time: .670, frame: 4, source: 'injected', event: { type: 'key_up', code: 'Space' } },
+    ];
+    await controller.replay(trace, 'reset-and-play');
+    await vi.advanceTimersByTimeAsync(100);
+    expect(keyboard.getKeyPressed()[32]).toBe(255);
+    keyboard.clearPressed();
+    await vi.advanceTimersByTimeAsync(600);
+    expect(controller.replayStatus()).toBe('completed');
+    expect(keyboard.getHeldCodes()).toEqual([]);
+    expect(keyboard.getKeyPressed()[32]).toBe(255);
+    keyboard.clearPressed();
+    expect(keyboard.getKeyPressed()[32]).toBe(0);
+    controller.dispose();
   });
 
   it('rejects stale, malformed and out-of-range traces before scheduling', async () => {

@@ -1,3 +1,4 @@
+import { ScriptStream, scriptUniformHelpers, readScriptUniform, scriptUniformDeclaration, zeroScriptUniform, type ScriptStreamInfo, type ScriptStreamFrame, type ScriptUniformType } from "@shader-studio/types";
 import * as vm from "vm";
 import { createRequire } from "module";
 import { Logger } from "./services/Logger";
@@ -5,7 +6,7 @@ import { scriptConsole } from './mcp/McpLogs';
 
 export interface CustomUniformType {
   name: string;
-  type: 'float' | 'vec2' | 'vec3' | 'vec4' | 'bool';
+  type: ScriptUniformType;
 }
 
 export interface CustomUniformValue {
@@ -14,7 +15,6 @@ export interface CustomUniformValue {
   value: number | number[] | boolean;
 }
 
-type UniformValue = number | number[] | boolean;
 type UniformResult = Record<string, unknown>;
 type UniformsFunction = (ctx: Record<string, unknown>) => UniformResult;
 
@@ -48,6 +48,8 @@ export interface ScriptRuntimeState {
 export interface ScriptLoadResult {
   declarations: string;
   uniforms: CustomUniformType[];
+  streams?: ScriptStreamInfo[];
+  session?: number;
   error?: string;
 }
 
@@ -56,6 +58,15 @@ export interface ScriptLoadResult {
  * This allows scripts to use Node.js APIs and npm packages.
  */
 export class ScriptEvaluator {
+  private lifetime = { active: false };
+  private scriptTimeouts = new Set<ReturnType<typeof setTimeout>>();
+  private scriptIntervals = new Set<ReturnType<typeof setInterval>>();
+  private session = 0;
+  private sequence = 0;
+  private streams = new Map<string, ScriptStream>();
+  private createdStreams = new Set<ScriptStream>();
+  private cleanups: (() => void)[] = [];
+  private clients = new Map<string, { streams: Map<string, ScriptStream>; pending: ScriptStreamFrame | null }>();
   private logger = Logger.getInstance();
   private uniformsFn: UniformsFunction | null = null;
   private inferredTypes: Record<string, string> = {};
@@ -70,15 +81,17 @@ export class ScriptEvaluator {
     'iResolution', 'iTime', 'iTimeDelta', 'iFrameRate', 'iMouse',
     'iFrame', 'iDate', 'iChannelTime', 'iSampleRate',
     'iChannel0', 'iChannel1', 'iChannel2', 'iChannel3',
-    'iChannelResolution', 'iCh0', 'iCh1', 'iCh2', 'iCh3',
+    'iChannelResolution', 'iChannelLoaded', 'iCameraPos', 'iCameraDir', 'iDispatch', 'iCh0', 'iCh1', 'iCh2', 'iCh3',
   ]);
 
   /**
    * Load and evaluate a bundled script in Node.js context.
    * @param scriptPath - path to the original script file, used to resolve require() from the script's directory
    */
-  public loadScript(bundleCode: string, scriptPath?: string): ScriptLoadResult {
-    this.stop();
+  public loadScript(bundleCode: string, scriptPath?: string, allowStreams = true): ScriptLoadResult {
+    this.dispose();
+    this.session++;
+    const lifetime = this.lifetime = { active: true };
     this.uniformsFn = null;
     this.inferredTypes = {};
     this.lastValues = [];
@@ -88,13 +101,56 @@ export class ScriptEvaluator {
       const scriptRequire = scriptPath ? createRequire(scriptPath) : require;
 
       // Create a sandbox with require support
+      // VM globals intentionally expose the Node APIs scripts already support.
       const sandbox: Record<string, unknown> = {
         __shaderUniforms: undefined,
         console: scriptConsole(scriptPath),
-        setTimeout,
-        setInterval,
-        clearTimeout,
-        clearInterval,
+        WebSocket: globalThis.WebSocket,
+        Uint32Array,
+        ArrayBuffer,
+        TextEncoder,
+        TextDecoder,
+        setTimeout: (callback: (...args: unknown[]) => void, delay?: number, ...args: unknown[]) => {
+          if (!lifetime.active) {
+            return;
+          }
+          const timer = setTimeout(() => {
+            this.scriptTimeouts.delete(timer);
+            if (!lifetime.active) {
+              return;
+            }
+            try {
+              callback(...args);
+            } catch (error) {
+              this.logger.warn(`Script timer error: ${String(error)}`);
+            }
+          }, delay);
+          this.scriptTimeouts.add(timer);
+          return timer;
+        },
+        setInterval: (callback: (...args: unknown[]) => void, delay?: number, ...args: unknown[]) => {
+          if (!lifetime.active) {
+            return;
+          }
+          const timer = setInterval(() => {
+            if (!lifetime.active) {
+              return;
+            }
+            try {
+              callback(...args);
+            } catch (error) {
+              this.logger.warn(`Script timer error: ${String(error)}`);
+            }
+          }, delay);
+          this.scriptIntervals.add(timer);
+          return timer;
+        },
+        clearTimeout: (timer: ReturnType<typeof setTimeout>) => {
+          clearTimeout(timer); this.scriptTimeouts.delete(timer);
+        },
+        clearInterval: (timer: ReturnType<typeof setInterval>) => {
+          clearInterval(timer); this.scriptIntervals.delete(timer);
+        },
         // Allow require for Node.js modules (resolves from script's directory)
         require: scriptRequire,
       };
@@ -105,14 +161,62 @@ export class ScriptEvaluator {
       script.runInContext(sandbox);
 
       const module = sandbox.__shaderUniforms;
-      if (!module || typeof module !== "object" || typeof (module as { uniforms?: unknown }).uniforms !== "function") {
-        return { declarations: "", uniforms: [], error: "Script must export a uniforms(ctx) function" };
+      const exports = module as { uniforms?: UniformsFunction; streams?: (ctx: unknown) => Record<string, unknown> } | undefined;
+      if (typeof exports?.uniforms !== 'function' && typeof exports?.streams !== 'function') {
+        throw new Error("Script must export a uniforms(ctx) or streams(ctx) function");
       }
 
-      this.uniformsFn = (module as { uniforms: UniformsFunction }).uniforms;
+      this.uniformsFn = typeof exports!.uniforms === 'function' ? exports!.uniforms : null;
+      if (typeof exports!.streams === 'function') {
+        if (!allowStreams) {
+          throw new Error('Script streams require Slang / WebGPU');
+        }
+        const streamContext = {
+          stream: (options?: ConstructorParameters<typeof ScriptStream>[0]) => {
+            if (!lifetime.active) {
+              throw new Error('Script was disposed');
+            }
+            const stream = new ScriptStream(options);
+            this.createdStreams.add(stream);
+            return stream;
+          },
+          onDispose: (cleanup: () => void) => {
+            if (typeof cleanup !== 'function') {
+              throw new Error('onDispose expects a function');
+            }
+            if (lifetime.active) {
+              this.cleanups.push(cleanup);
+            } else {
+              cleanup();
+            }
+          },
+        };
+        const streams = exports!.streams(streamContext);
+        if (!streams || typeof streams !== 'object' || Array.isArray(streams) || typeof streams.then === 'function') {
+          throw new Error('streams(ctx) must synchronously return a named object');
+        }
+        if (Object.keys(streams).length > 8) {
+          throw new Error('Scripts support at most 8 streams');
+        }
+        const registered = new Set<ScriptStream>();
+        for (const [name, stream] of Object.entries(streams)) {
+          this.validateName(name);
+          if (!(stream instanceof ScriptStream) || !this.createdStreams.has(stream) || registered.has(stream)) {
+            throw new Error(`Stream ${name} must be a unique ctx.stream() from this load`);
+          }
+          this.streams.set(name, stream);
+          registered.add(stream);
+        }
+        for (const stream of this.createdStreams) {
+          if (!registered.has(stream)) {
+            stream.dispose();
+          }
+        }
+      }
 
       // Initial call to infer types
       const dummyCtx = {
+        ...scriptUniformHelpers,
         iTime: 0, iTimeDelta: 0, iFrameRate: 60, iFrame: 0,
         iResolution: [800, 600, 800 / 600],
         iMouse: [0, 0, 0, 0],
@@ -121,42 +225,32 @@ export class ScriptEvaluator {
         iSampleRate: 44100,
       };
 
-      const result = this.uniformsFn!(dummyCtx);
-      if (!result || typeof result !== 'object') {
-        this.uniformsFn = null;
-        return { declarations: "", uniforms: [], error: "uniforms(ctx) must return an object" };
+      const result = this.uniformsFn?.(dummyCtx) ?? (this.uniformsFn ? null : {});
+      if (!result || typeof result !== 'object' || Array.isArray(result) || typeof result.then === 'function') {
+        throw new Error("uniforms(ctx) must synchronously return an object");
       }
 
-      const collisions: string[] = [];
       const declLines: string[] = [];
       const uniformTypes: CustomUniformType[] = [];
 
       for (const [name, value] of Object.entries(result)) {
-        if (ScriptEvaluator.BUILTIN_UNIFORMS.has(name)) {
-          collisions.push(name);
-          continue;
+        this.validateName(name);
+        if (this.streams.has(name)) {
+          throw new Error(`Uniform and stream names conflict: ${name}`);
         }
-        const type = this.inferType(value);
+        const type = this.readUniform(value)?.type;
         if (!type) {
           continue;
         }
 
         this.inferredTypes[name] = type;
-        declLines.push(`uniform ${type} ${name};`);
+        declLines.push(scriptUniformDeclaration(name, type));
         uniformTypes.push({ name, type: type as CustomUniformType['type'] });
       }
 
-      if (collisions.length > 0) {
-        this.uniformsFn = null;
-        return {
-          declarations: "",
-          uniforms: [],
-          error: `Custom uniform name(s) conflict with built-ins: ${collisions.join(', ')}`,
-        };
-      }
-
-      return { declarations: declLines.join("\n"), uniforms: uniformTypes };
+      return { declarations: declLines.join("\n"), uniforms: uniformTypes, streams: this.getStreamInfo(), session: this.session };
     } catch (err: unknown) {
+      this.dispose();
       this.uniformsFn = null;
       return { declarations: "", uniforms: [], error: `Script evaluation error: ${errorMessage(err)}` };
     }
@@ -202,6 +296,13 @@ export class ScriptEvaluator {
    */
   public resetTime(): void {
     this.startTime = Date.now();
+    for (const stream of this.streams.values()) {
+      stream.clear();
+    }
+    for (const client of this.clients.values()) {
+      client.pending = null;
+    }
+    this.sequence++;
     if (this.runtimeState) {
       this.runtimeState = { ...this.runtimeState, time: 0, frame: 0, syncedAt: Date.now() };
     }
@@ -357,8 +458,84 @@ export class ScriptEvaluator {
     return Object.keys(this.inferredTypes).length > 0;
   }
 
+  public getStreamInfo(): ScriptStreamInfo[] {
+    return [...this.streams].map(([name, stream]) => ({ name, maxPerFrame: stream.maxPerFrame, maxQueued: stream.maxQueued }));
+  }
+
+  public requestStreamFrame(session: number, acknowledgedSequence?: number, consumer = 'default'): ScriptStreamFrame | null {
+    if (session !== this.session || this.streams.size === 0) {
+      return null;
+    }
+    let client = this.clients.get(consumer);
+    if (!client) {
+      if (this.clients.size >= 16) {
+        throw new Error('A script supports at most 16 stream previews. Close unused previews.');
+      }
+      client = { streams: new Map([...this.streams].map(([name, stream]) => [name, stream.fork()])), pending: null };
+      this.clients.set(consumer, client);
+    }
+    if (client.pending && acknowledgedSequence === client.pending.sequence) {
+      for (const chunk of client.pending.streams) {
+        client.streams.get(chunk.name)!.consume(chunk.data.length);
+      }
+      client.pending = null;
+    }
+    client.pending ??= { session: this.session, sequence: ++this.sequence,
+      streams: [...client.streams].map(([name, stream]) => ({ name, data: stream.peek(), queued: stream.queued })) };
+    return client.pending;
+  }
+
+  public getStreamQueues(session: number, consumer: string): { name: string; queued: number }[] | null {
+    if (session !== this.session || this.streams.size === 0) {
+      return null;
+    }
+    return [...(this.clients.get(consumer)?.streams ?? this.streams)].map(([name, stream]) => ({ name, queued: stream.queued }));
+  }
+
+  public releaseStreamConsumer(session: number, consumer: string): void {
+    if (session !== this.session) {
+      return;
+    }
+    const client = this.clients.get(consumer);
+    if (!client) {
+      return;
+    }
+    for (const [name, stream] of client.streams) {
+      this.streams.get(name)?.release(stream);
+    }
+    this.clients.delete(consumer);
+  }
+
+  private validateName(name: string): void {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || name.startsWith('gl_') || name.includes('__') || /^i(?:Channel|Ch)\d+$/.test(name) || /^_(?:st|dbg|scriptStream|ScriptStream)/.test(name) || ScriptEvaluator.BUILTIN_UNIFORMS.has(name)) {
+      throw new Error(`Script output names conflict with built-ins or are invalid: ${name}`);
+    }
+  }
+
   public dispose(): void {
+    this.lifetime.active = false;
+    for (const timer of this.scriptTimeouts) {
+      clearTimeout(timer);
+    }
+    for (const timer of this.scriptIntervals) {
+      clearInterval(timer);
+    }
+    this.scriptTimeouts.clear();
+    this.scriptIntervals.clear();
     this.stop();
+    for (const stream of this.createdStreams) {
+      stream.dispose();
+    }
+    this.createdStreams.clear();
+    this.streams.clear();
+    this.clients.clear();
+    for (const cleanup of this.cleanups.splice(0).reverse()) {
+      try {
+        cleanup();
+      } catch (error) {
+        this.logger.warn(`Script cleanup error: ${String(error)}`);
+      }
+    }
     this.uniformsFn = null;
     this.inferredTypes = {};
     this.lastValues = [];
@@ -417,6 +594,7 @@ export class ScriptEvaluator {
 
     const date = new Date();
     const ctx = {
+      ...scriptUniformHelpers,
       ...this.shaderContext(startTime),
       iDate: [date.getFullYear(), date.getMonth(), date.getDate(),
         date.getHours() * 3600 + date.getMinutes() * 60 + date.getSeconds()],
@@ -435,14 +613,13 @@ export class ScriptEvaluator {
           continue;
         }
 
-        const actualType = this.inferType(value);
-        if (actualType !== expectedType) {
+        const actual = this.readUniform(value);
+        if (!actual || actual.type !== expectedType) {
+          this.logger.warn(`Script uniform ${name} changed type or array length (${expectedType} to ${actual?.type ?? null}); reload the script to change its shape`);
           continue;
         }
 
-        // inferType is the longstanding acceptance rule: vector arity defines
-        // its GLSL type, including values supplied by existing user scripts.
-        values.push({ name, type: expectedType, value: value as UniformValue });
+        values.push({ name, type: expectedType, value: actual.value });
       }
       return values;
     } catch (err: unknown) {
@@ -453,15 +630,7 @@ export class ScriptEvaluator {
 
   private getZeroValues(): CustomUniformValue[] {
     return Object.entries(this.inferredTypes).map(([name, type]) => {
-      let value: number | number[] | boolean;
-      switch (type) {
-        case 'float': value = 0; break;
-        case 'vec2': value = [0, 0]; break;
-        case 'vec3': value = [0, 0, 0]; break;
-        case 'vec4': value = [0, 0, 0, 0]; break;
-        case 'bool': value = false; break;
-        default: value = 0;
-      }
+      const value = zeroScriptUniform(type);
       return { name, type, value };
     });
   }
@@ -494,20 +663,12 @@ export class ScriptEvaluator {
     return changed;
   }
 
-  private inferType(value: unknown): string | null {
-    if (typeof value === 'number') {
-      return 'float';
+  private readUniform(value: unknown): ReturnType<typeof readScriptUniform> {
+    // Existing scripts infer plain vectors by arity without validating elements.
+    // Keep that wire contract and snapshot arrays; explicit typed helpers remain strict.
+    if (Array.isArray(value) && value.length >= 2 && value.length <= 4) {
+      return { type: `vec${value.length}` as ScriptUniformType, value: [...value] };
     }
-    if (typeof value === 'boolean') {
-      return 'bool';
-    }
-    if (Array.isArray(value)) {
-      switch (value.length) {
-        case 2: return 'vec2';
-        case 3: return 'vec3';
-        case 4: return 'vec4';
-      }
-    }
-    return null;
+    return readScriptUniform(value);
   }
 }

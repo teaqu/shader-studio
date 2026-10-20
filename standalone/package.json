@@ -24,7 +24,8 @@
     "shader-explorer-ui": "*",
     "shader-studio-ui": "*",
     "svelte": "^5.56.4",
-    "@shader-studio/file-explorer": "*"
+    "@shader-studio/file-explorer": "*",
+    "@shader-studio/utils": "*"
   },
   "devDependencies": {
     "jszip": "^3.10.1",
@@ -33,7 +34,6 @@
     "pngjs": "^7.0.0",
     "svelte-check": "^4.0.8",
     "@shader-studio/rendering": "*",
-    "@shader-studio/utils": "*",
     "monaco-vim": "^0.4.4",
     "@playwright/test": "^1.60.0",
     "playwright": "^1.60.0"

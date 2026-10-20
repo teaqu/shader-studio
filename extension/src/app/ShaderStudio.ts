@@ -206,6 +206,7 @@ export class ShaderStudio {
     this.mcpUrl = undefined;
     this.webServer.setMcpHandler(undefined);
     void this.mcpEndpoint?.dispose();
+    this.shaderProvider.dispose();
     this.webServer.stopWebServer();
     this.messenger.close();
     this.sShaderExplorerProvider.dispose();

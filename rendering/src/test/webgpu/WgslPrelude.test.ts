@@ -1047,3 +1047,11 @@ fn mainImage(coord: vec2f) -> vec4f { return vec4f(coord, 0, 1); }`;
     expect(wrapped).toContain("@location(2) normal: vec3<f32>");
   });
 });
+
+it('declares typed script integers and padded arrays with scalar globals', () => {
+  const { source } = wrapWgslImageSource('fn mainImage(p: vec2<f32>) -> vec4<f32> { return vec4<f32>(1); }', {customUniforms: [{name: 'count', type: 'uint'}, {name: 'ids', type: 'int[2]'}]});
+  expect(source).toContain('custom_count: u32');
+  expect(source).toContain('custom_ids: array<vec4<i32>, 2>');
+  expect(source).toContain('var<private> ids: array<i32, 2>');
+  expect(source).toContain('ids[index] = _ss_u.custom_ids[index].x');
+});

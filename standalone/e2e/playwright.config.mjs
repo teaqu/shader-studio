@@ -20,7 +20,7 @@ export default defineConfig({
     } },
     {
       name: 'mobile-chromium',
-      testMatch: 'mobile.e2e.mjs',
+      testMatch: ['mobile.e2e.mjs', 'mobile-shell.e2e.mjs'],
       use: { ...devices['Pixel 7'], browserName: 'chromium' },
     },
     // The dev server ships the app unbundled, which breaks language-service

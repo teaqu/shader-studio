@@ -2,6 +2,7 @@ import { WebXrPassState } from "../webxr/WebXrPassState";
 import { withVrViewport } from "../webxr/VrViewport";
 import type { VrEyeView } from "../webxr/WebXrFrameData";
 import { VrPreview } from "./VrPreview";
+import { uploadTypedScriptUniform } from "./ScriptUniformUpload";
 import type { ResourceManager } from "../resources/ResourceManager";
 import type { BufferManager } from "./BufferManager";
 import type { Pass, PassUniforms } from "../models";
@@ -309,6 +310,9 @@ export class PassRenderer {
     // Set custom uniforms from script
     if (customUniforms) {
       for (const u of customUniforms) {
+        if (this.gl && shader.mProgram && uploadTypedScriptUniform(this.gl, shader.mProgram, u)) {
+          continue;
+        }
         switch (u.type) {
           case 'float':
             this.renderer.SetShaderConstant1F(u.name, u.value as number);

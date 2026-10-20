@@ -1,10 +1,10 @@
 <svelte:options runes={true} />
 <script lang="ts">
   import { getCubemapPreview, clearCubemapPreview } from "../state/cubemapPreview.svelte";
-  import { getPreviewedPass, isLinePreviewActive } from '../passPreview';
   import { sharedSourcePassNames, shaderPathsEqual } from "../editor/sharedSourcePassNames";
   import { clearCurrentEditorSource, setCurrentEditorSource } from "../state/currentEditorSourceState.svelte";
   import { onMount, onDestroy, tick, setContext, untrack } from "svelte";
+  import { setScriptStreams } from "../state/scriptStreams.svelte";
   import { get } from "svelte/store";
   import { ShaderPipeline } from "../ShaderPipeline";
   import { ConfigEchoGuard } from '../config/ConfigEchoGuard';
@@ -523,6 +523,8 @@
     const fpsInterval = setInterval(() => {
       if (initialized) {
         currentFPS = renderingEngine.getCurrentFPS();
+        renderingEngine.refreshScriptStreamStatus?.();
+        setScriptStreams(renderingEngine.getScriptStreamStatus?.() ?? []);
       }
       // Evict stale poll timestamps so actualPollFps decays to 0 when messages stop
       const now = performance.now();
@@ -1305,6 +1307,16 @@
       return;
     }
 
+    if (type === 'scriptStreamStatus') {
+      renderingEngine?.receiveScriptStreamStatus?.(event.data.payload);
+      return;
+    }
+
+    if (type === 'scriptStreamFrame') {
+      renderingEngine?.receiveScriptStreamFrame?.(event.data.payload.frame, event.data.payload.request);
+      return;
+    }
+
     if (type === 'customUniformValues') {
       const values: { name: string; type: string; value: number | number[] | boolean }[] = event.data.payload.values;
       if (renderingEngine) {
@@ -1359,7 +1371,10 @@
       if (
         messageTarget.kind === 'main'
         && appInitialized
-        && msgLanguage !== engineLanguage
+        // Sources can arrive before the keyed canvas remounts. Keep the
+        // newest source for the replacement engine instead of compiling it on
+        // the old engine and rejecting the queued source as an obsolete echo.
+        && (msgLanguage !== engineLanguage || pendingSwapMessage !== null)
       ) {
         renderingEngine?.stopRenderLoop?.();
         if (pendingSwapMessage) {
@@ -1381,6 +1396,9 @@
           viewerControl.compileCancelled(event.data.path, event.data.compileSequence);
           return;
         }
+        renderingEngine.configureScriptStreams?.(event.data.scriptStreams ?? [], event.data.scriptSession ?? 0,
+          request => transport.postMessage({ type: 'requestScriptStreamFrame', payload: request }));
+        setScriptStreams([]);
         handleShaderSource(event);
       }
       publishCommonShaderSource(event.data);
@@ -1970,13 +1988,8 @@
   });
 </script>
 
-<div class="main-container" role="application" onmousemove={handleCanvasMouseMove}>
+<div class="main-container" role="application" data-shader-path={hasShader ? shaderPath : undefined} onmousemove={handleCanvasMouseMove}>
   <div class="dockview-panel-source" bind:this={previewEl}>
-    {#if hasShader}
-      <div class="preview-output-label" aria-live="polite" title={shaderPath}>
-        {shaderPath.split(/[\\/]/).pop()} › {getPreviewedPass(currentConfig, getCubemapPreview(shaderPath), debugState)}{isLinePreviewActive(debugState) ? ` · Line ${debugState.currentLine! + 1}` : ''}
-      </div>
-    {/if}
     {#key engineLanguage}
       <ShaderCanvas
         {zoomLevel}
@@ -2127,17 +2140,6 @@
 </div>
 
 <style>
-  .preview-output-label {
-    flex-shrink: 0;
-    padding: 4px 10px;
-    font-size: 11px;
-    color: var(--vscode-descriptionForeground);
-    background: var(--vscode-editor-background);
-    border-bottom: 1px solid var(--vscode-panel-border);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
   .dockview-panel-source {
     position: absolute;
     width: 100%;

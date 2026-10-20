@@ -91,6 +91,8 @@ export interface ShaderSourceMessage extends BaseMessage {
   scriptBundleError?: string;
   /** The shader's config file could not be read; the host sends the source without it. */
   configError?: string;
+  scriptStreams?: import('./ScriptStream').ScriptStreamInfo[];
+  scriptSession?: number;
   customUniformDeclarations?: string;
   customUniformInfo?: { name: string; type: string }[];
   /**
@@ -324,6 +326,7 @@ export type FileDialogFileType =
   | `${ShaderLanguageId}-compute`
   | `${ShaderLanguageId}-vertex`
   | 'model'
+  | 'binary'
   | 'texture'
   | 'video'
   | 'audio'

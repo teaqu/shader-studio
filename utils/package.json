@@ -17,7 +17,8 @@
     "dist"
   ],
   "dependencies": {
-    "@shader-studio/types": "*"
+    "@shader-studio/types": "*",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/node": "*",

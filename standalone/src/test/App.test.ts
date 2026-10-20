@@ -44,6 +44,8 @@ type TestTransport = WebTransport & {
 
 function createTransport(): TestTransport {
   return {
+    initializeWebMcp: vi.fn(),
+    dispose: vi.fn(),
     settings: new StandaloneSettings(),
     postMessage: vi.fn(),
     getShaderExplorerHostApi: vi.fn(() => ({ getShaders: vi.fn() })),
@@ -160,6 +162,25 @@ describe('standalone App', () => {
     render(App, { props: { transport } });
     await waitFor(() => expect(screen.getByText('Create or upload a shader to start previewing.')).toBeTruthy());
   });
+  it('shows hidden Editors unchecked and routes the toggle to the editor panels', async () => {
+    layoutStub.isPanelVisible.mockImplementation(panel => panel !== 'editor');
+    render(App, { props: { transport: createTransport() } });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'View' }));
+    const editors = screen.getByRole('menuitemcheckbox', { name: 'Editors' });
+    expect(editors.getAttribute('aria-checked')).toBe('false');
+    expect(editors.querySelector('[aria-hidden="true"]')?.textContent).toBe('');
+
+    layoutStub.isPanelVisible.mockReturnValue(true);
+    await fireEvent.click(editors);
+    expect(layoutStub.togglePanel).toHaveBeenCalledWith('editor');
+    expect(screen.queryByRole('menu', { name: 'View' })).toBeNull();
+
+    await fireEvent.click(screen.getByRole('button', { name: 'View' }));
+    const restoredEditors = screen.getByRole('menuitemcheckbox', { name: 'Editors' });
+    expect(restoredEditors.getAttribute('aria-checked')).toBe('true');
+    expect(restoredEditors.querySelector('[aria-hidden="true"]')?.textContent).toBe('✓');
+  });
   it('uses the global Native mode when opening a new shader', async () => {
     const transport = createTransport();
     transport.settings.update('webgpu.defaultRenderAuthoring', 'native');
@@ -225,7 +246,7 @@ describe('standalone App', () => {
 
     await fireEvent.click(screen.getByRole('button', { name: 'View' }));
     expect(screen.getByRole('menuitemcheckbox', { name: 'Shader Explorer' }).getAttribute('aria-checked')).toBe('true');
-    expect(screen.getByRole('menuitemcheckbox', { name: 'Editor' }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByRole('menuitemcheckbox', { name: 'Editors' }).getAttribute('aria-checked')).toBe('true');
     expect(screen.getByRole('menuitemcheckbox', { name: 'Preview' }).getAttribute('aria-checked')).toBe('true');
   });
 
@@ -272,7 +293,7 @@ describe('standalone App', () => {
     await fireEvent.click(screen.getByRole('button', { name: 'View' }));
     await fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Shader Explorer' }));
     await fireEvent.click(screen.getByRole('button', { name: 'View' }));
-    await fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Editor' }));
+    await fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Editors' }));
     await fireEvent.click(screen.getByRole('button', { name: 'View' }));
     await fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Preview' }));
 
@@ -832,7 +853,9 @@ describe('standalone App', () => {
   });
 
   it('resets transient shell state when the app unmounts', async () => {
-    const app = render(App, { props: { transport: createTransport() } });
+    const transport = createTransport();
+    const app = render(App, { props: { transport } });
+    expect(transport.initializeWebMcp).toHaveBeenCalledOnce();
     setNewShaderVisible(true);
     requestPanel('preview');
     await tick();
@@ -841,5 +864,6 @@ describe('standalone App', () => {
 
     expect(getNewShaderVisible()).toBe(false);
     expect(getRequestedPanel()).toBeNull();
+    expect(transport.dispose).toHaveBeenCalledOnce();
   });
 });

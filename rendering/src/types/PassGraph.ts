@@ -59,6 +59,8 @@ export type RenderPassChannel =
   | { kind: "keyboard"; slot: number; key: string };
 
 export interface StorageBindingNode {
+  /** Read-only script input: length followed by uint32 words. */
+  streamMaxPerFrame?: number;
   name: string;
   /** Zero-based index among the graph's valid storage declarations. */
   binding: number;
@@ -71,7 +73,10 @@ export interface StorageBindingNode {
   stride: number;
   fields?: import('@shader-studio/types').StorageFieldLayout[];
   structDeclarations?: { wgsl: string; slang: string };
-  initialData?: string;
+  /** Ordered file paths and destination byte offsets, with host-resolved URLs when available. */
+  initialDataFiles?: import('@shader-studio/types').StorageInitialDataFile[];
+  /** Assembled initial bytes before storage allocation, including zero-filled gaps. */
+  initialBytes?: Uint8Array;
   clearEachFrame?: boolean;
   resetOnRestart?: boolean;
 }

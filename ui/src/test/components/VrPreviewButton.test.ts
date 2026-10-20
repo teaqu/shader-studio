@@ -1,3 +1,4 @@
+import { tick } from 'svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, fireEvent, cleanup } from '@testing-library/svelte';
 import type { RenderingEngine } from '../../../../rendering/src/types/RenderingEngine';
@@ -97,6 +98,32 @@ describe('immersive VR controls', () => {
     updateVrPreviewContext(engine(false), 'b');
     await Promise.resolve();
     expect(getVrPreviewState().supported).toBe(false);
+  });
+  it('explains on hover why the desktop preview switch is unavailable', async () => {
+    const reason = (view: { getByLabelText(text: string): HTMLElement }) =>
+      view.getByLabelText('Desktop preview').closest('label')?.getAttribute('title') ?? null;
+    updateVrPreviewContext(engine(false), 'ordinary.glsl');
+    const view = render(VrPreviewButton);
+    await fireEvent.click(view.getByRole('button', { name: 'VR' }));
+    expect(reason(view)).toBe('Needs a fullscreen GLSL shader that defines mainVR');
+
+    const renderer = headset();
+    let finish!: () => void;
+    renderer.enterVr = vi.fn(() => new Promise<void>(resolve => {
+      finish = resolve;
+    }));
+    updateVrPreviewContext(renderer, 'vr.glsl');
+    await Promise.resolve();
+    await tick();
+    expect(reason(view)).toBeNull();
+
+    const entering = toggleImmersiveVr();
+    await tick();
+    expect(reason(view)).toBe('Connecting to the headset…');
+    finish();
+    await entering;
+    await tick();
+    expect(reason(view)).toBe('Exit VR to use the desktop preview');
   });
   it('shows permission errors and handles headset-ended sessions', async () => {
     const renderer = headset();

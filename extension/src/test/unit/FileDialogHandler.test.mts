@@ -44,7 +44,7 @@ describe('extension capture save acknowledgement', () => {
     ['cubemap', 'Cubemap files'], ['slang-vertex', 'Slang files'], ['slang-buffer', 'Slang files'],
     ['slang-common', 'Slang files'], ['slang-compute', 'Slang files'], ['wgsl-vertex', 'WGSL files'],
     ['wgsl-buffer', 'WGSL files'], ['wgsl-common', 'WGSL files'], ['wgsl-compute', 'WGSL files'], ['model', 'GLB models'],
-    ['unknown', 'GLSL files'],
+    ['binary', 'Binary files'], ['unknown', 'GLSL files'],
   ])('selects the %s file filter branch', async (fileType, filterName) => {
     mocks.open.mockResolvedValue(undefined);
     await handler().handleSelectFile({ shaderPath: '/workspace/shader.glsl', fileType, requestId: 'filter-1' }, vi.fn());

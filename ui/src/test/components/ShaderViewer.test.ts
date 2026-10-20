@@ -1,3 +1,4 @@
+import { getScriptStreams, setScriptStreams } from "../../lib/state/scriptStreams.svelte";
 import { setCubemapPreview, resetCubemapPreviews } from '../../lib/state/cubemapPreview.svelte';
 import { getViewerSession } from '../../lib/state/viewerSession.svelte';
 import { serialize } from 'node:v8';
@@ -973,6 +974,41 @@ describe('ShaderViewer', () => {
     await tick();
   }
 
+  it('routes stream leases and queue replies and refreshes the shared Script tab status', async () => {
+    const { WebGPURenderingEngine } = await import('../../../../rendering/src/webgpu/WebGPURenderingEngine');
+    const info = [{ name: 'net', maxPerFrame: 2, maxQueued: 8 }];
+    const status = [{ ...info[0], queued: 3, lastFrame: 2 }];
+    const configure = vi.fn((_info: unknown, _session: number, send: (request: {session: number; request: number; consumer: string}) => void) => send({ session: 7, request: 1, consumer: 'preview' }));
+    const receiveStatus = vi.fn();
+    const receiveFrame = vi.fn();
+    const refresh = vi.fn();
+    const methods = { configureScriptStreams: configure, receiveScriptStreamStatus: receiveStatus,
+      receiveScriptStreamFrame: receiveFrame, refreshScriptStreamStatus: refresh, getScriptStreamStatus: () => status };
+    Object.assign(WebGPURenderingEngine.prototype, methods);
+    try {
+      render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      setScriptStreams(status);
+      await sendMessage({ type: 'shaderSource', path: '/stream.slang', language: 'slang', code: 'source',
+        config: { passes: { Image: {} } }, scriptStreams: info, scriptSession: 7 });
+      expect(configure).toHaveBeenCalledWith(info, 7, expect.any(Function));
+      expect(getScriptStreams()).toEqual([]);
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({ type: 'requestScriptStreamFrame', payload: { session: 7, request: 1, consumer: 'preview' } });
+      const frame = { session: 7, sequence: 2, streams: [{ name: 'net', data: [1], queued: 3 }] };
+      await sendMessage({ type: 'scriptStreamFrame', payload: { frame, request: 1 } });
+      await sendMessage({ type: 'scriptStreamStatus', payload: { session: 7, consumer: 'preview', request: 1, streams: [{ name: 'net', queued: 3 }] } });
+      expect(receiveFrame).toHaveBeenCalledWith(frame, 1);
+      expect(receiveStatus).toHaveBeenCalledWith(expect.objectContaining({ session: 7 }));
+      await vi.waitFor(() => expect(refresh).toHaveBeenCalled());
+      expect(getScriptStreams()).toEqual(status);
+    } finally {
+      for (const name of Object.keys(methods)) {
+        Reflect.deleteProperty(WebGPURenderingEngine.prototype, name);
+      }
+      setScriptStreams([]);
+    }
+  });
+
   async function mcpCall(operation: string, payload: Record<string, unknown> = {}) {
     const requestId = crypto.randomUUID();
     await sendMessage({ type: 'viewerRpcRequest', requestId, operation, payload });
@@ -1453,6 +1489,33 @@ describe('ShaderViewer', () => {
     });
     expect(mockPipelineHandleShaderMessage).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ path: '/test/shader.wgsl' }),
+    }));
+  });
+
+  it.each([
+    ['glsl', 'wgsl'],
+    ['glsl', 'slang'],
+    ['slang', 'glsl'],
+  ] as const)('queues the latest %s to %s source until its replacement canvas is ready', async (initialLanguage, language) => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    if (initialLanguage !== 'glsl') {
+      await sendMessage({ type: 'shaderSource', language: initialLanguage,
+        path: `/test/initial.${initialLanguage}`, code: 'initial', compileSequence: 1 });
+    }
+    mockPipelineHandleShaderMessage.mockClear();
+    const handler = mockTransport.onMessage.mock.calls[0][0];
+    const path = `/test/latest.${language}`;
+    // The host's initial source and refresh reply can arrive in the same turn,
+    // before Svelte has remounted the canvas for the requested backend.
+    const first = handler({ data: { type: 'shaderSource', language, path, code: 'older', compileSequence: 2 } });
+    const second = handler({ data: { type: 'shaderSource', language, path, code: 'latest', compileSequence: 3 } });
+    expect(mockPipelineHandleShaderMessage).not.toHaveBeenCalled();
+    await Promise.all([first, second]);
+    await tick();
+    await vi.waitFor(() => expect(mockPipelineHandleShaderMessage).toHaveBeenCalledOnce());
+    expect(mockPipelineHandleShaderMessage).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ path, code: 'latest', compileSequence: 3 }),
     }));
   });
 

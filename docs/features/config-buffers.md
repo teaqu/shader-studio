@@ -77,7 +77,7 @@ Each buffer pass uses a `.glsl`, `.slang`, or `.wgsl` file to produce an image t
 
 Choose **+ New → Cubemap** to create a cubemap buffer. Its Output section sets the square face size (512 pixels by default). To use the result, add a Buffer channel to a later pass and select the cubemap pass in **Misc**. Sample it with a three-component direction vector rather than a two-component UV coordinate. See [Cubemap Buffers](#cubemap-buffers) for a complete walkthrough.
 
-The **File** row shows an editable path. **Change…** opens a chooser with files already used by the config, **Browse workspace…**, and **Create**. Several passes can use the same source file, each selecting a different function. Standalone’s Browse action selects files from its virtual workspace.
+The **Shader file** picker shows the pass's file. Click it to choose from the files already used by the config, or use **Browse workspace…**, **Create file…**, or **Enter a path…** to type one. **Open editor** opens the pass's file. Several passes can use the same source file, each selecting a different function. Standalone’s Browse action selects files from its virtual workspace.
 
 Three path forms are supported:
 
@@ -87,7 +87,7 @@ Three path forms are supported:
 | Absolute | `/Users/me/project/flow.glsl` | Filesystem root |
 | Workspace-root | `@/src/flow.glsl` | VS Code workspace root (`/` of the virtual workspace in the standalone browser host) |
 
-**Create** generates a source template using the shader mode preference. For WGSL/Slang, **Render output → Function** shows the selected fragment function; use the picker when multiple functions are available. **+ Add…** inserts a native fragment function or built-in `mainImage` into that file. A native fragment can run without `mainImage`, and native templates use the generated vertex stage until you request a custom one. GLSL has no fragment function selector or Built-in/Native chooser because it uses the fixed `mainImage` hook.
+**Create file…** generates a source template using the shader mode preference. For WGSL/Slang, **Render output → Function** shows the selected fragment function; use the picker when multiple functions are available. **+ Add…** inserts a native fragment function or built-in `mainImage` into that file. A native fragment can run without `mainImage`, and native templates use the generated vertex stage until you request a custom one. GLSL has no fragment function selector or Built-in/Native chooser because it uses the fixed `mainImage` hook.
 
 The pass sections are arranged as Fragment source/functions, Channels, Geometry, Rendering, Resolution, Output, and Vertex shader. Image omits the file chooser. **Output** selects 2D or Cubemap, its cubemap face size, the buffer format, and read-only [inferred output slots and names](multiple-render-targets.md).
 
@@ -166,7 +166,7 @@ GLSL fragment shaders and Slang fragment or compute shaders can generate cubemap
 ### Create and Preview a Cubemap
 
 1. Open a GLSL or Slang shader and choose **Config → + New → Cubemap**.
-2. In the new pass, choose **File → Change… → Create** to create a starter shader, or choose an existing file containing `mainCubemap`.
+2. In the new pass, click the **Shader file** picker and choose **Create file…** to create a starter shader, or choose an existing file containing `mainCubemap`.
 3. In **Output**, set **Face size** (512 pixels by default).
 4. In **Preview**, choose **Face**, **Cross layout**, or **Environment** to inspect the result. The starter colors each direction differently.
 5. Choose **Image output** to return to your final shader image.
@@ -257,18 +257,18 @@ Each storage buffer has its own card, labeled **Storage buffer** with its elemen
 
 ## Compute Passes
 
-Use **+ New → Compute** to add a compute pass, then use **File → Change…** to select, reuse, or create its `.slang` or `.wgsl` source. Choose a compute function row or use **Add function…**. Compute has Channels, Dispatch, Execution, and Output settings, with no Built-in mode, vertex stage, or geometry section.
+Use **+ New → Compute** to add a compute pass, then use the **Shader file** picker to select, reuse, or create its `.slang` or `.wgsl` source. Choose a compute function row or use **Add function…**. Compute has Channels, Dispatch, Execution, and Output settings, with no Built-in mode, vertex stage, or geometry section.
 See [Compute Passes](compute.md) for shader examples, storage buffers, and dispatch settings.
 
 ---
 
 ## The Script Pass
 
-The Script pass drives custom `uniform` values per frame from a TypeScript or JavaScript file. Use it to animate parameters or bring external data into your shader.
+The Script pass supplies current uniform values and ordered data streams from a TypeScript or JavaScript file. It has no framebuffer. Uniforms work with GLSL/WebGL, Slang/WebGPU, and WGSL/WebGPU; streams require Slang/WebGPU.
 
 ### Exporting Uniforms
 
-Your script must export a `uniforms(ctx)` function that returns an object:
+Export `uniforms(ctx)` for current values, `streams(ctx)` for queued inputs, or both. Each returns an object whose keys become shader input names. The uniforms function is polled; the streams function runs once per script load.
 
 ```typescript
 // shader.uniforms.ts
@@ -305,9 +305,85 @@ Types are inferred from the return value on the first call. Use the returned nam
 
 WGSL and Slang shaders receive the same values as globals with the script's field names — no declaration needed. WGSL uses `f32`, `vec2<f32>`, `vec3<f32>`, `vec4<f32>`, and `bool`; Slang uses the corresponding `float`, `floatN`, and `bool` types.
 
+### Integer and array uniforms
+
+Use `ctx.int(value)` and `ctx.uint(value)` for exact 32-bit integers. Use
+`ctx.floatArray([...])`, `ctx.intArray([...])`, or `ctx.uintArray([...])` for
+fixed-length scalar arrays (1–1024 elements). Plain arrays of length 2–4 still
+mean vectors. Types and lengths are fixed at load; reload to change them.
+Integer values outside their 32-bit range, fractional integers, and non-finite
+numbers are rejected. The Script tab shows exact integer values and expandable arrays.
+
+```js
+export function uniforms(ctx) {
+  return {
+    tick: ctx.uint(ctx.iFrame),
+    mode: ctx.int(-1),
+    weights: ctx.floatArray([0.25, 0.5, 0.75]),
+    ids: ctx.uintArray([123, 4294967295]),
+  };
+}
+```
+
+### Script streams
+
+Use a Slang shader in the installed extension and select a script in its
+**Script** tab. The following example connects to a local WebSocket server that
+sends unsigned 32-bit words; start that server before opening the shader.
+
+```js
+export function streams(ctx) {
+  const net = ctx.stream({ maxPerFrame: 4096, maxQueued: 65536 });
+  const uart = ctx.stream({ maxPerFrame: 64 });
+  const socket = new WebSocket('ws://localhost:9000');
+  socket.binaryType = 'arraybuffer';
+  socket.onmessage = ({ data }) => {
+    // The source protocol supplies aligned uint32 words.
+    if (!net.push(new Uint32Array(data))) console.warn('Queue full');
+  };
+  ctx.onDispose(() => socket.close());
+  return { net, uart };
+}
+```
+
+Both inputs bind automatically. No stream declarations are needed in `.sha.json`:
+
+```slang
+for (uint i = 0; i < net.length; i++) {
+    handle(net.data[i]);
+}
+```
+
+- `push()` copies unsigned 32-bit words. Invalid words throw. A full queue rejects
+  the entire push and returns `false`; the script decides whether to retry or slow
+  its source. Accepted data is never silently dropped during ordinary delivery.
+- `maxPerFrame` defaults to 4096 (range 1–65536). `maxQueued` defaults to at least
+  65536 words (maximum 1048576), and must hold at least one frame.
+- Each rendered frame gets up to the limit, in order. All passes see the same
+  chunk. Empty frames have length zero. Paused/skipped frames retain queued data;
+  capture does not consume live stream input.
+- Each preview has an independent delivery cursor. A newly joining preview sees
+  future pushes. A slow preview can backpressure the shared source. Closing a
+  preview releases its cursor.
+- Reset clears queues; script reload closes registered sources, clears queues,
+  and calls `streams(ctx)` again. Register connection cleanup with `onDispose`.
+  Script-created timers are also stopped automatically. Old producers cannot push
+  into a new script load.
+- Stream names must be unique across uniforms, streams, channels, and storage.
+  Up to eight streams are supported, subject to device storage binding limits.
+- Scripts continue to run in the extension's Node host, including for its hosted
+  browser previews. Browser-only standalone and vscode.dev script runtimes are
+  not introduced here. Native WebSocket availability depends on the host Node
+  version; scripts can also import their own Node networking library.
+- Stream data is live input; deterministic stream recording/replay is not yet provided.
+
+To try a stream without a network source, push a few words immediately before
+returning it: `net.push([10, 20, 30]);`. In your Slang shader, read `net.length`
+and `net.data[i]` as shown above.
+
 ### Polling Rate
 
-The **Max Polling Rate** slider (1–120 fps) controls how often the script runs. The config panel shows the actual vs. target polling rate for each uniform.
+The **Max Polling Rate** slider (1–120 fps) controls how often `uniforms(ctx)` runs. Stream delivery follows rendered frames independently. The config panel shows the actual vs. target polling rate for each uniform.
 
 For slowly-changing values, 1–10 fps is usually enough. High rates consume more CPU.
 

@@ -9,8 +9,9 @@ on:
       - "**.md"
       - "mkdocs.yml"
   pull_request:
-    # Applying or removing ci:full immediately re-evaluates selection.
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    # Labels must not create a new Test check for an unchanged commit.
+    # ci:full is read on the next update; dispatch Test for a full run now.
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 concurrency:

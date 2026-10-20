@@ -2,7 +2,7 @@
 
 Connect a compatible AI assistant to Shader Studio so it can help edit your shaders, explain errors, inspect values, and see images from your running preview. The connection uses Model Context Protocol (MCP), a standard supported by many AI tools.
 
-This feature requires the **VS Code extension**, a trusted workspace, and an AI tool with a **Streamable HTTP MCP** client running on the same computer. It works with previews in VS Code and previews opened from VS Code in your browser. The standalone browser app does not provide this connection.
+This feature requires the **VS Code extension**, a trusted workspace, and an AI tool with a **Streamable HTTP MCP** client running on the same computer. It works with previews in VS Code and previews opened from VS Code in your browser. The standalone browser app uses [WebMCP](#browser-app-webmcp) instead of this local server connection.
 
 ## Enable the Connection
 
@@ -142,3 +142,22 @@ See [Open in Browser](web-server.md) for the preview setup.
 | File changed | Ask the assistant to read the file again before making the edit. |
 | Session expired | Reconnect after restarting VS Code or changing connection settings. |
 | Preview timed out | Make the preview visible, check for errors, and try the image request again. Check whether the file edit already succeeded before repeating it. |
+
+
+## Browser App (WebMCP)
+
+Open Shader Studio in an assistant's browser that supports WebMCP. WebMCP is off by default. Open **Settings**, find **AI tools**, and turn on **Enable WebMCP**. The browser can then discover Shader Studio's site tools while the app is open; there is no server URL or token to configure. Codex's built-in browser supports this workflow. If your browser does not expose site tools, you can continue using Shader Studio normally, but the assistant cannot use WebMCP there.
+
+Ask the assistant to list previews and read the selected shader before editing. For example:
+
+> List the Shader Studio preview, read its shader, and make the colors blue and orange. Keep the animation. Check compilation errors after your edit.
+
+The assistant can list, read and create workspace text files, edit files with revision checks, select a shader, inspect settings and diagnostics, change playback and temporary uniform values, inspect passes and GPU storage, and record or replay input events. Persistent configuration changes go through the shader's `.sha.json` file. GPU storage inspection requires a supported WebGPU shader.
+
+Edits are saved in this browser's workspace and appear in the editor. If you change a file after the assistant reads it, an edit using the old revision is rejected; the assistant must read it again. Export a workspace backup when you want a separate copy of your work.
+
+`capture_output` and frame-capture tools return timing, resolution and compilation metadata. The assistant can inspect the visible canvas to see the rendered image. Image bytes, video recording artifacts, the extension's retained logs, and its bundled documentation resources are not returned through this WebMCP connection. Use Shader Studio's export panel to save images or videos, and this guide for reference.
+
+Your choice is saved in the browser’s global settings for all shaders. Turn off **Enable WebMCP** to remove the tools and cancel pending requests immediately. **Reset all settings** also turns it off.
+
+Site tools apply to the current browser tab. Keep the app open while the assistant works. Closing the app disconnects the tools.

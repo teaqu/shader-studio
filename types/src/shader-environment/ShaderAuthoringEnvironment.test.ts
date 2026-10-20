@@ -235,7 +235,7 @@ describe("ShaderAuthoringEnvironment", () => {
       expect(runtime).toContain(slangAlias);
     });
 
-  it.each(["int", "toString", "__proto__", "constructor"])(
+  it.each(["float[0]", "toString", "__proto__", "constructor"])(
     "does not generate declarations for unsupported custom-uniform metadata type %s",
     (type) => {
       const environment = {
@@ -975,4 +975,17 @@ describe("ShaderAuthoringEnvironment", () => {
     expect(Reflect.set(builtin.languages, 0, "slang")).toBe(false);
     expect(documentation.description).not.toBe("changed");
   });
+});
+
+
+it.each([
+  ["int", "int custom_value;"],
+  ["uint", "uint custom_value;"],
+  ["float[3]", "float custom_value[3];"],
+  ["int[2]", "int custom_value[2];"],
+  ["uint[4]", "uint custom_value[4];"],
+])("generates typed runtime storage and alias for %s", (type, field) => {
+  const runtime = buildSlangRuntimePrelude([{ name: "value", type }]);
+  expect(runtime).toContain(field);
+  expect(runtime).toContain("#define value (_st.custom_value)");
 });

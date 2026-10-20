@@ -1205,3 +1205,14 @@ it("declares volume channels as 3D bindings in compute pipelines", async () => {
   expect(device.createBindGroupLayout.mock.calls[0][0].entries[1]).toMatchObject({ binding: 1, texture: { viewDimension: "3d", sampleType: "float" } });
   pass.dispose();
 });
+
+
+it("binds script stream storage read-only alongside writable compute storage", async () => {
+  const device = fakeDevice();
+  const compute = new SlangComputePipeline(device, descriptor({ storage: [{ ...storageA, streamMaxPerFrame: 8 }, storageB] }));
+  expect(await compute.rebuild("@compute @workgroup_size(1) fn computeKernel() {}" )).toEqual([]);
+  const entries = Array.from(device.createBindGroupLayout.mock.calls[0][0].entries);
+  expect(entries).toContainEqual({ binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } });
+  expect(entries).toContainEqual({ binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } });
+  compute.dispose();
+});

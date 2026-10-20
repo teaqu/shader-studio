@@ -72,9 +72,11 @@ These uniforms are provided by Shader Studio but are not part of the Shadertoy A
 
 | Feature | Notes |
 |---------|-------|
-| Webcam input | Live camera feed |
-| Microphone input | Real-time audio from microphone |
 | AR | Immersive augmented-reality sessions |
+
+## Webcam and microphone
+
+Shadertoy's webcam and microphone inputs work in the browser. Choose **Webcam** in a channel's **Misc** tab or **Mic** in its **Audio** tab; **Screen** and **Shared Audio** are also available. VS Code panels can't use them: start the web server from the Shader Studio status menu and choose **Open in Browser**. See [Webcam and Mic](../features/channels.md#webcam-and-mic) for setup and permissions.
 
 ## Volume inputs
 

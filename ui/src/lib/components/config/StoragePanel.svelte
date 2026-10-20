@@ -3,6 +3,7 @@
 <script lang="ts">
   import { tick } from "svelte";
   import type {
+    MessageEvent as ShaderMessage,
     StorageBufferConfig,
     StorageBufferSnapshot,
     StorageCapturePoint,
@@ -37,6 +38,9 @@
     language?: "wgsl" | "slang" | "glsl";
     passes?: Array<{ name: string; compute: boolean; dispatchOnce?: boolean }>;
     showNavigation?: boolean;
+    shaderPath?: string;
+    postMessage?: (msg: ShaderMessage) => void;
+    onMessage?: (handler: (event: MessageEvent) => void) => void;
   }
   let {
     storage,
@@ -50,6 +54,9 @@
     language = "wgsl",
     passes = [],
     showNavigation = true,
+    shaderPath = "",
+    postMessage,
+    onMessage,
   }: Props = $props();
   let panel = $state<HTMLElement>();
   const id = $props.id();
@@ -144,6 +151,9 @@
                   {onApply}
                   {onDelete}
                   {onReset}
+                  {shaderPath}
+                  {postMessage}
+                  {onMessage}
                   onRenamed={(name) => selectStorageBuffer(scope, name)}
                   onDeleted={() => {
                     selectStorageBuffer(scope, "");

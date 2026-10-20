@@ -348,7 +348,7 @@ export class ShaderProvider {
     }
 
     // Evaluate script in extension host (Node.js context) to get declarations
-    const loadResult = this.scriptEvaluator.loadScript(result.code, scriptPath);
+    const loadResult = this.scriptEvaluator.loadScript(result.code, scriptPath, shaderLanguageForPath(shaderPath) === "slang");
     if (loadResult.error) {
       message.scriptBundleError = loadResult.error;
       return true;
@@ -358,6 +358,8 @@ export class ShaderProvider {
     message.customUniformDeclarations = loadResult.declarations;
     message.customUniformInfo = loadResult.uniforms;
     publishCustomUniformSnapshot(shaderPath, loadResult.uniforms);
+    message.scriptStreams = loadResult.streams;
+    message.scriptSession = loadResult.session;
     return true;
   }
 
@@ -411,6 +413,22 @@ export class ShaderProvider {
   /**
    * Reset the script time origin (called on shader reset).
    */
+  public requestScriptStreamFrame(session: number, acknowledgedSequence?: number, consumer?: string) {
+    return this.scriptEvaluator.requestStreamFrame(session, acknowledgedSequence, consumer);
+  }
+
+  public getScriptStreamQueues(session: number, consumer: string) {
+    return this.scriptEvaluator.getStreamQueues(session, consumer);
+  }
+
+  public releaseScriptStreamConsumer(session: number, consumer: string): void {
+    this.scriptEvaluator.releaseStreamConsumer(session, consumer);
+  }
+
+  public dispose(): void {
+    this.scriptEvaluator.dispose();
+  }
+
   public resetScriptTime(): void {
     this.scriptEvaluator.resetTime();
   }

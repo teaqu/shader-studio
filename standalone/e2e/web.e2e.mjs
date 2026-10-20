@@ -431,11 +431,11 @@ test('keeps one top-level Preview alive through docking, close/reopen, reset and
   await expect.poll(outerTabOrder).toEqual(expect.arrayContaining(['Preview', 'aurora.glsl']));
   const tabOrderBeforeClose = await outerTabOrder();
   await page.getByRole('button', { name: 'View', exact: true }).click();
-  const editorViewItem = page.getByRole('menuitemcheckbox', { name: 'Editor', exact: true });
+  const editorViewItem = page.getByRole('menuitemcheckbox', { name: 'Editors', exact: true });
   await editorViewItem.click();
   await expect(editor).toBeHidden();
   await page.getByRole('button', { name: 'View', exact: true }).click();
-  await page.getByRole('menuitemcheckbox', { name: 'Editor', exact: true }).click();
+  await page.getByRole('menuitemcheckbox', { name: 'Editors', exact: true }).click();
   await expect(editor).toBeVisible();
   await expect.poll(outerTabOrder).toEqual(tabOrderBeforeClose);
   await page.keyboard.press('Escape');
@@ -459,7 +459,7 @@ test('keeps one top-level Preview alive through docking, close/reopen, reset and
   await expect(preview.locator('.canvas-container > canvas:not(.pixel-canvas-marker)')).toBeVisible();
   await expect(editor).toBeHidden();
   await page.getByRole('button', { name: 'View', exact: true }).click();
-  await page.getByRole('menuitemcheckbox', { name: 'Editor', exact: true }).click();
+  await page.getByRole('menuitemcheckbox', { name: 'Editors', exact: true }).click();
   await expect(editor.locator('.monaco-editor')).toBeVisible();
 });
 
@@ -2246,3 +2246,39 @@ for (const style of ['classic', 'pixel']) {
     });
   }
 }
+
+test('WebMCP stays off until enabled in global settings and persists across reloads', async ({ page }) => {
+  await page.addInitScript(() => {
+    const tools = new Map();
+    window.__webMcpTestTools = () => [...tools.keys()];
+    Object.defineProperty(document, 'modelContext', { configurable: true, value: {
+      registerTool(tool, options) {
+        tools.set(tool.name, tool);
+        options?.signal?.addEventListener('abort', () => tools.delete(tool.name), { once: true });
+      },
+      unregisterTool(name) {
+ tools.delete(name);
+},
+    } });
+  });
+  const names = () => page.evaluate(() => window.__webMcpTestTools());
+  const settings = () => page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const toggle = page.getByRole('checkbox', { name: 'Enable WebMCP', exact: true });
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
+  expect(await names()).toEqual([]);
+  await settings();
+  await expect(toggle).not.toBeChecked();
+  await toggle.check();
+  await expect.poll(names).toContain('get_shader');
+  await page.reload();
+  await expect.poll(names).toContain('get_shader');
+  await settings();
+  await expect(toggle).toBeChecked();
+  await toggle.uncheck();
+  await expect.poll(names).toEqual([]);
+  await page.reload();
+  await settings();
+  await expect(toggle).not.toBeChecked();
+  expect(await names()).toEqual([]);
+});

@@ -96,6 +96,7 @@ export class WebExtensionHost {
   private readonly viewerHandlers = new Set<MessageHandler>();
   private readonly explorerHandlers = new Set<MessageHandler>();
   private activeShaderPath: string | null = null;
+  private compileSequence = 0;
   private compileMode: 'hot' | 'manual' = 'hot';
   private shaderListQueued = false;
   private readonly resolveDefaultAsset: (path: string) => string | null;
@@ -872,11 +873,21 @@ export class WebExtensionHost {
     return paths;
   }
 
+  /** Build a revision-attributed source message for a specifically targeted viewer. */
+  prepareShader(path: string): HostMessage {
+    if (!shaderLanguageForPath(path) || !this.workspace.exists(path)) {
+      throw new Error('Select an existing shader file.');
+    }
+    this.setActiveShader(path);
+    return this.shaderSourceMessage(path);
+  }
+
   private shaderSourceMessage(path: string): HostMessage {
     const codeMessage = this.shaderCodeMessage(path);
     const config = codeMessage.config as ShaderConfig | null;
     return {
       type: 'shaderSource',
+      compileSequence: ++this.compileSequence,
       path,
       code: codeMessage.code,
       originalCode: codeMessage.code,
@@ -904,6 +915,20 @@ export class WebExtensionHost {
   }
 
   private resolveConfigAssets(config: ShaderConfig, shaderPath: string): void {
+    for (const declaration of Object.values(config.storage ?? {})) {
+      for (const file of Array.isArray(declaration?.initialDataFiles) ? declaration.initialDataFiles : []) {
+        if (typeof file?.path !== 'string') {
+          continue;
+        }
+        const path = this.resolveSourcePath(shaderPath, file.path);
+        const contents = path && this.workspace.exists(path) ? this.workspace.readText(path) : null;
+        if (contents?.startsWith('data:')) {
+          file.resolved_path = contents;
+        } else {
+          delete file.resolved_path;
+        }
+      }
+    }
     for (const pass of Object.values(config.passes ?? {})) {
       for (const input of Object.values(pass?.inputs ?? {})) {
         if ('path' in input && typeof input.path === 'string') {
