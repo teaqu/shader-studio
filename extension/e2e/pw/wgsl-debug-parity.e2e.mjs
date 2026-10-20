@@ -187,6 +187,24 @@ test.describe('WGSL debug parity in the VS Code webview @gpu', () => {
   });
 
   test('applies parameter overrides and loop caps while debugging a WGSL helper', async ({ vscode }) => {
+    vscode.window.on('console', message => {
+      if (message.type() === 'error') console.log('WGSL capture diagnostic:', message.text());
+    });
+    const traceShaderModules = () => {
+      if (!globalThis.GPUDevice || GPUDevice.prototype.__captureDiagnostic) return;
+      GPUDevice.prototype.__captureDiagnostic = true;
+      const create = GPUDevice.prototype.createShaderModule;
+      GPUDevice.prototype.createShaderModule = function (descriptor) {
+        const module = create.call(this, descriptor);
+        void module.getCompilationInfo().then(info => {
+          const errors = info.messages.filter(message => message.type === 'error');
+          if (errors.length) console.error('WGSL capture shader errors', JSON.stringify(errors.map(({ lineNum, linePos, message }) => ({ lineNum, linePos, message }))), descriptor.code);
+        });
+        return module;
+      };
+    };
+    await vscode.window.context().addInitScript(traceShaderModules);
+    for (const existingFrame of vscode.window.frames()) await existingFrame.evaluate(traceShaderModules);
     for (const existingFrame of vscode.window.frames()) {
       if (await existingFrame.locator('.canvas-container').count()) {
         await setPreviewLocked(existingFrame, false);
