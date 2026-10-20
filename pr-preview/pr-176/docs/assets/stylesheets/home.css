@@ -1,0 +1,60 @@
+.shader-docs-banner {
+  background: color-mix(in srgb, var(--md-default-bg-color) 92%, var(--md-accent-fg-color) 8%);
+  border-bottom: 1px solid color-mix(in srgb, var(--md-default-fg-color) 12%, transparent);
+  color: var(--md-default-fg-color--light);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.shader-docs-banner .md-grid {
+  padding: 0.5rem 1rem;
+}
+
+.shader-docs-banner code {
+  background: color-mix(in srgb, var(--md-default-fg-color) 8%, transparent);
+  border-radius: 0.25rem;
+  color: inherit;
+  padding: 0.1rem 0.35rem;
+}
+
+.hero {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  padding: 2rem 0 3rem;
+}
+
+.hero-content {
+  flex: 1;
+  min-width: 280px;
+}
+
+.hero-content h2 {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.2;
+  margin-bottom: 1rem;
+}
+
+.hero-content p {
+  font-size: 1.1rem;
+  opacity: 0.8;
+  margin-bottom: 1.5rem;
+}
+
+.hero img {
+  flex: 1.2;
+  max-width: 55%;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+@media (max-width: 768px) {
+  .hero {
+    flex-direction: column;
+  }
+
+  .hero img {
+    max-width: 100%;
+  }
+}

@@ -1,0 +1,1 @@
+import{e as o,U as r}from"./index-P4EGLW8F.js";const n={read(l){var t;return(t=o.getModel(r.file(l)))==null?void 0:t.getValue()},commit(l,t){const e=o.getModel(r.file(l));!e||e.getValue()===t||(e.pushStackElement(),e.pushEditOperations(null,[{range:e.getFullModelRange(),text:t}],()=>null),e.pushStackElement())}};export{n as workspaceEditorAccess};
