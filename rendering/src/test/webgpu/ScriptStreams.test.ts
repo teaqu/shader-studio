@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { ScriptStreamDelivery } from '../../webgpu/ScriptStreamDelivery';
 import { addScriptStreams } from '../../webgpu/ScriptStreamGraph';
 import { buildSlangPassGraph } from '../../webgpu/SlangPassGraph';
+import { buildWgslStorageDeclarations } from '../../webgpu/WgslPrelude';
 import { buildStorageDeclarations, wrapSlangImageSource } from '../../webgpu/SlangPrelude';
 const info = [{ name: 'net', maxPerFrame: 2, maxQueued: 8 }, { name: 'uart', maxPerFrame: 1, maxQueued: 8 }];
 describe('script stream render contract', () => {
@@ -255,4 +256,16 @@ describe('stream graph validation boundaries', () => {
       ['existing', 0, 1], ['_min0', 1, 2], ['Max', 2, 65537],
     ]);
   });
+});
+
+
+it.each(['render','compute'] as const)('binds WGSL %s streams with the same packed read-only length/data layout', kind => {
+  const graph=buildSlangPassGraph({imageCode:'',config:null,buffers:{},canvasWidth:1,canvasHeight:1});
+  addScriptStreams(graph,info);
+  const code=buildWgslStorageDeclarations(graph.storage,2,kind).beforeCommon;
+  expect(code).toContain('length: u32, data: array<u32, 2>');
+  expect(code).toContain('@binding(5) var<storage, read> net:');
+  expect(code).toContain('@binding(6) var<storage, read> uart:');
+  expect(code).not.toContain('read_write');
+  expect(buildWgslStorageDeclarations(graph.storage,0,kind,11).beforeCommon).toContain('@binding(11)');
 });

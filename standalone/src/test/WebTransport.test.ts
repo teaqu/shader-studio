@@ -3,6 +3,7 @@ import { resetMobileShellState, setMobileViewport } from '../state/mobileShellSt
 import { getEditorDocument } from '../state/editorDocuments.svelte';
 import { getActiveShaderEditors, getSelectedEditor, getRequestedEditor, getNewShaderVisible, getRequestedPanel, resetShellState, setNewShaderVisible } from '../state/shellState.svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { BrowserScriptWorker } from '../scripts/BrowserScriptWorker';
 import { createDefaultWorkspaceFiles } from '../defaultWorkspace';
 import { VirtualWorkspace } from '../VirtualWorkspace';
 import { WebExtensionHost } from '../WebExtensionHost';
@@ -984,4 +985,93 @@ describe('WebMCP opt-in lifecycle', () => {
       Reflect.deleteProperty(document, 'modelContext');
     }
   });
+});
+
+
+it('prepares explorer script metadata in a short-lived worker and respects script opt-in', async () => {
+  const transport = new WebTransport();
+  const api = transport.getShaderExplorerHostApi();
+  const messages: Record<string, unknown>[] = [];
+  const stop = api.onMessage!(event => messages.push(event.data));
+  try {
+    await transport.readEditorFile('/aurora.glsl');
+    transport.postMessage({ type: 'updateConfig', payload: { shaderPath: '/aurora.glsl', text: JSON.stringify({ script: './preview.js' }) } });
+    await transport.flush();
+    api.postMessage({ type: 'requestShaderCode', path: '/aurora.glsl', requestId: 17 });
+    await transport.flush();
+    await vi.waitFor(() => expect(messages.find(message => message.requestId === 17)).toMatchObject({
+      scriptBundleError: expect.stringContaining('Enable workspace scripts'),
+    }));
+  } finally {
+    stop(); transport.dispose();
+  }
+});
+
+
+it('delivers explorer script snapshots and terminates their workers', async () => {
+  const terminate=vi.fn();
+  class SnapshotWorker {
+    onmessage: ((event:{data:unknown})=>void) | null=null;
+    onerror: (()=>void) | null=null;
+    terminate=terminate;
+    postMessage(message:{type:string}) {
+      queueMicrotask(()=>this.onmessage?.({data:message.type==='load'
+        ? {type:'loaded',result:{declarations:'uniform float speed;',uniforms:[{name:'speed',type:'float'}],streams:[{name:'keys',maxPerFrame:64,maxQueued:128}],session:1},values:[{name:'speed',type:'float',value:0.75}]}
+        : {type:'disposed'}}));
+    }
+  }
+  vi.stubGlobal('Worker',SnapshotWorker);
+  const transport=new WebTransport();const api=transport.getShaderExplorerHostApi();const receive=vi.fn();const stop=api.onMessage!(receive);const stopSecond=api.onMessage!(vi.fn());
+  try {
+    await transport.createWorkspaceFile('/preview.js');transport.settings.update('scripts.enabled',true);
+    transport.postMessage({type:'updateConfig',payload:{shaderPath:'/aurora.glsl',text:JSON.stringify({script:'./preview.js'})}});await transport.flush();
+    api.postMessage({type:'requestShaderCode',path:'/aurora.glsl',requestId:18});await transport.flush();
+    await vi.waitFor(()=>expect(receive).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({type:'shaderCode',requestId:18,customUniformDeclarations:'uniform float speed;',customUniformValues:[{name:'speed',type:'float',value:0.75}],scriptStreams:[{name:'keys',maxPerFrame:64,maxQueued:128}]})})));
+    await vi.waitFor(()=>expect(terminate).toHaveBeenCalledOnce());
+  } finally {
+    stop();stopSecond();transport.dispose();vi.unstubAllGlobals();
+  }
+});
+
+
+it('loads viewer scripts from the workspace and stops their polling when disabled', async () => {
+  const terminate = vi.fn();
+  class LocalWorker {
+    onmessage: ((event: {data: unknown}) => void) | null = null;
+    onerror = null;
+    runtime = new BrowserScriptWorker(message => queueMicrotask(() => this.onmessage?.({data: message})));
+    postMessage(message: {type: string}) {
+      this.runtime.handle(message);
+    }
+    terminate() {
+      terminate();
+    }
+  }
+  vi.stubGlobal('Worker', LocalWorker);
+  const transport = new WebTransport();
+  const viewer = transport.createViewerTransport();
+  const receive = vi.fn(); viewer.onMessage(receive);
+  try {
+    await transport.createWorkspaceFile('/viewer.js');
+    transport.postMessage({type:'updateShaderSource',payload:{path:'/viewer.js',code:'export function uniforms() { return {gain: 0.75}; }'}});
+    transport.settings.update('scripts.enabled', true);
+    transport.postMessage({type:'updateConfig',payload:{shaderPath:'/aurora.glsl',text:JSON.stringify({version:'1.0',script:'./viewer.js',passes:{Image:{}}})}});
+    await transport.flush();
+    await vi.waitFor(() => expect(receive).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({type:'shaderSource',customUniformInfo:[{name:'gain',type:'float'}]})})));
+    await vi.waitFor(() => expect(receive).toHaveBeenCalledWith(expect.objectContaining({data:{type:'customUniformValues',payload:{values:[{name:'gain',type:'float',value:0.75}]}}})));
+    transport.settings.update('scripts.enabled', false);
+    await vi.waitFor(() => expect(terminate).toHaveBeenCalledOnce());
+    expect(receive).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({scriptBundleError:expect.stringContaining('Enable workspace scripts')})}));
+  } finally {
+    viewer.dispose(); transport.dispose(); vi.unstubAllGlobals();
+  }
+});
+
+it('does not reconnect explorer listeners when disposed before the workspace loads', async () => {
+  const transport = new WebTransport();const api=transport.getShaderExplorerHostApi();const receive=vi.fn();
+  const stop=api.onMessage!(receive);
+  transport.dispose();stop();api.onMessage!(receive)();
+  await transport.readEditorFile('/aurora.glsl');
+  api.postMessage({type:'requestShaders'});
+  expect(receive).not.toHaveBeenCalled();
 });

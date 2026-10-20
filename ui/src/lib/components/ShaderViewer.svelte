@@ -1,5 +1,6 @@
 <svelte:options runes={true} />
 <script lang="ts">
+  import { ScriptKeyboardInput } from "../ScriptKeyboardInput";
   import { getCubemapPreview, clearCubemapPreview } from "../state/cubemapPreview.svelte";
   import { sharedSourcePassNames, shaderPathsEqual } from "../editor/sharedSourcePassNames";
   import { clearCurrentEditorSource, setCurrentEditorSource } from "../state/currentEditorSourceState.svelte";
@@ -546,7 +547,10 @@
     return () => clearInterval(fpsInterval);
   });
 
+  let scriptKeyboardInput: ScriptKeyboardInput | null = null;
   async function handleCanvasReady(canvas: HTMLCanvasElement) {
+    scriptKeyboardInput?.dispose();
+    scriptKeyboardInput = new ScriptKeyboardInput(canvas, payload => transport.postMessage({ type: 'scriptKeyboardInput', payload }));
     const canvasReadyAt = performance.now();
     logSwitchTiming('canvas ready', {
       engineLanguage,
@@ -1955,6 +1959,8 @@
     liveCanvasSizeHold.dispose();
     captureSaveChannel?.dispose();
     captureSaveChannel = null;
+    scriptKeyboardInput?.dispose();
+    scriptKeyboardInput = null;
     scriptRuntimeReporter?.dispose();
     scriptRuntimeReporter = null;
     setViewerSession(null);

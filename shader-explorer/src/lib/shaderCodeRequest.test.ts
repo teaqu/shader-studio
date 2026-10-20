@@ -168,6 +168,8 @@ describe('requestShaderCode', () => {
             buffers: {},
             customUniformDeclarations: 'uniform float uFloat;',
             customUniformInfo: [{ name: 'uFloat', type: 'float' }],
+            scriptStreams: [{name:'keys',maxPerFrame:64,maxQueued:128}],
+            customUniformValues: [{name:'uFloat',type:'float',value:0.75}],
           },
         }));
       }),
@@ -180,6 +182,8 @@ describe('requestShaderCode', () => {
     })).resolves.toMatchObject({
       customUniformDeclarations: 'uniform float uFloat;',
       customUniformInfo: [{ name: 'uFloat', type: 'float' }],
+      scriptStreams: [{name:'keys',maxPerFrame:64,maxQueued:128}],
+      customUniformValues: [{name:'uFloat',type:'float',value:0.75}],
     });
   });
 

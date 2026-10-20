@@ -17,6 +17,7 @@ vi.mock('@shader-studio/monaco', async () => ({
   setupMonacoSlang: vi.fn(),
   setupMonacoWgsl: vi.fn(),
   setupMonacoJson: vi.fn(),
+  setupMonacoScriptLanguages: vi.fn().mockResolvedValue(undefined),
   setupMonacoLanguageServices: vi.fn(() => ({
     setEnabled: vi.fn(),
     setColorDecoratorsEnabled: vi.fn(),

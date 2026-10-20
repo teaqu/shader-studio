@@ -1,5 +1,5 @@
 import * as monaco from 'monaco-editor/editor/editor.api.js';
-import { setupMonacoGlsl, setupMonacoJson, setupMonacoSlang, setupMonacoWgsl } from '@shader-studio/monaco';
+import { setupMonacoGlsl, setupMonacoJson, setupMonacoScriptLanguages, setupMonacoSlang, setupMonacoWgsl } from '@shader-studio/monaco';
 import { getHostEditorPreferences, type HostEditorPreferences } from '../state/hostState.svelte';
 
 export interface ShaderEditorFactoryOptions {
@@ -19,6 +19,7 @@ function registerShaderLanguages(api: MonacoSetupApi): void {
   setupMonacoSlang(api);
   setupMonacoWgsl(api);
   setupMonacoJson(api);
+  void setupMonacoScriptLanguages(api).catch(error => console.error('Script syntax highlighting failed to load', error));
 }
 
 function applyModelPreferences(model: monaco.editor.ITextModel | null, preferences: HostEditorPreferences): void {
