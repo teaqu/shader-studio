@@ -1064,6 +1064,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Desktop preview">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#slang-and-wgsl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Slang and WGSL
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1800,6 +1817,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Desktop preview">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#slang-and-wgsl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Slang and WGSL
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1856,11 +1890,11 @@
 
 
 <h1 id="vr-shaders">VR shaders<a class="headerlink" href="#vr-shaders" title="Permanent link">&para;</a></h1>
-<p>View a 3D GLSL shader on your desktop or in a WebXR headset. Add <code>mainVR</code> to define the scene using a ray origin and direction for each eye.</p>
+<p>View a 3D GLSL, Slang or WGSL shader on your desktop or in a WebXR headset. Add <code>mainVR</code> to define the scene using a ray origin and direction for each eye.</p>
 <h2 id="desktop-preview">Desktop preview<a class="headerlink" href="#desktop-preview" title="Permanent link">&para;</a></h2>
-<p>Use the desktop VR preview to look around a GLSL shader that defines <code>mainVR</code>, even without a headset.</p>
+<p>Use the desktop VR preview to look around a shader that defines <code>mainVR</code>, even without a headset.</p>
 <ol>
-<li>Create a GLSL shader and leave <strong>Image → Geometry</strong> set to <strong>Fullscreen</strong>.</li>
+<li>Create a GLSL, Slang or WGSL shader and leave <strong>Image → Geometry</strong> set to <strong>Fullscreen</strong>.</li>
 <li>Add both <code>mainImage</code> for the normal preview and <code>mainVR</code> for the view you can look around. The complete example below colors each viewing direction differently.</li>
 <li>Open <strong>VR</strong> in the preview toolbar and enable <strong>Desktop preview</strong>. Move with <strong>W / A / S / D</strong>, move vertically with <strong>Q / E</strong>, and look by dragging or pressing <strong>arrow keys</strong>.</li>
 <li>Disable <strong>Desktop preview</strong> to return to <code>mainImage</code>. Opening another shader also turns it off.</li>
@@ -1875,7 +1909,26 @@
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="n">fragColor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec4</span><span class="p">(</span><span class="n">rayDirection</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.5</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mf">0.5</span><span class="p">,</span><span class="w"> </span><span class="mf">1.0</span><span class="p">);</span>
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="p">}</span>
 </code></pre></div>
-<p>The <strong>VR</strong> pane can be opened even without a VR shader. Desktop preview and headset entry require a fullscreen GLSL Image shader defining <code>mainVR</code>; otherwise, the pane explains what is needed and disables those controls. Check the function signature and geometry setting if they remain disabled. Mesh passes continue to use <code>mainImage</code>; this VR workflow does not apply to Slang or WGSL.</p>
+<h3 id="slang-and-wgsl">Slang and WGSL<a class="headerlink" href="#slang-and-wgsl" title="Permanent link">&para;</a></h3>
+<p>Slang and WGSL <code>mainVR</code> returns the colour, like their <code>mainImage</code>. Both use the WebGPU renderer and work in desktop preview and in headsets.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kt">float4</span><span class="w"> </span><span class="n">mainImage</span><span class="p">(</span><span class="kt">float2</span><span class="w"> </span><span class="n">fragCoord</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="kt">float4</span><span class="p">(</span><span class="n">fragCoord</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">iResolution</span><span class="p">.</span><span class="n">xy</span><span class="p">,</span><span class="w"> </span><span class="mf">0.5</span><span class="p">,</span><span class="w"> </span><span class="mf">1.0</span><span class="p">);</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="p">}</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="kt">float4</span><span class="w"> </span><span class="n">mainVR</span><span class="p">(</span><span class="kt">float2</span><span class="w"> </span><span class="n">fragCoord</span><span class="p">,</span><span class="w"> </span><span class="kt">float3</span><span class="w"> </span><span class="n">rayOrigin</span><span class="p">,</span><span class="w"> </span><span class="kt">float3</span><span class="w"> </span><span class="n">rayDirection</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="kt">float4</span><span class="p">(</span><span class="n">rayDirection</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.5</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mf">0.5</span><span class="p">,</span><span class="w"> </span><span class="mf">1.0</span><span class="p">);</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="p">}</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">fn</span><span class="w"> </span><span class="n">mainImage</span><span class="p">(</span><span class="n">fragCoord</span><span class="p">:</span><span class="w"> </span><span class="nb">vec2f</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">vec4f</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nb">vec4f</span><span class="p">(</span><span class="n">fragCoord</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">iResolution</span><span class="p">.</span><span class="n">xy</span><span class="p">,</span><span class="w"> </span><span class="mf">0.5</span><span class="p">,</span><span class="w"> </span><span class="mf">1.0</span><span class="p">);</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="p">}</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="k">fn</span><span class="w"> </span><span class="n">mainVR</span><span class="p">(</span><span class="n">fragCoord</span><span class="p">:</span><span class="w"> </span><span class="nb">vec2f</span><span class="p">,</span><span class="w"> </span><span class="n">rayOrigin</span><span class="p">:</span><span class="w"> </span><span class="nb">vec3f</span><span class="p">,</span><span class="w"> </span><span class="n">rayDirection</span><span class="p">:</span><span class="w"> </span><span class="nb">vec3f</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">vec4f</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nb">vec4f</span><span class="p">(</span><span class="n">rayDirection</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.5</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mf">0.5</span><span class="p">,</span><span class="w"> </span><span class="mf">1.0</span><span class="p">);</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="p">}</span>
+</code></pre></div>
+<p><code>mainVR</code> may also be defined in Common. It applies to the generated fullscreen Image entry; passes with native <code>entryPoints</code>, mesh or vertices geometry, and cubemap output keep using their own entries.</p>
+<p>The <strong>VR</strong> pane can be opened even without a VR shader. Desktop preview and headset entry require a fullscreen Image shader defining <code>mainVR</code>; otherwise, the pane explains what is needed and disables those controls. Check the function signature and geometry setting if they remain disabled. Mesh passes continue to use <code>mainImage</code>.</p>
 <p>VR opens a docked tool pane, like Config and Debug. <strong>VR</strong> is always available in
 the hamburger options menu. When a compatible VR shader is detected, a <strong>VR</strong>
 shortcut also appears at the far right of the preview toolbar.</p>
@@ -1893,6 +1946,7 @@ The <strong>Movement speed</strong> and <strong>Turn speed</strong> sliders appl
 before another turn. These settings, including the enable switch, are remembered in this browser. Switching navigation off preserves the chosen speed, turn mode and angle for when you enable it again. Movement follows where you look, including upward and downward when you tilt your head. Left/right strafing stays horizontal. Movement does not include collision detection. Physical head movement continues to work.
 Exiting VR resets the virtual position and turning offset. Controller ray
 positions and directions follow the same virtual movement as your view.</p>
+<p>Slang and WGSL shaders render each eye with WebGPU, and the browser shows them through its WebGL headset layer, so the headset browser needs both WebGPU and WebXR.</p>
 <p>If <strong>Enter VR</strong> is absent, check the browser, device, and page requirements above. You can still use the desktop VR preview without WebXR support. Headset and controller behavior can vary by device.</p>
 <p>Each eye receives its tracked ray origin and projection in <code>mainVR</code>. Ray origins
 use metres and follow the WebXR reference space (floor-relative when available)
@@ -1972,16 +2026,17 @@ headset view.</p>
 <p>System/menu buttons remain reserved by the headset. This demo uses the optional Shader Studio inputs below and requires adapting before running on Shadertoy.</p>
 <h2 id="controller-shader-inputs">Controller shader inputs<a class="headerlink" href="#controller-shader-inputs" title="Permanent link">&para;</a></h2>
 <p><code>mainImage</code> and <code>mainVR</code> remain compatible with Shadertoy. The controller inputs
-below are Shader Studio extensions. To enable them, add this line at the top
-of the shader (or Common code):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="cp">#define SHADER_STUDIO_VR_INPUTS</span>
+below are Shader Studio extensions. Slang and WGSL shaders can always use them.
+To enable them in GLSL, add this line at the top of the shader (or Common code):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="cp">#define SHADER_STUDIO_VR_INPUTS</span>
 </code></pre></div>
-<p>Without that opt-in, the extra names are not injected into the compiled shader.
+<p>Without that opt-in, the extra names are not injected into the compiled GLSL shader.
 Shaders using these inputs require adapting before running on Shadertoy.
 All raw inputs remain available when built-in movement or turning is disabled,
 and are not consumed or zeroed when navigation is enabled.</p>
 <p>The compact VR pane shows headset status beside <strong>Enter VR</strong>, switches for <strong>Desktop preview</strong> and <strong>Headset navigation</strong>, and <strong>Snap</strong> / <strong>Smooth</strong> turning buttons. <strong>Reset</strong> restores the defaults and disables navigation. Use the <strong>?</strong> link in the VR pane to open this guide. Close the pane with the VR toolbar button or its dock tab controls.</p>
 <p>These inputs are supplied during the session and reset on exit:</p>
+<p>In WGSL the arrays are <code>array&lt;vec4f, 2&gt;</code>; in Slang they are <code>float4[2]</code>.</p>
 <table>
 <thead>
 <tr>
@@ -2072,8 +2127,7 @@ and are not consumed or zeroed when navigation is enabled.</p>
 Touch states are only available when supplied by the controller/runtime.</p>
 <p>Slot 0 is left and slot 1 right. Unhanded sources use the first free slot.
 Absent or untracked controllers supply zeroes. Button/axis order follows the
-controller's WebXR gamepad mapping; these inputs are Shader Studio additions.
-Slang and WGSL entry points remain unchanged.</p>
+controller's WebXR gamepad mapping; these inputs are Shader Studio additions.</p>
 
 
 
