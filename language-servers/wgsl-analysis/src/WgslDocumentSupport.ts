@@ -62,6 +62,7 @@ const SLANG_TO_WGSL_TYPE: Record<string, string> = {
   float2: "vec2f",
   float3: "vec3f",
   float4: "vec4f",
+  "float4[2]": "array<vec4f, 2>",
   int: "i32",
   uint: "u32",
 };

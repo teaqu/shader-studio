@@ -27,6 +27,7 @@ describe("WgslDocumentSupport", () => {
 
   it("maps known host type spellings and rejects unsupported ones", () => {
     expect(wgslHostGlobalType(" float3 ")).toBe("vec3f");
+    expect(wgslHostGlobalType("float4[2]")).toBe("array<vec4f, 2>");
     expect(wgslHostGlobalType("matrix")).toBeUndefined();
   });
 

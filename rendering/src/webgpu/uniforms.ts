@@ -1,8 +1,10 @@
 import type { PointerState } from "@shader-studio/types";
-import { DEFAULT_INSTANCE_COUNT } from "@shader-studio/types";
+import { DEFAULT_INSTANCE_COUNT, VR_CONTROLLER_FIELDS } from "@shader-studio/types";
 import { parseScriptUniformType } from "@shader-studio/types";
+import type { VrControllerData } from "../webxr/WebXrFrameData";
 import {
   createShaderToyUniformLayout,
+  type ShaderToyUniformLayout,
   isSlangCustomUniformType,
   type SlangCustomUniformInfo,
   type SlangCustomUniformType,
@@ -56,6 +58,20 @@ export function createSlangCustomUniformLayout(
   return { entries, size: alignTo(offset, 16) };
 }
 
+/** mainVR dispatch and WebXR controller state; omitted fields are zero. */
+export interface VrUniformInput {
+  /** Desktop mainVR preview for the Image pass. */
+  preview?: boolean;
+  /** This draw renders one headset eye. */
+  immersive?: boolean;
+  /** An immersive session is running (iVRActive). */
+  active?: boolean;
+  viewport?: { x: number; y: number; width: number; height: number };
+  /** Column-major right/up/forward ray basis and eye origin. */
+  rayTransform?: ArrayLike<number>;
+  controllers?: VrControllerData;
+}
+
 /** The per-frame inputs the Slang ShaderToy uniform block needs. */
 export interface ShaderToyUniformInput {
   /** Must match the channel count used when this pass's Slang source was generated. */
@@ -84,9 +100,29 @@ export interface ShaderToyUniformInput {
   viewMatrix?: ArrayLike<number>;
   projectionMatrix?: ArrayLike<number>;
   viewProjection?: ArrayLike<number>;
+  vr?: VrUniformInput;
 }
 
 const IDENTITY_MATRIX = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] as const;
+
+function packVrUniforms(vr: VrUniformInput, offsets: ShaderToyUniformLayout["offsets"], f32: Float32Array, i32: Int32Array): void {
+  const stateIndex = offsets.iVrState / 4;
+  i32[stateIndex] = vr.preview ? 1 : 0;
+  i32[stateIndex + 1] = vr.immersive ? 1 : 0;
+  i32[stateIndex + 2] = vr.active ? 1 : 0;
+  if (vr.viewport) {
+    f32.set([vr.viewport.x, vr.viewport.y, vr.viewport.width, vr.viewport.height], offsets.iVrViewport / 4);
+  }
+  if (vr.rayTransform) {
+    f32.set(vr.rayTransform, offsets.iVrRayTransform / 4);
+  }
+  const controllers = vr.controllers;
+  if (controllers) {
+    VR_CONTROLLER_FIELDS.forEach(({ data }, index) => {
+      f32.set(controllers[data], (offsets.iVrControllers + index * 32) / 4);
+    });
+  }
+}
 
 /** Pack the fixed ShaderToy prefix followed by dynamically laid-out script uniforms. */
 export function packShaderToyUniforms(
@@ -150,6 +186,10 @@ export function packShaderToyUniforms(
   i32[pointerIndex + 6] = pointer?.modifiers ?? 0;
   f32.set(pointer?.wheel ?? [0, 0], pointerIndex + 8);
   f32.set(pointer?.wheelDelta ?? [0, 0], pointerIndex + 10);
+
+  if (input.vr) {
+    packVrUniforms(input.vr, offsets, f32, i32);
+  }
 
   const valuesByName = new Map(customUniformValues.map((uniform) => [uniform.name, uniform.value]));
   for (const entry of customLayout.entries) {

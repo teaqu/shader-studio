@@ -421,6 +421,17 @@ void main() { shade(float2(0.)); }`,
     }
   });
 
+  test('scopes WebXR controller inputs as Slang uniforms', () => {
+    const names = ['iVRActive', 'iVRControllerPosition', 'iVRControllerDirection', 'iVRControllerButtons', 'iVRControllerAxes', 'iVRControllerFaceButtons', 'iVRControllerTouches', 'iVRControllerFaceTouches'];
+    const [tokens] = tokenizeLines(`${names.join('; ')}; iVRControllerGrip;`, slangGrammar);
+    for (const name of names) {
+      const token = tokens.find((candidate) => candidate.text === name);
+      assert.ok(token, `${name} must be emitted as one token`);
+      assert.ok(hasScope(token, 'variable.language.uniform'), `${name} must be scoped as a uniform`);
+    }
+    assert.ok(!tokens.some((token) => token.text.includes('iVRControllerGrip') && hasScope(token, 'variable.language.uniform')));
+  });
+
   test('scopes Shadertoy uniforms like predefined variables while keeping members neutral', () => {
     for (const [grammar, language] of [
       [glslGrammar, 'GLSL'],

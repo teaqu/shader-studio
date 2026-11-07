@@ -427,7 +427,8 @@ describe("ShaderAuthoringEnvironment", () => {
 
   it("puts iVertexCount in its own 16-byte runtime slot before custom uniforms", () => {
     const runtime = buildSlangRuntimePrelude([{ name: "gain", type: "float" }]);
-    expect(runtime).toContain("    float4 cameraDir;\n    uint4 vertexCount;\n    column_major float4x4 viewMatrix;\n    column_major float4x4 projectionMatrix;\n    column_major float4x4 viewProjection;\n    ShaderStudioPointer pointer;\n    float custom_gain;");
+    expect(runtime).toContain("    float4 cameraDir;\n    uint4 vertexCount;\n    column_major float4x4 viewMatrix;\n    column_major float4x4 projectionMatrix;\n    column_major float4x4 viewProjection;\n    ShaderStudioPointer pointer;\n    int4 vrState;\n    float4 vrViewport;\n    column_major float4x4 vrRayTransform;\n    float4 vrControllerPosition[2];");
+    expect(runtime).toContain("    float4 vrControllerFaceTouches[2];\n    float custom_gain;");
     expect(runtime).toContain("#define iVertexCount (_st.vertexCount.x)");
   });
 

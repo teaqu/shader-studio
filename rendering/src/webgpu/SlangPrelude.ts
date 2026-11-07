@@ -2,6 +2,8 @@ import { isolateShaderEntryPoints } from "@shader-studio/types";
 import { findSlangAuthoredDeclarations, getShaderSourceFunctions } from "@shader-studio/types";
 import { buildSlangBindingPlan, type SlangBindingChannel } from "./SlangBindingPlan";
 import { stripComments } from "../util/ShaderText";
+import { VR_CONTROLLER_FIELDS } from "@shader-studio/types";
+import { SLANG_VR_IMAGE_FUNCTION, usesWebGpuVrEntry, webGpuImageCall } from "./WebGPUVrEntry";
 // Slang ShaderToy authoring convention for the WebGPU pipeline.
 //
 // A user `.slang` image shader defines:
@@ -84,6 +86,12 @@ export interface ShaderToyUniformLayout {
     iProjectionMatrix: number;
     iViewProjection: number;
     iPointer: number;
+    /** x desktop preview, y immersive eye draw, z immersive session active (int4). */
+    iVrState: number;
+    iVrViewport: number;
+    iVrRayTransform: number;
+    /** Seven consecutive float4[2] controller arrays; see VR_CONTROLLER_FIELDS. */
+    iVrControllers: number;
   };
 }
 
@@ -106,10 +114,16 @@ export function createShaderToyUniformLayout(channelCount: number): ShaderToyUni
   const iViewMatrix = iVertexCount + 16;
   const iProjectionMatrix = iViewMatrix + 64;
   const iViewProjection = iProjectionMatrix + 64;
+  const iPointer = iViewProjection + 64;
+  // ShaderStudioPointer is 48 bytes, keeping the VR block 16-aligned.
+  const iVrState = iPointer + 48;
+  const iVrViewport = iVrState + 16;
+  const iVrRayTransform = iVrViewport + 16;
+  const iVrControllers = iVrRayTransform + 64;
   return {
     channelCount: count,
-    size: iViewProjection + 64 + 48,
-    offsets: { iResolution: 0, iMouse: 16, iTime: 32, iTimeDelta: 36, iFrameRate: 40, iFrame: 44, iChannelTime, iChannelLoaded, iSampleRate, iDate, iChannelResolution, iCameraPos, iCameraDir, iVertexCount, iViewMatrix, iProjectionMatrix, iViewProjection, iPointer: iViewProjection + 64 },
+    size: iVrControllers + VR_CONTROLLER_FIELDS.length * 32,
+    offsets: { iResolution: 0, iMouse: 16, iTime: 32, iTimeDelta: 36, iFrameRate: 40, iFrame: 44, iChannelTime, iChannelLoaded, iSampleRate, iDate, iChannelResolution, iCameraPos, iCameraDir, iVertexCount, iViewMatrix, iProjectionMatrix, iViewProjection, iPointer, iVrState, iVrViewport, iVrRayTransform, iVrControllers },
   };
 }
 
@@ -179,13 +193,13 @@ const SLANG_SET_INSTANCE_INDEX = `${SLANG_INSTANCE_INDEX} = instanceID;`;
  * iInstanceIndex keeps its zero initial value; clip-space vertices read both
  * from the rasterizer.
  */
-function buildSlangVertexUvFragment(clipVertices: boolean): string {
+function buildSlangVertexUvFragment(clipVertices: boolean, vr = false): string {
   const parameter = clipVertices ? ", bool frontFacing : SV_IsFrontFace" : "";
   const frontFacing = clipVertices ? "frontFacing" : "true";
   const instanceIndex = clipVertices ? ` ${SLANG_INSTANCE_INDEX} = input.instanceIndex;` : "";
   return `[shader("fragment")]
-float4 ${SLANG_ENTRY_FRAGMENT}(ShaderStudioVertexUvOut input${parameter}) : SV_Target { ${MESH_FRAGMENT_CONTEXT.uv} = input.uv; ${MESH_FRAGMENT_CONTEXT.frontFacing} = ${frontFacing};${instanceIndex} return mainImage(float2(input.position.x, _st.resolution.y - input.position.y)); }
-`;
+float4 ${SLANG_ENTRY_FRAGMENT}(ShaderStudioVertexUvOut input${parameter}) : SV_Target { ${MESH_FRAGMENT_CONTEXT.uv} = input.uv; ${MESH_FRAGMENT_CONTEXT.frontFacing} = ${frontFacing};${instanceIndex} return ${webGpuImageCall(vr, "float2(input.position.x, _st.resolution.y - input.position.y)")}; }
+${vr ? SLANG_VR_IMAGE_FUNCTION : ""}`;
 }
 
 const MESH_FRAGMENT_ENTRY_POINT = `[shader("fragment")]
@@ -211,15 +225,15 @@ MeshVertexOut ${SLANG_ENTRY_VERTEX}([[vk::location(0)]] float3 position : POSITI
 ${MESH_FRAGMENT_ENTRY_POINT}`;
 }
 
-function buildFullscreenEntryPoints(vertexCode: string, hasAuthoredHook = false): string {
+function buildFullscreenEntryPoints(vertexCode: string, hasAuthoredHook: boolean, vr: boolean): string {
   if (!vertexCode.trim() && !hasAuthoredHook) {
-    return ENTRY_POINTS;
+    return buildEntryPoints(vr);
   }
   return `${vertexCode}
 ${SLANG_VERTEX_UV_OUT}
 [shader("vertex")]
 ShaderStudioVertexUvOut ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID) { float2 verts[3] = { float2(-1, -1), float2(3, -1), float2(-1, 3) }; float3 position = float3(verts[vertexID], 0); float3 normal = float3(0, 0, 1); float2 uv = verts[vertexID] * 0.5 + 0.5; mainVertex(vertexID, position, normal, uv); ShaderStudioVertexUvOut output; output.position = float4(position, 1); output.uv = uv; return output; }
-${buildSlangVertexUvFragment(false)}
+${buildSlangVertexUvFragment(false, vr)}
 `;
 }
 
@@ -249,7 +263,7 @@ MeshVertexOut ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID, ${SLANG_INSTANC
 ${MESH_FRAGMENT_ENTRY_POINT}`;
 }
 
-const ENTRY_POINTS = `${SLANG_VERTEX_UV_OUT}
+const buildEntryPoints = (vr: boolean): string => `${SLANG_VERTEX_UV_OUT}
 // ---- shader-studio Slang entry points (generated) ----
 [shader("vertex")]
 ShaderStudioVertexUvOut ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID)
@@ -268,8 +282,9 @@ float4 ${SLANG_ENTRY_FRAGMENT}(ShaderStudioVertexUvOut input) : SV_Target
     ${MESH_FRAGMENT_CONTEXT.frontFacing} = true;
     // Flip Y so fragCoord origin is bottom-left, matching ShaderToy.
     float2 coord = float2(input.position.x, _st.resolution.y - input.position.y);
-    return mainImage(coord);
+    return ${webGpuImageCall(vr, "coord")};
 }
+${vr ? SLANG_VR_IMAGE_FUNCTION : ""}
 `;
 
 function buildCubemapEntryPoints(binding: number): string {
@@ -518,7 +533,7 @@ function buildGeometryEntryPoints(options: SlangWrapOptions, meshBinding: number
       entryPoints: buildVerticesEntryPoints(vertexCode, space, hasAuthoredHook),
     };
   }
-  return { meshPrelude: "", entryPoints: buildFullscreenEntryPoints(vertexCode, hasAuthoredHook) };
+  return { meshPrelude: "", entryPoints: buildFullscreenEntryPoints(vertexCode, hasAuthoredHook, usesWebGpuVrEntry(options, authoredSource)) };
 }
 
 function buildOutputPrelude(binding: number, outputLayers: number, imageFormat: "rgba16f" | "rgba32f" = "rgba16f", outputKind?: "2d" | "cubemap"): string {
