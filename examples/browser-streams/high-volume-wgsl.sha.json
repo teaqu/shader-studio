@@ -1,0 +1,25 @@
+{
+  "version": "1.0",
+  "script": "./high-volume.js",
+  "storage": {
+    "volumeState": {
+      "count": 520,
+      "elementType": "uint"
+    }
+  },
+  "passes": {
+    "ComputeSamples": {
+      "type": "compute",
+      "path": "./high-volume-wgsl.buffer.wgsl",
+      "entryPoints": {
+        "compute": "consumeSamples"
+      },
+      "dispatch": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      }
+    },
+    "Image": {}
+  }
+}

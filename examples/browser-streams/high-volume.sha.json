@@ -1,0 +1,36 @@
+{
+  "version": "1.0",
+  "script": "./high-volume.js",
+  "storage": {
+    "volumeState": {
+      "count": 520,
+      "elementType": "uint"
+    },
+    "fontData": {
+      "count": 1024,
+      "elementType": "uint",
+      "initialDataFiles": [
+        {
+          "path": "./font.bin"
+        }
+      ]
+    }
+  },
+  "passes": {
+    "ComputeSamples": {
+      "type": "compute",
+      "path": "./high-volume.buffer.slang",
+      "entryPoints": {
+        "compute": "consumeSamples"
+      },
+      "dispatch": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      }
+    },
+    "Image": {
+      "inputs": {}
+    }
+  }
+}

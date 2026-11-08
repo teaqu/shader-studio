@@ -25,7 +25,8 @@
     "shader-studio-ui": "*",
     "svelte": "^5.56.4",
     "@shader-studio/file-explorer": "*",
-    "@shader-studio/utils": "*"
+    "@shader-studio/utils": "*",
+    "sucrase": "^3.35.1"
   },
   "devDependencies": {
     "jszip": "^3.10.1",

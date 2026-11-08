@@ -3,6 +3,7 @@ import { createDefaultWorkspaceFiles } from '../defaultWorkspace';
 import { WebExtensionHost } from '../WebExtensionHost';
 import { MemoryWorkspaceStore, VirtualWorkspace } from '../VirtualWorkspace';
 import { StandaloneSettings } from '../settings/StandaloneSettings';
+import { BrowserScriptWorker } from '../scripts/BrowserScriptWorker';
 
 it('collects only existing source files from the displayed shader config', async () => {
   const code = 'void mainImage(out vec4 color, vec2 uv) { color = vec4(1.0); }';
@@ -1724,4 +1725,60 @@ describe('standalone layout profiles', () => {
     expect(workspace.readText('/shared.slang')).toBe('float helper() { return 1.0; }');
   });
 
+});
+
+it('recompiles the owning shader when its script changes, respecting manual mode', async () => {
+  const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), [{ path: '/aurora.glsl', contents: 'shader', createdAt: 1, modifiedAt: 1 }]);
+  const host = new WebExtensionHost(workspace);
+  workspace.writeText('/aurora.sha.json', JSON.stringify({ script: './keys.ts', passes: { Image: {} } }));
+  workspace.writeText('/keys.ts', 'export function uniforms() { return {x:1}; }');
+  const send = vi.fn(); const stop = host.onViewerMessage(send);
+  await host.handleViewerMessage({type:'updateShaderSource',payload:{path:'/keys.ts',code:'export function uniforms() { return {x:2}; }'}});
+  expect(send).toHaveBeenCalledWith(expect.objectContaining({type:'shaderSource',path:'/aurora.glsl'}));
+  send.mockClear(); await host.handleViewerMessage({type:'setCompileMode',payload:{mode:'manual'}});
+  await host.handleViewerMessage({type:'updateShaderSource',payload:{path:'/keys.ts',code:'new manual source'}});
+  expect(send.mock.calls.filter(([m])=>m.type==='shaderSource')).toHaveLength(0);
+  stop(); host.dispose();
+});
+
+it('creates a runnable script from the Script file picker',async()=>{
+  const host=await createHost({prompt:()=> 'keys.js'});const receive=vi.fn();host.onViewerMessage(receive);
+  await host.handleViewerMessage({type:'createFile',payload:{shaderPath:'/aurora.glsl',fileType:'script',suggestedPath:'keys.js',requestId:'script-create'}});
+  const code=host.readEditorFile('/keys.js')!;
+  expect(code).toContain('export function uniforms');
+  const send=vi.fn();const worker=new BrowserScriptWorker(send);
+  try {
+    worker.handle({type:'load',path:'/keys.js',code,snapshot:true});
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({type:'loaded',values:[{name:'pulse',type:'float',value:expect.any(Number)}],result:expect.objectContaining({uniforms:[{name:'pulse',type:'float'}]})}));
+    expect(Number.isFinite(send.mock.calls[0][0].values[0].value)).toBe(true);
+  } finally {
+    worker.handle({type:'dispose'});
+  }
+  expect(receive).toHaveBeenCalledWith({type:'fileSelected',payload:{path:'keys.js',requestId:'script-create'}});host.dispose();
+});
+
+it('invalidates explorer script thumbnails after script edits and permission changes', async () => {
+  const settings = new StandaloneSettings();
+  let clock = 10;
+  const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), [
+    {path:'/main.glsl',contents:'shader',createdAt:1,modifiedAt:1},
+    {path:'/main.sha.json',contents:JSON.stringify({script:'./main.js'}),createdAt:1,modifiedAt:1},
+    {path:'/main.js',contents:'script',createdAt:1,modifiedAt:1},
+  ],()=>++clock);
+  const host = new WebExtensionHost(workspace,{settings});
+  const receive=vi.fn();host.onExplorerMessage(receive);
+  const settle=()=>new Promise<void>(resolve=>queueMicrotask(resolve));
+  try {
+    await host.handleExplorerMessage({type:'requestShaders'});
+    const initial=receive.mock.lastCall![0].shaders[0].thumbnailVersion;
+    workspace.writeText('/main.js','changed');await settle();
+    expect(receive.mock.calls.length).toBe(2);
+    expect(receive.mock.lastCall![0].shaders[0].thumbnailVersion).toBeGreaterThan(initial);
+    const edited=receive.mock.lastCall![0].shaders[0].thumbnailVersion;
+    settings.update('scripts.enabled',true);await settle();
+    expect(receive.mock.lastCall![0].shaders[0].thumbnailVersion).toBeGreaterThan(edited);
+    const count=receive.mock.calls.length;settings.update('editor.fontSize',18);await settle();expect(receive.mock.calls.length).toBe(count);
+  } finally {
+    host.dispose();
+  }
 });

@@ -41,7 +41,7 @@
   import type { RenderingEngine } from '../../../../rendering/src/types/RenderingEngine';
   import type { ShaderConfig, SlangSourceModule } from '@shader-studio/types';
   import { hoverRenderQueue, thumbnailRenderQueue } from '../stores/shaderStore';
-  import { requestShaderCode, type ShaderCodeRequestApi, type ShaderLanguage } from '../shaderCodeRequest';
+  import { requestShaderCode, type ShaderCodeRequestApi, type ShaderLanguage, type ShaderCodeResponse } from '../shaderCodeRequest';
   import { observeNearViewport } from '../shaderPreviewVisibility';
   import { createEngineForLanguage } from '../engineFactory';
 
@@ -80,10 +80,12 @@
     ? Math.min(Math.round(width * 0.047), 28)
     : Math.round(width * 0.13));
   let shaderCode: string = '';
-  let previewPath: string = shader.path;
+  let previewPath = '';
   let shaderConfig: ShaderConfig | null = null;
   let shaderBuffers: Record<string, string> = {};
   let shaderLanguage: ShaderLanguage = 'glsl';
+  let scriptStreams: ShaderCodeResponse['scriptStreams'];
+  let initialUniformValues: ShaderCodeResponse['customUniformValues'];
   let customUniformDeclarations: string | undefined;
   let customUniformInfo: { name: string; type: string }[] | undefined;
   let slangModules: SlangSourceModule[] | undefined;
@@ -365,6 +367,8 @@
       shaderConfig = response.config === null ? null : response.config as ShaderConfig;
       shaderBuffers = response.buffers;
       shaderLanguage = response.language;
+      scriptStreams = response.scriptStreams;
+      initialUniformValues = response.customUniformValues;
       customUniformDeclarations = response.customUniformDeclarations;
       customUniformInfo = response.customUniformInfo;
       slangModules = response.slangModules;
@@ -415,6 +419,9 @@
       engine.initialize(targetCanvas, true); // Always preserve drawing buffer for capture
       engine.setInputEnabled(false);
 
+      // Thumbnails bind stream declarations with an empty queue. Live producers
+      // belong to the opened preview; cards must not keep network workers alive.
+      engine.configureScriptStreams?.(scriptStreams ?? [], 0, () => {});
       const result = await engine.compileShaderPipeline(
         shaderCode,
         shaderConfig,
@@ -431,6 +438,9 @@
       }
 
       if (result?.success) {
+        if (initialUniformValues) {
+          engine.setCustomUniformValues(initialUniformValues);
+        }
         if (!renderSingleFrame) {
           engine.startRenderLoop();
         }

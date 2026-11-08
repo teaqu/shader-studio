@@ -1,0 +1,40 @@
+{
+  "version": "1.0",
+  "script": "./keyboard-comparison.js",
+  "storage": {
+    "keyState": {
+      "count": 128,
+      "elementType": "uint"
+    },
+    "fontData": {
+      "count": 1024,
+      "elementType": "uint",
+      "initialDataFiles": [
+        {
+          "path": "./font.bin"
+        }
+      ]
+    }
+  },
+  "passes": {
+    "ComputeKeys": {
+      "type": "compute",
+      "path": "./keyboard-events.buffer.slang",
+      "entryPoints": {
+        "compute": "consumeKeyboard"
+      },
+      "dispatch": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      }
+    },
+    "Image": {
+      "inputs": {
+        "iChannel0": {
+          "type": "keyboard"
+        }
+      }
+    }
+  }
+}

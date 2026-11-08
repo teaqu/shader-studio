@@ -33,3 +33,5 @@ export {
   suppressDuplicateMarkers,
   resetMarkerArbitration,
 } from './language-services/markerArbitration';
+
+export { setupMonacoScriptLanguages } from './script-languages';

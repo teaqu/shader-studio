@@ -124,6 +124,16 @@ describe('ShaderProcessor', () => {
     await shaderProcessor.processMainShaderCompilation({ type: "shaderSource", code: "image", config, path: "/preview.glsl", buffers: {} });
     expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith("image", config, "/preview.glsl", {}, undefined, undefined);
 });
+  it.each(['slang','wgsl'] as const)('compiles stream scripts on %s', async language => {
+    Object.assign(mockRenderEngine, {getShaderLanguage:()=>language});
+    const result=await shaderProcessor.processMainShaderCompilation({
+      type:'shaderSource',code:'shader',config:null,path:'streams.'+language,buffers:{},
+      scriptStreams:[{name:'net',maxPerFrame:4,maxQueued:8}],
+    });
+    expect(result.success).toBe(true);
+    expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalled();
+  });
+
   it('rejects stream scripts on WebGL before starting compilation', async () => {
     Object.assign(mockRenderEngine, { getShaderLanguage: () => 'glsl' });
     const result = await shaderProcessor.processMainShaderCompilation({
@@ -131,7 +141,7 @@ describe('ShaderProcessor', () => {
       scriptStreams: [{ name: 'net', maxPerFrame: 4096, maxQueued: 65536 }],
     });
     expect(result.success).toBe(false);
-    expect(result.errors?.[0]).toContain('Slang / WebGPU');
+    expect(result.errors?.[0]).toContain('WebGPU');
     expect(mockRenderEngine.compileShaderPipeline).not.toHaveBeenCalled();
   });
 

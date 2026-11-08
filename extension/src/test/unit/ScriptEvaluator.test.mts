@@ -1,7 +1,8 @@
+import { describe as suite, beforeEach as setup, afterEach as teardown, it as test } from 'vitest';
 import * as assert from 'assert';
 import * as sinon from 'sinon';
-import { ScriptEvaluator } from '../app/ScriptEvaluator';
-import { Logger } from '../app/services/Logger';
+import { ScriptEvaluator } from '../../app/ScriptEvaluator.js';
+import { Logger } from '../../app/services/Logger.js';
 
 function makeBundle(body: string): string {
   return `var __shaderUniforms = { uniforms: function(ctx) { ${body} } };`;
@@ -35,6 +36,12 @@ suite('ScriptEvaluator', () => {
   });
 
   suite('loadScript', () => {
+    test('resolves Node modules from an explicit script path', () => {
+      const result = evaluator.loadScript(makeBundle("return { nameLength: require('node:path').basename('/data/keys.js').length };"), '/project/uniforms.js');
+      assert.strictEqual(result.error, undefined);
+      assert.strictEqual(evaluator.currentValues()[0].value, 7);
+    });
+
     test('should load a valid script', () => {
       const result = evaluator.loadScript(makeBundle('return { uVal: 1.0 };'));
       assert.strictEqual(result.error, undefined);

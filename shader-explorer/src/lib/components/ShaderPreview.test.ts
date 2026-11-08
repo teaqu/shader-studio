@@ -8,6 +8,8 @@ const { mockEngine, createEngineForLanguage } = vi.hoisted(() => ({
     mockEngine: {
         initialize: vi.fn(),
         setInputEnabled: vi.fn(),
+        configureScriptStreams: vi.fn(),
+        setCustomUniformValues: vi.fn(),
         compileShaderPipeline: vi.fn(),
         render: vi.fn(),
         renderForCapture: vi.fn(),
@@ -471,6 +473,8 @@ describe('ShaderPreview - renderer selection and cleanup', () => {
                             language: 'glsl',
                             customUniformDeclarations: 'uniform float uFloat;',
                             customUniformInfo: [{ name: 'uFloat', type: 'float' }],
+                            scriptStreams: [{ name: 'keys', maxPerFrame: 64, maxQueued: 128 }],
+                            customUniformValues: [{ name: 'uFloat', type: 'float', value: 0.75 }],
                         },
                     }));
                 }, 0);
@@ -480,6 +484,18 @@ describe('ShaderPreview - renderer selection and cleanup', () => {
         render(ShaderPreview, {
             props: { shader: makeShader(), vscodeApi },
         });
+
+        await waitFor(() => expect(mockEngine.configureScriptStreams).toHaveBeenCalledWith(
+            [{ name: 'keys', maxPerFrame: 64, maxQueued: 128 }], 0, expect.any(Function),
+        ));
+        await waitFor(() => expect(mockEngine.setCustomUniformValues).toHaveBeenCalledWith(
+            [{ name: 'uFloat', type: 'float', value: 0.75 }],
+        ));
+        // A thumbnail renderer can request a chunk, but its snapshot must never
+        // start a producer or forward live stream requests to the host.
+        const requestChunk = mockEngine.configureScriptStreams.mock.calls.at(-1)![2];
+        requestChunk({ session: 0, request: 1, consumer: 'thumbnail' });
+        expect(vscodeApi.postMessage.mock.calls.some(([message]) => message.type === 'requestScriptStreamFrame')).toBe(false);
 
         await waitFor(() => expect(mockEngine.compileShaderPipeline).toHaveBeenCalledWith(
             expect.stringContaining('uFloat'),

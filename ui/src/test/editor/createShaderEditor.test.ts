@@ -1,6 +1,7 @@
+import { setupMonacoScriptLanguages } from '@shader-studio/monaco';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
-import { HostEditorPreferencesController } from '../../lib/editor/createShaderEditor.svelte';
+import { createShaderEditor, HostEditorPreferencesController } from '../../lib/editor/createShaderEditor.svelte';
 import { configureHost, resetHost } from '../../lib/state/hostState.svelte';
 import { getFixturePreferences, setFixturePreferences } from './editorPreferencesFixture.svelte';
 
@@ -60,4 +61,23 @@ describe('HostEditorPreferencesController', () => {
     await tick();
     expect(editor.updateOptions).not.toHaveBeenCalled();
   });
+});
+
+it('keeps the script editor available when its syntax grammar fails to load', async () => {
+  resetHost();
+  const failure = Error('grammar unavailable');
+  vi.mocked(setupMonacoScriptLanguages).mockRejectedValueOnce(failure);
+  const report = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const result = createShaderEditor(document.createElement('div'), {
+    shaderCode: 'export const value=1;', shaderPath: '/highlight-failure.js',
+    language: 'javascript', theme: 'shader-studio',
+  });
+  try {
+    expect(result.editor).toBeDefined();
+    await vi.waitFor(() => expect(report).toHaveBeenCalledWith('Script syntax highlighting failed to load', failure));
+  } finally {
+    result.preferences.dispose();
+    result.editor.dispose();
+    report.mockRestore();
+  }
 });

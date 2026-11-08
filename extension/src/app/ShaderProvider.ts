@@ -348,7 +348,7 @@ export class ShaderProvider {
     }
 
     // Evaluate script in extension host (Node.js context) to get declarations
-    const loadResult = this.scriptEvaluator.loadScript(result.code, scriptPath, shaderLanguageForPath(shaderPath) === "slang");
+    const loadResult = this.scriptEvaluator.loadScript(result.code, scriptPath, shaderLanguageForPath(shaderPath) === "slang" || shaderLanguageForPath(shaderPath) === "wgsl");
     if (loadResult.error) {
       message.scriptBundleError = loadResult.error;
       return true;
